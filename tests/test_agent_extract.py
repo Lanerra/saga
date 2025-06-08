@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 
 from kg_maintainer.models import CharacterProfile
 from kg_maintainer_agent import KGMaintainerAgent
@@ -7,7 +8,7 @@ from kg_maintainer_agent import KGMaintainerAgent
 class DummyLLM:
     async def async_call_llm(self, *args, **kwargs):
         return (
-            """### CHARACTER UPDATES ###\n{\n    \"Alice\": {\"traits\": [\"brave\"], \"development_in_chapter_1\": \"Did stuff\"}\n}\n\n### KG TRIPLES ###\nAlice | visited | Town""",
+            '{"character_updates": {"Alice": {"traits": ["brave"], "development_in_chapter_1": "Did stuff"}}, "world_updates": {}, "kg_triples": ["Alice | visited | Town"]}',
             {"total_tokens": 10},
         )
 
@@ -46,3 +47,20 @@ def test_extract_and_merge(monkeypatch):
     )
     assert usage == {"total_tokens": 10}
     assert character_profiles["Alice"].traits == ["brave"]
+
+
+@pytest.mark.asyncio
+async def test_summarize_chapter_json(monkeypatch):
+    agent = KGMaintainerAgent()
+
+    async def _fake_llm(*args, **kwargs):
+        return '{"summary": "Short"}', {"prompt_tokens": 1}
+
+    monkeypatch.setattr(
+        "kg_maintainer_agent.llm_service.async_call_llm",
+        _fake_llm,
+    )
+
+    summary, usage = await agent.summarize_chapter("x" * 6000, 1)
+    assert summary == "Short"
+    assert usage == {"prompt_tokens": 1}

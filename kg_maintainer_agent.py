@@ -1,6 +1,6 @@
 # kg_maintainer_agent.py
+import json
 import logging
-import re
 from typing import Any, Dict, Optional, Tuple
 
 from async_lru import alru_cache  # type: ignore
@@ -42,7 +42,15 @@ async def _llm_summarize_full_chapter_text(
         presence_penalty=config.PRESENCE_PENALTY_SUMMARY,
         auto_clean_response=True,
     )
-    return summary.strip(), usage_data
+    summary_text = summary.strip()
+    if summary_text:
+        try:
+            parsed = json.loads(summary_text)
+            if isinstance(parsed, dict):
+                summary_text = parsed.get("summary", "")
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse summary JSON for chapter {chapter_number}.")
+    return summary_text, usage_data
 
 
 class KGMaintainerAgent:
@@ -211,58 +219,30 @@ class KGMaintainerAgent:
             )
             return usage_data
 
-        # Corrected section parsing logic:
-        sections_parts = re.split(
-            r"(^\s*###\s*[\w\s]+?\s*###\s*$)",
-            raw_extracted_text,
-            flags=re.IGNORECASE | re.MULTILINE,
-        )
-        parsed_sections: Dict[str, str] = {}
-        current_section_key = None
-        # sections_parts will be like [text_before_first_header, header1, content1, header2, content2, ...]
-        # So we iterate in steps of 2, starting from index 1 (first header)
-        for i in range(1, len(sections_parts), 2):
-            header_text_raw = sections_parts[i].strip()
-            content_text_raw = (
-                sections_parts[i + 1].strip() if (i + 1) < len(sections_parts) else ""
+        try:
+            parsed_json = json.loads(raw_extracted_text)
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"Failed to parse extraction JSON for chapter {chapter_number}: {e}"
             )
+            return usage_data
 
-            header_text = header_text_raw.lower()  # Normalize header for matching
-            if "character updates" in header_text:
-                current_section_key = "character_updates"
-            elif "world updates" in header_text:
-                current_section_key = "world_updates"
-            elif "kg triples" in header_text:
-                current_section_key = "kg_triples"
-            else:
-                logger.warning(
-                    f"Unknown section header found in LLM output: '{header_text_raw}'"
-                )
-                current_section_key = None  # Reset if unknown header
-
-            if current_section_key:
-                # Remove potential ```json ... ``` markdown if LLM adds it for JSON sections
-                if current_section_key in ["character_updates", "world_updates"]:
-                    content_text_raw = re.sub(
-                        r"^\s*```json\s*\n?", "", content_text_raw, flags=re.MULTILINE
-                    )
-                    content_text_raw = re.sub(
-                        r"\n?\s*```\s*$", "", content_text_raw, flags=re.MULTILINE
-                    )
-                parsed_sections[current_section_key] = content_text_raw.strip()
-                current_section_key = None  # Reset for next potential header block
+        char_updates_raw = json.dumps(parsed_json.get("character_updates", {}))
+        world_updates_raw = json.dumps(parsed_json.get("world_updates", {}))
+        kg_triples_list = parsed_json.get("kg_triples", [])
+        if isinstance(kg_triples_list, list):
+            kg_triples_text = "\n".join([str(t) for t in kg_triples_list])
+        else:
+            kg_triples_text = str(kg_triples_list)
 
         char_updates_from_llm = self.parse_character_updates(
-            parsed_sections.get("character_updates", ""), chapter_number
+            char_updates_raw, chapter_number
         )
         world_updates_from_llm = self.parse_world_updates(
-            parsed_sections.get("world_updates", ""), chapter_number
+            world_updates_raw, chapter_number
         )
 
-        # Use the corrected function name for structured triple parsing
-        parsed_triples_structured = parse_rdf_triples_with_rdflib(
-            parsed_sections.get("kg_triples", "")
-        )
+        parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
 
         logger.info(
             f"Chapter {chapter_number} LLM Extraction: "

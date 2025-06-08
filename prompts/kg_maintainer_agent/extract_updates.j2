@@ -3,10 +3,10 @@
 The story's protagonist is: {{ protagonist }}.
 This is Chapter {{ chapter_number }} of the novel titled '{{ novel_title }}' (Genre: {{ novel_genre }}).
 Focus on information explicitly stated or strongly implied in the provided chapter text.
-Output the extracted information in three distinct sections, using these exact headers:
-### CHARACTER UPDATES ###
-### WORLD UPDATES ###
-### KG TRIPLES ###
+Output the extracted information as a single JSON object with these keys:
+`character_updates` - JSON object as described below.
+`world_updates` - JSON object as described below.
+`kg_triples` - an array of strings, each string representing one triple.
 
 For CHARACTER UPDATES: Output a JSON object where keys are character names. Each character's value should be another JSON object containing their attributes (e.g., {"status": "injured", "description": "now wears a red cloak"}).
 - For traits, use a key like "traits" with a JSON array of strings: ["trait1", "trait2"]. List only new or emphasized traits.
@@ -48,8 +48,7 @@ Example for World Updates (JSON format):
 ```
 
 For KG TRIPLES:
-- List factual statements on separate lines (plain text, NOT JSON for this section).
-- Format: 'SubjectEntityType:SubjectName | Predicate | ObjectEntityType:ObjectName' OR 'SubjectEntityType:SubjectName | Predicate | LiteralValue'.
+- Provide a JSON array of strings. Each string represents one triple formatted as 'SubjectEntityType:SubjectName | Predicate | ObjectEntityType:ObjectName' OR 'SubjectEntityType:SubjectName | Predicate | LiteralValue'.
 - Valid Subject/Object EntityTypes: Character, WorldElement, Location, Faction, Item, Concept, Trait, Event, PlotPoint, Organization, Species, Ability, MagicSystem, Technology, Currency, Language, Food, Plant, Animal, Vehicle, Weapon, Armor, Clothing, Tool, Building, Region, Planet, StarSystem, Galaxy, Dimension, HistoricalPeriod, CulturalAspect, SocialClass, Occupation, Title, Role, StatusEffect, Quest, LoreFragment, Prophecy, Rumor, Secret.
   If type is ambiguous or general for a specific subject/object, you can omit its type prefix (e.g., 'Lirion | DEFEATED | Goblin Chieftain').
   For WorldElements, use their human-readable name, not their category_name ID.

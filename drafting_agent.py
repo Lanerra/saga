@@ -1,4 +1,5 @@
 # drafting_agent.py
+import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -106,7 +107,19 @@ class DraftingAgent:
             auto_clean_response=True,  # Clean preamble/postamble from LLM
         )
 
-        if not draft_text or not draft_text.strip():
+        chapter_text = ""
+        if draft_text.strip():
+            try:
+                parsed = json.loads(draft_text)
+                chapter_text = (
+                    parsed.get("chapter_text", "") if isinstance(parsed, dict) else ""
+                )
+            except json.JSONDecodeError:
+                logger.error(
+                    f"DraftingAgent: Failed to parse JSON chapter text for Chapter {chapter_number}."
+                )
+                chapter_text = draft_text.strip()
+        if not chapter_text:
             logger.error(
                 f"DraftingAgent: LLM returned empty or whitespace-only draft for Chapter {chapter_number}."
             )
@@ -117,10 +130,10 @@ class DraftingAgent:
             )  # Return raw LLM output even if it's bad
 
         logger.info(
-            f"DraftingAgent: Successfully generated draft for Chapter {chapter_number}. Length: {len(draft_text)} characters."
+            f"DraftingAgent: Successfully generated draft for Chapter {chapter_number}. Length: {len(chapter_text)} characters."
         )
         return (
-            draft_text,
+            chapter_text,
             draft_text,
             usage_data,
-        )  # For now, raw_llm_output is same as cleaned draft_text
+        )

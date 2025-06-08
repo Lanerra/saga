@@ -1,7 +1,8 @@
-      
 # data_access/character_queries.py
 import logging
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+from neo4j.exceptions import ServiceUnavailable  # type: ignore
 
 import config
 from core_db.base_db_manager import neo4j_manager
@@ -675,25 +676,49 @@ async def get_character_info_for_snippet_from_db(
     params = {"char_name_param": char_name, "chapter_limit_param": chapter_limit}
     try:
         result = await neo4j_manager.execute_read_query(query, params)
-        if result and result[0]:
-            record = result[0]
-            most_current_dev_event_node = record.get("most_current_dev_event")
-            dev_note = most_current_dev_event_node.get("summary", "N/A") if most_current_dev_event_node else "N/A"
-
-            return {
-                "description": record.get("description"),
-                "current_status": record.get("current_status"),
-                "most_recent_development_note": dev_note,
-                "is_provisional_overall": record.get("is_provisional_overall", False),
-            }
-        logger.debug(
-            f"No detailed snippet info found for character '{char_name}' up to chapter {chapter_limit}."
+    except ServiceUnavailable as e:
+        logger.warning(
+            "Neo4j service unavailable when fetching snippet for '%s': %s."
+            " Attempting single reconnect.",
+            char_name,
+            e,
         )
+        try:
+            await neo4j_manager.connect()
+            result = await neo4j_manager.execute_read_query(query, params)
+        except Exception as retry_exc:  # pragma: no cover - log and return
+            logger.error(
+                "Retry after reconnect failed for character '%s': %s",
+                char_name,
+                retry_exc,
+                exc_info=True,
+            )
+            return None
     except Exception as e:
         logger.error(
             f"Error fetching character info for snippet ({char_name}): {e}",
             exc_info=True,
         )
-    return None
+        return None
 
-    
+    if result and result[0]:
+        record = result[0]
+        most_current_dev_event_node = record.get("most_current_dev_event")
+        dev_note = (
+            most_current_dev_event_node.get("summary", "N/A")
+            if most_current_dev_event_node
+            else "N/A"
+        )
+
+        return {
+            "description": record.get("description"),
+            "current_status": record.get("current_status"),
+            "most_recent_development_note": dev_note,
+            "is_provisional_overall": record.get("is_provisional_overall", False),
+        }
+    logger.debug(
+        "No detailed snippet info found for character '%s' up to chapter %d.",
+        char_name,
+        chapter_limit,
+    )
+    return None

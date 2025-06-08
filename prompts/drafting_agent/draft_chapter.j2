@@ -20,6 +20,7 @@ Your goal is to write compelling, engaging prose that brings the story to life.
 - Weave in setting details naturally to create a vivid world.
 - Aim for a substantial chapter length, typically at least {{ min_length }} characters.
 - Conclude the chapter appropriately, leading towards the next phase of the story if applicable, but resolve the immediate focus of *this* chapter's plot point.
-- Do NOT include any preambles, summaries, author notes, or section headers like "Chapter X" in your output. Output ONLY the chapter text itself.
+- Do NOT include any preambles, summaries, author notes, or section headers like "Chapter X".
+Output a single JSON object with a key `chapter_text` containing the full chapter text.
 
-Begin writing Chapter {{ chapter_number }} now:
+Begin writing Chapter {{ chapter_number }} now in this JSON format:
