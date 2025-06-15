@@ -6,14 +6,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from data_access import chapter_queries
+from kg_maintainer.models import CharacterProfile, SceneDetail, WorldItem
 from llm_interface import llm_service
-from prompt_renderer import render_prompt
 from prompt_data_getters import (
     get_character_state_snippet_for_prompt,
+    get_planning_context_from_kg,
     get_reliable_kg_facts_for_drafting_prompt,
     get_world_state_snippet_for_prompt,
 )
-from kg_maintainer.models import CharacterProfile, SceneDetail, WorldItem
+from prompt_renderer import render_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,6 @@ class PlannerAgent:
                         # For optional fields, this will be None.
                         processed_scene_dict[key_internal_name] = None
 
-
             scenes_data.append(processed_scene_dict)  # type: ignore
 
         if not scenes_data:
@@ -220,6 +220,10 @@ class PlannerAgent:
         )
         world_state_snippet_plain_text = await get_world_state_snippet_for_prompt(
             world_building, chapter_number
+        )
+
+        planning_kg_context = await get_planning_context_from_kg(
+            plot_outline, chapter_number
         )
 
         future_plot_context_parts: List[str] = []
@@ -309,6 +313,7 @@ class PlannerAgent:
                 "plot_point_focus": plot_point_focus,
                 "future_plot_context_str": future_plot_context_str,
                 "context_summary_str": context_summary_str,
+                "planning_kg_context": planning_kg_context,
                 "kg_context_section": kg_context_section,
                 "character_state_snippet_plain_text": character_state_snippet_plain_text,
                 "world_state_snippet_plain_text": world_state_snippet_plain_text,

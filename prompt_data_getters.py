@@ -884,3 +884,95 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     ]
     final_prompt_parts.extend(unique_facts[:max_total_facts])
     return "\n".join(final_prompt_parts)
+
+
+async def get_planning_context_from_kg(
+    plot_outline: Dict[str, Any],
+    chapter_number: int,
+    max_facts_per_char: int = 2,
+    max_total_facts: int = 10,
+) -> str:
+    """Gather knowledge graph facts to inform planning."""
+    if chapter_number <= 0:
+        return "No KG planning context available."
+
+    kg_chapter_limit = (
+        config.KG_PREPOPULATION_CHAPTER_NUM
+        if chapter_number == 1
+        else chapter_number - 1
+    )
+
+    facts: List[str] = []
+
+    for prop in ["theme", "central_conflict"]:
+        try:
+            value = await kg_queries.get_novel_info_property_from_db(prop)
+            if value:
+                label = "theme" if prop == "theme" else "central conflict"
+                facts.append(f"- Novel {label}: {value}.")
+        except Exception as exc:
+            logger.warning(
+                f"KG query for novel info '{prop}' failed: {exc}",
+            )
+
+    protagonist = plot_outline.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME)
+    characters: Set[str] = set()
+    if protagonist and not utils._is_fill_in(protagonist):
+        characters.add(protagonist)
+    additional_chars = plot_outline.get("main_characters", [])
+    for char in additional_chars:
+        if (
+            isinstance(char, str)
+            and char.strip()
+            and not utils._is_fill_in(char)
+            and len(characters) < 3
+        ):
+            characters.add(char.strip())
+
+    for char in characters:
+        facts_for_char = 0
+        status_val = await kg_queries.get_most_recent_value_from_db(
+            char,
+            "status_is",
+            kg_chapter_limit,
+            include_provisional=False,
+        )
+        if status_val:
+            facts.append(f"- {char}'s status is: {status_val}.")
+            facts_for_char += 1
+        if facts_for_char < max_facts_per_char:
+            loc_val = await kg_queries.get_most_recent_value_from_db(
+                char,
+                "located_in",
+                kg_chapter_limit,
+                include_provisional=False,
+            )
+            if loc_val:
+                facts.append(f"- {char} is located in: {loc_val}.")
+                facts_for_char += 1
+        if facts_for_char < max_facts_per_char:
+            rels = await kg_queries.query_kg_from_db(
+                subject=char,
+                chapter_limit=kg_chapter_limit,
+                include_provisional=False,
+                limit_results=2,
+            )
+            for rel in rels:
+                if facts_for_char >= max_facts_per_char:
+                    break
+                rel_type = rel.get("predicate")
+                other = rel.get("object")
+                if rel_type and other:
+                    rel_display = rel_type.replace("_", " ")
+                    facts.append(
+                        f"- {char} has relationship ({rel_display}) with: {other}."
+                    )
+                    facts_for_char += 1
+        if len(facts) >= max_total_facts:
+            break
+
+    if not facts:
+        return "No specific KG planning context identified."
+
+    unique = sorted(list(dict.fromkeys(facts)))
+    return "\n".join(unique[:max_total_facts])
