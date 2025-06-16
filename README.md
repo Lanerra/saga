@@ -110,6 +110,7 @@ It's highly recommended to use a Python virtual environment:
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+# neomodel is included for higher-level graph models
 python -m spacy download en_core_web_sm
 ```
 
@@ -134,6 +135,7 @@ NEO4J_URI="bolt://localhost:7687"
 NEO4J_USER="neo4j"
 NEO4J_PASSWORD="saga_password"
 NEO4J_DATABASE="neo4j" # Or your specific database name if not default
+# neomodel is automatically configured with these settings
 
 # Model Aliases (Set to the names of models available on your OPENAI_API_BASE server)
 LARGE_MODEL="Qwen3-14B-Q4"    # Or your preferred large model

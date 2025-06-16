@@ -9,6 +9,7 @@ from async_lru import alru_cache  # type: ignore
 import config
 import utils
 from core_db.base_db_manager import neo4j_manager
+from .models import WorldElementNode
 from kg_constants import (
     KG_IS_PROVISIONAL,
     KG_NODE_CHAPTER_UPDATED,
@@ -20,6 +21,18 @@ logger = structlog.get_logger(__name__)
 
 # Mapping from normalized world item names to canonical IDs
 WORLD_NAME_TO_ID: Dict[str, str] = {}
+
+
+async def _save_world_element_ogm(item: WorldItem) -> None:
+    """Create or update a world element using neomodel."""
+    node = await WorldElementNode.nodes.get_or_none(identifier=item.id)
+    if node is None:
+        node = await WorldElementNode(
+            identifier=item.id, name=item.name, category=item.category
+        ).save()
+    node.name = item.name
+    node.category = item.category
+    await node.save()
 
 
 def resolve_world_name(name: str) -> Optional[str]:
@@ -222,6 +235,7 @@ async def sync_world_items(
         if not isinstance(category_items, dict):
             continue
         for item_obj in category_items.values():
+            await _save_world_element_ogm(item_obj)
             statements.extend(
                 generate_world_element_node_cypher(item_obj, chapter_number)
             )

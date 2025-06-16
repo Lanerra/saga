@@ -68,6 +68,21 @@ class Neo4jManagerSingleton:
             )
             await self.driver.verify_connectivity()
             self.logger.info(f"Successfully connected to Neo4j at {config.NEO4J_URI}")
+
+            # Configure neomodel to use the same connection
+            try:
+                from neomodel import config as nm_config
+
+                nm_config.DATABASE_URL = (
+                    f"bolt://{config.NEO4J_USER}:{config.NEO4J_PASSWORD}@"
+                    f"{config.NEO4J_URI.split('//')[-1]}"
+                )
+                if config.NEO4J_DATABASE:
+                    nm_config.DATABASE_NAME = config.NEO4J_DATABASE
+            except Exception as nm_exc:  # pragma: no cover - log but don't fail
+                self.logger.warning(
+                    "Failed to configure neomodel: %s", nm_exc, exc_info=True
+                )
         except ServiceUnavailable as e:
             self.logger.critical(
                 f"Neo4j connection failed: {e}. Ensure the Neo4j database is running and accessible."

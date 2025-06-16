@@ -10,6 +10,7 @@ from neo4j.exceptions import ServiceUnavailable  # type: ignore
 import config
 import utils
 from core_db.base_db_manager import neo4j_manager
+from .models import CharacterNode, TraitNode
 from kg_constants import (
     KG_IS_PROVISIONAL,
     KG_NODE_CHAPTER_UPDATED,
@@ -32,6 +33,24 @@ def resolve_character_name(name: str) -> str:
 
 
 logger = structlog.get_logger(__name__)
+
+
+async def _save_character_ogm(profile: CharacterProfile) -> None:
+    """Create or update a character node using neomodel."""
+    char = await CharacterNode.nodes.get_or_none(name=profile.name)
+    if char is None:
+        char = await CharacterNode(name=profile.name).save()
+
+    char.description = profile.description
+    char.status = profile.status
+    await char.save()
+
+    for trait_name in profile.traits:
+        canonical = utils.normalize_trait_name(trait_name)
+        trait = await TraitNode.nodes.get_or_none(name=canonical)
+        if trait is None:
+            trait = await TraitNode(name=canonical).save()
+        await char.traits.connect(trait)
 
 
 def generate_character_node_cypher(
@@ -248,6 +267,7 @@ async def sync_characters(
 
     statements: List[Tuple[str, Dict[str, Any]]] = []
     for profile in profiles.values():
+        await _save_character_ogm(profile)
         statements.extend(generate_character_node_cypher(profile, chapter_number))
 
     try:
