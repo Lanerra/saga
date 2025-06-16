@@ -34,3 +34,6 @@ class WorldElementNode(AsyncStructuredNode):
     identifier = StringProperty(unique_index=True, required=True)
     name = StringProperty()
     category = StringProperty()
+
+
+__all__ = ["TraitNode", "CharacterNode", "WorldElementNode"]
