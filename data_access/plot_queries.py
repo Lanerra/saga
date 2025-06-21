@@ -1,6 +1,6 @@
 # data_access/plot_queries.py
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 import config
 from core.db_manager import neo4j_manager
@@ -288,26 +288,3 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
 
     await neo4j_manager.execute_cypher_batch(statements)
     return pp_id
-
-
-async def plot_point_exists(description: str) -> bool:
-    """Check if a plot point with the given description exists."""
-    query = """
-    MATCH (pp:PlotPoint:Entity)
-    WHERE toLower(pp.description) = toLower($desc)
-    RETURN count(pp) AS cnt
-    """
-    result = await neo4j_manager.execute_read_query(query, {"desc": description})
-    return bool(result and result[0] and result[0].get("cnt", 0) > 0)
-
-
-async def get_last_plot_point_id() -> Optional[str]:
-    """Return the ID of the most recent PlotPoint."""
-    query = """
-    MATCH (pp:PlotPoint:Entity)
-    RETURN pp.id AS id
-    ORDER BY pp.sequence DESC
-    LIMIT 1
-    """
-    result = await neo4j_manager.execute_read_query(query)
-    return result[0].get("id") if result and result[0] else None

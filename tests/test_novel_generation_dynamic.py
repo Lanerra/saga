@@ -40,15 +40,6 @@ async def test_dynamic_chapter_adjustment(monkeypatch):
     monkeypatch.setattr(orch, "perform_initial_setup", AsyncMock(return_value=True))
     monkeypatch.setattr(orch.kg_maintainer_agent, "heal_and_enrich_kg", AsyncMock())
     monkeypatch.setattr(orch, "refresh_plot_outline", AsyncMock())
-
-    async def fake_generate(count):
-        orch.plot_outline["plot_points"].extend(f"new{i}" for i in range(count))
-
-    monkeypatch.setattr(
-        orch,
-        "_generate_plot_points_from_kg",
-        AsyncMock(side_effect=fake_generate),
-    )
     monkeypatch.setattr(
         chapter_queries, "load_chapter_count_from_db", AsyncMock(return_value=3)
     )

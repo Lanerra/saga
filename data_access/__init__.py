@@ -31,8 +31,6 @@ from .plot_queries import (
     get_plot_outline_from_db,
     save_plot_outline_to_db,
     append_plot_point,
-    plot_point_exists,
-    get_last_plot_point_id,
 )
 from .world_queries import (
     get_world_building_from_db,
@@ -50,8 +48,6 @@ __all__ = [
     "save_plot_outline_to_db",
     "get_plot_outline_from_db",
     "append_plot_point",
-    "plot_point_exists",
-    "get_last_plot_point_id",
     "sync_characters_full_state_from_object_to_db",
     "sync_characters",
     "get_character_profile_by_name",
