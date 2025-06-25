@@ -420,21 +420,35 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
-formatter = structlog.stdlib.ProcessorFormatter(
+console_formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
-    processors=[structlog.dev.ConsoleRenderer()],
+    processors=[structlog.dev.ConsoleRenderer(colors=True)],
 )
 
-handler = stdlib_logging.StreamHandler()
+file_formatter = structlog.stdlib.ProcessorFormatter(
+    foreign_pre_chain=[
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+    ],
+    processors=[structlog.dev.ConsoleRenderer(colors=False)],
+)
+
+console_handler = stdlib_logging.StreamHandler()
+console_handler.setFormatter(console_formatter)
+
+root_logger = stdlib_logging.getLogger()
+root_logger.addHandler(console_handler)
+
 if settings.LOG_FILE:
-    handler = stdlib_logging.FileHandler(
+    file_handler = stdlib_logging.FileHandler(
         os.path.join(settings.BASE_OUTPUT_DIR, settings.LOG_FILE)
     )
-handler.setFormatter(formatter)
-root_logger = stdlib_logging.getLogger()
-root_logger.addHandler(handler)
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+
 root_logger.setLevel(settings.LOG_LEVEL_STR)
