@@ -271,7 +271,6 @@ pip install ruff mypy pytest-cov
 - **Connection**: Use `core.db_manager` for all database interactions
 - **Schema Creation**: Automatic constraint and index creation on first run
 - **Vector Index**: Configured for chapter embeddings with dimensions from `NEO4J_VECTOR_DIMENSIONS`
-- **APOC Plugin**: Available for advanced operations (configured in docker-compose.yml)
 
 ### Database Operations Patterns
 ```python

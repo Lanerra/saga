@@ -14,8 +14,3 @@ services:
       - ./neo4j/conf:/var/lib/neo4j/conf                  # Custom configuration overrides
     environment:
       - NEO4J_AUTH=neo4j/saga_password              # Set initial username/password
-      - NEO4J_PLUGINS=["apoc-extended"]                      # Auto-download and install APOC plugin
-      - NEO4J_dbms_security_procedures_unrestricted=apoc.* # Allow unrestricted APOC procedures
-      - NEO4J_apoc_import_file_enabled=true         # Enable file import procedures
-      - NEO4J_apoc_export_file_enabled=true         # Enable file export procedures
-      - NEO4J_apoc_import_file_use_neo4j_config=true # Respect Neo4j config for import

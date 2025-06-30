@@ -3,6 +3,7 @@ import asyncio
 import numpy as np
 import structlog
 from core.llm_interface import llm_service
+from rapidfuzz.distance import Levenshtein
 
 from .text_processing import get_text_segments
 
@@ -41,6 +42,14 @@ def numpy_cosine_similarity(vec1: np.ndarray | None, vec2: np.ndarray | None) ->
     dot_product = np.dot(v1, v2)
     similarity = dot_product / (norm_v1 * norm_v2)
     return float(np.clip(similarity, -1.0, 1.0))
+
+
+def levenshtein_similarity(text1: str | None, text2: str | None) -> float:
+    """Return normalized Levenshtein similarity between ``text1`` and ``text2``."""
+    if not text1 or not text2:
+        return 0.0
+    score = Levenshtein.normalized_similarity(str(text1), str(text2))
+    return float(score / 100.0)
 
 
 async def find_semantically_closest_segment(

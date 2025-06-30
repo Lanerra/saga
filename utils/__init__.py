@@ -228,6 +228,7 @@ __all__ = [
     "find_quote_and_sentence_offsets_with_spacy",
     "find_semantically_closest_segment",
     "numpy_cosine_similarity",
+    "levenshtein_similarity",
     "get_text_segments",
     "format_scene_plan_for_prompt",
     "get_plot_point_info",
