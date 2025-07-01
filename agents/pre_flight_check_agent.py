@@ -14,17 +14,11 @@ from data_access import character_queries, world_queries
 
 logger = structlog.get_logger(__name__)
 
-# Trait combinations that cannot coexist.
-CONTRADICTORY_TRAIT_PAIRS = []
-
-# Canonical facts that must always hold true.
-CANONICAL_FACTS_TO_ENFORCE: list[dict[str, str]] = []
-
 
 class PreFlightCheckAgent:
     """Performs core contradiction checks before drafting."""
 
-    def __init__(self, model_name: str = settings.KNOWLEDGE_UPDATE_MODEL) -> None:
+    def __init__(self, model_name: str = settings.SMALL_MODEL) -> None:
         self.model_name = model_name
         logger.info("PreFlightCheckAgent initialized")
 
@@ -53,6 +47,45 @@ class PreFlightCheckAgent:
             query, {"we_id": element_id, "t1": trait1, "t2": trait2}
         )
         return bool(results)
+
+    async def _identify_contradictory_pairs(
+        self,
+        plot_outline: dict[str, Any],
+        characters: dict[str, Any] | None,
+        world: dict[str, dict[str, Any]] | None,
+    ) -> list[tuple[str, str]]:
+        """Use the LLM to detect contradictory trait pairs."""
+
+        prefix = "/no_think\n" if settings.ENABLE_LLM_NO_THINK_DIRECTIVE else ""
+        context_json = json.dumps(
+            {
+                "plot": plot_outline,
+                "characters": characters or {},
+                "world": world or {},
+            },
+            ensure_ascii=False,
+        )
+        prompt = (
+            prefix
+            + "Given this story context, list any pairs of character traits that "
+            "cannot logically coexist. Respond with JSON like [['A','B'], ...]."
+        )
+        text, _ = await llm_service.async_call_llm(
+            model_name=self.model_name,
+            prompt=context_json + "\n" + prompt,
+            temperature=0.0,
+            max_tokens=200,
+            auto_clean_response=True,
+        )
+        try:
+            data = json.loads(text)
+            pairs = [tuple(p) for p in data if isinstance(p, list) and len(p) == 2]
+        except json.JSONDecodeError:
+            logger.warning(
+                "PreFlightCheckAgent: could not parse contradictory trait pairs"
+            )
+            pairs = []
+        return pairs
 
     async def _resolve_world_trait_conflict(
         self, element_id: str, trait1: str, trait2: str
@@ -124,6 +157,75 @@ class PreFlightCheckAgent:
             to_remove,
         )
 
+    async def _gather_canonical_facts(
+        self, plot_outline: dict[str, Any]
+    ) -> list[dict[str, str]]:
+        """Return canonical facts that must remain consistent."""
+        query = (
+            "MATCH (c:Character:Entity)-[:HAS_TRAIT]->"
+            "(t:Trait:Entity {is_canonical_truth: true}) "
+            "RETURN c.name AS name, t.name AS trait"
+        )
+
+        try:
+            records = await neo4j_manager.execute_read_query(query)
+        except Exception as exc:  # pragma: no cover - log but continue
+            logger.error(
+                "PreFlightCheckAgent failed to load canonical facts",
+                error=exc,
+                exc_info=True,
+            )
+            return []
+
+        facts: list[dict[str, str]] = []
+        for rec in records:
+            name = rec.get("name")
+            trait = rec.get("trait")
+            if name and trait:
+                facts.append({"name": str(name), "trait": str(trait)})
+
+        if not facts:
+            return []
+
+        prefix = "/no_think\n" if settings.ENABLE_LLM_NO_THINK_DIRECTIVE else ""
+        prompt_context = {"plot_outline": plot_outline, "canonical_facts": facts}
+        prompt = (
+            prefix
+            + "For each canonical_facts item, provide a trait that directly contradicts "
+            "the listed trait. Respond with JSON as [{'conflicts_with': 'Trait'}, ...] in the same order."
+        )
+
+        text, _ = await llm_service.async_call_llm(
+            model_name=self.model_name,
+            prompt=json.dumps(prompt_context, ensure_ascii=False) + "\n" + prompt,
+            temperature=0.0,
+            max_tokens=200,
+            auto_clean_response=True,
+            allow_fallback=True,
+        )
+
+        conflicts: list[str] = []
+        try:
+            data = json.loads(text)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get("conflicts_with"):
+                        conflicts.append(str(item["conflicts_with"]))
+                    elif isinstance(item, str):
+                        conflicts.append(item)
+        except json.JSONDecodeError:
+            logger.warning(
+                "PreFlightCheckAgent: could not parse canonical fact conflicts"
+            )
+
+        final: list[dict[str, str]] = []
+        for fact, conflict in zip(facts, conflicts, strict=False):
+            if conflict:
+                fact["conflicts_with"] = conflict
+                final.append(fact)
+
+        return final
+
     async def perform_core_checks(
         self,
         plot_outline: dict[str, Any],
@@ -135,12 +237,16 @@ class PreFlightCheckAgent:
         if protagonist:
             char_names.add(protagonist)
 
+        trait_pairs = await self._identify_contradictory_pairs(
+            plot_outline, characters, world
+        )
+
         for char_name in char_names:
-            for trait1, trait2 in CONTRADICTORY_TRAIT_PAIRS:
+            for trait1, trait2 in trait_pairs:
                 if await self._character_has_conflict(char_name, trait1, trait2):
                     await self._resolve_trait_conflict(char_name, trait1, trait2)
 
-        for fact in CANONICAL_FACTS_TO_ENFORCE:
+        for fact in await self._gather_canonical_facts(plot_outline):
             if await self._character_has_conflict(
                 fact["name"], fact["trait"], fact["conflicts_with"]
             ):
@@ -162,7 +268,7 @@ class PreFlightCheckAgent:
                 if not item or not getattr(item, "id", None):
                     continue
                 element_id = item.id
-                for trait1, trait2 in CONTRADICTORY_TRAIT_PAIRS:
+                for trait1, trait2 in trait_pairs:
                     if await self._world_element_has_conflict(
                         element_id, trait1, trait2
                     ):

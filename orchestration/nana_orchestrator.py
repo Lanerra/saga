@@ -47,6 +47,7 @@ from storage.file_manager import FileManager
 from ui.rich_display import RichDisplayManager
 from utils.plot import get_plot_point_info
 
+from models.agent_models import ChapterEndState
 from models.user_input_models import UserStoryInputModel
 from orchestration.chapter_flow import run_chapter_pipeline
 from orchestration.chapter_generation_runner import ChapterGenerationRunner
@@ -102,6 +103,7 @@ class NANA_Orchestrator:
         self.total_tokens_generated_this_run: int = 0
 
         self.next_chapter_context: str | None = None
+        self.chapter_zero_end_state: ChapterEndState | None = None
 
         self.display = RichDisplayManager()
         self.run_start_time: float = 0.0
@@ -278,10 +280,21 @@ class NANA_Orchestrator:
             logger.warning(
                 "Neo4j driver not initialized. Skipping knowledge cache refresh."
             )
+        try:
+            data = await chapter_queries.get_chapter_data_from_db(0)
+            if data and data.get("end_state_json"):
+                self.chapter_zero_end_state = ChapterEndState.model_validate_json(
+                    data["end_state_json"]
+                )
+        except Exception as exc:
+            logger.error("Failed to load chapter 0 end state: %s", exc, exc_info=True)
         self.next_chapter_context = await self.context_service.build_hybrid_context(
             self,
             1,
             None,
+            {"chapter_zero_end_state": self.chapter_zero_end_state}
+            if self.chapter_zero_end_state
+            else None,
         )
 
         return True
@@ -829,6 +842,7 @@ class NANA_Orchestrator:
                 self,
                 novel_chapter_number,
                 None,
+                None,
             )
         chapter_plan_result, plan_usage = await self.planner_agent.plan_chapter_scenes(
             self.plot_outline,
@@ -884,6 +898,7 @@ class NANA_Orchestrator:
                 self,
                 novel_chapter_number,
                 chapter_plan,
+                None,
             )
         else:
             self.next_chapter_context = None
@@ -1169,6 +1184,7 @@ class NANA_Orchestrator:
         self.next_chapter_context = await self.context_service.build_hybrid_context(
             self,
             novel_chapter_number + 1,
+            None,
             None,
         )
 

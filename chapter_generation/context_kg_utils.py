@@ -7,7 +7,6 @@ import json
 from typing import Any
 
 import structlog
-from agents.pre_flight_check_agent import CANONICAL_FACTS_TO_ENFORCE
 from config import settings
 from core.llm_interface import llm_service
 from data_access import character_queries, world_queries
@@ -34,16 +33,6 @@ async def get_canonical_truths_from_kg() -> list[str]:
         name = rec.get("name")
         trait = rec.get("trait")
         if name and trait:
-            line = f"- {name} is {trait}"
-            if line not in lines:
-                lines.append(line)
-
-    if not lines:
-        for fact in CANONICAL_FACTS_TO_ENFORCE:
-            name = fact.get("name")
-            trait = fact.get("trait")
-            if not name or not trait:
-                continue
             line = f"- {name} is {trait}"
             if line not in lines:
                 lines.append(line)

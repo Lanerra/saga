@@ -3,11 +3,10 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterable
 from typing import Any
-
-import json
 
 import structlog
 from config import settings
@@ -120,6 +119,7 @@ class ContextOrchestrator:
         agent_or_props: Any,
         current_chapter_number: int,
         chapter_plan: list[SceneDetail] | None,
+        agent_hints: dict[str, Any] | None = None,
     ) -> str:
         """Backward compatible wrapper for build_context."""
         if isinstance(agent_or_props, dict):
@@ -133,10 +133,19 @@ class ContextOrchestrator:
             ) or getattr(agent_or_props, "plot_outline", {})
             plot_focus = getattr(agent_or_props, "plot_point_focus", None)
 
+        if hasattr(plot_outline, "model_dump"):
+            try:
+                plot_outline = plot_outline.model_dump(exclude_none=True)
+            except Exception as exc:  # pragma: no cover - log and continue
+                logger.warning(
+                    "Failed to dump plot outline to dict", error=exc, exc_info=True
+                )
+
         request = ContextRequest(
             chapter_number=current_chapter_number,
             plot_focus=plot_focus,
             plot_outline=plot_outline,
             chapter_plan=chapter_plan,
+            agent_hints=agent_hints,
         )
         return await self.build_context(request)

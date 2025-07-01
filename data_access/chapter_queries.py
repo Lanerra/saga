@@ -49,7 +49,7 @@ async def save_chapter_data_to_db(
     Returns:
         ``None``. Data is persisted directly to the database.
     """
-    if chapter_number <= 0:
+    if chapter_number < 0:
         logger.error(
             f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}."
         )
@@ -93,7 +93,7 @@ async def save_chapter_data_to_db(
 async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None:
     """Retrieve stored chapter data for the given chapter number."""
 
-    if chapter_number <= 0:
+    if chapter_number < 0:
         return None
     query = f"""
     MATCH (c:{settings.NEO4J_VECTOR_NODE_LABEL} {{number: $chapter_number_param}})
@@ -129,7 +129,7 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
 async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
     """Return the text embedding for a chapter if present."""
 
-    if chapter_number <= 0:
+    if chapter_number < 0:
         return None
     query = f"""
     MATCH (c:{settings.NEO4J_VECTOR_NODE_LABEL} {{number: $chapter_number_param}})
@@ -185,7 +185,8 @@ async def find_similar_chapters_in_db(
     exclude_clause = ""
     params_dict: dict[str, Any] = {
         "index_name_param": settings.NEO4J_VECTOR_INDEX_NAME,
-        "limit_param": limit + (0), #1 if current_chapter_to_exclude is not None else 0),
+        "limit_param": limit
+        + (0),  # 1 if current_chapter_to_exclude is not None else 0),
         "queryVector_param": query_embedding_list,
     }
     if current_chapter_to_exclude is not None:

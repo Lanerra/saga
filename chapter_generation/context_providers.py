@@ -293,29 +293,54 @@ class StateContextProvider(ContextProvider):
 
     async def get_context(self, request: ContextRequest) -> ContextChunk:
         prev_chapter = request.chapter_number - 1
+        state: ChapterEndState | None = None
         if prev_chapter <= 0:
-            return ContextChunk(text="", tokens=0, provenance={}, source=self.source)
-        try:
-            data = await self.chapter_queries.get_chapter_data_from_db(prev_chapter)
-        except Exception as exc:  # pragma: no cover - log and return empty
-            logger.error(
-                "StateContextProvider failed to load chapter",
-                chapter=prev_chapter,
-                error=exc,
-                exc_info=True,
-            )
-            return ContextChunk(text="", tokens=0, provenance={}, source=self.source)
-        if not data or not data.get("end_state_json"):
-            return ContextChunk(text="", tokens=0, provenance={}, source=self.source)
-        try:
-            state = ChapterEndState.model_validate_json(data["end_state_json"])
-        except Exception:
-            logger.error(
-                "Failed to parse end state JSON for chapter %s",
-                prev_chapter,
-                exc_info=True,
-            )
-            return ContextChunk(text="", tokens=0, provenance={}, source=self.source)
+            if request.agent_hints and request.agent_hints.get(
+                "chapter_zero_end_state"
+            ):
+                hint = request.agent_hints["chapter_zero_end_state"]
+                if isinstance(hint, ChapterEndState):
+                    state = hint
+                else:
+                    try:
+                        state = ChapterEndState.model_validate_json(hint)
+                    except Exception:
+                        logger.error(
+                            "Failed to parse chapter 0 state from hints", exc_info=True
+                        )
+            if state is None:
+                return ContextChunk(
+                    text="", tokens=0, provenance={}, source=self.source
+                )
+            prev_chapter = 0
+        else:
+            try:
+                data = await self.chapter_queries.get_chapter_data_from_db(prev_chapter)
+            except Exception as exc:  # pragma: no cover - log and return empty
+                logger.error(
+                    "StateContextProvider failed to load chapter",
+                    chapter=prev_chapter,
+                    error=exc,
+                    exc_info=True,
+                )
+                return ContextChunk(
+                    text="", tokens=0, provenance={}, source=self.source
+                )
+            if not data or not data.get("end_state_json"):
+                return ContextChunk(
+                    text="", tokens=0, provenance={}, source=self.source
+                )
+            try:
+                state = ChapterEndState.model_validate_json(data["end_state_json"])
+            except Exception:
+                logger.error(
+                    "Failed to parse end state JSON for chapter %s",
+                    prev_chapter,
+                    exc_info=True,
+                )
+                return ContextChunk(
+                    text="", tokens=0, provenance={}, source=self.source
+                )
 
         lines = [
             "**CRITICAL STATE CONTINUITY - DO NOT CONTRADICT:**",

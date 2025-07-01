@@ -1,7 +1,9 @@
+import json
+
 import structlog
 from agents.kg_maintainer_agent import KGMaintainerAgent
 from config import settings
-from data_access import plot_queries
+from data_access import chapter_queries, plot_queries
 from kg_maintainer.models import WorldItem
 
 from .bootstrappers.character_bootstrapper import (
@@ -77,5 +79,38 @@ async def run_genesis_phase() -> tuple[
     # New enrichment pass to clarify ambiguous concepts before drafting begins
     await kg_agent.heal_and_enrich_kg()
     logger.info("Initial KG enrichment pass executed.")
+
+    bootstrap_state_text = json.dumps(
+        {
+            "plot_outline": plot_outline.model_dump(exclude_none=True),
+            "characters": {
+                name: profile.model_dump(exclude_none=True)
+                for name, profile in character_profiles.items()
+            },
+            "world": {
+                cat: {
+                    item_name: item.model_dump(exclude_none=True)
+                    for item_name, item in items.items()
+                }
+                for cat, items in world_items_for_kg.items()
+            },
+        },
+        ensure_ascii=False,
+    )
+
+    end_state = await kg_agent.generate_chapter_end_state(
+        bootstrap_state_text,
+        0,
+    )
+    await chapter_queries.save_chapter_data_to_db(
+        0,
+        bootstrap_state_text,
+        bootstrap_state_text,
+        None,
+        None,
+        False,
+        end_state.model_dump(),
+    )
+    logger.info("Saved chapter 0 end state to Neo4j.")
 
     return plot_outline, character_profiles, world_items_for_kg, usage_totals
