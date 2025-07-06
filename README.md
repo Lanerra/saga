@@ -217,7 +217,7 @@ Refer to `config.py` for a full list of configurable options and their defaults.
 SAGA uses Neo4j for its knowledge graph. A `docker-compose.yml` file is provided for easy setup.
 
 *   **Ensure Docker and Docker Compose are installed.**
-*   **APOC Plugin:** The compose file sets `NEO4J_PLUGINS=["apoc"]` so the APOC Extended plugin is downloaded automatically when the container starts. If you add this later, restart the container to trigger the download.
+*   **APOC Plugin:** No longer required. The compose file now runs a vanilla Neo4j 2025.01 image without APOC.
 *   **Manage Neo4j container (from the project root directory):**
     *   **Start Neo4j:**
         ```bash

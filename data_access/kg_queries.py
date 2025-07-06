@@ -1,5 +1,6 @@
 # data_access/kg_queries.py
 import re
+from difflib import SequenceMatcher
 from typing import Any
 
 import structlog
@@ -214,32 +215,43 @@ async def add_kg_triples_batch_to_db(
         logger.info("Neo4j: add_kg_triples_batch_to_db: No valid triples to process.")
         return
 
-    cypher = """
-    UNWIND $triples AS t
-    CALL apoc.merge.node(t.subject_labels, {name: t.subject_name}) YIELD node AS s
-    SET s.created_ts = coalesce(s.created_ts, timestamp())
-    WITH s, t
-    CALL apoc.merge.node(t.object_labels, t.object_props) YIELD node AS o
-    SET o.created_ts = coalesce(o.created_ts, timestamp())
-    WITH s, o, t
-    MERGE (s)-[r:DYNAMIC_REL {type: t.rel_props.type}]->(o)
-    ON CREATE SET r += t.rel_props, r.created_ts = timestamp()
-    ON MATCH SET r += t.rel_props, r.updated_ts = timestamp()
-    """
+    for payload in triple_payload:
+        subject_labels = ":".join(payload["subject_labels"])
+        object_labels = ":".join(payload["object_labels"])
+        rel_type = payload["rel_props"]["type"]
 
-    try:
-        await neo4j_manager.execute_write_query(cypher, {"triples": triple_payload})
-        logger.info(
-            "Neo4j: Batch processed %d KG triples via UNWIND.",
-            len(triple_payload),
+        obj_props = payload["object_props"]
+        if "name" in obj_props:
+            obj_key = "name"
+            obj_val = obj_props["name"]
+        else:
+            obj_key = "value"
+            obj_val = obj_props["value"]
+
+        cypher = (
+            f"MERGE (s:{subject_labels} {{name: $s_name}})\n"
+            "SET s.created_ts = coalesce(s.created_ts, timestamp())\n"
+            f"MERGE (o:{object_labels} {{{obj_key}: $o_val}})\n"
+            "SET o += $o_props\n"
+            "SET o.created_ts = coalesce(o.created_ts, timestamp())\n"
+            f"MERGE (s)-[r:{rel_type}]->(o)\n"
+            "ON CREATE SET r += $r_props, r.created_ts = timestamp()\n"
+            "ON MATCH SET r += $r_props, r.updated_ts = timestamp()"
         )
-    except Exception as e:
-        logger.error(
-            "Neo4j: Error in batch adding KG triples with UNWIND: %s",
-            e,
-            exc_info=True,
-        )
-        raise
+        params = {
+            "s_name": payload["subject_name"],
+            "o_val": obj_val,
+            "o_props": obj_props,
+            "r_props": payload["rel_props"],
+        }
+        try:
+            await neo4j_manager.execute_write_query(cypher, params)
+        except Exception:
+            logger.error("Neo4j: Error adding KG triple %s", payload, exc_info=True)
+            raise
+    logger.info(
+        "Neo4j: Batch processed %d KG triples via MERGE loops.", len(triple_payload)
+    )
 
 
 async def query_kg_from_db(
@@ -519,41 +531,44 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
 async def find_candidate_duplicate_entities(
     similarity_threshold: float = 0.85, limit: int = 50
 ) -> list[dict[str, Any]]:
+    """Find potential duplicate entities by comparing their names."""
+    fetch_query = """
+    MATCH (e:Entity)
+    WHERE e.name IS NOT NULL AND NOT e:ValueNode
+    RETURN e.id AS id, e.name AS name, labels(e) AS labels
     """
-    Finds pairs of entities with similar names using APOC's Levenshtein distance.
-    This requires the APOC plugin to be installed in Neo4j.
-    """
-    query = """
-    MATCH (e1:Entity), (e2:Entity)
-    WHERE elementId(e1) < elementId(e2)
-      AND e1.name IS NOT NULL AND e2.name IS NOT NULL
-      AND NOT e1:ValueNode AND NOT e2:ValueNode
-    WITH e1, e2, apoc.text.distance(e1.name, e2.name) AS distance
-    WITH e1, e2, distance, apoc.coll.max([size(e1.name), size(e2.name)]) as max_len
-    WHERE max_len > 0 AND (1 - (distance / toFloat(max_len))) >= $threshold
-    
-    RETURN
-      e1.id AS id1, e1.name AS name1, labels(e1) AS labels1,
-      e2.id AS id2, e2.name AS name2, labels(e2) AS labels2,
-      (1 - (distance / toFloat(max_len))) as similarity
-    ORDER BY similarity DESC
-    LIMIT $limit
-    """
-    params = {"threshold": similarity_threshold, "limit": limit}
     try:
-        results = await neo4j_manager.execute_read_query(query, params)
-        return results if results else []
-    except Exception as e:
-        if "apoc.text.distance" in str(e) or "apoc.coll.max" in str(e):
-            logger.error(
-                "A required APOC function was not found. "
-                "Please ensure the full APOC Extended plugin is installed."
-            )
-        else:
-            logger.error(
-                f"Error finding candidate duplicate entities: {e}", exc_info=True
-            )
+        records = await neo4j_manager.execute_read_query(fetch_query)
+    except Exception as e:  # pragma: no cover - narrow DB errors
+        logger.error(
+            "Failed to fetch entity names for duplicate check: %s", e, exc_info=True
+        )
         return []
+
+    entities = [dict(r) for r in records] if records else []
+    candidates: list[dict[str, Any]] = []
+
+    for i, e1 in enumerate(entities):
+        for e2 in entities[i + 1 :]:
+            max_len = max(len(e1["name"]), len(e2["name"]))
+            if max_len == 0:
+                continue
+            similarity = SequenceMatcher(None, e1["name"], e2["name"]).ratio()
+            if similarity >= similarity_threshold:
+                candidates.append(
+                    {
+                        "id1": e1["id"],
+                        "name1": e1["name"],
+                        "labels1": e1["labels"],
+                        "id2": e2["id"],
+                        "name2": e2["name"],
+                        "labels2": e2["labels"],
+                        "similarity": similarity,
+                    }
+                )
+
+    candidates.sort(key=lambda c: c["similarity"], reverse=True)
+    return candidates[:limit]
 
 
 async def get_entity_context_for_resolution(
@@ -594,34 +609,65 @@ async def get_entity_context_for_resolution(
 
 
 async def merge_entities(target_id: str, source_id: str) -> bool:
+    """Merge ``source`` into ``target`` by reattaching relationships and properties."""
+
+    fetch_rels_query = """
+    MATCH (s:Entity {id: $source_id})-[r]->(o)
+    RETURN elementId(o) AS end_id, type(r) AS type, properties(r) AS props, false AS incoming
+    UNION ALL
+    MATCH (o)-[r]->(s:Entity {id: $source_id})
+    RETURN elementId(o) AS end_id, type(r) AS type, properties(r) AS props, true AS incoming
     """
-    Merges one entity (source) into another (target) using APOC procedures.
-    The source node will be deleted after its relationships are moved.
-    """
-    query = """
-    MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
-    CALL apoc.refactor.mergeNodes([source], target, {
-      properties: 'combine',
-      mergeRels: true
-    }) YIELD node
-    RETURN node
-    """
-    params = {"target_id": target_id, "source_id": source_id}
+
     try:
-        await neo4j_manager.execute_write_query(query, params)
-        logger.info(f"Successfully merged node {source_id} into {target_id}.")
+        rels = await neo4j_manager.execute_read_query(
+            fetch_rels_query, {"source_id": source_id}
+        )
+    except Exception as exc:  # pragma: no cover - narrow DB errors
+        logger.error("Failed to gather relationships for merge: %s", exc, exc_info=True)
+        return False
+
+    try:
+        for rel in rels:
+            params = {
+                "target_id": target_id,
+                "node_id": rel["end_id"],
+                "props": rel["props"],
+            }
+            if rel["incoming"]:
+                cypher = (
+                    f"MATCH (n) WHERE elementId(n) = $node_id\n"
+                    f"MATCH (t:Entity {{id: $target_id}})\n"
+                    f"MERGE (n)-[r:{rel['type']}]->(t)\n"
+                    "SET r += $props"
+                )
+            else:
+                cypher = (
+                    f"MATCH (t:Entity {{id: $target_id}})\n"
+                    f"MATCH (n) WHERE elementId(n) = $node_id\n"
+                    f"MERGE (t)-[r:{rel['type']}]->(n)\n"
+                    "SET r += $props"
+                )
+            await neo4j_manager.execute_write_query(cypher, params)
+
+        merge_props_query = """
+        MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
+        SET target += properties(source)
+        DETACH DELETE source
+        """
+        await neo4j_manager.execute_write_query(
+            merge_props_query, {"target_id": target_id, "source_id": source_id}
+        )
+        logger.info("Successfully merged node %s into %s.", source_id, target_id)
         return True
-    except Exception as e:
-        if "apoc.refactor.mergeNodes" in str(e):
-            logger.error(
-                "APOC Library not found or configured in Neo4j. "
-                "Cannot merge entities. Please install the APOC plugin."
-            )
-        else:
-            logger.error(
-                f"Error merging entities ({source_id} -> {target_id}): {e}",
-                exc_info=True,
-            )
+    except Exception as e:  # pragma: no cover - narrow DB errors
+        logger.error(
+            "Error merging entities (%s -> %s): %s",
+            source_id,
+            target_id,
+            e,
+            exc_info=True,
+        )
         return False
 
 
@@ -665,44 +711,95 @@ async def get_defined_relationship_types() -> list[str]:
 async def promote_dynamic_relationships() -> int:
     """Convert dynamic relationships to defined relationship types."""
     valid_types = await get_defined_relationship_types()
-    query = """
+    fetch_query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
     WHERE r.type IN $valid_types
-    WITH s, r, o
-    CALL apoc.create.relationship(
-        s,
-        r.type,
-        r {.*, type: null},
-        o
-    ) YIELD rel
-    DELETE r
-    RETURN count(rel) AS promoted
+    RETURN elementId(s) AS sid, elementId(o) AS oid, r.type AS type,
+           elementId(r) AS rid, properties(r) AS props
     """
     try:
-        results = await neo4j_manager.execute_write_query(
-            query, {"valid_types": valid_types}
+        rels = await neo4j_manager.execute_read_query(
+            fetch_query, {"valid_types": valid_types}
         )
-        return results[0].get("promoted", 0) if results else 0
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Failed to promote dynamic relationships: %s", exc, exc_info=True)
+        logger.error("Failed to fetch dynamic relationships: %s", exc, exc_info=True)
         return 0
+
+    promoted = 0
+    for rel in rels:
+        params = {
+            "sid": rel["sid"],
+            "oid": rel["oid"],
+            "props": {k: v for k, v in rel["props"].items() if k != "type"},
+            "rid": rel["rid"],
+        }
+        cypher = (
+            f"MATCH (s) WHERE elementId(s) = $sid\n"
+            f"MATCH (o) WHERE elementId(o) = $oid\n"
+            f"MERGE (s)-[r:{rel['type']}]->(o)\n"
+            "SET r += $props"
+        )
+        delete_cypher = "MATCH ()-[r]->() WHERE elementId(r) = $rid DELETE r"
+        try:
+            await neo4j_manager.execute_write_query(cypher, params)
+            await neo4j_manager.execute_write_query(delete_cypher, params)
+            promoted += 1
+        except Exception as exc:  # pragma: no cover - narrow DB errors
+            logger.error(
+                "Failed to promote relationship %s: %s", rel["rid"], exc, exc_info=True
+            )
+    return promoted
 
 
 async def deduplicate_relationships() -> int:
     """Merge duplicate relationships of the same type between nodes."""
-    query = """
+    fetch_query = """
     MATCH (s)-[r]->(o)
-    WITH s, type(r) AS t, o, collect(r) AS rels, count(r) AS cnt
-    WHERE cnt > 1
-    CALL apoc.refactor.mergeRelationships(rels, {properties: 'combine'}) YIELD rel
-    RETURN sum(cnt - 1) AS removed
+    RETURN elementId(s) AS sid, elementId(o) AS oid, type(r) AS type,
+           collect(elementId(r)) AS rids, collect(properties(r)) AS props_list
     """
     try:
-        results = await neo4j_manager.execute_write_query(query)
-        return results[0].get("removed", 0) if results else 0
+        rows = await neo4j_manager.execute_read_query(fetch_query)
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Failed to deduplicate relationships: %s", exc, exc_info=True)
+        logger.error(
+            "Failed to fetch relationships for deduplication: %s", exc, exc_info=True
+        )
         return 0
+
+    removed = 0
+    for row in rows:
+        rids: list[str] = row["rids"]
+        if len(rids) <= 1:
+            continue
+        merged_props: dict[str, Any] = {}
+        for p in row["props_list"]:
+            merged_props.update(p)
+        params = {
+            "sid": row["sid"],
+            "oid": row["oid"],
+            "props": merged_props,
+            "rids": rids,
+        }
+        cypher = (
+            f"MATCH (s) WHERE elementId(s) = $sid\n"
+            f"MATCH (o) WHERE elementId(o) = $oid\n"
+            f"MERGE (s)-[r:{row['type']}]->(o)\n"
+            "SET r += $props"
+        )
+        delete_cypher = "MATCH ()-[r]->() WHERE elementId(r) IN $rids DELETE r"
+        try:
+            await neo4j_manager.execute_write_query(cypher, params)
+            await neo4j_manager.execute_write_query(delete_cypher, params)
+            removed += len(rids) - 1
+        except Exception as exc:  # pragma: no cover - narrow DB errors
+            logger.error(
+                "Failed to merge relationships for nodes %s-%s: %s",
+                row["sid"],
+                row["oid"],
+                exc,
+                exc_info=True,
+            )
+    return removed
 
 
 async def fetch_unresolved_dynamic_relationships(
