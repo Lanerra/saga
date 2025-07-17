@@ -57,3 +57,24 @@ async def test_draft_chapter_scene_mode(monkeypatch):
     assert draft == "scene1\n\nscene2"
     assert "scene1" in raw and "scene2" in raw
     assert usage["prompt_tokens"] == 2
+
+
+@pytest.mark.asyncio
+async def test_draft_chapter_caching(monkeypatch):
+    agent = DraftingAgent()
+    call_count = 0
+
+    async def fake_call_llm(**_kwargs):
+        nonlocal call_count
+        call_count += 1
+        return "scene", {"prompt_tokens": 1}
+
+    monkeypatch.setattr(llm_service, "async_call_llm", fake_call_llm)
+
+    scenes = [SceneDetail(scene_number=1, summary="a")]
+
+    await agent.draft_chapter({"title": "T", "genre": "F"}, 3, "focus", "ctx", scenes)
+    await agent.draft_chapter({"title": "T", "genre": "F"}, 3, "focus", "ctx", scenes)
+
+    assert call_count == 1
+    agent._cached_llm_call.cache_clear()

@@ -567,14 +567,15 @@ async def get_all_world_item_ids_by_category() -> Dict[str, List[str]]:
     return mapping
 
 
-async def get_world_building_from_db() -> Dict[str, Dict[str, WorldItem]]:
+async def get_world_building_from_db(
+    batch_size: int = config.WORLD_QUERY_BATCH_SIZE,
+) -> Dict[str, Dict[str, WorldItem]]:
     logger.info("Loading decomposed world building data from Neo4j...")
     world_data: Dict[str, Dict[str, WorldItem]] = {}
     wc_id_param = config.MAIN_WORLD_CONTAINER_NODE_ID
 
     WORLD_NAME_TO_ID.clear()
 
-    # Load WorldContainer (_overview_)
     overview_query = "MATCH (wc:WorldContainer:Entity {id: $wc_id_param}) RETURN wc"
     overview_res_list = await neo4j_manager.execute_read_query(
         overview_query, {"wc_id_param": wc_id_param}
@@ -597,121 +598,125 @@ async def get_world_building_from_db() -> Dict[str, Dict[str, WorldItem]]:
             utils._normalize_for_id("_overview_")
         )
 
-    # Load WorldElements and their details
-    we_query = (
+    base_query = (
         "MATCH (we:WorldElement:Entity)"
         " WHERE we.is_deleted IS NULL OR we.is_deleted = FALSE"
         " RETURN we"
     )
-    we_results = await neo4j_manager.execute_read_query(we_query)
 
-    if not we_results:
-        logger.info("No WorldElements found in Neo4j.")
-        standard_categories = [
-            "locations",
-            "society",
-            "systems",
-            "lore",
-            "history",
-            "factions",
-        ]
-        for cat_key in standard_categories:
-            world_data.setdefault(cat_key, {})
-        return world_data
+    skip = 0
+    while True:
+        query = base_query
+        params = None
+        if batch_size > 0:
+            query += " SKIP $skip_param LIMIT $limit_param"
+            params = {"skip_param": skip, "limit_param": batch_size}
 
-    for record in we_results:
-        we_node = record.get("we")
-        if not we_node:
-            continue
+        we_results = await neo4j_manager.execute_read_query(query, params)
+        if not we_results:
+            if skip == 0:
+                logger.info("No WorldElements found in Neo4j.")
+                for cat_key in [
+                    "locations",
+                    "society",
+                    "systems",
+                    "lore",
+                    "history",
+                    "factions",
+                ]:
+                    world_data.setdefault(cat_key, {})
+            break
 
-        # These are the display/canonical versions from the node
-        category = we_node.get("category")
-        item_name = we_node.get("name")
-        we_id = we_node.get("id")
+        for record in we_results:
+            we_node = record.get("we")
+            if not we_node:
+                continue
 
-        if not all([category, item_name, we_id]):
-            logger.warning(
-                f"Skipping WorldElement with missing core fields (id, name, or category): {we_node}"
+            category = we_node.get("category")
+            item_name = we_node.get("name")
+            we_id = we_node.get("id")
+
+            if not all([category, item_name, we_id]):
+                logger.warning(
+                    f"Skipping WorldElement with missing core fields (id, name, or category): {we_node}"
+                )
+                continue
+
+            world_data.setdefault(category, {})
+
+            item_detail = dict(we_node)
+            item_detail.pop("created_ts", None)
+            item_detail.pop("updated_ts", None)
+
+            created_chapter_num = item_detail.pop(
+                KG_NODE_CREATED_CHAPTER, config.KG_PREPOPULATION_CHAPTER_NUM
             )
-            continue
+            item_detail["created_chapter"] = int(created_chapter_num)
+            item_detail[f"added_in_chapter_{created_chapter_num}"] = True
 
-        world_data.setdefault(category, {})
+            if item_detail.pop(KG_IS_PROVISIONAL, False):
+                item_detail["is_provisional"] = True
+                item_detail[f"source_quality_chapter_{created_chapter_num}"] = (
+                    "provisional_from_unrevised_draft"
+                )
+            else:
+                item_detail["is_provisional"] = False
 
-        item_detail = dict(we_node)
-        item_detail.pop("created_ts", None)
-        item_detail.pop("updated_ts", None)
+            list_prop_map = {
+                "goals": "HAS_GOAL",
+                "rules": "HAS_RULE",
+                "key_elements": "HAS_KEY_ELEMENT",
+                "traits": "HAS_TRAIT_ASPECT",
+            }
+            for list_prop_key, rel_name_internal in list_prop_map.items():
+                list_values_query = f"""
+                MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
+                RETURN v.value AS item_value
+                ORDER BY v.value ASC
+                """
+                list_val_res = await neo4j_manager.execute_read_query(
+                    list_values_query,
+                    {"we_id_param": we_id, "value_node_type_param": list_prop_key},
+                )
+                item_detail[list_prop_key] = sorted(
+                    [
+                        res_item["item_value"]
+                        for res_item in list_val_res
+                        if res_item and res_item.get("item_value") is not None
+                    ]
+                )
 
-        created_chapter_num = item_detail.pop(
-            KG_NODE_CREATED_CHAPTER, config.KG_PREPOPULATION_CHAPTER_NUM
-        )
-        item_detail["created_chapter"] = int(
-            created_chapter_num
-        )  # Ensure it's int and under standard key
-        item_detail[f"added_in_chapter_{created_chapter_num}"] = True
-
-        if item_detail.pop(KG_IS_PROVISIONAL, False):
-            item_detail["is_provisional"] = True  # Ensure under standard key
-            item_detail[f"source_quality_chapter_{created_chapter_num}"] = (
-                "provisional_from_unrevised_draft"
-            )
-        else:
-            item_detail["is_provisional"] = False
-
-        list_prop_map = {
-            "goals": "HAS_GOAL",
-            "rules": "HAS_RULE",
-            "key_elements": "HAS_KEY_ELEMENT",
-            "traits": "HAS_TRAIT_ASPECT",
-        }
-        for list_prop_key, rel_name_internal in list_prop_map.items():
-            list_values_query = f"""
-            MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
-            RETURN v.value AS item_value
-            ORDER BY v.value ASC
+            elab_query = f"""
+            MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
+            RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
+            ORDER BY elab.chapter_updated ASC
             """
-            list_val_res = await neo4j_manager.execute_read_query(
-                list_values_query,
-                {"we_id_param": we_id, "value_node_type_param": list_prop_key},
+            elab_results = await neo4j_manager.execute_read_query(
+                elab_query, {"we_id_param": we_id}
             )
-            item_detail[list_prop_key] = sorted(
-                [
-                    res_item["item_value"]
-                    for res_item in list_val_res
-                    if res_item and res_item["item_value"] is not None
-                ]
+            if elab_results:
+                for elab_rec in elab_results:
+                    chapter_val = elab_rec.get("chapter")
+                    summary_val = elab_rec.get("summary")
+                    if chapter_val is not None and summary_val is not None:
+                        elab_key = f"elaboration_in_chapter_{chapter_val}"
+                        item_detail[elab_key] = summary_val
+                        if elab_rec.get(KG_IS_PROVISIONAL):
+                            item_detail[f"source_quality_chapter_{chapter_val}"] = (
+                                "provisional_from_unrevised_draft"
+                            )
+
+            item_detail["id"] = we_id
+            world_data.setdefault(category, {})[item_name] = WorldItem.from_dict(
+                category, item_name, item_detail
             )
+            WORLD_NAME_TO_ID[utils._normalize_for_id(item_name)] = we_id
 
-        elab_query = f"""
-        MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
-        RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
-        ORDER BY elab.chapter_updated ASC
-        """
-        elab_results = await neo4j_manager.execute_read_query(
-            elab_query, {"we_id_param": we_id}
-        )
-        if elab_results:
-            for elab_rec in elab_results:
-                chapter_val = elab_rec.get("chapter")
-                summary_val = elab_rec.get("summary")
-                if chapter_val is not None and summary_val is not None:
-                    elab_key = f"elaboration_in_chapter_{chapter_val}"
-                    item_detail[elab_key] = summary_val
-                    if elab_rec.get(KG_IS_PROVISIONAL):
-                        item_detail[f"source_quality_chapter_{chapter_val}"] = (
-                            "provisional_from_unrevised_draft"
-                        )
+        if batch_size <= 0:
+            break
+        skip += batch_size
 
-        item_detail["id"] = we_id  # Add the canonical ID from the DB
-        world_data.setdefault(category, {})[item_name] = WorldItem.from_dict(
-            category,
-            item_name,
-            item_detail,
-        )
-        WORLD_NAME_TO_ID[utils._normalize_for_id(item_name)] = we_id
-
-    logger.info(
-        f"Successfully loaded and recomposed world building data ({len(we_results)} elements) from Neo4j."
-    )
+    logger.info("Successfully loaded and recomposed world building data from Neo4j.")
     return world_data
 
 

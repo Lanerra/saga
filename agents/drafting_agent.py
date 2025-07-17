@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
+from async_lru import alru_cache
 from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
 from kg_maintainer.models import SceneDetail
 from prompt_renderer import render_prompt
@@ -27,6 +28,22 @@ class DraftingAgent:
         self.drafting_model = model_name
         logger.info(
             f"DraftingAgent initialized with single-pass model: {self.drafting_model}"
+        )
+
+    @alru_cache(maxsize=config.SCENE_CACHE_SIZE)
+    async def _cached_llm_call(
+        self, prompt: str, max_tokens: int
+    ) -> Tuple[str, Optional[Dict[str, int]]]:
+        return await llm_service.async_call_llm(
+            model_name=self.drafting_model,
+            prompt=prompt,
+            temperature=config.Temperatures.DRAFTING,
+            max_tokens=max_tokens,
+            allow_fallback=True,
+            stream_to_disk=False,
+            frequency_penalty=config.FREQUENCY_PENALTY_DRAFTING,
+            presence_penalty=config.PRESENCE_PENALTY_DRAFTING,
+            auto_clean_response=True,
         )
 
     async def draft_chapter(
@@ -65,19 +82,8 @@ class DraftingAgent:
                 },
             )
 
-            (
-                draft_text,
-                usage_data,
-            ) = await llm_service.async_call_llm(
-                model_name=self.drafting_model,
-                prompt=prompt,
-                temperature=config.Temperatures.DRAFTING,
-                max_tokens=config.MAX_GENERATION_TOKENS,
-                allow_fallback=True,
-                stream_to_disk=True,
-                frequency_penalty=config.FREQUENCY_PENALTY_DRAFTING,
-                presence_penalty=config.PRESENCE_PENALTY_DRAFTING,
-                auto_clean_response=True,
+            draft_text, usage_data = await self._cached_llm_call(
+                prompt, config.MAX_GENERATION_TOKENS
             )
 
             if not draft_text or not draft_text.strip():
@@ -159,16 +165,8 @@ class DraftingAgent:
                         total_usage_data,
                     )
 
-                scene_prose, scene_usage_data = await llm_service.async_call_llm(
-                    model_name=self.drafting_model,
-                    prompt=prompt,
-                    temperature=config.Temperatures.DRAFTING,
-                    max_tokens=max_gen_tokens,
-                    allow_fallback=True,
-                    stream_to_disk=False,
-                    frequency_penalty=config.FREQUENCY_PENALTY_DRAFTING,
-                    presence_penalty=config.PRESENCE_PENALTY_DRAFTING,
-                    auto_clean_response=True,
+                scene_prose, scene_usage_data = await self._cached_llm_call(
+                    prompt, max_gen_tokens
                 )
 
                 if not scene_prose or not scene_prose.strip():

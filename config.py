@@ -181,6 +181,8 @@ class SagaSettings(BaseSettings):
     SUMMARY_CACHE_SIZE: int = 32
     KG_TRIPLE_EXTRACTION_CACHE_SIZE: int = 16
     TOKENIZER_CACHE_SIZE: int = 10
+    SCENE_CACHE_SIZE: int = 32
+    WORLD_QUERY_BATCH_SIZE: int = 100
 
     # Reranking Configuration
     ENABLE_RERANKING: bool = False
