@@ -1,5 +1,6 @@
 # core_db/base_db_manager.py
 import logging
+import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -91,6 +92,22 @@ class Neo4jManagerSingleton:
         if self.driver is None:
             raise ConnectionError("Neo4j driver not initialized or connection failed.")
 
+    def _sanitize_value(self, value: Any) -> Any:
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        if isinstance(value, dict):
+            return {k: self._sanitize_value(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._sanitize_value(v) for v in value]
+        return value
+
+    def _sanitize_parameters(
+        self, parameters: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        if not parameters:
+            return {}
+        return {k: self._sanitize_value(v) for k, v in parameters.items()}
+
     async def _execute_query_tx(
         self,
         tx: AsyncManagedTransaction,
@@ -98,7 +115,8 @@ class Neo4jManagerSingleton:
         parameters: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         self.logger.debug(f"Executing Cypher query: {query} with params: {parameters}")
-        result_cursor = await tx.run(query, parameters)
+        sanitized_params = self._sanitize_parameters(parameters)
+        result_cursor = await tx.run(query, sanitized_params)
         return await result_cursor.data()
 
     async def execute_read_query(
@@ -131,7 +149,8 @@ class Neo4jManagerSingleton:
                 tx = await session.begin_transaction()
                 for query, params in cypher_statements_with_params:
                     self.logger.debug(f"Batch Cypher: {query} with params {params}")
-                    await tx.run(query, params)  # type: ignore
+                    sanitized = self._sanitize_parameters(params)
+                    await tx.run(query, sanitized)  # type: ignore
                 await tx.commit()  # type: ignore
                 self.logger.info(
                     f"Successfully executed batch of {len(cypher_statements_with_params)} Cypher statements."
