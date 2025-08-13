@@ -530,16 +530,15 @@ class NANA_Orchestrator:
 
         self._update_novel_props_cache()
 
-        chapter_plan_result, plan_usage = await self.narrative_agent.generate_chapter(
+        chapter_plan, plan_usage = await self.narrative_agent._plan_chapter_scenes(
             self.plot_outline,
             await character_queries.get_character_profiles_from_db(),
             await world_queries.get_world_building_from_db(),
             novel_chapter_number,
             plot_point_focus,
+            plot_point_index,
         )
         self._accumulate_tokens(f"Ch{novel_chapter_number}-Planning", plan_usage)
-
-        chapter_plan: Optional[List[SceneDetail]] = chapter_plan_result
 
         if (
             config.ENABLE_SCENE_PLAN_VALIDATION
@@ -604,12 +603,12 @@ class NANA_Orchestrator:
         self._update_rich_display(
             step=f"Ch {novel_chapter_number} - Drafting Initial Text"
         )
-        initial_draft_text, initial_raw_llm_text = await self.narrative_agent.generate_chapter(
+        initial_draft_text, initial_raw_llm_text, draft_usage = await self.narrative_agent.generate_chapter(
             self.plot_outline,
+            await character_queries.get_character_profiles_from_db(),
+            await world_queries.get_world_building_from_db(),
             novel_chapter_number,
             plot_point_focus,
-            hybrid_context_for_draft,
-            chapter_plan,
         )
         self._accumulate_tokens(f"Ch{novel_chapter_number}-Drafting", draft_usage)
 
@@ -1036,7 +1035,7 @@ class NANA_Orchestrator:
             "LARGE_MODEL": config.Models.LARGE,
             "MEDIUM_MODEL": config.Models.MEDIUM,
             "SMALL_MODEL": config.Models.SMALL,
-            "NARRATOR_MODEL": config.Models.NARRATOR,
+            "NARRATIVE_MODEL": config.Models.NARRATOR,
         }
         missing_or_empty_configs = []
         for name, value in critical_str_configs.items():

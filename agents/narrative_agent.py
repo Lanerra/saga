@@ -592,9 +592,13 @@ class NarrativeAgent:
         world_building: Dict,
         chapter_number: int,
         plot_point_focus: str
-    ) -> Tuple[str, Dict]:
+    ) -> Tuple[str, str, Dict[str, int]]:
         """Generate a new chapter based on plot outline and
-        character/world context."""
+        character/world context.
+        
+        Returns:
+            Tuple of (draft_text, raw_llm_output, usage_data)
+        """
         self.logger.info("Generating chapter", chapter=chapter_number)
         
         # Get the current plot point index
@@ -607,10 +611,10 @@ class NarrativeAgent:
                 
         if plot_point_index == -1:
             logger.error(f"Could not find plot point focus: {plot_point_focus}")
-            return "Failed to generate chapter: plot point focus not found", {"summary": "Error"}
+            return "Failed to generate chapter: plot point focus not found", "Error", {}
 
         # Plan the chapter scenes
-        scenes, usage_data = await self._plan_chapter_scenes(
+        scenes, planning_usage_data = await self._plan_chapter_scenes(
             plot_outline,
             character_profiles,
             world_building,
@@ -621,7 +625,7 @@ class NarrativeAgent:
         
         if not scenes:
             logger.error(f"Failed to plan scenes for chapter {chapter_number}")
-            return "Failed to generate chapter: scene planning failed", {"summary": "Error"}
+            return "Failed to generate chapter: scene planning failed", "Error", planning_usage_data or {}
 
         # Generate hybrid context for drafting
         hybrid_context_for_draft = (
@@ -642,12 +646,18 @@ class NarrativeAgent:
         
         if not draft_text:
             logger.error(f"Failed to draft chapter {chapter_number}")
-            return "Failed to generate chapter: drafting failed", {"summary": "Error"}
+            return "Failed to generate chapter: drafting failed", raw_output or "Error", draft_usage or {}
+
+        # Combine usage data from planning and drafting
+        total_usage = planning_usage_data or {}
+        if draft_usage:
+            for key, value in draft_usage.items():
+                total_usage[key] = total_usage.get(key, 0) + value
 
         # Perform quality checks
         if not await self._check_quality(draft_text):
             logger.warning(f"Chapter {chapter_number} failed quality checks")
             # Return the draft anyway but mark it as low quality
-            return draft_text, {"summary": "Low quality - needs revision"}
+            return draft_text, raw_output or "", total_usage
 
-        return draft_text, {"summary": "Chapter generated successfully"}
+        return draft_text, raw_output or "", total_usage
