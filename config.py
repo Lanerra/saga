@@ -419,3 +419,7 @@ handler.setFormatter(formatter)
 root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
+
+NARRATIVE_MODEL = "openai/qwen3-a3b"
+KNOWLEDGE_GRAPH_URL = "bolt://localhost:7687"
+REVISION_EVALUATION_THRESHOLD = 0.85
