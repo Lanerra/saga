@@ -9,10 +9,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import config
 import utils
 from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
-from agents.drafting_agent import DraftingAgent
 from agents.finalize_agent import FinalizeAgent
 from agents.kg_maintainer_agent import KGMaintainerAgent
-from agents.planner_agent import PlannerAgent
+from agents.narrative_agent import NarrativeAgent
 from agents.world_continuity_agent import WorldContinuityAgent
 from core.db_manager import neo4j_manager
 from core.llm_interface import llm_service
@@ -57,8 +56,7 @@ logger = logging.getLogger(__name__)
 class NANA_Orchestrator:
     def __init__(self):
         logger.info("Initializing NANA Orchestrator...")
-        self.planner_agent = PlannerAgent()
-        self.drafting_agent = DraftingAgent()
+        self.narrative_agent = NarrativeAgent(config)
         self.evaluator_agent = ComprehensiveEvaluatorAgent()
         self.world_continuity_agent = WorldContinuityAgent()
         self.kg_maintainer_agent = KGMaintainerAgent()
@@ -110,7 +108,7 @@ class NANA_Orchestrator:
             logger.warning("No summaries available for continuation planning.")
             return
 
-        new_points, usage = await self.planner_agent.plan_continuation(
+        new_points, usage = await self.narrative_agent.plan_continuation(
             combined_summary, count
         )
         self._accumulate_tokens("PlanContinuation", usage)
@@ -532,13 +530,12 @@ class NANA_Orchestrator:
 
         self._update_novel_props_cache()
 
-        chapter_plan_result, plan_usage = await self.planner_agent.plan_chapter_scenes(
+        chapter_plan_result, plan_usage = await self.narrative_agent.generate_chapter(
             self.plot_outline,
             await character_queries.get_character_profiles_from_db(),
             await world_queries.get_world_building_from_db(),
             novel_chapter_number,
             plot_point_focus,
-            plot_point_index,
         )
         self._accumulate_tokens(f"Ch{novel_chapter_number}-Planning", plan_usage)
 
@@ -607,11 +604,7 @@ class NANA_Orchestrator:
         self._update_rich_display(
             step=f"Ch {novel_chapter_number} - Drafting Initial Text"
         )
-        (
-            initial_draft_text,
-            initial_raw_llm_text,
-            draft_usage,
-        ) = await self.drafting_agent.draft_chapter(
+        initial_draft_text, initial_raw_llm_text = await self.narrative_agent.generate_chapter(
             self.plot_outline,
             novel_chapter_number,
             plot_point_focus,

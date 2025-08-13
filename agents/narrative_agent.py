@@ -188,7 +188,7 @@ class NarrativeAgent:
 ]
 """
         prompt = render_prompt(
-            "planner_agent/scene_plan.j2",
+            "narrative_agent/scene_plan.j2",
             {
                 "no_think": self.config.ENABLE_LLM_NO_THINK_DIRECTIVE,
                 "target_scenes_min": self.config.TARGET_SCENES_MIN,
@@ -419,7 +419,7 @@ class NarrativeAgent:
             )
 
             prompt = render_prompt(
-                "drafting_agent/draft_scene.j2",
+                "narrative_agent/draft_scene.j2",
                 {
                     "no_think": self.config.ENABLE_LLM_NO_THINK_DIRECTIVE,
                     "chapter_number": chapter_number,
@@ -504,7 +504,7 @@ class NarrativeAgent:
             return None, None
 
         prompt = render_prompt(
-            "planner_agent/plan_continuation.j2",
+            "narrative_agent/plan_continuation.j2",
             {"summary": summary_text, "num_points": num_points},
         )
         cleaned, usage = await llm_service.async_call_llm(
