@@ -160,7 +160,7 @@ SAGA uses Neo4j for its knowledge graph. A `docker-compose.yml` file is provided
 *   **Manage Neo4j container (from the project root directory):**
     *   **Start Neo4j:**
         ```bash
-        docker-compose up -d neo4j
+        docker-compose up -d
         ```
         Wait a minute or two for Neo4j to fully initialize. You can access the Neo4j Browser at `http://localhost:7474`. Login with the credentials you configured (default: `neo4j` / `saga_password`).
     *   **Stop Neo4j:**
@@ -169,7 +169,7 @@ SAGA uses Neo4j for its knowledge graph. A `docker-compose.yml` file is provided
         ```
     *   **View Logs:**
         ```bash
-        docker-compose logs -f neo4j
+        docker-compose logs -f neo4j-apoc
         ```
 
 The first time SAGA runs (`python main.py`), it will automatically attempt to create necessary constraints and indexes in Neo4j.
