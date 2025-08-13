@@ -13,3 +13,12 @@ novel_output/
 # OS files
 .DS_Store
 .venv/
+novel_output-*/
+.clineignore
+.gitignore
+.env
+AIStory4.txt
+purge.sh
+stats.sh
+story-text.txt
+user_story_elements.ba*
