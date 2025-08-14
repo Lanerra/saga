@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, TypedDict
 import numpy as np
 import structlog
 
-from agents.kg_maintainer_agent import KGMaintainerAgent
+from agents.knowledge_agent import KnowledgeAgent
 from core.llm_interface import llm_service
 from data_access import chapter_queries, kg_queries
 from kg_maintainer.models import CharacterProfile, WorldItem
@@ -25,8 +25,8 @@ class FinalizationResult(TypedDict, total=False):
 class FinalizeAgent:
     """Handle chapter finalization and KG updates."""
 
-    def __init__(self, kg_agent: Optional[KGMaintainerAgent] = None) -> None:
-        self.kg_agent = kg_agent or KGMaintainerAgent()
+    def __init__(self, kg_agent: Optional[KnowledgeAgent] = None) -> None:
+        self.kg_agent = kg_agent or KnowledgeAgent()
         logger.info("FinalizeAgent initialized")
 
     def _extract_json_block(self, text: str, key: str) -> str:

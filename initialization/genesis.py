@@ -3,7 +3,7 @@ from typing import Any, Dict, Tuple
 import structlog
 
 import config
-from agents.kg_maintainer_agent import KGMaintainerAgent
+from agents.knowledge_agent import KnowledgeAgent
 from data_access import plot_queries
 from kg_maintainer.models import CharacterProfile, WorldItem
 
@@ -64,7 +64,7 @@ async def run_genesis_phase() -> Tuple[
     await plot_queries.save_plot_outline_to_db(plot_outline)
     logger.info("Persisted bootstrapped plot outline to Neo4j.")
 
-    kg_agent = KGMaintainerAgent()
+    kg_agent = KnowledgeAgent()
     world_items_for_kg: Dict[str, Dict[str, WorldItem]] = {
         k: v
         for k, v in world_building.items()

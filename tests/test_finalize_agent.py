@@ -5,11 +5,11 @@ import numpy as np
 import pytest
 
 from agents.finalize_agent import FinalizeAgent
-from agents.kg_maintainer_agent import KGMaintainerAgent
+from agents.knowledge_agent import KnowledgeAgent
 from kg_maintainer.models import CharacterProfile, WorldItem
 
 
-class DummyKGAgent(KGMaintainerAgent):
+class DummyKGAgent(KnowledgeAgent):
     pass
 
 

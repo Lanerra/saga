@@ -10,7 +10,7 @@ import config
 import utils
 from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
 from agents.finalize_agent import FinalizeAgent
-from agents.kg_maintainer_agent import KGMaintainerAgent
+from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from agents.world_continuity_agent import WorldContinuityAgent
 from core.db_manager import neo4j_manager
@@ -59,7 +59,7 @@ class NANA_Orchestrator:
         self.narrative_agent = NarrativeAgent(config)
         self.evaluator_agent = ComprehensiveEvaluatorAgent()
         self.world_continuity_agent = WorldContinuityAgent()
-        self.kg_maintainer_agent = KGMaintainerAgent()
+        self.kg_maintainer_agent = KnowledgeAgent()
         self.finalize_agent = FinalizeAgent(self.kg_maintainer_agent)
 
         self.plot_outline: Dict[str, Any] = {}
