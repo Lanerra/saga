@@ -13,6 +13,7 @@ novel_output/
 # OS files
 .DS_Store
 .venv/
+neo4j/
 novel_output-*/
 .clineignore
 .gitignore

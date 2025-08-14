@@ -91,7 +91,7 @@ class SagaSettings(BaseSettings):
     LARGE_MODEL: str = "Qwen3-14B-Q4"
     MEDIUM_MODEL: str = "Qwen3-8B-Q4"
     SMALL_MODEL: str = "Qwen3-4B-Q4"
-    NARRATOR_MODEL: str = "Qwen3-14B-Q4"
+    NARRATIVE_MODEL: str = "Qwen3-14B-Q4"
 
     # Temperature Settings
     TEMPERATURE_INITIAL_SETUP: float = 0.8
@@ -124,6 +124,7 @@ class SagaSettings(BaseSettings):
     INITIAL_SETUP_MODEL: Optional[str] = None
     PLANNING_MODEL: Optional[str] = None
     DRAFTING_MODEL: Optional[str] = None
+    NARRATIVE_MODEL: Optional[str] = None
     REVISION_MODEL: Optional[str] = None
     EVALUATION_MODEL: Optional[str] = None
     PATCH_GENERATION_MODEL: Optional[str] = None
@@ -255,7 +256,7 @@ class SagaSettings(BaseSettings):
         if self.FALLBACK_GENERATION_MODEL is None:
             self.FALLBACK_GENERATION_MODEL = self.MEDIUM_MODEL
         if self.MAIN_GENERATION_MODEL is None:
-            self.MAIN_GENERATION_MODEL = self.NARRATOR_MODEL
+            self.MAIN_GENERATION_MODEL = self.NARRATIVE_MODEL
         if self.KNOWLEDGE_UPDATE_MODEL is None:
             self.KNOWLEDGE_UPDATE_MODEL = self.MEDIUM_MODEL
         if self.INITIAL_SETUP_MODEL is None:
@@ -263,9 +264,9 @@ class SagaSettings(BaseSettings):
         if self.PLANNING_MODEL is None:
             self.PLANNING_MODEL = self.LARGE_MODEL
         if self.DRAFTING_MODEL is None:
-            self.DRAFTING_MODEL = self.NARRATOR_MODEL
+            self.DRAFTING_MODEL = self.NARRATIVE_MODEL
         if self.REVISION_MODEL is None:
-            self.REVISION_MODEL = self.NARRATOR_MODEL
+            self.REVISION_MODEL = self.NARRATIVE_MODEL
         if self.EVALUATION_MODEL is None:
             self.EVALUATION_MODEL = self.LARGE_MODEL
         if self.PATCH_GENERATION_MODEL is None:
@@ -338,7 +339,7 @@ Models = ModelsCompat()
 Models.LARGE = settings.LARGE_MODEL
 Models.MEDIUM = settings.MEDIUM_MODEL
 Models.SMALL = settings.SMALL_MODEL
-Models.NARRATOR = settings.NARRATOR_MODEL
+Models.NARRATOR = settings.NARRATIVE_MODEL
 
 Temperatures = TempsCompat()
 Temperatures.INITIAL_SETUP = settings.TEMPERATURE_INITIAL_SETUP
@@ -420,6 +421,6 @@ root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
 
-NARRATIVE_MODEL = "openai/qwen3-a3b"
+NARRATIVE_MODEL = "qwen3-a3b"
 KNOWLEDGE_GRAPH_URL = "bolt://localhost:7687"
 REVISION_EVALUATION_THRESHOLD = 0.85
