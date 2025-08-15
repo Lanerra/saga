@@ -1,13 +1,13 @@
 import pytest
 
-from agents.drafting_agent import DraftingAgent
+from agents.narrative_agent import NarrativeAgent
 from core.llm_interface import llm_service
 from models import SceneDetail
 
 
 @pytest.mark.asyncio
 async def test_draft_chapter_whole_chapter(monkeypatch):
-    agent = DraftingAgent()
+    agent = NarrativeAgent()
 
     async def fake_call_llm(**kwargs):
         return "chapter text", {"total_tokens": 5}
@@ -30,7 +30,7 @@ async def test_draft_chapter_whole_chapter(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_draft_chapter_scene_mode(monkeypatch):
-    agent = DraftingAgent()
+    agent = NarrativeAgent()
     responses = [
         ("scene1", {"prompt_tokens": 1}),
         ("scene2", {"prompt_tokens": 1}),

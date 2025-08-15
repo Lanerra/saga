@@ -93,7 +93,7 @@ async def test_prepare_prerequisites_uses_plan(orchestrator, monkeypatch):
         return "ctx"
 
     monkeypatch.setattr(
-        orchestrator.planner_agent,
+        orchestrator.narrative_agent,
         "plan_chapter_scenes",
         AsyncMock(side_effect=fake_plan),
     )

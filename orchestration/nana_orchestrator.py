@@ -1347,7 +1347,7 @@ class NANA_Orchestrator:
 
         await self.knowledge_agent.heal_and_enrich_kg()
         combined_summary = "\n".join(summaries)
-        continuation, _ = await self.planner_agent.plan_continuation(combined_summary)
+        continuation, _ = await self.narrative_agent.plan_continuation(combined_summary)
         if continuation:
             plot_outline["plot_points"].extend(continuation)
         self.plot_outline = plot_outline
