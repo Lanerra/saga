@@ -246,7 +246,7 @@ class RevisionAgent:
             )
         
         # Check coherence with previous chapter if available
-        if chapter_number > 1 and previous_chapter_text:
+        if chapter_number > 1 and previous_chapters_context:
             try:
                 current_embedding_task = llm_service.async_get_embedding(chapter_text)
                 prev_embedding = await kg_queries.get_embedding_from_db(chapter_number - 1)
@@ -487,7 +487,7 @@ class RevisionAgent:
 """
         
         prompt = render_prompt(
-            "comprehensive_evaluator_agent/evaluate_chapter.j2",
+            "revision_agent/evaluate_chapter.j2",
             {
                 "no_think": False,  # Using no_think directive from config
                 "chapter_number": chapter_number,
