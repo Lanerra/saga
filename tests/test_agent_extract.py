@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from agents.kg_maintainer_agent import KGMaintainerAgent
-from kg_maintainer.models import CharacterProfile
+from agents.knowledge_agent import KnowledgeAgent
+from models import CharacterProfile
 
 
 class DummyLLM:
@@ -18,7 +18,7 @@ llm_service_mock = DummyLLM()
 
 
 def test_extract_and_merge(monkeypatch):
-    agent = KGMaintainerAgent()
+    agent = KnowledgeAgent()
     monkeypatch.setattr(
         agent,
         "_llm_extract_updates",
@@ -52,13 +52,13 @@ def test_extract_and_merge(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_summarize_chapter_json(monkeypatch):
-    agent = KGMaintainerAgent()
+    agent = KnowledgeAgent()
 
     async def _fake_llm(*args, **kwargs):
         return '{"summary": "Short"}', {"prompt_tokens": 1}
 
     monkeypatch.setattr(
-        "agents.kg_maintainer_agent.llm_service.async_call_llm",
+        "agents.knowledge_agent.llm_service.async_call_llm",
         _fake_llm,
     )
 

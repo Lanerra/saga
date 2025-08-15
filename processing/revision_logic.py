@@ -15,7 +15,7 @@ import utils  # For numpy_cosine_similarity, find_semantically_closest_segment, 
 from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
 from agents.patch_validation_agent import PatchValidationAgent
 from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
-from kg_maintainer.models import (
+from models import (
     CharacterProfile,
     EvaluationResult,
     PatchInstruction,

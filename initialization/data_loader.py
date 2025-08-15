@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple
 import structlog
 
 import config
-from kg_maintainer.models import CharacterProfile, WorldItem
+from models import CharacterProfile, WorldItem
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from yaml_parser import load_yaml_file
 

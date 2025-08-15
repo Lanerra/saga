@@ -12,7 +12,7 @@ from kg_constants import (
     KG_NODE_CHAPTER_UPDATED,
     KG_NODE_CREATED_CHAPTER,
 )
-from kg_maintainer.models import WorldItem
+from models import WorldItem
 
 from .cypher_builders.world_cypher import generate_world_element_node_cypher
 

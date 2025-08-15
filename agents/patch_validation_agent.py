@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 
 import config
 from core.llm_interface import llm_service
-from kg_maintainer.models import PatchInstruction, ProblemDetail
+from models import PatchInstruction, ProblemDetail
 from prompt_renderer import render_prompt
 
 logger = logging.getLogger(__name__)

@@ -9,7 +9,7 @@ import config
 import utils  # MODIFIED: For spaCy functions
 from core.llm_interface import llm_service  # MODIFIED
 from data_access import character_queries, kg_queries, world_queries
-from kg_maintainer.models import ProblemDetail, SceneDetail
+from models import ProblemDetail, SceneDetail
 from processing.problem_parser import parse_problem_list
 from prompt_data_getters import (
     get_filtered_character_profiles_for_prompt_plain_text,

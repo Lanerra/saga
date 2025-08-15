@@ -5,7 +5,7 @@ import structlog
 
 import config
 import utils
-from kg_maintainer.models import CharacterProfile
+from models import CharacterProfile
 
 from .common import bootstrap_field
 

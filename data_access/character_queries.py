@@ -9,7 +9,7 @@ import config
 import utils
 from core.db_manager import neo4j_manager
 from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
-from kg_maintainer.models import CharacterProfile
+from models import CharacterProfile
 
 from .cypher_builders.character_cypher import (
     TRAIT_NAME_TO_CANONICAL,

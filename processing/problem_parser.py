@@ -6,7 +6,7 @@ import json
 import logging
 from typing import List, Optional
 
-from kg_maintainer.models import ProblemDetail
+from models import ProblemDetail
 
 logger = logging.getLogger(__name__)
 

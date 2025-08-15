@@ -26,7 +26,7 @@ from .text_processing import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - for type hints only
-    from kg_maintainer.models import SceneDetail
+    from models import SceneDetail
 
 logger = logging.getLogger(__name__)
 

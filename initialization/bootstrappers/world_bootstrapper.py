@@ -5,7 +5,7 @@ import structlog
 
 import config
 import utils
-from kg_maintainer.models import WorldItem
+from models import WorldItem
 
 from .common import bootstrap_field
 
