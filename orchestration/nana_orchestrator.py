@@ -59,8 +59,8 @@ class NANA_Orchestrator:
         self.narrative_agent = NarrativeAgent(config)
         self.evaluator_agent = ComprehensiveEvaluatorAgent()
         self.world_continuity_agent = WorldContinuityAgent()
-        self.kg_maintainer_agent = KnowledgeAgent()
-        self.finalize_agent = FinalizeAgent(self.kg_maintainer_agent)
+        self.knowledge_agent = KnowledgeAgent()
+        self.finalize_agent = FinalizeAgent(self.knowledge_agent)
 
         self.plot_outline: Dict[str, Any] = {}
         self.chapter_count: int = 0
@@ -121,7 +121,7 @@ class NANA_Orchestrator:
                 logger.info("Plot point already exists, skipping: %s", desc)
                 continue
             prev_id = await plot_queries.get_last_plot_point_id()
-            await self.kg_maintainer_agent.add_plot_point(desc, prev_id or "")
+            await self.knowledge_agent.add_plot_point(desc, prev_id or "")
             self.plot_outline.setdefault("plot_points", []).append(desc)
         self._update_novel_props_cache()
 
@@ -233,10 +233,10 @@ class NANA_Orchestrator:
             str, Dict[str, WorldItem]
         ] = await world_queries.get_world_building_from_db()
 
-        await self.kg_maintainer_agent.persist_profiles(
+        await self.knowledge_agent.persist_profiles(
             profile_objs, config.KG_PREPOPULATION_CHAPTER_NUM
         )
-        await self.kg_maintainer_agent.persist_world(
+        await self.knowledge_agent.persist_world(
             world_objs, config.KG_PREPOPULATION_CHAPTER_NUM
         )
         logger.info("   Knowledge Graph pre-population step complete.")
@@ -1073,8 +1073,8 @@ class NANA_Orchestrator:
             await neo4j_manager.create_db_schema()
             logger.info("NANA: Neo4j connection and schema verified.")
 
-            await self.kg_maintainer_agent.load_schema_from_db()
-            logger.info("NANA: KG schema loaded into maintainer agent.")
+            await self.knowledge_agent.load_schema_from_db()
+            logger.info("NANA: KG schema loaded into knowledge agent.")
 
             await self.async_init_orchestrator()
 
@@ -1243,7 +1243,7 @@ class NANA_Orchestrator:
                             self._update_rich_display(
                                 step=f"Ch {current_novel_chapter_number} - KG Maintenance"
                             )
-                            await self.kg_maintainer_agent.heal_and_enrich_kg()
+                            await self.knowledge_agent.heal_and_enrich_kg()
                             await self.refresh_plot_outline()
                             logger.info(
                                 "--- NANA: KG Healing/Enrichment cycle complete. ---"
@@ -1313,7 +1313,7 @@ class NANA_Orchestrator:
             await plot_queries.ensure_novel_info()
         else:
             logger.warning("Neo4j driver not initialized. Skipping NovelInfo setup.")
-        await self.kg_maintainer_agent.load_schema_from_db()
+        await self.knowledge_agent.load_schema_from_db()
 
         with open(text_file, "r", encoding="utf-8") as f:
             raw_text = f.read()
@@ -1342,10 +1342,10 @@ class NANA_Orchestrator:
                     f"--- NANA: Triggering KG Healing/Enrichment after Ingestion Chunk {idx} ---"
                 )
                 self._update_rich_display(step=f"Ch {idx} - KG Maintenance")
-                await self.kg_maintainer_agent.heal_and_enrich_kg()
+                await self.knowledge_agent.heal_and_enrich_kg()
                 await self.refresh_plot_outline()
 
-        await self.kg_maintainer_agent.heal_and_enrich_kg()
+        await self.knowledge_agent.heal_and_enrich_kg()
         combined_summary = "\n".join(summaries)
         continuation, _ = await self.planner_agent.plan_continuation(combined_summary)
         if continuation:
