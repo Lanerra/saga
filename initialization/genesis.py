@@ -5,7 +5,7 @@ import structlog
 import config
 from agents.knowledge_agent import KnowledgeAgent
 from data_access import plot_queries
-from kg_maintainer.models import CharacterProfile, WorldItem
+from models import CharacterProfile, WorldItem
 
 from .bootstrappers.character_bootstrapper import (
     bootstrap_characters,

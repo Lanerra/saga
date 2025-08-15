@@ -6,7 +6,7 @@ import pytest
 
 from agents.finalize_agent import FinalizeAgent
 from agents.knowledge_agent import KnowledgeAgent
-from kg_maintainer.models import CharacterProfile, WorldItem
+from models import CharacterProfile, WorldItem
 
 
 class DummyKGAgent(KnowledgeAgent):

@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from agents.knowledge_agent import KnowledgeAgent
-from kg_maintainer.models import CharacterProfile
+from models import CharacterProfile
 
 
 class DummyLLM:

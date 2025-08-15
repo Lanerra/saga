@@ -5,7 +5,7 @@ import structlog
 import config
 import utils
 from kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
-from kg_maintainer.models import CharacterProfile
+from models import CharacterProfile
 
 TRAIT_NAME_TO_CANONICAL: Dict[str, str] = {}
 

@@ -17,7 +17,7 @@ from core.llm_interface import (
 from data_access import (
     chapter_queries,
 )  # For chapter data and similarity search
-from kg_maintainer.models import SceneDetail
+from models import SceneDetail
 from prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
 
 logger = logging.getLogger(__name__)

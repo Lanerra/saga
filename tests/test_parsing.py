@@ -1,4 +1,4 @@
-from kg_maintainer.models import (
+from models import (
     CharacterProfile,
     WorldItem,
 )  # Added WorldItem import

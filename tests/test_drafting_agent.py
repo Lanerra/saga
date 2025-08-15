@@ -2,7 +2,7 @@ import pytest
 
 from agents.drafting_agent import DraftingAgent
 from core.llm_interface import llm_service
-from kg_maintainer.models import SceneDetail
+from models import SceneDetail
 
 
 @pytest.mark.asyncio

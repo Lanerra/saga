@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from kg_maintainer.models import WorldItem
+from models import WorldItem
 import processing.revision_logic as revision_logic
 from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
 

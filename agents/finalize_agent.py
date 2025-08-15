@@ -9,7 +9,7 @@ import structlog
 from agents.knowledge_agent import KnowledgeAgent
 from core.llm_interface import llm_service
 from data_access import chapter_queries, kg_queries
-from kg_maintainer.models import CharacterProfile, WorldItem
+from models import CharacterProfile, WorldItem
 from parsing_utils import parse_rdf_triples_with_rdflib
 
 logger = structlog.get_logger(__name__)

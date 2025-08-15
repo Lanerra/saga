@@ -22,7 +22,7 @@ from data_access import (
     world_queries,
 )
 from initialization.genesis import run_genesis_phase
-from kg_maintainer.models import (
+from models import (
     CharacterProfile,
     EvaluationResult,
     ProblemDetail,

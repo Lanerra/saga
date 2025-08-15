@@ -33,7 +33,7 @@ async def _llm_summarize_full_chapter_text(
 ) -> Tuple[str, Optional[Dict[str, int]]]:
     """Summarize full chapter text via the configured LLM."""
     prompt = render_prompt(
-        "kg_maintainer_agent/chapter_summary.j2",
+        "knowledge_agent/chapter_summary.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
             "chapter_number": chapter_number,
@@ -751,7 +751,7 @@ class KnowledgeAgent:
         )
 
         prompt = render_prompt(
-            "kg_maintainer_agent/extract_updates.j2",
+            "knowledge_agent/extract_updates.j2",
             {
                 "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
                 "protagonist": protagonist,
@@ -1031,7 +1031,7 @@ class KnowledgeAgent:
             entity_name=char_name
         )
         prompt = render_prompt(
-            "kg_maintainer_agent/enrich_character.j2",
+            "knowledge_agent/enrich_character.j2",
             {"character_name": char_name, "chapter_context": context_chapters},
         )
         enrichment_text, _ = await llm_service.async_call_llm(
@@ -1072,7 +1072,7 @@ class KnowledgeAgent:
             entity_id=element_id
         )
         prompt = render_prompt(
-            "kg_maintainer_agent/enrich_world_element.j2",
+            "knowledge_agent/enrich_world_element.j2",
             {"element": element_info, "chapter_context": context_chapters},
         )
         enrichment_text, _ = await llm_service.async_call_llm(
