@@ -88,10 +88,10 @@ class SagaSettings(BaseSettings):
     NEO4J_VECTOR_SIMILARITY_FUNCTION: str = "cosine"
 
     # Base Model Definitions
-    LARGE_MODEL: str = "Qwen3-14B-Q4"
-    MEDIUM_MODEL: str = "Qwen3-8B-Q4"
-    SMALL_MODEL: str = "Qwen3-4B-Q4"
-    NARRATIVE_MODEL: str = "Qwen3-14B-Q4"
+    LARGE_MODEL: str = "qwen3-a3b"
+    MEDIUM_MODEL: str = "qwen3-a3b"
+    SMALL_MODEL: str = "qwen3-a3b"
+    NARRATIVE_MODEL: str = "qwen3-a3b"
 
     # Temperature Settings
     TEMPERATURE_INITIAL_SETUP: float = 0.8
@@ -421,6 +421,5 @@ root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
 
-NARRATIVE_MODEL = "Qwen3-14B-Q4"
-KNOWLEDGE_GRAPH_URL = "bolt://localhost:7687"
+NARRATIVE_MODEL = "qwen3-a3b"
 REVISION_EVALUATION_THRESHOLD = 0.85
