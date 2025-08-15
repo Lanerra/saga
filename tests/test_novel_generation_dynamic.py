@@ -35,10 +35,10 @@ async def test_dynamic_chapter_adjustment(monkeypatch):
     monkeypatch.setattr(neo4j_manager, "connect", AsyncMock())
     monkeypatch.setattr(neo4j_manager, "create_db_schema", AsyncMock())
     monkeypatch.setattr(neo4j_manager, "close", AsyncMock())
-    monkeypatch.setattr(orch.kg_maintainer_agent, "load_schema_from_db", AsyncMock())
+    monkeypatch.setattr(orch.knowledge_agent, "load_schema_from_db", AsyncMock())
     monkeypatch.setattr(orch, "async_init_orchestrator", AsyncMock())
     monkeypatch.setattr(orch, "perform_initial_setup", AsyncMock(return_value=True))
-    monkeypatch.setattr(orch.kg_maintainer_agent, "heal_and_enrich_kg", AsyncMock())
+    monkeypatch.setattr(orch.knowledge_agent, "heal_and_enrich_kg", AsyncMock())
     monkeypatch.setattr(orch, "refresh_plot_outline", AsyncMock())
 
     async def fake_generate(count):

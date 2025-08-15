@@ -234,7 +234,7 @@ class SagaSettings(BaseSettings):
         "%(asctime)s - %(levelname)s - [%(name)s:%(funcName)s:%(lineno)d] - %(message)s"
     )
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-    LOG_FILE: Optional[str] = "novel_output/saga_run.log"
+    LOG_FILE: Optional[str] = "saga_run.log"
     ENABLE_RICH_PROGRESS: bool = True
 
     # Novel Configuration (Defaults / Placeholders)
@@ -421,6 +421,6 @@ root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
 
-NARRATIVE_MODEL = "qwen3-a3b"
+NARRATIVE_MODEL = "Qwen3-14B-Q4"
 KNOWLEDGE_GRAPH_URL = "bolt://localhost:7687"
 REVISION_EVALUATION_THRESHOLD = 0.85
