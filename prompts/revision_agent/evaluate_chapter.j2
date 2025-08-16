@@ -5,7 +5,7 @@ Your task is to identify specific issues related to these EXACT categories:
 1.  **CONSISTENCY**
 2.  **PLOT_ARC**
 3.  **THEMATIC_ALIGNMENT**
-4.  **NARRATIVE_DEPTH_AND_LENGTH** (target: at least {{ min_length }} characters)
+4.  **NARRATIVE_DEPTH_AND_LENGTH**
 
 **Reference Information for CONSISTENCY Check (Summary Format):**
   **Plot Outline Summary:**
@@ -13,7 +13,7 @@ Your task is to identify specific issues related to these EXACT categories:
   Title: {{ novel_title }}
   Genre: {{ novel_genre }}
   Theme: {{ novel_theme }}
-  Protagonist: {{ novel_protagonist }} ({{ protagonist_arc }})
+  Protagonist: {{ protagonist_name_str }} ({{ protagonist_arc }})
   Logline: {{ logline }}
   Key Plot Points (summary):
   {{ plot_points_summary_str }}
@@ -26,7 +26,6 @@ Your task is to identify specific issues related to these EXACT categories:
   ```text
   {{ world_building_plain_text }}
   ```
-  {{ kg_check_results_text }}
   **Previous Chapters Context (Semantic Flow & KG Facts for Canon):**
   --- PREVIOUS CONTEXT ---
   {{ previous_chapters_context if previous_chapters_context.strip() else 'N/A (e.g., Chapter 1 or context retrieval failed).' }}
