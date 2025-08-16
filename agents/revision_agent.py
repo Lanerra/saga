@@ -4,7 +4,7 @@ import structlog
 import asyncio
 from config import NARRATIVE_MODEL, REVISION_EVALUATION_THRESHOLD
 from core.llm_interface import llm_service
-from data_access import character_queries, kg_queries, world_queries
+from data_access import character_queries, kg_queries, world_queries, chapter_queries
 from models import ProblemDetail, EvaluationResult
 from processing.problem_parser import parse_problem_list
 from prompt_data_getters import (
@@ -170,7 +170,7 @@ class RevisionAgent:
 """
 
         prompt = render_prompt(
-            "world_continuity_agent/consistency_check.j2",
+            "revision_agent/consistency_check.j2",
             {
                 "no_think": False,  # Using no_think directive from config
                 "chapter_number": chapter_number,
@@ -249,7 +249,7 @@ class RevisionAgent:
         if chapter_number > 1 and previous_chapters_context:
             try:
                 current_embedding_task = llm_service.async_get_embedding(chapter_text)
-                prev_embedding = await kg_queries.get_embedding_from_db(chapter_number - 1)
+                prev_embedding = await chapter_queries.get_embedding_from_db(chapter_number - 1)
                 current_embedding = await current_embedding_task
                 
                 if current_embedding is not None and prev_embedding is not None:

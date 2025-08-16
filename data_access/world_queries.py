@@ -601,6 +601,7 @@ async def get_world_building_from_db() -> Dict[str, Dict[str, WorldItem]]:
     we_query = (
         "MATCH (we:WorldElement:Entity)"
         " WHERE we.is_deleted IS NULL OR we.is_deleted = FALSE"
+        " AND we.category IS NOT NULL AND we.name IS NOT NULL"
         " RETURN we"
     )
     we_results = await neo4j_manager.execute_read_query(we_query)
