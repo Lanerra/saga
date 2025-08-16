@@ -488,9 +488,38 @@ async def get_world_item_by_id(item_id: str) -> Optional[WorldItem]:
     we_node = results[0]["we"]
     category = we_node.get("category")
     item_name = we_node.get("name")
-    if not category or not item_name:
-        logger.warning("WorldElement missing category or name for id '%s'.", item_id)
+    we_id = we_node.get("id")
+    
+    # Validate and normalize core fields for WorldElement
+    # This ensures that all WorldElements have valid id, category, and name
+    try:
+        category, item_name, we_id = utils.validate_world_item_fields(
+            category, item_name, we_id
+        )
+    except Exception as e:
+        logger.error(
+            f"Error validating WorldElement core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
+            exc_info=True,
+        )
         return None
+    
+    # Check if any fields were missing and log a warning if so
+    missing_fields = []
+    if not we_node.get("category"):
+        missing_fields.append("category")
+    if not we_node.get("name"):
+        missing_fields.append("name")
+    if not we_node.get("id"):
+        missing_fields.append("id")
+        
+    if missing_fields:
+        logger.warning(
+            f"Corrected WorldElement with missing core fields ({', '.join(missing_fields)}) for id '{item_id}': {we_node}"
+        )
+        # Update the we_node dict with corrected values for subsequent processing
+        we_node["category"] = category
+        we_node["name"] = item_name
+        we_node["id"] = we_id
 
     item_detail: Dict[str, Any] = dict(we_node)
     item_detail.pop("created_ts", None)
@@ -639,19 +668,37 @@ async def get_world_building_from_db() -> Dict[str, Dict[str, WorldItem]]:
         item_name = we_node.get("name")
         we_id = we_node.get("id")
 
-        if not all([category, item_name, we_id]):
-            # Log warning about missing fields
-            missing_fields = []
-            if not category:
-                missing_fields.append("category")
-            if not item_name:
-                missing_fields.append("name")
-            if not we_id:
-                missing_fields.append("id")
-            logger.warning(
-                f"Skipping WorldElement with missing core fields ({', '.join(missing_fields)}): {we_node}"
+        # Validate and normalize core fields for WorldElement
+        # This ensures that all WorldElements have valid id, category, and name
+        original_category, original_item_name, original_we_id = category, item_name, we_id
+        try:
+            category, item_name, we_id = utils.validate_world_item_fields(
+                category, item_name, we_id
+            )
+        except Exception as e:
+            logger.error(
+                f"Error validating WorldElement core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
+                exc_info=True,
             )
             continue
+
+        # Check if any fields were missing and log a warning if so
+        missing_fields = []
+        if not we_node.get("category"):
+            missing_fields.append("category")
+        if not we_node.get("name"):
+            missing_fields.append("name")
+        if not we_node.get("id"):
+            missing_fields.append("id")
+            
+        if missing_fields:
+            logger.warning(
+                f"Corrected WorldElement with missing core fields ({', '.join(missing_fields)}): {we_node}"
+            )
+            # Update the we_node dict with corrected values for subsequent processing
+            we_node["category"] = category
+            we_node["name"] = item_name
+            we_node["id"] = we_id
 
         world_data.setdefault(category, {})
 
