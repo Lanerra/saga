@@ -14,7 +14,7 @@ class TokenTracker:
 
     def add(self, operation_name: str, usage_data: Optional[Dict[str, int]]) -> None:
         """Add tokens from an LLM usage response."""
-        if usage_data and isinstance(usage_data.get("completion_tokens"), int):
+        if isinstance(usage_data, dict) and isinstance(usage_data.get("completion_tokens"), int):
             completed_tokens = usage_data["completion_tokens"]
             self.total += completed_tokens
             logger.info(
@@ -24,9 +24,10 @@ class TokenTracker:
                 self.total,
             )
         elif (
-            usage_data
-            and isinstance(usage_data.get("total_tokens"), int)
-            and not isinstance(usage_data.get("completion_tokens"), int)
+            isinstance(usage_data, dict)
+            and usage_data.get("total_tokens") is not None
+            and isinstance(usage_data["total_tokens"], int)
+            and (usage_data.get("completion_tokens") is None or not isinstance(usage_data["completion_tokens"], int))
         ):
             logger.info(
                 "NANA Activity: Total tokens from '%s': %s. (Completion tokens not specifically available). Total generated this run (completion focused): %s",

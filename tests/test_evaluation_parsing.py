@@ -1,12 +1,11 @@
 import pytest
 
-from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
-from agents.world_continuity_agent import WorldContinuityAgent
+from agents.revision_agent import RevisionAgent
 
 
 @pytest.mark.asyncio
 async def test_eval_agent_parsing_valid(monkeypatch):
-    agent = ComprehensiveEvaluatorAgent()
+    agent = RevisionAgent()
     monkeypatch.setattr(
         agent, "_parse_llm_evaluation_output", agent._parse_llm_evaluation_output
     )
@@ -17,13 +16,13 @@ async def test_eval_agent_parsing_valid(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_eval_agent_parsing_empty():
-    agent = ComprehensiveEvaluatorAgent()
+    agent = RevisionAgent()
     result = await agent._parse_llm_evaluation_output("", 1, "text")
     assert result == []
 
 
 @pytest.mark.asyncio
 async def test_consistency_agent_parsing_invalid(monkeypatch):
-    agent = WorldContinuityAgent()
+    agent = RevisionAgent()
     problems = await agent._parse_llm_consistency_output("notjson", 1, "text")
     assert problems[0]["issue_category"] == "consistency"

@@ -1,6 +1,6 @@
 import pytest
 from agents.finalize_agent import FinalizeAgent
-from agents.planner_agent import PlannerAgent
+from agents.narrative_agent import NarrativeAgent
 from core.llm_interface import llm_service
 from utils.ingestion_utils import split_text_into_chapters
 
@@ -25,7 +25,7 @@ async def test_ingest_and_finalize_chunk_delegates(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_plan_continuation_parses(monkeypatch):
-    agent = PlannerAgent()
+    agent = NarrativeAgent()
 
     async def fake_llm(*_a, **_k):
         return '["a", "b"]', {"total_tokens": 1}

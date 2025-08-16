@@ -1,0 +1,55 @@
+import asyncio
+from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+
+from core.db_manager import neo4j_manager  # Use the singleton instance
+
+async def migrate_legacy_world_elements():
+    """Migrate legacy WorldElements with missing core fields."""
+    await neo4j_manager.connect()
+    
+    # Find all invalid entries (missing category or name) and get their internal ID
+    query = """
+    MATCH (we:WorldElement)
+    WHERE we.category IS NULL OR we.name IS NULL
+    RETURN id(we) AS node_id, we.name AS name
+    """
+    results = await neo4j_manager.execute_read_query(query)
+
+    migrated_count = 0
+    for row in results:
+        node_id = row['node_id']
+        name = row['name']
+        if not name:  # Safety check (shouldn't happen due to WHERE clause)
+            continue
+            
+        # Set default category 'other' for missing categories
+        category = 'other'
+        
+        # Generate normalized ID using existing utility
+        from utils import _normalize_for_id
+        normalized_id = f"{_normalize_for_id(category)}_{_normalize_for_id(name)}"
+        
+        # Update the node with required fields
+        update_query = """
+        MATCH (we:WorldElement)
+        WHERE id(we) = $node_id
+        SET we.category = $category,
+            we.id = $normalized_id,
+            we.is_provisional = true
+        """
+        await neo4j_manager.execute_write_query(
+            update_query, 
+            {
+                "node_id": node_id,
+                "category": category,
+                "normalized_id": normalized_id
+            }
+        )
+        migrated_count += 1
+
+    print(f"Successfully migrated {migrated_count} legacy WorldElements.")
+
+if __name__ == "__main__":
+    asyncio.run(migrate_legacy_world_elements())

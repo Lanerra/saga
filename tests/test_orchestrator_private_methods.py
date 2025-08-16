@@ -93,8 +93,8 @@ async def test_prepare_prerequisites_uses_plan(orchestrator, monkeypatch):
         return "ctx"
 
     monkeypatch.setattr(
-        orchestrator.planner_agent,
-        "plan_chapter_scenes",
+        orchestrator.narrative_agent,
+        "_plan_chapter_scenes",
         AsyncMock(side_effect=fake_plan),
     )
     monkeypatch.setattr(
@@ -108,9 +108,9 @@ async def test_prepare_prerequisites_uses_plan(orchestrator, monkeypatch):
         AsyncMock(return_value={}),
     )
     monkeypatch.setattr(
-        orchestrator.world_continuity_agent,
-        "check_scene_plan_consistency",
-        AsyncMock(return_value=([], {})),
+        orchestrator.revision_agent,
+        "validate_revision",
+        AsyncMock(return_value=(True, [])),
     )
     monkeypatch.setattr(
         "orchestration.nana_orchestrator.generate_hybrid_chapter_context_logic",

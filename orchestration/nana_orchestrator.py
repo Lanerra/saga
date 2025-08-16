@@ -8,11 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import config
 import utils
-from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
 from agents.finalize_agent import FinalizeAgent
 from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
-from agents.world_continuity_agent import WorldContinuityAgent
+from agents.revision_agent import RevisionAgent
 from core.db_manager import neo4j_manager
 from core.llm_interface import llm_service
 from data_access import (
@@ -57,8 +56,7 @@ class NANA_Orchestrator:
     def __init__(self):
         logger.info("Initializing NANA Orchestrator...")
         self.narrative_agent = NarrativeAgent(config)
-        self.evaluator_agent = ComprehensiveEvaluatorAgent()
-        self.world_continuity_agent = WorldContinuityAgent()
+        self.revision_agent = RevisionAgent()
         self.knowledge_agent = KnowledgeAgent()
         self.finalize_agent = FinalizeAgent(self.knowledge_agent)
 
@@ -409,61 +407,59 @@ class NANA_Orchestrator:
             await world_queries.get_all_world_item_ids_by_category()
         )
 
-        if config.ENABLE_COMPREHENSIVE_EVALUATION:
+        if config.ENABLE_COMPREHENSIVE_EVALUATION or config.ENABLE_WORLD_CONTINUITY_CHECK:
+            # Use the consolidated RevisionAgent for both evaluation and continuity checks
+            world_state = {
+                "plot_outline": self.plot_outline,
+                "chapter_number": novel_chapter_number,
+                "previous_chapters_context": hybrid_context_for_draft
+            }
             tasks_to_run.append(
-                self.evaluator_agent.evaluate_chapter_draft(
-                    self.plot_outline,
-                    character_names,
-                    world_item_ids_by_category,
+                self.revision_agent.validate_revision(
                     current_text,
-                    novel_chapter_number,
-                    plot_point_focus,
-                    plot_point_index,
-                    hybrid_context_for_draft,
-                    ignore_spans=patched_spans,
+                    "",  # Previous chapter text (not available in this context)
+                    world_state
                 )
             )
-            task_names.append("evaluation")
-
-        if config.ENABLE_WORLD_CONTINUITY_CHECK:
-            tasks_to_run.append(
-                self.world_continuity_agent.check_consistency(
-                    self.plot_outline,
-                    current_text,
-                    novel_chapter_number,
-                    hybrid_context_for_draft,
-                    ignore_spans=patched_spans,
-                )
-            )
-            task_names.append("continuity")
+            task_names.append("revision")
 
         results = await asyncio.gather(*tasks_to_run)
 
-        eval_result_obj = None
-        eval_usage = None
-        continuity_problems: List[ProblemDetail] = []
-        continuity_usage = None
-
+        revision_result = None
+        revision_usage = None
+        
         result_idx = 0
-        if "evaluation" in task_names:
-            eval_result_obj, eval_usage = results[result_idx]
-            result_idx += 1
-        if "continuity" in task_names:
-            continuity_problems, continuity_usage = results[result_idx]
+        if "revision" in task_names:
+            revision_result, revision_usage = results[result_idx]
 
-        if eval_result_obj is None:
-            eval_result_obj = {
-                "needs_revision": False,
-                "reasons": [],
-                "problems_found": [],
-                "coherence_score": None,
-                "consistency_issues": None,
-                "plot_deviation_reason": None,
-                "thematic_issues": None,
-                "narrative_depth_issues": None,
-            }
+        # Create evaluation result object from revision result
+        eval_result_obj = {
+            "needs_revision": not revision_result[0] if revision_result else False,
+            "reasons": revision_result[1] if revision_result and revision_result[1] else [],
+            "problems_found": [],
+            "coherence_score": None,
+            "consistency_issues": None,
+            "plot_deviation_reason": None,
+            "thematic_issues": None,
+            "narrative_depth_issues": None,
+        }
+        
+        # Convert revision issues to ProblemDetail format
+        continuity_problems = []
+        if revision_result and revision_result[1]:
+            for issue in revision_result[1]:
+                continuity_problems.append({
+                    "issue_category": "consistency",
+                    "problem_description": issue,
+                    "quote_from_original_text": "N/A - General Issue",
+                    "quote_char_start": None,
+                    "quote_char_end": None,
+                    "sentence_char_start": None,
+                    "sentence_char_end": None,
+                    "suggested_fix_focus": "Address consistency issues identified by revision agent."
+                })
 
-        return eval_result_obj, continuity_problems, eval_usage, continuity_usage
+        return eval_result_obj, continuity_problems, revision_usage, None
 
     async def _perform_revisions(
         self,
@@ -545,14 +541,39 @@ class NANA_Orchestrator:
             and chapter_plan is not None
             and config.ENABLE_WORLD_CONTINUITY_CHECK
         ):
-            (
-                plan_problems,
-                usage,
-            ) = await self.world_continuity_agent.check_scene_plan_consistency(
-                self.plot_outline,
-                chapter_plan,
-                novel_chapter_number,
+            # Use RevisionAgent for scene plan consistency check
+            world_state = {
+                "plot_outline": self.plot_outline,
+                "chapter_number": novel_chapter_number,
+                "previous_chapters_context": ""
+            }
+            
+            # Create a draft text from the chapter plan for validation
+            draft_text = "\n".join([scene.get("description", "") for scene in chapter_plan])
+            
+            is_valid, issues = await self.revision_agent.validate_revision(
+                draft_text,
+                "",
+                world_state
             )
+            
+            plan_problems = []
+            if not is_valid:
+                for issue in issues:
+                    plan_problems.append({
+                        "issue_category": "consistency",
+                        "problem_description": issue,
+                        "quote_from_original_text": "N/A - Plan Issue",
+                        "quote_char_start": None,
+                        "quote_char_end": None,
+                        "sentence_char_start": None,
+                        "sentence_char_end": None,
+                        "suggested_fix_focus": "Address scene plan consistency issues."
+                    })
+            
+            # Mock usage data for now
+            usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            
             self._accumulate_tokens(
                 f"Ch{novel_chapter_number}-PlanConsistency",
                 usage,
@@ -753,14 +774,14 @@ class NANA_Orchestrator:
 
             if continuity_problems:
                 logger.warning(
-                    f"NANA: Ch {novel_chapter_number} (Attempt {attempt}) - World Continuity Agent found {len(continuity_problems)} issues."
+                    f"NANA: Ch {novel_chapter_number} (Attempt {attempt}) - Revision Agent found {len(continuity_problems)} issues."
                 )
                 evaluation_result["problems_found"].extend(continuity_problems)
                 if not evaluation_result["needs_revision"]:
                     evaluation_result["needs_revision"] = True
                 unique_reasons = set(evaluation_result.get("reasons", []))
                 unique_reasons.add(
-                    "Continuity issues identified by WorldContinuityAgent."
+                    "Issues identified by RevisionAgent."
                 )
                 evaluation_result["reasons"] = sorted(list(unique_reasons))
 
@@ -1347,7 +1368,7 @@ class NANA_Orchestrator:
 
         await self.knowledge_agent.heal_and_enrich_kg()
         combined_summary = "\n".join(summaries)
-        continuation, _ = await self.planner_agent.plan_continuation(combined_summary)
+        continuation, _ = await self.narrative_agent.plan_continuation(combined_summary)
         if continuation:
             plot_outline["plot_points"].extend(continuation)
         self.plot_outline = plot_outline

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 from models import WorldItem
 import processing.revision_logic as revision_logic
-from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
+from agents.revision_agent import RevisionAgent
 
 
 @pytest.mark.asyncio
@@ -41,7 +41,7 @@ async def test_revision_logic_passes_canonical_world_ids(monkeypatch):
     )
     monkeypatch.setattr(revision_logic, "_apply_patches_to_text", fake_apply)
     monkeypatch.setattr(
-        ComprehensiveEvaluatorAgent,
+        RevisionAgent,
         "evaluate_chapter_draft",
         AsyncMock(side_effect=fake_evaluate),
     )

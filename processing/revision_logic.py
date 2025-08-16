@@ -12,8 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import config
 import utils  # For numpy_cosine_similarity, find_semantically_closest_segment, AND find_quote_and_sentence_offsets_with_spacy, format_scene_plan_for_prompt
-from agents.comprehensive_evaluator_agent import ComprehensiveEvaluatorAgent
-from agents.patch_validation_agent import PatchValidationAgent
+from agents.revision_agent import RevisionAgent
 from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
 from models import (
     CharacterProfile,
@@ -629,7 +628,7 @@ async def _generate_patch_instructions_logic(
     chapter_number: int,
     hybrid_context_for_revision: str,
     chapter_plan: Optional[List[SceneDetail]],
-    validator: PatchValidationAgent,
+    validator: RevisionAgent,
 ) -> Tuple[List[PatchInstruction], Optional[Dict[str, int]]]:
     patch_instructions: List[PatchInstruction] = []
     total_usage: Dict[str, int] = {
@@ -952,7 +951,7 @@ async def revise_chapter_draft_logic(
         )
         sentence_embeddings = await _get_sentence_embeddings(original_text)
         if config.AGENT_ENABLE_PATCH_VALIDATION:
-            validator: PatchValidationAgent | Any = PatchValidationAgent()
+            validator: RevisionAgent | Any = RevisionAgent()
         else:
 
             class _BypassValidator:
@@ -1002,7 +1001,7 @@ async def revise_chapter_draft_logic(
 
     use_patched_text_as_final = False
     if patched_text is not None and patched_text != original_text:
-        evaluator = ComprehensiveEvaluatorAgent()
+        evaluator = RevisionAgent()
         world_ids = {
             cat: [item.id for item in items.values() if isinstance(item, WorldItem)]
             for cat, items in world_building.items()

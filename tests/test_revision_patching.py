@@ -7,7 +7,7 @@ import pytest
 import config
 import processing.revision_logic as chapter_revision_logic
 import utils
-from agents.patch_validation_agent import PatchValidationAgent
+from agents.revision_agent import RevisionAgent
 from core.llm_interface import llm_service
 from processing.revision_logic import _apply_patches_to_text
 
@@ -208,7 +208,7 @@ async def test_patch_validation_toggle(monkeypatch):
         called = True
         return True, None
 
-    monkeypatch.setattr(PatchValidationAgent, "validate_patch", fake_validate)
+    monkeypatch.setattr(RevisionAgent, "validate_patch", fake_validate)
 
     async def fake_generate(*_args, **_kwargs):
         return (
@@ -247,7 +247,7 @@ async def test_patch_validation_toggle(monkeypatch):
         }
     ]
 
-    validator = PatchValidationAgent()
+    validator = RevisionAgent()
     result, _ = await chapter_revision_logic._generate_patch_instructions_logic(
         {},
         "Hello world",
@@ -269,7 +269,7 @@ async def test_patch_validation_scores(monkeypatch):
 
     monkeypatch.setattr(llm_service, "async_call_llm", fake_call)
 
-    agent = PatchValidationAgent()
+    agent = RevisionAgent()
     ok, _ = await agent.validate_patch("ctx", {"replace_with": "x"}, [])
     assert ok
 
@@ -277,7 +277,7 @@ async def test_patch_validation_scores(monkeypatch):
         return "60 needs work", None
 
     monkeypatch.setattr(llm_service, "async_call_llm", fake_call_low)
-    agent2 = PatchValidationAgent()
+    agent2 = RevisionAgent()
     ok2, _ = await agent2.validate_patch("ctx", {"replace_with": "x"}, [])
     assert not ok2
 
@@ -352,7 +352,7 @@ async def test_patch_generation_concurrent(monkeypatch):
         "_generate_single_patch_instruction_llm",
         fake_generate,
     )
-    monkeypatch.setattr(PatchValidationAgent, "validate_patch", fake_validate)
+    monkeypatch.setattr(RevisionAgent, "validate_patch", fake_validate)
 
     problems = [
         {
@@ -376,7 +376,7 @@ async def test_patch_generation_concurrent(monkeypatch):
         1,
         "",
         None,
-        PatchValidationAgent(),
+        RevisionAgent(),
     )
     duration = time.monotonic() - start
     assert len(res) == 3

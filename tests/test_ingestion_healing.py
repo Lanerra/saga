@@ -30,7 +30,7 @@ async def test_ingestion_triggers_healing(monkeypatch, tmp_path):
     heal = AsyncMock()
     monkeypatch.setattr(orch.kg_maintainer_agent, "heal_and_enrich_kg", heal)
     monkeypatch.setattr(
-        orch.planner_agent, "plan_continuation", AsyncMock(return_value=(None, {}))
+        orch.narrative_agent, "plan_continuation", AsyncMock(return_value=(None, {}))
     )
 
     monkeypatch.setattr(orch.display, "start", lambda: None)
