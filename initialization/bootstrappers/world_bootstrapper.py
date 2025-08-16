@@ -44,6 +44,7 @@ def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
                 {
                     "description": config.CONFIGURED_SETTING_DESCRIPTION,
                     "source": "default_overview",
+                    "id": f"{utils._normalize_for_id('_overview_')}_{utils._normalize_for_id('_overview_')}",
                 },
             )
         },
@@ -65,7 +66,7 @@ def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
             config.FILL_IN: WorldItem.from_dict(
                 cat_key,
                 config.FILL_IN,
-                {"description": config.FILL_IN, "source": "default_placeholder"},
+                {"description": config.FILL_IN, "source": "default_placeholder", "id": f"{utils._normalize_for_id(cat_key)}_{utils._normalize_for_id(config.FILL_IN)}"},
             )
         }
 
@@ -186,8 +187,15 @@ async def bootstrap_world(
                     original_fill_in_name,
                     new_name_value,
                 )
+                properties_with_id = {
+                    **original_item_obj.properties,
+                    "id": f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}"
+                }
+                # Ensure we have a valid ID
+                if not properties_with_id["id"] or properties_with_id["id"] == "_":
+                    properties_with_id["id"] = f"element_{hash(original_category + new_name_value)}"
                 new_item_renamed = WorldItem.from_dict(
-                    original_category, new_name_value, original_item_obj.properties
+                    original_category, new_name_value, properties_with_id
                 )
                 new_item_renamed.properties["source"] = "bootstrapped_name"
 
