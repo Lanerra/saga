@@ -23,6 +23,7 @@ from .text_processing import (
     load_spacy_model_if_needed,
     normalize_trait_name,
     spacy_manager,
+    validate_world_item_fields,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - for type hints only
@@ -231,4 +232,5 @@ __all__ = [
     "format_scene_plan_for_prompt",
     "deduplicate_text_segments",
     "remove_spans_from_text",
+    "validate_world_item_fields",
 ]

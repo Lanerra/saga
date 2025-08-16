@@ -71,10 +71,23 @@ async def sync_world_items(
         if not isinstance(category_items, dict):
             continue
         for item_obj in category_items.values():
-            statements.extend(
-                generate_world_element_node_cypher(item_obj, chapter_number)
-            )
-            count += 1
+            # Validate and normalize core fields for WorldItem
+            # This ensures that all WorldElements have valid id, category, and name
+            try:
+                # Create a new WorldItem with validated fields
+                validated_item = WorldItem.from_dict(
+                    item_obj.category, item_obj.name, item_obj.to_dict()
+                )
+                statements.extend(
+                    generate_world_element_node_cypher(validated_item, chapter_number)
+                )
+                count += 1
+            except Exception as e:
+                logger.error(
+                    f"Error validating WorldItem for persistence: Category='{item_obj.category}', Name='{item_obj.name}': {e}",
+                    exc_info=True,
+                )
+                continue
 
     try:
         if statements:
@@ -232,14 +245,10 @@ async def sync_full_state_from_object_to_db(world_data: Dict[str, Any]) -> bool:
                 and details_dict.get("id").strip()
             ):
                 we_id_str = details_dict.get("id")
-            else:  # Fallback for safety or if 'id' was somehow removed before this point
-                norm_cat = utils._normalize_for_id(category_str)
-                norm_name = utils._normalize_for_id(item_name_str)
-                if not norm_cat:
-                    norm_cat = "unknown_category"
-                if not norm_name:
-                    norm_name = "unknown_name"
-                we_id_str = f"{norm_cat}_{norm_name}"
+            # Validate and normalize all core fields
+            category_str, item_name_str, we_id_str = utils.validate_world_item_fields(
+                category_str, item_name_str, we_id_str
+            )
 
             # Prepare WorldElement properties
             we_node_props = {
@@ -631,8 +640,16 @@ async def get_world_building_from_db() -> Dict[str, Dict[str, WorldItem]]:
         we_id = we_node.get("id")
 
         if not all([category, item_name, we_id]):
+            # Log warning about missing fields
+            missing_fields = []
+            if not category:
+                missing_fields.append("category")
+            if not item_name:
+                missing_fields.append("name")
+            if not we_id:
+                missing_fields.append("id")
             logger.warning(
-                f"Skipping WorldElement with missing core fields (id, name, or category): {we_node}"
+                f"Skipping WorldElement with missing core fields ({', '.join(missing_fields)}): {we_node}"
             )
             continue
 

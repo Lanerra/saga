@@ -42,7 +42,21 @@ You are an expert novelist and storyteller, acting as a "showrunner" to plan out
 **Ignore the narrative details in the below example. It shows the required format only.**
 **Example of a valid JSON output format (This is an example only):**
 ```json
-{{ few_shot_scene_plan_example_str }}
+[
+  {
+    "scene_number": 1,
+    "summary": "Protagonist discovers hidden letter in library",
+    "characters_involved": ["Alex", "Elena"],
+    "key_dialogue_points": ["'This changes everything,' Alex whispered."],
+    "setting_details": "Rainy evening in the library",
+    "scene_focus_elements": ["mystery", "clue"],
+    "contribution": "Reveals antagonist's plan",
+    "scene_type": "REVELATION",
+    "pacing": "SLOW",
+    "character_arc_focus": "Alex's suspicion grows",
+    "relationship_development": "Tension between Alex and Elena"
+  }
+]
 ```
 
 Now, generate the complete JSON array for the scene plan of Chapter {{ chapter_number }}.

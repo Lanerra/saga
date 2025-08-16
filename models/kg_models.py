@@ -72,16 +72,11 @@ class WorldItem(BaseModel):
     def from_dict(cls, category: str, name: str, data: Dict[str, Any]) -> "WorldItem":
         """Create a ``WorldItem`` from a raw dictionary."""
 
-        if not category or not isinstance(category, str) or not category.strip():
-            raise ValueError("WorldItem category must be a non-empty string.")
-        if not name or not isinstance(name, str) or not name.strip():
-            raise ValueError(
-                f"WorldItem name must be a non-empty string (for category '{category}')."
-            )
-
-        normalized_id_category = utils._normalize_for_id(category)
-        normalized_id_name = utils._normalize_for_id(name)
-        item_id = f"{normalized_id_category}_{normalized_id_name}"
+        # Get ID from data if present, otherwise generate one
+        item_id = data.get("id", "")
+        
+        # Validate and normalize all core fields
+        category, name, item_id = utils.validate_world_item_fields(category, name, item_id)
 
         created_chapter = int(data.get(KG_NODE_CREATED_CHAPTER, 0))
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))

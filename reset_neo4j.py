@@ -2,7 +2,10 @@
 import argparse
 import asyncio  # Required to call async methods
 import logging  # Added logging
+import subprocess
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List  # Added for type hints
 
 import config  # To get default URI, user, pass if not provided via args
@@ -192,6 +195,19 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
                         )
 
         elapsed_time = time.time() - start_time
+        # Run migration to fix any legacy WorldElements with missing core fields
+        logger.info("Running migration for legacy WorldElements...")
+        migration_script = Path(__file__).parent / "initialization" / "migrate_legacy_world_elements.py"
+        if migration_script.exists():
+            try:
+                result = subprocess.run([sys.executable, str(migration_script)],
+                                      capture_output=True, text=True, check=True)
+                logger.info(f"Migration output: {result.stdout}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Migration failed: {e.stderr}")
+        else:
+            logger.warning(f"Migration script not found at {migration_script}")
+
         logger.info(
             f"✅ Database data, all user-defined constraints, and relevant user-defined indexes reset/dropped in {elapsed_time:.2f} seconds."
         )

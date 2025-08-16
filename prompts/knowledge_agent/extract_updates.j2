@@ -1,6 +1,3 @@
-{% if no_think %}
-/no_think
-{% endif %}
 You are an expert knowledge graph extractor for a creative writing project. Your task is to analyze the provided chapter text and extract two types of information:
 1.  **Character and World Updates:** Detailed updates for character profiles and world-building elements based on events in the chapter.
 2.  **Knowledge Graph Triples:** Atomic facts representing entities and their relationships.
@@ -28,49 +25,4 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 ```
 ---
 
-**Ignore the narrative details in the below example. It shows the required format only.**
-**Example of Final JSON Output Structure:**
-```json
-{
-  "character_updates": {
-    "Elara": {
-      "description": "A determined scholar with a hidden past, now seeking the Starfall Map.",
-      "status": "In possession of the first map fragment.",
-      "traits": ["brave", "intelligent", "secretive"],
-      "relationships": {
-        "Kael": { "type": "MENTOR_OF", "description": "Met in the Sunken Library and was tested by him." }
-      },
-      "development_in_chapter_{{ chapter_number }}": "Elara successfully solved the library's riddle and confronted her fear of the Seekers, showing resourcefulness."
-    },
-    "Kael": {
-      "description": "The ancient, enigmatic archivist of the Sunken Library.",
-      "status": "Watching Elara from afar.",
-      "development_in_chapter_{{ chapter_number }}": "Revealed a fraction of his knowledge to Elara after testing her motivations."
-    }
-  },
-  "world_updates": {
-    "Locations": {
-      "Sunken Library": {
-        "description": "An ancient repository of knowledge, accessible only by solving a riddle at a mist-shrouded lake.",
-        "atmosphere": "Mysterious, magical, and silent.",
-        "rules": ["Knowledge is only given to the worthy."],
-        "elaboration_in_chapter_{{ chapter_number }}": "The library's internal structure, lit by glowing runes and bioluminescent moss, was described."
-      }
-    },
-    "Factions": {
-        "Crimson Hand": {
-            "description": "A ruthless group of seekers who believe the Starfall Map belongs to them.",
-            "goals": ["Acquire the Starfall Map"],
-            "elaboration_in_chapter_{{ chapter_number }}": "An operative of the Crimson Hand, Thane, ambushed Elara."
-        }
-    }
-  },
-  "kg_triples": [
-    "Character:Elara | LOCATED_IN | Location:Sunken Library",
-    "Character:Elara | HAS_STATUS | In possession of map fragment",
-    "Character:Elara | ENEMY_OF | Faction:Crimson Hand",
-    "Character:Kael | IS_A | Character",
-    "Character:Kael | PART_OF | Location:Sunken Library",
-    "Location:Sunken Library | HAS_RULE | Knowledge is only given to the worthy"
-  ]
-}
+{"character_updates":{"Elara":{"description":"A determined scholar with a hidden past, now seeking the Starfall Map."}},"world_updates":{"Sunken Library":{"description":"An ancient repository of knowledge, accessible only by solving a riddle at a mist-shrouded lake."}},"kg_triples":["Character:Elara | LOCATED_IN | Location:Sunken Library"]}

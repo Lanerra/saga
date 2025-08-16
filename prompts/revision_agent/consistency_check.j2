@@ -13,7 +13,7 @@ Your SOLE TASK is to identify specific CONSISTENCY issues in the **Complete Chap
   Title: {{ novel_title }}
   Genre: {{ novel_genre }}
   Theme: {{ novel_theme }}
-  Protagonist: {{ novel_protagonist }} ({{ protagonist_arc }})
+  Protagonist: {{ protagonist_name_str }} ({{ protagonist_arc }})
   Logline: {{ logline }}
   Key Plot Points (summary):
   {{ plot_points_summary_str }}
@@ -38,8 +38,7 @@ Your SOLE TASK is to identify specific CONSISTENCY issues in the **Complete Chap
 
 **Output Format (CRITICAL - JSON ONLY):**
 If consistency problems are found, output a JSON array of problem objects.
-Each object MUST have these keys: "issue_category" (fixed to "consistency"), "problem_description", "quote_from_original_text", "suggested_fix_focus".
-The `quote_from_original_text` must be a VERBATIM quote (10-50 words) from the chapter text. If general or no quote applies, use "N/A - General Issue".
+Each object must have: 'issue_category' (always "consistency"), 'problem_description', 'quote_from_original_text', 'suggested_fix_focus'. Use 'N/A - General Issue' for quote if not applicable.
 If NO consistency problems are found, output an empty JSON array `[]` or a JSON object like {"status": "No significant consistency problems found"}.
 If any part of the reference material is unclear or incomplete, note the uncertainty in your problem descriptions.
 
