@@ -22,31 +22,32 @@ async def test_neo4j_query_module():
     
     # Test get_novel_info_property
     try:
-        from processing.neo4j_query import get_novel_info_property
-        theme = await get_novel_info_property("theme")
+        from data_access.kg_queries import get_novel_info_property_from_db
+        from data_access import kg_queries
+        theme = await get_novel_info_property_from_db("theme")
         logger.info(f"Novel theme: {theme}")
     except Exception as e:
         logger.error(f"Error testing get_novel_info_property: {e}")
     
     # Test get_most_recent_entity_status
     try:
-        from processing.neo4j_query import get_most_recent_entity_status
-        status = await get_most_recent_entity_status("protagonist", "status_is", 5)
+        from data_access.kg_queries import get_most_recent_value_from_db
+        status = await get_most_recent_value_from_db("protagonist", "status_is", 5)
         logger.info(f"Protagonist status: {status}")
     except Exception as e:
         logger.error(f"Error testing get_most_recent_entity_status: {e}")
     
     # Test execute_factual_query
     try:
-        from processing.neo4j_query import execute_factual_query
-        facts = await execute_factual_query("protagonist", chapter_limit=5)
+        from data_access.kg_queries import query_kg_from_db
+        facts = await query_kg_from_db("protagonist", chapter_limit=5)
         logger.info(f"Facts about protagonist: {facts}")
     except Exception as e:
         logger.error(f"Error testing execute_factual_query: {e}")
     
     # Test get_shortest_path_length_between_entities
     try:
-        from processing.neo4j_query import get_shortest_path_length_between_entities
+        from data_access.kg_queries import get_shortest_path_length_between_entities
         path_length = await get_shortest_path_length_between_entities("protagonist", "antagonist")
         logger.info(f"Path length between protagonist and antagonist: {path_length}")
     except Exception as e:

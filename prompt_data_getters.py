@@ -16,13 +16,6 @@ import utils  # For _is_fill_in
 
 from data_access import character_queries, kg_queries, world_queries
 from models import CharacterProfile, SceneDetail, WorldItem
-from processing.neo4j_query import (
-    execute_factual_query,
-    get_most_recent_entity_status,
-    get_novel_info_property,
-    get_entity_context_for_resolution,
-    get_shortest_path_length_between_entities,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -749,23 +742,23 @@ async def get_reliable_kg_facts_for_drafting_prompt(
         f"KG fact gathering for Ch {chapter_number} draft: Chars of interest: {characters_of_interest}, KG chapter limit: {kg_chapter_limit}"
     )
 
+    
     if protagonist_name and characters_of_interest:
         pruned: Set[str] = set()
         for c in characters_of_interest:
             if c == protagonist_name:
                 pruned.add(c)
                 continue
-            path_len = await get_shortest_path_length_between_entities(
+            path_len = await kg_queries.get_shortest_path_length_between_entities(
                 protagonist_name, c
             )
             if path_len is not None and path_len <= 3:
                 pruned.add(c)
         characters_of_interest = pruned
-
     # Parallel execution of novel info property queries
     novel_info_tasks = [
-        get_novel_info_property("theme"),
-        get_novel_info_property("central_conflict")
+        kg_queries.get_novel_info_property_from_db("theme"),
+        kg_queries.get_novel_info_property_from_db("central_conflict")
     ]
     novel_info_results = await asyncio.gather(*novel_info_tasks, return_exceptions=True)
     
@@ -796,9 +789,9 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     # Create tasks for all character-related queries
     for char_name in character_names_list:
         character_tasks.extend([
-            get_most_recent_entity_status(char_name, "status_is", kg_chapter_limit),
-            get_most_recent_entity_status(char_name, "located_in", kg_chapter_limit),
-            execute_factual_query(subject=char_name, chapter_limit=kg_chapter_limit)
+            kg_queries.get_most_recent_value_from_db(char_name, "status_is", kg_chapter_limit),
+            kg_queries.get_most_recent_value_from_db(char_name, "located_in", kg_chapter_limit),
+            kg_queries.query_kg_from_db(subject=char_name, chapter_limit=kg_chapter_limit)
         ])
     
     # Execute all character-related queries in parallel

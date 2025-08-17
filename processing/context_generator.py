@@ -19,7 +19,6 @@ from data_access import (
 )  # For chapter data and similarity search
 from models import SceneDetail
 from prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
-from .neo4j_query import execute_vector_search
 
 logger = logging.getLogger(__name__)
 

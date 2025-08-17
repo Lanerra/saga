@@ -1014,18 +1014,218 @@ class KnowledgeAgent:
 
     async def _resolve_duplicates_for_entity(self, entity: Dict[str, Any]) -> None:
         """Resolve duplicates for a single entity using Neo4j's MERGE with uniqueness constraints."""
-        # This is a simplified version - in a real implementation, you would:
-        # 1. Check if similar entities exist based on name/type
-        # 2. Use MERGE with uniqueness constraints (O(1) per entity)
-        # 3. Merge or delete duplicates as appropriate
-        pass
+        # Extract entity information
+        entity_name = entity.get("name")
+        entity_type = entity.get("type", "Entity")
+        
+        if not entity_name:
+            logger.warning("Cannot resolve duplicates for entity without name")
+            return
+        
+        logger.debug(f"Resolving duplicates for entity: {entity_name} (type: {entity_type})")
+        
+        # Create labels for the entity based on its type
+        labels = ":Entity"
+        if entity_type:
+            # Normalize the entity type to create valid Neo4j labels
+            normalized_type = "".join(c for c in entity_type.title() if c.isalnum())
+            labels = f":{normalized_type}{labels}"
+        
+        # Use MERGE to ensure we have a single entity with this name
+        # This will either match an existing entity or create a new one
+        merge_query = f"""
+        MERGE (e{labels} {{name: $entity_name}})
+        ON CREATE SET e.created_ts = timestamp()
+        ON MATCH SET e.last_seen_ts = timestamp()
+        RETURN e
+        """
+        
+        try:
+            await neo4j_manager.execute_write_query(merge_query, {"entity_name": entity_name})
+            logger.debug(f"Successfully processed entity {entity_name} for duplicate resolution")
+        except Exception as e:
+            logger.error(f"Error resolving duplicates for entity {entity_name}: {e}", exc_info=True)
 
     async def _enrich_entity_if_needed(self, entity: Dict[str, Any]) -> None:
         """Enrich a single entity if it's sparse."""
-        # This is a simplified version - in a real implementation, you would:
-        # 1. Check if the entity has sufficient information
-        # 2. If not, enrich it using LLM or other methods
-        pass
+        # Extract entity information
+        entity_name = entity.get("name")
+        entity_type = entity.get("type", "Entity")
+        entity_id = entity.get("id")
+        
+        if not entity_name:
+            logger.warning("Cannot enrich entity without name")
+            return
+        
+        logger.debug(f"Checking if entity needs enrichment: {entity_name} (type: {entity_type})")
+        
+        # Check if the entity is sparse (missing description or other key information)
+        is_sparse = await self._is_entity_sparse(entity_name, entity_type, entity_id)
+        
+        if is_sparse:
+            logger.info(f"Entity {entity_name} is sparse, enriching...")
+            await self._enrich_entity(entity_name, entity_type, entity_id)
+        else:
+            logger.debug(f"Entity {entity_name} is not sparse, skipping enrichment")
+
+    async def _is_entity_sparse(self, entity_name: str, entity_type: str, entity_id: Optional[str] = None) -> bool:
+        """Check if an entity is sparse (missing key information)."""
+        # Query to check if entity has a description or other key properties
+        if entity_type.lower() == "character":
+            # For characters, check if they have a description
+            query = """
+            MATCH (c:Character {name: $entity_name})
+            RETURN c.description AS description
+            """
+        elif entity_type.lower() == "worldelement":
+            # For world elements, check if they have a description
+            if entity_id:
+                query = """
+                MATCH (we:WorldElement {id: $entity_id})
+                RETURN we.description AS description
+                """
+            else:
+                query = """
+                MATCH (we:WorldElement {name: $entity_name})
+                RETURN we.description AS description
+                """
+        else:
+            # For other entity types, check if they have a description
+            query = """
+            MATCH (e:Entity {name: $entity_name})
+            RETURN e.description AS description
+            """
+        
+        try:
+            params = {"entity_name": entity_name}
+            if entity_id:
+                params["entity_id"] = entity_id
+                
+            results = await neo4j_manager.execute_read_query(query, params)
+            if results:
+                description = results[0].get("description")
+                # Entity is considered sparse if it has no description or a very short one
+                return not description or len(str(description).strip()) < 10
+            else:
+                # If no entity found, consider it sparse
+                return True
+        except Exception as e:
+            logger.error(f"Error checking if entity {entity_name} is sparse: {e}", exc_info=True)
+            # If we can't determine, assume it's not sparse to avoid unnecessary enrichment
+            return False
+    
+    async def _enrich_entity(self, entity_name: str, entity_type: str, entity_id: Optional[str] = None) -> None:
+        """Enrich an entity using LLM."""
+        try:
+            # Get chapter context for the entity
+            context_chapters = await kg_queries.get_chapter_context_for_entity(
+                entity_name=entity_name if not entity_id else None,
+                entity_id=entity_id
+            )
+            
+            # Choose the appropriate prompt based on entity type
+            if entity_type.lower() == "character":
+                prompt = render_prompt(
+                    "knowledge_agent/enrich_character.j2",
+                    {"character_name": entity_name, "chapter_context": context_chapters}
+                )
+            elif entity_type.lower() == "worldelement":
+                # Get additional information about the world element
+                element_info = {"name": entity_name, "category": "Unknown", "id": entity_id or entity_name}
+                if entity_id:
+                    # Try to get more detailed information about the world element
+                    query = """
+                    MATCH (we:WorldElement {id: $entity_id})
+                    RETURN we.category AS category
+                    """
+                    try:
+                        results = await neo4j_manager.execute_read_query(query, {"entity_id": entity_id})
+                        if results:
+                            element_info["category"] = results[0].get("category", "Unknown")
+                    except Exception:
+                        pass
+                
+                prompt = render_prompt(
+                    "knowledge_agent/enrich_world_element.j2",
+                    {"element": element_info, "chapter_context": context_chapters}
+                )
+            else:
+                # For other entity types, use a generic approach
+                prompt = f"""
+                /no_think
+                You are a knowledge graph enrichment expert. Please provide a concise description for the following entity:
+                
+                Entity Name: {entity_name}
+                Entity Type: {entity_type}
+                
+                Chapter Context:
+                {context_chapters}
+                
+                Please respond with a JSON object containing a "description" field with the entity description.
+                """
+            
+            # Call LLM to generate enrichment
+            enrichment_text, _ = await llm_service.async_call_llm(
+                model_name=config.KNOWLEDGE_UPDATE_MODEL,
+                prompt=prompt,
+                temperature=config.Temperatures.KG_EXTRACTION,
+                auto_clean_response=True,
+            )
+            
+            if enrichment_text:
+                try:
+                    data = json.loads(enrichment_text)
+                    new_description = data.get("description")
+                    if new_description and isinstance(new_description, str):
+                        logger.info(f"Generated new description for '{entity_name}'.")
+                        
+                        # Update the entity in the database
+                        if entity_type.lower() == "character":
+                            update_query = """
+                            MATCH (c:Character {name: $name})
+                            SET c.description = $desc, c.enriched_ts = timestamp()
+                            """
+                            await neo4j_manager.execute_write_query(
+                                update_query,
+                                {"name": entity_name, "desc": new_description}
+                            )
+                        elif entity_type.lower() == "worldelement" and entity_id:
+                            update_query = """
+                            MATCH (we:WorldElement {id: $id})
+                            SET we.description = $desc, we.enriched_ts = timestamp()
+                            """
+                            await neo4j_manager.execute_write_query(
+                                update_query,
+                                {"id": entity_id, "desc": new_description}
+                            )
+                        elif entity_type.lower() == "worldelement":
+                            update_query = """
+                            MATCH (we:WorldElement {name: $name})
+                            SET we.description = $desc, we.enriched_ts = timestamp()
+                            """
+                            await neo4j_manager.execute_write_query(
+                                update_query,
+                                {"name": entity_name, "desc": new_description}
+                            )
+                        else:
+                            update_query = """
+                            MATCH (e:Entity {name: $name})
+                            SET e.description = $desc, e.enriched_ts = timestamp()
+                            """
+                            await neo4j_manager.execute_write_query(
+                                update_query,
+                                {"name": entity_name, "desc": new_description}
+                            )
+                        
+                        logger.info(f"Successfully enriched entity '{entity_name}' with new description.")
+                    else:
+                        logger.warning(f"Failed to parse description from LLM response for entity '{entity_name}': {enrichment_text}")
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse enrichment JSON for entity '{entity_name}': {enrichment_text}")
+            else:
+                logger.warning(f"LLM returned empty response for entity enrichment: {entity_name}")
+        except Exception as e:
+            logger.error(f"Error enriching entity {entity_name}: {e}", exc_info=True)
 
     async def _find_and_enrich_thin_nodes(self) -> List[Tuple[str, Dict[str, Any]]]:
         """Finds thin characters and world elements and generates enrichment updates in parallel."""
@@ -1278,19 +1478,44 @@ class KnowledgeAgent:
 
     async def _resolve_duplicates_for_new_entity(self, entity: Dict[str, Any]) -> None:
         """Resolve duplicates for a single new entity using Neo4j's MERGE with uniqueness constraints."""
-        # Use Neo4j's MERGE with uniqueness constraints (O(1) per entity)
-        # This is a conceptual implementation - in practice, you would need to:
-        # 1. Define uniqueness constraints in Neo4j for your entity types
-        # 2. Use MERGE operations instead of CREATE when adding new entities
-        # 3. Handle merging of properties when duplicates are found
-        #
-        # Example Cypher query pattern:
-        # MERGE (e:Entity {name: $name, type: $type})
-        # ON CREATE SET e.created = timestamp()
-        # ON MATCH SET e.last_seen = timestamp()
-        #
-        # This approach is O(1) per entity instead of O(n²) for full graph scans
-        pass
+        # Extract entity information
+        entity_name = entity.get("name")
+        entity_type = entity.get("type", "Entity")
+        
+        if not entity_name:
+            logger.warning("Cannot resolve duplicates for new entity without name")
+            return
+        
+        logger.debug(f"Resolving duplicates for new entity: {entity_name} (type: {entity_type})")
+        
+        # Create labels for the entity based on its type
+        labels = ":Entity"
+        if entity_type:
+            # Normalize the entity type to create valid Neo4j labels
+            normalized_type = "".join(c for c in entity_type.title() if c.isalnum())
+            labels = f":{normalized_type}{labels}"
+        
+        # Use MERGE to ensure we have a single entity with this name
+        # This will either match an existing entity or create a new one
+        merge_query = f"""
+        MERGE (e{labels} {{name: $entity_name}})
+        ON CREATE SET
+            e.created_ts = timestamp(),
+            e.type = $entity_type
+        ON MATCH SET
+            e.last_seen_ts = timestamp(),
+            e.type = coalesce(e.type, $entity_type)
+        RETURN e
+        """
+        
+        try:
+            await neo4j_manager.execute_write_query(merge_query, {
+                "entity_name": entity_name,
+                "entity_type": entity_type
+            })
+            logger.debug(f"Successfully processed new entity {entity_name} for duplicate resolution")
+        except Exception as e:
+            logger.error(f"Error resolving duplicates for new entity {entity_name}: {e}", exc_info=True)
 
     async def _resolve_dynamic_relationships(self) -> None:
         """Resolve generic DYNAMIC_REL types using a lightweight LLM."""
