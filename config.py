@@ -81,6 +81,11 @@ class SagaSettings(BaseSettings):
     NEO4J_DATABASE: Optional[str] = "neo4j"
 
     # Neo4j Vector Index Configuration
+    NEO4J_VECTOR_INDEX_NAME: str = "chapterEmbeddings"
+    NEO4J_VECTOR_NODE_LABEL: str = "Chapter"
+    NEO4J_VECTOR_PROPERTY_NAME: str = "embedding_vector"
+    NEO4J_VECTOR_DIMENSIONS: int = 768
+    NEO4J_VECTOR_SIMILARITY_FUNCTION: str = "cosine"
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"
@@ -235,6 +240,14 @@ class SagaSettings(BaseSettings):
     ENABLE_RICH_PROGRESS: bool = True
 
     # Novel Configuration (Defaults / Placeholders)
+    UNHINGED_PLOT_MODE: bool = False
+    CONFIGURED_GENRE: str = "grimdark science fiction"
+    CONFIGURED_THEME: str = "the hubris of humanity"
+    CONFIGURED_SETTING_DESCRIPTION: str = (
+        "a remote outpost on the surface of Jupiter's moon, Callisto"
+    )
+    DEFAULT_PROTAGONIST_NAME: str = "Ilya Lakatos"
+    DEFAULT_PLOT_OUTLINE_TITLE: str = "Untitled Narrative"
 
     MAIN_NOVEL_INFO_NODE_ID: str = "main_novel_info"
     MAIN_CHARACTERS_CONTAINER_NODE_ID: str = "main_characters_container"
