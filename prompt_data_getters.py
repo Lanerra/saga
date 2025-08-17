@@ -693,63 +693,6 @@ async def get_filtered_world_data_for_prompt_plain_text(
     return "\n".join(output_lines_list).strip()
 
 
-async def heuristic_entity_spotter_for_kg(
-    character_profiles: Dict[str, CharacterProfile],
-    world_building: Dict[str, Dict[str, WorldItem]],
-    text_snippet: str,
-) -> List[str]:
-    character_profiles_data = character_profiles
-    world_building_data = world_building
-
-    entities = set(character_profiles_data.keys())
-
-    for match in re.finditer(
-        r"\b([A-Z][a-zA-Z\'\-]+(?:\s+[A-Z][a-zA-Z\'\-]+){0,2})\b", text_snippet
-    ):
-        entities.add(match.group(1).strip())
-
-    for category, items in world_building_data.items():
-        if isinstance(items, dict) and category not in [
-            "_overview_",
-            "is_default",
-            "source",
-            "user_supplied_data",
-        ]:
-            for item_name in items.keys():
-                if isinstance(item_name, str) and item_name.strip():
-                    entities.add(item_name.strip())
-
-    common_false_positives = {
-        "The",
-        "A",
-        "An",
-        "Is",
-        "It",
-        "He",
-        "She",
-        "They",
-        "Chapter",
-        "Section",
-        "I",
-        "We",
-        "You",
-    }
-    return sorted(
-        [
-            e
-            for e in list(entities)
-            if (
-                len(e) > 2
-                or e in character_profiles_data
-                or any(
-                    e in category_items
-                    for category_items in world_building_data.values()
-                    if isinstance(category_items, dict)
-                )
-            )
-            and e not in common_false_positives
-        ]
-    )
 
 
 async def get_reliable_kg_facts_for_drafting_prompt(

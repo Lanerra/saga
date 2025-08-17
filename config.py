@@ -171,6 +171,8 @@ class SagaSettings(BaseSettings):
     CHAPTERS_PER_RUN: int = 3
     KG_HEALING_INTERVAL: int = 2
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 18
+    # Concurrency limiting for chapter processing to prevent resource exhaustion
+    MAX_CONCURRENT_CHAPTERS: int = 10
 
     # Caching
     EMBEDDING_CACHE_SIZE: int = 128

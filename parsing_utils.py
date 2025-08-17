@@ -12,11 +12,8 @@ class ParseError(Exception):
     """Custom exception for parsing errors."""
 
 
-# DEFAULT_BLOCK_SEPARATOR_REGEX and split_text_into_blocks removed as they are no longer used.
-
 # --- New RDF Triple Parsing using rdflib ---
 # Modified to be a custom plain-text triple parser
-
 
 def _get_entity_type_and_name_from_text(entity_text: str) -> Dict[str, Optional[str]]:
     """
@@ -50,7 +47,6 @@ def _get_entity_type_and_name_from_text(entity_text: str) -> Dict[str, Optional[
 def parse_rdf_triples_with_rdflib(
     text_block: str,
     rdf_format: str = "turtle",
-    base_uri: str = "http://example.org/saga/",
 ) -> List[Dict[str, Any]]:
     """
     Custom parser for LLM-generated plain text triples.
