@@ -417,6 +417,19 @@ def parse_unified_world_updates(
         else:  # Regular category with multiple items
             for item_name_llm, item_attributes_llm in items_llm.items():
                 if not item_name_llm or not isinstance(item_attributes_llm, dict):
+                    # Check if this might be a property that was incorrectly placed at the item level
+                    # This can happen when LLM outputs properties at the category level instead of item level
+                    if item_name_llm and isinstance(item_name_llm, str):
+                        # Check if the "item name" is actually a known property name
+                        normalized_key = item_name_llm.lower().replace(" ", "_")
+                        if normalized_key in WORLD_UPDATE_DETAIL_KEY_MAP or normalized_key in WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS:
+                            logger.debug(
+                                "Ignoring property '%s' at item level in category '%s' (likely LLM formatting issue)",
+                                item_name_llm,
+                                category_name_llm,
+                            )
+                            continue
+                    
                     logger.warning(
                         "Skipping item with invalid name or attributes in "
                         "category '%s': Name='%s'",
