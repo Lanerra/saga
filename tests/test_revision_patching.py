@@ -10,6 +10,7 @@ import utils
 from agents.revision_agent import RevisionAgent
 from core.llm_interface import llm_service
 from processing.revision_logic import _apply_patches_to_text
+from processing.text_deduplicator import TextDeduplicator
 
 
 @pytest.mark.asyncio
@@ -70,13 +71,13 @@ async def test_dedup_prefer_newer(monkeypatch):
 
     monkeypatch.setattr(llm_service, "async_get_embedding", fake_embed)
 
-    dedup, _ = await utils.deduplicate_text_segments(
-        text,
-        segment_level="sentence",
+    deduplicator = TextDeduplicator(
+        similarity_threshold=config.DEDUPLICATION_SEMANTIC_THRESHOLD,
         use_semantic_comparison=False,
         min_segment_length_chars=0,
         prefer_newer=True,
     )
+    dedup, _ = await deduplicator.deduplicate(text, segment_level="sentence")
 
     assert isinstance(dedup, str)
 
@@ -113,13 +114,13 @@ async def test_skip_repatch_same_segment(monkeypatch):
     patched2, _ = await _apply_patches_to_text(patched1, second_patch, spans1, None)
 
     assert patched2 == patched1
-    dedup, _ = await utils.deduplicate_text_segments(
-        "First\n\nSecond\n\nFirst",
-        segment_level="sentence",
+    deduplicator = TextDeduplicator(
+        similarity_threshold=config.DEDUPLICATION_SEMANTIC_THRESHOLD,
         use_semantic_comparison=False,
         min_segment_length_chars=0,
         prefer_newer=True,
     )
+    dedup, _ = await deduplicator.deduplicate("First\n\nSecond\n\nFirst", segment_level="sentence")
     assert isinstance(dedup, str)
 
 

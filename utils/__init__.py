@@ -11,6 +11,7 @@ import numpy as np
 
 import config
 from core.llm_interface import count_tokens, llm_service
+from processing.text_deduplicator import TextDeduplicator
 
 from .helpers import _is_fill_in
 from .similarity import find_semantically_closest_segment, numpy_cosine_similarity
@@ -84,6 +85,7 @@ def format_scene_plan_for_prompt(
     return "\n".join(current_plan_parts)
 
 
+# Deprecated: Use TextDeduplicator class directly instead
 async def deduplicate_text_segments(
     original_text: str,
     segment_level: str = "paragraph",
@@ -92,113 +94,21 @@ async def deduplicate_text_segments(
     min_segment_length_chars: int = config.DEDUPLICATION_MIN_SEGMENT_LENGTH,
     prefer_newer: bool = False,
 ) -> Tuple[str, int]:
-    """Remove near-duplicate segments from text."""
+    """Remove near-duplicate segments from text.
+    
+    Deprecated: This function is maintained for backward compatibility but delegates
+    to the TextDeduplicator class for actual implementation.
+    """
     if not original_text.strip():
         return original_text, 0
-
-    segments_with_offsets = get_text_segments(original_text, segment_level)
-    if not segments_with_offsets:
-        return original_text, 0
-
-    num_segments = len(segments_with_offsets)
-    indices_to_remove = set()
-
-    embeddings: List[Optional[np.ndarray]] = []
-    normalized_texts: List[str] = []
-
-    if use_semantic_comparison:
-        tasks = [
-            llm_service.async_get_embedding(seg_text)
-            for seg_text, _, _ in segments_with_offsets
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        embeddings = [
-            res if not isinstance(res, Exception) else None for res in results
-        ]
-    else:
-        normalized_texts = [
-            _normalize_text_for_matching(seg[0]) for seg in segments_with_offsets
-        ]
-
-    iteration_range = (
-        range(num_segments - 1, -1, -1) if prefer_newer else range(num_segments)
+        
+    deduplicator = TextDeduplicator(
+        similarity_threshold=similarity_threshold,
+        use_semantic_comparison=use_semantic_comparison,
+        min_segment_length_chars=min_segment_length_chars,
+        prefer_newer=prefer_newer,
     )
-
-    for i in iteration_range:
-        if i in indices_to_remove:
-            continue
-
-        text_i, start_i, end_i = segments_with_offsets[i]
-        if len(text_i) < min_segment_length_chars:
-            continue
-
-        inner_range = (
-            range(i - 1, -1, -1) if prefer_newer else range(i + 1, num_segments)
-        )
-
-        for j in inner_range:
-            if j in indices_to_remove:
-                continue
-
-            text_j, start_j, end_j = segments_with_offsets[j]
-            if len(text_j) < min_segment_length_chars:
-                continue
-
-            is_duplicate = False
-            if use_semantic_comparison:
-                emb_i = embeddings[i] if embeddings else None
-                emb_j = embeddings[j] if embeddings else None
-                if emb_i is not None and emb_j is not None:
-                    similarity = numpy_cosine_similarity(emb_i, emb_j)
-                    if similarity > similarity_threshold:
-                        is_duplicate = True
-                else:
-                    is_duplicate = _normalize_text_for_matching(
-                        text_i
-                    ) == _normalize_text_for_matching(text_j)
-            else:
-                is_duplicate = normalized_texts[i] == normalized_texts[j]
-
-            if is_duplicate:
-                indices_to_remove.add(j)
-                method_used = (
-                    "semantic" if use_semantic_comparison else "normalized string"
-                )
-                logger.info(
-                    "De-duplication: Marking segment (idx %d, chars %d-%d) for removal as duplicate of (idx %d, chars %d-%d). Method: %s.",
-                    j,
-                    start_j,
-                    end_j,
-                    i,
-                    start_i,
-                    end_i,
-                    method_used,
-                )
-
-    if not indices_to_remove:
-        return original_text, 0
-
-    spans_to_remove_offsets = [
-        segments_with_offsets[i][1:] for i in sorted(indices_to_remove)
-    ]
-    spans_to_remove_offsets.sort(key=lambda x: x[0])
-
-    new_text_parts: List[str] = []
-    last_pos = 0
-    for start, end in spans_to_remove_offsets:
-        if start > last_pos:
-            new_text_parts.append(original_text[last_pos:start])
-        last_pos = max(last_pos, end)
-
-    if last_pos < len(original_text):
-        new_text_parts.append(original_text[last_pos:])
-
-    deduplicated_text = "".join(new_text_parts)
-    deduplicated_text = re.sub(r"\n\s*\n(\s*\n)+", "\n\n", deduplicated_text)
-    deduplicated_text = re.sub(r"\n{3,}", "\n\n", deduplicated_text).strip()
-
-    characters_removed_count = len(original_text) - len(deduplicated_text)
-    return deduplicated_text, characters_removed_count
+    return await deduplicator.deduplicate(original_text, segment_level)
 
 
 def remove_spans_from_text(text: str, spans: List[Tuple[int, int]]) -> str:
@@ -230,7 +140,7 @@ __all__ = [
     "numpy_cosine_similarity",
     "get_text_segments",
     "format_scene_plan_for_prompt",
-    "deduplicate_text_segments",
+    "deduplicate_text_segments",  # Kept for backward compatibility
     "remove_spans_from_text",
     "validate_world_item_fields",
 ]

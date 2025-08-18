@@ -142,24 +142,30 @@ async def find_similar_chapters_in_db(
         )
         return []
 
+    # We want to exclude the current chapter being processed and only look at past chapters
+    # current_chapter_to_exclude: the chapter number to exclude (e.g., the current chapter being generated)
+    
     exclude_clause = ""
     params_dict: Dict[str, Any] = {
         "index_name_param": config.NEO4J_VECTOR_INDEX_NAME,
         "limit_param": limit + (1 if current_chapter_to_exclude is not None else 0),
         "queryVector_param": query_embedding_list,
-        "current_chapter_number_param": current_chapter_to_exclude if current_chapter_to_exclude is not None else 1000000  # Large number to include all chapters when no exclusion
     }
+    
     if current_chapter_to_exclude is not None:
-        exclude_clause = "WHERE c.number <> $current_chapter_to_exclude_param AND c.number < $current_chapter_number_param "
+        # Exclude the specific chapter and only consider chapters before it
+        exclude_clause = "WHERE c.number <> $current_chapter_to_exclude_param AND c.number < $current_chapter_to_exclude_param"
         params_dict["current_chapter_to_exclude_param"] = current_chapter_to_exclude
     else:
-        exclude_clause = "WHERE c.number < $current_chapter_number_param "
+        # No specific chapter to exclude, but still only consider past chapters
+        # Using a large number as default to include all existing chapters
+        exclude_clause = "WHERE c.number < $current_chapter_upper_bound_param"
+        params_dict["current_chapter_upper_bound_param"] = 1000000
 
     similarity_query = f"""
     CALL db.index.vector.queryNodes($index_name_param, $limit_param, $queryVector_param)
     YIELD node AS c, score
     {exclude_clause}
-    WHERE c.number < $current_chapter_number_param  // Add chapter range filtering
     RETURN c.number AS chapter_number,
            c.summary AS summary,
            c.text AS text,
