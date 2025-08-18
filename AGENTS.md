@@ -62,4 +62,5 @@ SAGA is a Python project containing multiple modules such as `planner_agent.py`,
 - Never commit API keys
 - Validate message payloads between agents
 - Limit concurrent tasks per agent (default 10) and monitor memory usage
+- Use MAX_CONCURRENT_CHAPTERS setting to control chapter processing concurrency
 

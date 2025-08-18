@@ -40,11 +40,6 @@ class EvaluationResult(TypedDict, total=False):
     needs_revision: bool
     reasons: List[str]
     problems_found: List[ProblemDetail]
-    coherence_score: Optional[float]
-    consistency_issues: Optional[str]
-    plot_deviation_reason: Optional[str]
-    thematic_issues: Optional[str]
-    narrative_depth_issues: Optional[str]
 
 
 class PatchInstruction(TypedDict, total=False):

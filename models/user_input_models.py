@@ -15,7 +15,6 @@ class NovelConceptModel(BaseModel):
     title: str = Field(..., min_length=1)
     genre: Optional[str] = None
     setting: Optional[str] = None
-    logline: Optional[str] = None
     theme: Optional[str] = None
 
 
@@ -83,10 +82,7 @@ class UserStoryInputModel(BaseModel):
     setting: Optional[SettingModel] = None
     world_details: Optional[Dict[str, Any]] = None
     other_key_characters: Optional[Dict[str, ProtagonistModel]] = None
-    conflict: Optional[Dict[str, Any]] = None
     style_and_tone: Optional[Dict[str, Any]] = None
-    world_specifics: Optional[Dict[str, Any]] = None
-    symbolism: Optional[List[Dict[str, str]]] = None
 
 
 def user_story_to_objects(

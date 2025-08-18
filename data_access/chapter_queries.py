@@ -147,15 +147,19 @@ async def find_similar_chapters_in_db(
         "index_name_param": config.NEO4J_VECTOR_INDEX_NAME,
         "limit_param": limit + (1 if current_chapter_to_exclude is not None else 0),
         "queryVector_param": query_embedding_list,
+        "current_chapter_number_param": current_chapter_to_exclude if current_chapter_to_exclude is not None else 1000000  # Large number to include all chapters when no exclusion
     }
     if current_chapter_to_exclude is not None:
-        exclude_clause = "WHERE c.number <> $current_chapter_to_exclude_param "
+        exclude_clause = "WHERE c.number <> $current_chapter_to_exclude_param AND c.number < $current_chapter_number_param "
         params_dict["current_chapter_to_exclude_param"] = current_chapter_to_exclude
+    else:
+        exclude_clause = "WHERE c.number < $current_chapter_number_param "
 
     similarity_query = f"""
     CALL db.index.vector.queryNodes($index_name_param, $limit_param, $queryVector_param)
     YIELD node AS c, score
     {exclude_clause}
+    WHERE c.number < $current_chapter_number_param  // Add chapter range filtering
     RETURN c.number AS chapter_number,
            c.summary AS summary,
            c.text AS text,

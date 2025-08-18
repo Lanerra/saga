@@ -176,6 +176,8 @@ class SagaSettings(BaseSettings):
     CHAPTERS_PER_RUN: int = 3
     KG_HEALING_INTERVAL: int = 2
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 18
+    # Concurrency limiting for chapter processing to prevent resource exhaustion
+    MAX_CONCURRENT_CHAPTERS: int = 10
 
     # Caching
     EMBEDDING_CACHE_SIZE: int = 128
@@ -421,5 +423,4 @@ root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
 
-NARRATIVE_MODEL = "qwen3-a3b"
 REVISION_EVALUATION_THRESHOLD = 0.85

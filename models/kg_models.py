@@ -40,22 +40,6 @@ class CharacterProfile(BaseModel):
         data.update(updates_data)
         return data
 
-    def get_development_summary(self, up_to_chapter: Optional[int] = None) -> List[str]:
-        """Return development notes up to a chapter number."""
-
-        notes: List[str] = []
-        prefix = "development_in_chapter_"
-        for key, val in sorted(self.updates.items()):
-            if not key.startswith(prefix):
-                continue
-            try:
-                chap = int(key.split("_")[-1])
-            except (ValueError, IndexError):
-                continue
-            if up_to_chapter is None or chap <= up_to_chapter:
-                if isinstance(val, str):
-                    notes.append(val)
-        return notes
 
 
 class WorldItem(BaseModel):
@@ -111,19 +95,3 @@ class WorldItem(BaseModel):
         data.update(properties_data)
         return data
 
-    def get_elaboration_summary(self, up_to_chapter: Optional[int] = None) -> List[str]:
-        """Return elaboration notes up to a chapter number."""
-
-        notes: List[str] = []
-        prefix = "elaboration_in_chapter_"
-        for key, val in sorted(self.properties.items()):
-            if not key.startswith(prefix):
-                continue
-            try:
-                chap = int(key.split("_")[-1])
-            except (ValueError, IndexError):
-                continue
-            if up_to_chapter is None or chap <= up_to_chapter:
-                if isinstance(val, str):
-                    notes.append(val)
-        return notes
