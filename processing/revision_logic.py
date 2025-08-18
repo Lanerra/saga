@@ -51,15 +51,6 @@ def _get_plot_point_info(
     return None, -1
 
 
-async def _get_context_window_for_patch_llm(
-    original_doc_text: str, problem: ProblemDetail, window_size_chars: int
-) -> str:
-    """
-    Gets a context window around the problem's quote using precise offsets if available.
-    The window is centered around the *sentence* containing the quote.
-    """
-    if not original_doc_text:
-        return ""
 
     quote_text_from_llm = problem["quote_from_original_text"]
     focus_start = problem.get("sentence_char_start")
@@ -76,7 +67,7 @@ async def _get_context_window_for_patch_llm(
             "N/A - General Issue" not in quote_text_from_llm
             and quote_text_from_llm.strip()
         ):
-            offsets = await utils.find_quote_and_sentence_offsets_with_spacy(
+            offsets = utils.find_quote_and_sentence_offsets_with_spacy(
                 original_doc_text, quote_text_from_llm
             )
             if offsets:
@@ -502,9 +493,7 @@ def _consolidate_overlapping_problems(
 
         # Combine all details from the problems in the group
         all_categories = sorted(list(set(p["issue_category"] for p in group)))
-        all_descriptions = "; ".join(
-            f"({p['issue_category']}) {p['problem_description']}" for p in group
-        )
+        all_descriptions = "; ".join(f"({p['issue_category']}) {p['problem_description']}" for p in group)
         all_fix_foci = "; ".join(
             f"({p['issue_category']}) {p['suggested_fix_focus']}" for p in group
         )
@@ -651,7 +640,7 @@ async def _generate_patch_instructions_logic(
     async def _process_group(
         group_idx: int, group_problem: ProblemDetail, group_members: List[ProblemDetail]
     ) -> Tuple[Optional[PatchInstruction], Dict[str, int]]:
-        context_snippet = await _get_context_window_for_patch_llm(
+        context_snippet = await utils._get_context_window_for_patch_llm(
             original_text,
             group_problem,
             config.MAX_CHARS_FOR_PATCH_CONTEXT_WINDOW,

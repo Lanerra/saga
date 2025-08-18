@@ -594,13 +594,13 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
     WITH target, source, key, targetProps
     WHERE NOT key IN ['id', 'created_ts', 'updated_ts']
       AND source[key] IS NOT NULL
-    CALL {
+    CALL (target, source, key, targetProps) {
         WITH target, source, key, targetProps
         WITH target, source, key, targetProps
         WHERE targetProps[key] IS NOT NULL AND source[key] <> targetProps[key]
         SET target[key] = toString(targetProps[key]) + '; ' + toString(source[key])
     }
-    CALL {
+    CALL (target, source, key, targetProps) {
         WITH target, source, key, targetProps
         WITH target, source, key, targetProps
         WHERE targetProps[key] IS NULL
@@ -613,17 +613,16 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
     query2 = """
     MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
     MATCH (source)-[r]->(o)
-    CALL {
+    CALL (target, r, o) {
         WITH target, r, o
         WITH target, r, o, properties(r) AS props
         WHERE type(r) = 'DYNAMIC_REL'
         CREATE (target)-[newRel:DYNAMIC_REL]->(o)
         SET newRel = props
         DELETE r
-        RETURN count(*) AS movedRels
+        RETURN count(*) AS movedRelsOutgoing
     }
-    CALL {
-        WITH target, r, o
+    CALL (target, r, o) {
         WITH target, r, o, properties(r) AS props
         WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NOT NULL
         // For non-DYNAMIC_REL relationships with a type property, we keep them as DYNAMIC_REL
@@ -631,10 +630,9 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
         CREATE (target)-[newRel:DYNAMIC_REL]->(o)
         SET newRel = props
         DELETE r
-        RETURN count(*) AS movedRels
+        RETURN count(*) AS movedRelsWithType
     }
-    CALL {
-        WITH target, r, o
+    CALL (target, r, o) {
         WITH target, r, o, properties(r) AS props
         WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NULL
         // For non-DYNAMIC_REL relationships without a type property, we keep them as DYNAMIC_REL
@@ -642,7 +640,7 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
         CREATE (target)-[newRel:DYNAMIC_REL {original_type: type(r)}]->(o)
         SET newRel += props
         DELETE r
-        RETURN count(*) AS movedRels
+        RETURN count(*) AS movedRelsWithoutType
     }
     RETURN count(*) AS totalMovedOutgoing
     """
@@ -651,17 +649,16 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
     query3 = """
     MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
     MATCH (o)-[r]->(source)
-    CALL {
+    CALL (target, r, o) {
         WITH target, r, o
         WITH target, r, o, properties(r) AS props
         WHERE type(r) = 'DYNAMIC_REL'
         CREATE (o)-[newRel:DYNAMIC_REL]->(target)
         SET newRel = props
         DELETE r
-        RETURN count(*) AS movedRels
+        RETURN count(*) AS movedRelsIncoming
     }
-    CALL {
-        WITH target, r, o
+    CALL (target, r, o) {
         WITH target, r, o, properties(r) AS props
         WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NOT NULL
         // For non-DYNAMIC_REL relationships with a type property, we keep them as DYNAMIC_REL
@@ -669,10 +666,9 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
         CREATE (o)-[newRel:DYNAMIC_REL]->(target)
         SET newRel = props
         DELETE r
-        RETURN count(*) AS movedRels
+        RETURN count(*) AS movedRelsWithType
     }
-    CALL {
-        WITH target, r, o
+    CALL (target, r, o) {
         WITH target, r, o, properties(r) AS props
         WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NULL
         // For non-DYNAMIC_REL relationships without a type property, we keep them as DYNAMIC_REL
@@ -680,7 +676,7 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
         CREATE (o)-[newRel:DYNAMIC_REL {original_type: type(r)}]->(target)
         SET newRel += props
         DELETE r
-        RETURN count(*) AS movedRels
+        RETURN count(*) AS movedRelsWithoutType
     }
     RETURN count(*) AS totalMovedIncoming
     """
