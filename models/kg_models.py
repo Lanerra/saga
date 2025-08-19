@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -15,13 +15,13 @@ class CharacterProfile(BaseModel):
 
     name: str
     description: str = ""
-    traits: List[str] = Field(default_factory=list)
-    relationships: Dict[str, Any] = Field(default_factory=dict)
+    traits: list[str] = Field(default_factory=list)
+    relationships: dict[str, Any] = Field(default_factory=dict)
     status: str = "Unknown"
-    updates: Dict[str, Any] = Field(default_factory=dict)
+    updates: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, name: str, data: Dict[str, Any]) -> "CharacterProfile":
+    def from_dict(cls, name: str, data: dict[str, Any]) -> CharacterProfile:
         """Create a ``CharacterProfile`` from a raw dictionary."""
 
         known_fields = cls.model_fields.keys()
@@ -32,14 +32,13 @@ class CharacterProfile(BaseModel):
         profile_data["updates"] = updates_data
         return cls(name=name, **profile_data)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the profile to a flat dictionary."""
 
         data = self.model_dump(exclude={"name"})
         updates_data = data.pop("updates", {})
         data.update(updates_data)
         return data
-
 
 
 class WorldItem(BaseModel):
@@ -50,17 +49,19 @@ class WorldItem(BaseModel):
     name: str
     created_chapter: int = 0
     is_provisional: bool = False
-    properties: Dict[str, Any] = Field(default_factory=dict)
+    properties: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, category: str, name: str, data: Dict[str, Any]) -> "WorldItem":
+    def from_dict(cls, category: str, name: str, data: dict[str, Any]) -> WorldItem:
         """Create a ``WorldItem`` from a raw dictionary."""
 
         # Get ID from data if present, otherwise generate one
         item_id = data.get("id", "")
-        
+
         # Validate and normalize all core fields
-        category, name, item_id = utils.validate_world_item_fields(category, name, item_id)
+        category, name, item_id = utils.validate_world_item_fields(
+            category, name, item_id
+        )
 
         created_chapter = int(data.get(KG_NODE_CREATED_CHAPTER, 0))
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
@@ -87,11 +88,10 @@ class WorldItem(BaseModel):
             properties=props,
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert the item to a flat dictionary."""
 
         data = self.model_dump(exclude={"id", "category", "name"})
         properties_data = data.pop("properties", {})
         data.update(properties_data)
         return data
-

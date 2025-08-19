@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, TypedDict
+from typing import TypedDict
 
 
 class SceneDetail(TypedDict, total=False):
@@ -10,15 +10,15 @@ class SceneDetail(TypedDict, total=False):
 
     scene_number: int
     summary: str
-    characters_involved: List[str]
-    key_dialogue_points: List[str]
+    characters_involved: list[str]
+    key_dialogue_points: list[str]
     setting_details: str
-    scene_focus_elements: List[str]
+    scene_focus_elements: list[str]
     contribution: str
     scene_type: str
     pacing: str
-    character_arc_focus: Optional[str]
-    relationship_development: Optional[str]
+    character_arc_focus: str | None
+    relationship_development: str | None
 
 
 class ProblemDetail(TypedDict, total=False):
@@ -27,10 +27,10 @@ class ProblemDetail(TypedDict, total=False):
     issue_category: str
     problem_description: str
     quote_from_original_text: str
-    quote_char_start: Optional[int]
-    quote_char_end: Optional[int]
-    sentence_char_start: Optional[int]
-    sentence_char_end: Optional[int]
+    quote_char_start: int | None
+    quote_char_end: int | None
+    sentence_char_start: int | None
+    sentence_char_end: int | None
     suggested_fix_focus: str
 
 
@@ -38,15 +38,15 @@ class EvaluationResult(TypedDict, total=False):
     """Structured result from the evaluator agent."""
 
     needs_revision: bool
-    reasons: List[str]
-    problems_found: List[ProblemDetail]
+    reasons: list[str]
+    problems_found: list[ProblemDetail]
 
 
 class PatchInstruction(TypedDict, total=False):
     """Instruction for applying a single patch to chapter text."""
 
     original_problem_quote_text: str
-    target_char_start: Optional[int]
-    target_char_end: Optional[int]
+    target_char_start: int | None
+    target_char_end: int | None
     replace_with: str
     reason_for_change: str

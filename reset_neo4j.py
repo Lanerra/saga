@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List  # Added for type hints
+from typing import Any  # Added for type hints
 
 import config  # To get default URI, user, pass if not provided via args
 from core.db_manager import Neo4jManagerSingleton  # Use the singleton
@@ -114,7 +114,7 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
             database=config.NEO4J_DATABASE
         ) as session:  # type: ignore
             constraints_result = await session.run("SHOW CONSTRAINTS YIELD name")
-            constraints_to_drop: List[str] = [
+            constraints_to_drop: list[str] = [
                 record["name"]
                 for record in await constraints_result.data()
                 if record["name"]
@@ -153,7 +153,7 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
             # And also not 'RANGE' or 'POINT' unless we are sure SAGA doesn't use them (it mostly uses BTREE for properties and VECTOR).
             # A simpler approach for a full reset is to try dropping all and let `IF EXISTS` handle it.
             indexes_result = await session.run("SHOW INDEXES YIELD name, type")
-            indexes_to_drop_info: List[Dict[str, Any]] = await indexes_result.data()
+            indexes_to_drop_info: list[dict[str, Any]] = await indexes_result.data()
 
             if not indexes_to_drop_info:
                 logger.info("   No user-defined indexes found to drop.")
@@ -197,11 +197,19 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
         elapsed_time = time.time() - start_time
         # Run migration to fix any legacy WorldElements with missing core fields
         logger.info("Running migration for legacy WorldElements...")
-        migration_script = Path(__file__).parent / "initialization" / "migrate_legacy_world_elements.py"
+        migration_script = (
+            Path(__file__).parent
+            / "initialization"
+            / "migrate_legacy_world_elements.py"
+        )
         if migration_script.exists():
             try:
-                result = subprocess.run([sys.executable, str(migration_script)],
-                                      capture_output=True, text=True, check=True)
+                result = subprocess.run(
+                    [sys.executable, str(migration_script)],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
                 logger.info(f"Migration output: {result.stdout}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Migration failed: {e.stderr}")

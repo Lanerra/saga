@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import config
 from kg_constants import (
@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 def generate_world_element_node_cypher(
     item: WorldItem, chapter_number_for_delta: int = 0
-) -> List[Tuple[str, Dict[str, Any]]]:
+) -> list[tuple[str, dict[str, Any]]]:
     """Create Cypher statements for a world element update."""
 
-    statements: List[Tuple[str, Dict[str, Any]]] = []
+    statements: list[tuple[str, dict[str, Any]]] = []
 
     node_props = {
         "id": item.id,  # CRITICAL: Ensure id is always set as a property
@@ -44,7 +44,12 @@ def generate_world_element_node_cypher(
             if (
                 isinstance(value, (str, int, float, bool))
                 and key not in node_props
-                and key not in ["id", "name", "category"]  # Explicitly protect required properties
+                and key
+                not in [
+                    "id",
+                    "name",
+                    "category",
+                ]  # Explicitly protect required properties
                 and not key.startswith("elaboration_in_chapter_")
                 and not key.startswith("source_quality_chapter_")
                 and not key.startswith("added_in_chapter_")
@@ -52,7 +57,9 @@ def generate_world_element_node_cypher(
             ):
                 node_props[key] = value
             elif isinstance(value, (list, dict)) and key not in [
-                "id", "name", "category",  # Explicitly protect required properties
+                "id",
+                "name",
+                "category",  # Explicitly protect required properties
                 "goals",
                 "rules",
                 "key_elements",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,60 +13,60 @@ class NovelConceptModel(BaseModel):
     """High level concept for the novel."""
 
     title: str = Field(..., min_length=1)
-    genre: Optional[str] = None
-    setting: Optional[str] = None
-    theme: Optional[str] = None
+    genre: str | None = None
+    setting: str | None = None
+    theme: str | None = None
 
 
 class RelationshipModel(BaseModel):
     """Relationship details for a character."""
 
-    name: Optional[str] = None
-    status: Optional[str] = None
-    details: Optional[str] = None
+    name: str | None = None
+    status: str | None = None
+    details: str | None = None
 
 
 class ProtagonistModel(BaseModel):
     """Primary character information."""
 
     name: str
-    description: Optional[str] = None
-    traits: List[str] = []
-    motivation: Optional[str] = None
-    role: Optional[str] = None
-    relationships: Dict[str, RelationshipModel] = {}
+    description: str | None = None
+    traits: list[str] = []
+    motivation: str | None = None
+    role: str | None = None
+    relationships: dict[str, RelationshipModel] = {}
 
 
 class CharacterGroupModel(BaseModel):
     """Container for characters provided in the YAML."""
 
-    protagonist: Optional[ProtagonistModel] = None
-    antagonist: Optional[ProtagonistModel] = None
-    supporting_characters: List[ProtagonistModel] = []
+    protagonist: ProtagonistModel | None = None
+    antagonist: ProtagonistModel | None = None
+    supporting_characters: list[ProtagonistModel] = []
 
 
 class KeyLocationModel(BaseModel):
     """A single location within the setting."""
 
     name: str
-    description: Optional[str] = None
-    atmosphere: Optional[str] = None
+    description: str | None = None
+    atmosphere: str | None = None
 
 
 class SettingModel(BaseModel):
     """Setting information for the story world."""
 
-    primary_setting_overview: Optional[str] = None
-    key_locations: List[KeyLocationModel] = []
+    primary_setting_overview: str | None = None
+    key_locations: list[KeyLocationModel] = []
 
 
 class PlotElementsModel(BaseModel):
     """Major plot elements provided by the user."""
 
-    inciting_incident: Optional[str] = None
-    plot_points: List[str] = []
-    central_conflict: Optional[str] = None
-    stakes: Optional[str] = None
+    inciting_incident: str | None = None
+    plot_points: list[str] = []
+    central_conflict: str | None = None
+    stakes: str | None = None
 
 
 class UserStoryInputModel(BaseModel):
@@ -74,27 +74,27 @@ class UserStoryInputModel(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    novel_concept: Optional[NovelConceptModel] = None
-    protagonist: Optional[ProtagonistModel] = None
-    antagonist: Optional[ProtagonistModel] = None
-    characters: Optional[CharacterGroupModel] = None
-    plot_elements: Optional[PlotElementsModel] = None
-    setting: Optional[SettingModel] = None
-    world_details: Optional[Dict[str, Any]] = None
-    other_key_characters: Optional[Dict[str, ProtagonistModel]] = None
-    style_and_tone: Optional[Dict[str, Any]] = None
+    novel_concept: NovelConceptModel | None = None
+    protagonist: ProtagonistModel | None = None
+    antagonist: ProtagonistModel | None = None
+    characters: CharacterGroupModel | None = None
+    plot_elements: PlotElementsModel | None = None
+    setting: SettingModel | None = None
+    world_details: dict[str, Any] | None = None
+    other_key_characters: dict[str, ProtagonistModel] | None = None
+    style_and_tone: dict[str, Any] | None = None
 
 
 def user_story_to_objects(
     model: UserStoryInputModel,
-) -> Tuple[
-    Dict[str, Any], Dict[str, CharacterProfile], Dict[str, Dict[str, WorldItem]]
+) -> tuple[
+    dict[str, Any], dict[str, CharacterProfile], dict[str, dict[str, WorldItem]]
 ]:
     """Convert ``UserStoryInputModel`` to internal dataclass objects."""
 
-    plot_outline: Dict[str, Any] = {}
-    characters: Dict[str, CharacterProfile] = {}
-    world_items: Dict[str, Dict[str, WorldItem]] = {}
+    plot_outline: dict[str, Any] = {}
+    characters: dict[str, CharacterProfile] = {}
+    world_items: dict[str, dict[str, WorldItem]] = {}
 
     if model.novel_concept:
         plot_outline.update(model.novel_concept.model_dump(exclude_none=True))

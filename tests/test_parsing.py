@@ -1,11 +1,12 @@
-from models import (
-    CharacterProfile,
-    WorldItem,
-)  # Added WorldItem import
 from kg_maintainer.parsing import (  # Assuming parsing is now a module inside kg_maintainer
     parse_unified_character_updates,
     parse_unified_world_updates,
 )
+
+from models import (
+    CharacterProfile,
+    WorldItem,
+)  # Added WorldItem import
 
 # Example of a helper to create JSON strings for tests if they get complex
 # def make_json_string(data_dict):

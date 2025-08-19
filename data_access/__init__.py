@@ -28,11 +28,11 @@ from .kg_queries import (
     query_kg_from_db,
 )
 from .plot_queries import (
-    get_plot_outline_from_db,
-    save_plot_outline_to_db,
     append_plot_point,
-    plot_point_exists,
     get_last_plot_point_id,
+    get_plot_outline_from_db,
+    plot_point_exists,
+    save_plot_outline_to_db,
 )
 from .world_queries import (
     get_world_building_from_db,

@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, Coroutine, Dict, List, Optional, Tuple
+from collections.abc import Coroutine
+from typing import Any
 
 import structlog
 
@@ -11,7 +12,7 @@ from .common import bootstrap_field
 
 logger = structlog.get_logger(__name__)
 
-WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: Dict[str, str] = {
+WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: dict[str, str] = {
     "overview": "_overview_",
     "locations": "locations",
     "society": "society",
@@ -21,12 +22,12 @@ WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: Dict[str, str] = {
     "factions": "factions",
 }
 
-WORLD_DETAIL_LIST_INTERNAL_KEYS: List[str] = []
+WORLD_DETAIL_LIST_INTERNAL_KEYS: list[str] = []
 
 
 async def generate_world_building_logic(
-    world_building: Dict[str, Any], plot_outline: Dict[str, Any]
-) -> Tuple[Dict[str, Any], Optional[Dict[str, int]]]:
+    world_building: dict[str, Any], plot_outline: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, int] | None]:
     """Stub world-building generation function."""
     logger.warning("generate_world_building_logic stub called")
     if not world_building:
@@ -34,9 +35,9 @@ async def generate_world_building_logic(
     return world_building, None
 
 
-def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
+def create_default_world() -> dict[str, dict[str, WorldItem]]:
     """Create a default world-building structure."""
-    world_data: Dict[str, Dict[str, WorldItem]] = {
+    world_data: dict[str, dict[str, WorldItem]] = {
         "_overview_": {
             "_overview_": WorldItem.from_dict(
                 "_overview_",
@@ -68,7 +69,11 @@ def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
             "": WorldItem.from_dict(
                 cat_key,
                 "",  # Empty name instead of placeholder
-                {"description": "", "source": "default_placeholder", "id": f"{utils._normalize_for_id(cat_key)}_"},  # Empty description instead of placeholder
+                {
+                    "description": "",
+                    "source": "default_placeholder",
+                    "id": f"{utils._normalize_for_id(cat_key)}_",
+                },  # Empty description instead of placeholder
             )
         }
 
@@ -76,17 +81,17 @@ def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
 
 
 async def bootstrap_world(
-    world_building: Dict[str, Any],
-    plot_outline: Dict[str, Any],
-) -> Tuple[Dict[str, Any], Optional[Dict[str, int]]]:
+    world_building: dict[str, Any],
+    plot_outline: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, int] | None]:
     """Fill missing world-building information via LLM."""
-    overall_usage_data: Dict[str, int] = {
+    overall_usage_data: dict[str, int] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
     }
 
-    def _accumulate_usage(item_usage: Optional[Dict[str, int]]) -> None:
+    def _accumulate_usage(item_usage: dict[str, int] | None) -> None:
         if item_usage:
             for key, val in item_usage.items():
                 overall_usage_data[key] = overall_usage_data.get(key, 0) + val
@@ -125,13 +130,15 @@ async def bootstrap_world(
                     overview_item_obj.properties["source"] = "descr_bootstrapped"
 
     # Stage 1: Bootstrap names for items with missing/empty names
-    name_bootstrap_tasks: Dict[Tuple[str, str], Coroutine] = {}
+    name_bootstrap_tasks: dict[tuple[str, str], Coroutine] = {}
     for category, items_dict in world_building.items():
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
         for item_name, item_obj in items_dict.items():
             # Check if the item name is missing or empty (instead of just checking for placeholder)
-            if isinstance(item_obj, WorldItem) and (not item_obj.name or not item_obj.name.strip()):
+            if isinstance(item_obj, WorldItem) and (
+                not item_obj.name or not item_obj.name.strip()
+            ):
                 logger.info(
                     "Identified item for name bootstrapping in category '%s': Current name '%s'",
                     category,
@@ -154,8 +161,8 @@ async def bootstrap_world(
         name_results_list = await asyncio.gather(*name_bootstrap_tasks.values())
         name_task_keys = list(name_bootstrap_tasks.keys())
 
-        new_items_to_add_stage1: Dict[str, Dict[str, WorldItem]] = {}
-        items_to_remove_stage1: Dict[str, List[str]] = {}
+        new_items_to_add_stage1: dict[str, dict[str, WorldItem]] = {}
+        items_to_remove_stage1: dict[str, list[str]] = {}
 
         for i, (new_name_value, name_usage) in enumerate(name_results_list):
             _accumulate_usage(name_usage)
@@ -193,11 +200,13 @@ async def bootstrap_world(
                 )
                 properties_with_id = {
                     **original_item_obj.properties,
-                    "id": f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}"
+                    "id": f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}",
                 }
                 # Ensure we have a valid ID
                 if not properties_with_id["id"] or properties_with_id["id"] == "_":
-                    properties_with_id["id"] = f"element_{hash(original_category + new_name_value)}"
+                    properties_with_id["id"] = (
+                        f"element_{hash(original_category + new_name_value)}"
+                    )
                 new_item_renamed = WorldItem.from_dict(
                     original_category, new_name_value, properties_with_id
                 )
@@ -230,16 +239,20 @@ async def bootstrap_world(
         )
 
     # Stage 2: Bootstrap properties for all items (excluding _overview_ top-level)
-    property_bootstrap_tasks: Dict[Tuple[str, str, str], Coroutine] = {}
+    property_bootstrap_tasks: dict[tuple[str, str, str], Coroutine] = {}
     for category, items_dict in world_building.items():
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
         for item_name, item_obj in items_dict.items():
-            if not isinstance(item_obj, WorldItem) or (not item_name or not item_name.strip()):
+            if not isinstance(item_obj, WorldItem) or (
+                not item_name or not item_name.strip()
+            ):
                 continue
             for prop_name, prop_value in item_obj.properties.items():
                 # Check if the property value is missing or empty (instead of just checking for placeholder)
-                if not prop_value or (isinstance(prop_value, str) and not prop_value.strip()):
+                if not prop_value or (
+                    isinstance(prop_value, str) and not prop_value.strip()
+                ):
                     logger.info(
                         "Identified property '%s' for bootstrapping in item '%s/%s'.",
                         prop_name,
@@ -279,8 +292,12 @@ async def bootstrap_world(
                 continue
 
             if prop_fill_value is not None and (
-                not isinstance(prop_fill_value, str) or
-                (isinstance(prop_fill_value, str) and prop_fill_value.strip() and not utils._is_fill_in(prop_fill_value))
+                not isinstance(prop_fill_value, str)
+                or (
+                    isinstance(prop_fill_value, str)
+                    and prop_fill_value.strip()
+                    and not utils._is_fill_in(prop_fill_value)
+                )
             ):
                 logger.info(
                     "Successfully bootstrapped property '%s' for item '%s/%s'.",

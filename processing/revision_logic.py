@@ -8,7 +8,7 @@ Context data for prompts is now formatted as plain text.
 import asyncio
 import hashlib
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import config
 import utils  # For numpy_cosine_similarity, find_semantically_closest_segment, AND find_quote_and_sentence_offsets_with_spacy, format_scene_plan_for_prompt
@@ -28,7 +28,7 @@ utils.load_spacy_model_if_needed()  # Ensure spaCy model is loaded when this mod
 
 
 def _get_formatted_scene_plan_from_agent_or_fallback(
-    chapter_plan: List[SceneDetail],
+    chapter_plan: list[SceneDetail],
     model_name_for_tokens: str,
     max_tokens_budget: int,
 ) -> str:
@@ -39,8 +39,8 @@ def _get_formatted_scene_plan_from_agent_or_fallback(
 
 
 def _get_plot_point_info(
-    plot_outline: Dict[str, Any], chapter_number: int
-) -> Tuple[Optional[str], int]:
+    plot_outline: dict[str, Any], chapter_number: int
+) -> tuple[str | None, int]:
     plot_points = plot_outline.get("plot_points", [])
     if not isinstance(plot_points, list) or not plot_points or chapter_number <= 0:
         return None, -1
@@ -49,8 +49,6 @@ def _get_plot_point_info(
         plot_point = plot_points[plot_point_index]
         return str(plot_point) if plot_point is not None else None, plot_point_index
     return None, -1
-
-
 
     quote_text_from_llm = problem["quote_from_original_text"]
     focus_start = problem.get("sentence_char_start")
@@ -118,12 +116,12 @@ def _get_plot_point_info(
     return f"{prefix}{snippet}{suffix}"
 
 
-_sentence_embedding_cache: Dict[str, List[Tuple[int, int, Any]]] = {}
+_sentence_embedding_cache: dict[str, list[tuple[int, int, Any]]] = {}
 
 
 async def _get_sentence_embeddings(
-    text: str, cache: Optional[Dict[str, List[Tuple[int, int, Any]]]] | None = None
-) -> List[Tuple[int, int, Any]]:
+    text: str, cache: dict[str, list[tuple[int, int, Any]]] | None | None = None
+) -> list[tuple[int, int, Any]]:
     """Return a list of (start, end, embedding) for each sentence."""
     if cache is None:
         cache = _sentence_embedding_cache
@@ -136,8 +134,8 @@ async def _get_sentence_embeddings(
         return []
     tasks = [llm_service.async_get_embedding(seg[0]) for seg in segments]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    embeddings: List[Tuple[int, int, Any]] = []
-    for (seg_text, start, end), res in zip(segments, results):
+    embeddings: list[tuple[int, int, Any]] = []
+    for (seg_text, start, end), res in zip(segments, results, strict=False):
         if isinstance(res, Exception) or res is None:
             continue
         embeddings.append((start, end, res))
@@ -146,15 +144,15 @@ async def _get_sentence_embeddings(
 
 
 async def _find_sentence_via_embeddings(
-    quote_text: str, embeddings: List[Tuple[int, int, Any]]
-) -> Optional[Tuple[int, int]]:
+    quote_text: str, embeddings: list[tuple[int, int, Any]]
+) -> tuple[int, int] | None:
     if not embeddings or not quote_text.strip():
         return None
     q_emb = await llm_service.async_get_embedding(quote_text)
     if q_emb is None:
         return None
     best_sim = -1.0
-    best_span: Optional[Tuple[int, int]] = None
+    best_span: tuple[int, int] | None = None
     for start, end, emb in embeddings:
         sim = utils.numpy_cosine_similarity(q_emb, emb)
         if sim > best_sim:
@@ -164,18 +162,18 @@ async def _find_sentence_via_embeddings(
 
 
 async def _generate_single_patch_instruction_llm(
-    plot_outline: Dict[str, Any],
+    plot_outline: dict[str, Any],
     original_chapter_text_snippet_for_llm: str,
     problem: ProblemDetail,
     chapter_number: int,
     hybrid_context_for_revision: str,
-    chapter_plan: Optional[List[SceneDetail]],
-) -> Tuple[Optional[PatchInstruction], Optional[Dict[str, int]]]:
+    chapter_plan: list[SceneDetail] | None,
+) -> tuple[PatchInstruction | None, dict[str, int] | None]:
     """
     Generates a single patch instruction. The PatchInstruction will store target_char_start/end
     referring to the SENTENCE containing the problem quote if available.
     """
-    plan_focus_section_parts: List[str] = []
+    plan_focus_section_parts: list[str] = []
     plot_point_focus, _ = _get_plot_point_info(plot_outline, chapter_number)
     max_plan_tokens_for_patch_prompt = config.MAX_CONTEXT_TOKENS // 2
 
@@ -197,7 +195,7 @@ async def _generate_single_patch_instruction_llm(
     plan_focus_section_str = "".join(plan_focus_section_parts)
 
     is_general_expansion_task = False
-    length_expansion_instruction_header_parts: List[str] = []
+    length_expansion_instruction_header_parts: list[str] = []
     original_quote_text_from_problem = problem["quote_from_original_text"]
 
     if problem["issue_category"] == "narrative_depth_and_length" and (
@@ -231,7 +229,7 @@ async def _generate_single_patch_instruction_llm(
         length_expansion_instruction_header_parts
     )
 
-    prompt_instruction_for_replacement_scope_parts: List[str] = []
+    prompt_instruction_for_replacement_scope_parts: list[str] = []
     max_patch_output_tokens = 0
 
     if is_general_expansion_task:
@@ -394,8 +392,8 @@ A chill traced Elara's spine, not from the crypt's cold, but from the translucen
                 f"Problem: {problem['problem_description'][:60]}"
             )
 
-    target_start_for_patch: Optional[int] = problem.get("sentence_char_start")
-    target_end_for_patch: Optional[int] = problem.get("sentence_char_end")
+    target_start_for_patch: int | None = problem.get("sentence_char_start")
+    target_end_for_patch: int | None = problem.get("sentence_char_end")
 
     if (
         original_quote_text_from_problem != "N/A - General Issue"
@@ -429,8 +427,8 @@ A chill traced Elara's spine, not from the crypt's cold, but from the translucen
 
 
 def _consolidate_overlapping_problems(
-    problems: List[ProblemDetail],
-) -> List[ProblemDetail]:
+    problems: list[ProblemDetail],
+) -> list[ProblemDetail]:
     """
     Groups problems by their overlapping text spans and consolidates them.
     This prevents generating multiple patches for the same or overlapping sentences.
@@ -457,7 +455,7 @@ def _consolidate_overlapping_problems(
     # Sort problems by their start offset to enable linear merging
     span_problems.sort(key=lambda p: p["sentence_char_start"])  # type: ignore
 
-    merged_groups: List[List[ProblemDetail]] = []
+    merged_groups: list[list[ProblemDetail]] = []
     if span_problems:
         current_group = [span_problems[0]]
         current_group_end = span_problems[0]["sentence_char_end"]
@@ -479,7 +477,7 @@ def _consolidate_overlapping_problems(
 
         merged_groups.append(current_group)  # Add the last group
 
-    consolidated_problems: List[ProblemDetail] = []
+    consolidated_problems: list[ProblemDetail] = []
     for group in merged_groups:
         if len(group) == 1:
             consolidated_problems.append(group[0])
@@ -493,7 +491,9 @@ def _consolidate_overlapping_problems(
 
         # Combine all details from the problems in the group
         all_categories = sorted(list(set(p["issue_category"] for p in group)))
-        all_descriptions = "; ".join(f"({p['issue_category']}) {p['problem_description']}" for p in group)
+        all_descriptions = "; ".join(
+            f"({p['issue_category']}) {p['problem_description']}" for p in group
+        )
         all_fix_foci = "; ".join(
             f"({p['issue_category']}) {p['suggested_fix_focus']}" for p in group
         )
@@ -519,10 +519,10 @@ def _consolidate_overlapping_problems(
     return consolidated_problems
 
 
-def _deduplicate_problems(problems: List[ProblemDetail]) -> List[ProblemDetail]:
+def _deduplicate_problems(problems: list[ProblemDetail]) -> list[ProblemDetail]:
     """Remove exact duplicates based on span and quote text."""
-    unique: List[ProblemDetail] = []
-    seen: set[tuple[Optional[int], Optional[int], str]] = set()
+    unique: list[ProblemDetail] = []
+    seen: set[tuple[int | None, int | None, str]] = set()
     for prob in problems:
         key = (
             prob.get("sentence_char_start"),
@@ -543,8 +543,8 @@ def _deduplicate_problems(problems: List[ProblemDetail]) -> List[ProblemDetail]:
 
 
 def _group_problems_for_patch_generation(
-    problems: List[ProblemDetail],
-) -> List[Tuple[ProblemDetail, List[ProblemDetail]]]:
+    problems: list[ProblemDetail],
+) -> list[tuple[ProblemDetail, list[ProblemDetail]]]:
     """Return consolidated problem with list of original problems."""
     if not problems:
         return []
@@ -562,7 +562,7 @@ def _group_problems_for_patch_generation(
     ]
 
     span_problems.sort(key=lambda p: p["sentence_char_start"])
-    merged_groups: List[List[ProblemDetail]] = []
+    merged_groups: list[list[ProblemDetail]] = []
     if span_problems:
         current_group = [span_problems[0]]
         current_end = span_problems[0]["sentence_char_end"]
@@ -578,7 +578,7 @@ def _group_problems_for_patch_generation(
                 current_end = end
         merged_groups.append(current_group)
 
-    result: List[Tuple[ProblemDetail, List[ProblemDetail]]] = []
+    result: list[tuple[ProblemDetail, list[ProblemDetail]]] = []
 
     for group in merged_groups:
         first = group[0]
@@ -611,16 +611,16 @@ def _group_problems_for_patch_generation(
 
 
 async def _generate_patch_instructions_logic(
-    plot_outline: Dict[str, Any],
+    plot_outline: dict[str, Any],
     original_text: str,
-    problems_to_fix: List[ProblemDetail],
+    problems_to_fix: list[ProblemDetail],
     chapter_number: int,
     hybrid_context_for_revision: str,
-    chapter_plan: Optional[List[SceneDetail]],
+    chapter_plan: list[SceneDetail] | None,
     validator: RevisionAgent,
-) -> Tuple[List[PatchInstruction], Optional[Dict[str, int]]]:
-    patch_instructions: List[PatchInstruction] = []
-    total_usage: Dict[str, int] = {
+) -> tuple[list[PatchInstruction], dict[str, int] | None]:
+    patch_instructions: list[PatchInstruction] = []
+    total_usage: dict[str, int] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
@@ -638,16 +638,16 @@ async def _generate_patch_instructions_logic(
         return [], None
 
     async def _process_group(
-        group_idx: int, group_problem: ProblemDetail, group_members: List[ProblemDetail]
-    ) -> Tuple[Optional[PatchInstruction], Dict[str, int]]:
+        group_idx: int, group_problem: ProblemDetail, group_members: list[ProblemDetail]
+    ) -> tuple[PatchInstruction | None, dict[str, int]]:
         context_snippet = await utils._get_context_window_for_patch_llm(
             original_text,
             group_problem,
             config.MAX_CHARS_FOR_PATCH_CONTEXT_WINDOW,
         )
 
-        patch_instr: Optional[PatchInstruction] = None
-        usage_acc: Dict[str, int] = {
+        patch_instr: PatchInstruction | None = None
+        usage_acc: dict[str, int] = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
@@ -706,10 +706,10 @@ async def _generate_patch_instructions_logic(
 
 async def _apply_patches_to_text(
     original_text: str,
-    patch_instructions: List[PatchInstruction],
-    already_patched_spans: Optional[List[Tuple[int, int]]] | None = None,
-    sentence_embeddings: Optional[List[Tuple[int, int, Any]]] | None = None,
-) -> Tuple[str, List[Tuple[int, int]]]:
+    patch_instructions: list[PatchInstruction],
+    already_patched_spans: list[tuple[int, int]] | None | None = None,
+    sentence_embeddings: list[tuple[int, int, Any]] | None | None = None,
+) -> tuple[str, list[tuple[int, int]]]:
     """
     Applies patch instructions to the original text and returns the new text and a
     comprehensive, re-mapped list of all patched spans (old and new).
@@ -721,7 +721,7 @@ async def _apply_patches_to_text(
         return original_text, already_patched_spans
 
     # 1. Prepare new replacements, filtering out overlaps with existing patched spans.
-    replacements: List[Tuple[int, int, str]] = []
+    replacements: list[tuple[int, int, str]] = []
     for patch_idx, patch in enumerate(patch_instructions):
         # MODIFICATION START: Handle empty replace_with as a valid deletion instruction.
         # An empty or whitespace-only replace_with string is now a valid patch.
@@ -730,8 +730,8 @@ async def _apply_patches_to_text(
             replacement_text = ""
         # MODIFICATION END
 
-        segment_start: Optional[int] = patch.get("target_char_start")
-        segment_end: Optional[int] = patch.get("target_char_end")
+        segment_start: int | None = patch.get("target_char_start")
+        segment_end: int | None = patch.get("target_char_end")
         method_used = "direct offsets"
 
         if segment_start is None or segment_end is None:
@@ -814,7 +814,7 @@ async def _apply_patches_to_text(
 
     # 2. Build the new text and remap all spans in a single pass.
     # Create a unified list of all operations (old spans to copy, new spans to insert).
-    all_ops: List[Dict[str, Any]] = []
+    all_ops: list[dict[str, Any]] = []
     for start, end in already_patched_spans:
         all_ops.append(
             {
@@ -870,27 +870,27 @@ async def _apply_patches_to_text(
 
 
 async def revise_chapter_draft_logic(
-    plot_outline: Dict[str, Any],
-    character_profiles: Dict[str, CharacterProfile],
-    world_building: Dict[str, Dict[str, WorldItem]],
+    plot_outline: dict[str, Any],
+    character_profiles: dict[str, CharacterProfile],
+    world_building: dict[str, dict[str, WorldItem]],
     original_text: str,
     chapter_number: int,
     evaluation_result: EvaluationResult,
     hybrid_context_for_revision: str,
-    chapter_plan: Optional[List[SceneDetail]],
+    chapter_plan: list[SceneDetail] | None,
     is_from_flawed_source: bool = False,
-    already_patched_spans: Optional[List[Tuple[int, int]]] | None = None,
-) -> Tuple[Optional[Tuple[str, str, List[Tuple[int, int]]]], Optional[Dict[str, int]]]:
+    already_patched_spans: list[tuple[int, int]] | None | None = None,
+) -> tuple[tuple[str, str, list[tuple[int, int]]] | None, dict[str, int] | None]:
     if already_patched_spans is None:
         already_patched_spans = []
 
-    cumulative_usage_data: Dict[str, int] = {
+    cumulative_usage_data: dict[str, int] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
     }
 
-    def _add_usage(usage: Optional[Dict[str, int]]):
+    def _add_usage(usage: dict[str, int] | None):
         if usage:
             cumulative_usage_data["prompt_tokens"] += usage.get("prompt_tokens", 0)
             cumulative_usage_data["completion_tokens"] += usage.get(
@@ -904,7 +904,7 @@ async def revise_chapter_draft_logic(
         )
         return None, None
 
-    problems_to_fix: List[ProblemDetail] = evaluation_result.get("problems_found", [])
+    problems_to_fix: list[ProblemDetail] = evaluation_result.get("problems_found", [])
     problems_to_fix = _deduplicate_problems(
         _consolidate_overlapping_problems(problems_to_fix)
     )
@@ -931,8 +931,8 @@ async def revise_chapter_draft_logic(
         f"Attempting revision for chapter {chapter_number}. Reason(s):\n- {revision_reason_str}"
     )
 
-    patched_text: Optional[str] = None
-    all_spans_in_patched_text: List[Tuple[int, int]] = already_patched_spans
+    patched_text: str | None = None
+    all_spans_in_patched_text: list[tuple[int, int]] = already_patched_spans
 
     if config.ENABLE_PATCH_BASED_REVISION:
         logger.info(
@@ -982,8 +982,8 @@ async def revise_chapter_draft_logic(
                 f"Patch-based revision for Ch {chapter_number}: No valid patch instructions were generated. Will consider full rewrite if needed."
             )
 
-    final_revised_text: Optional[str] = None
-    final_raw_llm_output: Optional[str] = (
+    final_revised_text: str | None = None
+    final_raw_llm_output: str | None = (
         f"Chapter revised using {len(all_spans_in_patched_text) - len(already_patched_spans)} new patches."
     )
     final_spans_for_next_cycle = all_spans_in_patched_text
@@ -1028,7 +1028,7 @@ async def revise_chapter_draft_logic(
             max_original_snippet_tokens,
             truncation_marker="\n... (original draft snippet truncated for brevity in rewrite prompt)",
         )
-        plan_focus_section_full_rewrite_parts: List[str] = []
+        plan_focus_section_full_rewrite_parts: list[str] = []
         plot_point_focus_full_rewrite, _ = _get_plot_point_info(
             plot_outline, chapter_number
         )
@@ -1052,7 +1052,7 @@ async def revise_chapter_draft_logic(
             plan_focus_section_full_rewrite_parts
         )
 
-        length_issue_explicit_instruction_full_rewrite_parts: List[str] = []
+        length_issue_explicit_instruction_full_rewrite_parts: list[str] = []
         needs_expansion_from_problems = any(
             (
                 p["issue_category"] == "narrative_depth_and_length"
@@ -1081,7 +1081,7 @@ async def revise_chapter_draft_logic(
             "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
         )
 
-        all_problem_descriptions_parts: List[str] = []
+        all_problem_descriptions_parts: list[str] = []
         if problems_to_fix:
             all_problem_descriptions_parts.append(
                 "**Detailed Issues to Address (from evaluation):**\n"

@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import logging
 import re
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -34,7 +33,7 @@ class TextDeduplicator:
 
     async def deduplicate(
         self, original_text: str, segment_level: str = "paragraph"
-    ) -> Tuple[str, int]:
+    ) -> tuple[str, int]:
         if not original_text.strip():
             return original_text, 0
 
@@ -42,11 +41,11 @@ class TextDeduplicator:
         if not segments:
             return original_text, 0
 
-        normalized_cache: List[str] = [
+        normalized_cache: list[str] = [
             utils._normalize_text_for_matching(seg[0]) for seg in segments
         ]
         indices_to_remove: set[int] = set()
-        fingerprint_map: Dict[str, int] = {}
+        fingerprint_map: dict[str, int] = {}
         iteration_range = (
             range(len(segments) - 1, -1, -1)
             if self.prefer_newer
@@ -70,18 +69,18 @@ class TextDeduplicator:
                 continue
             fingerprint_map[fingerprint] = idx
 
-        embeddings: List[Optional[np.ndarray]] = [None] * len(segments)
+        embeddings: list[np.ndarray | None] = [None] * len(segments)
         if self.use_semantic_comparison:
             unique_indices = [i for i in iteration_range if i not in indices_to_remove]
             tasks = [
                 llm_service.async_get_embedding(segments[i][0]) for i in unique_indices
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            for idx, result in zip(unique_indices, results):
+            for idx, result in zip(unique_indices, results, strict=False):
                 if not isinstance(result, Exception):
                     embeddings[idx] = result
 
-            keepers: List[int] = []
+            keepers: list[int] = []
             for idx in iteration_range:
                 if idx in indices_to_remove:
                     continue
@@ -110,7 +109,7 @@ class TextDeduplicator:
 
         spans_to_remove = [segments[i][1:] for i in sorted(indices_to_remove)]
         spans_to_remove.sort(key=lambda x: x[0])
-        new_parts: List[str] = []
+        new_parts: list[str] = []
         last_pos = 0
         for start, end in spans_to_remove:
             if start > last_pos:

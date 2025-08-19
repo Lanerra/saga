@@ -6,7 +6,7 @@ Now includes a hybrid approach combining semantic context and Knowledge Graph fa
 
 import asyncio
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 import config
 from core.llm_interface import (
@@ -111,7 +111,7 @@ async def _generate_semantic_chapter_context_logic(
         logger.warning(
             "Failed to generate embedding for semantic context query. Falling back to sequential previous chapter summaries/text."
         )
-        context_parts_list: List[str] = []
+        context_parts_list: list[str] = []
         total_tokens_accumulated = 0
         fallback_chapter_limit = config.CONTEXT_CHAPTER_COUNT
         for i in range(
@@ -220,7 +220,7 @@ async def _generate_semantic_chapter_context_logic(
         reverse=True,
     )
 
-    context_parts_list: List[str] = []
+    context_parts_list: list[str] = []
     total_tokens_accumulated = 0
 
     for chap_data in sorted_chapters_for_context:
@@ -289,7 +289,7 @@ async def _generate_semantic_chapter_context_logic(
 async def generate_hybrid_chapter_context_logic(
     agent_or_props: Any,
     current_chapter_number: int,
-    chapter_plan: Optional[List[SceneDetail]],
+    chapter_plan: list[SceneDetail] | None,
 ) -> str:
     """
     Constructs HYBRID context for the current chapter.
@@ -319,7 +319,7 @@ async def generate_hybrid_chapter_context_logic(
     semantic_context_str, kg_facts_str = await asyncio.gather(
         semantic_context_task, kg_facts_task
     )
-    hybrid_context_parts: List[str] = []
+    hybrid_context_parts: list[str] = []
     if semantic_context_str and semantic_context_str.strip():
         hybrid_context_parts.append(
             "--- SEMANTIC CONTEXT FROM PAST CHAPTERS (FOR NARRATIVE FLOW & TONE) ---"

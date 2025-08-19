@@ -1,6 +1,6 @@
 # utils/parsing_utils.py
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # from rdflib import Graph, URIRef, Literal, BNode # No longer needed for triples
 # from rdflib.namespace import RDF, RDFS # No longer needed for triples
@@ -15,7 +15,8 @@ class ParseError(Exception):
 # --- New RDF Triple Parsing using rdflib ---
 # Modified to be a custom plain-text triple parser
 
-def _get_entity_type_and_name_from_text(entity_text: str) -> Dict[str, Optional[str]]:
+
+def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | None]:
     """
     Parses 'EntityType:EntityName' or just 'EntityName' string.
     If EntityType is missing, it's set to None.
@@ -47,14 +48,14 @@ def _get_entity_type_and_name_from_text(entity_text: str) -> Dict[str, Optional[
 def parse_rdf_triples_with_rdflib(
     text_block: str,
     rdf_format: str = "turtle",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Custom parser for LLM-generated plain text triples.
     Expected format: 'SubjectEntityType:SubjectName | Predicate | ObjectEntityType:ObjectName'
                  OR 'SubjectEntityType:SubjectName | Predicate | LiteralValue'
     """
     logger_func = logging.getLogger(__name__)
-    triples_list: List[Dict[str, Any]] = []
+    triples_list: list[dict[str, Any]] = []
     if not text_block or not text_block.strip():
         return triples_list
 
@@ -97,8 +98,8 @@ def parse_rdf_triples_with_rdflib(
         # Determine if object is an entity or a literal
         # If object_text contains 'EntityType:', assume it's an entity.
         # Otherwise, treat as a literal value.
-        object_entity_payload: Optional[Dict[str, Optional[str]]] = None
-        object_literal_payload: Optional[str] = None
+        object_entity_payload: dict[str, str | None] | None = None
+        object_literal_payload: str | None = None
         is_literal_object = True  # Default to literal
 
         if ":" in object_text:

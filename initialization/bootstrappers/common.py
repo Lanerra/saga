@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import structlog
 
@@ -12,11 +12,11 @@ logger = structlog.get_logger(__name__)
 
 async def bootstrap_field(
     field_name: str,
-    context_data: Dict[str, Any],
+    context_data: dict[str, Any],
     prompt_template_path: str,
     is_list: bool = False,
     list_count: int = 1,
-) -> Tuple[Any, Optional[Dict[str, int]]]:
+) -> tuple[Any, dict[str, int] | None]:
     """Call LLM to fill a single field or list of fields."""
     logger.info("Bootstrapping field: '%s'...", field_name)
     prompt = render_prompt(

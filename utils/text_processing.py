@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import spacy
 from rapidfuzz.fuzz import partial_ratio_alignment
@@ -29,16 +29,18 @@ def _normalize_for_id(text: str) -> str:
     return text
 
 
-def validate_world_item_fields(category: str, name: str, item_id: str) -> tuple[str, str, str]:
+def validate_world_item_fields(
+    category: str, name: str, item_id: str
+) -> tuple[str, str, str]:
     """Validate and normalize WorldItem core fields, providing defaults for missing values."""
     # Validate category
     if not category or not isinstance(category, str) or not category.strip():
         category = "other"
-    
+
     # Validate name
     if not name or not isinstance(name, str) or not name.strip():
         name = "unnamed_element"
-    
+
     # Validate ID
     if not item_id or not isinstance(item_id, str) or not item_id.strip():
         norm_cat = _normalize_for_id(category)
@@ -48,8 +50,12 @@ def validate_world_item_fields(category: str, name: str, item_id: str) -> tuple[
             norm_cat = "other"
         if not norm_name:
             norm_name = "unnamed"
-        item_id = f"{norm_cat}_{norm_name}" if norm_cat and norm_name else f"element_{hash(category + name)}"
-    
+        item_id = (
+            f"{norm_cat}_{norm_name}"
+            if norm_cat and norm_name
+            else f"element_{hash(category + name)}"
+        )
+
     return category, name, item_id
 
 
@@ -66,10 +72,10 @@ class SpaCyModelManager:
     """Lazily loads and stores the spaCy model used across the project."""
 
     def __init__(self) -> None:
-        self._nlp: Optional[spacy.language.Language] = None
+        self._nlp: spacy.language.Language | None = None
 
     @property
-    def nlp(self) -> Optional[spacy.language.Language]:
+    def nlp(self) -> spacy.language.Language | None:
         return self._nlp
 
     def load(self) -> None:
@@ -131,7 +137,7 @@ def _token_similarity(a: str, b: str) -> float:
 
 async def find_quote_and_sentence_offsets_with_spacy(
     doc_text: str, quote_text_from_llm: str
-) -> Optional[Tuple[int, int, int, int]]:
+) -> tuple[int, int, int, int] | None:
     """Locate quote and sentence offsets within ``doc_text``."""
     load_spacy_model_if_needed()
     if (
@@ -279,16 +285,16 @@ async def find_quote_and_sentence_offsets_with_spacy(
 
 def get_text_segments(
     text: str, segment_level: str = "paragraph"
-) -> List[Tuple[str, int, int]]:
+) -> list[tuple[str, int, int]]:
     """Segment text into paragraphs or sentences with offsets."""
     load_spacy_model_if_needed()
-    segments: List[Tuple[str, int, int]] = []
+    segments: list[tuple[str, int, int]] = []
 
     if not text.strip():
         return segments
 
     if segment_level == "paragraph":
-        current_paragraph_lines: List[str] = []
+        current_paragraph_lines: list[str] = []
         current_paragraph_start_char = -1
 
         for line_match in re.finditer(r"([^\r\n]*(?:\r\n|\r|\n)?)", text):

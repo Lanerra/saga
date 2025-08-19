@@ -491,9 +491,9 @@ async def test_generate_world_building_mixed_llm_output_format(agent_instance):
     lore_category_data = agent_instance.world_building["lore"]
 
     # --- Default Item Asserts (named 'lore') ---
-    assert "lore" in lore_category_data, (
-        "Default item named after category 'lore' should exist."
-    )
+    assert (
+        "lore" in lore_category_data
+    ), "Default item named after category 'lore' should exist."
     default_item = lore_category_data["lore"]
 
     # 'Overall Vibe' is not in WORLD_DETAIL_LIST_INTERNAL_KEYS, so its string value should be wrapped.

@@ -30,7 +30,7 @@ import re
 import tempfile
 
 # Type hints
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import httpx
 
@@ -54,11 +54,11 @@ def _completion_token_param(api_base: str) -> str:
 
 
 # --- Tokenizer Cache and Utility Functions (Module Level) ---
-_tokenizer_cache: Dict[str, tiktoken.Encoding] = {}
+_tokenizer_cache: dict[str, tiktoken.Encoding] = {}
 
 
 @functools.lru_cache(maxsize=config.TOKENIZER_CACHE_SIZE)
-def _get_tokenizer(model_name: str) -> Optional[tiktoken.Encoding]:
+def _get_tokenizer(model_name: str) -> tiktoken.Encoding | None:
     """
     Gets a tiktoken encoder for the given model name, with caching.
     Tries model-specific encoding, then a default, then returns None.
@@ -212,10 +212,10 @@ class LLMService:
 
     def _validate_embedding(
         self,
-        embedding_list: List[Union[float, int]],
+        embedding_list: list[float | int],
         expected_dim: int,
         dtype: np.dtype,
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         """Helper to validate and convert a list to a 1D numpy embedding."""
         try:
             embedding = np.array(embedding_list).astype(dtype)
@@ -237,7 +237,7 @@ class LLMService:
         return None
 
     @alru_cache(maxsize=config.EMBEDDING_CACHE_SIZE)
-    async def async_get_embedding(self, text: str) -> Optional[np.ndarray]:
+    async def async_get_embedding(self, text: str) -> np.ndarray | None:
         """
         Asynchronously retrieves an embedding for the given text from Ollama with retry logic.
         """
@@ -253,9 +253,9 @@ class LLMService:
                 f"Async Embedding req to Ollama for model '{config.EMBEDDING_MODEL}': '{text[:80].replace(chr(10), ' ')}...'"
             )
 
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
             for attempt in range(config.LLM_RETRY_ATTEMPTS):
-                api_response: Optional[httpx.Response] = None
+                api_response: httpx.Response | None = None
                 try:
                     self.request_count += 1
                     api_response = await self._client.post(
@@ -359,7 +359,7 @@ class LLMService:
     def _log_llm_usage(
         self,
         model_name: str,
-        usage_data: Optional[Dict[str, int]],
+        usage_data: dict[str, int] | None,
         async_mode: bool = False,
         streamed: bool = False,
     ):
@@ -380,14 +380,14 @@ class LLMService:
         self,
         model_name: str,
         prompt: str,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         allow_fallback: bool = False,
         stream_to_disk: bool = False,
-        frequency_penalty: Optional[float] = None,
-        presence_penalty: Optional[float] = None,
+        frequency_penalty: float | None = None,
+        presence_penalty: float | None = None,
         auto_clean_response: bool = True,
-    ) -> Tuple[str, Optional[Dict[str, int]]]:
+    ) -> tuple[str, dict[str, int] | None]:
         """
         Asynchronously calls the LLM (OpenAI-compatible API) with retry and optional model fallback.
         Returns the LLM's text response as a string (optionally cleaned), and a dictionary containing token usage.
@@ -415,7 +415,7 @@ class LLMService:
 
             current_model_to_try = model_name
             is_fallback_attempt = False
-            current_usage_data: Optional[Dict[str, int]] = None
+            current_usage_data: dict[str, int] | None = None
             final_text_response = ""
 
             for attempt_num_overall in range(2):
@@ -437,7 +437,7 @@ class LLMService:
                     current_usage_data = None
 
                 token_param_name = _completion_token_param(config.OPENAI_API_BASE)
-                payload: Dict[str, Any] = {
+                payload: dict[str, Any] = {
                     "model": current_model_to_try,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": effective_temperature,
@@ -450,8 +450,8 @@ class LLMService:
                 if presence_penalty is not None:
                     payload["presence_penalty"] = presence_penalty
 
-                last_exception_for_current_model: Optional[Exception] = None
-                temp_file_path_for_stream: Optional[str] = None
+                last_exception_for_current_model: Exception | None = None
+                temp_file_path_for_stream: str | None = None
 
                 for retry_attempt in range(config.LLM_RETRY_ATTEMPTS):
                     penalty_log_str = ""
@@ -465,7 +465,7 @@ class LLMService:
                         f"StreamToDisk: {stream_to_disk}. Prompt tokens (est.): {prompt_token_count}. Max output tokens: {effective_max_output_tokens}. "
                         f"Temp: {effective_temperature}, TopP: {config.LLM_TOP_P}{penalty_log_str}"
                     )
-                    api_response_obj: Optional[httpx.Response] = None
+                    api_response_obj: httpx.Response | None = None
 
                     try:
                         if stream_to_disk:
@@ -476,7 +476,7 @@ class LLMService:
                             os.close(_tmp_fd)
 
                             accumulated_stream_content = ""
-                            stream_usage_data: Optional[Dict[str, int]] = None
+                            stream_usage_data: dict[str, int] | None = None
 
                             try:
                                 self.request_count += 1
@@ -584,7 +584,6 @@ class LLMService:
                                         else:
                                             with open(
                                                 temp_file_path_for_stream,
-                                                "r",
                                                 encoding="utf-8",
                                             ) as f_read_final_err:
                                                 final_text_response = (

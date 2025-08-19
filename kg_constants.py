@@ -69,4 +69,3 @@ RELATIONSHIP_TYPES = {
     "RELATED_TO",  # Generic fallback
     "DYNAMIC_REL",  # For KG triples where the relationship type is in a property
 }
-

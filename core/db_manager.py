@@ -1,17 +1,17 @@
 # core_db/base_db_manager.py
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
+
+import config
+from kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
 from neo4j import (  # type: ignore
     AsyncDriver,
     AsyncGraphDatabase,
     AsyncManagedTransaction,
 )
 from neo4j.exceptions import ServiceUnavailable  # type: ignore
-
-import config
-from kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class Neo4jManagerSingleton:
             return
 
         self.logger = logging.getLogger(__name__)
-        self.driver: Optional[AsyncDriver] = None
+        self.driver: AsyncDriver | None = None
         self._initialized_flag = True
         self.logger.info(
             "Neo4jManagerSingleton initialized. Call connect() to establish connection."
@@ -95,22 +95,22 @@ class Neo4jManagerSingleton:
         self,
         tx: AsyncManagedTransaction,
         query: str,
-        parameters: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        parameters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         self.logger.debug(f"Executing Cypher query: {query} with params: {parameters}")
         result_cursor = await tx.run(query, parameters)
         return await result_cursor.data()
 
     async def execute_read_query(
-        self, query: str, parameters: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, query: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         await self._ensure_connected()
         async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
             return await session.execute_read(self._execute_query_tx, query, parameters)
 
     async def execute_write_query(
-        self, query: str, parameters: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, query: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         await self._ensure_connected()
         async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
             return await session.execute_write(
@@ -118,7 +118,7 @@ class Neo4jManagerSingleton:
             )
 
     async def execute_cypher_batch(
-        self, cypher_statements_with_params: List[Tuple[str, Dict[str, Any]]]
+        self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
     ):
         if not cypher_statements_with_params:
             self.logger.info("execute_cypher_batch: No statements to execute.")
@@ -126,7 +126,7 @@ class Neo4jManagerSingleton:
 
         await self._ensure_connected()
         async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            tx: Optional[AsyncManagedTransaction] = None
+            tx: AsyncManagedTransaction | None = None
             try:
                 tx = await session.begin_transaction()
                 for query, params in cypher_statements_with_params:
@@ -236,7 +236,7 @@ class Neo4jManagerSingleton:
             + node_label_queries
         )
 
-        schema_ops_with_params: List[Tuple[str, Dict[str, Any]]] = [
+        schema_ops_with_params: list[tuple[str, dict[str, Any]]] = [
             (query, {}) for query in schema_ops_queries
         ]
 
@@ -268,9 +268,7 @@ class Neo4jManagerSingleton:
             "Neo4j schema (indexes, constraints, labels, relationship types, vector index) verification process complete."
         )
 
-    def embedding_to_list(
-        self, embedding: Optional[np.ndarray]
-    ) -> Optional[List[float]]:
+    def embedding_to_list(self, embedding: np.ndarray | None) -> list[float] | None:
         if embedding is None:
             return None
         if not isinstance(embedding, np.ndarray):
@@ -286,8 +284,8 @@ class Neo4jManagerSingleton:
         return embedding.astype(np.float32).tolist()
 
     def list_to_embedding(
-        self, embedding_list: Optional[List[Union[float, int]]]
-    ) -> Optional[np.ndarray]:
+        self, embedding_list: list[float | int] | None
+    ) -> np.ndarray | None:
         if embedding_list is None:
             return None
         try:
