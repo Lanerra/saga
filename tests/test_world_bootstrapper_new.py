@@ -43,8 +43,8 @@ def test_create_default_world_no_placeholders():
         assert "" in world[category]
         item = world[category][""]
         assert isinstance(item, WorldItem)
-        # The name will be "unnamed_element" because of the validation function
-        assert item.name == "unnamed_element"
+        # The name should remain empty during bootstrapping
+        assert item.name == ""
         assert item.category == category
         # Check that description is empty instead of placeholder
         assert item.properties.get("description") == ""

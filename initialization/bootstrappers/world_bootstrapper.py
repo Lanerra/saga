@@ -74,6 +74,7 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
                     "source": "default_placeholder",
                     "id": f"{utils._normalize_for_id(cat_key)}_",
                 },  # Empty description instead of placeholder
+                allow_empty_name=True,  # Allow empty name during bootstrapping
             )
         }
 
@@ -109,6 +110,7 @@ async def bootstrap_world(
                     "world_item": overview_item_obj.to_dict(),
                     "plot_outline": plot_outline,
                     "target_category": "_overview_",
+                    "category_description": "Bootstrap a description for the world overview.",
                 },
                 "bootstrapper/fill_world_item_field.j2",
             )
@@ -149,6 +151,7 @@ async def bootstrap_world(
                     "world_item": item_obj.to_dict(),
                     "plot_outline": plot_outline,
                     "target_category": category,
+                    "category_description": f"Bootstrap a name for a {category} element in the world.",
                 }
                 name_bootstrap_tasks[task_key] = bootstrap_field(
                     "name", context_data, "bootstrapper/fill_world_item_field.j2"
@@ -238,6 +241,26 @@ async def bootstrap_world(
             "Finished applying name changes from Stage 1 to world_building structure."
         )
 
+        # Cross-category duplicate name validation
+        all_bootstrapped_names = {}
+        for cat, items_dict in new_items_to_add_stage1.items():
+            for item_name, item_obj in items_dict.items():
+                normalized_name = utils._normalize_for_id(item_name)
+                if normalized_name in all_bootstrapped_names:
+                    logger.warning(
+                        "Cross-category duplicate name detected: '%s' in category '%s' (previously used in '%s'). Consider regenerating for better world diversity.",
+                        item_name,
+                        cat,
+                        all_bootstrapped_names[normalized_name],
+                    )
+                else:
+                    all_bootstrapped_names[normalized_name] = cat
+
+        logger.info(
+            "Finished cross-category duplicate name validation. Found %d unique names across categories.",
+            len(all_bootstrapped_names),
+        )
+
     # Stage 2: Bootstrap properties for all items (excluding _overview_ top-level)
     property_bootstrap_tasks: dict[tuple[str, str, str], Coroutine] = {}
     for category, items_dict in world_building.items():
@@ -264,6 +287,7 @@ async def bootstrap_world(
                         "world_item": item_obj.to_dict(),
                         "plot_outline": plot_outline,
                         "target_category": category,
+                        "category_description": f"Bootstrap a {prop_name} for a {category} element in the world.",
                     }
                     property_bootstrap_tasks[task_key] = bootstrap_field(
                         prop_name, context_data, "bootstrapper/fill_world_item_field.j2"

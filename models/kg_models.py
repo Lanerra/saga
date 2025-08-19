@@ -52,7 +52,7 @@ class WorldItem(BaseModel):
     properties: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, category: str, name: str, data: dict[str, Any]) -> WorldItem:
+    def from_dict(cls, category: str, name: str, data: dict[str, Any], allow_empty_name: bool = False) -> WorldItem:
         """Create a ``WorldItem`` from a raw dictionary."""
 
         # Get ID from data if present, otherwise generate one
@@ -60,7 +60,7 @@ class WorldItem(BaseModel):
 
         # Validate and normalize all core fields
         category, name, item_id = utils.validate_world_item_fields(
-            category, name, item_id
+            category, name, item_id, allow_empty_name
         )
 
         created_chapter = int(data.get(KG_NODE_CREATED_CHAPTER, 0))

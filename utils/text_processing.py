@@ -30,7 +30,7 @@ def _normalize_for_id(text: str) -> str:
 
 
 def validate_world_item_fields(
-    category: str, name: str, item_id: str
+    category: str, name: str, item_id: str, allow_empty_name: bool = False
 ) -> tuple[str, str, str]:
     """Validate and normalize WorldItem core fields, providing defaults for missing values."""
     # Validate category
@@ -38,7 +38,8 @@ def validate_world_item_fields(
         category = "other"
 
     # Validate name
-    if not name or not isinstance(name, str) or not name.strip():
+    # Only set default name if allow_empty_name is False and name is actually missing/empty
+    if (not allow_empty_name) and (not name or not isinstance(name, str) or not name.strip()):
         name = "unnamed_element"
 
     # Validate ID
