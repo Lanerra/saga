@@ -592,34 +592,12 @@ async def _get_world_data_dict_with_notes(
                 )
                 continue
 
-            # If item is not found in Neo4j, create a minimal WorldItem with validated properties
             if not item_obj:
                 logger.warning(
-                    "World item id '%s' not found in Neo4j. Creating minimal WorldItem with validated properties.",
+                    "World item id '%s' not found in Neo4j.",
                     item_id,
                 )
-                # Create a minimal WorldItem with just the mandatory properties
-                # We'll use a placeholder category and name, then validate/reconstruct proper values
-                try:
-                    # Validate and normalize the core fields to ensure we have proper values
-                    # Using placeholder values that will be corrected by validate_world_item_fields
-                    validated_category, validated_name, validated_id = utils.validate_world_item_fields(
-                        "unknown_category", "unknown_item", item_id
-                    )
-                    # Create a minimal WorldItem with validated properties
-                    item_obj = WorldItem(
-                        id=validated_id,
-                        category=validated_category,
-                        name=validated_name,
-                        properties={}
-                    )
-                except Exception as validation_exc:
-                    logger.error(
-                        "Error creating minimal WorldItem for id '%s': %s",
-                        item_id,
-                        validation_exc,
-                    )
-                    continue
+                continue
 
             item_dict = item_obj.to_dict()
             processed_category[item_obj.name] = (

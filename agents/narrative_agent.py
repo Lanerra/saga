@@ -11,6 +11,7 @@ from prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
     get_world_state_snippet_for_prompt,
 )
+from processing.context_generator import generate_hybrid_chapter_context_logic  # Added for hybrid context generation
 from prompt_renderer import render_prompt
 
 logger = structlog.get_logger()
@@ -493,6 +494,78 @@ class NarrativeAgent:
 
         return final_draft_text, final_raw_output, total_usage_data
 
+    # Public wrapper to expose draft_chapter functionality for tests and external callers
+    async def draft_chapter(
+        self,
+        plot_outline: Dict[str, Any],
+        chapter_number: int,
+        plot_point_focus: str,
+        hybrid_context_for_draft: str,
+        chapter_plan: Optional[List[SceneDetail]],
+    ) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, int]]]:
+        """
+        Draft a chapter using either a provided scene plan or by drafting the entire chapter at once.
+
+        This is a convenience wrapper around the internal `_draft_chapter` method. It mirrors the
+        signature used in tests and orchestrator pathways. If `chapter_plan` is None, it drafts the
+        entire chapter in a single call; otherwise, it drafts each scene sequentially.
+
+        Args:
+            plot_outline: The plot outline dictionary for the novel.
+            chapter_number: The chapter number being drafted.
+            plot_point_focus: The primary plot point or focus for this chapter.
+            hybrid_context_for_draft: Contextual information combining semantic and KG facts.
+            chapter_plan: A list of SceneDetail objects (or dicts) defining the scenes to draft. If None,
+                the chapter is drafted in one LLM call.
+
+        Returns:
+            A tuple of the draft text, the raw LLM output, and token usage data, or (None, raw_output, usage)
+            if drafting fails.
+        """
+        if chapter_plan is None:
+            # When no scene plan is provided, call the LLM once for the whole chapter.
+            # Use the same logic as in `_draft_chapter` but without scene iteration.
+            novel_title = plot_outline.get("title", "Untitled Novel")
+            novel_genre = plot_outline.get("genre", "Unknown Genre")
+            prompt = render_prompt(
+                "narrative_agent/draft_chapter_from_plot_point.j2",
+                {
+                    "no_think": self.config.ENABLE_LLM_NO_THINK_DIRECTIVE,
+                    "chapter_number": chapter_number,
+                    "novel_title": novel_title,
+                    "novel_genre": novel_genre,
+                    "plot_point_focus": plot_point_focus,
+                    "hybrid_context_for_draft": hybrid_context_for_draft,
+                    "min_length": self.config.MIN_ACCEPTABLE_DRAFT_LENGTH,
+                },
+            )
+            prompt_tokens = count_tokens(prompt, self.model)
+            max_gen_tokens = min(
+                self.config.MAX_GENERATION_TOKENS,
+                self.config.MAX_CONTEXT_TOKENS - prompt_tokens - 100,
+            )
+            chapter_text, usage_data = await llm_service.async_call_llm(
+                model_name=self.model,
+                prompt=prompt,
+                temperature=self.config.Temperatures.DRAFTING,
+                max_tokens=max_gen_tokens,
+                allow_fallback=True,
+                stream_to_disk=False,
+                frequency_penalty=self.config.FREQUENCY_PENALTY_DRAFTING,
+                presence_penalty=self.config.PRESENCE_PENALTY_DRAFTING,
+                auto_clean_response=True,
+            )
+            # Mirror return structure of `_draft_chapter`
+            return chapter_text, chapter_text, usage_data
+        # Use the internal scene-by-scene drafting method
+        return await self._draft_chapter(
+            plot_outline,
+            chapter_number,
+            plot_point_focus,
+            hybrid_context_for_draft,
+            chapter_plan,
+        )
+
     async def plan_continuation(
         self,
         summary_text: str,
@@ -620,33 +693,59 @@ class NarrativeAgent:
             world_building,
             chapter_number,
             plot_point_focus,
-            plot_point_index
+            plot_point_index,
         )
-        
+
         if not scenes:
-            logger.error(f"Failed to plan scenes for chapter {chapter_number}")
-            return "Failed to generate chapter: scene planning failed", "Error", planning_usage_data or {}
+            logger.error(
+                f"Failed to plan scenes for chapter {chapter_number}"
+            )
+            return (
+                "Failed to generate chapter: scene planning failed",
+                "Error",
+                planning_usage_data or {},
+            )
 
-        # Generate hybrid context for drafting
-        hybrid_context_for_draft = (
-            f"Protagonist: {plot_outline.get('protagonist_name', 'Unknown')}\n"
-            f"Genre: {plot_outline.get('genre', 'Unknown')}\n"
-            f"Theme: {plot_outline.get('theme', 'Unknown')}\n"
-            f"Character Arc: {plot_outline.get('character_arc', 'Unknown')}"
-        )
+        # Generate a hybrid context based on prior chapters and KG facts.
+        # Use a dictionary with plot outline info as the agent_or_props for context generation.
+        try:
+            context_props: Dict[str, Any] = {
+                "plot_outline": plot_outline,
+                "plot_outline_full": plot_outline,
+            }
+            hybrid_context_for_draft: str = await generate_hybrid_chapter_context_logic(
+                context_props,
+                chapter_number,
+                scenes,
+            )
+        except Exception as e:
+            # If hybrid context generation fails for any reason, fall back to basic metadata
+            logger.error(
+                f"Failed to generate hybrid context for chapter {chapter_number}: {e}"
+            )
+            hybrid_context_for_draft = (
+                f"Protagonist: {plot_outline.get('protagonist_name', 'Unknown')}\n"
+                f"Genre: {plot_outline.get('genre', 'Unknown')}\n"
+                f"Theme: {plot_outline.get('theme', 'Unknown')}\n"
+                f"Character Arc: {plot_outline.get('character_arc', 'Unknown')}"
+            )
 
-        # Draft the chapter
+        # Draft the chapter with the generated hybrid context
         draft_text, raw_output, draft_usage = await self._draft_chapter(
             plot_outline,
             chapter_number,
             plot_point_focus,
             hybrid_context_for_draft,
-            scenes
+            scenes,
         )
-        
+
         if not draft_text:
             logger.error(f"Failed to draft chapter {chapter_number}")
-            return "Failed to generate chapter: drafting failed", raw_output or "Error", draft_usage or {}
+            return (
+                "Failed to generate chapter: drafting failed",
+                raw_output or "Error",
+                draft_usage or {},
+            )
 
         # Combine usage data from planning and drafting
         total_usage = planning_usage_data or {}

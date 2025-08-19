@@ -626,15 +626,42 @@ class NANA_Orchestrator:
         self._update_rich_display(
             step=f"Ch {novel_chapter_number} - Drafting Initial Text"
         )
+        # Prefer using precomputed chapter_plan and hybrid context if available to avoid re-planning and ensure continuity.
+        characters = await character_queries.get_character_profiles_from_db()
+        world = await world_queries.get_world_building_from_db()
+        if chapter_plan is not None and hybrid_context_for_draft is not None:
+            # Draft the chapter directly using the prepared scenes and context.
+            draft_text, raw_output, draft_usage = await self.narrative_agent._draft_chapter(
+                self.plot_outline,
+                novel_chapter_number,
+                plot_point_focus,
+                hybrid_context_for_draft,
+                chapter_plan,
+            )
+            self._accumulate_tokens(f"Ch{novel_chapter_number}-Drafting", draft_usage)
+            if not draft_text:
+                logger.error(
+                    f"NANA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
+                )
+                await self._save_debug_output(
+                    novel_chapter_number,
+                    "initial_draft_fail_raw_llm",
+                    raw_output or "Drafting Agent returned None for raw output.",
+                )
+                return None, None
+            await self._save_debug_output(
+                novel_chapter_number, "initial_draft", draft_text
+            )
+            return draft_text, raw_output
+        # Fallback: if no valid plan/context, use generate_chapter which will handle planning internally
         initial_draft_text, initial_raw_llm_text, draft_usage = await self.narrative_agent.generate_chapter(
             self.plot_outline,
-            await character_queries.get_character_profiles_from_db(),
-            await world_queries.get_world_building_from_db(),
+            characters,
+            world,
             novel_chapter_number,
             plot_point_focus,
         )
         self._accumulate_tokens(f"Ch{novel_chapter_number}-Drafting", draft_usage)
-
         if not initial_draft_text:
             logger.error(
                 f"NANA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
@@ -645,7 +672,6 @@ class NANA_Orchestrator:
                 initial_raw_llm_text or "Drafting Agent returned None for raw output.",
             )
             return None, None
-
         await self._save_debug_output(
             novel_chapter_number, "initial_draft", initial_draft_text
         )
