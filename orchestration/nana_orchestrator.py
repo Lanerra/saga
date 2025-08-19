@@ -10,7 +10,7 @@ from async_lru import alru_cache
 
 import config
 import utils
-from agents.finalize_agent import FinalizeAgent
+
 from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from agents.revision_agent import RevisionAgent
@@ -60,7 +60,7 @@ class NANA_Orchestrator:
         self.narrative_agent = NarrativeAgent(config)
         self.revision_agent = RevisionAgent()
         self.knowledge_agent = KnowledgeAgent()
-        self.finalize_agent = FinalizeAgent(self.knowledge_agent)
+        
 
         self.plot_outline: Dict[str, Any] = {}
         self.chapter_count: int = 0
@@ -902,15 +902,30 @@ class NANA_Orchestrator:
     ) -> Optional[str]:
         self._update_rich_display(step=f"Ch {novel_chapter_number} - Finalization")
 
-        result = await self.finalize_agent.finalize_chapter(
+        # Generate chapter summary
+        summary, summary_usage = await self.knowledge_agent.summarize_chapter(
+            final_text_to_process, novel_chapter_number
+        )
+        
+        # Get text embedding
+        embedding = await llm_service.async_get_embedding(final_text_to_process)
+        
+        # Extract and merge knowledge updates
+        kg_usage = await self.knowledge_agent.extract_and_merge_knowledge(
             self.plot_outline,
             await character_queries.get_character_profiles_from_db(),
             await world_queries.get_world_building_from_db(),
             novel_chapter_number,
             final_text_to_process,
-            final_raw_llm_output,
             is_from_flawed_source_for_kg,
         )
+        
+        result = {
+            "summary": summary,
+            "embedding": embedding,
+            "summary_usage": summary_usage,
+            "kg_usage": kg_usage,
+        }
 
         self._accumulate_tokens(
             f"Ch{novel_chapter_number}-Summarization", result.get("summary_usage")
@@ -1350,13 +1365,30 @@ class NANA_Orchestrator:
 
         for idx, chunk in enumerate(chunks, 1):
             self._update_rich_display(chapter_num=idx, step="Ingesting Text")
-            result = await self.finalize_agent.ingest_and_finalize_chunk(
+            # Generate chapter summary
+            summary, summary_usage = await self.knowledge_agent.summarize_chapter(
+                chunk, idx
+            )
+            
+            # Get text embedding
+            embedding = await llm_service.async_get_embedding(chunk)
+            
+            # Extract and merge knowledge updates
+            kg_usage = await self.knowledge_agent.extract_and_merge_knowledge(
                 plot_outline,
                 character_profiles,
                 world_building,
                 idx,
                 chunk,
+                False,  # from_flawed_draft
             )
+            
+            result = {
+                "summary": summary,
+                "embedding": embedding,
+                "summary_usage": summary_usage,
+                "kg_usage": kg_usage,
+            }
             if result.get("summary"):
                 summaries.append(str(result["summary"]))
                 plot_outline["plot_points"].append(result["summary"])

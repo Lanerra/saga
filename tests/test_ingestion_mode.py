@@ -1,5 +1,5 @@
 import pytest
-from agents.finalize_agent import FinalizeAgent
+from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from core.llm_interface import llm_service
 from utils.ingestion_utils import split_text_into_chapters
@@ -13,12 +13,12 @@ def test_split_text_into_chapters_basic():
 
 @pytest.mark.asyncio
 async def test_ingest_and_finalize_chunk_delegates(monkeypatch):
-    agent = FinalizeAgent()
+    agent = KnowledgeAgent()
 
     async def fake_finalize(*args, **kwargs):
         return {"summary": "done"}
 
-    monkeypatch.setattr(agent, "finalize_chapter", fake_finalize)
+    monkeypatch.setattr(agent, "extract_and_merge_knowledge", fake_finalize)
     result = await agent.ingest_and_finalize_chunk({}, {}, {}, 1, "text")
     assert result["summary"] == "done"
 
