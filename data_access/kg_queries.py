@@ -422,7 +422,7 @@ async def get_chapter_context_for_entity(
     WHERE chapter_num IS NOT NULL AND chapter_num > 0
 
     // Now fetch the chapter data
-    MATCH (c:{config.NEO4J_VECTOR_NODE_LABEL} {{number: chapter_num}})
+    MATCH (c:{"Chapter"} {{number: chapter_num}})
     RETURN c.number as chapter_number, c.summary as summary, c.text as text
     ORDER BY c.number DESC
     LIMIT 5 // Limit context to most recent 5 chapters

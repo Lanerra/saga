@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 async def load_chapter_count_from_db() -> int:
     query = (
-        f"MATCH (c:{config.NEO4J_VECTOR_NODE_LABEL}) RETURN count(c) AS chapter_count"
+        f"MATCH (c:{"Chapter"}) RETURN count(c) AS chapter_count"
     )
     try:
         result = await neo4j_manager.execute_read_query(query)
@@ -41,12 +41,12 @@ async def save_chapter_data_to_db(
     embedding_list = neo4j_manager.embedding_to_list(embedding_array)
 
     query = f"""
-    MERGE (c:{config.NEO4J_VECTOR_NODE_LABEL} {{number: $chapter_number_param}})
+    MERGE (c:{"Chapter"} {{number: $chapter_number_param}})
     SET c.text = $text_param,
         c.raw_llm_output = $raw_llm_output_param,
         c.summary = $summary_param,
         c.is_provisional = $is_provisional_param,
-        c.{config.NEO4J_VECTOR_PROPERTY_NAME} = $embedding_vector_param,
+        c.{"embedding_vector"} = $embedding_vector_param,
         c.last_updated = timestamp()
     """
     parameters = {
@@ -73,7 +73,7 @@ async def get_chapter_data_from_db(chapter_number: int) -> Optional[Dict[str, An
     if chapter_number <= 0:
         return None
     query = f"""
-    MATCH (c:{config.NEO4J_VECTOR_NODE_LABEL} {{number: $chapter_number_param}})
+    MATCH (c:{"Chapter"} {{number: $chapter_number_param}})
     RETURN c.text AS text, c.raw_llm_output AS raw_llm_output, c.summary AS summary, c.is_provisional AS is_provisional
     """
     try:
@@ -102,9 +102,9 @@ async def get_embedding_from_db(chapter_number: int) -> Optional[np.ndarray]:
     if chapter_number <= 0:
         return None
     query = f"""
-    MATCH (c:{config.NEO4J_VECTOR_NODE_LABEL} {{number: $chapter_number_param}})
-    WHERE c.{config.NEO4J_VECTOR_PROPERTY_NAME} IS NOT NULL
-    RETURN c.{config.NEO4J_VECTOR_PROPERTY_NAME} AS embedding_vector
+    MATCH (c:{"Chapter"} {{number: $chapter_number_param}})
+    WHERE c.{"embedding_vector"} IS NOT NULL
+    RETURN c.{"embedding_vector"} AS embedding_vector
     """
     try:
         result = await neo4j_manager.execute_read_query(
@@ -214,10 +214,10 @@ async def get_all_past_embeddings_from_db(
     )
     embeddings_list: List[Tuple[int, np.ndarray]] = []
     query = f"""
-    MATCH (c:{config.NEO4J_VECTOR_NODE_LABEL})
+    MATCH (c:{"Chapter"})
     WHERE c.number < $current_chapter_number_param AND c.number > 0
-      AND c.{config.NEO4J_VECTOR_PROPERTY_NAME} IS NOT NULL
-    RETURN c.number AS chapter_number, c.{config.NEO4J_VECTOR_PROPERTY_NAME} AS embedding_vector
+      AND c.{"embedding_vector"} IS NOT NULL
+    RETURN c.number AS chapter_number, c.{"embedding_vector"} AS embedding_vector
     ORDER BY c.number DESC
     """
     try:
