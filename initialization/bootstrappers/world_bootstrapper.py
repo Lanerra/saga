@@ -61,12 +61,14 @@ def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
         "factions",
     ]
 
+    # Create empty world elements for each category instead of using placeholders
     for cat_key in standard_categories:
+        # Create an empty WorldItem with empty name and description
         world_data[cat_key] = {
-            config.FILL_IN: WorldItem.from_dict(
+            "": WorldItem.from_dict(
                 cat_key,
-                config.FILL_IN,
-                {"description": config.FILL_IN, "source": "default_placeholder", "id": f"{utils._normalize_for_id(cat_key)}_{utils._normalize_for_id(config.FILL_IN)}"},
+                "",  # Empty name instead of placeholder
+                {"description": "", "source": "default_placeholder", "id": f"{utils._normalize_for_id(cat_key)}_"},  # Empty description instead of placeholder
             )
         }
 
@@ -122,13 +124,14 @@ async def bootstrap_world(
                 else:
                     overview_item_obj.properties["source"] = "descr_bootstrapped"
 
-    # Stage 1: Bootstrap names for [Fill-in] items
+    # Stage 1: Bootstrap names for items with missing/empty names
     name_bootstrap_tasks: Dict[Tuple[str, str], Coroutine] = {}
     for category, items_dict in world_building.items():
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
         for item_name, item_obj in items_dict.items():
-            if isinstance(item_obj, WorldItem) and utils._is_fill_in(item_obj.name):
+            # Check if the item name is missing or empty (instead of just checking for placeholder)
+            if isinstance(item_obj, WorldItem) and (not item_obj.name or not item_obj.name.strip()):
                 logger.info(
                     "Identified item for name bootstrapping in category '%s': Current name '%s'",
                     category,
@@ -161,6 +164,7 @@ async def bootstrap_world(
             if (
                 new_name_value
                 and isinstance(new_name_value, str)
+                and new_name_value.strip()
                 and not utils._is_fill_in(new_name_value)
                 and new_name_value != config.FILL_IN
             ):
@@ -231,10 +235,11 @@ async def bootstrap_world(
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
         for item_name, item_obj in items_dict.items():
-            if not isinstance(item_obj, WorldItem) or utils._is_fill_in(item_name):
+            if not isinstance(item_obj, WorldItem) or (not item_name or not item_name.strip()):
                 continue
             for prop_name, prop_value in item_obj.properties.items():
-                if utils._is_fill_in(prop_value):
+                # Check if the property value is missing or empty (instead of just checking for placeholder)
+                if not prop_value or (isinstance(prop_value, str) and not prop_value.strip()):
                     logger.info(
                         "Identified property '%s' for bootstrapping in item '%s/%s'.",
                         prop_name,
@@ -273,8 +278,9 @@ async def bootstrap_world(
                 )
                 continue
 
-            if prop_fill_value is not None and not (
-                isinstance(prop_fill_value, str) and utils._is_fill_in(prop_fill_value)
+            if prop_fill_value is not None and (
+                not isinstance(prop_fill_value, str) or
+                (isinstance(prop_fill_value, str) and prop_fill_value.strip() and not utils._is_fill_in(prop_fill_value))
             ):
                 logger.info(
                     "Successfully bootstrapped property '%s' for item '%s/%s'.",
