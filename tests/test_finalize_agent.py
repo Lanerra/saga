@@ -4,7 +4,7 @@ from typing import Dict
 import numpy as np
 import pytest
 
-from agents.finalize_agent import FinalizeAgent
+# Tests for deprecated FinalizeAgent - functionality now in KnowledgeAgent
 from agents.knowledge_agent import KnowledgeAgent
 from models import CharacterProfile, WorldItem
 
@@ -16,7 +16,9 @@ class DummyKGAgent(KnowledgeAgent):
 @pytest.mark.asyncio
 async def test_finalize_chapter_success(monkeypatch):
     kg_agent = DummyKGAgent()
-    agent = FinalizeAgent(kg_agent)
+    # Tests for deprecated FinalizeAgent - functionality now in KnowledgeAgent
+    # This test file is deprecated and should be removed in a future version
+    agent = kg_agent  # Using KnowledgeAgent directly
 
     async def fake_summary(text: str, num: int):
         return "sum", {"prompt_tokens": 1}
@@ -47,7 +49,8 @@ async def test_finalize_chapter_success(monkeypatch):
         "data_access.chapter_queries.save_chapter_data_to_db", lambda *a, **k: save_mock
     )
 
-    result = await agent.finalize_chapter({}, {}, {}, 1, "text", "raw")
+    # Using KnowledgeAgent's extract_and_merge_knowledge instead of deprecated FinalizeAgent
+    result = await agent.extract_and_merge_knowledge({}, {}, {}, 1, "text", "raw")
     assert result["summary"] == "sum"
     assert np.allclose(result["embedding"], np.array([0.1, 0.2], dtype=np.float32))
     assert result["kg_usage"] == {"total_tokens": 2}
@@ -56,7 +59,9 @@ async def test_finalize_chapter_success(monkeypatch):
 @pytest.mark.asyncio
 async def test_finalize_chapter_validation_failure(monkeypatch):
     kg_agent = DummyKGAgent()
-    agent = FinalizeAgent(kg_agent)
+    # Tests for deprecated FinalizeAgent - functionality now in KnowledgeAgent
+    # This test file is deprecated and should be removed in a future version
+    agent = kg_agent  # Using KnowledgeAgent directly
 
     async def fake_summary(text: str, num: int):
         return "sum", {"prompt_tokens": 1}
@@ -96,7 +101,8 @@ async def test_finalize_chapter_validation_failure(monkeypatch):
         "data_access.chapter_queries.save_chapter_data_to_db", lambda *a, **k: save_mock
     )
 
-    result = await agent.finalize_chapter({}, {}, {}, 1, "text", None)
+    # Using KnowledgeAgent's extract_and_merge_knowledge instead of deprecated FinalizeAgent
+    result = await agent.extract_and_merge_knowledge({}, {}, {}, 1, "text", None)
     assert profiles_called == {}
     assert world_called == {}
     assert result["kg_usage"] == {"total_tokens": 2}
