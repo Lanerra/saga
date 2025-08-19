@@ -20,6 +20,7 @@ def generate_world_element_node_cypher(
     statements: List[Tuple[str, Dict[str, Any]]] = []
 
     node_props = {
+        "id": item.id,  # CRITICAL: Ensure id is always set as a property
         "name": item.name,
         "category": item.category,
         KG_NODE_CREATED_CHAPTER: item.created_chapter,
@@ -43,6 +44,7 @@ def generate_world_element_node_cypher(
             if (
                 isinstance(value, (str, int, float, bool))
                 and key not in node_props
+                and key not in ["id", "name", "category"]  # Explicitly protect required properties
                 and not key.startswith("elaboration_in_chapter_")
                 and not key.startswith("source_quality_chapter_")
                 and not key.startswith("added_in_chapter_")
@@ -50,6 +52,7 @@ def generate_world_element_node_cypher(
             ):
                 node_props[key] = value
             elif isinstance(value, (list, dict)) and key not in [
+                "id", "name", "category",  # Explicitly protect required properties
                 "goals",
                 "rules",
                 "key_elements",

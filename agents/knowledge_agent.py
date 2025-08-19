@@ -148,6 +148,7 @@ WORLD_UPDATE_DETAIL_KEY_MAP = {
     "key elements": "key_elements",
     "traits": "traits",  # Ensure this is a list if LLM provides a string
     "modification proposal": "modification_proposal",
+    # NOTE: elaborations/elaboration will be handled specially in processing
 }
 WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS = [
     "goals",
@@ -390,6 +391,12 @@ def parse_unified_world_updates(
                 WORLD_UPDATE_DETAIL_KEY_MAP,
                 WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
             )
+            
+            # Handle common LLM output variations for elaborations
+            if "elaborations" in processed_overview_details:
+                processed_overview_details[elaboration_key_standard] = processed_overview_details.pop("elaborations")
+            elif "elaboration" in processed_overview_details:
+                processed_overview_details[elaboration_key_standard] = processed_overview_details.pop("elaboration")
             if any(k != "modification_proposal" for k in processed_overview_details):
                 # check if any meaningful data
                 # Add default elaboration if not present
@@ -422,7 +429,9 @@ def parse_unified_world_updates(
                     if item_name_llm and isinstance(item_name_llm, str):
                         # Check if the "item name" is actually a known property name
                         normalized_key = item_name_llm.lower().replace(" ", "_")
-                        if normalized_key in WORLD_UPDATE_DETAIL_KEY_MAP or normalized_key in WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS:
+                        # Include common elaboration variations that should be treated as properties, not items
+                        known_property_names = set(WORLD_UPDATE_DETAIL_KEY_MAP.keys()) | set(WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS) | {"elaborations", "elaboration"}
+                        if normalized_key in known_property_names:
                             logger.debug(
                                 "Ignoring property '%s' at item level in category '%s' (likely LLM formatting issue)",
                                 item_name_llm,
@@ -443,6 +452,12 @@ def parse_unified_world_updates(
                     WORLD_UPDATE_DETAIL_KEY_MAP,
                     WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
                 )
+                
+                # Handle common LLM output variations for elaborations
+                if "elaborations" in processed_item_details:
+                    processed_item_details[elaboration_key_standard] = processed_item_details.pop("elaborations")
+                elif "elaboration" in processed_item_details:
+                    processed_item_details[elaboration_key_standard] = processed_item_details.pop("elaboration")
 
                 # Add default elaboration if not present and other
                 # attributes exist

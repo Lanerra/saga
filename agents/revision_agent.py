@@ -431,6 +431,19 @@ class RevisionAgent:
 
         protagonist_name_str = plot_outline.get("protagonist_name", "The Protagonist")
 
+        # Fetch character and world data if not provided (empty parameters)
+        if not character_names:
+            logger.info("Fetching character profiles from database for evaluation...")
+            character_profiles_dict = await character_queries.get_character_profiles_from_db()
+            character_names = list(character_profiles_dict.keys())
+            logger.info(f"Found {len(character_names)} characters for evaluation: {character_names}")
+        
+        # character_names is now always a List[str] as required by the function
+            
+        if not world_item_ids_by_category:
+            logger.info("Fetching world item IDs from database for evaluation...")
+            world_item_ids_by_category = await world_queries.get_all_world_item_ids_by_category()
+
         char_profiles_plain_text = (
             await get_filtered_character_profiles_for_prompt_plain_text(
                 character_names,
