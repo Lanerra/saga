@@ -1408,8 +1408,8 @@ class NANA_Orchestrator:
 
         chunks = split_text_into_chapters(raw_text)
         plot_outline = {"title": "Ingested Narrative", "plot_points": []}
-        character_profiles: dict[str, CharacterProfile] = {}
-        world_building: dict[str, dict[str, WorldItem]] = {}
+        characters: list[CharacterProfile] = []
+        world_items: list[WorldItem] = []
         summaries: list[str] = []
 
         for idx, chunk in enumerate(chunks, 1):
@@ -1422,11 +1422,11 @@ class NANA_Orchestrator:
             # Get text embedding
             embedding = await llm_service.async_get_embedding(chunk)
 
-            # Extract and merge knowledge updates
-            kg_usage = await self.knowledge_agent.extract_and_merge_knowledge(
+            # Extract and merge knowledge updates using NATIVE implementation
+            kg_usage = await self.knowledge_agent.extract_and_merge_knowledge_native(
                 plot_outline,
-                character_profiles,
-                world_building,
+                characters,  # List of CharacterProfile models
+                world_items,  # List of WorldItem models
                 idx,
                 chunk,
                 False,  # from_flawed_draft

@@ -121,7 +121,7 @@ class RevisionAgent:
         )
         char_profiles_plain_text = (
             await get_filtered_character_profiles_for_prompt_plain_text(
-                characters,
+                list(characters.keys()),  # Pass character names, not the dict
                 chapter_number - 1,
             )
         )

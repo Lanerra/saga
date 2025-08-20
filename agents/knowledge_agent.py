@@ -1108,6 +1108,13 @@ class KnowledgeAgent:
                         exc_info=True,
                     )
             
+            # DIAGNOSTIC: Log information for healing process debugging
+            logger.info(
+                f"Native extraction created entities for healing process to consider: "
+                f"Characters: {[c.name for c in char_updates]}, "
+                f"World items: {[w.name for w in world_updates]}"
+            )
+            
             logger.info(
                 f"Native knowledge extraction complete for chapter {chapter_number}: "
                 f"{len(char_updates)} character updates, {len(world_updates)} world updates, "
@@ -1150,7 +1157,7 @@ class KnowledgeAgent:
             for name, char_info in char_data.items():
                 if isinstance(char_info, dict):
                     char_updates.append(CharacterProfile(
-                        name=name,
+                        name=name,  # Use original name - let healing process handle deduplication
                         description=char_info.get("description", ""),
                         traits=char_info.get("traits", []),
                         status=char_info.get("status", "Unknown"),
@@ -1781,7 +1788,8 @@ class KnowledgeAgent:
                 await self._resolve_duplicates_for_new_entity(entity)
         else:
             # Original full graph processing (less efficient)
-            candidate_pairs = await kg_queries.find_candidate_duplicate_entities()
+            # Use lower similarity threshold to catch character name variations like "Nuyara" vs "Nuyara Vex"
+            candidate_pairs = await kg_queries.find_candidate_duplicate_entities(similarity_threshold=0.6)
 
             if not candidate_pairs:
                 logger.info("KG Healer: No candidate duplicate entities found.")
