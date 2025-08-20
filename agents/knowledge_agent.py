@@ -21,6 +21,7 @@ from data_access import (
 )
 from models.kg_models import CharacterProfile, WorldItem
 from core.schema_validator import validate_kg_object
+from core.knowledge_graph_service import knowledge_graph_service
 from parsing_utils import (
     parse_rdf_triples_with_rdflib,
 )
@@ -1025,6 +1026,272 @@ class KnowledgeAgent:
             chapter_number,
         )
         return usage_data
+    
+    async def extract_and_merge_knowledge_native(
+        self,
+        plot_outline: dict[str, Any],
+        characters: list[CharacterProfile],
+        world_items: list[WorldItem],
+        chapter_number: int,
+        chapter_text: str,
+        is_from_flawed_draft: bool = False,
+    ) -> dict[str, int] | None:
+        """
+        Native model version of extract_and_merge_knowledge.
+        Eliminates dict conversion overhead by working directly with model instances.
+        
+        Args:
+            plot_outline: Plot information dict
+            characters: List of CharacterProfile models (will be modified in-place)
+            world_items: List of WorldItem models (will be modified in-place)
+            chapter_number: Current chapter number
+            chapter_text: Chapter text to extract from
+            is_from_flawed_draft: Whether text is from a flawed/unrevised draft
+            
+        Returns:
+            LLM usage data dict or None if extraction failed
+        """
+        if not chapter_text:
+            logger.warning(
+                "Skipping knowledge extraction for chapter %s: no text provided.",
+                chapter_number,
+            )
+            return None
+
+        logger.info(
+            "KnowledgeAgent (Native): Starting knowledge extraction for chapter %d. Flawed draft: %s",
+            chapter_number,
+            is_from_flawed_draft,
+        )
+
+        # Extract updates using LLM
+        raw_extracted_text, usage_data = await self._llm_extract_updates(
+            plot_outline, chapter_text, chapter_number
+        )
+
+        if not raw_extracted_text.strip():
+            logger.warning(
+                "LLM extraction returned no text for chapter %d.", chapter_number
+            )
+            return usage_data
+
+        # Parse extraction results directly to models
+        try:
+            char_updates, world_updates, kg_triples_text = await self._extract_updates_as_models(
+                raw_extracted_text, chapter_number
+            )
+            
+            # Process KG triples for relationships (CRITICAL: This was missing!)
+            parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
+            
+            # Merge updates directly into existing model lists
+            self._merge_character_updates_native(characters, char_updates, chapter_number)
+            self._merge_world_updates_native(world_items, world_updates, chapter_number)
+            
+            # Persist models directly using native service
+            await knowledge_graph_service.persist_entities(
+                characters, world_items, chapter_number
+            )
+            
+            # CRITICAL FIX: Persist KG triples/relationships
+            if parsed_triples_structured:
+                try:
+                    await kg_queries.add_kg_triples_batch_to_db(
+                        parsed_triples_structured, chapter_number, is_from_flawed_draft
+                    )
+                    logger.info(
+                        f"Persisted {len(parsed_triples_structured)} KG triples for chapter {chapter_number} to Neo4j."
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to persist KG triples for chapter {chapter_number}: {e}",
+                        exc_info=True,
+                    )
+            
+            logger.info(
+                f"Native knowledge extraction complete for chapter {chapter_number}: "
+                f"{len(char_updates)} character updates, {len(world_updates)} world updates, "
+                f"{len(parsed_triples_structured)} KG triples"
+            )
+            
+            return usage_data
+            
+        except Exception as e:
+            logger.error(
+                f"Error during native knowledge extraction for chapter {chapter_number}: {e}",
+                exc_info=True,
+            )
+            return usage_data
+    
+    async def _extract_updates_as_models(
+        self, 
+        raw_text: str, 
+        chapter_number: int
+    ) -> tuple[list[CharacterProfile], list[WorldItem], str]:
+        """
+        Extract updates and return as models directly - no intermediate dict phase.
+        
+        Args:
+            raw_text: Raw LLM extraction text (JSON format)
+            chapter_number: Current chapter for tracking
+            
+        Returns:
+            Tuple of (character_updates, world_updates, kg_triples_text)
+        """
+        char_updates = []
+        world_updates = []
+        kg_triples_text = ""
+        
+        try:
+            extraction_data = json.loads(raw_text)
+            
+            # Convert character updates directly to models
+            char_data = extraction_data.get("character_updates", {})
+            for name, char_info in char_data.items():
+                if isinstance(char_info, dict):
+                    char_updates.append(CharacterProfile(
+                        name=name,
+                        description=char_info.get("description", ""),
+                        traits=char_info.get("traits", []),
+                        status=char_info.get("status", "Unknown"),
+                        relationships=char_info.get("relationships", {}),
+                        created_chapter=char_info.get("created_chapter", chapter_number),
+                        is_provisional=char_info.get("is_provisional", False),
+                        updates=char_info  # Store original for reference
+                    ))
+            
+            # Convert world updates directly to models  
+            world_data = extraction_data.get("world_updates", {})
+            for category, items in world_data.items():
+                if isinstance(items, dict):
+                    for item_name, item_info in items.items():
+                        if isinstance(item_info, dict):
+                            world_updates.append(WorldItem.from_dict(
+                                category, item_name, item_info
+                            ))
+            
+            # Extract KG triples for relationships (CRITICAL FIX!)
+            kg_triples_list = extraction_data.get("kg_triples", [])
+            if isinstance(kg_triples_list, list):
+                kg_triples_text = "\n".join([str(t) for t in kg_triples_list])
+            else:
+                kg_triples_text = str(kg_triples_list)
+            
+            logger.debug(
+                f"Extracted {len(char_updates)} character, {len(world_updates)} world item updates, "
+                f"and {len(kg_triples_list)} KG triples as native models"
+            )
+            
+            return char_updates, world_updates, kg_triples_text
+            
+        except json.JSONDecodeError as e:
+            logger.warning(
+                f"Failed to parse extraction JSON for chapter {chapter_number}: {e}. "
+                f"Attempting fallback regex parsing for KG triples."
+            )
+            
+            # Fallback regex extraction for KG triples (critical for relationships!)
+            triples_match = re.search(
+                r'"kg_triples"\s*:\s*(\[.*?\])', raw_text, re.DOTALL
+            )
+            if triples_match:
+                try:
+                    triples_list_from_regex = json.loads(triples_match.group(1))
+                    if isinstance(triples_list_from_regex, list):
+                        kg_triples_text = "\n".join(
+                            [str(t) for t in triples_list_from_regex]
+                        )
+                        logger.info(
+                            f"Regex successfully extracted and parsed kg_triples block for Ch {chapter_number}."
+                        )
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Found kg_triples block via regex for Ch {chapter_number}, but it was invalid JSON."
+                    )
+            else:
+                logger.warning(
+                    f"Could not find kg_triples JSON array via regex for Ch {chapter_number}."
+                )
+            
+            # Could implement character and world fallback parsing here if needed
+            return [], [], kg_triples_text
+    
+    def _merge_character_updates_native(
+        self,
+        existing_characters: list[CharacterProfile],
+        new_updates: list[CharacterProfile], 
+        chapter_number: int
+    ) -> None:
+        """
+        Merge character updates directly into existing model list.
+        
+        Args:
+            existing_characters: List of existing CharacterProfile models (modified in-place)
+            new_updates: List of CharacterProfile updates to merge
+            chapter_number: Current chapter for tracking
+        """
+        # Create lookup for existing characters
+        char_lookup = {char.name: char for char in existing_characters}
+        
+        for update in new_updates:
+            if update.name in char_lookup:
+                # Update existing character
+                existing_char = char_lookup[update.name]
+                if update.description:
+                    existing_char.description = update.description
+                if update.traits:
+                    # Merge traits, avoiding duplicates
+                    existing_char.traits = list(set(existing_char.traits + update.traits))
+                if update.status != "Unknown":
+                    existing_char.status = update.status
+                if update.relationships:
+                    existing_char.relationships.update(update.relationships)
+                existing_char.is_provisional = existing_char.is_provisional or update.is_provisional
+            else:
+                # Add new character
+                update.created_chapter = chapter_number
+                existing_characters.append(update)
+                char_lookup[update.name] = update
+    
+    def _merge_world_updates_native(
+        self,
+        existing_world_items: list[WorldItem],
+        new_updates: list[WorldItem],
+        chapter_number: int
+    ) -> None:
+        """
+        Merge world item updates directly into existing model list.
+        
+        Args:
+            existing_world_items: List of existing WorldItem models (modified in-place)
+            new_updates: List of WorldItem updates to merge
+            chapter_number: Current chapter for tracking
+        """
+        # Create lookup for existing items
+        item_lookup = {item.id: item for item in existing_world_items}
+        
+        for update in new_updates:
+            if update.id in item_lookup:
+                # Update existing item
+                existing_item = item_lookup[update.id]
+                if update.description:
+                    existing_item.description = update.description
+                if update.goals:
+                    existing_item.goals = list(set(existing_item.goals + update.goals))
+                if update.rules:
+                    existing_item.rules = list(set(existing_item.rules + update.rules))
+                if update.key_elements:
+                    existing_item.key_elements = list(set(existing_item.key_elements + update.key_elements))
+                if update.traits:
+                    existing_item.traits = list(set(existing_item.traits + update.traits))
+                if update.additional_properties:
+                    existing_item.additional_properties.update(update.additional_properties)
+                existing_item.is_provisional = existing_item.is_provisional or update.is_provisional
+            else:
+                # Add new item
+                update.created_chapter = chapter_number
+                existing_world_items.append(update)
+                item_lookup[update.id] = update
 
     async def heal_and_enrich_kg(
         self, new_entities: list[dict[str, Any]] | None = None

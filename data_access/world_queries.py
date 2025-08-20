@@ -16,6 +16,7 @@ from kg_constants import (
 from models import WorldItem
 
 from .cypher_builders.world_cypher import generate_world_element_node_cypher
+from .cypher_builders.native_builders import NativeCypherBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -874,3 +875,174 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error finding thin world elements: {e}", exc_info=True)
         return []
+
+
+# Native model functions for performance optimization
+async def sync_world_items_native(
+    world_items: list[WorldItem],
+    chapter_number: int,
+) -> bool:
+    """
+    Native model version of sync_world_items.
+    Persist world item data directly from models without dict conversion.
+    
+    Args:
+        world_items: List of WorldItem models
+        chapter_number: Current chapter for tracking updates
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    if not world_items:
+        logger.info("No world items to sync")
+        return True
+    
+    # Validate all world items before syncing
+    for item in world_items:
+        errors = validate_kg_object(item)
+        if errors:
+            logger.warning("Invalid WorldItem '%s': %s", item.name, errors)
+    
+    # Update name mapping
+    WORLD_NAME_TO_ID.clear()
+    for item in world_items:
+        WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+    
+    try:
+        cypher_builder = NativeCypherBuilder()
+        statements = cypher_builder.batch_world_item_upsert_cypher(
+            world_items, chapter_number
+        )
+        
+        if statements:
+            await neo4j_manager.execute_cypher_batch(statements)
+        
+        logger.info(
+            "Persisted %d world item updates for chapter %d using native models.",
+            len(world_items),
+            chapter_number,
+        )
+        
+        return True
+        
+    except Exception as exc:
+        logger.error(
+            "Error persisting world item updates for chapter %d: %s",
+            chapter_number,
+            exc,
+            exc_info=True,
+        )
+        return False
+
+
+async def get_world_building_native() -> list[WorldItem]:
+    """
+    Native model version of get_world_building_from_db.
+    Returns world items as model instances without dict conversion.
+    
+    Returns:
+        List of WorldItem models
+    """
+    try:
+        cypher_builder = NativeCypherBuilder()
+        query, params = cypher_builder.world_item_fetch_cypher()
+        
+        results = await neo4j_manager.execute_read_query(query, params)
+        world_items = []
+        
+        for record in results:
+            if record and record.get('w'):
+                item = WorldItem.from_db_record(record)
+                world_items.append(item)
+        
+        logger.info("Fetched %d world items using native models", len(world_items))
+        return world_items
+        
+    except Exception as exc:
+        logger.error("Error fetching world building: %s", exc, exc_info=True)
+        return []
+
+
+async def get_world_items_for_chapter_context_native(
+    chapter_number: int,
+    limit: int = 10
+) -> list[WorldItem]:
+    """
+    Get world items relevant for chapter context using native models.
+    
+    Args:
+        chapter_number: Current chapter being processed  
+        limit: Maximum number of world items to return
+        
+    Returns:
+        List of WorldItem models relevant to the chapter
+    """
+    try:
+        query = """
+        MATCH (w:WorldElement:Entity)-[:REFERENCED_IN]->(ch:Chapter)
+        WHERE ch.number < $chapter_number
+        WITH w, max(ch.number) as last_reference
+        ORDER BY last_reference DESC
+        LIMIT $limit
+        RETURN w
+        """
+        
+        results = await neo4j_manager.execute_read_query(
+            query,
+            {"chapter_number": chapter_number, "limit": limit}
+        )
+        
+        world_items = []
+        for record in results:
+            if record and record.get('w'):
+                item = WorldItem.from_db_record(record)
+                world_items.append(item)
+        
+        logger.debug(
+            "Fetched %d world items for chapter %d context using native models",
+            len(world_items), chapter_number
+        )
+        
+        return world_items
+        
+    except Exception as exc:
+        logger.error(
+            "Error fetching world items for chapter %d context: %s",
+            chapter_number, exc, exc_info=True
+        )
+        return []
+
+
+def get_world_item_by_id_native(world_items: list[WorldItem], item_id: str) -> WorldItem | None:
+    """
+    Retrieve a WorldItem from a list by ID using native models.
+    
+    Args:
+        world_items: List of WorldItem models to search
+        item_id: ID to search for
+        
+    Returns:
+        WorldItem model if found, None otherwise
+    """
+    for item in world_items:
+        if item.id == item_id:
+            return item
+    return None
+
+
+def get_world_item_by_name_native(world_items: list[WorldItem], name: str) -> WorldItem | None:
+    """
+    Retrieve a WorldItem from a list using fuzzy name lookup with native models.
+    
+    Args:
+        world_items: List of WorldItem models to search
+        name: Name to search for
+        
+    Returns:
+        WorldItem model if found, None otherwise  
+    """
+    item_id = resolve_world_name(name)
+    if not item_id:
+        return None
+    
+    return get_world_item_by_id_native(world_items, item_id)

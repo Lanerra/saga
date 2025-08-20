@@ -21,6 +21,15 @@ from data_access import (
     plot_queries,
     world_queries,
 )
+# Import native versions for performance optimization
+from data_access.character_queries import (
+    get_character_profiles_native,
+    get_characters_for_chapter_context_native,
+)
+from data_access.world_queries import (
+    get_world_building_native,
+    get_world_items_for_chapter_context_native,
+)
 from initialization.genesis import run_genesis_phase
 from models import (
     CharacterProfile,
@@ -947,11 +956,14 @@ class NANA_Orchestrator:
         # Get text embedding
         embedding = await llm_service.async_get_embedding(final_text_to_process)
 
-        # Extract and merge knowledge updates
-        kg_usage = await self.knowledge_agent.extract_and_merge_knowledge(
+        # Extract and merge knowledge updates using native models for performance
+        characters = await get_character_profiles_native()
+        world_items = await get_world_building_native()
+        
+        kg_usage = await self.knowledge_agent.extract_and_merge_knowledge_native(
             self.plot_outline,
-            await character_queries.get_character_profiles_from_db(),
-            await world_queries.get_world_building_from_db(),
+            characters,  # List of CharacterProfile models
+            world_items,  # List of WorldItem models
             novel_chapter_number,
             final_text_to_process,
             is_from_flawed_source_for_kg,

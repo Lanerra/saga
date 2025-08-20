@@ -16,6 +16,7 @@ from .cypher_builders.character_cypher import (
     TRAIT_NAME_TO_CANONICAL,
     generate_character_node_cypher,
 )
+from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Mapping from normalized character names to canonical display names
 CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
@@ -696,4 +697,146 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
         return results if results else []
     except Exception as e:
         logger.error(f"Error finding thin characters: {e}", exc_info=True)
+        return []
+
+
+# Native model functions for performance optimization
+async def sync_characters_native(
+    characters: list[CharacterProfile],
+    chapter_number: int,
+) -> bool:
+    """
+    Native model version of sync_characters.
+    Persist character data directly from models without dict conversion.
+    
+    Args:
+        characters: List of CharacterProfile models
+        chapter_number: Current chapter for tracking updates
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    if not characters:
+        logger.info("No characters to sync")
+        return True
+    
+    # Validate all characters before syncing
+    for char in characters:
+        errors = validate_kg_object(char)
+        if errors:
+            logger.warning("Invalid CharacterProfile for '%s': %s", char.name, errors)
+    
+    try:
+        cypher_builder = NativeCypherBuilder()
+        statements = cypher_builder.batch_character_upsert_cypher(
+            characters, chapter_number
+        )
+        
+        if statements:
+            await neo4j_manager.execute_cypher_batch(statements)
+        
+        logger.info(
+            "Persisted %d character updates for chapter %d using native models.",
+            len(characters),
+            chapter_number,
+        )
+        
+        # Update canonical name mapping
+        for char in characters:
+            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
+        
+        return True
+        
+    except Exception as exc:
+        logger.error(
+            "Error persisting character updates for chapter %d: %s",
+            chapter_number,
+            exc,
+            exc_info=True,
+        )
+        return False
+
+
+async def get_character_profiles_native() -> list[CharacterProfile]:
+    """
+    Native model version of get_character_profiles_from_db.
+    Returns characters as model instances without dict conversion.
+    
+    Returns:
+        List of CharacterProfile models
+    """
+    try:
+        cypher_builder = NativeCypherBuilder()
+        query, params = cypher_builder.character_fetch_cypher()
+        
+        results = await neo4j_manager.execute_read_query(query, params)
+        characters = []
+        
+        for record in results:
+            if record and record.get('c'):
+                char = CharacterProfile.from_db_record(record)
+                characters.append(char)
+        
+        logger.info("Fetched %d characters using native models", len(characters))
+        return characters
+        
+    except Exception as exc:
+        logger.error("Error fetching character profiles: %s", exc, exc_info=True)
+        return []
+
+
+async def get_characters_for_chapter_context_native(
+    chapter_number: int,
+    limit: int = 10
+) -> list[CharacterProfile]:
+    """
+    Get characters relevant for chapter context using native models.
+    
+    Args:
+        chapter_number: Current chapter being processed
+        limit: Maximum number of characters to return
+        
+    Returns:
+        List of CharacterProfile models relevant to the chapter
+    """
+    try:
+        query = """
+        MATCH (c:Character:Entity)-[:APPEARS_IN]->(ch:Chapter)
+        WHERE ch.number < $chapter_number
+        WITH c, max(ch.number) as last_appearance
+        ORDER BY last_appearance DESC
+        LIMIT $limit
+        
+        OPTIONAL MATCH (c)-[r:RELATIONSHIP]->(other:Entity)
+        RETURN c, 
+               collect({
+                   target_name: other.name,
+                   type: r.type,
+                   description: r.description
+               }) as relationships
+        """
+        
+        results = await neo4j_manager.execute_read_query(
+            query,
+            {"chapter_number": chapter_number, "limit": limit}
+        )
+        
+        characters = []
+        for record in results:
+            if record and record.get('c'):
+                char = CharacterProfile.from_db_record(record)
+                characters.append(char)
+        
+        logger.debug(
+            "Fetched %d characters for chapter %d context using native models",
+            len(characters), chapter_number
+        )
+        
+        return characters
+        
+    except Exception as exc:
+        logger.error(
+            "Error fetching characters for chapter %d context: %s",
+            chapter_number, exc, exc_info=True
+        )
         return []
