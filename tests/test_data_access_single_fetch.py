@@ -22,7 +22,7 @@ async def test_get_character_profile_by_name(monkeypatch):
                     }
                 }
             ]
-        if "HAS_TRAIT" in query:
+        if "HAS_TRAIT_ASPECT" in query:
             return [{"trait_name": "brave"}]
         if "DYNAMIC_REL" in query:
             return [{"target_name": "Bob", "rel_props": {"type": "KNOWS"}}]
@@ -89,8 +89,8 @@ async def test_get_world_item_by_id(monkeypatch):
     assert item
     assert item.name == "City"
     assert item.category == "places"
-    assert item.properties["goals"] == ["Thrive"]
-    assert item.properties["elaboration_in_chapter_2"] == "history"
+    assert item.goals == ["Thrive"]
+    assert item.additional_properties["elaboration_in_chapter_2"] == "history"
 
     world_queries.get_world_item_by_id.cache_clear()
 

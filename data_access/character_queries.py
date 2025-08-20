@@ -7,6 +7,7 @@ from async_lru import alru_cache  # type: ignore
 import config
 import utils
 from core.db_manager import neo4j_manager
+from core.schema_validator import validate_kg_object
 from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 from models import CharacterProfile
 from neo4j.exceptions import ServiceUnavailable  # type: ignore
@@ -36,6 +37,12 @@ async def sync_characters(
     full_sync: bool = False,
 ) -> bool:
     """Persist character data to Neo4j."""
+    # Validate all profiles before syncing
+    for name, profile in profiles.items():
+        errors = validate_kg_object(profile)
+        if errors:
+            logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
+    
     if full_sync:
         profile_dicts = {k: v.to_dict() for k, v in profiles.items()}
         return await sync_full_state_from_object_to_db(profile_dicts)
@@ -108,6 +115,12 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
             logger.warning(f"Skipping invalid profile for '{char_name}' (not a dict).")
             continue
 
+        # Validate the profile before syncing
+        profile = CharacterProfile.from_dict(char_name, profile_dict)
+        errors = validate_kg_object(profile)
+        if errors:
+            logger.warning("Invalid CharacterProfile for '%s': %s", char_name, errors)
+
         char_direct_props = {
             k: v
             for k, v in profile_dict.items()
@@ -152,7 +165,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (c:Character:Entity {name: $char_name_val})-[r:HAS_TRAIT]->(t:Trait:Entity)
+            MATCH (c:Character:Entity {name: $char_name_val})-[r:HAS_TRAIT_ASPECT]->(t:Trait:Entity)
             WHERE NOT t.name IN $current_traits_list
             DELETE r
             """,
@@ -171,7 +184,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                 UNWIND $current_traits_list AS trait_name_val
                 MERGE (t:Trait:Entity {name: trait_name_val})
                     ON CREATE SET t.created_ts = timestamp()
-                MERGE (c)-[:HAS_TRAIT]->(t)
+                MERGE (c)-[:HAS_TRAIT_ASPECT]->(t)
                 """,
                     {
                         "char_name_val": char_name,
@@ -321,7 +334,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         (
             """
         MATCH (t:Trait:Entity)
-        WHERE NOT EXISTS((:Character:Entity)-[:HAS_TRAIT]->(t))
+        WHERE NOT EXISTS((:Character:Entity)-[:HAS_TRAIT_ASPECT]->(t))
         DETACH DELETE t
         """,
             {},
@@ -365,7 +378,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     profile.pop("updated_ts", None)
 
     traits_query = (
-        "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT]->(t:Trait:Entity)"
+        "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT_ASPECT]->(t:Trait:Entity)"
         " RETURN t.name AS trait_name"
     )
     trait_results = await neo4j_manager.execute_read_query(
@@ -470,7 +483,7 @@ async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
         profile.pop("created_ts", None)
         profile.pop("updated_ts", None)
 
-        traits_query = "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT]->(t:Trait:Entity) RETURN t.name AS trait_name"
+        traits_query = "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT_ASPECT]->(t:Trait:Entity) RETURN t.name AS trait_name"
         trait_results = await neo4j_manager.execute_read_query(
             traits_query, {"char_name": char_name}
         )

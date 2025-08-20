@@ -12,6 +12,7 @@ import config
 import utils  # Ensure utils is imported for normalize_trait_name
 from core.db_manager import neo4j_manager
 from core.llm_interface import llm_service
+from core.schema_validator import validate_node_labels, validate_relationship_types
 from data_access import (
     character_queries,
     kg_queries,
@@ -19,6 +20,7 @@ from data_access import (
     world_queries,
 )
 from models.kg_models import CharacterProfile, WorldItem
+from core.schema_validator import validate_kg_object
 from parsing_utils import (
     parse_rdf_triples_with_rdflib,
 )
@@ -565,6 +567,12 @@ def merge_character_profile_updates(
     from_flawed_draft: bool,
 ) -> None:
     """Merge character updates into existing profile dictionary."""
+    # Validate all updates before merging
+    for name, update in updates.items():
+        errors = validate_kg_object(update)
+        if errors:
+            logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
+    
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for name, update in updates.items():
         data = update.to_dict()
@@ -617,6 +625,13 @@ def merge_world_item_updates(
     from_flawed_draft: bool,
 ) -> None:
     """Merge world item updates into the current world dictionary."""
+    # Validate all updates before merging
+    for category, cat_updates in updates.items():
+        for name, update in cat_updates.items():
+            errors = validate_kg_object(update)
+            if errors:
+                logger.warning("Invalid WorldItem for '%s' in category '%s': %s", name, category, errors)
+    
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for category, cat_updates in updates.items():
         if category not in world:
@@ -627,7 +642,7 @@ def merge_world_item_updates(
                 data[provisional_key] = "provisional_from_unrevised_draft"
             if name not in world[category]:
                 world[category][name] = update
-                world[category][name].properties.setdefault(
+                world[category][name].additional_properties.setdefault(
                     f"added_in_chapter_{chapter_number}", True
                 )
                 continue
@@ -648,24 +663,54 @@ def merge_world_item_updates(
                         and isinstance(val, str)
                         and val.strip()
                     ):
-                        item.properties[key] = val
+                        # Handle structured fields
+                        if key == "description":
+                            item.description = val
+                        elif key == "goals":
+                            item.goals = val if isinstance(val, list) else [val]
+                        elif key == "rules":
+                            item.rules = val if isinstance(val, list) else [val]
+                        elif key == "key_elements":
+                            item.key_elements = val if isinstance(val, list) else [val]
+                        elif key == "traits":
+                            item.traits = val if isinstance(val, list) else [val]
+                        else:
+                            # Handle additional properties
+                            item.additional_properties[key] = val
                     continue
                 cur_val = item_props.get(key)
                 if isinstance(val, list):
-                    cur_list = item.properties.get(key, [])
-                    for elem in val:
-                        if elem not in cur_list:
-                            cur_list.append(elem)
-                    item.properties[key] = cur_list
+                    # Handle structured fields that are lists
+                    if key == "goals":
+                        item.goals = list(set(item.goals + val))
+                    elif key == "rules":
+                        item.rules = list(set(item.rules + val))
+                    elif key == "key_elements":
+                        item.key_elements = list(set(item.key_elements + val))
+                    elif key == "traits":
+                        item.traits = list(set(item.traits + val))
+                    else:
+                        # Handle additional properties that are lists
+                        cur_list = item.additional_properties.get(key, [])
+                        for elem in val:
+                            if elem not in cur_list:
+                                cur_list.append(elem)
+                        item.additional_properties[key] = cur_list
                 elif isinstance(val, dict):
-                    sub = item.properties.get(key, {})
+                    # Handle additional properties that are dictionaries
+                    sub = item.additional_properties.get(key, {})
                     if not isinstance(sub, dict):
                         sub = {}
                     sub.update(val)
-                    item.properties[key] = sub
+                    item.additional_properties[key] = sub
                 elif cur_val != val:
-                    item.properties[key] = val
-            item.properties.setdefault(
+                    # Handle structured fields that are not lists or dicts
+                    if key == "description":
+                        item.description = val
+                    else:
+                        # Handle additional properties that are not lists or dicts
+                        item.additional_properties[key] = val
+            item.additional_properties.setdefault(
                 f"updated_in_chapter_{chapter_number}",
                 True,
             )
@@ -1063,6 +1108,11 @@ class KnowledgeAgent:
             # Normalize the entity type to create valid Neo4j labels
             normalized_type = "".join(c for c in entity_type.title() if c.isalnum())
             labels = f":{normalized_type}{labels}"
+
+        # Validate node labels
+        errors = validate_node_labels([entity_type])
+        if errors:
+            logger.warning("Invalid node labels for entity '%s': %s", entity_name, errors)
 
         # Use MERGE to ensure we have a single entity with this name
         # This will either match an existing entity or create a new one
@@ -1566,6 +1616,11 @@ class KnowledgeAgent:
             normalized_type = "".join(c for c in entity_type.title() if c.isalnum())
             labels = f":{normalized_type}{labels}"
 
+        # Validate node labels
+        errors = validate_node_labels([entity_type])
+        if errors:
+            logger.warning("Invalid node labels for new entity '%s': %s", entity_name, errors)
+
         # Use MERGE to ensure we have a single entity with this name
         # This will either match an existing entity or create a new one
         merge_query = f"""
@@ -1610,6 +1665,10 @@ class KnowledgeAgent:
                 auto_clean_response=True,
             )
             new_type = kg_queries.normalize_relationship_type(new_type_raw)
+            # Validate the new relationship type
+            errors = validate_relationship_types([new_type])
+            if errors:
+                logger.warning("Invalid relationship type from LLM: %s", errors)
             if new_type and new_type != "UNKNOWN":
                 await kg_queries.update_dynamic_relationship_type(
                     rel["rel_id"], new_type

@@ -97,7 +97,7 @@ def generate_character_node_cypher(
                             MATCH (c:Character:Entity {name: $name})
                             MERGE (t:Trait:Entity {name: $trait_name})
                                 ON CREATE SET t.created_ts = timestamp()
-                            MERGE (c)-[:HAS_TRAIT]->(t)
+                            MERGE (c)-[:HAS_TRAIT_ASPECT]->(t)
                             """,
                             {
                                 "name": profile.name,

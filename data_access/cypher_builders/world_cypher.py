@@ -31,16 +31,21 @@ def generate_world_element_node_cypher(
         f"source_quality_chapter_{chapter_number_for_delta}"
     )
     if (
-        isinstance(item.properties, dict)
-        and item.properties.get(current_chapter_source_quality_key)
+        isinstance(item.additional_properties, dict)
+        and item.additional_properties.get(current_chapter_source_quality_key)
         == "provisional_from_unrevised_draft"
     ):
         node_props[KG_IS_PROVISIONAL] = True
     elif KG_IS_PROVISIONAL not in node_props:
         node_props[KG_IS_PROVISIONAL] = item.is_provisional
 
-    if isinstance(item.properties, dict):
-        for key, value in item.properties.items():
+    # Add description if it exists
+    if item.description:
+        node_props["description"] = item.description
+
+    # Add additional properties
+    if isinstance(item.additional_properties, dict):
+        for key, value in item.additional_properties.items():
             if (
                 isinstance(value, (str, int, float, bool))
                 and key not in node_props
@@ -111,8 +116,15 @@ def generate_world_element_node_cypher(
 
     for prop_key, rel_type in list_properties_to_relate.items():
         list_value = []
-        if isinstance(item.properties, dict):
-            list_value = item.properties.get(prop_key, [])
+        # Use the new structured fields instead of the properties dictionary
+        if prop_key == "goals":
+            list_value = item.goals
+        elif prop_key == "rules":
+            list_value = item.rules
+        elif prop_key == "key_elements":
+            list_value = item.key_elements
+        elif prop_key == "traits":
+            list_value = item.traits
 
         if isinstance(list_value, list):
             for value_str_unstripped in list_value:
@@ -143,8 +155,8 @@ def generate_world_element_node_cypher(
                         )
 
     elab_event_key = f"elaboration_in_chapter_{chapter_number_for_delta}"
-    if isinstance(item.properties, dict) and elab_event_key in item.properties:
-        elab_summary = item.properties[elab_event_key]
+    if isinstance(item.additional_properties, dict) and elab_event_key in item.additional_properties:
+        elab_summary = item.additional_properties[elab_event_key]
         if isinstance(elab_summary, str) and elab_summary.strip():
             elab_event_id = (
                 f"elab_{item.id}_ch{chapter_number_for_delta}_{hash(elab_summary)}"

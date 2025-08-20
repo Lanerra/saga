@@ -7,6 +7,7 @@ from async_lru import alru_cache
 
 import config
 from core.db_manager import neo4j_manager
+from core.schema_validator import validate_node_labels, validate_relationship_types
 from kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
@@ -451,8 +452,8 @@ async def find_contradictory_trait_characters(
     all_findings = []
     for trait1, trait2 in contradictory_trait_pairs:
         query = """
-        MATCH (c:Character)-[:HAS_TRAIT]->(t1:Trait {name: $trait1_param}),
-              (c)-[:HAS_TRAIT]->(t2:Trait {name: $trait2_param})
+        MATCH (c:Character)-[:HAS_TRAIT_ASPECT]->(t1:Trait {name: $trait1_param}),
+              (c)-[:HAS_TRAIT_ASPECT]->(t2:Trait {name: $trait2_param})
         RETURN c.name AS character_name, t1.name AS trait1, t2.name AS trait2
         """
         params = {"trait1_param": trait1, "trait2_param": trait2}
@@ -708,15 +709,25 @@ async def get_defined_node_labels() -> list[str]:
     try:
         results = await neo4j_manager.execute_read_query("CALL db.labels() YIELD label")
         # Filter out internal labels
-        return [
+        labels = [
             r["label"]
             for r in results
             if r.get("label") and not r["label"].startswith("_")
         ]
+        # Validate labels against schema
+        errors = validate_node_labels(labels)
+        if errors:
+            logger.warning("Invalid node labels found: %s", errors)
+        return labels
     except Exception:
         logger.error("Failed to query defined node labels from Neo4j.", exc_info=True)
         # Fallback to constants if DB query fails
-        return list(config.NODE_LABELS)
+        labels = list(config.NODE_LABELS)
+        # Validate labels against schema
+        errors = validate_node_labels(labels)
+        if errors:
+            logger.warning("Invalid node labels in config: %s", errors)
+        return labels
 
 
 @alru_cache(maxsize=1)
@@ -726,18 +737,32 @@ async def get_defined_relationship_types() -> list[str]:
         results = await neo4j_manager.execute_read_query(
             "CALL db.relationshipTypes() YIELD relationshipType"
         )
-        return [r["relationshipType"] for r in results if r.get("relationshipType")]
+        rel_types = [r["relationshipType"] for r in results if r.get("relationshipType")]
+        # Validate relationship types against schema
+        errors = validate_relationship_types(rel_types)
+        if errors:
+            logger.warning("Invalid relationship types found: %s", errors)
+        return rel_types
     except Exception:
         logger.error(
             "Failed to query defined relationship types from Neo4j.", exc_info=True
         )
         # Fallback to constants if DB query fails
-        return list(config.RELATIONSHIP_TYPES)
+        rel_types = list(config.RELATIONSHIP_TYPES)
+        # Validate relationship types against schema
+        errors = validate_relationship_types(rel_types)
+        if errors:
+            logger.warning("Invalid relationship types in config: %s", errors)
+        return rel_types
 
 
 async def promote_dynamic_relationships() -> int:
     """Convert dynamic relationships to defined relationship types."""
     valid_types = await get_defined_relationship_types()
+    # Validate relationship types
+    errors = validate_relationship_types(valid_types)
+    if errors:
+        logger.warning("Invalid relationship types for promotion: %s", errors)
     query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
     WHERE r.type IN $valid_types
@@ -818,7 +843,15 @@ async def fetch_unresolved_dynamic_relationships(
     """
     try:
         results = await neo4j_manager.execute_read_query(query, {"limit": limit})
-        return [dict(record) for record in results] if results else []
+        records = [dict(record) for record in results] if results else []
+        # Validate node labels in the results
+        for record in records:
+            subject_labels = record.get("subject_labels", [])
+            object_labels = record.get("object_labels", [])
+            errors = validate_node_labels(subject_labels + object_labels)
+            if errors:
+                logger.warning("Invalid node labels in unresolved relationship: %s", errors)
+        return records
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error(
             "Failed to fetch unresolved dynamic relationships: %s", exc, exc_info=True
@@ -828,6 +861,10 @@ async def fetch_unresolved_dynamic_relationships(
 
 async def update_dynamic_relationship_type(rel_id: int, new_type: str) -> None:
     """Update a dynamic relationship's type."""
+    # Validate the new relationship type
+    errors = validate_relationship_types([new_type])
+    if errors:
+        logger.warning("Invalid relationship type for update: %s", errors)
     query = "MATCH ()-[r:DYNAMIC_REL]->() WHERE id(r) = $id SET r.type = $type"
     try:
         await neo4j_manager.execute_write_query(query, {"id": rel_id, "type": new_type})

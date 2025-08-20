@@ -47,7 +47,7 @@ def test_create_default_world_no_placeholders():
         assert item.name == ""
         assert item.category == category
         # Check that description is empty instead of placeholder
-        assert item.properties.get("description") == ""
+        assert item.description == ""
 
 
 @pytest.mark.asyncio
@@ -129,28 +129,28 @@ async def test_bootstrap_world_with_empty_elements():
         assert "locations" in result_world
         assert "New York City" in result_world["locations"]
         assert (
-            result_world["locations"]["New York City"].properties.get("description")
+            result_world["locations"]["New York City"].description
             == "A bustling metropolis in space."
         )
 
         assert "society" in result_world
         assert "Medieval Society" in result_world["society"]
         assert (
-            result_world["society"]["Medieval Society"].properties.get("description")
+            result_world["society"]["Medieval Society"].description
             == "A society structured around feudal principles."
         )
 
         assert "systems" in result_world
         assert "Magic System" in result_world["systems"]
         assert (
-            result_world["systems"]["Magic System"].properties.get("description")
+            result_world["systems"]["Magic System"].description
             == "A system of magic based on elemental forces."
         )
 
         assert "lore" in result_world
         assert "Ancient Lore" in result_world["lore"]
         assert (
-            result_world["lore"]["Ancient Lore"].properties.get("description")
+            result_world["lore"]["Ancient Lore"].description
             == "Legends of the ancient civilization."
         )
 

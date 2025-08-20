@@ -40,7 +40,6 @@ RELATIONSHIP_TYPES = {
     "HAS_WORLD_META",
     "CONTAINS_ELEMENT",
     # Character-related Relationships
-    "HAS_TRAIT",
     "DEVELOPED_IN_CHAPTER",
     "KNOWS",
     "FRIEND_OF",

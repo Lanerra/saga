@@ -19,6 +19,8 @@ class CharacterProfile(BaseModel):
     relationships: dict[str, Any] = Field(default_factory=dict)
     status: str = "Unknown"
     updates: dict[str, Any] = Field(default_factory=dict)
+    created_chapter: int = 0
+    is_provisional: bool = False
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> CharacterProfile:
@@ -49,7 +51,13 @@ class WorldItem(BaseModel):
     name: str
     created_chapter: int = 0
     is_provisional: bool = False
-    properties: dict[str, Any] = Field(default_factory=dict)
+    description: str = ""
+    goals: list[str] = Field(default_factory=list)
+    rules: list[str] = Field(default_factory=list)
+    key_elements: list[str] = Field(default_factory=list)
+    traits: list[str] = Field(default_factory=list)
+    # Additional properties can still be stored in a dictionary for flexibility
+    additional_properties: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, category: str, name: str, data: dict[str, Any], allow_empty_name: bool = False) -> WorldItem:
@@ -65,8 +73,16 @@ class WorldItem(BaseModel):
 
         created_chapter = int(data.get(KG_NODE_CREATED_CHAPTER, 0))
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
+        
+        # Extract structured fields
+        description = data.get("description", "")
+        goals = data.get("goals", [])
+        rules = data.get("rules", [])
+        key_elements = data.get("key_elements", [])
+        traits = data.get("traits", [])
 
-        props = {
+        # Collect remaining properties
+        additional_properties = {
             k: v
             for k, v in data.items()
             if k
@@ -76,6 +92,11 @@ class WorldItem(BaseModel):
                 "name",
                 KG_NODE_CREATED_CHAPTER,
                 KG_IS_PROVISIONAL,
+                "description",
+                "goals",
+                "rules",
+                "key_elements",
+                "traits",
             }
         }
 
@@ -85,13 +106,18 @@ class WorldItem(BaseModel):
             name=name,
             created_chapter=created_chapter,
             is_provisional=is_provisional,
-            properties=props,
+            description=description,
+            goals=goals,
+            rules=rules,
+            key_elements=key_elements,
+            traits=traits,
+            additional_properties=additional_properties,
         )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the item to a flat dictionary."""
 
         data = self.model_dump(exclude={"id", "category", "name"})
-        properties_data = data.pop("properties", {})
-        data.update(properties_data)
+        additional_properties = data.pop("additional_properties", {})
+        data.update(additional_properties)
         return data

@@ -7,6 +7,7 @@ from async_lru import alru_cache  # type: ignore
 import config
 import utils
 from core.db_manager import neo4j_manager
+from core.schema_validator import validate_kg_object
 from kg_constants import (
     KG_IS_PROVISIONAL,
     KG_NODE_CHAPTER_UPDATED,
@@ -51,6 +52,16 @@ async def sync_world_items(
     full_sync: bool = False,
 ) -> bool:
     """Persist world element data to Neo4j."""
+    # Validate all world items before syncing
+    for cat, items in world_items.items():
+        if not isinstance(items, dict):
+            continue
+        for item in items.values():
+            if isinstance(item, WorldItem):
+                errors = validate_kg_object(item)
+                if errors:
+                    logger.warning("Invalid WorldItem in category '%s': %s", cat, errors)
+    
     WORLD_NAME_TO_ID.clear()
     for cat, items in world_items.items():
         if not isinstance(items, dict):
@@ -120,6 +131,12 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
     # 1. Synchronize WorldContainer (_overview_)
     overview_details = world_data.get("_overview_", {})
     if isinstance(overview_details, dict):
+        # Validate the overview item
+        overview_item = WorldItem.from_dict("_overview_", "_overview_", overview_details)
+        errors = validate_kg_object(overview_item)
+        if errors:
+            logger.warning("Invalid WorldItem for '_overview_': %s", errors)
+        
         wc_props = {
             "id": wc_id_param,  # Ensure ID is part of props for SET
             "overview_description": str(overview_details.get("description", "")),
@@ -236,6 +253,12 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                 ("_", "source_quality_chapter_", "category_updated_in_chapter_")
             ):
                 continue
+
+            # Validate the WorldItem before processing
+            world_item = WorldItem.from_dict(category_str, item_name_str, details_dict)
+            errors = validate_kg_object(world_item)
+            if errors:
+                logger.warning("Invalid WorldItem for '%s' in category '%s': %s", item_name_str, category_str, errors)
 
             # ID should be taken from details_dict if present, otherwise generated.
             # This aligns with WorldItem.from_dict's ID handling.

@@ -101,7 +101,7 @@ async def bootstrap_world(
     if "_overview_" in world_building and "_overview_" in world_building["_overview_"]:
         overview_item_obj = world_building["_overview_"]["_overview_"]
         if isinstance(overview_item_obj, WorldItem) and utils._is_fill_in(
-            overview_item_obj.properties.get("description")
+            overview_item_obj.description
         ):
             logger.info("Bootstrapping _overview_ description.")
             desc_value, desc_usage = await bootstrap_field(
@@ -120,16 +120,16 @@ async def bootstrap_world(
                 and isinstance(desc_value, str)
                 and not utils._is_fill_in(desc_value)
             ):
-                overview_item_obj.properties["description"] = desc_value
-                current_source = overview_item_obj.properties.get("source", "")
+                overview_item_obj.description = desc_value
+                current_source = overview_item_obj.additional_properties.get("source", "")
                 if isinstance(current_source, str):
-                    overview_item_obj.properties["source"] = (
+                    overview_item_obj.additional_properties["source"] = (
                         f"{current_source}_descr_bootstrapped"
                         if current_source
                         else "descr_bootstrapped"
                     )
                 else:
-                    overview_item_obj.properties["source"] = "descr_bootstrapped"
+                    overview_item_obj.additional_properties["source"] = "descr_bootstrapped"
 
     # Stage 1: Bootstrap names for items with missing/empty names (sequential to prevent duplicates)
     items_needing_names: list[tuple[str, str, WorldItem]] = []
@@ -232,10 +232,8 @@ async def bootstrap_world(
                     original_fill_in_name,
                     new_name_value,
                 )
-                properties_with_id = {
-                    **original_item_obj.properties,
-                    "id": f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}",
-                }
+                properties_with_id = original_item_obj.to_dict()
+                properties_with_id["id"] = f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}"
                 # Ensure we have a valid ID
                 if not properties_with_id["id"] or properties_with_id["id"] == "_":
                     properties_with_id["id"] = (
@@ -244,7 +242,7 @@ async def bootstrap_world(
                 new_item_renamed = WorldItem.from_dict(
                     original_category, new_name_value, properties_with_id
                 )
-                new_item_renamed.properties["source"] = "bootstrapped_name"
+                new_item_renamed.additional_properties["source"] = "bootstrapped_name"
 
                 new_items_to_add_stage1.setdefault(original_category, {})[
                     new_name_value
@@ -305,7 +303,27 @@ async def bootstrap_world(
                 not item_name or not item_name.strip()
             ):
                 continue
-            for prop_name, prop_value in item_obj.properties.items():
+            # Check for properties that need bootstrapping
+            # For structured fields like description, goals, rules, key_elements, traits
+            if not item_obj.description:
+                logger.info(
+                    "Identified property 'description' for bootstrapping in item '%s/%s'.",
+                    category,
+                    item_name,
+                )
+                task_key = (category, item_name, "description")
+                context_data = {
+                    "world_item": item_obj.to_dict(),
+                    "plot_outline": plot_outline,
+                    "target_category": category,
+                    "category_description": f"Bootstrap a description for a {category} element in the world.",
+                }
+                property_bootstrap_tasks[task_key] = bootstrap_field(
+                    "description", context_data, "bootstrapper/fill_world_item_field.j2"
+                )
+
+            # Check additional_properties for other properties
+            for prop_name, prop_value in item_obj.additional_properties.items():
                 # Check if the property value is missing or empty (instead of just checking for placeholder)
                 if not prop_value or (
                     isinstance(prop_value, str) and not prop_value.strip()
@@ -363,19 +381,32 @@ async def bootstrap_world(
                     category,
                     item_name,
                 )
-                target_item.properties[prop_name_filled] = prop_fill_value
+                # Handle structured fields
+                if prop_name_filled == "description":
+                    target_item.description = prop_fill_value
+                elif prop_name_filled == "goals":
+                    target_item.goals = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                elif prop_name_filled == "rules":
+                    target_item.rules = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                elif prop_name_filled == "key_elements":
+                    target_item.key_elements = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                elif prop_name_filled == "traits":
+                    target_item.traits = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                else:
+                    # Handle additional properties
+                    target_item.additional_properties[prop_name_filled] = prop_fill_value
 
-                current_source = target_item.properties.get("source", "")
+                current_source = target_item.additional_properties.get("source", "")
                 if isinstance(current_source, str):
                     append_source = f"_prop_{prop_name_filled}_bootstrapped"
                     if append_source not in current_source:
-                        target_item.properties["source"] = (
+                        target_item.additional_properties["source"] = (
                             f"{current_source}{append_source}"
                             if current_source
                             else append_source.lstrip("_")
                         )
                 else:
-                    target_item.properties["source"] = (
+                    target_item.additional_properties["source"] = (
                         f"prop_{prop_name_filled}_bootstrapped"
                     )
             else:
