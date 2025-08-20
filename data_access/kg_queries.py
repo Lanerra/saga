@@ -1,12 +1,13 @@
 # data_access/kg_queries.py
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from async_lru import alru_cache
 
 import config
 from core.db_manager import neo4j_manager
+from core.schema_validator import validate_node_labels, validate_relationship_types
 from kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
@@ -16,7 +17,7 @@ from kg_constants import (
 logger = logging.getLogger(__name__)
 
 # Lookup table for canonical node labels to ensure consistent casing
-_CANONICAL_NODE_LABEL_MAP: Dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
+_CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
 
 
 def _to_pascal_case(text: str) -> str:
@@ -41,7 +42,7 @@ async def normalize_existing_relationship_types() -> None:
         logger.error("Error reading existing relationship types: %s", exc)
         return
 
-    statements: List[Tuple[str, Dict[str, Any]]] = []
+    statements: list[tuple[str, dict[str, Any]]] = []
     for record in results:
         current = record.get("t")
         if not current:
@@ -64,11 +65,11 @@ async def normalize_existing_relationship_types() -> None:
             )
 
 
-def _get_cypher_labels(entity_type: Optional[str]) -> str:
+def _get_cypher_labels(entity_type: str | None) -> str:
     """Helper to create a Cypher label string (e.g., :Character:Entity or :Person:Character:Entity)."""
 
     entity_label_suffix = ":Entity"  # All nodes get this
-    specific_labels_parts: List[str] = []
+    specific_labels_parts: list[str] = []
 
     if entity_type and entity_type.strip():
         cleaned = re.sub(r"[^a-zA-Z0-9_\s]+", "", entity_type)
@@ -104,7 +105,7 @@ def _get_cypher_labels(entity_type: Optional[str]) -> str:
 
 
 async def add_kg_triples_batch_to_db(
-    structured_triples_data: List[Dict[str, Any]],
+    structured_triples_data: list[dict[str, Any]],
     chapter_number: int,
     is_from_flawed_draft: bool,
 ):
@@ -112,7 +113,7 @@ async def add_kg_triples_batch_to_db(
         logger.info("Neo4j: add_kg_triples_batch_to_db: No structured triples to add.")
         return
 
-    statements_with_params: List[Tuple[str, Dict[str, Any]]] = []
+    statements_with_params: list[tuple[str, dict[str, Any]]] = []
 
     for triple_dict in structured_triples_data:
         subject_info = triple_dict.get("subject")
@@ -249,15 +250,15 @@ async def add_kg_triples_batch_to_db(
 
 
 async def query_kg_from_db(
-    subject: Optional[str] = None,
-    predicate: Optional[str] = None,
-    obj_val: Optional[str] = None,
-    chapter_limit: Optional[int] = None,
+    subject: str | None = None,
+    predicate: str | None = None,
+    obj_val: str | None = None,
+    chapter_limit: int | None = None,
     include_provisional: bool = True,
-    limit_results: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+    limit_results: int | None = None,
+) -> list[dict[str, Any]]:
     conditions = []
-    parameters: Dict[str, Any] = {}
+    parameters: dict[str, Any] = {}
     match_clause = "MATCH (s:Entity)-[r:DYNAMIC_REL]->(o) "
 
     if subject is not None:
@@ -307,7 +308,7 @@ async def query_kg_from_db(
     )
     try:
         results = await neo4j_manager.execute_read_query(full_query, parameters)
-        triples_list: List[Dict[str, Any]] = (
+        triples_list: list[dict[str, Any]] = (
             [dict(record) for record in results] if results else []
         )
         logger.debug(
@@ -325,9 +326,9 @@ async def query_kg_from_db(
 async def get_most_recent_value_from_db(
     subject: str,
     predicate: str,
-    chapter_limit: Optional[int] = None,
+    chapter_limit: int | None = None,
     include_provisional: bool = False,
-) -> Optional[Any]:
+) -> Any | None:
     if not subject.strip() or not predicate.strip():
         logger.warning(
             f"Neo4j: get_most_recent_value_from_db: empty subject or predicate. S='{subject}', P='{predicate}'"
@@ -365,7 +366,7 @@ async def get_most_recent_value_from_db(
     return None
 
 
-async def get_novel_info_property_from_db(property_key: str) -> Optional[Any]:
+async def get_novel_info_property_from_db(property_key: str) -> Any | None:
     """Return a property value from the NovelInfo node."""
     if not property_key.strip():
         logger.warning("Neo4j: empty property key for NovelInfo query")
@@ -388,8 +389,8 @@ async def get_novel_info_property_from_db(property_key: str) -> Optional[Any]:
 
 
 async def get_chapter_context_for_entity(
-    entity_name: Optional[str] = None, entity_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
+    entity_name: str | None = None, entity_id: str | None = None
+) -> list[dict[str, Any]]:
     """
     Finds chapters where an entity was mentioned or involved to provide context for enrichment.
     Searches by name for Characters/ValueNodes or by ID for WorldElements.
@@ -439,8 +440,8 @@ async def get_chapter_context_for_entity(
 
 
 async def find_contradictory_trait_characters(
-    contradictory_trait_pairs: List[Tuple[str, str]],
-) -> List[Dict[str, Any]]:
+    contradictory_trait_pairs: list[tuple[str, str]],
+) -> list[dict[str, Any]]:
     """
     Finds characters who have contradictory traits based on a provided list of pairs.
     e.g. [('Brave', 'Cowardly'), ('Honest', 'Deceitful')]
@@ -451,8 +452,8 @@ async def find_contradictory_trait_characters(
     all_findings = []
     for trait1, trait2 in contradictory_trait_pairs:
         query = """
-        MATCH (c:Character)-[:HAS_TRAIT]->(t1:Trait {name: $trait1_param}),
-              (c)-[:HAS_TRAIT]->(t2:Trait {name: $trait2_param})
+        MATCH (c:Character)-[:HAS_TRAIT_ASPECT]->(t1:Trait {name: $trait1_param}),
+              (c)-[:HAS_TRAIT_ASPECT]->(t2:Trait {name: $trait2_param})
         RETURN c.name AS character_name, t1.name AS trait1, t2.name AS trait2
         """
         params = {"trait1_param": trait1, "trait2_param": trait2}
@@ -469,7 +470,7 @@ async def find_contradictory_trait_characters(
     return all_findings
 
 
-async def find_post_mortem_activity() -> List[Dict[str, Any]]:
+async def find_post_mortem_activity() -> list[dict[str, Any]]:
     """
     Finds characters who have relationships or activities recorded in chapters
     after they were marked as dead.
@@ -502,7 +503,7 @@ async def find_post_mortem_activity() -> List[Dict[str, Any]]:
 
 async def find_candidate_duplicate_entities(
     similarity_threshold: float = 0.85, limit: int = 50
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Finds pairs of entities with similar names using native Neo4j string similarity.
     """
@@ -538,15 +539,13 @@ async def find_candidate_duplicate_entities(
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
     except Exception as e:
-        logger.error(
-            f"Error finding candidate duplicate entities: {e}", exc_info=True
-        )
+        logger.error(f"Error finding candidate duplicate entities: {e}", exc_info=True)
         return []
 
 
 async def get_entity_context_for_resolution(
     entity_id: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Gathers comprehensive context for an entity to help an LLM decide on a merge.
     """
@@ -608,7 +607,7 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
     }
     RETURN count(*) AS copiedProps
     """
-    
+
     # Then, move all outgoing relationships from source to target
     query2 = """
     MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
@@ -644,7 +643,7 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
     }
     RETURN count(*) AS totalMovedOutgoing
     """
-    
+
     # Also move all incoming relationships from source to target
     query3 = """
     MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
@@ -680,13 +679,13 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
     }
     RETURN count(*) AS totalMovedIncoming
     """
-    
+
     # Finally, delete the source node
     query4 = """
     MATCH (source:Entity {id: $source_id})
     DETACH DELETE source
     """
-    
+
     params = {"target_id": target_id, "source_id": source_id}
     try:
         # Execute all queries in sequence
@@ -705,41 +704,65 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
 
 
 @alru_cache(maxsize=1)
-async def get_defined_node_labels() -> List[str]:
+async def get_defined_node_labels() -> list[str]:
     """Queries the database for all defined node labels and caches the result."""
     try:
         results = await neo4j_manager.execute_read_query("CALL db.labels() YIELD label")
         # Filter out internal labels
-        return [
+        labels = [
             r["label"]
             for r in results
             if r.get("label") and not r["label"].startswith("_")
         ]
+        # Validate labels against schema
+        errors = validate_node_labels(labels)
+        if errors:
+            logger.warning("Invalid node labels found: %s", errors)
+        return labels
     except Exception:
         logger.error("Failed to query defined node labels from Neo4j.", exc_info=True)
         # Fallback to constants if DB query fails
-        return list(config.NODE_LABELS)
+        labels = list(config.NODE_LABELS)
+        # Validate labels against schema
+        errors = validate_node_labels(labels)
+        if errors:
+            logger.warning("Invalid node labels in config: %s", errors)
+        return labels
 
 
 @alru_cache(maxsize=1)
-async def get_defined_relationship_types() -> List[str]:
+async def get_defined_relationship_types() -> list[str]:
     """Queries the database for all defined relationship types and caches the result."""
     try:
         results = await neo4j_manager.execute_read_query(
             "CALL db.relationshipTypes() YIELD relationshipType"
         )
-        return [r["relationshipType"] for r in results if r.get("relationshipType")]
+        rel_types = [r["relationshipType"] for r in results if r.get("relationshipType")]
+        # Validate relationship types against schema
+        errors = validate_relationship_types(rel_types)
+        if errors:
+            logger.warning("Invalid relationship types found: %s", errors)
+        return rel_types
     except Exception:
         logger.error(
             "Failed to query defined relationship types from Neo4j.", exc_info=True
         )
         # Fallback to constants if DB query fails
-        return list(config.RELATIONSHIP_TYPES)
+        rel_types = list(config.RELATIONSHIP_TYPES)
+        # Validate relationship types against schema
+        errors = validate_relationship_types(rel_types)
+        if errors:
+            logger.warning("Invalid relationship types in config: %s", errors)
+        return rel_types
 
 
 async def promote_dynamic_relationships() -> int:
     """Convert dynamic relationships to defined relationship types."""
     valid_types = await get_defined_relationship_types()
+    # Validate relationship types
+    errors = validate_relationship_types(valid_types)
+    if errors:
+        logger.warning("Invalid relationship types for promotion: %s", errors)
     query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
     WHERE r.type IN $valid_types
@@ -775,7 +798,7 @@ async def deduplicate_relationships() -> int:
     RETURN id(s) AS sourceId, t AS relType, id(o) AS targetId,
            collect({relId: id(rel), props: props}) AS relData
     """
-    
+
     # Then, merge the relationships by combining properties and deleting duplicates
     query2 = """
     MATCH (s)-[r]->(o)
@@ -792,7 +815,7 @@ async def deduplicate_relationships() -> int:
     DELETE deleteRel
     RETURN count(*) AS removed
     """
-    
+
     try:
         results = await neo4j_manager.execute_write_query(query2)
         return results[0].get("removed", 0) if results else 0
@@ -803,7 +826,7 @@ async def deduplicate_relationships() -> int:
 
 async def fetch_unresolved_dynamic_relationships(
     limit: int = 50,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Fetch dynamic relationships lacking a specific type."""
     query = """
     MATCH (s:Entity)-[r:DYNAMIC_REL]->(o:Entity)
@@ -820,7 +843,15 @@ async def fetch_unresolved_dynamic_relationships(
     """
     try:
         results = await neo4j_manager.execute_read_query(query, {"limit": limit})
-        return [dict(record) for record in results] if results else []
+        records = [dict(record) for record in results] if results else []
+        # Validate node labels in the results
+        for record in records:
+            subject_labels = record.get("subject_labels", [])
+            object_labels = record.get("object_labels", [])
+            errors = validate_node_labels(subject_labels + object_labels)
+            if errors:
+                logger.warning("Invalid node labels in unresolved relationship: %s", errors)
+        return records
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error(
             "Failed to fetch unresolved dynamic relationships: %s", exc, exc_info=True
@@ -830,6 +861,10 @@ async def fetch_unresolved_dynamic_relationships(
 
 async def update_dynamic_relationship_type(rel_id: int, new_type: str) -> None:
     """Update a dynamic relationship's type."""
+    # Validate the new relationship type
+    errors = validate_relationship_types([new_type])
+    if errors:
+        logger.warning("Invalid relationship type for update: %s", errors)
     query = "MATCH ()-[r:DYNAMIC_REL]->() WHERE id(r) = $id SET r.type = $type"
     try:
         await neo4j_manager.execute_write_query(query, {"id": rel_id, "type": new_type})
@@ -841,7 +876,7 @@ async def update_dynamic_relationship_type(rel_id: int, new_type: str) -> None:
 
 async def get_shortest_path_length_between_entities(
     name1: str, name2: str, max_depth: int = 4
-) -> Optional[int]:
+) -> int | None:
     """Return the shortest path length between two entities if it exists."""
     if max_depth <= 0:
         return None

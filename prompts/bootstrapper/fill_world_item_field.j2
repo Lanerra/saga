@@ -3,6 +3,29 @@ You are an expert world-building assistant for fictional narratives. Your task i
 
 **TASK:**
 Generate a value for the field "{{ field_name }}" in the world item "{{ context.world_item.name }}" (category: {{ context.world_item.category }}).
+{% if context.category_description %}
+Category Description: {{ context.category_description }}
+{% endif %}
+
+**CATEGORY CONTEXT:**
+{% if context.world_item.category == "lore" %}
+Lore elements represent myths, legends, and historical narratives of the world.
+
+{% elif context.world_item.category == "society" %}
+Society elements represent social structures and cultural organizations.
+
+{% elif context.world_item.category == "history" %}
+History elements represent past events and significant moments.
+
+{% elif context.world_item.category == "factions" %}
+Factions elements represent political groups and organizations with distinct agendas.
+
+{% elif context.world_item.category == "locations" %}
+Location elements represent physical places and geographic features.
+
+{% elif context.world_item.category == "systems" %}
+System elements represent magical or technological frameworks.
+{% endif %}
 
 **CONTEXT:**
 {% if context.plot_outline %}
@@ -18,6 +41,15 @@ World Item Details:
 2. Be creative but consistent with existing elements
 3. Provide ONLY a valid JSON object with the key "{{ field_name }}"
 4. Do NOT include any other text, explanations, or markdown
+5. For name fields, ensure the name is distinctive and appropriate for the category
+6. Consider the category description when generating content
+{% if context.existing_world_names %}
+7. CRITICAL: Avoid semantic similarity to these existing world names: {{ context.existing_world_names | join(', ') }}
+8. Generate a name that is thematically distinct and uses different linguistic roots
+{% endif %}
+{% if context.retry_attempt %}
+9. This is retry attempt {{ context.retry_attempt }} - be extra creative and avoid obvious connections to existing names
+{% endif %}
 
 **OUTPUT FORMAT:**
 {

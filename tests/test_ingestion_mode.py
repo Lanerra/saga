@@ -1,4 +1,5 @@
 import pytest
+
 from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from core.llm_interface import llm_service

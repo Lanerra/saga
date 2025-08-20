@@ -1,10 +1,10 @@
-from kg_maintainer import (
+from agents.knowledge_agent import (
     CharacterProfile,
     WorldItem,
     merge_character_profile_updates,
     merge_world_item_updates,
 )
-from kg_maintainer.merge import initialize_new_character_profile
+from agents.knowledge_agent import initialize_new_character_profile
 
 
 def test_merge_character_profile_updates():
@@ -34,7 +34,7 @@ def test_merge_world_item_updates():
         }
     }
     merge_world_item_updates(current, updates, 1, False)
-    assert current["Places"]["City"].properties["description"] == "New"
+    assert current["Places"]["City"].description == "New"
 
 
 def test_initialize_new_character_profile_defaults():
@@ -58,8 +58,8 @@ def test_merge_world_item_updates_new_item_flawed():
     updates = {"Things": {"Book": WorldItem.from_dict("Things", "Book", {"info": "x"})}}
     merge_world_item_updates(current, updates, 3, True)
     item = current["Things"]["Book"]
-    assert item.properties["added_in_chapter_3"]
-    assert "source_quality_chapter_3" not in item.properties
+    assert item.additional_properties["added_in_chapter_3"]
+    assert "source_quality_chapter_3" not in item.additional_properties
 
 
 def test_merge_world_item_updates_merge_complex():
@@ -81,7 +81,7 @@ def test_merge_world_item_updates_merge_complex():
     }
     merge_world_item_updates(current, updates, 2, False)
     item = current["Places"]["Town"]
-    assert "Town desc" == item.properties["desc"]
-    assert set(item.properties["features"]) == {"old", "new"}
-    assert item.properties["data"] == {"a": 1, "b": 2}
-    assert item.properties["updated_in_chapter_2"]
+    assert "Town desc" == item.additional_properties["desc"]
+    assert set(item.additional_properties["features"]) == {"old", "new"}
+    assert item.additional_properties["data"] == {"a": 1, "b": 2}
+    assert item.additional_properties["updated_in_chapter_2"]

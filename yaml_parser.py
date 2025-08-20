@@ -1,6 +1,6 @@
 # yaml_parser.py
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -27,9 +27,7 @@ def normalize_keys_recursive(data: Any) -> Any:
         return data
 
 
-def load_yaml_file(
-    filepath: str, normalize_keys: bool = True
-) -> Optional[Dict[str, Any]]:
+def load_yaml_file(filepath: str, normalize_keys: bool = True) -> dict[str, Any] | None:
     """
     Loads and parses a YAML file.
 
@@ -45,7 +43,7 @@ def load_yaml_file(
         logger.error(f"File specified is not a YAML file: {filepath}")
         return None
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = yaml.safe_load(f)
 
         if not isinstance(content, dict):

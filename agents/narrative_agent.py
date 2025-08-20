@@ -1,17 +1,21 @@
-from typing import Dict, List, Optional, Tuple, Any
 import json  # Added for JSON parsing
 import re  # Added for regex operations
+from typing import Any
+
 import structlog
+
 from config import NARRATIVE_MODEL
-from core.llm_interface import llm_service, count_tokens, truncate_text_by_tokens
+from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
+from processing.context_generator import (
+    generate_hybrid_chapter_context_logic,  # Added for hybrid context generation
+)
 from prompt_data_getters import (
     get_character_state_snippet_for_prompt,
     get_reliable_kg_facts_for_drafting_prompt,
     get_world_state_snippet_for_prompt,
 )
-from processing.context_generator import generate_hybrid_chapter_context_logic  # Added for hybrid context generation
 from prompt_renderer import render_prompt
 
 logger = structlog.get_logger()
@@ -37,21 +41,22 @@ SCENE_PLAN_LIST_INTERNAL_KEYS = [
     "characters_involved",
 ]
 
+
 class NarrativeAgent:
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         self.logger = structlog.get_logger()
         self.config = config
         self.model = NARRATIVE_MODEL
 
     async def _plan_chapter_scenes(
         self,
-        plot_outline: Dict[str, Any],
-        character_profiles: Dict[str, CharacterProfile],
-        world_building: Dict[str, Dict[str, WorldItem]],
+        plot_outline: dict[str, Any],
+        character_profiles: dict[str, CharacterProfile],
+        world_building: dict[str, dict[str, WorldItem]],
         chapter_number: int,
-        plot_point_focus: Optional[str],
+        plot_point_focus: str | None,
         plot_point_index: int,
-    ) -> Tuple[Optional[List[SceneDetail]], Optional[Dict[str, int]]]:
+    ) -> tuple[list[SceneDetail] | None, dict[str, int] | None]:
         """
         Generates a detailed scene plan for the chapter.
         Returns the plan and LLM usage data.
@@ -71,7 +76,7 @@ class NarrativeAgent:
             )
             return None, None
 
-        context_summary_parts: List[str] = []
+        context_summary_parts: list[str] = []
         if chapter_number > 1:
             prev_chap_data = await chapter_queries.get_chapter_data_from_db(
                 chapter_number - 1
@@ -117,7 +122,7 @@ class NarrativeAgent:
             world_building, chapter_number
         )
 
-        future_plot_context_parts: List[str] = []
+        future_plot_context_parts: list[str] = []
         all_plot_points = plot_outline.get("plot_points", [])
         total_plot_points_in_novel = len(all_plot_points)
 
@@ -235,7 +240,7 @@ class NarrativeAgent:
         )
 
         if parsed_scenes_list_of_dicts:
-            final_scenes_typed: List[SceneDetail] = []
+            final_scenes_typed: list[SceneDetail] = []
             for i, scene_dict in enumerate(parsed_scenes_list_of_dicts):
                 if not isinstance(scene_dict, dict):
                     logger.warning(
@@ -270,7 +275,7 @@ class NarrativeAgent:
 
     def _parse_llm_scene_plan_output(
         self, json_text: str, chapter_number: int
-    ) -> Optional[List[SceneDetail]]:
+    ) -> list[SceneDetail] | None:
         """
         Parses JSON scene plan output from LLM.
         Expects a JSON array of scene objects.
@@ -314,7 +319,7 @@ class NarrativeAgent:
             )
             return None
 
-        scenes_data: List[SceneDetail] = []
+        scenes_data: list[SceneDetail] = []
         for i, scene_item in enumerate(parsed_data):
             if not isinstance(scene_item, dict):
                 logger.warning(
@@ -322,7 +327,7 @@ class NarrativeAgent:
                 )
                 continue
 
-            processed_scene_dict: Dict[str, Any] = {}
+            processed_scene_dict: dict[str, Any] = {}
             for llm_key, value in scene_item.items():
                 internal_key = SCENE_PLAN_KEY_MAP.get(
                     llm_key.lower().replace(" ", "_"), llm_key
@@ -373,12 +378,12 @@ class NarrativeAgent:
 
     async def _draft_chapter(
         self,
-        plot_outline: Dict[str, Any],
+        plot_outline: dict[str, Any],
         chapter_number: int,
         plot_point_focus: str,
         hybrid_context_for_draft: str,
-        chapter_plan: List[SceneDetail],
-    ) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, int]]]:
+        chapter_plan: list[SceneDetail],
+    ) -> tuple[str | None, str | None, dict[str, int] | None]:
         """
         Generates the initial draft for a chapter.
 
@@ -393,9 +398,9 @@ class NarrativeAgent:
             f"NarrativeAgent: Starting scene-by-scene draft for Chapter {chapter_number}..."
         )
 
-        all_scenes_prose: List[str] = []
-        all_raw_outputs: List[str] = []
-        total_usage_data: Dict[str, int] = {
+        all_scenes_prose: list[str] = []
+        all_raw_outputs: list[str] = []
+        total_usage_data: dict[str, int] = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
@@ -406,9 +411,7 @@ class NarrativeAgent:
 
         for scene_index, scene_detail in enumerate(chapter_plan):
             scene_number = scene_detail.get("scene_number", scene_index + 1)
-            logger.info(
-                f"Drafting Scene {scene_number} of Chapter {chapter_number}..."
-            )
+            logger.info(f"Drafting Scene {scene_number} of Chapter {chapter_number}...")
 
             previous_scenes_prose = "\n\n".join(all_scenes_prose)
             max_tokens_for_prev_scenes = self.config.MAX_GENERATION_TOKENS // 2
@@ -497,12 +500,12 @@ class NarrativeAgent:
     # Public wrapper to expose draft_chapter functionality for tests and external callers
     async def draft_chapter(
         self,
-        plot_outline: Dict[str, Any],
+        plot_outline: dict[str, Any],
         chapter_number: int,
         plot_point_focus: str,
         hybrid_context_for_draft: str,
-        chapter_plan: Optional[List[SceneDetail]],
-    ) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, int]]]:
+        chapter_plan: list[SceneDetail] | None,
+    ) -> tuple[str | None, str | None, dict[str, int] | None]:
         """
         Draft a chapter using either a provided scene plan or by drafting the entire chapter at once.
 
@@ -567,10 +570,8 @@ class NarrativeAgent:
         )
 
     async def plan_continuation(
-        self,
-        summary_text: str,
-        num_points: int = 5
-    ) -> Tuple[Optional[List[str]], Optional[Dict[str, int]]]:
+        self, summary_text: str, num_points: int = 5
+    ) -> tuple[list[str] | None, dict[str, int] | None]:
         """Generate future plot points from a story summary."""
         if not self.config.ENABLE_AGENTIC_PLANNING:
             logger.info("Agentic planning disabled. Skipping continuation planning.")
@@ -602,7 +603,7 @@ class NarrativeAgent:
     async def _check_quality(self, draft_text: str) -> bool:
         """
         Perform initial quality checks on the generated draft.
-        
+
         Returns:
             True if quality checks pass, False otherwise.
         """
@@ -616,17 +617,18 @@ class NarrativeAgent:
         # Check for common coherence issues
         # Look for repetitive patterns that might indicate poor quality
         import re
-        sentences = re.split(r'[.!?]+', draft_text)
+
+        sentences = re.split(r"[.!?]+", draft_text)
         sentence_count = len([s.strip() for s in sentences if s.strip()])
-        
+
         if sentence_count < 5:
             logger.warning(f"Draft has too few sentences: {sentence_count}")
             return False
 
         # Check for excessive use of passive voice (common in poor quality writing)
         passive_patterns = [
-            r'\b(?:was|were|is|are|being|been)\s+\w+ed\b',
-            r'\b(?:has been|have been|had been)\s+\w+ed\b'
+            r"\b(?:was|were|is|are|being|been)\s+\w+ed\b",
+            r"\b(?:has been|have been|had been)\s+\w+ed\b",
         ]
         for pattern in passive_patterns:
             if re.search(pattern, draft_text, re.IGNORECASE):
@@ -635,9 +637,11 @@ class NarrativeAgent:
                 break
 
         # Check for excessive use of filler words
-        filler_words = ['very', 'really', 'quite', 'rather', 'somewhat', 'basically']
-        filler_count = sum(1 for word in draft_text.lower().split() if word in filler_words)
-        
+        filler_words = ["very", "really", "quite", "rather", "somewhat", "basically"]
+        filler_count = sum(
+            1 for word in draft_text.lower().split() if word in filler_words
+        )
+
         if filler_count > 5:
             logger.warning(f"Found excessive filler words: {filler_count} instances")
             return False
@@ -646,10 +650,10 @@ class NarrativeAgent:
         words = draft_text.lower().split()
         word_freq = {}
         for word in words:
-            word = re.sub(r'[^\w]', '', word)
+            word = re.sub(r"[^\w]", "", word)
             if len(word) > 3:  # Only count meaningful words
                 word_freq[word] = word_freq.get(word, 0) + 1
-        
+
         repeated_words = [word for word, freq in word_freq.items() if freq > 3]
         if len(repeated_words) > 2:
             logger.warning(f"Found repeated words: {repeated_words}")
@@ -660,20 +664,20 @@ class NarrativeAgent:
 
     async def generate_chapter(
         self,
-        plot_outline: Dict,
-        character_profiles: Dict,
-        world_building: Dict,
+        plot_outline: dict,
+        character_profiles: dict,
+        world_building: dict,
         chapter_number: int,
-        plot_point_focus: str
-    ) -> Tuple[str, str, Dict[str, int]]:
+        plot_point_focus: str,
+    ) -> tuple[str, str, dict[str, int]]:
         """Generate a new chapter based on plot outline and
         character/world context.
-        
+
         Returns:
             Tuple of (draft_text, raw_llm_output, usage_data)
         """
         self.logger.info("Generating chapter", chapter=chapter_number)
-        
+
         # Get the current plot point index
         all_plot_points = plot_outline.get("plot_points", [])
         plot_point_index = -1
@@ -681,7 +685,7 @@ class NarrativeAgent:
             if isinstance(pp, str) and pp.strip() == plot_point_focus:
                 plot_point_index = i
                 break
-                
+
         if plot_point_index == -1:
             logger.error(f"Could not find plot point focus: {plot_point_focus}")
             return "Failed to generate chapter: plot point focus not found", "Error", {}
@@ -697,9 +701,7 @@ class NarrativeAgent:
         )
 
         if not scenes:
-            logger.error(
-                f"Failed to plan scenes for chapter {chapter_number}"
-            )
+            logger.error(f"Failed to plan scenes for chapter {chapter_number}")
             return (
                 "Failed to generate chapter: scene planning failed",
                 "Error",
@@ -709,7 +711,7 @@ class NarrativeAgent:
         # Generate a hybrid context based on prior chapters and KG facts.
         # Use a dictionary with plot outline info as the agent_or_props for context generation.
         try:
-            context_props: Dict[str, Any] = {
+            context_props: dict[str, Any] = {
                 "plot_outline": plot_outline,
                 "plot_outline_full": plot_outline,
             }

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import structlog
 
@@ -18,20 +18,22 @@ from .data_loader import convert_model_to_objects, load_user_supplied_model
 logger = structlog.get_logger(__name__)
 
 
-async def run_genesis_phase() -> Tuple[
-    Dict[str, Any],
-    Dict[str, CharacterProfile],
-    Dict[str, Dict[str, WorldItem]],
-    Dict[str, int],
-]:
+async def run_genesis_phase() -> (
+    tuple[
+        dict[str, Any],
+        dict[str, CharacterProfile],
+        dict[str, dict[str, WorldItem]],
+        dict[str, int],
+    ]
+):
     """Execute the initial bootstrapping phase."""
-    usage_totals: Dict[str, int] = {
+    usage_totals: dict[str, int] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
     }
 
-    def _add_usage(total: Dict[str, int], usage: Dict[str, int]) -> None:
+    def _add_usage(total: dict[str, int], usage: dict[str, int]) -> None:
         for key, val in usage.items():
             total[key] = total.get(key, 0) + val
 
@@ -65,7 +67,7 @@ async def run_genesis_phase() -> Tuple[
     logger.info("Persisted bootstrapped plot outline to Neo4j.")
 
     kg_agent = KnowledgeAgent()
-    world_items_for_kg: Dict[str, Dict[str, WorldItem]] = {
+    world_items_for_kg: dict[str, dict[str, WorldItem]] = {
         k: v
         for k, v in world_building.items()
         if k not in ["is_default", "source"] and isinstance(v, dict)

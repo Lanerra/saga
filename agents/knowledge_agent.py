@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from async_lru import alru_cache  # type: ignore
 from jinja2 import Template
@@ -12,6 +12,7 @@ import config
 import utils  # Ensure utils is imported for normalize_trait_name
 from core.db_manager import neo4j_manager
 from core.llm_interface import llm_service
+from core.schema_validator import validate_node_labels, validate_relationship_types
 from data_access import (
     character_queries,
     kg_queries,
@@ -19,6 +20,7 @@ from data_access import (
     world_queries,
 )
 from models.kg_models import CharacterProfile, WorldItem
+from core.schema_validator import validate_kg_object
 from parsing_utils import (
     parse_rdf_triples_with_rdflib,
 )
@@ -30,7 +32,7 @@ logger = logging.getLogger(__name__)
 @alru_cache(maxsize=config.SUMMARY_CACHE_SIZE)
 async def _llm_summarize_full_chapter_text(
     chapter_text: str, chapter_number: int
-) -> Tuple[str, Optional[Dict[str, int]]]:
+) -> tuple[str, dict[str, int] | None]:
     """Summarize full chapter text via the configured LLM."""
     prompt = render_prompt(
         "knowledge_agent/chapter_summary.j2",
@@ -159,11 +161,11 @@ WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS = [
 
 
 def _normalize_attributes(
-    attributes_dict: Dict[str, Any],
-    key_map: Dict[str, str],
-    list_keys: List[str],
-) -> Dict[str, Any]:
-    normalized_attrs: Dict[str, Any] = {}
+    attributes_dict: dict[str, Any],
+    key_map: dict[str, str],
+    list_keys: list[str],
+) -> dict[str, Any]:
+    normalized_attrs: dict[str, Any] = {}
     if not isinstance(attributes_dict, dict):
         logger.warning(
             "Input to _normalize_attributes was not a dict: %s",
@@ -214,9 +216,9 @@ def _normalize_attributes(
 
 def parse_unified_character_updates(
     json_text_block: str, chapter_number: int
-) -> Dict[str, CharacterProfile]:
+) -> dict[str, CharacterProfile]:
     """Parse character update JSON provided by LLM."""
-    char_updates: Dict[str, CharacterProfile] = {}
+    char_updates: dict[str, CharacterProfile] = {}
     if not json_text_block.strip():
         return char_updates
 
@@ -270,7 +272,7 @@ def parse_unified_character_updates(
         rels_val = processed_char_attributes.get("relationships")
         if isinstance(rels_val, list):
             rels_list = rels_val
-            rels_dict: Dict[str, str] = {}
+            rels_dict: dict[str, str] = {}
             for rel_entry in rels_list:
                 if isinstance(rel_entry, str):
                     if ":" in rel_entry:
@@ -346,9 +348,9 @@ def parse_unified_character_updates(
 
 def parse_unified_world_updates(
     json_text_block: str, chapter_number: int
-) -> Dict[str, Dict[str, WorldItem]]:
+) -> dict[str, dict[str, WorldItem]]:
     """Parse world update JSON provided by LLM."""
-    world_updates: Dict[str, Dict[str, WorldItem]] = {}
+    world_updates: dict[str, dict[str, WorldItem]] = {}
     if not json_text_block.strip():
         return world_updates
 
@@ -367,7 +369,7 @@ def parse_unified_world_updates(
         )
         return world_updates
 
-    results: Dict[str, Dict[str, WorldItem]] = {}
+    results: dict[str, dict[str, WorldItem]] = {}
     for category_name_llm, items_llm in parsed_data.items():
         if not isinstance(items_llm, dict):
             logger.warning(
@@ -378,7 +380,7 @@ def parse_unified_world_updates(
         # category_name_llm is e.g. "Locations", "Faction Alpha". This is used as the .category for WorldItem
         # The WorldItem model itself might normalize this for ID generation.
 
-        category_dict_by_item_name: Dict[str, WorldItem] = {}
+        category_dict_by_item_name: dict[str, WorldItem] = {}
         elaboration_key_standard = f"elaboration_in_chapter_{chapter_number}"
 
         if (
@@ -391,12 +393,16 @@ def parse_unified_world_updates(
                 WORLD_UPDATE_DETAIL_KEY_MAP,
                 WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
             )
-            
+
             # Handle common LLM output variations for elaborations
             if "elaborations" in processed_overview_details:
-                processed_overview_details[elaboration_key_standard] = processed_overview_details.pop("elaborations")
+                processed_overview_details[elaboration_key_standard] = (
+                    processed_overview_details.pop("elaborations")
+                )
             elif "elaboration" in processed_overview_details:
-                processed_overview_details[elaboration_key_standard] = processed_overview_details.pop("elaboration")
+                processed_overview_details[elaboration_key_standard] = (
+                    processed_overview_details.pop("elaboration")
+                )
             if any(k != "modification_proposal" for k in processed_overview_details):
                 # check if any meaningful data
                 # Add default elaboration if not present
@@ -430,7 +436,11 @@ def parse_unified_world_updates(
                         # Check if the "item name" is actually a known property name
                         normalized_key = item_name_llm.lower().replace(" ", "_")
                         # Include common elaboration variations that should be treated as properties, not items
-                        known_property_names = set(WORLD_UPDATE_DETAIL_KEY_MAP.keys()) | set(WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS) | {"elaborations", "elaboration"}
+                        known_property_names = (
+                            set(WORLD_UPDATE_DETAIL_KEY_MAP.keys())
+                            | set(WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS)
+                            | {"elaborations", "elaboration"}
+                        )
                         if normalized_key in known_property_names:
                             logger.debug(
                                 "Ignoring property '%s' at item level in category '%s' (likely LLM formatting issue)",
@@ -438,7 +448,7 @@ def parse_unified_world_updates(
                                 category_name_llm,
                             )
                             continue
-                    
+
                     logger.warning(
                         "Skipping item with invalid name or attributes in "
                         "category '%s': Name='%s'",
@@ -452,12 +462,16 @@ def parse_unified_world_updates(
                     WORLD_UPDATE_DETAIL_KEY_MAP,
                     WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
                 )
-                
+
                 # Handle common LLM output variations for elaborations
                 if "elaborations" in processed_item_details:
-                    processed_item_details[elaboration_key_standard] = processed_item_details.pop("elaborations")
+                    processed_item_details[elaboration_key_standard] = (
+                        processed_item_details.pop("elaborations")
+                    )
                 elif "elaboration" in processed_item_details:
-                    processed_item_details[elaboration_key_standard] = processed_item_details.pop("elaboration")
+                    processed_item_details[elaboration_key_standard] = (
+                        processed_item_details.pop("elaboration")
+                    )
 
                 # Add default elaboration if not present and other
                 # attributes exist
@@ -480,9 +494,11 @@ def parse_unified_world_updates(
                     )
 
                 if not category_name_llm or not category_name_llm.strip():
-                    logger.warning("Skipping WorldItem with missing category: %s", item_name_llm)
+                    logger.warning(
+                        "Skipping WorldItem with missing category: %s", item_name_llm
+                    )
                     continue
-                
+
                 try:
                     # item_name_llm is the display name from JSON key.
                     # WorldItem stores this as .name and normalizes it for .id
@@ -492,7 +508,7 @@ def parse_unified_world_updates(
                         item_name_llm,
                         processed_item_details,
                     )
-                
+
                     # Store in this category's dictionary using the item's display name as key.
                     # If LLM provides duplicate item names within the same category, last one wins.
                     category_dict_by_item_name[world_item_instance.name] = (
@@ -545,12 +561,18 @@ def initialize_new_character_profile(
 
 
 def merge_character_profile_updates(
-    profiles: Dict[str, CharacterProfile],
-    updates: Dict[str, CharacterProfile],
+    profiles: dict[str, CharacterProfile],
+    updates: dict[str, CharacterProfile],
     chapter_number: int,
     from_flawed_draft: bool,
 ) -> None:
     """Merge character updates into existing profile dictionary."""
+    # Validate all updates before merging
+    for name, update in updates.items():
+        errors = validate_kg_object(update)
+        if errors:
+            logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
+    
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for name, update in updates.items():
         data = update.to_dict()
@@ -597,12 +619,19 @@ def merge_character_profile_updates(
 
 
 def merge_world_item_updates(
-    world: Dict[str, Dict[str, WorldItem]],
-    updates: Dict[str, Dict[str, WorldItem]],
+    world: dict[str, dict[str, WorldItem]],
+    updates: dict[str, dict[str, WorldItem]],
     chapter_number: int,
     from_flawed_draft: bool,
 ) -> None:
     """Merge world item updates into the current world dictionary."""
+    # Validate all updates before merging
+    for category, cat_updates in updates.items():
+        for name, update in cat_updates.items():
+            errors = validate_kg_object(update)
+            if errors:
+                logger.warning("Invalid WorldItem for '%s' in category '%s': %s", name, category, errors)
+    
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for category, cat_updates in updates.items():
         if category not in world:
@@ -613,7 +642,7 @@ def merge_world_item_updates(
                 data[provisional_key] = "provisional_from_unrevised_draft"
             if name not in world[category]:
                 world[category][name] = update
-                world[category][name].properties.setdefault(
+                world[category][name].additional_properties.setdefault(
                     f"added_in_chapter_{chapter_number}", True
                 )
                 continue
@@ -634,24 +663,54 @@ def merge_world_item_updates(
                         and isinstance(val, str)
                         and val.strip()
                     ):
-                        item.properties[key] = val
+                        # Handle structured fields
+                        if key == "description":
+                            item.description = val
+                        elif key == "goals":
+                            item.goals = val if isinstance(val, list) else [val]
+                        elif key == "rules":
+                            item.rules = val if isinstance(val, list) else [val]
+                        elif key == "key_elements":
+                            item.key_elements = val if isinstance(val, list) else [val]
+                        elif key == "traits":
+                            item.traits = val if isinstance(val, list) else [val]
+                        else:
+                            # Handle additional properties
+                            item.additional_properties[key] = val
                     continue
                 cur_val = item_props.get(key)
                 if isinstance(val, list):
-                    cur_list = item.properties.get(key, [])
-                    for elem in val:
-                        if elem not in cur_list:
-                            cur_list.append(elem)
-                    item.properties[key] = cur_list
+                    # Handle structured fields that are lists
+                    if key == "goals":
+                        item.goals = list(set(item.goals + val))
+                    elif key == "rules":
+                        item.rules = list(set(item.rules + val))
+                    elif key == "key_elements":
+                        item.key_elements = list(set(item.key_elements + val))
+                    elif key == "traits":
+                        item.traits = list(set(item.traits + val))
+                    else:
+                        # Handle additional properties that are lists
+                        cur_list = item.additional_properties.get(key, [])
+                        for elem in val:
+                            if elem not in cur_list:
+                                cur_list.append(elem)
+                        item.additional_properties[key] = cur_list
                 elif isinstance(val, dict):
-                    sub = item.properties.get(key, {})
+                    # Handle additional properties that are dictionaries
+                    sub = item.additional_properties.get(key, {})
                     if not isinstance(sub, dict):
                         sub = {}
                     sub.update(val)
-                    item.properties[key] = sub
+                    item.additional_properties[key] = sub
                 elif cur_val != val:
-                    item.properties[key] = val
-            item.properties.setdefault(
+                    # Handle structured fields that are not lists or dicts
+                    if key == "description":
+                        item.description = val
+                    else:
+                        # Handle additional properties that are not lists or dicts
+                        item.additional_properties[key] = val
+            item.additional_properties.setdefault(
                 f"updated_in_chapter_{chapter_number}",
                 True,
             )
@@ -662,8 +721,8 @@ class KnowledgeAgent:
 
     def __init__(self, model_name: str = config.KNOWLEDGE_UPDATE_MODEL):
         self.model_name = model_name
-        self.node_labels: List[str] = []
-        self.relationship_types: List[str] = []
+        self.node_labels: list[str] = []
+        self.relationship_types: list[str] = []
         logger.info(
             "KnowledgeAgent initialized with model for extraction: %s",
             self.model_name,
@@ -679,22 +738,22 @@ class KnowledgeAgent:
 
     def parse_character_updates(
         self, text: str, chapter_number: int
-    ) -> Dict[str, CharacterProfile]:
+    ) -> dict[str, CharacterProfile]:
         """Parse character update text into structured profiles."""
         return parse_unified_character_updates(text, chapter_number)
 
     def parse_world_updates(
         self, text: str, chapter_number: int
-    ) -> Dict[str, Dict[str, WorldItem]]:
+    ) -> dict[str, dict[str, WorldItem]]:
         """Parse world update text into structured items."""
         return parse_unified_world_updates(text, chapter_number)
 
     def merge_updates(
         self,
-        current_profiles: Dict[str, CharacterProfile],
-        current_world: Dict[str, Dict[str, WorldItem]],
-        char_updates_parsed: Dict[str, CharacterProfile],
-        world_updates_parsed: Dict[str, Dict[str, WorldItem]],
+        current_profiles: dict[str, CharacterProfile],
+        current_world: dict[str, dict[str, WorldItem]],
+        char_updates_parsed: dict[str, CharacterProfile],
+        world_updates_parsed: dict[str, dict[str, WorldItem]],
         chapter_number: int,
         from_flawed_draft: bool = False,
     ) -> None:
@@ -708,7 +767,7 @@ class KnowledgeAgent:
 
     async def persist_profiles(
         self,
-        profiles_to_persist: Dict[str, CharacterProfile],
+        profiles_to_persist: dict[str, CharacterProfile],
         chapter_number_for_delta: int,
         full_sync: bool = False,
     ) -> None:
@@ -719,7 +778,7 @@ class KnowledgeAgent:
 
     async def persist_world(
         self,
-        world_items_to_persist: Dict[str, Dict[str, WorldItem]],
+        world_items_to_persist: dict[str, dict[str, WorldItem]],
         chapter_number_for_delta: int,
         full_sync: bool = False,
     ) -> None:
@@ -733,8 +792,8 @@ class KnowledgeAgent:
         return await plot_queries.append_plot_point(description, prev_plot_point_id)
 
     async def summarize_chapter(
-        self, chapter_text: Optional[str], chapter_number: int
-    ) -> Tuple[Optional[str], Optional[Dict[str, int]]]:
+        self, chapter_text: str | None, chapter_number: int
+    ) -> tuple[str | None, dict[str, int] | None]:
         if (
             not chapter_text
             or len(chapter_text) < config.MIN_ACCEPTABLE_DRAFT_LENGTH // 2
@@ -769,10 +828,10 @@ class KnowledgeAgent:
 
     async def _llm_extract_updates(
         self,
-        plot_outline: Dict[str, Any],
+        plot_outline: dict[str, Any],
         chapter_text: str,
         chapter_number: int,
-    ) -> Tuple[str, Optional[Dict[str, int]]]:
+    ) -> tuple[str, dict[str, int] | None]:
         """Call the LLM to extract structured updates from chapter text, including typed entities in triples."""
         protagonist = plot_outline.get(
             "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
@@ -811,13 +870,13 @@ class KnowledgeAgent:
 
     async def extract_and_merge_knowledge(
         self,
-        plot_outline: Dict[str, Any],
-        character_profiles: Dict[str, CharacterProfile],
-        world_building: Dict[str, Dict[str, WorldItem]],
+        plot_outline: dict[str, Any],
+        character_profiles: dict[str, CharacterProfile],
+        world_building: dict[str, dict[str, WorldItem]],
         chapter_number: int,
         chapter_text: str,
         is_from_flawed_draft: bool = False,
-    ) -> Optional[Dict[str, int]]:
+    ) -> dict[str, int] | None:
         if not chapter_text:
             logger.warning(
                 "Skipping knowledge extraction for chapter %s: no text provided.",
@@ -967,11 +1026,13 @@ class KnowledgeAgent:
         )
         return usage_data
 
-    async def heal_and_enrich_kg(self, new_entities: Optional[List[Dict[str, Any]]] = None):
+    async def heal_and_enrich_kg(
+        self, new_entities: list[dict[str, Any]] | None = None
+    ):
         """
         Performs maintenance on the Knowledge Graph by enriching thin nodes,
         checking for inconsistencies, and resolving duplicate entities.
-        
+
         Args:
             new_entities: Optional list of newly added entities to process incrementally.
                           If provided, only these entities will be processed for duplicates and enrichment.
@@ -1027,25 +1088,32 @@ class KnowledgeAgent:
 
         logger.info("KG Healer/Enricher: Maintenance cycle complete.")
 
-    async def _resolve_duplicates_for_entity(self, entity: Dict[str, Any]) -> None:
+    async def _resolve_duplicates_for_entity(self, entity: dict[str, Any]) -> None:
         """Resolve duplicates for a single entity using Neo4j's MERGE with uniqueness constraints."""
         # Extract entity information
         entity_name = entity.get("name")
         entity_type = entity.get("type", "Entity")
-        
+
         if not entity_name:
             logger.warning("Cannot resolve duplicates for entity without name")
             return
-        
-        logger.debug(f"Resolving duplicates for entity: {entity_name} (type: {entity_type})")
-        
+
+        logger.debug(
+            f"Resolving duplicates for entity: {entity_name} (type: {entity_type})"
+        )
+
         # Create labels for the entity based on its type
         labels = ":Entity"
         if entity_type:
             # Normalize the entity type to create valid Neo4j labels
             normalized_type = "".join(c for c in entity_type.title() if c.isalnum())
             labels = f":{normalized_type}{labels}"
-        
+
+        # Validate node labels
+        errors = validate_node_labels([entity_type])
+        if errors:
+            logger.warning("Invalid node labels for entity '%s': %s", entity_name, errors)
+
         # Use MERGE to ensure we have a single entity with this name
         # This will either match an existing entity or create a new one
         merge_query = f"""
@@ -1054,36 +1122,47 @@ class KnowledgeAgent:
         ON MATCH SET e.last_seen_ts = timestamp()
         RETURN e
         """
-        
-        try:
-            await neo4j_manager.execute_write_query(merge_query, {"entity_name": entity_name})
-            logger.debug(f"Successfully processed entity {entity_name} for duplicate resolution")
-        except Exception as e:
-            logger.error(f"Error resolving duplicates for entity {entity_name}: {e}", exc_info=True)
 
-    async def _enrich_entity_if_needed(self, entity: Dict[str, Any]) -> None:
+        try:
+            await neo4j_manager.execute_write_query(
+                merge_query, {"entity_name": entity_name}
+            )
+            logger.debug(
+                f"Successfully processed entity {entity_name} for duplicate resolution"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error resolving duplicates for entity {entity_name}: {e}",
+                exc_info=True,
+            )
+
+    async def _enrich_entity_if_needed(self, entity: dict[str, Any]) -> None:
         """Enrich a single entity if it's sparse."""
         # Extract entity information
         entity_name = entity.get("name")
         entity_type = entity.get("type", "Entity")
         entity_id = entity.get("id")
-        
+
         if not entity_name:
             logger.warning("Cannot enrich entity without name")
             return
-        
-        logger.debug(f"Checking if entity needs enrichment: {entity_name} (type: {entity_type})")
-        
+
+        logger.debug(
+            f"Checking if entity needs enrichment: {entity_name} (type: {entity_type})"
+        )
+
         # Check if the entity is sparse (missing description or other key information)
         is_sparse = await self._is_entity_sparse(entity_name, entity_type, entity_id)
-        
+
         if is_sparse:
             logger.info(f"Entity {entity_name} is sparse, enriching...")
             await self._enrich_entity(entity_name, entity_type, entity_id)
         else:
             logger.debug(f"Entity {entity_name} is not sparse, skipping enrichment")
 
-    async def _is_entity_sparse(self, entity_name: str, entity_type: str, entity_id: Optional[str] = None) -> bool:
+    async def _is_entity_sparse(
+        self, entity_name: str, entity_type: str, entity_id: str | None = None
+    ) -> bool:
         """Check if an entity is sparse (missing key information)."""
         # Query to check if entity has a description or other key properties
         if entity_type.lower() == "character":
@@ -1110,12 +1189,12 @@ class KnowledgeAgent:
             MATCH (e:Entity {name: $entity_name})
             RETURN e.description AS description
             """
-        
+
         try:
             params = {"entity_name": entity_name}
             if entity_id:
                 params["entity_id"] = entity_id
-                
+
             results = await neo4j_manager.execute_read_query(query, params)
             if results:
                 description = results[0].get("description")
@@ -1125,28 +1204,38 @@ class KnowledgeAgent:
                 # If no entity found, consider it sparse
                 return True
         except Exception as e:
-            logger.error(f"Error checking if entity {entity_name} is sparse: {e}", exc_info=True)
+            logger.error(
+                f"Error checking if entity {entity_name} is sparse: {e}", exc_info=True
+            )
             # If we can't determine, assume it's not sparse to avoid unnecessary enrichment
             return False
-    
-    async def _enrich_entity(self, entity_name: str, entity_type: str, entity_id: Optional[str] = None) -> None:
+
+    async def _enrich_entity(
+        self, entity_name: str, entity_type: str, entity_id: str | None = None
+    ) -> None:
         """Enrich an entity using LLM."""
         try:
             # Get chapter context for the entity
             context_chapters = await kg_queries.get_chapter_context_for_entity(
-                entity_name=entity_name if not entity_id else None,
-                entity_id=entity_id
+                entity_name=entity_name if not entity_id else None, entity_id=entity_id
             )
-            
+
             # Choose the appropriate prompt based on entity type
             if entity_type.lower() == "character":
                 prompt = render_prompt(
                     "knowledge_agent/enrich_character.j2",
-                    {"character_name": entity_name, "chapter_context": context_chapters}
+                    {
+                        "character_name": entity_name,
+                        "chapter_context": context_chapters,
+                    },
                 )
             elif entity_type.lower() == "worldelement":
                 # Get additional information about the world element
-                element_info = {"name": entity_name, "category": "Unknown", "id": entity_id or entity_name}
+                element_info = {
+                    "name": entity_name,
+                    "category": "Unknown",
+                    "id": entity_id or entity_name,
+                }
                 if entity_id:
                     # Try to get more detailed information about the world element
                     query = """
@@ -1154,15 +1243,19 @@ class KnowledgeAgent:
                     RETURN we.category AS category
                     """
                     try:
-                        results = await neo4j_manager.execute_read_query(query, {"entity_id": entity_id})
+                        results = await neo4j_manager.execute_read_query(
+                            query, {"entity_id": entity_id}
+                        )
                         if results:
-                            element_info["category"] = results[0].get("category", "Unknown")
+                            element_info["category"] = results[0].get(
+                                "category", "Unknown"
+                            )
                     except Exception:
                         pass
-                
+
                 prompt = render_prompt(
                     "knowledge_agent/enrich_world_element.j2",
-                    {"element": element_info, "chapter_context": context_chapters}
+                    {"element": element_info, "chapter_context": context_chapters},
                 )
             else:
                 # For other entity types, use a generic approach
@@ -1178,7 +1271,7 @@ class KnowledgeAgent:
                 
                 Please respond with a JSON object containing a "description" field with the entity description.
                 """
-            
+
             # Call LLM to generate enrichment
             enrichment_text, _ = await llm_service.async_call_llm(
                 model_name=config.KNOWLEDGE_UPDATE_MODEL,
@@ -1186,14 +1279,14 @@ class KnowledgeAgent:
                 temperature=config.Temperatures.KG_EXTRACTION,
                 auto_clean_response=True,
             )
-            
+
             if enrichment_text:
                 try:
                     data = json.loads(enrichment_text)
                     new_description = data.get("description")
                     if new_description and isinstance(new_description, str):
                         logger.info(f"Generated new description for '{entity_name}'.")
-                        
+
                         # Update the entity in the database
                         if entity_type.lower() == "character":
                             update_query = """
@@ -1202,7 +1295,7 @@ class KnowledgeAgent:
                             """
                             await neo4j_manager.execute_write_query(
                                 update_query,
-                                {"name": entity_name, "desc": new_description}
+                                {"name": entity_name, "desc": new_description},
                             )
                         elif entity_type.lower() == "worldelement" and entity_id:
                             update_query = """
@@ -1210,8 +1303,7 @@ class KnowledgeAgent:
                             SET we.description = $desc, we.enriched_ts = timestamp()
                             """
                             await neo4j_manager.execute_write_query(
-                                update_query,
-                                {"id": entity_id, "desc": new_description}
+                                update_query, {"id": entity_id, "desc": new_description}
                             )
                         elif entity_type.lower() == "worldelement":
                             update_query = """
@@ -1220,7 +1312,7 @@ class KnowledgeAgent:
                             """
                             await neo4j_manager.execute_write_query(
                                 update_query,
-                                {"name": entity_name, "desc": new_description}
+                                {"name": entity_name, "desc": new_description},
                             )
                         else:
                             update_query = """
@@ -1229,22 +1321,30 @@ class KnowledgeAgent:
                             """
                             await neo4j_manager.execute_write_query(
                                 update_query,
-                                {"name": entity_name, "desc": new_description}
+                                {"name": entity_name, "desc": new_description},
                             )
-                        
-                        logger.info(f"Successfully enriched entity '{entity_name}' with new description.")
+
+                        logger.info(
+                            f"Successfully enriched entity '{entity_name}' with new description."
+                        )
                     else:
-                        logger.warning(f"Failed to parse description from LLM response for entity '{entity_name}': {enrichment_text}")
+                        logger.warning(
+                            f"Failed to parse description from LLM response for entity '{entity_name}': {enrichment_text}"
+                        )
                 except json.JSONDecodeError:
-                    logger.error(f"Failed to parse enrichment JSON for entity '{entity_name}': {enrichment_text}")
+                    logger.error(
+                        f"Failed to parse enrichment JSON for entity '{entity_name}': {enrichment_text}"
+                    )
             else:
-                logger.warning(f"LLM returned empty response for entity enrichment: {entity_name}")
+                logger.warning(
+                    f"LLM returned empty response for entity enrichment: {entity_name}"
+                )
         except Exception as e:
             logger.error(f"Error enriching entity {entity_name}: {e}", exc_info=True)
 
-    async def _find_and_enrich_thin_nodes(self) -> List[Tuple[str, Dict[str, Any]]]:
+    async def _find_and_enrich_thin_nodes(self) -> list[tuple[str, dict[str, Any]]]:
         """Finds thin characters and world elements and generates enrichment updates in parallel."""
-        statements: List[Tuple[str, Dict[str, Any]]] = []
+        statements: list[tuple[str, dict[str, Any]]] = []
         enrichment_tasks = []
 
         # Find all thin nodes first
@@ -1278,8 +1378,8 @@ class KnowledgeAgent:
         return statements
 
     async def _create_character_enrichment_task(
-        self, char_info: Dict[str, Any]
-    ) -> Optional[Tuple[str, Dict[str, Any]]]:
+        self, char_info: dict[str, Any]
+    ) -> tuple[str, dict[str, Any]] | None:
         char_name = char_info.get("name")
         if not char_name:
             return None
@@ -1317,8 +1417,8 @@ class KnowledgeAgent:
         return None
 
     async def _create_world_element_enrichment_task(
-        self, element_info: Dict[str, Any]
-    ) -> Optional[Tuple[str, Dict[str, Any]]]:
+        self, element_info: dict[str, Any]
+    ) -> tuple[str, dict[str, Any]] | None:
         element_id = element_info.get("id")
         if not element_id:
             return None
@@ -1392,20 +1492,24 @@ class KnowledgeAgent:
         else:
             logger.info("KG Consistency Check: No post-mortem activity found.")
 
-    async def _run_entity_resolution(self, new_entities: Optional[List[Dict[str, Any]]] = None) -> None:
+    async def _run_entity_resolution(
+        self, new_entities: list[dict[str, Any]] | None = None
+    ) -> None:
         """Finds and resolves potential duplicate entities in the KG.
-        
+
         Args:
             new_entities: Optional list of newly added entities to check for duplicates.
                           If provided, only these entities will be checked.
                           If None, the entire graph will be processed for duplicates.
         """
         logger.info("KG Healer: Running entity resolution...")
-        
+
         # If new entities provided, only check those for duplicates (incremental)
         if new_entities:
             # Process only new entities for duplicates
-            logger.info(f"Checking {len(new_entities)} new entities for duplicates incrementally.")
+            logger.info(
+                f"Checking {len(new_entities)} new entities for duplicates incrementally."
+            )
             for entity in new_entities:
                 await self._resolve_duplicates_for_new_entity(entity)
         else:
@@ -1491,25 +1595,32 @@ class KnowledgeAgent:
                         f"Failed to parse entity resolution response from LLM for pair ({id1}, {id2}): {e}. Response: {llm_response}"
                     )
 
-    async def _resolve_duplicates_for_new_entity(self, entity: Dict[str, Any]) -> None:
+    async def _resolve_duplicates_for_new_entity(self, entity: dict[str, Any]) -> None:
         """Resolve duplicates for a single new entity using Neo4j's MERGE with uniqueness constraints."""
         # Extract entity information
         entity_name = entity.get("name")
         entity_type = entity.get("type", "Entity")
-        
+
         if not entity_name:
             logger.warning("Cannot resolve duplicates for new entity without name")
             return
-        
-        logger.debug(f"Resolving duplicates for new entity: {entity_name} (type: {entity_type})")
-        
+
+        logger.debug(
+            f"Resolving duplicates for new entity: {entity_name} (type: {entity_type})"
+        )
+
         # Create labels for the entity based on its type
         labels = ":Entity"
         if entity_type:
             # Normalize the entity type to create valid Neo4j labels
             normalized_type = "".join(c for c in entity_type.title() if c.isalnum())
             labels = f":{normalized_type}{labels}"
-        
+
+        # Validate node labels
+        errors = validate_node_labels([entity_type])
+        if errors:
+            logger.warning("Invalid node labels for new entity '%s': %s", entity_name, errors)
+
         # Use MERGE to ensure we have a single entity with this name
         # This will either match an existing entity or create a new one
         merge_query = f"""
@@ -1522,15 +1633,19 @@ class KnowledgeAgent:
             e.type = coalesce(e.type, $entity_type)
         RETURN e
         """
-        
+
         try:
-            await neo4j_manager.execute_write_query(merge_query, {
-                "entity_name": entity_name,
-                "entity_type": entity_type
-            })
-            logger.debug(f"Successfully processed new entity {entity_name} for duplicate resolution")
+            await neo4j_manager.execute_write_query(
+                merge_query, {"entity_name": entity_name, "entity_type": entity_type}
+            )
+            logger.debug(
+                f"Successfully processed new entity {entity_name} for duplicate resolution"
+            )
         except Exception as e:
-            logger.error(f"Error resolving duplicates for new entity {entity_name}: {e}", exc_info=True)
+            logger.error(
+                f"Error resolving duplicates for new entity {entity_name}: {e}",
+                exc_info=True,
+            )
 
     async def _resolve_dynamic_relationships(self) -> None:
         """Resolve generic DYNAMIC_REL types using a lightweight LLM."""
@@ -1550,6 +1665,10 @@ class KnowledgeAgent:
                 auto_clean_response=True,
             )
             new_type = kg_queries.normalize_relationship_type(new_type_raw)
+            # Validate the new relationship type
+            errors = validate_relationship_types([new_type])
+            if errors:
+                logger.warning("Invalid relationship type from LLM: %s", errors)
             if new_type and new_type != "UNKNOWN":
                 await kg_queries.update_dynamic_relationship_type(
                     rel["rel_id"], new_type

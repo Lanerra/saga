@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import structlog
 
@@ -7,16 +7,16 @@ import utils
 from kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 from models import CharacterProfile
 
-TRAIT_NAME_TO_CANONICAL: Dict[str, str] = {}
+TRAIT_NAME_TO_CANONICAL: dict[str, str] = {}
 
 logger = structlog.get_logger(__name__)
 
 
 def generate_character_node_cypher(
     profile: CharacterProfile, chapter_number_for_delta: int = 0
-) -> List[Tuple[str, Dict[str, Any]]]:
+) -> list[tuple[str, dict[str, Any]]]:
     """Create Cypher statements for a character update."""
-    statements: List[Tuple[str, Dict[str, Any]]] = []
+    statements: list[tuple[str, dict[str, Any]]] = []
 
     props_from_profile = profile.to_dict()
     # Create a clean property dictionary for the node, excluding complex types.
@@ -97,7 +97,7 @@ def generate_character_node_cypher(
                             MATCH (c:Character:Entity {name: $name})
                             MERGE (t:Trait:Entity {name: $trait_name})
                                 ON CREATE SET t.created_ts = timestamp()
-                            MERGE (c)-[:HAS_TRAIT]->(t)
+                            MERGE (c)-[:HAS_TRAIT_ASPECT]->(t)
                             """,
                             {
                                 "name": profile.name,
@@ -149,7 +149,7 @@ def generate_character_node_cypher(
         for target_char_name, rel_detail in profile.relationships.items():
             if isinstance(target_char_name, str) and target_char_name.strip():
                 rel_type_str = "RELATED_TO"
-                rel_cypher_props: Dict[str, Any] = {}
+                rel_cypher_props: dict[str, Any] = {}
                 if isinstance(rel_detail, str) and rel_detail.strip():
                     rel_cypher_props["description"] = rel_detail.strip()
                     if rel_detail.isupper() and " " not in rel_detail:

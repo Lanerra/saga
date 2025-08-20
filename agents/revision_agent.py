@@ -1,11 +1,12 @@
-from typing import Dict, Tuple, List, Optional, Any
-import json
+from typing import Any
+
 import structlog
-import asyncio
+
+import utils
 from config import NARRATIVE_MODEL, REVISION_EVALUATION_THRESHOLD
 from core.llm_interface import llm_service
-from data_access import character_queries, kg_queries, world_queries, chapter_queries
-from models import ProblemDetail, EvaluationResult
+from data_access import chapter_queries, character_queries, world_queries
+from models import ProblemDetail
 from processing.problem_parser import parse_problem_list
 from prompt_data_getters import (
     get_filtered_character_profiles_for_prompt_plain_text,
@@ -13,8 +14,6 @@ from prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
 )
 from prompt_renderer import render_prompt
-import utils
-from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
 logger = structlog.get_logger()
 
@@ -27,84 +26,84 @@ class RevisionAgent:
         utils.load_spacy_model_if_needed()
 
     async def validate_revision(
-        self, chapter_text: str, previous_chapter_text: str, world_state: Dict
-    ) -> Tuple[bool, List[str]]:
+        self, chapter_text: str, previous_chapter_text: str, world_state: dict
+    ) -> tuple[bool, list[str]]:
         """Main public method that orchestrates all revision validation.
-        
+
         Args:
             chapter_text: The current chapter text to validate
             previous_chapter_text: The previous chapter text for context
             world_state: Dictionary containing plot_outline, chapter_number, and other context
-            
+
         Returns:
             Tuple of (is_valid, list_of_issue_descriptions)
         """
         logger.info("Validating revision", threshold=self.threshold)
-        
+
         # Extract required information from world_state
         plot_outline = world_state.get("plot_outline", {})
         chapter_number = world_state.get("chapter_number", 1)
         previous_chapters_context = world_state.get("previous_chapters_context", "")
-        
+
         # Step 1: Check continuity (from WorldContinuityAgent)
-        continuity_problems = await self._check_continuity(
-            chapter_text, world_state
-        )
-        
+        continuity_problems = await self._check_continuity(chapter_text, world_state)
+
         # Step 2: Evaluate quality (from ComprehensiveEvaluatorAgent)
         has_quality_issues, quality_issue_descriptions = await self._evaluate_quality(
             chapter_text, world_state
         )
-        
+
         # Combine all problems
         all_problems = continuity_problems
         if has_quality_issues:
             # Convert quality issues to ProblemDetail format for consistency
             for desc in quality_issue_descriptions:
-                all_problems.append({
-                    "issue_category": "quality",
-                    "problem_description": desc,
-                    "quote_from_original_text": "N/A - General Issue",
-                    "quote_char_start": None,
-                    "quote_char_end": None,
-                    "sentence_char_start": None,
-                    "sentence_char_end": None,
-                    "suggested_fix_focus": "Address quality issues identified by evaluator."
-                })
-        
+                all_problems.append(
+                    {
+                        "issue_category": "quality",
+                        "problem_description": desc,
+                        "quote_from_original_text": "N/A - General Issue",
+                        "quote_char_start": None,
+                        "quote_char_end": None,
+                        "sentence_char_start": None,
+                        "sentence_char_end": None,
+                        "suggested_fix_focus": "Address quality issues identified by evaluator.",
+                    }
+                )
+
         # If no problems found, chapter is valid
         if not all_problems:
             logger.info("Revision validation passed - no issues found")
             return True, ["Revision validation passed - no issues found"]
-        
+
         # Step 3: Validate patch (from PatchValidationAgent)
         # For now, we'll assume the patch validation is handled elsewhere
         # as it requires specific patch instructions
-        
+
         # Generate issue descriptions for the orchestrator
         issue_descriptions = []
         for problem in all_problems:
             issue_descriptions.append(problem["problem_description"])
-        
+
         # Determine if revision is needed based on problem count and severity
         needs_revision = len(all_problems) > 0
-        
+
         logger.info(
             "Revision validation complete",
             needs_revision=needs_revision,
-            problem_count=len(all_problems)
+            problem_count=len(all_problems),
         )
-        
+
         return not needs_revision, issue_descriptions
 
     async def _check_continuity(
-        self, chapter_text: str, world_state: Dict
-    ) -> List[ProblemDetail]:
+        self, chapter_text: str, world_state: dict
+    ) -> list[ProblemDetail]:
         """Internal method for continuity checking (from WorldContinuityAgent)."""
         plot_outline = world_state.get("plot_outline", {})
         chapter_number = world_state.get("chapter_number", 1)
         previous_chapters_context = world_state.get("previous_chapters_context", "")
-        
+
         if not chapter_text:
             logger.warning(
                 f"Continuity check skipped for Ch {chapter_number}: empty chapter text."
@@ -217,24 +216,24 @@ class RevisionAgent:
         return continuity_problems
 
     async def _evaluate_quality(
-        self, chapter_text: str, world_state: Dict
-    ) -> Tuple[bool, List[str]]:
+        self, chapter_text: str, world_state: dict
+    ) -> tuple[bool, list[str]]:
         """Internal method for quality evaluation (from ComprehensiveEvaluatorAgent).
-        
+
         Returns: (has_quality_issues, list_of_quality_issue_descriptions)
         """
         plot_outline = world_state.get("plot_outline", {})
         chapter_number = world_state.get("chapter_number", 1)
         previous_chapters_context = world_state.get("previous_chapters_context", "")
-        
+
         processed_text = chapter_text
         logger.info(
             f"RevisionAgent evaluating chapter {chapter_number} draft (length: {len(processed_text)} chars)..."
         )
-        
+
         reasons_for_revision_summary: list[str] = []
         needs_revision = False
-        
+
         if not chapter_text:
             needs_revision = True
             reasons_for_revision_summary.append("Draft is empty")
@@ -244,14 +243,16 @@ class RevisionAgent:
             reasons_for_revision_summary.append(
                 f"Draft is too short ({len(chapter_text)} chars). Minimum required: 12000."
             )
-        
+
         # Check coherence with previous chapter if available
         if chapter_number > 1 and previous_chapters_context:
             try:
                 current_embedding_task = llm_service.async_get_embedding(chapter_text)
-                prev_embedding = await chapter_queries.get_embedding_from_db(chapter_number - 1)
+                prev_embedding = await chapter_queries.get_embedding_from_db(
+                    chapter_number - 1
+                )
                 current_embedding = await current_embedding_task
-                
+
                 if current_embedding is not None and prev_embedding is not None:
                     coherence_score = utils.numpy_cosine_similarity(
                         current_embedding, prev_embedding
@@ -270,7 +271,7 @@ class RevisionAgent:
                 )
         else:
             logger.info("Skipping coherence check for Chapter 1.")
-        
+
         # Perform LLM evaluation
         llm_eval_output_dict, _ = await self._perform_llm_comprehensive_evaluation(
             plot_outline,
@@ -282,9 +283,11 @@ class RevisionAgent:
             0,  # plot_point_index
             previous_chapters_context,
         )
-        
-        llm_eval_text_output = llm_eval_output_dict.get("problems_found_text_output", "")
-        
+
+        llm_eval_text_output = llm_eval_output_dict.get(
+            "problems_found_text_output", ""
+        )
+
         # Check if LLM indicates issues
         no_issues_keywords = [
             "no significant problems found",
@@ -299,12 +302,10 @@ class RevisionAgent:
             "passes evaluation",
             "meets criteria",
         ]
-        
+
         is_likely_no_issues_text = False
         if llm_eval_text_output.strip():
-            normalized_eval_text = (
-                llm_eval_text_output.lower().strip().replace(".", "")
-            )
+            normalized_eval_text = llm_eval_text_output.lower().strip().replace(".", "")
             for keyword in no_issues_keywords:
                 normalized_keyword = keyword.lower().strip().replace(".", "")
                 if normalized_keyword == normalized_eval_text or (
@@ -313,52 +314,56 @@ class RevisionAgent:
                 ):
                     is_likely_no_issues_text = True
                     break
-        
+
         if not is_likely_no_issues_text and llm_eval_text_output.strip():
             # Extract quality issues from LLM output
             quality_categories = [
                 "consistency issues",
-                "plot arc issues", 
+                "plot arc issues",
                 "thematic issues",
                 "narrative depth issues",
-                "repetition issues"
+                "repetition issues",
             ]
-            
+
             normalized_output = llm_eval_text_output.lower()
             for category in quality_categories:
                 if category in normalized_output:
-                    reasons_for_revision_summary.append(f"Potential {category} identified by LLM.")
-        
+                    reasons_for_revision_summary.append(
+                        f"Potential {category} identified by LLM."
+                    )
+
         if not reasons_for_revision_summary and not is_likely_no_issues_text:
-            reasons_for_revision_summary.append("LLM evaluation identified potential quality issues.")
-        
+            reasons_for_revision_summary.append(
+                "LLM evaluation identified potential quality issues."
+            )
+
         logger.info(
             f"Quality evaluation for Ch {chapter_number} complete. Needs revision: {needs_revision}. "
             f"Summary of reasons: {'; '.join(reasons_for_revision_summary) if reasons_for_revision_summary else 'None'}."
         )
-        
+
         return needs_revision, reasons_for_revision_summary
 
     async def _validate_patch(
-        self, chapter_text: str, problems: List[ProblemDetail]
+        self, chapter_text: str, problems: list[ProblemDetail]
     ) -> bool:
         """Internal method for patch validation (from PatchValidationAgent).
-        
+
         Validates if chapter_text adequately addresses all identified problems.
         """
         if not problems:
             return True
-        
+
         # For now, return True as patch validation requires specific patch instructions
         # In a full implementation, this would use the patch validation prompt
         # and check if the current text addresses the identified problems
-        
+
         logger.info("Patch validation placeholder - always returning True for now")
         return True
 
     async def _parse_llm_continuity_output(
         self, json_text: str, chapter_number: int, original_draft_text: str
-    ) -> List[ProblemDetail]:
+    ) -> list[ProblemDetail]:
         """Parse LLM JSON output for consistency problems."""
         problems = parse_problem_list(json_text, category="consistency")
         if not problems:
@@ -402,15 +407,15 @@ class RevisionAgent:
 
     async def _perform_llm_comprehensive_evaluation(
         self,
-        plot_outline: Dict[str, Any],
-        character_names: List[str],
-        world_item_ids_by_category: Dict[str, List[str]],
+        plot_outline: dict[str, Any],
+        character_names: list[str],
+        world_item_ids_by_category: dict[str, list[str]],
         draft_text: str,
         chapter_number: int,
-        plot_point_focus: Optional[str],
+        plot_point_focus: str | None,
         plot_point_index: int,
         previous_chapters_context: str,
-    ) -> Tuple[Dict[str, Any], Optional[Dict[str, int]]]:
+    ) -> tuple[dict[str, Any], dict[str, int] | None]:
         """Perform comprehensive evaluation using LLM."""
         if not draft_text:
             logger.warning(
@@ -434,15 +439,21 @@ class RevisionAgent:
         # Fetch character and world data if not provided (empty parameters)
         if not character_names:
             logger.info("Fetching character profiles from database for evaluation...")
-            character_profiles_dict = await character_queries.get_character_profiles_from_db()
+            character_profiles_dict = (
+                await character_queries.get_character_profiles_from_db()
+            )
             character_names = list(character_profiles_dict.keys())
-            logger.info(f"Found {len(character_names)} characters for evaluation: {character_names}")
-        
+            logger.info(
+                f"Found {len(character_names)} characters for evaluation: {character_names}"
+            )
+
         # character_names is now always a List[str] as required by the function
-            
+
         if not world_item_ids_by_category:
             logger.info("Fetching world item IDs from database for evaluation...")
-            world_item_ids_by_category = await world_queries.get_all_world_item_ids_by_category()
+            world_item_ids_by_category = (
+                await world_queries.get_all_world_item_ids_by_category()
+            )
 
         char_profiles_plain_text = (
             await get_filtered_character_profiles_for_prompt_plain_text(
@@ -498,7 +509,7 @@ class RevisionAgent:
   }
 ]
 """
-        
+
         prompt = render_prompt(
             "revision_agent/evaluate_chapter.j2",
             {
@@ -563,7 +574,7 @@ class RevisionAgent:
                 ):
                     is_likely_no_issues_text = True
                     break
-        eval_output_dict: Dict[str, Any]
+        eval_output_dict: dict[str, Any]
         if is_likely_no_issues_text:
             logger.info(
                 f"Heuristic: Evaluation for Ch {chapter_number} appears to indicate 'no issues': '{cleaned_evaluation_text[:100]}...'"

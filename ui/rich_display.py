@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import config
 from core.llm_interface import llm_service
@@ -44,8 +44,8 @@ class RichDisplayManager:
     """Handles Rich-based display updates."""
 
     def __init__(self) -> None:
-        self.live: Optional[Live] = None
-        self.group: Optional[Group] = None
+        self.live: Live | None = None
+        self.group: Group | None = None
         self.status_text_novel_title: Text = Text("Novel: N/A")
         self.status_text_current_chapter: Text = Text("Current Chapter: N/A")
         self.status_text_current_step: Text = Text("Current Step: Initializing...")
@@ -54,7 +54,7 @@ class RichDisplayManager:
         self.status_text_requests_per_minute: Text = Text("Requests/Min: 0.0")
         self.run_start_time: float = 0.0
         self._stop_event: asyncio.Event = asyncio.Event()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
         if RICH_AVAILABLE and config.ENABLE_RICH_PROGRESS:
             self.group = Group(
@@ -100,11 +100,11 @@ class RichDisplayManager:
 
     def update(
         self,
-        plot_outline: Optional[Dict[str, Any]] = None,
-        chapter_num: Optional[int] = None,
-        step: Optional[str] = None,
+        plot_outline: dict[str, Any] | None = None,
+        chapter_num: int | None = None,
+        step: str | None = None,
         total_tokens: int = 0,
-        run_start_time: Optional[float] = None,
+        run_start_time: float | None = None,
     ) -> None:
         if not (self.live and self.group):
             return

@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import List, Optional
 
 from models import ProblemDetail
 
 logger = logging.getLogger(__name__)
 
 
-def parse_problem_list(
-    text: str, category: Optional[str] = None
-) -> List[ProblemDetail]:
+def parse_problem_list(text: str, category: str | None = None) -> list[ProblemDetail]:
     """Parse a JSON list of problem details.
 
     Args:
@@ -50,7 +47,7 @@ def parse_problem_list(
             }
         ]
 
-    problems: List[ProblemDetail] = []
+    problems: list[ProblemDetail] = []
     for item in data:
         if not isinstance(item, dict):
             logger.warning("Problem item is not a dict: %s", item)

@@ -1,11 +1,12 @@
+from agents.knowledge_agent import (  # Assuming parsing is now a module inside kg_maintainer
+    parse_unified_character_updates,
+    parse_unified_world_updates,
+)
+
 from models import (
     CharacterProfile,
     WorldItem,
 )  # Added WorldItem import
-from kg_maintainer.parsing import (  # Assuming parsing is now a module inside kg_maintainer
-    parse_unified_character_updates,
-    parse_unified_world_updates,
-)
 
 # Example of a helper to create JSON strings for tests if they get complex
 # def make_json_string(data_dict):
@@ -100,28 +101,28 @@ def test_parse_world_updates_simple_json():
     assert isinstance(city, WorldItem)
     assert city.name == "City of Brightness"
     assert city.category == "Locations"
-    assert city.properties["description"] == "A large, well-lit city from JSON."
-    assert city.properties["atmosphere"] == "Vibrant and bustling"
+    assert city.description == "A large, well-lit city from JSON."
+    assert city.additional_properties["atmosphere"] == "Vibrant and bustling"
     # Check for default elaboration note
     assert (
-        city.properties["elaboration_in_chapter_1"]
+        city.additional_properties["elaboration_in_chapter_1"]
         == "Item 'City of Brightness' in category 'Locations' updated in Chapter 1."
     )
 
     assert "Dark Forest" in locations
     forest = locations["Dark Forest"]
     assert isinstance(forest, WorldItem)
-    assert forest.properties["description"] == "A mysterious and old forest."
-    assert "Ancient ruins" in forest.properties["features"]
+    assert forest.description == "A mysterious and old forest."
+    assert "Ancient ruins" in forest.additional_properties["features"]
 
     assert "Factions" in result
     factions = result["Factions"]
     assert "The Sun Guild" in factions
     guild = factions["The Sun Guild"]
     assert isinstance(guild, WorldItem)
-    assert "Spread light" in guild.properties["goals"]
+    assert "Spread light" in guild.goals
     assert (
-        guild.properties["elaboration_in_chapter_1"]
+        guild.additional_properties["elaboration_in_chapter_1"]
         == "Introduced as a benevolent force."
     )  # Explicitly provided
 
@@ -132,10 +133,10 @@ def test_parse_world_updates_simple_json():
     assert isinstance(overview_item, WorldItem)
     assert overview_item.category == "Overview"  # Category name from JSON
     assert overview_item.name == "_overview_"  # Fixed name for overview item
-    assert overview_item.properties["description"] == "A world of magic and mystery."
-    assert overview_item.properties["mood"] == "Adventurous"
+    assert overview_item.description == "A world of magic and mystery."
+    assert overview_item.additional_properties["mood"] == "Adventurous"
     assert (
-        overview_item.properties["elaboration_in_chapter_1"]
+        overview_item.additional_properties["elaboration_in_chapter_1"]
         == "Overall world overview updated in Chapter 1."
     )
 

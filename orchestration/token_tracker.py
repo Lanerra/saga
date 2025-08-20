@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +11,11 @@ class TokenTracker:
     def __init__(self) -> None:
         self.total = 0
 
-    def add(self, operation_name: str, usage_data: Optional[Dict[str, int]]) -> None:
+    def add(self, operation_name: str, usage_data: dict[str, int] | None) -> None:
         """Add tokens from an LLM usage response."""
-        if isinstance(usage_data, dict) and isinstance(usage_data.get("completion_tokens"), int):
+        if isinstance(usage_data, dict) and isinstance(
+            usage_data.get("completion_tokens"), int
+        ):
             completed_tokens = usage_data["completion_tokens"]
             self.total += completed_tokens
             logger.info(
@@ -27,7 +28,10 @@ class TokenTracker:
             isinstance(usage_data, dict)
             and usage_data.get("total_tokens") is not None
             and isinstance(usage_data["total_tokens"], int)
-            and (usage_data.get("completion_tokens") is None or not isinstance(usage_data["completion_tokens"], int))
+            and (
+                usage_data.get("completion_tokens") is None
+                or not isinstance(usage_data["completion_tokens"], int)
+            )
         ):
             logger.info(
                 "NANA Activity: Total tokens from '%s': %s. (Completion tokens not specifically available). Total generated this run (completion focused): %s",

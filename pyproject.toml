@@ -1,5 +1,50 @@
-[tool.black]
-line-length = 88
-
 [tool.ruff]
 line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["F", "B", "I", "UP"] # flake8, flake8-bugbear, isort, pyupgrade
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = false
+disallow_untyped_defs = true
+check_untyped_defs = true
+namespace_packages = true
+show_error_codes = true
+# Enable the Pydantic plugin for enhanced type checking
+plugins = ["pydantic.mypy"]
+# Specifies the path for mypy to check
+
+[tool.pytest.ini_options]
+addopts = [
+    "-v",
+    "--cov-report=term-missing",
+    "--tb=short",
+    "--strict-markers",
+    "--asyncio-mode=auto"
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+timeout = 300
+markers = [
+    "performance: marks tests as performance tests (deselect with '-m \"not performance\"')",
+    "integration: marks tests as integration tests",
+    "slow: marks tests as slow running tests",
+    "unit: marks tests as unit tests",
+    "websocket: marks tests that use WebSocket functionality",
+    "checkpoint: marks tests that use checkpoint functionality",
+    "ui: marks tests that test UI performance",
+    "fault_injection: marks tests that inject faults for testing",
+    "load_test: marks tests that perform load testing"
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore:unclosed.*:ResourceWarning"
+]

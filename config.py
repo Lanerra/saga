@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import logging as stdlib_logging
 import os
-from typing import List, Optional
 
 import structlog
 from dotenv import load_dotenv
@@ -21,14 +20,14 @@ logger = structlog.get_logger()
 
 
 async def _load_list_from_json_async(
-    file_path: str, default_if_missing: Optional[List[str]] = None
-) -> List[str]:
+    file_path: str, default_if_missing: list[str] | None = None
+) -> list[str]:
     """Load a list of strings from a JSON file asynchronously."""
     if default_if_missing is None:
         default_if_missing = []
     try:
         if os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and all(
                     isinstance(item, str) for item in data
@@ -78,7 +77,7 @@ class SagaSettings(BaseSettings):
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "saga_password"
-    NEO4J_DATABASE: Optional[str] = "neo4j"
+    NEO4J_DATABASE: str | None = "neo4j"
 
     # Neo4j Vector Index Configuration
     NEO4J_VECTOR_INDEX_NAME: str = "chapterEmbeddings"
@@ -118,16 +117,16 @@ class SagaSettings(BaseSettings):
     MAX_CONCURRENT_LLM_CALLS: int = 4
 
     # Dynamic Model Assignments (set from base models if not specified in env)
-    FALLBACK_GENERATION_MODEL: Optional[str] = None
-    MAIN_GENERATION_MODEL: Optional[str] = None
-    KNOWLEDGE_UPDATE_MODEL: Optional[str] = None
-    INITIAL_SETUP_MODEL: Optional[str] = None
-    PLANNING_MODEL: Optional[str] = None
-    DRAFTING_MODEL: Optional[str] = None
-    NARRATIVE_MODEL: Optional[str] = None
-    REVISION_MODEL: Optional[str] = None
-    EVALUATION_MODEL: Optional[str] = None
-    PATCH_GENERATION_MODEL: Optional[str] = None
+    FALLBACK_GENERATION_MODEL: str | None = None
+    MAIN_GENERATION_MODEL: str | None = None
+    KNOWLEDGE_UPDATE_MODEL: str | None = None
+    INITIAL_SETUP_MODEL: str | None = None
+    PLANNING_MODEL: str | None = None
+    DRAFTING_MODEL: str | None = None
+    NARRATIVE_MODEL: str | None = None
+    REVISION_MODEL: str | None = None
+    EVALUATION_MODEL: str | None = None
+    PATCH_GENERATION_MODEL: str | None = None
 
     LLM_TOP_P: float = 0.8
 
@@ -236,7 +235,7 @@ class SagaSettings(BaseSettings):
         "%(asctime)s - %(levelname)s - [%(name)s:%(funcName)s:%(lineno)d] - %(message)s"
     )
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-    LOG_FILE: Optional[str] = "saga_run.log"
+    LOG_FILE: str | None = "saga_run.log"
     ENABLE_RICH_PROGRESS: bool = True
 
     # Novel Configuration (Defaults / Placeholders)
@@ -254,7 +253,7 @@ class SagaSettings(BaseSettings):
     MAIN_WORLD_CONTAINER_NODE_ID: str = "main_world_container"
 
     @model_validator(mode="after")
-    def set_dynamic_model_defaults(self) -> "SagaSettings":
+    def set_dynamic_model_defaults(self) -> SagaSettings:
         if self.FALLBACK_GENERATION_MODEL is None:
             self.FALLBACK_GENERATION_MODEL = self.MEDIUM_MODEL
         if self.MAIN_GENERATION_MODEL is None:
@@ -286,11 +285,11 @@ _DEFAULT_PROTAGONISTS_LIST = ["a reluctant hero", "a cynical detective"]
 _DEFAULT_CONFLICTS_LIST = ["man vs self", "man vs society"]
 
 # These will be populated by load_unhinged_data_async
-UNHINGED_GENRES: List[str] = []
-UNHINGED_THEMES: List[str] = []
-UNHINGED_SETTINGS_ARCHETYPES: List[str] = []
-UNHINGED_PROTAGONIST_ARCHETYPES: List[str] = []
-UNHINGED_CONFLICT_TYPES: List[str] = []
+UNHINGED_GENRES: list[str] = []
+UNHINGED_THEMES: list[str] = []
+UNHINGED_SETTINGS_ARCHETYPES: list[str] = []
+UNHINGED_PROTAGONIST_ARCHETYPES: list[str] = []
+UNHINGED_CONFLICT_TYPES: list[str] = []
 
 
 async def load_unhinged_data_async() -> None:

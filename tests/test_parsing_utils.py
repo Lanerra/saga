@@ -82,9 +82,7 @@ class TestRdfTripleParsing(unittest.TestCase):
         self.assertEqual(len(parsed_triples), 0)
 
     def test_invalid_turtle(self):
-        invalid_turtle = (
-            r"char:Jax prop:hasAlias 'J.X.'"
-        )
+        invalid_turtle = r"char:Jax prop:hasAlias 'J.X.'"
         parsed_triples = parse_rdf_triples_with_rdflib(
             invalid_turtle, rdf_format="turtle"
         )

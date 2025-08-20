@@ -1,15 +1,16 @@
 # data_access/character_queries.py
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore
-from neo4j.exceptions import ServiceUnavailable  # type: ignore
 
 import config
 import utils
 from core.db_manager import neo4j_manager
+from core.schema_validator import validate_kg_object
 from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 from models import CharacterProfile
+from neo4j.exceptions import ServiceUnavailable  # type: ignore
 
 from .cypher_builders.character_cypher import (
     TRAIT_NAME_TO_CANONICAL,
@@ -17,7 +18,7 @@ from .cypher_builders.character_cypher import (
 )
 
 # Mapping from normalized character names to canonical display names
-CHAR_NAME_TO_CANONICAL: Dict[str, str] = {}
+CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
 
 
 def resolve_character_name(name: str) -> str:
@@ -31,16 +32,22 @@ logger = structlog.get_logger(__name__)
 
 
 async def sync_characters(
-    profiles: Dict[str, CharacterProfile],
+    profiles: dict[str, CharacterProfile],
     chapter_number: int,
     full_sync: bool = False,
 ) -> bool:
     """Persist character data to Neo4j."""
+    # Validate all profiles before syncing
+    for name, profile in profiles.items():
+        errors = validate_kg_object(profile)
+        if errors:
+            logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
+    
     if full_sync:
         profile_dicts = {k: v.to_dict() for k, v in profiles.items()}
         return await sync_full_state_from_object_to_db(profile_dicts)
 
-    statements: List[Tuple[str, Dict[str, Any]]] = []
+    statements: list[tuple[str, dict[str, Any]]] = []
     for profile in profiles.values():
         statements.extend(generate_character_node_cypher(profile, chapter_number))
 
@@ -65,13 +72,13 @@ async def sync_characters(
         return False
 
 
-async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bool:
+async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bool:
     logger.info("Synchronizing character profiles to Neo4j (non-destructive)...")
 
     novel_id_param = config.MAIN_NOVEL_INFO_NODE_ID
-    statements: List[Tuple[str, Dict[str, Any]]] = []
+    statements: list[tuple[str, dict[str, Any]]] = []
 
-    all_input_char_names: Set[str] = set(profiles_data.keys())
+    all_input_char_names: set[str] = set(profiles_data.keys())
 
     try:
         existing_char_records = await neo4j_manager.execute_read_query(
@@ -79,7 +86,7 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
             " WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE"
             " RETURN c.name AS name"
         )
-        existing_db_char_names: Set[str] = {
+        existing_db_char_names: set[str] = {
             record["name"]
             for record in existing_char_records
             if record and record["name"]
@@ -107,6 +114,12 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
         if not isinstance(profile_dict, dict):
             logger.warning(f"Skipping invalid profile for '{char_name}' (not a dict).")
             continue
+
+        # Validate the profile before syncing
+        profile = CharacterProfile.from_dict(char_name, profile_dict)
+        errors = validate_kg_object(profile)
+        if errors:
+            logger.warning("Invalid CharacterProfile for '%s': %s", char_name, errors)
 
         char_direct_props = {
             k: v
@@ -141,7 +154,7 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
             )
         )
 
-        current_profile_traits: Set[str] = {
+        current_profile_traits: set[str] = {
             utils.normalize_trait_name(str(t))
             for t in profile_dict.get("traits", [])
             if isinstance(t, str) and utils.normalize_trait_name(str(t))
@@ -152,7 +165,7 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (c:Character:Entity {name: $char_name_val})-[r:HAS_TRAIT]->(t:Trait:Entity)
+            MATCH (c:Character:Entity {name: $char_name_val})-[r:HAS_TRAIT_ASPECT]->(t:Trait:Entity)
             WHERE NOT t.name IN $current_traits_list
             DELETE r
             """,
@@ -171,7 +184,7 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
                 UNWIND $current_traits_list AS trait_name_val
                 MERGE (t:Trait:Entity {name: trait_name_val})
                     ON CREATE SET t.created_ts = timestamp()
-                MERGE (c)-[:HAS_TRAIT]->(t)
+                MERGE (c)-[:HAS_TRAIT_ASPECT]->(t)
                 """,
                     {
                         "char_name_val": char_name,
@@ -234,7 +247,7 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
                     )
 
         profile_defined_rels = profile_dict.get("relationships", {})
-        target_chars_in_profile_rels: Set[str] = set()
+        target_chars_in_profile_rels: set[str] = set()
         if isinstance(profile_defined_rels, dict):
             target_chars_in_profile_rels = {
                 str(k).strip() for k in profile_defined_rels.keys() if str(k).strip()
@@ -321,7 +334,7 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
         (
             """
         MATCH (t:Trait:Entity)
-        WHERE NOT EXISTS((:Character:Entity)-[:HAS_TRAIT]->(t))
+        WHERE NOT EXISTS((:Character:Entity)-[:HAS_TRAIT_ASPECT]->(t))
         DETACH DELETE t
         """,
             {},
@@ -343,7 +356,7 @@ async def sync_full_state_from_object_to_db(profiles_data: Dict[str, Any]) -> bo
 
 
 @alru_cache(maxsize=128)
-async def get_character_profile_by_name(name: str) -> Optional[CharacterProfile]:
+async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     """Retrieve a single ``CharacterProfile`` from Neo4j by character name."""
     canonical_name = resolve_character_name(name)
     logger.info("Loading character profile '%s' from Neo4j...", canonical_name)
@@ -359,13 +372,13 @@ async def get_character_profile_by_name(name: str) -> Optional[CharacterProfile]
         return None
 
     char_node = results[0]["c"]
-    profile: Dict[str, Any] = dict(char_node)
+    profile: dict[str, Any] = dict(char_node)
     profile.pop("name", None)
     profile.pop("created_ts", None)
     profile.pop("updated_ts", None)
 
     traits_query = (
-        "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT]->(t:Trait:Entity)"
+        "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT_ASPECT]->(t:Trait:Entity)"
         " RETURN t.name AS trait_name"
     )
     trait_results = await neo4j_manager.execute_read_query(
@@ -383,7 +396,7 @@ async def get_character_profile_by_name(name: str) -> Optional[CharacterProfile]
     rel_results = await neo4j_manager.execute_read_query(
         rels_query, {"char_name": name}
     )
-    relationships: Dict[str, Any] = {}
+    relationships: dict[str, Any] = {}
     if rel_results:
         for rel_rec in rel_results:
             target_name = rel_rec.get("target_name")
@@ -429,7 +442,7 @@ async def get_character_profile_by_name(name: str) -> Optional[CharacterProfile]
 
 
 @alru_cache(maxsize=128)
-async def get_all_character_names() -> List[str]:
+async def get_all_character_names() -> list[str]:
     """Return a list of all character names from Neo4j."""
     query = (
         "MATCH (c:Character:Entity) "
@@ -440,9 +453,9 @@ async def get_all_character_names() -> List[str]:
     return [record["name"] for record in results if record.get("name")]
 
 
-async def get_character_profiles_from_db() -> Dict[str, CharacterProfile]:
+async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
     logger.info("Loading decomposed character profiles from Neo4j...")
-    profiles_data: Dict[str, CharacterProfile] = {}
+    profiles_data: dict[str, CharacterProfile] = {}
 
     char_query = (
         "MATCH (c:Character:Entity)"
@@ -470,7 +483,7 @@ async def get_character_profiles_from_db() -> Dict[str, CharacterProfile]:
         profile.pop("created_ts", None)
         profile.pop("updated_ts", None)
 
-        traits_query = "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT]->(t:Trait:Entity) RETURN t.name AS trait_name"
+        traits_query = "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT_ASPECT]->(t:Trait:Entity) RETURN t.name AS trait_name"
         trait_results = await neo4j_manager.execute_read_query(
             traits_query, {"char_name": char_name}
         )
@@ -541,7 +554,7 @@ async def get_character_profiles_from_db() -> Dict[str, CharacterProfile]:
 
 async def get_character_info_for_snippet_from_db(
     char_name: str, chapter_limit: int
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     canonical_name = resolve_character_name(char_name)
     query = """
     MATCH (c:Character:Entity {name: $char_name_param})
@@ -668,7 +681,7 @@ async def get_character_info_for_snippet_from_db(
     return None
 
 
-async def find_thin_characters_for_enrichment() -> List[Dict[str, Any]]:
+async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
     """Finds character nodes that are considered 'thin' (e.g., auto-created stubs)."""
     query = """
     MATCH (c:Character)

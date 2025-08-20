@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def format_scene_plan_for_prompt(
-    chapter_plan: List["SceneDetail"],
+    chapter_plan: list[SceneDetail],
     model_name_for_tokens: str,
     max_tokens_budget: int,
 ) -> str:
@@ -93,15 +93,15 @@ async def deduplicate_text_segments(
     use_semantic_comparison: bool = config.DEDUPLICATION_USE_SEMANTIC,
     min_segment_length_chars: int = config.DEDUPLICATION_MIN_SEGMENT_LENGTH,
     prefer_newer: bool = False,
-) -> Tuple[str, int]:
+) -> tuple[str, int]:
     """Remove near-duplicate segments from text.
-    
+
     Deprecated: This function is maintained for backward compatibility but delegates
     to the TextDeduplicator class for actual implementation.
     """
     if not original_text.strip():
         return original_text, 0
-        
+
     deduplicator = TextDeduplicator(
         similarity_threshold=similarity_threshold,
         use_semantic_comparison=use_semantic_comparison,
@@ -111,13 +111,13 @@ async def deduplicate_text_segments(
     return await deduplicator.deduplicate(original_text, segment_level)
 
 
-def remove_spans_from_text(text: str, spans: List[Tuple[int, int]]) -> str:
+def remove_spans_from_text(text: str, spans: list[tuple[int, int]]) -> str:
     """Remove character spans from ``text``."""
     if not spans:
         return text
 
     spans_sorted = sorted(spans, key=lambda x: x[0])
-    result_parts: List[str] = []
+    result_parts: list[str] = []
     last_end = 0
     for start, end in spans_sorted:
         if start > last_end:

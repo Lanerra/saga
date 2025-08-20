@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - type hint import
     from .nana_orchestrator import NANA_Orchestrator
@@ -8,7 +8,7 @@ if TYPE_CHECKING:  # pragma: no cover - type hint import
 
 async def run_chapter_pipeline(
     orchestrator: NANA_Orchestrator, novel_chapter_number: int
-) -> Optional[str]:
+) -> str | None:
     """High-level pipeline for generating a chapter."""
     orchestrator._update_rich_display(
         chapter_num=novel_chapter_number, step="Starting Chapter"

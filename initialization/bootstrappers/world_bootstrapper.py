@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, Coroutine, Dict, List, Optional, Tuple
+from collections.abc import Coroutine
+from typing import Any
 
 import structlog
 
@@ -11,7 +12,7 @@ from .common import bootstrap_field
 
 logger = structlog.get_logger(__name__)
 
-WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: Dict[str, str] = {
+WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: dict[str, str] = {
     "overview": "_overview_",
     "locations": "locations",
     "society": "society",
@@ -21,12 +22,12 @@ WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: Dict[str, str] = {
     "factions": "factions",
 }
 
-WORLD_DETAIL_LIST_INTERNAL_KEYS: List[str] = []
+WORLD_DETAIL_LIST_INTERNAL_KEYS: list[str] = []
 
 
 async def generate_world_building_logic(
-    world_building: Dict[str, Any], plot_outline: Dict[str, Any]
-) -> Tuple[Dict[str, Any], Optional[Dict[str, int]]]:
+    world_building: dict[str, Any], plot_outline: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, int] | None]:
     """Stub world-building generation function."""
     logger.warning("generate_world_building_logic stub called")
     if not world_building:
@@ -34,9 +35,9 @@ async def generate_world_building_logic(
     return world_building, None
 
 
-def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
+def create_default_world() -> dict[str, dict[str, WorldItem]]:
     """Create a default world-building structure."""
-    world_data: Dict[str, Dict[str, WorldItem]] = {
+    world_data: dict[str, dict[str, WorldItem]] = {
         "_overview_": {
             "_overview_": WorldItem.from_dict(
                 "_overview_",
@@ -61,12 +62,19 @@ def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
         "factions",
     ]
 
+    # Create empty world elements for each category instead of using placeholders
     for cat_key in standard_categories:
+        # Create an empty WorldItem with empty name and description
         world_data[cat_key] = {
-            config.FILL_IN: WorldItem.from_dict(
+            "": WorldItem.from_dict(
                 cat_key,
-                config.FILL_IN,
-                {"description": config.FILL_IN, "source": "default_placeholder", "id": f"{utils._normalize_for_id(cat_key)}_{utils._normalize_for_id(config.FILL_IN)}"},
+                "",  # Empty name instead of placeholder
+                {
+                    "description": "",
+                    "source": "default_placeholder",
+                    "id": f"{utils._normalize_for_id(cat_key)}_",
+                },  # Empty description instead of placeholder
+                allow_empty_name=True,  # Allow empty name during bootstrapping
             )
         }
 
@@ -74,17 +82,17 @@ def create_default_world() -> Dict[str, Dict[str, WorldItem]]:
 
 
 async def bootstrap_world(
-    world_building: Dict[str, Any],
-    plot_outline: Dict[str, Any],
-) -> Tuple[Dict[str, Any], Optional[Dict[str, int]]]:
+    world_building: dict[str, Any],
+    plot_outline: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, int] | None]:
     """Fill missing world-building information via LLM."""
-    overall_usage_data: Dict[str, int] = {
+    overall_usage_data: dict[str, int] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
     }
 
-    def _accumulate_usage(item_usage: Optional[Dict[str, int]]) -> None:
+    def _accumulate_usage(item_usage: dict[str, int] | None) -> None:
         if item_usage:
             for key, val in item_usage.items():
                 overall_usage_data[key] = overall_usage_data.get(key, 0) + val
@@ -93,7 +101,7 @@ async def bootstrap_world(
     if "_overview_" in world_building and "_overview_" in world_building["_overview_"]:
         overview_item_obj = world_building["_overview_"]["_overview_"]
         if isinstance(overview_item_obj, WorldItem) and utils._is_fill_in(
-            overview_item_obj.properties.get("description")
+            overview_item_obj.description
         ):
             logger.info("Bootstrapping _overview_ description.")
             desc_value, desc_usage = await bootstrap_field(
@@ -102,6 +110,7 @@ async def bootstrap_world(
                     "world_item": overview_item_obj.to_dict(),
                     "plot_outline": plot_outline,
                     "target_category": "_overview_",
+                    "category_description": "Bootstrap a description for the world overview.",
                 },
                 "bootstrapper/fill_world_item_field.j2",
             )
@@ -111,48 +120,96 @@ async def bootstrap_world(
                 and isinstance(desc_value, str)
                 and not utils._is_fill_in(desc_value)
             ):
-                overview_item_obj.properties["description"] = desc_value
-                current_source = overview_item_obj.properties.get("source", "")
+                overview_item_obj.description = desc_value
+                current_source = overview_item_obj.additional_properties.get("source", "")
                 if isinstance(current_source, str):
-                    overview_item_obj.properties["source"] = (
+                    overview_item_obj.additional_properties["source"] = (
                         f"{current_source}_descr_bootstrapped"
                         if current_source
                         else "descr_bootstrapped"
                     )
                 else:
-                    overview_item_obj.properties["source"] = "descr_bootstrapped"
+                    overview_item_obj.additional_properties["source"] = "descr_bootstrapped"
 
-    # Stage 1: Bootstrap names for [Fill-in] items
-    name_bootstrap_tasks: Dict[Tuple[str, str], Coroutine] = {}
+    # Stage 1: Bootstrap names for items with missing/empty names (sequential to prevent duplicates)
+    items_needing_names: list[tuple[str, str, WorldItem]] = []
     for category, items_dict in world_building.items():
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
         for item_name, item_obj in items_dict.items():
-            if isinstance(item_obj, WorldItem) and utils._is_fill_in(item_obj.name):
+            # Check if the item name is missing or empty (instead of just checking for placeholder)
+            if isinstance(item_obj, WorldItem) and (
+                not item_obj.name or not item_obj.name.strip()
+            ):
                 logger.info(
                     "Identified item for name bootstrapping in category '%s': Current name '%s'",
                     category,
                     item_name,
                 )
-                task_key = (category, item_name)
-                context_data = {
-                    "world_item": item_obj.to_dict(),
-                    "plot_outline": plot_outline,
-                    "target_category": category,
-                }
-                name_bootstrap_tasks[task_key] = bootstrap_field(
+                items_needing_names.append((category, item_name, item_obj))
+
+    if items_needing_names:
+        logger.info(
+            "Found %d items requiring name bootstrapping.", len(items_needing_names)
+        )
+        
+        # Process sequentially to inject context about existing names
+        name_results_list = []
+        name_task_keys = []
+        generated_names: dict[str, str] = {}  # name -> category mapping
+        
+        for category, item_name, item_obj in items_needing_names:
+            # Inject existing generated names to prevent duplicates
+            existing_names_list = list(generated_names.keys())
+            context_data = {
+                "world_item": item_obj.to_dict(),
+                "plot_outline": plot_outline,
+                "target_category": category,
+                "category_description": f"Bootstrap a name for a {category} element in the world.",
+                "existing_world_names": existing_names_list,
+            }
+            
+            # Attempt generation with retry for duplicates
+            max_retries = 3
+            generated_name = None
+            name_usage = None
+            
+            for attempt in range(max_retries):
+                temp_name, temp_usage = await bootstrap_field(
                     "name", context_data, "bootstrapper/fill_world_item_field.j2"
                 )
+                name_usage = temp_usage
+                
+                if (
+                    temp_name
+                    and isinstance(temp_name, str)
+                    and temp_name.strip()
+                    and not utils._is_fill_in(temp_name)
+                    and temp_name != config.FILL_IN
+                    and temp_name not in generated_names
+                    and temp_name not in world_building.get(category, {})
+                ):
+                    generated_name = temp_name
+                    generated_names[temp_name] = category
+                    break
+                else:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            "Name generation attempt %d for '%s/%s' resulted in duplicate or invalid name '%s'. Retrying with updated context.",
+                            attempt + 1,
+                            category,
+                            item_name,
+                            temp_name,
+                        )
+                        # Update context with more explicit diversity instruction
+                        context_data["existing_world_names"] = list(generated_names.keys())
+                        context_data["retry_attempt"] = attempt + 1
+            
+            name_results_list.append((generated_name, name_usage))
+            name_task_keys.append((category, item_name))
 
-    if name_bootstrap_tasks:
-        logger.info(
-            "Found %d items requiring name bootstrapping.", len(name_bootstrap_tasks)
-        )
-        name_results_list = await asyncio.gather(*name_bootstrap_tasks.values())
-        name_task_keys = list(name_bootstrap_tasks.keys())
-
-        new_items_to_add_stage1: Dict[str, Dict[str, WorldItem]] = {}
-        items_to_remove_stage1: Dict[str, List[str]] = {}
+        new_items_to_add_stage1: dict[str, dict[str, WorldItem]] = {}
+        items_to_remove_stage1: dict[str, list[str]] = {}
 
         for i, (new_name_value, name_usage) in enumerate(name_results_list):
             _accumulate_usage(name_usage)
@@ -161,6 +218,7 @@ async def bootstrap_world(
             if (
                 new_name_value
                 and isinstance(new_name_value, str)
+                and new_name_value.strip()
                 and not utils._is_fill_in(new_name_value)
                 and new_name_value != config.FILL_IN
             ):
@@ -168,36 +226,23 @@ async def bootstrap_world(
                     original_fill_in_name
                 ]
 
-                if new_name_value in world_building[
-                    original_category
-                ] or new_name_value in new_items_to_add_stage1.get(
-                    original_category, {}
-                ):
-                    logger.warning(
-                        "Name bootstrap for '%s/%s' resulted in a duplicate name '%s'. Skipping this item.",
-                        original_category,
-                        original_fill_in_name,
-                        new_name_value,
-                    )
-                    continue
-
                 logger.info(
                     "Successfully bootstrapped name for '%s/%s': New name is '%s'",
                     original_category,
                     original_fill_in_name,
                     new_name_value,
                 )
-                properties_with_id = {
-                    **original_item_obj.properties,
-                    "id": f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}"
-                }
+                properties_with_id = original_item_obj.to_dict()
+                properties_with_id["id"] = f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}"
                 # Ensure we have a valid ID
                 if not properties_with_id["id"] or properties_with_id["id"] == "_":
-                    properties_with_id["id"] = f"element_{hash(original_category + new_name_value)}"
+                    properties_with_id["id"] = (
+                        f"element_{hash(original_category + new_name_value)}"
+                    )
                 new_item_renamed = WorldItem.from_dict(
                     original_category, new_name_value, properties_with_id
                 )
-                new_item_renamed.properties["source"] = "bootstrapped_name"
+                new_item_renamed.additional_properties["source"] = "bootstrapped_name"
 
                 new_items_to_add_stage1.setdefault(original_category, {})[
                     new_name_value
@@ -225,16 +270,64 @@ async def bootstrap_world(
             "Finished applying name changes from Stage 1 to world_building structure."
         )
 
+        # Cross-category duplicate name validation (should be minimal now due to sequential generation)
+        all_bootstrapped_names = {}
+        duplicate_count = 0
+        for cat, items_dict in new_items_to_add_stage1.items():
+            for item_name, item_obj in items_dict.items():
+                normalized_name = utils._normalize_for_id(item_name)
+                if normalized_name in all_bootstrapped_names:
+                    logger.warning(
+                        "Cross-category duplicate name detected: '%s' in category '%s' (previously used in '%s'). This should be rare with sequential generation.",
+                        item_name,
+                        cat,
+                        all_bootstrapped_names[normalized_name],
+                    )
+                    duplicate_count += 1
+                else:
+                    all_bootstrapped_names[normalized_name] = cat
+
+        logger.info(
+            "Finished cross-category duplicate name validation. Found %d unique names across categories (%d duplicates).",
+            len(all_bootstrapped_names),
+            duplicate_count,
+        )
+
     # Stage 2: Bootstrap properties for all items (excluding _overview_ top-level)
-    property_bootstrap_tasks: Dict[Tuple[str, str, str], Coroutine] = {}
+    property_bootstrap_tasks: dict[tuple[str, str, str], Coroutine] = {}
     for category, items_dict in world_building.items():
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
         for item_name, item_obj in items_dict.items():
-            if not isinstance(item_obj, WorldItem) or utils._is_fill_in(item_name):
+            if not isinstance(item_obj, WorldItem) or (
+                not item_name or not item_name.strip()
+            ):
                 continue
-            for prop_name, prop_value in item_obj.properties.items():
-                if utils._is_fill_in(prop_value):
+            # Check for properties that need bootstrapping
+            # For structured fields like description, goals, rules, key_elements, traits
+            if not item_obj.description:
+                logger.info(
+                    "Identified property 'description' for bootstrapping in item '%s/%s'.",
+                    category,
+                    item_name,
+                )
+                task_key = (category, item_name, "description")
+                context_data = {
+                    "world_item": item_obj.to_dict(),
+                    "plot_outline": plot_outline,
+                    "target_category": category,
+                    "category_description": f"Bootstrap a description for a {category} element in the world.",
+                }
+                property_bootstrap_tasks[task_key] = bootstrap_field(
+                    "description", context_data, "bootstrapper/fill_world_item_field.j2"
+                )
+
+            # Check additional_properties for other properties
+            for prop_name, prop_value in item_obj.additional_properties.items():
+                # Check if the property value is missing or empty (instead of just checking for placeholder)
+                if not prop_value or (
+                    isinstance(prop_value, str) and not prop_value.strip()
+                ):
                     logger.info(
                         "Identified property '%s' for bootstrapping in item '%s/%s'.",
                         prop_name,
@@ -246,6 +339,7 @@ async def bootstrap_world(
                         "world_item": item_obj.to_dict(),
                         "plot_outline": plot_outline,
                         "target_category": category,
+                        "category_description": f"Bootstrap a {prop_name} for a {category} element in the world.",
                     }
                     property_bootstrap_tasks[task_key] = bootstrap_field(
                         prop_name, context_data, "bootstrapper/fill_world_item_field.j2"
@@ -273,8 +367,13 @@ async def bootstrap_world(
                 )
                 continue
 
-            if prop_fill_value is not None and not (
-                isinstance(prop_fill_value, str) and utils._is_fill_in(prop_fill_value)
+            if prop_fill_value is not None and (
+                not isinstance(prop_fill_value, str)
+                or (
+                    isinstance(prop_fill_value, str)
+                    and prop_fill_value.strip()
+                    and not utils._is_fill_in(prop_fill_value)
+                )
             ):
                 logger.info(
                     "Successfully bootstrapped property '%s' for item '%s/%s'.",
@@ -282,19 +381,32 @@ async def bootstrap_world(
                     category,
                     item_name,
                 )
-                target_item.properties[prop_name_filled] = prop_fill_value
+                # Handle structured fields
+                if prop_name_filled == "description":
+                    target_item.description = prop_fill_value
+                elif prop_name_filled == "goals":
+                    target_item.goals = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                elif prop_name_filled == "rules":
+                    target_item.rules = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                elif prop_name_filled == "key_elements":
+                    target_item.key_elements = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                elif prop_name_filled == "traits":
+                    target_item.traits = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                else:
+                    # Handle additional properties
+                    target_item.additional_properties[prop_name_filled] = prop_fill_value
 
-                current_source = target_item.properties.get("source", "")
+                current_source = target_item.additional_properties.get("source", "")
                 if isinstance(current_source, str):
                     append_source = f"_prop_{prop_name_filled}_bootstrapped"
                     if append_source not in current_source:
-                        target_item.properties["source"] = (
+                        target_item.additional_properties["source"] = (
                             f"{current_source}{append_source}"
                             if current_source
                             else append_source.lstrip("_")
                         )
                 else:
-                    target_item.properties["source"] = (
+                    target_item.additional_properties["source"] = (
                         f"prop_{prop_name_filled}_bootstrapped"
                     )
             else:

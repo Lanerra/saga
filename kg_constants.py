@@ -40,7 +40,6 @@ RELATIONSHIP_TYPES = {
     "HAS_WORLD_META",
     "CONTAINS_ELEMENT",
     # Character-related Relationships
-    "HAS_TRAIT",
     "DEVELOPED_IN_CHAPTER",
     "KNOWS",
     "FRIEND_OF",
@@ -69,4 +68,3 @@ RELATIONSHIP_TYPES = {
     "RELATED_TO",  # Generic fallback
     "DYNAMIC_REL",  # For KG triples where the relationship type is in a property
 }
-

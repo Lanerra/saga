@@ -1,5 +1,4 @@
 import asyncio
-from typing import Dict
 
 import numpy as np
 import pytest
@@ -83,8 +82,8 @@ async def test_finalize_chapter_validation_failure(monkeypatch):
         "core.llm_interface.llm_service.async_get_embedding", fake_embedding
     )
     monkeypatch.setattr(kg_agent, "_llm_extract_updates", fake_extract)
-    profiles_called: Dict[str, CharacterProfile] = {}
-    world_called: Dict[str, Dict[str, WorldItem]] = {}
+    profiles_called: dict[str, CharacterProfile] = {}
+    world_called: dict[str, dict[str, WorldItem]] = {}
 
     async def persist_profiles(profiles, chapter):
         profiles_called.update(profiles)

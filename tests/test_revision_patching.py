@@ -6,7 +6,6 @@ import pytest
 
 import config
 import processing.revision_logic as chapter_revision_logic
-import utils
 from agents.revision_agent import RevisionAgent
 from core.llm_interface import llm_service
 from processing.revision_logic import _apply_patches_to_text
@@ -120,7 +119,9 @@ async def test_skip_repatch_same_segment(monkeypatch):
         min_segment_length_chars=0,
         prefer_newer=True,
     )
-    dedup, _ = await deduplicator.deduplicate("First\n\nSecond\n\nFirst", segment_level="sentence")
+    dedup, _ = await deduplicator.deduplicate(
+        "First\n\nSecond\n\nFirst", segment_level="sentence"
+    )
     assert isinstance(dedup, str)
 
 

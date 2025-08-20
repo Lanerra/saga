@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, Coroutine, Dict, Optional, Tuple
+from collections.abc import Coroutine
+from typing import Any
 
 import structlog
 
@@ -12,7 +13,7 @@ from .common import bootstrap_field
 logger = structlog.get_logger(__name__)
 
 
-def create_default_characters(protagonist_name: str) -> Dict[str, CharacterProfile]:
+def create_default_characters(protagonist_name: str) -> dict[str, CharacterProfile]:
     """Create a default protagonist profile."""
     profile = CharacterProfile(name=protagonist_name)
     profile.description = config.FILL_IN
@@ -21,12 +22,12 @@ def create_default_characters(protagonist_name: str) -> Dict[str, CharacterProfi
 
 
 async def bootstrap_characters(
-    character_profiles: Dict[str, CharacterProfile],
-    plot_outline: Dict[str, Any],
-) -> Tuple[Dict[str, CharacterProfile], Optional[Dict[str, int]]]:
+    character_profiles: dict[str, CharacterProfile],
+    plot_outline: dict[str, Any],
+) -> tuple[dict[str, CharacterProfile], dict[str, int] | None]:
     """Fill missing character profile data via LLM."""
-    tasks: Dict[Tuple[str, str], Coroutine] = {}
-    usage_data: Dict[str, int] = {
+    tasks: dict[tuple[str, str], Coroutine] = {}
+    usage_data: dict[str, int] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,

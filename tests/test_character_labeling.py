@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -73,11 +73,11 @@ def mock_neo4j_manager():
 
 
 # Store for captured statements by the mock
-captured_statements_for_tests: List[Tuple[str, Dict[str, Any]]] = []
+captured_statements_for_tests: list[tuple[str, dict[str, Any]]] = []
 
 
 async def capture_statements_mock(
-    statements: List[Tuple[str, Dict[str, Any]]],
+    statements: list[tuple[str, dict[str, Any]]],
 ):
     captured_statements_for_tests.clear()
     captured_statements_for_tests.extend(statements)
@@ -149,9 +149,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
             )  # Accommodate slight variations if any
             alice_statement_found = True
             break
-    assert alice_statement_found, (
-        "Cypher statement for Alice as Character not found or incorrect."
-    )
+    assert (
+        alice_statement_found
+    ), "Cypher statement for Alice as Character not found or incorrect."
 
     # Verify generated Cypher for Bob (Person -> Character:Person)
     bob_statement_found = False
@@ -164,9 +164,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
             )
             bob_statement_found = True
             break
-    assert bob_statement_found, (
-        "Cypher statement for Bob as Person:Character not found or incorrect."
-    )
+    assert (
+        bob_statement_found
+    ), "Cypher statement for Bob as Person:Character not found or incorrect."
 
     # Verify generated Cypher for Castle (Location)
     castle_statement_found = False
@@ -175,9 +175,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
             assert "MERGE (s:Location:Entity {name: $subject_name_param})" in query
             castle_statement_found = True
             break
-    assert castle_statement_found, (
-        "Cypher statement for Castle as Location not found or incorrect."
-    )
+    assert (
+        castle_statement_found
+    ), "Cypher statement for Castle as Location not found or incorrect."
 
     # Verify Charles (Object, Character)
     charles_statement_found = False
@@ -186,9 +186,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
             assert "MERGE (o:Character:Entity {name: $object_name_param})" in query
             charles_statement_found = True
             break
-    assert charles_statement_found, (
-        "Cypher statement for Charles as Character (object) not found or incorrect."
-    )
+    assert (
+        charles_statement_found
+    ), "Cypher statement for Charles as Character (object) not found or incorrect."
 
     # Verify Diana (Object, Person -> Character:Person)
     diana_statement_found = False
@@ -199,9 +199,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
             )
             diana_statement_found = True
             break
-    assert diana_statement_found, (
-        "Cypher statement for Diana as Person:Character (object) not found or incorrect."
-    )
+    assert (
+        diana_statement_found
+    ), "Cypher statement for Diana as Person:Character (object) not found or incorrect."
 
 
 # Placeholder for a more comprehensive query test.
@@ -223,9 +223,9 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
     # Let's modify the mock to capture the query string for query_kg_from_db
 
     captured_query_string = ""
-    captured_query_params: Dict[str, Any] = {}
+    captured_query_params: dict[str, Any] = {}
 
-    async def capture_read_query_mock(query: str, params: Dict[str, Any]):
+    async def capture_read_query_mock(query: str, params: dict[str, Any]):
         nonlocal captured_query_string, captured_query_params
         captured_query_string = query
         captured_query_params = params

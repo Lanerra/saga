@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import config
 from kg_constants import (
@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 def generate_world_element_node_cypher(
     item: WorldItem, chapter_number_for_delta: int = 0
-) -> List[Tuple[str, Dict[str, Any]]]:
+) -> list[tuple[str, dict[str, Any]]]:
     """Create Cypher statements for a world element update."""
 
-    statements: List[Tuple[str, Dict[str, Any]]] = []
+    statements: list[tuple[str, dict[str, Any]]] = []
 
     node_props = {
         "id": item.id,  # CRITICAL: Ensure id is always set as a property
@@ -31,20 +31,30 @@ def generate_world_element_node_cypher(
         f"source_quality_chapter_{chapter_number_for_delta}"
     )
     if (
-        isinstance(item.properties, dict)
-        and item.properties.get(current_chapter_source_quality_key)
+        isinstance(item.additional_properties, dict)
+        and item.additional_properties.get(current_chapter_source_quality_key)
         == "provisional_from_unrevised_draft"
     ):
         node_props[KG_IS_PROVISIONAL] = True
     elif KG_IS_PROVISIONAL not in node_props:
         node_props[KG_IS_PROVISIONAL] = item.is_provisional
 
-    if isinstance(item.properties, dict):
-        for key, value in item.properties.items():
+    # Add description if it exists
+    if item.description:
+        node_props["description"] = item.description
+
+    # Add additional properties
+    if isinstance(item.additional_properties, dict):
+        for key, value in item.additional_properties.items():
             if (
                 isinstance(value, (str, int, float, bool))
                 and key not in node_props
-                and key not in ["id", "name", "category"]  # Explicitly protect required properties
+                and key
+                not in [
+                    "id",
+                    "name",
+                    "category",
+                ]  # Explicitly protect required properties
                 and not key.startswith("elaboration_in_chapter_")
                 and not key.startswith("source_quality_chapter_")
                 and not key.startswith("added_in_chapter_")
@@ -52,7 +62,9 @@ def generate_world_element_node_cypher(
             ):
                 node_props[key] = value
             elif isinstance(value, (list, dict)) and key not in [
-                "id", "name", "category",  # Explicitly protect required properties
+                "id",
+                "name",
+                "category",  # Explicitly protect required properties
                 "goals",
                 "rules",
                 "key_elements",
@@ -104,8 +116,15 @@ def generate_world_element_node_cypher(
 
     for prop_key, rel_type in list_properties_to_relate.items():
         list_value = []
-        if isinstance(item.properties, dict):
-            list_value = item.properties.get(prop_key, [])
+        # Use the new structured fields instead of the properties dictionary
+        if prop_key == "goals":
+            list_value = item.goals
+        elif prop_key == "rules":
+            list_value = item.rules
+        elif prop_key == "key_elements":
+            list_value = item.key_elements
+        elif prop_key == "traits":
+            list_value = item.traits
 
         if isinstance(list_value, list):
             for value_str_unstripped in list_value:
@@ -136,8 +155,8 @@ def generate_world_element_node_cypher(
                         )
 
     elab_event_key = f"elaboration_in_chapter_{chapter_number_for_delta}"
-    if isinstance(item.properties, dict) and elab_event_key in item.properties:
-        elab_summary = item.properties[elab_event_key]
+    if isinstance(item.additional_properties, dict) and elab_event_key in item.additional_properties:
+        elab_summary = item.additional_properties[elab_event_key]
         if isinstance(elab_summary, str) and elab_summary.strip():
             elab_event_id = (
                 f"elab_{item.id}_ch{chapter_number_for_delta}_{hash(elab_summary)}"
