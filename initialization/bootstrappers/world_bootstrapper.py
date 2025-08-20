@@ -131,8 +131,8 @@ async def bootstrap_world(
                 else:
                     overview_item_obj.properties["source"] = "descr_bootstrapped"
 
-    # Stage 1: Bootstrap names for items with missing/empty names
-    name_bootstrap_tasks: dict[tuple[str, str], Coroutine] = {}
+    # Stage 1: Bootstrap names for items with missing/empty names (sequential to prevent duplicates)
+    items_needing_names: list[tuple[str, str, WorldItem]] = []
     for category, items_dict in world_building.items():
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
@@ -146,23 +146,67 @@ async def bootstrap_world(
                     category,
                     item_name,
                 )
-                task_key = (category, item_name)
-                context_data = {
-                    "world_item": item_obj.to_dict(),
-                    "plot_outline": plot_outline,
-                    "target_category": category,
-                    "category_description": f"Bootstrap a name for a {category} element in the world.",
-                }
-                name_bootstrap_tasks[task_key] = bootstrap_field(
+                items_needing_names.append((category, item_name, item_obj))
+
+    if items_needing_names:
+        logger.info(
+            "Found %d items requiring name bootstrapping.", len(items_needing_names)
+        )
+        
+        # Process sequentially to inject context about existing names
+        name_results_list = []
+        name_task_keys = []
+        generated_names: dict[str, str] = {}  # name -> category mapping
+        
+        for category, item_name, item_obj in items_needing_names:
+            # Inject existing generated names to prevent duplicates
+            existing_names_list = list(generated_names.keys())
+            context_data = {
+                "world_item": item_obj.to_dict(),
+                "plot_outline": plot_outline,
+                "target_category": category,
+                "category_description": f"Bootstrap a name for a {category} element in the world.",
+                "existing_world_names": existing_names_list,
+            }
+            
+            # Attempt generation with retry for duplicates
+            max_retries = 3
+            generated_name = None
+            name_usage = None
+            
+            for attempt in range(max_retries):
+                temp_name, temp_usage = await bootstrap_field(
                     "name", context_data, "bootstrapper/fill_world_item_field.j2"
                 )
-
-    if name_bootstrap_tasks:
-        logger.info(
-            "Found %d items requiring name bootstrapping.", len(name_bootstrap_tasks)
-        )
-        name_results_list = await asyncio.gather(*name_bootstrap_tasks.values())
-        name_task_keys = list(name_bootstrap_tasks.keys())
+                name_usage = temp_usage
+                
+                if (
+                    temp_name
+                    and isinstance(temp_name, str)
+                    and temp_name.strip()
+                    and not utils._is_fill_in(temp_name)
+                    and temp_name != config.FILL_IN
+                    and temp_name not in generated_names
+                    and temp_name not in world_building.get(category, {})
+                ):
+                    generated_name = temp_name
+                    generated_names[temp_name] = category
+                    break
+                else:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            "Name generation attempt %d for '%s/%s' resulted in duplicate or invalid name '%s'. Retrying with updated context.",
+                            attempt + 1,
+                            category,
+                            item_name,
+                            temp_name,
+                        )
+                        # Update context with more explicit diversity instruction
+                        context_data["existing_world_names"] = list(generated_names.keys())
+                        context_data["retry_attempt"] = attempt + 1
+            
+            name_results_list.append((generated_name, name_usage))
+            name_task_keys.append((category, item_name))
 
         new_items_to_add_stage1: dict[str, dict[str, WorldItem]] = {}
         items_to_remove_stage1: dict[str, list[str]] = {}
@@ -181,19 +225,6 @@ async def bootstrap_world(
                 original_item_obj = world_building[original_category][
                     original_fill_in_name
                 ]
-
-                if new_name_value in world_building[
-                    original_category
-                ] or new_name_value in new_items_to_add_stage1.get(
-                    original_category, {}
-                ):
-                    logger.warning(
-                        "Name bootstrap for '%s/%s' resulted in a duplicate name '%s'. Skipping this item.",
-                        original_category,
-                        original_fill_in_name,
-                        new_name_value,
-                    )
-                    continue
 
                 logger.info(
                     "Successfully bootstrapped name for '%s/%s': New name is '%s'",
@@ -241,24 +272,27 @@ async def bootstrap_world(
             "Finished applying name changes from Stage 1 to world_building structure."
         )
 
-        # Cross-category duplicate name validation
+        # Cross-category duplicate name validation (should be minimal now due to sequential generation)
         all_bootstrapped_names = {}
+        duplicate_count = 0
         for cat, items_dict in new_items_to_add_stage1.items():
             for item_name, item_obj in items_dict.items():
                 normalized_name = utils._normalize_for_id(item_name)
                 if normalized_name in all_bootstrapped_names:
                     logger.warning(
-                        "Cross-category duplicate name detected: '%s' in category '%s' (previously used in '%s'). Consider regenerating for better world diversity.",
+                        "Cross-category duplicate name detected: '%s' in category '%s' (previously used in '%s'). This should be rare with sequential generation.",
                         item_name,
                         cat,
                         all_bootstrapped_names[normalized_name],
                     )
+                    duplicate_count += 1
                 else:
                     all_bootstrapped_names[normalized_name] = cat
 
         logger.info(
-            "Finished cross-category duplicate name validation. Found %d unique names across categories.",
+            "Finished cross-category duplicate name validation. Found %d unique names across categories (%d duplicates).",
             len(all_bootstrapped_names),
+            duplicate_count,
         )
 
     # Stage 2: Bootstrap properties for all items (excluding _overview_ top-level)

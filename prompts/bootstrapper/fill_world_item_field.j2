@@ -43,6 +43,13 @@ World Item Details:
 4. Do NOT include any other text, explanations, or markdown
 5. For name fields, ensure the name is distinctive and appropriate for the category
 6. Consider the category description when generating content
+{% if context.existing_world_names %}
+7. CRITICAL: Avoid semantic similarity to these existing world names: {{ context.existing_world_names | join(', ') }}
+8. Generate a name that is thematically distinct and uses different linguistic roots
+{% endif %}
+{% if context.retry_attempt %}
+9. This is retry attempt {{ context.retry_attempt }} - be extra creative and avoid obvious connections to existing names
+{% endif %}
 
 **OUTPUT FORMAT:**
 {
