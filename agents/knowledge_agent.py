@@ -530,6 +530,127 @@ def parse_unified_world_updates(
     return results
 
 
+# Phase 3 optimization: Native parsing methods that eliminate dict conversion overhead
+def parse_unified_character_updates_native(
+    json_text_block: str, chapter_number: int
+) -> dict[str, CharacterProfile]:
+    """
+    Native version of character update parsing that creates models directly.
+    Eliminates .from_dict() conversion overhead.
+    """
+    char_updates: dict[str, CharacterProfile] = {}
+    if not json_text_block or json_text_block.strip() in ["null", "None", ""]:
+        return char_updates
+
+    try:
+        parsed_json = json.loads(json_text_block)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse character updates JSON: {e}")
+        return char_updates
+
+    for char_name, raw_attributes in parsed_json.items():
+        if not isinstance(raw_attributes, dict):
+            logger.warning(
+                f"Skipping character '{char_name}': attributes not in dict format"
+            )
+            continue
+
+        processed_char_attributes = {}
+        for key, value in raw_attributes.items():
+            if key in ["traits", "relationships", "skills"]:
+                if isinstance(value, str):
+                    processed_char_attributes[key] = [
+                        item.strip() for item in value.split(",") if item.strip()
+                    ]
+                elif isinstance(value, list):
+                    processed_char_attributes[key] = [
+                        str(item).strip() for item in value if str(item).strip()
+                    ]
+                else:
+                    processed_char_attributes[key] = []
+            else:
+                processed_char_attributes[key] = value
+
+        try:
+            # Create model directly without dict intermediate
+            char_updates[char_name] = CharacterProfile(
+                name=char_name,
+                description=processed_char_attributes.get("description", ""),
+                traits=processed_char_attributes.get("traits", []),
+                relationships=processed_char_attributes.get("relationships", []),
+                skills=processed_char_attributes.get("skills", []),
+                status=processed_char_attributes.get("status", "active"),
+                # Copy any additional attributes
+                **{k: v for k, v in processed_char_attributes.items() 
+                   if k not in ["name", "description", "traits", "relationships", "skills", "status"]}
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating CharacterProfile for '{char_name}': {e}. "
+                f"Attributes: {processed_char_attributes}",
+                exc_info=True,
+            )
+
+    return char_updates
+
+
+def parse_unified_world_updates_native(
+    json_text_block: str, chapter_number: int
+) -> dict[str, dict[str, WorldItem]]:
+    """
+    Native version of world update parsing that creates models directly.
+    Eliminates .from_dict() conversion overhead.
+    """
+    world_updates: dict[str, dict[str, WorldItem]] = {}
+    if not json_text_block or json_text_block.strip() in ["null", "None", ""]:
+        return world_updates
+
+    try:
+        parsed_json = json.loads(json_text_block)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse world updates JSON: {e}")
+        return world_updates
+
+    for category_name_llm, world_items_in_category in parsed_json.items():
+        if not isinstance(world_items_in_category, dict):
+            logger.warning(
+                f"Skipping category '{category_name_llm}': items not in dict format"
+            )
+            continue
+
+        category_dict_by_item_name: dict[str, WorldItem] = {}
+
+        for item_name_llm, raw_item_attributes in world_items_in_category.items():
+            if not isinstance(raw_item_attributes, dict):
+                logger.warning(
+                    f"Skipping item '{item_name_llm}' in '{category_name_llm}': "
+                    f"attributes not in dict format"
+                )
+                continue
+
+            try:
+                # Create model directly without dict intermediate
+                world_item_instance = WorldItem(
+                    name=item_name_llm,
+                    category=category_name_llm,
+                    description=raw_item_attributes.get("description", ""),
+                    # Copy any additional attributes
+                    **{k: v for k, v in raw_item_attributes.items() 
+                       if k not in ["name", "category", "description"]}
+                )
+                category_dict_by_item_name[item_name_llm] = world_item_instance
+            except Exception as e:
+                logger.error(
+                    f"Error creating WorldItem for '{item_name_llm}' in category '{category_name_llm}': {e}",
+                    exc_info=True,
+                )
+
+        if category_dict_by_item_name:
+            world_updates[category_name_llm] = category_dict_by_item_name
+
+    return world_updates
+
+
 # Moved from kg_maintainer/merge.py
 def initialize_new_character_profile(
     char_name: str, char_update: CharacterProfile, chapter_number: int
@@ -748,6 +869,19 @@ class KnowledgeAgent:
     ) -> dict[str, dict[str, WorldItem]]:
         """Parse world update text into structured items."""
         return parse_unified_world_updates(text, chapter_number)
+
+    # Phase 3 optimization: Native parsing methods
+    def parse_character_updates_native(
+        self, text: str, chapter_number: int
+    ) -> dict[str, CharacterProfile]:
+        """Native character update parsing that eliminates dict conversion overhead."""
+        return parse_unified_character_updates_native(text, chapter_number)
+
+    def parse_world_updates_native(
+        self, text: str, chapter_number: int
+    ) -> dict[str, dict[str, WorldItem]]:
+        """Native world update parsing that eliminates dict conversion overhead."""
+        return parse_unified_world_updates_native(text, chapter_number)
 
     def merge_updates(
         self,
@@ -969,10 +1103,11 @@ class KnowledgeAgent:
                     f"Could not find kg_triples JSON array via regex for Ch {chapter_number}."
                 )
 
-        char_updates_from_llm = self.parse_character_updates(
+        # Use native parsing for optimal performance (Phase 3 optimization)
+        char_updates_from_llm = self.parse_character_updates_native(
             char_updates_raw, chapter_number
         )
-        world_updates_from_llm = self.parse_world_updates(
+        world_updates_from_llm = self.parse_world_updates_native(
             world_updates_raw, chapter_number
         )
 
