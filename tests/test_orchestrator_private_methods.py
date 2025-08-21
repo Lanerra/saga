@@ -113,7 +113,7 @@ async def test_prepare_prerequisites_uses_plan(orchestrator, monkeypatch):
         AsyncMock(return_value=(True, [])),
     )
     monkeypatch.setattr(
-        "orchestration.nana_orchestrator.generate_hybrid_chapter_context_logic",
+        "orchestration.nana_orchestrator.generate_hybrid_chapter_context_native",
         AsyncMock(side_effect=fake_context),
     )
 

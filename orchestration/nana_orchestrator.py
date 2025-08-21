@@ -21,6 +21,14 @@ from data_access import (
     plot_queries,
     world_queries,
 )
+
+# Import native versions for performance optimization
+from data_access.character_queries import (
+    get_character_profiles_native,
+)
+from data_access.world_queries import (
+    get_world_building_native,
+)
 from initialization.genesis import run_genesis_phase
 from models import (
     CharacterProfile,
@@ -32,7 +40,7 @@ from models import (
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
 from orchestration.token_tracker import TokenTracker
-from processing.context_generator import generate_hybrid_chapter_context_logic
+from processing.context_generator import generate_hybrid_chapter_context_native
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
 from ui.rich_display import RichDisplayManager
@@ -485,10 +493,22 @@ class NANA_Orchestrator:
             )
             return current_text, None, patched_spans, None
 
+        # Use native queries for optimal performance (Phase 3 optimization)
+        characters_for_revision = await get_character_profiles_native()
+        world_items_for_revision = await get_world_building_native()
+
+        # Convert to dict format for existing revision logic (temporary)
+        characters_dict = {char.name: char for char in characters_for_revision}
+        world_dict = {}
+        for item in world_items_for_revision:
+            if item.category not in world_dict:
+                world_dict[item.category] = {}
+            world_dict[item.category][item.name] = item
+
         revision_tuple_result, revision_usage = await revise_chapter_draft_logic(
             self.plot_outline,
-            await character_queries.get_character_profiles_from_db(),
-            await world_queries.get_world_building_from_db(),
+            characters_dict,
+            world_dict,
             current_text,
             novel_chapter_number,
             evaluation_result,
@@ -531,10 +551,17 @@ class NANA_Orchestrator:
 
         self._update_novel_props_cache()
 
-        chapter_plan, plan_usage = await self.narrative_agent._plan_chapter_scenes(
+        # Use native scene planning for optimal performance (Phase 3 optimization)
+        characters_for_planning = await get_character_profiles_native()
+        world_items_for_planning = await get_world_building_native()
+
+        (
+            chapter_plan,
+            plan_usage,
+        ) = await self.narrative_agent._plan_chapter_scenes_native(
             self.plot_outline,
-            await character_queries.get_character_profiles_from_db(),
-            await world_queries.get_world_building_from_db(),
+            characters_for_planning,  # List[CharacterProfile] - native format
+            world_items_for_planning,  # List[WorldItem] - native format
             novel_chapter_number,
             plot_point_focus,
             plot_point_index,
@@ -595,7 +622,7 @@ class NANA_Orchestrator:
                     f"NANA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
                 )
 
-        hybrid_context_for_draft = await generate_hybrid_chapter_context_logic(
+        hybrid_context_for_draft = await generate_hybrid_chapter_context_native(
             self, novel_chapter_number, chapter_plan
         )
 
@@ -632,10 +659,12 @@ class NANA_Orchestrator:
             step=f"Ch {novel_chapter_number} - Drafting Initial Text"
         )
         # Prefer using precomputed chapter_plan and hybrid context if available to avoid re-planning and ensure continuity.
-        characters = await character_queries.get_character_profiles_from_db()
-        world = await world_queries.get_world_building_from_db()
+        # Use native queries for optimal performance (Phase 3 optimization)
+        characters = await get_character_profiles_native()
+        world_items = await get_world_building_native()
         if chapter_plan is not None and hybrid_context_for_draft is not None:
             # Draft the chapter directly using the prepared scenes and context.
+            # _draft_chapter expects: plot_outline, chapter_number, plot_point_focus, hybrid_context_for_draft, chapter_plan
             (
                 draft_text,
                 raw_output,
@@ -662,15 +691,15 @@ class NANA_Orchestrator:
                 novel_chapter_number, "initial_draft", draft_text
             )
             return draft_text, raw_output
-        # Fallback: if no valid plan/context, use generate_chapter which will handle planning internally
+        # Fallback: if no valid plan/context, use native generate_chapter for optimal performance
         (
             initial_draft_text,
             initial_raw_llm_text,
             draft_usage,
-        ) = await self.narrative_agent.generate_chapter(
+        ) = await self.narrative_agent.generate_chapter_native(
             self.plot_outline,
-            characters,
-            world,
+            characters,  # List[CharacterProfile] - native format
+            world_items,  # List[WorldItem] - native format
             novel_chapter_number,
             plot_point_focus,
         )
@@ -947,11 +976,14 @@ class NANA_Orchestrator:
         # Get text embedding
         embedding = await llm_service.async_get_embedding(final_text_to_process)
 
-        # Extract and merge knowledge updates
-        kg_usage = await self.knowledge_agent.extract_and_merge_knowledge(
+        # Extract and merge knowledge updates using native models for performance
+        characters = await get_character_profiles_native()
+        world_items = await get_world_building_native()
+
+        kg_usage = await self.knowledge_agent.extract_and_merge_knowledge_native(
             self.plot_outline,
-            await character_queries.get_character_profiles_from_db(),
-            await world_queries.get_world_building_from_db(),
+            characters,  # List of CharacterProfile models
+            world_items,  # List of WorldItem models
             novel_chapter_number,
             final_text_to_process,
             is_from_flawed_source_for_kg,
@@ -1396,8 +1428,8 @@ class NANA_Orchestrator:
 
         chunks = split_text_into_chapters(raw_text)
         plot_outline = {"title": "Ingested Narrative", "plot_points": []}
-        character_profiles: dict[str, CharacterProfile] = {}
-        world_building: dict[str, dict[str, WorldItem]] = {}
+        characters: list[CharacterProfile] = []
+        world_items: list[WorldItem] = []
         summaries: list[str] = []
 
         for idx, chunk in enumerate(chunks, 1):
@@ -1410,11 +1442,11 @@ class NANA_Orchestrator:
             # Get text embedding
             embedding = await llm_service.async_get_embedding(chunk)
 
-            # Extract and merge knowledge updates
-            kg_usage = await self.knowledge_agent.extract_and_merge_knowledge(
+            # Extract and merge knowledge updates using NATIVE implementation
+            kg_usage = await self.knowledge_agent.extract_and_merge_knowledge_native(
                 plot_outline,
-                character_profiles,
-                world_building,
+                characters,  # List of CharacterProfile models
+                world_items,  # List of WorldItem models
                 idx,
                 chunk,
                 False,  # from_flawed_draft

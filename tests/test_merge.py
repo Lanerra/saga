@@ -1,10 +1,10 @@
 from agents.knowledge_agent import (
     CharacterProfile,
     WorldItem,
+    initialize_new_character_profile,
     merge_character_profile_updates,
     merge_world_item_updates,
 )
-from agents.knowledge_agent import initialize_new_character_profile
 
 
 def test_merge_character_profile_updates():

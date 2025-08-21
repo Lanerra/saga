@@ -39,7 +39,9 @@ def validate_world_item_fields(
 
     # Validate name
     # Only set default name if allow_empty_name is False and name is actually missing/empty
-    if (not allow_empty_name) and (not name or not isinstance(name, str) or not name.strip()):
+    if (not allow_empty_name) and (
+        not name or not isinstance(name, str) or not name.strip()
+    ):
         name = "unnamed_element"
 
     # Validate ID

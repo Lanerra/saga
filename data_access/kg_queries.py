@@ -597,7 +597,19 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
         WITH target, source, key, targetProps
         WITH target, source, key, targetProps
         WHERE targetProps[key] IS NOT NULL AND source[key] <> targetProps[key]
-        SET target[key] = toString(targetProps[key]) + '; ' + toString(source[key])
+        // Handle arrays (StringArray) vs strings properly, avoiding size() on non-collections
+        WITH target, source, key, targetProps,
+             CASE 
+                 WHEN targetProps[key] IS NULL THEN []
+                 WHEN targetProps[key] IS NOT NULL AND NOT targetProps[key] IN [null] AND (targetProps[key] + []) = targetProps[key] THEN targetProps[key]  // It's an array
+                 ELSE [toString(targetProps[key])]  // Convert single value to array
+             END AS targetArray,
+             CASE 
+                 WHEN source[key] IS NULL THEN []
+                 WHEN source[key] IS NOT NULL AND NOT source[key] IN [null] AND (source[key] + []) = source[key] THEN source[key]  // It's an array
+                 ELSE [toString(source[key])]  // Convert single value to array
+             END AS sourceArray
+        SET target[key] = targetArray + sourceArray
     }
     CALL (target, source, key, targetProps) {
         WITH target, source, key, targetProps
@@ -737,7 +749,9 @@ async def get_defined_relationship_types() -> list[str]:
         results = await neo4j_manager.execute_read_query(
             "CALL db.relationshipTypes() YIELD relationshipType"
         )
-        rel_types = [r["relationshipType"] for r in results if r.get("relationshipType")]
+        rel_types = [
+            r["relationshipType"] for r in results if r.get("relationshipType")
+        ]
         # Validate relationship types against schema
         errors = validate_relationship_types(rel_types)
         if errors:
@@ -788,19 +802,8 @@ async def promote_dynamic_relationships() -> int:
 
 async def deduplicate_relationships() -> int:
     """Merge duplicate relationships of the same type between nodes."""
-    # First, find duplicate relationships and collect their properties
-    query1 = """
-    MATCH (s)-[r]->(o)
-    WITH s, type(r) AS t, o, collect(r) AS rels
-    WHERE size(rels) > 1
-    UNWIND rels AS rel
-    WITH s, t, o, rels, rel, properties(rel) AS props
-    RETURN id(s) AS sourceId, t AS relType, id(o) AS targetId,
-           collect({relId: id(rel), props: props}) AS relData
-    """
-
-    # Then, merge the relationships by combining properties and deleting duplicates
-    query2 = """
+    # Merge the relationships by combining properties and deleting duplicates
+    query = """
     MATCH (s)-[r]->(o)
     WITH s, type(r) AS t, o, collect(r) AS rels
     WHERE size(rels) > 1
@@ -817,7 +820,7 @@ async def deduplicate_relationships() -> int:
     """
 
     try:
-        results = await neo4j_manager.execute_write_query(query2)
+        results = await neo4j_manager.execute_write_query(query)
         return results[0].get("removed", 0) if results else 0
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error("Failed to deduplicate relationships: %s", exc, exc_info=True)
@@ -850,7 +853,9 @@ async def fetch_unresolved_dynamic_relationships(
             object_labels = record.get("object_labels", [])
             errors = validate_node_labels(subject_labels + object_labels)
             if errors:
-                logger.warning("Invalid node labels in unresolved relationship: %s", errors)
+                logger.warning(
+                    "Invalid node labels in unresolved relationship: %s", errors
+                )
         return records
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error(

@@ -380,3 +380,60 @@ async def generate_hybrid_chapter_context_logic(
         f"Generated HYBRID context for Chapter {current_chapter_number}, Tokens (est.): {num_hybrid_tokens}."
     )
     return final_hybrid_context
+
+
+# Phase 2 optimization: Native hybrid context generation
+async def generate_hybrid_chapter_context_native(
+    agent_or_props: Any,
+    current_chapter_number: int,
+    chapter_plan: list[SceneDetail] | None,
+) -> str:
+    """
+    NATIVE version of hybrid context generation with reduced serialization overhead.
+    Uses ZeroCopyContextGenerator for optimal performance.
+
+    'agent_or_props' can be the NANA_Orchestrator instance or a novel_props dictionary.
+    """
+    # Import here to avoid circular import
+    from processing.zero_copy_context_generator import ZeroCopyContextGenerator
+
+    if current_chapter_number <= 0:
+        return ""
+
+    logger.info(
+        f"Generating NATIVE hybrid context for Chapter {current_chapter_number}..."
+    )
+
+    # Extract plot outline data
+    if isinstance(agent_or_props, dict):
+        plot_outline_data = agent_or_props.get(
+            "plot_outline_full", agent_or_props.get("plot_outline", {})
+        )
+    else:
+        plot_outline_data = getattr(agent_or_props, "plot_outline_full", None)
+        if not plot_outline_data:
+            plot_outline_data = getattr(agent_or_props, "plot_outline", {})
+
+    # Use native zero-copy context generation
+    hybrid_context = await ZeroCopyContextGenerator.generate_hybrid_context_native(
+        plot_outline_data, current_chapter_number, chapter_plan
+    )
+
+    # Apply final token limit if needed
+    final_tokens = count_tokens(hybrid_context, config.DRAFTING_MODEL)
+    if final_tokens > config.MAX_CONTEXT_TOKENS:
+        logger.warning(
+            f"Native hybrid context ({final_tokens} tokens) exceeds MAX_CONTEXT_TOKENS ({config.MAX_CONTEXT_TOKENS}). Truncating."
+        )
+        hybrid_context = truncate_text_by_tokens(
+            hybrid_context,
+            config.DRAFTING_MODEL,
+            config.MAX_CONTEXT_TOKENS,
+            truncation_marker="\n... (Native hybrid context truncated due to token limit)",
+        )
+        final_tokens = count_tokens(hybrid_context, config.DRAFTING_MODEL)
+
+    logger.info(
+        f"Generated NATIVE hybrid context for Chapter {current_chapter_number}, Tokens: {final_tokens}."
+    )
+    return hybrid_context

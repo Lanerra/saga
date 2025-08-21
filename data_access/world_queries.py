@@ -15,6 +15,7 @@ from kg_constants import (
 )
 from models import WorldItem
 
+from .cypher_builders.native_builders import NativeCypherBuilder
 from .cypher_builders.world_cypher import generate_world_element_node_cypher
 
 logger = logging.getLogger(__name__)
@@ -60,8 +61,10 @@ async def sync_world_items(
             if isinstance(item, WorldItem):
                 errors = validate_kg_object(item)
                 if errors:
-                    logger.warning("Invalid WorldItem in category '%s': %s", cat, errors)
-    
+                    logger.warning(
+                        "Invalid WorldItem in category '%s': %s", cat, errors
+                    )
+
     WORLD_NAME_TO_ID.clear()
     for cat, items in world_items.items():
         if not isinstance(items, dict):
@@ -132,11 +135,13 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
     overview_details = world_data.get("_overview_", {})
     if isinstance(overview_details, dict):
         # Validate the overview item
-        overview_item = WorldItem.from_dict("_overview_", "_overview_", overview_details)
+        overview_item = WorldItem.from_dict(
+            "_overview_", "_overview_", overview_details
+        )
         errors = validate_kg_object(overview_item)
         if errors:
             logger.warning("Invalid WorldItem for '_overview_': %s", errors)
-        
+
         wc_props = {
             "id": wc_id_param,  # Ensure ID is part of props for SET
             "overview_description": str(overview_details.get("description", "")),
@@ -258,7 +263,12 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
             world_item = WorldItem.from_dict(category_str, item_name_str, details_dict)
             errors = validate_kg_object(world_item)
             if errors:
-                logger.warning("Invalid WorldItem for '%s' in category '%s': %s", item_name_str, category_str, errors)
+                logger.warning(
+                    "Invalid WorldItem for '%s' in category '%s': %s",
+                    item_name_str,
+                    category_str,
+                    errors,
+                )
 
             # ID should be taken from details_dict if present, otherwise generated.
             # This aligns with WorldItem.from_dict's ID handling.
@@ -873,4 +883,237 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
         return results if results else []
     except Exception as e:
         logger.error(f"Error finding thin world elements: {e}", exc_info=True)
+        return []
+
+
+# Native model functions for performance optimization
+async def sync_world_items_native(
+    world_items: list[WorldItem],
+    chapter_number: int,
+) -> bool:
+    """
+    Native model version of sync_world_items.
+    Persist world item data directly from models without dict conversion.
+
+    Args:
+        world_items: List of WorldItem models
+        chapter_number: Current chapter for tracking updates
+
+    Returns:
+        True if successful, False otherwise
+    """
+    if not world_items:
+        logger.info("No world items to sync")
+        return True
+
+    # Validate all world items before syncing
+    for item in world_items:
+        errors = validate_kg_object(item)
+        if errors:
+            logger.warning("Invalid WorldItem '%s': %s", item.name, errors)
+
+    # Update name mapping
+    WORLD_NAME_TO_ID.clear()
+    for item in world_items:
+        WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+
+    try:
+        cypher_builder = NativeCypherBuilder()
+        statements = cypher_builder.batch_world_item_upsert_cypher(
+            world_items, chapter_number
+        )
+
+        if statements:
+            await neo4j_manager.execute_cypher_batch(statements)
+
+        logger.info(
+            "Persisted %d world item updates for chapter %d using native models.",
+            len(world_items),
+            chapter_number,
+        )
+
+        return True
+
+    except Exception as exc:
+        logger.error(
+            "Error persisting world item updates for chapter %d: %s",
+            chapter_number,
+            exc,
+            exc_info=True,
+        )
+        return False
+
+
+async def get_world_building_native() -> list[WorldItem]:
+    """
+    Native model version of get_world_building_from_db.
+    Returns world items as model instances without dict conversion.
+
+    Returns:
+        List of WorldItem models
+    """
+    try:
+        cypher_builder = NativeCypherBuilder()
+        query, params = cypher_builder.world_item_fetch_cypher()
+
+        results = await neo4j_manager.execute_read_query(query, params)
+        world_items = []
+
+        for record in results:
+            if record and record.get("w"):
+                item = WorldItem.from_db_record(record)
+                world_items.append(item)
+
+        logger.info("Fetched %d world items using native models", len(world_items))
+        return world_items
+
+    except Exception as exc:
+        logger.error("Error fetching world building: %s", exc, exc_info=True)
+        return []
+
+
+async def get_world_items_for_chapter_context_native(
+    chapter_number: int, limit: int = 10
+) -> list[WorldItem]:
+    """
+    Get world items relevant for chapter context using native models.
+
+    Args:
+        chapter_number: Current chapter being processed
+        limit: Maximum number of world items to return
+
+    Returns:
+        List of WorldItem models relevant to the chapter
+    """
+    try:
+        query = """
+        MATCH (w:WorldElement:Entity)-[:REFERENCED_IN]->(ch:Chapter)
+        WHERE ch.number < $chapter_number
+        WITH w, max(ch.number) as last_reference
+        ORDER BY last_reference DESC
+        LIMIT $limit
+        RETURN w
+        """
+
+        results = await neo4j_manager.execute_read_query(
+            query, {"chapter_number": chapter_number, "limit": limit}
+        )
+
+        world_items = []
+        for record in results:
+            if record and record.get("w"):
+                item = WorldItem.from_db_record(record)
+                world_items.append(item)
+
+        logger.debug(
+            "Fetched %d world items for chapter %d context using native models",
+            len(world_items),
+            chapter_number,
+        )
+
+        return world_items
+
+    except Exception as exc:
+        logger.error(
+            "Error fetching world items for chapter %d context: %s",
+            chapter_number,
+            exc,
+            exc_info=True,
+        )
+        return []
+
+
+def get_world_item_by_id_native(
+    world_items: list[WorldItem], item_id: str
+) -> WorldItem | None:
+    """
+    Retrieve a WorldItem from a list by ID using native models.
+
+    Args:
+        world_items: List of WorldItem models to search
+        item_id: ID to search for
+
+    Returns:
+        WorldItem model if found, None otherwise
+    """
+    for item in world_items:
+        if item.id == item_id:
+            return item
+    return None
+
+
+def get_world_item_by_name_native(
+    world_items: list[WorldItem], name: str
+) -> WorldItem | None:
+    """
+    Retrieve a WorldItem from a list using fuzzy name lookup with native models.
+
+    Args:
+        world_items: List of WorldItem models to search
+        name: Name to search for
+
+    Returns:
+        WorldItem model if found, None otherwise
+    """
+    item_id = resolve_world_name(name)
+    if not item_id:
+        return None
+
+    return get_world_item_by_id_native(world_items, item_id)
+
+
+# Phase 1.2: Bootstrap Element Injection - New functions for bootstrap element discovery
+async def get_bootstrap_world_elements() -> list[WorldItem]:
+    """
+    Get world elements created during bootstrap phase for early chapter injection.
+
+    Returns world elements that were created during the bootstrap/genesis phase
+    and should be injected into early chapter contexts to establish their narrative presence.
+
+    Returns:
+        List of WorldItem models from bootstrap phase, sorted by category then name
+    """
+    query = """
+    MATCH (we:WorldElement)
+    WHERE (we.source CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
+      AND we.description IS NOT NULL 
+      AND trim(we.description) <> ''
+      AND NOT (we.description CONTAINS $fill_in_marker)
+    RETURN we
+    ORDER BY we.category ASC, we.name ASC
+    LIMIT 20
+    """
+
+    params = {
+        "prepop_chapter": config.KG_PREPOPULATION_CHAPTER_NUM,
+        "fill_in_marker": config.FILL_IN,
+    }
+
+    try:
+        records = await neo4j_manager.execute_read_query(query, params)
+
+        bootstrap_elements = []
+        for record in records:
+            we_node = record["we"]
+
+            # Convert Neo4j node to WorldItem
+            try:
+                world_item = WorldItem.from_db_node(we_node)
+                bootstrap_elements.append(world_item)
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to convert bootstrap element node to WorldItem: {e}. "
+                    f"Node: {dict(we_node)}"
+                )
+                continue
+
+        logger.info(
+            f"Retrieved {len(bootstrap_elements)} bootstrap world elements for early chapter injection"
+        )
+
+        return bootstrap_elements
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve bootstrap world elements: {e}")
         return []

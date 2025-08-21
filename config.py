@@ -423,3 +423,17 @@ root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
 
 REVISION_EVALUATION_THRESHOLD = 0.85
+
+# Bootstrap Integration Settings (Phase 1: Knowledge Graph Integration Strategy)
+BOOTSTRAP_INTEGRATION_ENABLED: bool = True
+BOOTSTRAP_INTEGRATION_CHAPTERS: int = 5  # Apply through chapter 5
+MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 6  # Limit to prevent prompt bloat
+BOOTSTRAP_HEALING_LIMIT: int = 3  # Max orphaned elements to heal per cycle
+
+# Context Selection Settings (Phase 1.1: Balanced Context Selection)
+EARLY_CHAPTER_BALANCED_SELECTION: bool = (
+    True  # Use balanced char selection in chapters 1-3
+)
+PROTAGONIST_PRIORITY_START_CHAPTER: int = (
+    4  # When to start protagonist-priority selection
+)

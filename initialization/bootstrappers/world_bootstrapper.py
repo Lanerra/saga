@@ -121,7 +121,9 @@ async def bootstrap_world(
                 and not utils._is_fill_in(desc_value)
             ):
                 overview_item_obj.description = desc_value
-                current_source = overview_item_obj.additional_properties.get("source", "")
+                current_source = overview_item_obj.additional_properties.get(
+                    "source", ""
+                )
                 if isinstance(current_source, str):
                     overview_item_obj.additional_properties["source"] = (
                         f"{current_source}_descr_bootstrapped"
@@ -129,7 +131,9 @@ async def bootstrap_world(
                         else "descr_bootstrapped"
                     )
                 else:
-                    overview_item_obj.additional_properties["source"] = "descr_bootstrapped"
+                    overview_item_obj.additional_properties["source"] = (
+                        "descr_bootstrapped"
+                    )
 
     # Stage 1: Bootstrap names for items with missing/empty names (sequential to prevent duplicates)
     items_needing_names: list[tuple[str, str, WorldItem]] = []
@@ -152,12 +156,12 @@ async def bootstrap_world(
         logger.info(
             "Found %d items requiring name bootstrapping.", len(items_needing_names)
         )
-        
+
         # Process sequentially to inject context about existing names
         name_results_list = []
         name_task_keys = []
         generated_names: dict[str, str] = {}  # name -> category mapping
-        
+
         for category, item_name, item_obj in items_needing_names:
             # Inject existing generated names to prevent duplicates
             existing_names_list = list(generated_names.keys())
@@ -168,18 +172,18 @@ async def bootstrap_world(
                 "category_description": f"Bootstrap a name for a {category} element in the world.",
                 "existing_world_names": existing_names_list,
             }
-            
+
             # Attempt generation with retry for duplicates
             max_retries = 3
             generated_name = None
             name_usage = None
-            
+
             for attempt in range(max_retries):
                 temp_name, temp_usage = await bootstrap_field(
                     "name", context_data, "bootstrapper/fill_world_item_field.j2"
                 )
                 name_usage = temp_usage
-                
+
                 if (
                     temp_name
                     and isinstance(temp_name, str)
@@ -202,9 +206,11 @@ async def bootstrap_world(
                             temp_name,
                         )
                         # Update context with more explicit diversity instruction
-                        context_data["existing_world_names"] = list(generated_names.keys())
+                        context_data["existing_world_names"] = list(
+                            generated_names.keys()
+                        )
                         context_data["retry_attempt"] = attempt + 1
-            
+
             name_results_list.append((generated_name, name_usage))
             name_task_keys.append((category, item_name))
 
@@ -233,7 +239,9 @@ async def bootstrap_world(
                     new_name_value,
                 )
                 properties_with_id = original_item_obj.to_dict()
-                properties_with_id["id"] = f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}"
+                properties_with_id["id"] = (
+                    f"{utils._normalize_for_id(original_category)}_{utils._normalize_for_id(new_name_value)}"
+                )
                 # Ensure we have a valid ID
                 if not properties_with_id["id"] or properties_with_id["id"] == "_":
                     properties_with_id["id"] = (
@@ -385,16 +393,34 @@ async def bootstrap_world(
                 if prop_name_filled == "description":
                     target_item.description = prop_fill_value
                 elif prop_name_filled == "goals":
-                    target_item.goals = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                    target_item.goals = (
+                        prop_fill_value
+                        if isinstance(prop_fill_value, list)
+                        else [prop_fill_value]
+                    )
                 elif prop_name_filled == "rules":
-                    target_item.rules = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                    target_item.rules = (
+                        prop_fill_value
+                        if isinstance(prop_fill_value, list)
+                        else [prop_fill_value]
+                    )
                 elif prop_name_filled == "key_elements":
-                    target_item.key_elements = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                    target_item.key_elements = (
+                        prop_fill_value
+                        if isinstance(prop_fill_value, list)
+                        else [prop_fill_value]
+                    )
                 elif prop_name_filled == "traits":
-                    target_item.traits = prop_fill_value if isinstance(prop_fill_value, list) else [prop_fill_value]
+                    target_item.traits = (
+                        prop_fill_value
+                        if isinstance(prop_fill_value, list)
+                        else [prop_fill_value]
+                    )
                 else:
                     # Handle additional properties
-                    target_item.additional_properties[prop_name_filled] = prop_fill_value
+                    target_item.additional_properties[prop_name_filled] = (
+                        prop_fill_value
+                    )
 
                 current_source = target_item.additional_properties.get("source", "")
                 if isinstance(current_source, str):

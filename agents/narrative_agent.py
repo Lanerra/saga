@@ -9,7 +9,7 @@ from core.llm_interface import count_tokens, llm_service, truncate_text_by_token
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
 from processing.context_generator import (
-    generate_hybrid_chapter_context_logic,  # Added for hybrid context generation
+    generate_hybrid_chapter_context_native,  # Native Phase 2 context generation
 )
 from prompt_data_getters import (
     get_character_state_snippet_for_prompt,
@@ -376,6 +376,54 @@ class NarrativeAgent:
         scenes_data.sort(key=lambda x: x.get("scene_number", float("inf")))
         return scenes_data
 
+    # Phase 3: Native agent communication methods (list-based instead of dict-based)
+    async def _plan_chapter_scenes_native(
+        self,
+        plot_outline: dict[str, Any],
+        character_profiles: list[CharacterProfile],  # List instead of dict
+        world_building: list[WorldItem],  # List instead of nested dict
+        chapter_number: int,
+        plot_point_focus: str | None,
+        plot_point_index: int,
+    ) -> tuple[list[SceneDetail] | None, dict[str, int] | None]:
+        """
+        Native version of scene planning that works directly with model lists.
+        Eliminates dictionary conversion overhead in agent communication.
+        """
+        if not self.config.ENABLE_AGENTIC_PLANNING:
+            logger.info(
+                f"Agentic planning disabled. Skipping detailed planning for Chapter {chapter_number}."
+            )
+            return None, None
+
+        logger.info(
+            f"NarrativeAgent planning Chapter {chapter_number} with detailed scenes (NATIVE)..."
+        )
+        if plot_point_focus is None:
+            logger.error(
+                f"Cannot plan chapter {chapter_number}: No plot point focus available."
+            )
+            return None, None
+
+        # Convert list-based models to dict format for existing prompt logic
+        # TODO: This conversion can be eliminated in future optimization by updating prompts
+        character_profiles_dict = {char.name: char for char in character_profiles}
+        world_building_dict = {}
+        for item in world_building:
+            if item.category not in world_building_dict:
+                world_building_dict[item.category] = {}
+            world_building_dict[item.category][item.name] = item
+
+        # Use existing planning logic with converted data
+        return await self._plan_chapter_scenes(
+            plot_outline,
+            character_profiles_dict,
+            world_building_dict,
+            chapter_number,
+            plot_point_focus,
+            plot_point_index,
+        )
+
     async def _draft_chapter(
         self,
         plot_outline: dict[str, Any],
@@ -715,10 +763,12 @@ class NarrativeAgent:
                 "plot_outline": plot_outline,
                 "plot_outline_full": plot_outline,
             }
-            hybrid_context_for_draft: str = await generate_hybrid_chapter_context_logic(
-                context_props,
-                chapter_number,
-                scenes,
+            hybrid_context_for_draft: str = (
+                await generate_hybrid_chapter_context_native(
+                    context_props,
+                    chapter_number,
+                    scenes,
+                )
             )
         except Exception as e:
             # If hybrid context generation fails for any reason, fall back to basic metadata
@@ -760,5 +810,80 @@ class NarrativeAgent:
             logger.warning(f"Chapter {chapter_number} failed quality checks")
             # Return the draft anyway but mark it as low quality
             return draft_text, raw_output or "", total_usage
+
+        return draft_text, raw_output or "", total_usage
+
+    async def generate_chapter_native(
+        self,
+        plot_outline: dict,
+        character_profiles: list[CharacterProfile],  # List instead of dict
+        world_building: list[WorldItem],  # List instead of nested dict
+        chapter_number: int,
+        plot_point_focus: str,
+    ) -> tuple[str, str, dict[str, int]]:
+        """
+        Native version of chapter generation that works directly with model lists.
+        Eliminates dictionary conversion overhead in agent communication.
+        """
+        self.logger.info("Generating chapter (NATIVE)", chapter=chapter_number)
+
+        # Get the current plot point index
+        all_plot_points = plot_outline.get("plot_points", [])
+        plot_point_index = -1
+        for i, pp in enumerate(all_plot_points):
+            if isinstance(pp, str) and pp.strip() == plot_point_focus:
+                plot_point_index = i
+                break
+
+        if plot_point_index == -1:
+            logger.error(f"Could not find plot point focus: {plot_point_focus}")
+            return "Failed to generate chapter: plot point focus not found", "Error", {}
+
+        # Plan the chapter scenes using native method
+        scenes, planning_usage_data = await self._plan_chapter_scenes_native(
+            plot_outline,
+            character_profiles,
+            world_building,
+            chapter_number,
+            plot_point_focus,
+            plot_point_index,
+        )
+
+        # Convert models for existing draft logic (temporary until full native implementation)
+        character_profiles_dict = {char.name: char for char in character_profiles}
+        world_building_dict = {}
+        for item in world_building:
+            if item.category not in world_building_dict:
+                world_building_dict[item.category] = {}
+            world_building_dict[item.category][item.name] = item
+
+        # Draft the chapter using existing logic
+        draft_text, raw_output, draft_usage = await self._draft_chapter(
+            plot_outline,
+            chapter_number,
+            plot_point_focus,
+            character_profiles_dict,
+            world_building_dict,
+            scenes,
+        )
+
+        if not draft_text:
+            logger.error(f"Failed to draft chapter {chapter_number}")
+            return (
+                "Failed to generate chapter: drafting failed",
+                raw_output or "Error",
+                draft_usage or {},
+            )
+
+        # Combine usage data from planning and drafting
+        total_usage = planning_usage_data or {}
+        if draft_usage:
+            for key, value in draft_usage.items():
+                total_usage[key] = total_usage.get(key, 0) + value
+
+        # Perform quality checks
+        if not await self._check_quality(draft_text):
+            logger.warning(f"Chapter {chapter_number} failed quality checks")
+            # Return the draft anyway but mark it as low quality
 
         return draft_text, raw_output or "", total_usage

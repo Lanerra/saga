@@ -242,3 +242,152 @@ async def get_all_past_embeddings_from_db(
             exc_info=True,
         )
         return []
+
+
+# Native context functions for performance optimization
+async def find_semantic_context_native(
+    query_embedding: np.ndarray, current_chapter_number: int, limit: int = None
+) -> list[dict[str, Any]]:
+    """
+    Native version of semantic context retrieval using single optimized query.
+    Eliminates multiple DB calls and reduces serialization overhead.
+
+    Args:
+        query_embedding: NumPy embedding for similarity search
+        current_chapter_number: Current chapter to exclude from results
+        limit: Maximum number of chapters to return
+
+    Returns:
+        List of chapter context data including similar + immediate previous
+    """
+    if query_embedding is None or query_embedding.size == 0:
+        logger.warning("Native context search called with empty query embedding")
+        return []
+
+    query_embedding_list = neo4j_manager.embedding_to_list(query_embedding)
+    if not query_embedding_list:
+        logger.error("Failed to convert query embedding for native context search")
+        return []
+
+    search_limit = limit or config.CONTEXT_CHAPTER_COUNT
+    prev_chapter_num = current_chapter_number - 1
+
+    # Single comprehensive query combining similarity search + immediate previous
+    cypher_query = """
+    // Vector similarity search for semantic context
+    CALL db.index.vector.queryNodes($index_name, $search_limit, $query_vector)
+    YIELD node AS similar_c, score
+    WHERE similar_c.number < $current_chapter
+    
+    WITH collect({
+        chapter_number: similar_c.number,
+        summary: similar_c.summary,
+        text: similar_c.text,
+        is_provisional: COALESCE(similar_c.is_provisional, false),
+        score: score,
+        context_type: 'similarity'
+    }) AS similar_results
+    
+    // Get immediate previous chapter if not in similarity results
+    OPTIONAL MATCH (prev_c:Chapter {number: $prev_chapter_num})
+    WHERE prev_c.number < $current_chapter
+      AND NOT ANY(sr IN similar_results WHERE sr.chapter_number = $prev_chapter_num)
+    
+    WITH similar_results,
+         CASE 
+           WHEN prev_c IS NOT NULL 
+           THEN [{
+               chapter_number: prev_c.number,
+               summary: prev_c.summary,
+               text: prev_c.text,
+               is_provisional: COALESCE(prev_c.is_provisional, false),
+               score: 0.999,
+               context_type: 'immediate_previous'
+           }]
+           ELSE []
+         END AS prev_result
+    
+    RETURN similar_results + prev_result AS context_chapters
+    """
+
+    try:
+        results = await neo4j_manager.execute_read_query(
+            cypher_query,
+            {
+                "index_name": config.NEO4J_VECTOR_INDEX_NAME,
+                "search_limit": search_limit + 1,  # Buffer for potential duplicates
+                "query_vector": query_embedding_list,
+                "current_chapter": current_chapter_number,
+                "prev_chapter_num": prev_chapter_num,
+            },
+        )
+
+        if not results or not results[0]:
+            logger.info(
+                f"No semantic context found for chapter {current_chapter_number}"
+            )
+            return []
+
+        context_chapters = results[0]["context_chapters"]
+
+        logger.info(
+            f"Native context search found {len(context_chapters)} chapters for chapter {current_chapter_number}"
+        )
+
+        return context_chapters
+
+    except Exception as e:
+        logger.error(f"Error in native semantic context search: {e}", exc_info=True)
+        return []
+
+
+async def get_chapter_content_batch_native(
+    chapter_numbers: list[int],
+) -> dict[int, dict[str, Any]]:
+    """
+    Native batch retrieval of chapter content.
+    Optimized for minimal serialization with single query.
+
+    Args:
+        chapter_numbers: List of chapter numbers to retrieve
+
+    Returns:
+        Dict mapping chapter numbers to their content data
+    """
+    if not chapter_numbers:
+        return {}
+
+    # Single query to get all requested chapters
+    cypher_query = """
+    MATCH (c:Chapter)
+    WHERE c.number IN $chapter_numbers
+    RETURN c.number AS chapter_number,
+           c.summary AS summary,
+           c.text AS text,
+           c.is_provisional AS is_provisional
+    ORDER BY c.number
+    """
+
+    try:
+        results = await neo4j_manager.execute_read_query(
+            cypher_query, {"chapter_numbers": chapter_numbers}
+        )
+
+        chapter_data = {}
+        for record in results:
+            chapter_num = record["chapter_number"]
+            chapter_data[chapter_num] = {
+                "summary": record.get("summary"),
+                "text": record.get("text"),
+                "is_provisional": record.get("is_provisional", False),
+            }
+
+        logger.debug(
+            f"Native batch retrieval got {len(chapter_data)} chapters of {len(chapter_numbers)} requested"
+        )
+
+        return chapter_data
+
+    except Exception as e:
+        logger.error(f"Error in native chapter batch retrieval: {e}", exc_info=True)
+        return {}
