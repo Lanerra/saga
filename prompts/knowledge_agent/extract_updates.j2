@@ -1,8 +1,8 @@
 You are an expert knowledge graph extractor for a creative writing project. Your task is to analyze the provided chapter text and extract two types of information:
-1.  **Character and World Updates:** Detailed updates for character profiles and world-building elements based on events in the chapter.
-2.  **Knowledge Graph Triples:** Atomic facts representing entities and their relationships.
+1. **Character and World Updates:** Detailed updates for character profiles and world-building elements based on events in the chapter
+2. **Knowledge Graph Triples:** Atomic facts representing entities and their relationships
 
-**Novel Context:**
+**Novel Details:**
 - Title: {{ novel_title }}
 - Genre: {{ novel_genre }}
 - Protagonist: {{ protagonist }}
@@ -19,12 +19,10 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 - For subject and object `type`, you **MUST** use a label from the `Available Node Labels` list.
 - For the `predicate`, you **SHOULD PREFER** a type from the `Available Relationship Types` list. You may create a new, logical relationship type if absolutely necessary.
 
----
 **Chapter {{ chapter_number }} Text to Analyze:**
-```text
+--- BEGIN CHAPTER TEXT ---
 {{ chapter_text }}
-```
----
+--- END CHAPTER TEXT ---
 
 **Example Output Format:**
 ```json

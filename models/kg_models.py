@@ -186,7 +186,28 @@ class WorldItem(BaseModel):
     @classmethod
     def from_db_record(cls, record: neo4j.Record) -> WorldItem:
         """Construct directly from Neo4j record - no dict conversion."""
-        node = record["w"]  # Assuming 'w' is the world element node alias
+        # Try both 'w' and 'we' node aliases for compatibility
+        node = record.get("w") or record.get("we")
+        if not node:
+            raise ValueError("No world element node found in record")
+
+        def _safe_string_extract(value) -> str:
+            """Safely extract string from potentially array value."""
+            if isinstance(value, list):
+                return value[0] if value else ""
+            return str(value) if value is not None else ""
+
+        def _safe_int_extract(value) -> int:
+            """Safely extract int from potentially array value."""
+            if isinstance(value, list):
+                return int(value[0]) if value else 0
+            return int(value) if value is not None else 0
+
+        def _safe_list_extract(value) -> list[str]:
+            """Safely extract list from potentially mixed value."""
+            if isinstance(value, list):
+                return [str(item) for item in value if item is not None]
+            return [str(value)] if value is not None else []
 
         # Extract additional properties that aren't core fields
         core_fields = {
@@ -206,16 +227,16 @@ class WorldItem(BaseModel):
         additional_props = {k: v for k, v in dict(node).items() if k not in core_fields}
 
         return cls(
-            id=node.get("id", ""),
-            category=node.get("category", ""),
-            name=node.get("name", ""),
-            description=node.get("description", ""),
-            goals=node.get("goals", []),
-            rules=node.get("rules", []),
-            key_elements=node.get("key_elements", []),
-            traits=node.get("traits", []),
-            created_chapter=node.get("created_chapter", 0),
-            is_provisional=node.get("is_provisional", False),
+            id=_safe_string_extract(node.get("id", "")),
+            category=_safe_string_extract(node.get("category", "")),
+            name=_safe_string_extract(node.get("name", "")),
+            description=_safe_string_extract(node.get("description", "")),
+            goals=_safe_list_extract(node.get("goals", [])),
+            rules=_safe_list_extract(node.get("rules", [])),
+            key_elements=_safe_list_extract(node.get("key_elements", [])),
+            traits=_safe_list_extract(node.get("traits", [])),
+            created_chapter=_safe_int_extract(node.get("created_chapter", 0)),
+            is_provisional=bool(node.get("is_provisional", False)),
             additional_properties=additional_props,
         )
 

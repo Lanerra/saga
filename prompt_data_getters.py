@@ -1023,3 +1023,171 @@ async def _inject_bootstrap_world_elements(
             f"Error injecting bootstrap world elements for chapter {chapter_number}: {e}"
         )
         return []
+
+
+# Native list-based prompt data getters for improved performance
+async def get_character_state_snippet_for_prompt_native(
+    character_profiles: list[CharacterProfile],
+    plot_outline: dict[str, Any],
+    current_chapter_num_for_filtering: int | None = None,
+) -> str:
+    """
+    Native version that works directly with list[CharacterProfile].
+    Creates a concise plain text string of key character states for prompts.
+    """
+    text_output_lines_list: list[str] = []
+    char_names_to_process: list[str] = []
+
+    protagonist_name = plot_outline.get("protagonist_name")
+
+    # Phase 1.1: Balanced Context Selection - Check if we should use balanced selection for early chapters
+    use_balanced_selection = (
+        config.EARLY_CHAPTER_BALANCED_SELECTION
+        and current_chapter_num_for_filtering is not None
+        and current_chapter_num_for_filtering
+        < config.PROTAGONIST_PRIORITY_START_CHAPTER
+    )
+
+    if use_balanced_selection:
+        # Early chapters: Balanced character selection (no protagonist priority)
+        logger.info(
+            f"Using balanced character selection for chapter {current_chapter_num_for_filtering} "
+            f"(protagonist priority starts at chapter {config.PROTAGONIST_PRIORITY_START_CHAPTER})"
+        )
+        # Select characters in alphabetical order up to the limit
+        char_names_to_process = sorted([char.name for char in character_profiles])[
+            : config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET
+        ]
+    else:
+        # Later chapters or when balanced selection is disabled: Protagonist priority
+        if protagonist_name:
+            char_names_to_process.append(protagonist_name)
+
+        # Add other characters up to limit
+        for char_profile in character_profiles:
+            if char_profile.name != protagonist_name:
+                char_names_to_process.append(char_profile.name)
+            if len(char_names_to_process) >= config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET:
+                break
+
+    # Build character profiles from the list
+    characters_to_include = {}
+    for char_profile in character_profiles:
+        if char_profile.name in char_names_to_process:
+            characters_to_include[char_profile.name] = char_profile
+
+    # Use existing logic for building the snippet
+    for char_name in char_names_to_process:
+        if char_name in characters_to_include:
+            char_profile = characters_to_include[char_name]
+            
+            # Get character data from Neo4j (using existing logic)
+            neo4j_char_data = await character_queries.get_character_info_for_snippet_from_db(
+                char_name, current_chapter_num_for_filtering
+            )
+            
+            profile_lines = []
+            if char_profile.description:
+                profile_lines.append(f"Description: {char_profile.description}")
+            if char_profile.traits:
+                traits_str = ", ".join(char_profile.traits[:3])  # Limit to 3 traits
+                profile_lines.append(f"Traits: {traits_str}")
+            if char_profile.status and char_profile.status != "Unknown":
+                profile_lines.append(f"Status: {char_profile.status}")
+
+            # Add additional data from updates field
+            if char_profile.updates:
+                if "personality" in char_profile.updates and char_profile.updates["personality"]:
+                    profile_lines.append(f"Personality: {char_profile.updates['personality']}")
+                if "background" in char_profile.updates and char_profile.updates["background"]:
+                    profile_lines.append(f"Background: {char_profile.updates['background']}")
+
+            # Add Neo4j data if available
+            if neo4j_char_data:
+                summary = neo4j_char_data.get("summary", "").strip()
+                if summary:
+                    profile_lines.append(f"Current State: {summary}")
+
+                # Check for personality and background in Neo4j data if not already added
+                if not any("Personality:" in line for line in profile_lines):
+                    personality = neo4j_char_data.get("personality", "").strip()
+                    if personality:
+                        profile_lines.append(f"Personality: {personality}")
+                        
+                if not any("Background:" in line for line in profile_lines):
+                    background = neo4j_char_data.get("background", "").strip()
+                    if background:
+                        profile_lines.append(f"Background: {background}")
+
+                key_relationships = neo4j_char_data.get("key_relationships", [])
+                if key_relationships:
+                    relationships_str = ", ".join(key_relationships[:3])  # Limit to 3
+                    profile_lines.append(f"Key Relationships: {relationships_str}")
+
+            if profile_lines:
+                text_output_lines_list.append(f"**{char_name}:**")
+                for line in profile_lines:
+                    text_output_lines_list.append(f"  - {line}")
+                text_output_lines_list.append("")
+
+    return "\n".join(text_output_lines_list)
+
+
+async def get_world_state_snippet_for_prompt_native(
+    world_building: list[WorldItem],
+    current_chapter_num_for_filtering: int | None = None,
+) -> str:
+    """
+    Native version that works directly with list[WorldItem].
+    Creates a concise plain text string of key world states for prompts.
+    """
+    text_output_lines_list: list[str] = []
+    
+    # Group world items by category
+    world_by_category: dict[str, list[WorldItem]] = {}
+    for item in world_building:
+        category = item.category or "Miscellaneous"
+        if category not in world_by_category:
+            world_by_category[category] = []
+        world_by_category[category].append(item)
+    
+    # Limit items per category for prompt efficiency
+    max_items_per_category = config.PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY if hasattr(config, 'PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY') else 3
+    
+    for category, items in world_by_category.items():
+        if not items:
+            continue
+            
+        text_output_lines_list.append(f"**{category}:**")
+        
+        # Sort by importance/relevance (items with descriptions first)
+        sorted_items = sorted(items, key=lambda x: (not bool(x.description), x.name))
+        
+        for item in sorted_items[:max_items_per_category]:
+            item_lines = []
+            if item.description:
+                item_lines.append(f"Description: {item.description}")
+            
+            # Add additional data from the model (goals, rules, key_elements if available)
+            if item.goals:
+                goals_str = ", ".join(item.goals[:2])  # Limit to 2 goals
+                item_lines.append(f"Goals: {goals_str}")
+            
+            if item.rules:
+                rules_str = ", ".join(item.rules[:2])  # Limit to 2 rules
+                item_lines.append(f"Rules: {rules_str}")
+            
+            if item.key_elements:
+                elements_str = ", ".join(item.key_elements[:3])  # Limit to 3 elements
+                item_lines.append(f"Key Elements: {elements_str}")
+            
+            if item_lines:
+                text_output_lines_list.append(f"  - **{item.name}:**")
+                for line in item_lines:
+                    text_output_lines_list.append(f"    {line}")
+            else:
+                text_output_lines_list.append(f"  - **{item.name}**")
+        
+        text_output_lines_list.append("")
+    
+    return "\n".join(text_output_lines_list)

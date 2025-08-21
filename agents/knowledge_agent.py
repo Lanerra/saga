@@ -1008,6 +1008,18 @@ class KnowledgeAgent:
             },
         )
 
+        # Include bootstrap elements in extraction prompt for early chapters
+        if (
+            config.BOOTSTRAP_INTEGRATION_ENABLED
+            and chapter_number <= config.BOOTSTRAP_INTEGRATION_CHAPTERS
+        ):
+            bootstrap_context = await self._get_bootstrap_context_for_extraction(
+                chapter_number
+            )
+            if bootstrap_context:
+                # Add bootstrap context to the prompt
+                prompt += f"\n\nBootstrap World Context to Consider:\n{bootstrap_context}"
+
         try:
             text, usage = await llm_service.async_call_llm(
                 model_name=self.model_name,
@@ -1024,6 +1036,47 @@ class KnowledgeAgent:
         except Exception as e:
             logger.error(f"LLM call for KG extraction failed: {e}", exc_info=True)
             return "", None
+
+    async def _get_bootstrap_context_for_extraction(self, chapter_number: int) -> str:
+        """Get bootstrap elements that should be considered for relationship extraction."""
+        # Only include bootstrap context for early chapters (less than 10 as per clarification)
+        if chapter_number >= 10:
+            return ""
+           
+        # Get bootstrap elements from world queries
+        bootstrap_elements = await world_queries.get_bootstrap_world_elements()
+       
+        # Limit to a reasonable number to prevent prompt bloat (6 as suggested in CLAUDE.md)
+        context_lines = []
+        for element in bootstrap_elements[:config.MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT]:
+            if element.description:
+                context_lines.append(f"- {element.name} ({element.category}): {element.description[:150]}...")
+       
+        return "\n".join(context_lines) if context_lines else ""
+
+    async def _heal_bootstrap_connectivity(self, chapter_number: int) -> None:
+        """Connect orphaned bootstrap elements to the active narrative graph."""
+        # Only perform bootstrap connectivity healing for early chapters
+        if chapter_number > config.BOOTSTRAP_INTEGRATION_CHAPTERS:
+            return
+            
+        # Find orphaned bootstrap elements
+        orphaned_bootstrap = await kg_queries.find_orphaned_bootstrap_elements()
+        
+        # Limit the number of orphaned elements to heal per cycle
+        for element in orphaned_bootstrap[:config.BOOTSTRAP_HEALING_LIMIT]:
+            # Find potential bridge characters/locations
+            bridge_candidates = await kg_queries.find_potential_bridges(element)
+            
+            if bridge_candidates:
+                # Create contextual relationship with the most connected bridge candidate
+                await kg_queries.create_contextual_relationship(
+                    element, bridge_candidates[0], "CONTEXTUALLY_RELATED"
+                )
+                logger.info(
+                    f"Connected orphaned bootstrap element '{element.get('name')}' "
+                    f"to '{bridge_candidates[0].get('name')}' to establish narrative presence."
+                )
 
     async def extract_and_merge_knowledge(
         self,
@@ -1056,7 +1109,7 @@ class KnowledgeAgent:
                 "LLM extraction returned no text for chapter %d.", chapter_number
             )
             return usage_data
-
+    
         char_updates_raw = "{}"
         world_updates_raw = "{}"
         kg_triples_text = ""
@@ -1478,7 +1531,7 @@ class KnowledgeAgent:
                 item_lookup[update.id] = update
 
     async def heal_and_enrich_kg(
-        self, new_entities: list[dict[str, Any]] | None = None
+        self, new_entities: list[dict[str, Any]] | None = None, chapter_number: int | None = None
     ):
         """
         Performs maintenance on the Knowledge Graph by enriching thin nodes,
@@ -1536,6 +1589,10 @@ class KnowledgeAgent:
         removed = await kg_queries.deduplicate_relationships()
         if removed:
             logger.info("KG Healer: Deduplicated %d relationships.", removed)
+
+        # 6. Bootstrap Connectivity Healing (only for early chapters)
+        if chapter_number is not None:
+            await self._heal_bootstrap_connectivity(chapter_number)
 
         logger.info("KG Healer/Enricher: Maintenance cycle complete.")
 

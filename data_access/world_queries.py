@@ -153,7 +153,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
         # Add other direct properties from overview_details if any
         for k_overview, v_overview in overview_details.items():
             if (
-                isinstance(v_overview, (str, int, float, bool))
+                isinstance(v_overview, str | int | float | bool)
                 and k_overview not in wc_props
             ):
                 wc_props[k_overview] = v_overview
@@ -323,7 +323,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
             # Add other direct properties
             for k_detail, v_detail in details_dict.items():
                 if (
-                    isinstance(v_detail, (str, int, float, bool))
+                    isinstance(v_detail, str | int | float | bool)
                     and k_detail not in we_node_props
                     and not k_detail.startswith("elaboration_in_chapter_")
                     and not k_detail.startswith("added_in_chapter_")
@@ -342,6 +342,12 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                     ]
                 ):  # Exclude already handled
                     we_node_props[k_detail] = v_detail
+            
+            # Add additional properties from WorldItem model
+            if "additional_properties" in details_dict and isinstance(details_dict["additional_properties"], dict):
+                for k, v in details_dict["additional_properties"].items():
+                    if isinstance(v, str | int | float | bool) and k not in we_node_props:
+                        we_node_props[k] = v
 
             # MERGE WorldElement node
             statements.append(
@@ -703,7 +709,7 @@ async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
 
         # Validate and normalize core fields for WorldElement
         # This ensures that all WorldElements have valid id, category, and name
-        original_category, original_item_name, original_we_id = (
+        _original_category, _original_item_name, _original_we_id = (
             category,
             item_name,
             we_id,
@@ -1076,9 +1082,14 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
     query = """
     MATCH (we:WorldElement)
     WHERE (we.source CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
-      AND we.description IS NOT NULL 
-      AND trim(we.description) <> ''
-      AND NOT (we.description CONTAINS $fill_in_marker)
+      AND we.description IS NOT NULL
+      AND (
+        // Handle array descriptions
+        (size(we.description) > 0 AND trim(COALESCE(toString(we.description[0]), '')) <> '') OR
+        // Handle string descriptions
+        (NOT (toString(we.description) STARTS WITH '[') AND trim(toString(we.description)) <> '')
+      )
+      AND NOT (toString(we.description) CONTAINS $fill_in_marker)
     RETURN we
     ORDER BY we.category ASC, we.name ASC
     LIMIT 20

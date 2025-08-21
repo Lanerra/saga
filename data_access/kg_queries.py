@@ -900,3 +900,69 @@ async def get_shortest_path_length_between_entities(
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error("Failed to compute shortest path length: %s", exc, exc_info=True)
     return None
+
+
+
+async def find_orphaned_bootstrap_elements() -> list[dict[str, Any]]:
+    """Find bootstrap elements with no relationships."""
+    query = """
+    MATCH (we:WorldElement)
+    WHERE (we.source CONTAINS 'bootstrap' OR we.created_chapter = 0)
+      AND NOT (we)-[]->() AND NOT ()-[]->(we)
+    RETURN we.name as name, we.category as category, we.id as id
+    LIMIT 10
+    """
+    try:
+        results = await neo4j_manager.execute_read_query(query)
+        return [dict(record) for record in results] if results else []
+    except Exception as e:
+        logger.error(f"Error finding orphaned bootstrap elements: {e}", exc_info=True)
+        return []
+
+
+async def find_potential_bridges(element: dict[str, Any]) -> list[dict[str, Any]]:
+    """Find characters/locations that could bridge to this element."""
+    query = """
+    MATCH (bridge)
+    WHERE (bridge:Character OR bridge:WorldElement)
+      AND bridge.name <> $element_name
+      AND ((bridge)-[]->() OR ()-[]->(bridge))  // Has some connections
+    RETURN bridge.name as name, bridge.id as id,
+           size((bridge)-[]->()) + size(()-[]->(bridge)) as connection_count
+    ORDER BY connection_count DESC
+    LIMIT 5
+    """
+    try:
+        params = {"element_name": element.get("name", "")}
+        results = await neo4j_manager.execute_read_query(query, params)
+        return [dict(record) for record in results] if results else []
+    except Exception as e:
+        logger.error(f"Error finding potential bridges: {e}", exc_info=True)
+        return []
+
+
+async def create_contextual_relationship(
+    element1: dict[str, Any],
+    element2: dict[str, Any],
+    relationship_type: str = "CONTEXTUALLY_RELATED"
+) -> None:
+    """Create a contextual relationship between two elements."""
+    query = """
+    MATCH (e1), (e2)
+    WHERE e1.id = $element1_id AND e2.id = $element2_id
+    MERGE (e1)-[r:CONTEXTUALLY_RELATED]->(e2)
+    SET r.created_by = 'bootstrap_healing',
+        r.created_ts = timestamp(),
+        r.confidence = 0.6
+    """
+    try:
+        params = {
+            "element1_id": element1.get("id"),
+            "element2_id": element2.get("id")
+        }
+        await neo4j_manager.execute_write_query(query, params)
+        logger.info(
+            f"Created contextual relationship between '{element1.get('name')}' and '{element2.get('name')}'"
+        )
+    except Exception as e:
+        logger.error(f"Error creating contextual relationship: {e}", exc_info=True)
