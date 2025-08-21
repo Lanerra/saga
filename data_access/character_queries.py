@@ -43,7 +43,7 @@ async def sync_characters(
         errors = validate_kg_object(profile)
         if errors:
             logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
-    
+
     if full_sync:
         profile_dicts = {k: v.to_dict() for k, v in profiles.items()}
         return await sync_full_state_from_object_to_db(profile_dicts)
@@ -708,45 +708,45 @@ async def sync_characters_native(
     """
     Native model version of sync_characters.
     Persist character data directly from models without dict conversion.
-    
+
     Args:
         characters: List of CharacterProfile models
         chapter_number: Current chapter for tracking updates
-        
+
     Returns:
         True if successful, False otherwise
     """
     if not characters:
         logger.info("No characters to sync")
         return True
-    
+
     # Validate all characters before syncing
     for char in characters:
         errors = validate_kg_object(char)
         if errors:
             logger.warning("Invalid CharacterProfile for '%s': %s", char.name, errors)
-    
+
     try:
         cypher_builder = NativeCypherBuilder()
         statements = cypher_builder.batch_character_upsert_cypher(
             characters, chapter_number
         )
-        
+
         if statements:
             await neo4j_manager.execute_cypher_batch(statements)
-        
+
         logger.info(
             "Persisted %d character updates for chapter %d using native models.",
             len(characters),
             chapter_number,
         )
-        
+
         # Update canonical name mapping
         for char in characters:
             CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
-        
+
         return True
-        
+
     except Exception as exc:
         logger.error(
             "Error persisting character updates for chapter %d: %s",
@@ -761,41 +761,40 @@ async def get_character_profiles_native() -> list[CharacterProfile]:
     """
     Native model version of get_character_profiles_from_db.
     Returns characters as model instances without dict conversion.
-    
+
     Returns:
         List of CharacterProfile models
     """
     try:
         cypher_builder = NativeCypherBuilder()
         query, params = cypher_builder.character_fetch_cypher()
-        
+
         results = await neo4j_manager.execute_read_query(query, params)
         characters = []
-        
+
         for record in results:
-            if record and record.get('c'):
+            if record and record.get("c"):
                 char = CharacterProfile.from_db_record(record)
                 characters.append(char)
-        
+
         logger.info("Fetched %d characters using native models", len(characters))
         return characters
-        
+
     except Exception as exc:
         logger.error("Error fetching character profiles: %s", exc, exc_info=True)
         return []
 
 
 async def get_characters_for_chapter_context_native(
-    chapter_number: int,
-    limit: int = 10
+    chapter_number: int, limit: int = 10
 ) -> list[CharacterProfile]:
     """
     Get characters relevant for chapter context using native models.
-    
+
     Args:
         chapter_number: Current chapter being processed
         limit: Maximum number of characters to return
-        
+
     Returns:
         List of CharacterProfile models relevant to the chapter
     """
@@ -815,28 +814,30 @@ async def get_characters_for_chapter_context_native(
                    description: r.description
                }) as relationships
         """
-        
+
         results = await neo4j_manager.execute_read_query(
-            query,
-            {"chapter_number": chapter_number, "limit": limit}
+            query, {"chapter_number": chapter_number, "limit": limit}
         )
-        
+
         characters = []
         for record in results:
-            if record and record.get('c'):
+            if record and record.get("c"):
                 char = CharacterProfile.from_db_record(record)
                 characters.append(char)
-        
+
         logger.debug(
             "Fetched %d characters for chapter %d context using native models",
-            len(characters), chapter_number
+            len(characters),
+            chapter_number,
         )
-        
+
         return characters
-        
+
     except Exception as exc:
         logger.error(
             "Error fetching characters for chapter %d context: %s",
-            chapter_number, exc, exc_info=True
+            chapter_number,
+            exc,
+            exc_info=True,
         )
         return []

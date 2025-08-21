@@ -21,14 +21,13 @@ from data_access import (
     plot_queries,
     world_queries,
 )
+
 # Import native versions for performance optimization
 from data_access.character_queries import (
     get_character_profiles_native,
-    get_characters_for_chapter_context_native,
 )
 from data_access.world_queries import (
     get_world_building_native,
-    get_world_items_for_chapter_context_native,
 )
 from initialization.genesis import run_genesis_phase
 from models import (
@@ -497,7 +496,7 @@ class NANA_Orchestrator:
         # Use native queries for optimal performance (Phase 3 optimization)
         characters_for_revision = await get_character_profiles_native()
         world_items_for_revision = await get_world_building_native()
-        
+
         # Convert to dict format for existing revision logic (temporary)
         characters_dict = {char.name: char for char in characters_for_revision}
         world_dict = {}
@@ -505,7 +504,7 @@ class NANA_Orchestrator:
             if item.category not in world_dict:
                 world_dict[item.category] = {}
             world_dict[item.category][item.name] = item
-        
+
         revision_tuple_result, revision_usage = await revise_chapter_draft_logic(
             self.plot_outline,
             characters_dict,
@@ -555,8 +554,11 @@ class NANA_Orchestrator:
         # Use native scene planning for optimal performance (Phase 3 optimization)
         characters_for_planning = await get_character_profiles_native()
         world_items_for_planning = await get_world_building_native()
-        
-        chapter_plan, plan_usage = await self.narrative_agent._plan_chapter_scenes_native(
+
+        (
+            chapter_plan,
+            plan_usage,
+        ) = await self.narrative_agent._plan_chapter_scenes_native(
             self.plot_outline,
             characters_for_planning,  # List[CharacterProfile] - native format
             world_items_for_planning,  # List[WorldItem] - native format
@@ -977,7 +979,7 @@ class NANA_Orchestrator:
         # Extract and merge knowledge updates using native models for performance
         characters = await get_character_profiles_native()
         world_items = await get_world_building_native()
-        
+
         kg_usage = await self.knowledge_agent.extract_and_merge_knowledge_native(
             self.plot_outline,
             characters,  # List of CharacterProfile models

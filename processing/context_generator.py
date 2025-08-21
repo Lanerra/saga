@@ -391,17 +391,19 @@ async def generate_hybrid_chapter_context_native(
     """
     NATIVE version of hybrid context generation with reduced serialization overhead.
     Uses ZeroCopyContextGenerator for optimal performance.
-    
+
     'agent_or_props' can be the NANA_Orchestrator instance or a novel_props dictionary.
     """
     # Import here to avoid circular import
     from processing.zero_copy_context_generator import ZeroCopyContextGenerator
-    
+
     if current_chapter_number <= 0:
         return ""
-    
-    logger.info(f"Generating NATIVE hybrid context for Chapter {current_chapter_number}...")
-    
+
+    logger.info(
+        f"Generating NATIVE hybrid context for Chapter {current_chapter_number}..."
+    )
+
     # Extract plot outline data
     if isinstance(agent_or_props, dict):
         plot_outline_data = agent_or_props.get(
@@ -411,14 +413,12 @@ async def generate_hybrid_chapter_context_native(
         plot_outline_data = getattr(agent_or_props, "plot_outline_full", None)
         if not plot_outline_data:
             plot_outline_data = getattr(agent_or_props, "plot_outline", {})
-    
+
     # Use native zero-copy context generation
     hybrid_context = await ZeroCopyContextGenerator.generate_hybrid_context_native(
-        plot_outline_data,
-        current_chapter_number,
-        chapter_plan
+        plot_outline_data, current_chapter_number, chapter_plan
     )
-    
+
     # Apply final token limit if needed
     final_tokens = count_tokens(hybrid_context, config.DRAFTING_MODEL)
     if final_tokens > config.MAX_CONTEXT_TOKENS:
@@ -432,7 +432,7 @@ async def generate_hybrid_chapter_context_native(
             truncation_marker="\n... (Native hybrid context truncated due to token limit)",
         )
         final_tokens = count_tokens(hybrid_context, config.DRAFTING_MODEL)
-    
+
     logger.info(
         f"Generated NATIVE hybrid context for Chapter {current_chapter_number}, Tokens: {final_tokens}."
     )

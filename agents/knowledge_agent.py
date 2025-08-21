@@ -11,8 +11,13 @@ from jinja2 import Template
 import config
 import utils  # Ensure utils is imported for normalize_trait_name
 from core.db_manager import neo4j_manager
+from core.knowledge_graph_service import knowledge_graph_service
 from core.llm_interface import llm_service
-from core.schema_validator import validate_node_labels, validate_relationship_types
+from core.schema_validator import (
+    validate_kg_object,
+    validate_node_labels,
+    validate_relationship_types,
+)
 from data_access import (
     character_queries,
     kg_queries,
@@ -20,8 +25,6 @@ from data_access import (
     world_queries,
 )
 from models.kg_models import CharacterProfile, WorldItem
-from core.schema_validator import validate_kg_object
-from core.knowledge_graph_service import knowledge_graph_service
 from parsing_utils import (
     parse_rdf_triples_with_rdflib,
 )
@@ -581,8 +584,19 @@ def parse_unified_character_updates_native(
                 skills=processed_char_attributes.get("skills", []),
                 status=processed_char_attributes.get("status", "active"),
                 # Copy any additional attributes
-                **{k: v for k, v in processed_char_attributes.items() 
-                   if k not in ["name", "description", "traits", "relationships", "skills", "status"]}
+                **{
+                    k: v
+                    for k, v in processed_char_attributes.items()
+                    if k
+                    not in [
+                        "name",
+                        "description",
+                        "traits",
+                        "relationships",
+                        "skills",
+                        "status",
+                    ]
+                },
             )
         except Exception as e:
             logger.error(
@@ -635,8 +649,11 @@ def parse_unified_world_updates_native(
                     category=category_name_llm,
                     description=raw_item_attributes.get("description", ""),
                     # Copy any additional attributes
-                    **{k: v for k, v in raw_item_attributes.items() 
-                       if k not in ["name", "category", "description"]}
+                    **{
+                        k: v
+                        for k, v in raw_item_attributes.items()
+                        if k not in ["name", "category", "description"]
+                    },
                 )
                 category_dict_by_item_name[item_name_llm] = world_item_instance
             except Exception as e:
@@ -694,7 +711,7 @@ def merge_character_profile_updates(
         errors = validate_kg_object(update)
         if errors:
             logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
-    
+
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for name, update in updates.items():
         data = update.to_dict()
@@ -752,8 +769,13 @@ def merge_world_item_updates(
         for name, update in cat_updates.items():
             errors = validate_kg_object(update)
             if errors:
-                logger.warning("Invalid WorldItem for '%s' in category '%s': %s", name, category, errors)
-    
+                logger.warning(
+                    "Invalid WorldItem for '%s' in category '%s': %s",
+                    name,
+                    category,
+                    errors,
+                )
+
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for category, cat_updates in updates.items():
         if category not in world:
@@ -1161,7 +1183,7 @@ class KnowledgeAgent:
             chapter_number,
         )
         return usage_data
-    
+
     async def extract_and_merge_knowledge_native(
         self,
         plot_outline: dict[str, Any],
@@ -1174,7 +1196,7 @@ class KnowledgeAgent:
         """
         Native model version of extract_and_merge_knowledge.
         Eliminates dict conversion overhead by working directly with model instances.
-        
+
         Args:
             plot_outline: Plot information dict
             characters: List of CharacterProfile models (will be modified in-place)
@@ -1182,7 +1204,7 @@ class KnowledgeAgent:
             chapter_number: Current chapter number
             chapter_text: Chapter text to extract from
             is_from_flawed_draft: Whether text is from a flawed/unrevised draft
-            
+
         Returns:
             LLM usage data dict or None if extraction failed
         """
@@ -1212,22 +1234,28 @@ class KnowledgeAgent:
 
         # Parse extraction results directly to models
         try:
-            char_updates, world_updates, kg_triples_text = await self._extract_updates_as_models(
+            (
+                char_updates,
+                world_updates,
+                kg_triples_text,
+            ) = await self._extract_updates_as_models(
                 raw_extracted_text, chapter_number
             )
-            
+
             # Process KG triples for relationships (CRITICAL: This was missing!)
             parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
-            
+
             # Merge updates directly into existing model lists
-            self._merge_character_updates_native(characters, char_updates, chapter_number)
+            self._merge_character_updates_native(
+                characters, char_updates, chapter_number
+            )
             self._merge_world_updates_native(world_items, world_updates, chapter_number)
-            
+
             # Persist models directly using native service
             await knowledge_graph_service.persist_entities(
                 characters, world_items, chapter_number
             )
-            
+
             # CRITICAL FIX: Persist KG triples/relationships
             if parsed_triples_structured:
                 try:
@@ -1242,96 +1270,98 @@ class KnowledgeAgent:
                         f"Failed to persist KG triples for chapter {chapter_number}: {e}",
                         exc_info=True,
                     )
-            
+
             # DIAGNOSTIC: Log information for healing process debugging
             logger.info(
                 f"Native extraction created entities for healing process to consider: "
                 f"Characters: {[c.name for c in char_updates]}, "
                 f"World items: {[w.name for w in world_updates]}"
             )
-            
+
             logger.info(
                 f"Native knowledge extraction complete for chapter {chapter_number}: "
                 f"{len(char_updates)} character updates, {len(world_updates)} world updates, "
                 f"{len(parsed_triples_structured)} KG triples"
             )
-            
+
             return usage_data
-            
+
         except Exception as e:
             logger.error(
                 f"Error during native knowledge extraction for chapter {chapter_number}: {e}",
                 exc_info=True,
             )
             return usage_data
-    
+
     async def _extract_updates_as_models(
-        self, 
-        raw_text: str, 
-        chapter_number: int
+        self, raw_text: str, chapter_number: int
     ) -> tuple[list[CharacterProfile], list[WorldItem], str]:
         """
         Extract updates and return as models directly - no intermediate dict phase.
-        
+
         Args:
             raw_text: Raw LLM extraction text (JSON format)
             chapter_number: Current chapter for tracking
-            
+
         Returns:
             Tuple of (character_updates, world_updates, kg_triples_text)
         """
         char_updates = []
         world_updates = []
         kg_triples_text = ""
-        
+
         try:
             extraction_data = json.loads(raw_text)
-            
+
             # Convert character updates directly to models
             char_data = extraction_data.get("character_updates", {})
             for name, char_info in char_data.items():
                 if isinstance(char_info, dict):
-                    char_updates.append(CharacterProfile(
-                        name=name,  # Use original name - let healing process handle deduplication
-                        description=char_info.get("description", ""),
-                        traits=char_info.get("traits", []),
-                        status=char_info.get("status", "Unknown"),
-                        relationships=char_info.get("relationships", {}),
-                        created_chapter=char_info.get("created_chapter", chapter_number),
-                        is_provisional=char_info.get("is_provisional", False),
-                        updates=char_info  # Store original for reference
-                    ))
-            
-            # Convert world updates directly to models  
+                    char_updates.append(
+                        CharacterProfile(
+                            name=name,  # Use original name - let healing process handle deduplication
+                            description=char_info.get("description", ""),
+                            traits=char_info.get("traits", []),
+                            status=char_info.get("status", "Unknown"),
+                            relationships=char_info.get("relationships", {}),
+                            created_chapter=char_info.get(
+                                "created_chapter", chapter_number
+                            ),
+                            is_provisional=char_info.get("is_provisional", False),
+                            updates=char_info,  # Store original for reference
+                        )
+                    )
+
+            # Convert world updates directly to models
             world_data = extraction_data.get("world_updates", {})
             for category, items in world_data.items():
                 if isinstance(items, dict):
                     for item_name, item_info in items.items():
                         if isinstance(item_info, dict):
-                            world_updates.append(WorldItem.from_dict(
-                                category, item_name, item_info
-                            ))
-            
+                            world_updates.append(
+                                WorldItem.from_dict(category, item_name, item_info)
+                            )
+
             # Extract KG triples for relationships (CRITICAL FIX!)
             kg_triples_list = extraction_data.get("kg_triples", [])
             if isinstance(kg_triples_list, list):
                 kg_triples_text = "\n".join([str(t) for t in kg_triples_list])
             else:
                 kg_triples_text = str(kg_triples_list)
-            
+
             logger.debug(
                 f"Extracted {len(char_updates)} character, {len(world_updates)} world item updates, "
                 f"and {len(kg_triples_list)} KG triples as native models"
             )
-            
+
             return char_updates, world_updates, kg_triples_text
-            
+
         except json.JSONDecodeError as e:
             logger.warning(
                 f"Failed to parse extraction JSON for chapter {chapter_number}: {e}. "
                 f"Attempting fallback regex parsing for KG triples."
             )
-            
+
             # Fallback regex extraction for KG triples (critical for relationships!)
             triples_match = re.search(
                 r'"kg_triples"\s*:\s*(\[.*?\])', raw_text, re.DOTALL
@@ -1354,19 +1384,19 @@ class KnowledgeAgent:
                 logger.warning(
                     f"Could not find kg_triples JSON array via regex for Ch {chapter_number}."
                 )
-            
+
             # Could implement character and world fallback parsing here if needed
             return [], [], kg_triples_text
-    
+
     def _merge_character_updates_native(
         self,
         existing_characters: list[CharacterProfile],
-        new_updates: list[CharacterProfile], 
-        chapter_number: int
+        new_updates: list[CharacterProfile],
+        chapter_number: int,
     ) -> None:
         """
         Merge character updates directly into existing model list.
-        
+
         Args:
             existing_characters: List of existing CharacterProfile models (modified in-place)
             new_updates: List of CharacterProfile updates to merge
@@ -1374,7 +1404,7 @@ class KnowledgeAgent:
         """
         # Create lookup for existing characters
         char_lookup = {char.name: char for char in existing_characters}
-        
+
         for update in new_updates:
             if update.name in char_lookup:
                 # Update existing character
@@ -1383,27 +1413,31 @@ class KnowledgeAgent:
                     existing_char.description = update.description
                 if update.traits:
                     # Merge traits, avoiding duplicates
-                    existing_char.traits = list(set(existing_char.traits + update.traits))
+                    existing_char.traits = list(
+                        set(existing_char.traits + update.traits)
+                    )
                 if update.status != "Unknown":
                     existing_char.status = update.status
                 if update.relationships:
                     existing_char.relationships.update(update.relationships)
-                existing_char.is_provisional = existing_char.is_provisional or update.is_provisional
+                existing_char.is_provisional = (
+                    existing_char.is_provisional or update.is_provisional
+                )
             else:
                 # Add new character
                 update.created_chapter = chapter_number
                 existing_characters.append(update)
                 char_lookup[update.name] = update
-    
+
     def _merge_world_updates_native(
         self,
         existing_world_items: list[WorldItem],
         new_updates: list[WorldItem],
-        chapter_number: int
+        chapter_number: int,
     ) -> None:
         """
         Merge world item updates directly into existing model list.
-        
+
         Args:
             existing_world_items: List of existing WorldItem models (modified in-place)
             new_updates: List of WorldItem updates to merge
@@ -1411,7 +1445,7 @@ class KnowledgeAgent:
         """
         # Create lookup for existing items
         item_lookup = {item.id: item for item in existing_world_items}
-        
+
         for update in new_updates:
             if update.id in item_lookup:
                 # Update existing item
@@ -1423,12 +1457,20 @@ class KnowledgeAgent:
                 if update.rules:
                     existing_item.rules = list(set(existing_item.rules + update.rules))
                 if update.key_elements:
-                    existing_item.key_elements = list(set(existing_item.key_elements + update.key_elements))
+                    existing_item.key_elements = list(
+                        set(existing_item.key_elements + update.key_elements)
+                    )
                 if update.traits:
-                    existing_item.traits = list(set(existing_item.traits + update.traits))
+                    existing_item.traits = list(
+                        set(existing_item.traits + update.traits)
+                    )
                 if update.additional_properties:
-                    existing_item.additional_properties.update(update.additional_properties)
-                existing_item.is_provisional = existing_item.is_provisional or update.is_provisional
+                    existing_item.additional_properties.update(
+                        update.additional_properties
+                    )
+                existing_item.is_provisional = (
+                    existing_item.is_provisional or update.is_provisional
+                )
             else:
                 # Add new item
                 update.created_chapter = chapter_number
@@ -1521,7 +1563,9 @@ class KnowledgeAgent:
         # Validate node labels
         errors = validate_node_labels([entity_type])
         if errors:
-            logger.warning("Invalid node labels for entity '%s': %s", entity_name, errors)
+            logger.warning(
+                "Invalid node labels for entity '%s': %s", entity_name, errors
+            )
 
         # Use MERGE to ensure we have a single entity with this name
         # This will either match an existing entity or create a new one
@@ -1924,7 +1968,9 @@ class KnowledgeAgent:
         else:
             # Original full graph processing (less efficient)
             # Use lower similarity threshold to catch character name variations like "Nuyara" vs "Nuyara Vex"
-            candidate_pairs = await kg_queries.find_candidate_duplicate_entities(similarity_threshold=0.6)
+            candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
+                similarity_threshold=0.6
+            )
 
             if not candidate_pairs:
                 logger.info("KG Healer: No candidate duplicate entities found.")
@@ -2029,7 +2075,9 @@ class KnowledgeAgent:
         # Validate node labels
         errors = validate_node_labels([entity_type])
         if errors:
-            logger.warning("Invalid node labels for new entity '%s': %s", entity_name, errors)
+            logger.warning(
+                "Invalid node labels for new entity '%s': %s", entity_name, errors
+            )
 
         # Use MERGE to ensure we have a single entity with this name
         # This will either match an existing entity or create a new one

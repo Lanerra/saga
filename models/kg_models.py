@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -44,47 +44,47 @@ class CharacterProfile(BaseModel):
         updates_data = data.pop("updates", {})
         data.update(updates_data)
         return data
-    
+
     @classmethod
-    def from_db_record(cls, record: 'neo4j.Record') -> 'CharacterProfile':
+    def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
         """Construct directly from Neo4j record - no dict conversion."""
-        node = record['c']  # Assuming 'c' is the character node alias
-        
+        node = record["c"]  # Assuming 'c' is the character node alias
+
         # Extract relationships if available
         relationships = {}
-        if 'relationships' in record and record['relationships']:
-            for rel in record['relationships']:
-                if rel and rel.get('target_name'):
-                    relationships[rel['target_name']] = {
-                        'type': rel.get('type', 'KNOWS'),
-                        'description': rel.get('description', '')
+        if "relationships" in record and record["relationships"]:
+            for rel in record["relationships"]:
+                if rel and rel.get("target_name"):
+                    relationships[rel["target_name"]] = {
+                        "type": rel.get("type", "KNOWS"),
+                        "description": rel.get("description", ""),
                     }
-        
+
         return cls(
-            name=node.get('name', ''),
-            description=node.get('description', ''),
-            traits=node.get('traits', []),
-            status=node.get('status', 'Unknown'),
+            name=node.get("name", ""),
+            description=node.get("description", ""),
+            traits=node.get("traits", []),
+            status=node.get("status", "Unknown"),
             relationships=relationships,
-            created_chapter=node.get('created_chapter', 0),
-            is_provisional=node.get('is_provisional', False),
-            updates={}  # Will be populated as needed
+            created_chapter=node.get("created_chapter", 0),
+            is_provisional=node.get("is_provisional", False),
+            updates={},  # Will be populated as needed
         )
-    
+
     @classmethod
-    def from_db_node(cls, node: 'neo4j.Node') -> 'CharacterProfile':
+    def from_db_node(cls, node: neo4j.Node) -> CharacterProfile:
         """Construct directly from Neo4j node - no dict conversion."""
         return cls(
-            name=node.get('name', ''),
-            description=node.get('description', ''),
-            traits=node.get('traits', []),
-            status=node.get('status', 'Unknown'),
+            name=node.get("name", ""),
+            description=node.get("description", ""),
+            traits=node.get("traits", []),
+            status=node.get("status", "Unknown"),
             relationships={},  # Relationships handled separately
-            created_chapter=node.get('created_chapter', 0),
-            is_provisional=node.get('is_provisional', False),
-            updates={}
+            created_chapter=node.get("created_chapter", 0),
+            is_provisional=node.get("is_provisional", False),
+            updates={},
         )
-    
+
     def to_cypher_params(self) -> dict[str, Any]:
         """Direct conversion to Cypher parameters without dict serialization."""
         return {
@@ -93,7 +93,7 @@ class CharacterProfile(BaseModel):
             "traits": self.traits,
             "status": self.status,
             "created_chapter": self.created_chapter,
-            "is_provisional": self.is_provisional
+            "is_provisional": self.is_provisional,
             # Note: relationships and updates handled separately
         }
 
@@ -115,7 +115,13 @@ class WorldItem(BaseModel):
     additional_properties: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, category: str, name: str, data: dict[str, Any], allow_empty_name: bool = False) -> WorldItem:
+    def from_dict(
+        cls,
+        category: str,
+        name: str,
+        data: dict[str, Any],
+        allow_empty_name: bool = False,
+    ) -> WorldItem:
         """Create a ``WorldItem`` from a raw dictionary."""
 
         # Get ID from data if present, otherwise generate one
@@ -128,7 +134,7 @@ class WorldItem(BaseModel):
 
         created_chapter = int(data.get(KG_NODE_CREATED_CHAPTER, 0))
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
-        
+
         # Extract structured fields
         description = data.get("description", "")
         goals = data.get("goals", [])
@@ -176,55 +182,77 @@ class WorldItem(BaseModel):
         additional_properties = data.pop("additional_properties", {})
         data.update(additional_properties)
         return data
-    
+
     @classmethod
-    def from_db_record(cls, record: 'neo4j.Record') -> 'WorldItem':
+    def from_db_record(cls, record: neo4j.Record) -> WorldItem:
         """Construct directly from Neo4j record - no dict conversion."""
-        node = record['w']  # Assuming 'w' is the world element node alias
-        
+        node = record["w"]  # Assuming 'w' is the world element node alias
+
         # Extract additional properties that aren't core fields
-        core_fields = {'id', 'name', 'category', 'description', 'goals', 'rules', 
-                      'key_elements', 'traits', 'created_chapter', 'is_provisional',
-                      'chapter_last_updated', 'last_updated'}
+        core_fields = {
+            "id",
+            "name",
+            "category",
+            "description",
+            "goals",
+            "rules",
+            "key_elements",
+            "traits",
+            "created_chapter",
+            "is_provisional",
+            "chapter_last_updated",
+            "last_updated",
+        }
         additional_props = {k: v for k, v in dict(node).items() if k not in core_fields}
-        
+
         return cls(
-            id=node.get('id', ''),
-            category=node.get('category', ''),
-            name=node.get('name', ''),
-            description=node.get('description', ''),
-            goals=node.get('goals', []),
-            rules=node.get('rules', []),
-            key_elements=node.get('key_elements', []),
-            traits=node.get('traits', []),
-            created_chapter=node.get('created_chapter', 0),
-            is_provisional=node.get('is_provisional', False),
-            additional_properties=additional_props
+            id=node.get("id", ""),
+            category=node.get("category", ""),
+            name=node.get("name", ""),
+            description=node.get("description", ""),
+            goals=node.get("goals", []),
+            rules=node.get("rules", []),
+            key_elements=node.get("key_elements", []),
+            traits=node.get("traits", []),
+            created_chapter=node.get("created_chapter", 0),
+            is_provisional=node.get("is_provisional", False),
+            additional_properties=additional_props,
         )
-    
+
     @classmethod
-    def from_db_node(cls, node: 'neo4j.Node') -> 'WorldItem':
+    def from_db_node(cls, node: neo4j.Node) -> WorldItem:
         """Construct directly from Neo4j node - no dict conversion."""
         # Extract additional properties that aren't core fields
-        core_fields = {'id', 'name', 'category', 'description', 'goals', 'rules', 
-                      'key_elements', 'traits', 'created_chapter', 'is_provisional',
-                      'chapter_last_updated', 'last_updated'}
+        core_fields = {
+            "id",
+            "name",
+            "category",
+            "description",
+            "goals",
+            "rules",
+            "key_elements",
+            "traits",
+            "created_chapter",
+            "is_provisional",
+            "chapter_last_updated",
+            "last_updated",
+        }
         additional_props = {k: v for k, v in dict(node).items() if k not in core_fields}
-        
+
         return cls(
-            id=node.get('id', ''),
-            category=node.get('category', ''),
-            name=node.get('name', ''),
-            description=node.get('description', ''),
-            goals=node.get('goals', []),
-            rules=node.get('rules', []),
-            key_elements=node.get('key_elements', []),
-            traits=node.get('traits', []),
-            created_chapter=node.get('created_chapter', 0),
-            is_provisional=node.get('is_provisional', False),
-            additional_properties=additional_props
+            id=node.get("id", ""),
+            category=node.get("category", ""),
+            name=node.get("name", ""),
+            description=node.get("description", ""),
+            goals=node.get("goals", []),
+            rules=node.get("rules", []),
+            key_elements=node.get("key_elements", []),
+            traits=node.get("traits", []),
+            created_chapter=node.get("created_chapter", 0),
+            is_provisional=node.get("is_provisional", False),
+            additional_properties=additional_props,
         )
-    
+
     def to_cypher_params(self) -> dict[str, Any]:
         """Direct conversion to Cypher parameters without dict serialization."""
         return {
@@ -238,5 +266,5 @@ class WorldItem(BaseModel):
             "traits": self.traits,
             "created_chapter": self.created_chapter,
             "is_provisional": self.is_provisional,
-            "additional_props": self.additional_properties
+            "additional_props": self.additional_properties,
         }

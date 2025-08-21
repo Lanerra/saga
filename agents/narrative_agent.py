@@ -381,7 +381,7 @@ class NarrativeAgent:
         self,
         plot_outline: dict[str, Any],
         character_profiles: list[CharacterProfile],  # List instead of dict
-        world_building: list[WorldItem],            # List instead of nested dict
+        world_building: list[WorldItem],  # List instead of nested dict
         chapter_number: int,
         plot_point_focus: str | None,
         plot_point_index: int,
@@ -763,10 +763,12 @@ class NarrativeAgent:
                 "plot_outline": plot_outline,
                 "plot_outline_full": plot_outline,
             }
-            hybrid_context_for_draft: str = await generate_hybrid_chapter_context_native(
-                context_props,
-                chapter_number,
-                scenes,
+            hybrid_context_for_draft: str = (
+                await generate_hybrid_chapter_context_native(
+                    context_props,
+                    chapter_number,
+                    scenes,
+                )
             )
         except Exception as e:
             # If hybrid context generation fails for any reason, fall back to basic metadata
@@ -815,7 +817,7 @@ class NarrativeAgent:
         self,
         plot_outline: dict,
         character_profiles: list[CharacterProfile],  # List instead of dict
-        world_building: list[WorldItem],            # List instead of nested dict  
+        world_building: list[WorldItem],  # List instead of nested dict
         chapter_number: int,
         plot_point_focus: str,
     ) -> tuple[str, str, dict[str, int]]:

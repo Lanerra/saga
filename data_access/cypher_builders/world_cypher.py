@@ -155,7 +155,10 @@ def generate_world_element_node_cypher(
                         )
 
     elab_event_key = f"elaboration_in_chapter_{chapter_number_for_delta}"
-    if isinstance(item.additional_properties, dict) and elab_event_key in item.additional_properties:
+    if (
+        isinstance(item.additional_properties, dict)
+        and elab_event_key in item.additional_properties
+    ):
         elab_summary = item.additional_properties[elab_event_key]
         if isinstance(elab_summary, str) and elab_summary.strip():
             elab_event_id = (
