@@ -1,4 +1,5 @@
-# SAGA - Semantic And Graph-enhanced Authoring | Autonomous Novel-Writing System
+# SAGA - Semantic And Graph-enhanced Authoring
+# Autonomous Novel-Writing System
 
 SAGA is a novel-writing system that leverages a knowledge graph and multiple specialized agents to autonomously create and refine stories. It is designed to handle complex narrative structures while maintaining coherence and consistency.
 
@@ -159,7 +160,8 @@ saga/
 
 ## Usage
 
-### Ingestion Mode | WARNING: Ingestion is currently broken and needs refactoring
+### Ingestion Mode
+### WARNING: Ingestion is currently broken and needs refactoring
 
 Ingest a novel to populate the knowledge graph and start the system's internal modeling process:
 
