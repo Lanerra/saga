@@ -39,7 +39,6 @@ from models import (
 )
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
-from orchestration.token_tracker import TokenTracker
 from processing.context_generator import generate_hybrid_chapter_context_native
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
@@ -71,8 +70,6 @@ class NANA_Orchestrator:
         self.plot_outline: dict[str, Any] = {}
         self.chapter_count: int = 0
         self.novel_props_cache: dict[str, Any] = {}
-        self.token_tracker = TokenTracker()
-        self.total_tokens_generated_this_run: int = 0
 
         self.display = RichDisplayManager()
         self.run_start_time: float = 0.0
@@ -86,16 +83,9 @@ class NANA_Orchestrator:
             plot_outline=self.plot_outline,
             chapter_num=chapter_num,
             step=step,
-            total_tokens=self.total_tokens_generated_this_run,
             run_start_time=self.run_start_time,
         )
 
-    def _accumulate_tokens(
-        self, operation_name: str, usage_data: dict[str, int] | None
-    ):
-        self.token_tracker.add(operation_name, usage_data)
-        self.total_tokens_generated_this_run = self.token_tracker.total
-        self._update_rich_display()
 
     async def _generate_plot_points_from_kg(self, count: int) -> None:
         """Generate and persist additional plot points using the planner agent."""
@@ -114,10 +104,9 @@ class NANA_Orchestrator:
             logger.warning("No summaries available for continuation planning.")
             return
 
-        new_points, usage = await self.narrative_agent.plan_continuation(
+        new_points, _ = await self.narrative_agent.plan_continuation(
             combined_summary, count
         )
-        self._accumulate_tokens("PlanContinuation", usage)
         if not new_points:
             logger.error("Failed to generate continuation plot points.")
             return
@@ -203,9 +192,7 @@ class NANA_Orchestrator:
             self.plot_outline,
             character_profiles,
             world_building,
-            usage,
         ) = await run_genesis_phase()
-        self._accumulate_tokens("Genesis-Phase", usage)
 
         plot_source = self.plot_outline.get("source", "unknown")
         logger.info(
@@ -437,11 +424,10 @@ class NANA_Orchestrator:
         results = await asyncio.gather(*tasks_to_run)
 
         revision_result = None
-        revision_usage = None
 
         result_idx = 0
         if "revision" in task_names:
-            revision_result, revision_usage = results[result_idx]
+            revision_result, _ = results[result_idx]
 
         # Create evaluation result object from revision result
         eval_result_obj = {
@@ -505,7 +491,7 @@ class NANA_Orchestrator:
                 world_dict[item.category] = {}
             world_dict[item.category][item.name] = item
 
-        revision_tuple_result, revision_usage = await revise_chapter_draft_logic(
+        revision_tuple_result, _ = await revise_chapter_draft_logic(
             self.plot_outline,
             characters_dict,
             world_dict,
@@ -566,7 +552,6 @@ class NANA_Orchestrator:
             plot_point_focus,
             plot_point_index,
         )
-        self._accumulate_tokens(f"Ch{novel_chapter_number}-Planning", plan_usage)
 
         if (
             config.ENABLE_SCENE_PLAN_VALIDATION
@@ -606,12 +591,7 @@ class NANA_Orchestrator:
                     )
 
             # Mock usage data for now
-            usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-            self._accumulate_tokens(
-                f"Ch{novel_chapter_number}-PlanConsistency",
-                usage,
-            )
             await self._save_debug_output(
                 novel_chapter_number,
                 "scene_plan_consistency_problems",
@@ -676,7 +656,6 @@ class NANA_Orchestrator:
                 hybrid_context_for_draft,
                 chapter_plan,
             )
-            self._accumulate_tokens(f"Ch{novel_chapter_number}-Drafting", draft_usage)
             if not draft_text:
                 logger.error(
                     f"NANA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
@@ -703,7 +682,6 @@ class NANA_Orchestrator:
             novel_chapter_number,
             plot_point_focus,
         )
-        self._accumulate_tokens(f"Ch{novel_chapter_number}-Drafting", draft_usage)
         if not initial_draft_text:
             logger.error(
                 f"NANA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
@@ -821,14 +799,6 @@ class NANA_Orchestrator:
                 patched_spans,
             )
 
-            self._accumulate_tokens(
-                f"Ch{novel_chapter_number}-Evaluation-Attempt{attempt}",
-                eval_usage,
-            )
-            self._accumulate_tokens(
-                f"Ch{novel_chapter_number}-ContinuityCheck-Attempt{attempt}",
-                continuity_usage,
-            )
 
             evaluation_result: EvaluationResult = eval_result_obj
             await self._save_debug_output(
@@ -884,10 +854,6 @@ class NANA_Orchestrator:
                     chapter_plan,
                     patched_spans,
                     is_from_flawed_source_for_kg,
-                )
-                self._accumulate_tokens(
-                    f"Ch{novel_chapter_number}-Revision-Attempt{attempt}",
-                    revision_usage,
                 )
                 if new_text and new_text != current_text_to_process:
                     new_embedding, prev_embedding = await asyncio.gather(
@@ -969,7 +935,7 @@ class NANA_Orchestrator:
         self._update_rich_display(step=f"Ch {novel_chapter_number} - Finalization")
 
         # Generate chapter summary
-        summary, summary_usage = await self.knowledge_agent.summarize_chapter(
+        summary, _ = await self.knowledge_agent.summarize_chapter(
             final_text_to_process, novel_chapter_number
         )
 
@@ -980,7 +946,7 @@ class NANA_Orchestrator:
         characters = await get_character_profiles_native()
         world_items = await get_world_building_native()
 
-        kg_usage = await self.knowledge_agent.extract_and_merge_knowledge_native(
+        _ = await self.knowledge_agent.extract_and_merge_knowledge_native(
             self.plot_outline,
             characters,  # List of CharacterProfile models
             world_items,  # List of WorldItem models
@@ -996,12 +962,6 @@ class NANA_Orchestrator:
             "kg_usage": kg_usage,
         }
 
-        self._accumulate_tokens(
-            f"Ch{novel_chapter_number}-Summarization", result.get("summary_usage")
-        )
-        self._accumulate_tokens(
-            f"Ch{novel_chapter_number}-KGExtractionMerge", result.get("kg_usage")
-        )
         await self._save_debug_output(
             novel_chapter_number, "final_summary", result.get("summary")
         )
@@ -1182,7 +1142,6 @@ class NANA_Orchestrator:
             await self.display.stop()
             return
 
-        self.total_tokens_generated_this_run = 0
         self.run_start_time = time.time()
         self.display.start()
         try:
@@ -1405,9 +1364,6 @@ class NANA_Orchestrator:
                 f"NANA: Current total chapters in database after this run: {final_chapter_count_from_db}"
             )
 
-            logger.info(
-                f"NANA: Total LLM tokens generated this run: {self.total_tokens_generated_this_run}"
-            )
             self._update_rich_display(
                 chapter_num=self.chapter_count, step="Run Finished"
             )
@@ -1453,7 +1409,7 @@ class NANA_Orchestrator:
         for idx, chunk in enumerate(chunks, 1):
             self._update_rich_display(chapter_num=idx, step="Ingesting Text")
             # Generate chapter summary
-            summary, summary_usage = await self.knowledge_agent.summarize_chapter(
+            summary, _ = await self.knowledge_agent.summarize_chapter(
                 chunk, idx
             )
 
@@ -1461,7 +1417,7 @@ class NANA_Orchestrator:
             embedding = await llm_service.async_get_embedding(chunk)
 
             # Extract and merge knowledge updates using NATIVE implementation
-            kg_usage = await self.knowledge_agent.extract_and_merge_knowledge_native(
+            _ = await self.knowledge_agent.extract_and_merge_knowledge_native(
                 plot_outline,
                 characters,  # List of CharacterProfile models
                 world_items,  # List of WorldItem models

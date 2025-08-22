@@ -23,19 +23,10 @@ async def run_genesis_phase() -> (
         dict[str, Any],
         dict[str, CharacterProfile],
         dict[str, dict[str, WorldItem]],
-        dict[str, int],
     ]
 ):
     """Execute the initial bootstrapping phase."""
-    usage_totals: dict[str, int] = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-    }
 
-    def _add_usage(total: dict[str, int], usage: dict[str, int]) -> None:
-        for key, val in usage.items():
-            total[key] = total.get(key, 0) + val
 
     model = load_user_supplied_model()
     if model:
@@ -51,17 +42,11 @@ async def run_genesis_phase() -> (
         character_profiles = create_default_characters(plot_outline["protagonist_name"])
         world_building = create_default_world()
 
-    plot_outline, plot_usage = await bootstrap_plot_outline(plot_outline)
-    if plot_usage:
-        _add_usage(usage_totals, plot_usage)
-    character_profiles, char_usage = await bootstrap_characters(
+    plot_outline, _ = await bootstrap_plot_outline(plot_outline)
+    character_profiles, _ = await bootstrap_characters(
         character_profiles, plot_outline
     )
-    if char_usage:
-        _add_usage(usage_totals, char_usage)
-    world_building, world_usage = await bootstrap_world(world_building, plot_outline)
-    if world_usage:
-        _add_usage(usage_totals, world_usage)
+    world_building, _ = await bootstrap_world(world_building, plot_outline)
 
     await plot_queries.save_plot_outline_to_db(plot_outline)
     logger.info("Persisted bootstrapped plot outline to Neo4j.")
@@ -80,4 +65,4 @@ async def run_genesis_phase() -> (
     )
     logger.info("Knowledge graph pre-population complete (full sync).")
 
-    return plot_outline, character_profiles, world_items_for_kg, usage_totals
+    return plot_outline, character_profiles, world_items_for_kg

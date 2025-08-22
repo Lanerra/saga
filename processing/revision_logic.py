@@ -50,6 +50,11 @@ def _get_plot_point_info(
         return str(plot_point) if plot_point is not None else None, plot_point_index
     return None, -1
 
+
+def _generate_context_window_for_patch(
+    original_doc_text: str, problem: ProblemDetail, window_size_chars: int
+) -> str:
+    """Generate a context window around the problem location for patch generation."""
     quote_text_from_llm = problem["quote_from_original_text"]
     focus_start = problem.get("sentence_char_start")
     focus_end = problem.get("sentence_char_end")
@@ -618,13 +623,8 @@ async def _generate_patch_instructions_logic(
     hybrid_context_for_revision: str,
     chapter_plan: list[SceneDetail] | None,
     validator: RevisionAgent,
-) -> tuple[list[PatchInstruction], dict[str, int] | None]:
+) -> list[PatchInstruction]:
     patch_instructions: list[PatchInstruction] = []
-    total_usage: dict[str, int] = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-    }
 
     grouped = _group_problems_for_patch_generation(problems_to_fix)
 
@@ -639,7 +639,7 @@ async def _generate_patch_instructions_logic(
 
     async def _process_group(
         group_idx: int, group_problem: ProblemDetail, group_members: list[ProblemDetail]
-    ) -> tuple[PatchInstruction | None, dict[str, int]]:
+    ) -> PatchInstruction | None:
         context_snippet = await utils._get_context_window_for_patch_llm(
             original_text,
             group_problem,
@@ -647,14 +647,9 @@ async def _generate_patch_instructions_logic(
         )
 
         patch_instr: PatchInstruction | None = None
-        usage_acc: dict[str, int] = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
 
         for _ in range(config.PATCH_GENERATION_ATTEMPTS):
-            patch_instr_tmp, usage = await _generate_single_patch_instruction_llm(
+            patch_instr_tmp, _ = await _generate_single_patch_instruction_llm(
                 plot_outline,
                 context_snippet,
                 group_problem,
@@ -662,20 +657,14 @@ async def _generate_patch_instructions_logic(
                 hybrid_context_for_revision,
                 chapter_plan,
             )
-            if usage:
-                for k, v in usage.items():
-                    usage_acc[k] += v
             if not patch_instr_tmp:
                 continue
             if not config.AGENT_ENABLE_PATCH_VALIDATION:
                 patch_instr = patch_instr_tmp
                 break
-            valid, val_usage = await validator.validate_patch(
+            valid, _ = await validator.validate_patch(
                 context_snippet, patch_instr_tmp, group_members
             )
-            if val_usage:
-                for k, v in val_usage.items():
-                    usage_acc[k] += v
             if valid:
                 patch_instr = patch_instr_tmp
                 break
@@ -684,7 +673,7 @@ async def _generate_patch_instructions_logic(
             logger.warning(
                 f"Failed to generate valid patch for group {group_idx} in Ch {chapter_number}."
             )
-        return patch_instr, usage_acc
+        return patch_instr
 
     tasks = [
         _process_group(idx, gp, gm)
@@ -692,16 +681,14 @@ async def _generate_patch_instructions_logic(
     ]
 
     results = await asyncio.gather(*tasks)
-    for patch_instr, usage_acc in results:
+    for patch_instr in results:
         if patch_instr:
             patch_instructions.append(patch_instr)
-        for k, v in usage_acc.items():
-            total_usage[k] += v
 
     logger.info(
         f"Generated {len(patch_instructions)} patch instructions for Ch {chapter_number}."
     )
-    return patch_instructions, total_usage if total_usage["total_tokens"] > 0 else None
+    return patch_instructions
 
 
 async def _apply_patches_to_text(
@@ -880,23 +867,11 @@ async def revise_chapter_draft_logic(
     chapter_plan: list[SceneDetail] | None,
     is_from_flawed_source: bool = False,
     already_patched_spans: list[tuple[int, int]] | None | None = None,
-) -> tuple[tuple[str, str, list[tuple[int, int]]] | None, dict[str, int] | None]:
+) -> tuple[str, str, list[tuple[int, int]]] | None:
     if already_patched_spans is None:
         already_patched_spans = []
 
-    cumulative_usage_data: dict[str, int] = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-    }
 
-    def _add_usage(usage: dict[str, int] | None):
-        if usage:
-            cumulative_usage_data["prompt_tokens"] += usage.get("prompt_tokens", 0)
-            cumulative_usage_data["completion_tokens"] += usage.get(
-                "completion_tokens", 0
-            )
-            cumulative_usage_data["total_tokens"] += usage.get("total_tokens", 0)
 
     if not original_text:
         logger.error(
@@ -950,10 +925,7 @@ async def revise_chapter_draft_logic(
                     return True, None
 
             validator = _BypassValidator()
-        (
-            patch_instructions,
-            patch_usage,
-        ) = await _generate_patch_instructions_logic(
+        patch_instructions = await _generate_patch_instructions_logic(
             plot_outline,
             original_text,
             problems_to_fix,
@@ -962,7 +934,6 @@ async def revise_chapter_draft_logic(
             chapter_plan,
             validator,
         )
-        _add_usage(patch_usage)
         if patch_instructions:
             (
                 patched_text,
@@ -997,7 +968,7 @@ async def revise_chapter_draft_logic(
             if isinstance(items, dict)
         }
         plot_focus, plot_idx = _get_plot_point_info(plot_outline, chapter_number)
-        post_eval, post_usage = await evaluator.evaluate_chapter_draft(
+        post_eval, _ = await evaluator.evaluate_chapter_draft(
             plot_outline,
             list(character_profiles.keys()),
             world_ids,
@@ -1007,7 +978,6 @@ async def revise_chapter_draft_logic(
             plot_idx,
             hybrid_context_for_revision,
         )
-        _add_usage(post_usage)
         remaining = len(post_eval.get("problems_found", []))
         if remaining <= config.POST_PATCH_PROBLEM_THRESHOLD:
             use_patched_text_as_final = True
@@ -1153,7 +1123,7 @@ async def revise_chapter_draft_logic(
 
         (
             raw_revised_llm_output_for_log,
-            full_rewrite_usage,
+            _,
         ) = await llm_service.async_call_llm(
             model_name=config.REVISION_MODEL,
             prompt=prompt_full_rewrite,
@@ -1165,7 +1135,6 @@ async def revise_chapter_draft_logic(
             presence_penalty=config.PRESENCE_PENALTY_REVISION,
             auto_clean_response=False,
         )
-        _add_usage(full_rewrite_usage)
 
         final_revised_text = llm_service.clean_model_response(
             raw_revised_llm_output_for_log
@@ -1181,12 +1150,7 @@ async def revise_chapter_draft_logic(
         logger.error(
             f"Revision process for ch {chapter_number} resulted in no usable content."
         )
-        return (
-            None,
-            cumulative_usage_data
-            if cumulative_usage_data["total_tokens"] > 0
-            else None,
-        )
+        return None
 
     if len(final_revised_text) < config.MIN_ACCEPTABLE_DRAFT_LENGTH:
         logger.warning(
@@ -1200,4 +1164,4 @@ async def revise_chapter_draft_logic(
         final_revised_text,
         final_raw_llm_output,
         final_spans_for_next_cycle,
-    ), cumulative_usage_data if cumulative_usage_data["total_tokens"] > 0 else None
+    )
