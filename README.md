@@ -1,198 +1,195 @@
-# SAGA: Semantic And Graph-enhanced Authoring 🌌📚
-## Let NANA (Next-gen Autonomous Narrative Architecture) tell you a story, just like old times!
+# SAGA - Semantic And Graph-enhanced Authoring
+# Autonomous Novel-Writing System
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+**NOTE**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactoring and overhaul. Things may not work as intended. Ingestion, for certain, doesn't work at the moment.
 
-SAGA is an autonomous, agentic creative-writing system designed to generate entire novels. Powered by the **NANA** engine, SAGA leverages Large Language Models (LLMs), a sophisticated understanding of narrative context through embeddings, and a Neo4j graph database to create rich, coherent, and evolving narratives.
+SAGA is a novel-writing system that leverages a knowledge graph and multiple specialized agents to autonomously create and refine stories. It is designed to handle complex narrative structures while maintaining coherence and consistency.
 
-### Progress Window
-*(This is a representation of the Rich CLI progress window)*
-![SAGA Progress Window](https://github.com/Lanerra/saga/blob/master/SAGA.png)
+## Features
 
-### Example Knowledge Graph Visualization (4 Chapters)
-![SAGA KG Visualization](https://github.com/Lanerra/saga/blob/master/SAGA-KG-Ch4.png)
+- **Knowledge Graph (KG)**: Stores and manages all entities, relationships, and narrative elements using Neo4j.
+- **Modular Agent Architecture**: Includes agents for narrative drafting, consistency checks, revisions, and knowledge extraction.
+- **LLM Integration**: Utilizes large language models for creative and analytical tasks.
+- **Configurable Generation Parameters**: Fine-tune the novel generation process through configuration settings.
+- **Robust Testing Framework**: Comprehensive test coverage using `pytest` with custom markers for test categorization.
+- **Code Quality**: Enforces PEP8 and bug-free code with `ruff` linter and formatter.
+- **Vector Search**: Uses vector embeddings for enhanced search and similarity detection.
+- **Agentic Planning**: Supports scene planning and chapter drafting through agentic workflows.
 
-## Overview
+## Installation
 
-SAGA, with its NANA engine, is an ambitious project designed to autonomously craft entire novels. It transcends simple text generation by employing a streamlined team of specialized AI agents:
+To set up and run SAGA, follow these steps:
 
-*   **`agents.NarrativeAgent`:** Combines planning and drafting capabilities, creating detailed scene-by-scene plans and generating prose for chapters.
-*   **`agents.RevisionAgent`:** Handles evaluation (plot coherence, thematic alignment, character consistency), continuity checks, and patch-based revisions.
-*   **`agents.KnowledgeAgent`:** Manages the knowledge graph in Neo4j, summarizing chapters, extracting new information from final text, and performing periodic "healing" cycles to resolve duplicates and enrich sparse data.
-
-SAGA constructs a dynamic, interconnected understanding of the story's world, characters, and plot. This evolving knowledge, stored and queried from a Neo4j graph database, enables the system to maintain greater consistency, depth, and narrative cohesion as the story unfolds over many chapters.
-
-## Key Features
-
-*   **Consolidated Agent Architecture:** Streamlined agent roles reduce complexity while enhancing coordination (NarrativeAgent for drafting/planning, RevisionAgent for evaluation/revision, KnowledgeAgent for KG maintenance).
-*   **Autonomous Multi-Chapter Novel Generation:** Capable of generating batches of chapters (e.g., 3 chapters in ~11 minutes) in a single run, producing substantial narrative content (~13K+ tokens per chapter).
-*   **Sophisticated Agentic Pipeline:** Orchestrates the creative writing process through NarrativeAgent, RevisionAgent, and KnowledgeAgent working in concert.
-*   **Deep Knowledge Graph Integration (Neo4j):**
-    *   Persistently stores and retrieves story canon, character profiles, detailed world-building elements, and plot points via a dedicated `data_access` layer.
-    *   Features a robust, predefined schema with constraints and vector index for semantic search, automatically created on first run.
-    *   Supports complex queries for consistency checking, context retrieval, and graph maintenance.
-*   **Hybrid Semantic & Factual Context Generation:**
-    *   Leverages text embeddings (via Ollama) and Neo4j vector similarity search to construct semantically relevant context from previous chapters.
-    *   Integrates key factual data extracted from the Knowledge Graph to ground the LLM in established canon.
-*   **Iterative Drafting, Evaluation, & Revision Cycle:** Chapters undergo a rigorous process of drafting, multi-faceted evaluation, and intelligent revision (patch-based or full rewrite).
-*   **Dynamic Knowledge Graph Updates & Healing:** The system "learns" from generated content. `KnowledgeAgent` extracts new information (character updates, world-building changes) and performs periodic maintenance to resolve duplicate entities and enrich sparse nodes.
-*   **Provisional Data Handling:** Explicitly tracks and manages provisional data derived from unrevised drafts, ensuring clear distinction between canonical and tentative information in the knowledge graph.
-*   **Flexible Configuration (`config.py` & `.env`):**
-    *   Extensive options for LLM endpoints, model selection per task, API keys, Neo4j connection details, generation parameters, and more.
-    *   Supports "Unhinged Mode" for highly randomized initial story elements when user input is minimal.
-*   **User-Driven Initialization:** Accepts user-supplied story elements via `user_story_elements.yaml`, allowing customized starting points with `[Fill-in]` placeholders for SAGA to generate missing elements.
-*   **Rich Console Progress Display:** Optional live progress updates using Rich library for clear generation tracking.
-
-## Architecture & Pipeline
-
-SAGA's NANA engine orchestrates a refined pipeline for novel generation:
-
-1.  **Initialization & Setup (First Run or Reset):**
-    *   **Connect & Verify Neo4j:** Establishes connection and ensures database schema (indexes, constraints, vector index) is in place.
-    *   **Load Existing State (if any):** Attempts to load plot outline and chapter count from Neo4j.
-    *   **Initial Story Generation (`initialization.genesis`):**
-        *   If `user_story_elements.yaml` provided, parses it to bootstrap story elements.
-        *   Otherwise, `bootstrapper` modules fill in missing elements via targeted LLM calls.
-    *   **KG Pre-population:** `KnowledgeAgent` syncs foundational story data to Neo4j.
-
-2.  **Chapter Generation Loop (up to `CHAPTERS_PER_RUN` chapters):**
-    *   **(A) Prerequisites (`orchestration.chapter_flow`):**
-        *   Retrieves current **Plot Point Focus** for the chapter.
-        *   **Narrative Planning & Drafting:** `NarrativeAgent` creates scene plans and drafts chapters.
-        *   **Context Generation:** `processing.context_generator` assembles hybrid context by:
-            *   Querying Neo4j for semantically similar past chapter summaries (vector search).
-            *   Fetching key facts from Knowledge Graph via `prompt_data_getters`.
-    *   **(B) Revision & Evaluation:**
-        *   Draft undergoes de-duplication via `processing.text_deduplicator`.
-        *   `RevisionAgent` assesses draft against multiple criteria.
-    *   **(C) Revision (if needed):**
-        *   `revision_logic` applies targeted text patches or full rewrites.
-        *   Evaluation steps repeated on revised text.
-    *   **(D) Knowledge Graph Update:**
-        *   `KnowledgeAgent` processes final chapter text, extracts new information, and updates Neo4j.
-        *   Periodic healing cycles resolve duplicates and enrich sparse nodes.
-
-## Setup
-
-### Prerequisites
-
-*   Python 3.9+
-*   Ollama instance for text embeddings (`ollama serve`)
-*   OpenAI-API compatible LLM server (e.g., LM Studio, oobabooga)
-*   Neo4j Database (v5.x recommended). Docker setup provided.
-
-### 1. Clone Repository
+### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Lanerra/saga.git
+git clone git@github.com:Lanerra/saga
 cd saga
 ```
 
-### 2. Install Dependencies
-
-Use a virtual environment:
+### 2. Set Up a Python Environment
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python -m spacy download en_core_web_sm
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-### 3. Configure SAGA
+### 3. Install Dependencies
 
-Create `.env` file in project root:
+```bash
+pip install -r requirements.txt
+```
 
-```dotenv
-# LLM API Configuration
-OPENAI_API_BASE="http://127.0.0.1:8080/v1"
-OPENAI_API_KEY="nope"
+### 4. Install the Project
 
-# Embedding Model (Ollama)
-OLLAMA_EMBED_URL="http://127.0.0.1:11434"
+```bash
+pip install -e .
+```
+
+### 5. Set Up Configuration
+
+Copy the `.env.example` file to `.env` and update the configuration values as needed:
+
+```bash
+cp .env.example .env
+```
+
+Example configuration values:
+
+```
+# API and Model Configuration
+OLLAMA_EMBED_URL=http://127.0.0.1:11434
+OPENAI_API_BASE=http://127.0.0.1:8080/v1
+OPENAI_API_KEY=sk-nope
 EMBEDDING_MODEL="nomic-embed-text:latest"
-EXPECTED_EMBEDDING_DIM="768"
+EXPECTED_EMBEDDING_DIM=768
 
-# Neo4j Connection
-NEO4J_URI="bolt://localhost:7687"
-NEO4J_USER="neo4j"
-NEO4J_PASSWORD="saga_password"
-NEO4J_DATABASE="neo4j"
+# Neo4j Connection Settings
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=saga_password
+NEO4J_DATABASE=neo4j
+NEO4J_VECTOR_DIMENSIONS=768
 
 # Model Aliases
-LARGE_MODEL="Qwen3-14B-Q4"    # Planning, Evaluation
-MEDIUM_MODEL="Qwen3-8B-Q4"   # KG updates, Patches
-SMALL_MODEL="Qwen3-4B-Q4"    # Summaries
-NARRATOR_MODEL="Qwen3-14B-Q4" # Drafting, Full Revision
+LARGE_MODEL="qwen3-a3b"
+MEDIUM_MODEL="qwen3-a3b"
+SMALL_MODEL="qwen3-a3b"
+NARRATIVE_MODEL="qwen3-a3b"
+
+# SAGA Generation Parameters
+ENABLE_LLM_NO_THINK_DIRECTIVE=True
+UNHINGED_PLOT_MODE=False
+
+# Generation Run Settings
+TARGET_PLOT_POINTS_INITIAL_GENERATION=18
+CHAPTERS_PER_RUN=6
+TARGET_SCENES_MIN=4
+TARGET_SCENES_MAX=6
+
+# Token Limits
+MAX_CONTEXT_TOKENS=40960
+MAX_GENERATION_TOKENS=32768
+MAX_SUMMARY_TOKENS=4096
+MAX_KG_TRIPLE_TOKENS=8192
+MAX_PREPOP_KG_TOKENS=16384
+MAX_PLANNING_TOKENS=16384
+
+# Draft Quality & Length
+MIN_ACCEPTABLE_DRAFT_LENGTH=12000
+
+# Revision Process
+ENABLE_PATCH_BASED_REVISION=True
+AGENT_ENABLE_PATCH_VALIDATION=True
+MAX_PATCH_INSTRUCTIONS_TO_GENERATE=10
+REVISION_COHERENCE_THRESHOLD=0.60
+REVISION_SIMILARITY_ACCEPTANCE=0.995
+
+# LLM Call Robustness
+LLM_RETRY_ATTEMPTS=3
+
+# Logging
+LOG_LEVEL=INFO
+
+# Rich Progress Display
+ENABLE_RICH_PROGRESS=True
 ```
 
-Refer to `config.py` for full configurable options.
+### 6. Start the System
 
-### 4. Set Up Neo4j Database
-
-Docker setup provided in `docker-compose.yml`:
-
-```bash
-docker-compose up -d        # Start Neo4j
-docker-compose down         # Stop Neo4j
-docker-compose logs -f neo4j-apoc  # View logs
-```
-
-First run of SAGA auto-creates necessary database constraints and indexes.
-
-### 5. Provide Initial Story Elements (Optional)
-
-Create `user_story_elements.yaml` using `user_story_elements.yaml.example` as template:
-
-```yaml
-title: "My Novel"
-genre: "[Fill-in]"
-protagonist: "[Fill-in]"
-```
-
-### 6. Configure "Unhinged Mode" (Optional)
-
-Customize `unhinged_data/` JSON files for randomized initial story elements.
-
-## Running SAGA
+Run the system using the `main.py` entry point:
 
 ```bash
 python main.py
 ```
-
-*   **First Run:** Initial setup (plot, world, characters) and KG pre-population.
-*   **Subsequent Runs:** Load existing state from Neo4j and continue generating chapters.
-*   Output files saved in `novel_output/` (ignored by Git).
-
-**Performance:** Generates 3 chapters (~13K tokens each) in ~11 minutes using Qwen3 models.
-
-### Ingestion Mode
+#### WARNING: Ingestion is currently broken and needs refactoring
+To ingest a novel, use the `--ingest` flag with the path to your text file:
 
 ```bash
 python main.py --ingest path/to/novel.txt
 ```
 
-Text split into pseudo-chapters and processed through pipeline. Knowledge graph heals every `KG_HEALING_INTERVAL` chapters.
-
-## Resetting Database
-
-**⚠️ WARNING: Deletes ALL Neo4j data!**
+If the system is running in Docker, ensure you have the Neo4j database running via `docker-compose`:
 
 ```bash
-docker-compose down -v  # Remove data volume
-docker-compose up -d neo4j
+docker-compose up -d
 ```
 
-Next `python main.py` will re-initialize.
+## Project Structure
 
-## Complexity Analysis
+```
+saga/
+├── agents/                # Specialized agents for narrative tasks
+├── core/                  # Core components for data management and LLM interaction
+├── data_access/           # Data access layer for Neo4j operations
+├── docs/                  # Documentation (currently empty)
+├── initialization/        # Initialization scripts for data loading and setup
+├── models/                # Pydantic models for validation and data structure
+├── novel_output/          # Output directory for generated novel content
+├── orchestration/         # Orchestrator logic for managing agent workflows
+├── processing/            # Tools for text processing, context generation, and similarity checks
+├── prompts/               # J2 templates for generating prompts for agents
+├── tests/                 # Comprehensive test suite for validation
+├── ui/                    # UI components for display and interaction
+├── utils/                 # Utility functions for ingestion, similarity checks, etc.
+├── .env.example           # Example configuration file
+├── main.py                # Entry point for the system
+├── pyproject.toml         # Project configuration for dependencies and tools
+├── requirements.txt       # Python dependencies for the project
+├── LICENSE                # License information
+└── README.md              # This file
+```
+
+## Usage
+
+### Ingestion Mode
+### WARNING: Ingestion is currently broken and needs refactoring
+
+Ingest a novel to populate the knowledge graph and start the system's internal modeling process:
 
 ```bash
-python complexity_report.py
+python main.py --ingest novel.txt
 ```
 
-Runs `radon cc . -nc` to highlight functions needing refactoring.
+### Generation Mode
+
+Start the autonomous novel generation loop:
+
+```bash
+python main.py
+```
+
+The system will generate chapters and refine them using the defined agents and workflows.
+
+## Development Practices
+
+The project uses the following tools to ensure code quality and maintainability:
+
+- **Ruff**: Linter and formatter for PEP8 compliance and bug detection.
+- **pytest**: Testing framework with custom markers for test categorization.
+- **Neo4j**: Knowledge graph for narrative structure, character relationships, and world elements.
+- **LLM Integration**: Uses LLMs for creative and analytical tasks in the novel generation process.
 
 ## License
 
-Licensed under Apache 2.0. See `LICENSE` file.
+SAGA is licensed under the [![Apache-2.0 License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)

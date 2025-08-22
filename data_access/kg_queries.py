@@ -27,10 +27,127 @@ def _to_pascal_case(text: str) -> str:
 
 
 def normalize_relationship_type(rel_type: str) -> str:
-    """Return a canonical representation of a relationship type."""
-    cleaned = re.sub(r"[^a-zA-Z0-9]+", "_", rel_type.strip())
-    cleaned = re.sub(r"_+", "_", cleaned)
-    return cleaned.upper()
+    """Return a canonical representation of a relationship type using predefined taxonomy."""
+    import kg_constants
+    
+    # First clean the input
+    cleaned = rel_type.strip().lower()
+    
+    # Check direct normalization mappings first
+    if cleaned in kg_constants.RELATIONSHIP_NORMALIZATIONS:
+        return kg_constants.RELATIONSHIP_NORMALIZATIONS[cleaned]
+    
+    # Check if it's already a valid canonical type
+    rel_upper = cleaned.upper()
+    if rel_upper in kg_constants.RELATIONSHIP_TYPES:
+        return rel_upper
+    
+    # Try basic cleaning and check again
+    basic_cleaned = re.sub(r"[^a-zA-Z0-9]+", "_", cleaned)
+    basic_cleaned = re.sub(r"_+", "_", basic_cleaned).upper()
+    
+    if basic_cleaned in kg_constants.RELATIONSHIP_TYPES:
+        return basic_cleaned
+    
+    # Use semantic similarity as fallback (simple keyword matching)
+    best_match = _find_best_relationship_match(cleaned)
+    if best_match:
+        return best_match
+    
+    # Final fallback: use basic normalization
+    return basic_cleaned
+
+
+def _find_best_relationship_match(rel_type: str) -> str | None:
+    """Find the best matching relationship type using simple keyword matching."""
+    import kg_constants
+    
+    rel_lower = rel_type.lower()
+    
+    # Define keyword mappings for common patterns
+    keyword_mappings = {
+        # Social relationships
+        ('friend', 'befriend'): 'FRIEND_OF',
+        ('enemy', 'antagonize', 'oppose'): 'ENEMY_OF', 
+        ('ally', 'allied'): 'ALLY_OF',
+        ('rival', 'compete'): 'RIVAL_OF',
+        ('family', 'related', 'parent', 'child', 'sibling'): 'FAMILY_OF',
+        ('love', 'romantic', 'dating', 'married'): 'ROMANTIC_WITH',
+        ('mentor', 'teach', 'guide'): 'MENTOR_TO',
+        ('student', 'learn'): 'STUDENT_OF',
+        ('work', 'employ', 'job'): 'WORKS_FOR',
+        ('lead', 'command', 'boss', 'supervise'): 'LEADS',
+        ('serve', 'loyal'): 'SERVES',
+        ('know', 'acquaint'): 'KNOWS',
+        ('trust'): 'TRUSTS',
+        ('distrust', 'mistrust'): 'DISTRUSTS',
+        
+        # Emotional relationships  
+        ('hate', 'loath', 'despise'): 'HATES',
+        ('fear', 'afraid', 'scare'): 'FEARS',
+        ('respect', 'admire'): 'RESPECTS',
+        ('envy', 'jealous'): 'ENVIES',
+        ('pity', 'sympathy'): 'PITIES',
+        
+        # Causal relationships
+        ('cause', 'lead to', 'result'): 'CAUSES',
+        ('prevent', 'stop', 'block'): 'PREVENTS',
+        ('enable', 'allow'): 'ENABLES',
+        ('trigger', 'start'): 'TRIGGERS',
+        ('depend', 'require'): 'DEPENDS_ON',
+        ('conflict', 'clash'): 'CONFLICTS_WITH',
+        ('support', 'help', 'aid'): 'SUPPORTS',
+        ('threaten', 'danger'): 'THREATENS',
+        ('protect', 'guard', 'defend'): 'PROTECTS',
+        
+        # Spatial relationships
+        ('located', 'position', 'situated'): 'LOCATED_AT',
+        ('inside', 'within', 'contained'): 'LOCATED_IN',
+        ('near', 'close', 'proximity'): 'NEAR',
+        ('adjacent', 'next'): 'ADJACENT_TO',
+        ('origin', 'from'): 'ORIGINATES_FROM',
+        ('travel', 'move', 'go'): 'TRAVELS_TO',
+        
+        # Ownership relationships
+        ('own', 'possess', 'have', 'belong'): 'OWNS',
+        ('create', 'make', 'build'): 'CREATED_BY',
+        ('inherit'): 'INHERITED_FROM',
+        ('steal', 'rob'): 'STOLEN_FROM',
+        ('give', 'gift'): 'GIVEN_BY',
+        ('find', 'discover'): 'FOUND_AT',
+        
+        # Organizational relationships
+        ('member', 'join'): 'MEMBER_OF',
+        ('leader', 'head'): 'LEADER_OF',
+        ('found', 'establish'): 'FOUNDED',
+        ('represent'): 'REPRESENTS',
+        
+        # Physical relationships
+        ('part', 'component'): 'PART_OF',
+        ('contain', 'hold'): 'CONTAINS',
+        ('connect', 'link'): 'CONNECTED_TO',
+        ('destroy', 'ruin'): 'DESTROYED_BY',
+        ('damage', 'harm'): 'DAMAGED_BY',
+        ('repair', 'fix'): 'REPAIRED_BY',
+        
+        # Additional mappings for better matching
+        ('employ', 'boss', 'manage'): 'LEADS',  # Not WORKS_FOR
+        ('live', 'reside', 'stay'): 'LOCATED_IN',
+        ('travel', 'journey', 'move'): 'TRAVELS_TO',
+        ('own', 'possess', 'hold'): 'OWNS',
+    }
+    
+    # Find best match using whole word matching to avoid false positives
+    import re
+    
+    for keywords, canonical_rel in keyword_mappings.items():
+        for keyword in keywords:
+            # Use word boundary matching to avoid partial matches
+            # e.g., "trust" shouldn't match "destroys" 
+            if re.search(r'\b' + re.escape(keyword) + r'\b', rel_lower):
+                return canonical_rel
+    
+    return None
 
 
 async def normalize_existing_relationship_types() -> None:
@@ -512,11 +629,21 @@ async def find_candidate_duplicate_entities(
     WHERE id(e1) < id(e2)
       AND e1.name IS NOT NULL AND e2.name IS NOT NULL
       AND NOT e1:ValueNode AND NOT e2:ValueNode
+    // Handle potential StringArray by converting to string if needed
     WITH e1, e2,
-         toLower(e1.name) AS name1_lower,
-         toLower(e2.name) AS name2_lower,
-         size(e1.name) AS len1,
-         size(e2.name) AS len2
+         CASE 
+             WHEN e1.name IS NOT NULL AND (e1.name + []) = e1.name THEN toString(e1.name[0])
+             ELSE toString(e1.name)
+         END AS name1_string,
+         CASE 
+             WHEN e2.name IS NOT NULL AND (e2.name + []) = e2.name THEN toString(e2.name[0])
+             ELSE toString(e2.name)
+         END AS name2_string
+    WITH e1, e2,
+         toLower(name1_string) AS name1_lower,
+         toLower(name2_string) AS name2_lower,
+         size(name1_string) AS len1,
+         size(name2_string) AS len2
     // Calculate character overlap similarity
     WITH e1, e2, name1_lower, name2_lower, len1, len2,
          [c IN split(name1_lower, '') WHERE c IN split(name2_lower, '')] AS common_chars
@@ -602,20 +729,45 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
              CASE 
                  WHEN targetProps[key] IS NULL THEN []
                  WHEN targetProps[key] IS NOT NULL AND NOT targetProps[key] IN [null] AND (targetProps[key] + []) = targetProps[key] THEN targetProps[key]  // It's an array
-                 ELSE [toString(targetProps[key])]  // Convert single value to array
+                 ELSE [targetProps[key]]  // Convert single value to array (keep as original type)
              END AS targetArray,
              CASE 
                  WHEN source[key] IS NULL THEN []
                  WHEN source[key] IS NOT NULL AND NOT source[key] IN [null] AND (source[key] + []) = source[key] THEN source[key]  // It's an array
-                 ELSE [toString(source[key])]  // Convert single value to array
+                 ELSE [source[key]]  // Convert single value to array (keep as original type)
              END AS sourceArray
-        SET target[key] = targetArray + sourceArray
+        // For StringArray, convert to string by joining elements
+        WITH target, source, key, targetProps,
+             CASE 
+                 WHEN targetArray IS NOT NULL AND NOT targetArray IN [null] AND (targetArray + []) = targetArray THEN 
+                     // It's an array, convert to string by joining elements
+                     apoc.text.join(targetArray, ', ')
+                 ELSE 
+                     targetArray[0]
+             END AS targetValue,
+             CASE 
+                 WHEN sourceArray IS NOT NULL AND NOT sourceArray IN [null] AND (sourceArray + []) = sourceArray THEN 
+                     // It's an array, convert to string by joining elements
+                     apoc.text.join(sourceArray, ', ')
+                 ELSE 
+                     sourceArray[0]
+             END AS sourceValue
+        SET target[key] = targetValue + ', ' + sourceValue
     }
     CALL (target, source, key, targetProps) {
         WITH target, source, key, targetProps
         WITH target, source, key, targetProps
         WHERE targetProps[key] IS NULL
-        SET target[key] = source[key]
+        // Handle StringArray case for source[key] before setting
+        WITH target, source, key, targetProps,
+             CASE 
+                 WHEN source[key] IS NOT NULL AND NOT source[key] IN [null] AND (source[key] + []) = source[key] THEN 
+                     // It's an array, convert to string by joining elements
+                     apoc.text.join(source[key], ', ')
+                 ELSE 
+                     source[key]
+             END AS sourceValue
+        SET target[key] = sourceValue
     }
     RETURN count(*) AS copiedProps
     """
@@ -827,6 +979,107 @@ async def deduplicate_relationships() -> int:
         return 0
 
 
+async def consolidate_similar_relationships() -> int:
+    """Consolidate semantically similar relationships using the predefined taxonomy."""
+    import kg_constants
+    
+    # Get all relationship types currently in the database
+    query_current = """
+    MATCH ()-[r]->()
+    RETURN DISTINCT type(r) AS rel_type, count(r) AS count
+    ORDER BY count DESC
+    """
+    
+    try:
+        current_results = await neo4j_manager.execute_read_query(query_current)
+        current_types = [r["rel_type"] for r in current_results if r.get("rel_type")]
+        
+        consolidation_count = 0
+        
+        # Process each current relationship type
+        for current_type in current_types:
+            # Skip if already canonical
+            if current_type in kg_constants.RELATIONSHIP_TYPES:
+                continue
+                
+            # Find canonical version
+            canonical_type = normalize_relationship_type(current_type)
+            
+            # Skip if no change needed
+            if current_type == canonical_type:
+                continue
+                
+            # Consolidate relationships
+            consolidate_query = f"""
+            MATCH (s)-[r:{current_type}]->(o)
+            CREATE (s)-[new_r:{canonical_type}]->(o)
+            SET new_r = properties(r)
+            DELETE r
+            RETURN count(*) AS consolidated
+            """
+            
+            try:
+                consolidate_results = await neo4j_manager.execute_write_query(consolidate_query)
+                count = consolidate_results[0].get("consolidated", 0) if consolidate_results else 0
+                consolidation_count += count
+                
+                if count > 0:
+                    logger.info(f"Consolidated {count} relationships: {current_type} -> {canonical_type}")
+                    
+            except Exception as exc:
+                logger.warning(f"Failed to consolidate {current_type} -> {canonical_type}: {exc}")
+                
+        return consolidation_count
+        
+    except Exception as exc:
+        logger.error("Failed to consolidate similar relationships: %s", exc, exc_info=True)
+        return 0
+
+
+async def validate_relationship_types_in_db() -> dict[str, Any]:
+    """Validate all relationship types in the database against the predefined taxonomy."""
+    import kg_constants
+    
+    # Get all relationship types currently in use
+    query = """
+    MATCH ()-[r]->()
+    RETURN DISTINCT type(r) AS rel_type, count(r) AS usage_count
+    ORDER BY usage_count DESC
+    """
+    
+    try:
+        results = await neo4j_manager.execute_read_query(query)
+        current_types = {r["rel_type"]: r["usage_count"] for r in results if r.get("rel_type")}
+        
+        # Categorize relationship types
+        valid_types = {}
+        invalid_types = {}
+        normalizable_types = {}
+        
+        for rel_type, count in current_types.items():
+            if rel_type in kg_constants.RELATIONSHIP_TYPES:
+                valid_types[rel_type] = count
+            else:
+                # Check if it can be normalized
+                canonical = normalize_relationship_type(rel_type)
+                if canonical in kg_constants.RELATIONSHIP_TYPES and canonical != rel_type:
+                    normalizable_types[rel_type] = {"canonical": canonical, "count": count}
+                else:
+                    invalid_types[rel_type] = count
+        
+        return {
+            "valid_types": valid_types,
+            "normalizable_types": normalizable_types, 
+            "invalid_types": invalid_types,
+            "total_relationships": sum(current_types.values()),
+            "taxonomy_coverage": len(valid_types) / len(kg_constants.RELATIONSHIP_TYPES) * 100
+        }
+        
+    except Exception as exc:
+        logger.error("Failed to validate relationship types in DB: %s", exc, exc_info=True)
+        return {}
+
+
 async def fetch_unresolved_dynamic_relationships(
     limit: int = 50,
 ) -> list[dict[str, Any]]:
@@ -900,3 +1153,69 @@ async def get_shortest_path_length_between_entities(
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error("Failed to compute shortest path length: %s", exc, exc_info=True)
     return None
+
+
+
+async def find_orphaned_bootstrap_elements() -> list[dict[str, Any]]:
+    """Find bootstrap elements with no relationships."""
+    query = """
+    MATCH (we:WorldElement)
+    WHERE (we.source CONTAINS 'bootstrap' OR we.created_chapter = 0)
+      AND NOT (we)-[]->() AND NOT ()-[]->(we)
+    RETURN we.name as name, we.category as category, we.id as id
+    LIMIT 10
+    """
+    try:
+        results = await neo4j_manager.execute_read_query(query)
+        return [dict(record) for record in results] if results else []
+    except Exception as e:
+        logger.error(f"Error finding orphaned bootstrap elements: {e}", exc_info=True)
+        return []
+
+
+async def find_potential_bridges(element: dict[str, Any]) -> list[dict[str, Any]]:
+    """Find characters/locations that could bridge to this element."""
+    query = """
+    MATCH (bridge)
+    WHERE (bridge:Character OR bridge:WorldElement)
+      AND bridge.name <> $element_name
+      AND ((bridge)-[]->() OR ()-[]->(bridge))  // Has some connections
+    RETURN bridge.name as name, bridge.id as id,
+           size((bridge)-[]->()) + size(()-[]->(bridge)) as connection_count
+    ORDER BY connection_count DESC
+    LIMIT 5
+    """
+    try:
+        params = {"element_name": element.get("name", "")}
+        results = await neo4j_manager.execute_read_query(query, params)
+        return [dict(record) for record in results] if results else []
+    except Exception as e:
+        logger.error(f"Error finding potential bridges: {e}", exc_info=True)
+        return []
+
+
+async def create_contextual_relationship(
+    element1: dict[str, Any],
+    element2: dict[str, Any],
+    relationship_type: str = "CONTEXTUALLY_RELATED"
+) -> None:
+    """Create a contextual relationship between two elements."""
+    query = """
+    MATCH (e1), (e2)
+    WHERE e1.id = $element1_id AND e2.id = $element2_id
+    MERGE (e1)-[r:CONTEXTUALLY_RELATED]->(e2)
+    SET r.created_by = 'bootstrap_healing',
+        r.created_ts = timestamp(),
+        r.confidence = 0.6
+    """
+    try:
+        params = {
+            "element1_id": element1.get("id"),
+            "element2_id": element2.get("id")
+        }
+        await neo4j_manager.execute_write_query(query, params)
+        logger.info(
+            f"Created contextual relationship between '{element1.get('name')}' and '{element2.get('name')}'"
+        )
+    except Exception as e:
+        logger.error(f"Error creating contextual relationship: {e}", exc_info=True)

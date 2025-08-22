@@ -1,7 +1,16 @@
 /no_think
-You are a master storyteller. Based on the provided summary, propose {{ num_points }} succinct future plot points for how the story could continue.
-Return only a JSON array of strings.
 
-Summary:
+You are a master storyteller tasked with planning the future direction of a narrative. Based on the provided summary, propose {{ num_points }} succinct future plot points for how the story could continue.
+
+**Story Summary:**
+--- BEGIN SUMMARY ---
 {{ summary }}
+--- END SUMMARY ---
 
+**Instructions:**
+1. Generate {{ num_points }} compelling plot points that logically follow from the current story state.
+2. Each plot point should advance the narrative meaningfully and create potential for conflict or character development.
+3. Ensure plot points maintain narrative consistency with the established story elements.
+4. Output ONLY a JSON array of strings.
+
+--- BEGIN PLOT CONTINUATION ---

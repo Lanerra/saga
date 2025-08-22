@@ -1006,6 +1006,15 @@ class NANA_Orchestrator:
             novel_chapter_number, "final_summary", result.get("summary")
         )
 
+        # Bootstrap connectivity healing for early chapters
+        if (
+            config.BOOTSTRAP_INTEGRATION_ENABLED
+            and novel_chapter_number <= config.BOOTSTRAP_INTEGRATION_CHAPTERS
+        ):
+            await self.knowledge_agent.heal_and_enrich_kg(
+                chapter_number=novel_chapter_number
+            )
+
         if result.get("embedding") is None:
             logger.error(
                 "NANA CRITICAL: Failed to generate embedding for final text of Chapter %s. Text saved to file system only.",
@@ -1317,6 +1326,15 @@ class NANA_Orchestrator:
                         break
 
                 current_novel_chapter_number = self.chapter_count + 1
+                plot_point_index = current_novel_chapter_number - 1
+                
+                # Get the correct plot point focus for this chapter
+                plot_points = self.plot_outline.get("plot_points", [])
+                if plot_point_index < len(plot_points):
+                    plot_point_focus = plot_points[plot_point_index]
+                else:
+                    # Fallback to last available plot point if chapter count exceeds plot points
+                    plot_point_focus = plot_points[-1] if plot_points else "No plot point available"
 
                 logger.info(
                     f"\n--- NANA: Attempting Novel Chapter {current_novel_chapter_number} (attempt {attempts_this_run + 1}/{config.CHAPTERS_PER_RUN}) ---"

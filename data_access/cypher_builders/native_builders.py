@@ -6,6 +6,8 @@ Eliminates the intermediate dict serialization layer for performance optimizatio
 
 from typing import TYPE_CHECKING, Any
 
+from utils.helpers import flatten_dict
+
 if TYPE_CHECKING:
     from models.kg_models import CharacterProfile, WorldItem
 
@@ -99,6 +101,10 @@ class NativeCypherBuilder:
         Returns:
             Tuple of (cypher_query, parameters)
         """
+        # Flatten nested dictionaries in additional_properties to ensure
+        # all values are primitive types that Neo4j can store
+        flattened_additional_props = flatten_dict(item.additional_properties)
+
         cypher = """
         MERGE (w:WorldElement:Entity {id: $id})
         SET w.name = $name,
@@ -132,7 +138,7 @@ class NativeCypherBuilder:
             "created_chapter": item.created_chapter or chapter_number,
             "is_provisional": item.is_provisional,
             "chapter_number": chapter_number,
-            "additional_props": item.additional_properties,  # Direct access - no conversion
+            "additional_props": flattened_additional_props,  # Flattened to ensure primitive types
         }
 
         return cypher, params

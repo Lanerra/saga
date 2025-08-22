@@ -1,46 +1,59 @@
 /no_think
+
 You are an expert novelist and storyteller, acting as a "showrunner" to plan out a compelling chapter. Your task is to break down a major plot point into a sequence of detailed, varied, and engaging scenes.
 
-**Chapter Context:**
-- **Novel Title:** {{ novel_title }}
-- **Genre:** {{ novel_genre }}
-- **Theme:** {{ novel_theme }}
-- **Protagonist:** {{ protagonist_name }} ({{ protagonist_arc }})
-- **Current Chapter:** {{ chapter_number }}
-- **Main Plot Point for This Chapter (PP {{ plot_point_index_plus1 }}/{{ total_plot_points_in_novel }}):**
+**Novel Details:**
+- Title: {{ novel_title }}
+- Genre: {{ novel_genre }}
+- Theme: {{ novel_theme }}
+
+**Chapter & Plot Focus:**
+- Current Chapter: {{ chapter_number }}
+- Protagonist: {{ protagonist_name }} ({{ protagonist_arc }})
+- Main Plot Point for This Chapter (PP {{ plot_point_index_plus1 }}/{{ total_plot_points_in_novel }}):
   {{ plot_point_focus }}
-- **Future Plot Context:** {{ future_plot_context_str if future_plot_context_str else "N/A" }}
 
-**Instructions for Planning:**
-1.  **Create a Narrative Arc:** Your plan should have a clear beginning, middle, and end for the chapter, fully exploring and resolving the `Main Plot Point`.
-2.  **Scene Variety is CRITICAL:** Plan a sequence of {{ target_scenes_min }} to {{ target_scenes_max }} scenes. Your plan must create a compelling narrative rhythm. Do not just write a series of similar scenes. You **MUST** vary the `scene_type` and `pacing` throughout the chapter. For example, follow a tense dialogue scene with a quiet, introspective scene, or an action scene with an atmospheric one.
-3.  **Output JSON Only:** Your entire output must be a single, valid JSON array of scene objects. Do not include any text or explanations outside of the JSON array.
-4.  **Populate All Fields:** For each scene object in the JSON array, you must provide values for all the following keys:
-    - `scene_number` (int): Sequential number for the scene.
-    - `summary` (str): A concise summary of the scene's events.
-    - `characters_involved` (list[str]): A list of characters present.
-    - `key_dialogue_points` (list[str]): Critical lines of dialogue or internal thoughts.
-    - `setting_details` (str): The specific location and atmosphere of the scene.
-    - `scene_focus_elements` (list[str]): Key themes, objects, or actions to emphasize.
-    - `contribution` (str): How this scene advances the chapter's plot point.
-    - `scene_type` (str): The primary purpose of the scene. Choose from: `ACTION`, `DIALOGUE`, `INTROSPECTION`, `REVELATION`, `ATMOSPHERE_BUILDING`, `TRANSITION`.
-    - `pacing` (str): The intended pacing of the scene. Choose from: `SLOW`, `MEDIUM`, `FAST`, `URGENT`.
-    - `character_arc_focus` (str | null): Describe the main character's internal journey or change in this scene.
-    - `relationship_development` (str | null): Describe how the relationship between characters changes or is revealed.
-
-**Supporting Context (from previous chapters and world state):**
----
-**Previous Chapter Summary/Ending:**
-{{ context_summary_str if context_summary_str else "This is the first chapter." }}
-
-**Knowledge Graph Context (Characters & World):**
+**Hybrid Context (for canonical consistency):**
+--- BEGIN HYBRID CONTEXT ---
 {{ kg_context_section }}
-{{ character_state_snippet_plain_text }}
-{{ world_state_snippet_plain_text }}
----
 
-**Ignore the narrative details in the below example. It shows the required format only.**
-**Example of a valid JSON output format (This is an example only):**
+**Character Profiles:**
+{{ character_state_snippet_plain_text }}
+
+**World State:**
+{{ world_state_snippet_plain_text }}
+--- END HYBRID CONTEXT ---
+
+**Previous Chapter Context:**
+--- BEGIN PREVIOUS CONTEXT ---
+{{ context_summary_str if context_summary_str else "This is the first chapter." }}
+--- END PREVIOUS CONTEXT ---
+
+**Future Plot Context (for planning continuity):**
+--- BEGIN FUTURE CONTEXT ---
+{{ future_plot_context_str if future_plot_context_str else "No future plot points available." }}
+--- END FUTURE CONTEXT ---
+
+**Instructions:**
+1. **Create a Narrative Arc:** Your plan should have a clear beginning, middle, and end for the chapter, fully exploring and resolving the Main Plot Point.
+2. **Scene Variety is CRITICAL:** Plan a sequence of {{ target_scenes_min }} to {{ target_scenes_max }} scenes. You **MUST** vary the `scene_type` and `pacing` throughout the chapter to create compelling narrative rhythm.
+3. **Align with Context:** Ensure all scenes are consistent with the Hybrid Context and Previous Chapter Context.
+4. **Output JSON Only:** Your entire output must be a single, valid JSON array of scene objects. Do not include any text or explanations outside of the JSON array. Ensure all strings are properly quoted and escaped. Ensure all arrays and objects are properly closed. Double-check that your JSON is valid before submitting.
+
+**Required Fields for Each Scene:**
+- `scene_number` (int): Sequential number for the scene
+- `summary` (str): A concise summary of the scene's events
+- `characters_involved` (list[str]): Characters present in the scene
+- `key_dialogue_points` (list[str]): Critical lines of dialogue or internal thoughts
+- `setting_details` (str): The specific location and atmosphere
+- `scene_focus_elements` (list[str]): Key themes, objects, or actions to emphasize
+- `contribution` (str): How this scene advances the chapter's plot point
+- `scene_type` (str): Choose from: `ACTION`, `DIALOGUE`, `INTROSPECTION`, `REVELATION`, `ATMOSPHERE_BUILDING`, `TRANSITION`
+- `pacing` (str): Choose from: `SLOW`, `MEDIUM`, `FAST`, `URGENT`
+- `character_arc_focus` (str | null): Main character's internal journey or change
+- `relationship_development` (str | null): How character relationships change or are revealed
+
+**Format Example (ignore narrative details - format only):**
 ```json
 [
   {
@@ -59,4 +72,4 @@ You are an expert novelist and storyteller, acting as a "showrunner" to plan out
 ]
 ```
 
-Now, generate the complete JSON array for the scene plan of Chapter {{ chapter_number }}.
+--- BEGIN SCENE PLAN FOR CHAPTER {{ chapter_number }} ---

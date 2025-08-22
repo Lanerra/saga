@@ -114,10 +114,12 @@ def validate_node_labels(labels: list[str]) -> list[str]:
 
 def validate_relationship_types(rel_types: list[str]) -> list[str]:
     """
-    Validate relationship types for the knowledge graph.
+    Validate relationship types against the predefined narrative taxonomy.
 
     Returns a list of validation errors. Empty list means valid.
     """
+    import kg_constants
+    
     errors = []
 
     if not isinstance(rel_types, list):
@@ -127,12 +129,46 @@ def validate_relationship_types(rel_types: list[str]) -> list[str]:
     for rel_type in rel_types:
         if not isinstance(rel_type, str) or not rel_type.strip():
             errors.append("Relationship types must be non-empty strings")
-        elif not rel_type.isupper():
+            continue
+            
+        # Basic format validation
+        if not rel_type.isupper():
             errors.append(f"Relationship type '{rel_type}' should be uppercase")
-        elif "_" not in rel_type:
-            errors.append(f"Relationship type '{rel_type}' should contain underscores")
+            
+        # Check against predefined taxonomy
+        if rel_type not in kg_constants.RELATIONSHIP_TYPES:
+            # Check if it can be normalized to a valid type
+            from data_access.kg_queries import normalize_relationship_type
+            normalized = normalize_relationship_type(rel_type)
+            
+            if normalized in kg_constants.RELATIONSHIP_TYPES:
+                # It's normalizable - suggest normalization rather than error
+                logger.info(f"Relationship type '{rel_type}' can be normalized to '{normalized}'")
+            else:
+                errors.append(f"Relationship type '{rel_type}' is not in the predefined narrative taxonomy")
 
     return errors
+
+
+def suggest_relationship_normalization(rel_types: list[str]) -> dict[str, str]:
+    """
+    Suggest normalizations for relationship types that don't match the predefined taxonomy.
+    
+    Returns a dict mapping original -> suggested canonical form.
+    """
+    import kg_constants
+    from data_access.kg_queries import normalize_relationship_type
+    
+    suggestions = {}
+    
+    for rel_type in rel_types:
+        if isinstance(rel_type, str) and rel_type.strip():
+            if rel_type not in kg_constants.RELATIONSHIP_TYPES:
+                normalized = normalize_relationship_type(rel_type)
+                if normalized in kg_constants.RELATIONSHIP_TYPES and normalized != rel_type:
+                    suggestions[rel_type] = normalized
+                    
+    return suggestions
 
 
 def validate_character_profile(profile: CharacterProfile) -> list[str]:

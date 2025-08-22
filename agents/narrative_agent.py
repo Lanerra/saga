@@ -140,59 +140,6 @@ class NarrativeAgent:
                     )
         future_plot_context_str = "".join(future_plot_context_parts)
 
-        few_shot_scene_plan_example_str = """
-**Ignore the narrative details in this example. It shows the required format only.**
-[
-  {
-    "scene_number": 1,
-    "summary": "Elara arrives at the Sunken Library, finding its entrance hidden and guarded by an ancient riddle.",
-    "characters_involved": ["Elara Vance"],
-    "key_dialogue_points": [
-      "Elara (internal): \\"This riddle... it speaks of starlight and shadow. What reflects both?\\"",
-      "Elara (to herself, solving): \\"The water! The entrance must be beneath the lake's surface.\\""
-    ],
-    "setting_details": "A mist-shrouded, unnaturally still lake. Crumbling, moss-covered ruins of a tower are visible on a small island.",
-    "scene_focus_elements": ["Elara's deductive reasoning", "Building atmosphere of mystery and ancient magic"],
-    "contribution": "Introduces the challenge of accessing the Sunken Library and showcases Elara's intellect.",
-    "scene_type": "ATMOSPHERE_BUILDING",
-    "pacing": "SLOW",
-    "character_arc_focus": "Establishes Elara's scholarly and determined nature when faced with a puzzle.",
-    "relationship_development": null
-  },
-  {
-    "scene_number": 2,
-    "summary": "Elara meets Master Kael, the library's ancient archivist, who tests her worthiness before revealing information about the Starfall Map.",
-    "characters_involved": ["Elara Vance", "Master Kael"],
-    "key_dialogue_points": [
-      "Kael: \\"Many seek what is lost. Few understand its price. Why do you search, child of the shifting stars?\\"",
-      "Elara: \\"I seek knowledge not for power, but to mend what was broken.\\""
-    ],
-    "setting_details": "Inside the Sunken Library: vast, circular, dimly lit by glowing runes and bioluminescent moss.",
-    "scene_focus_elements": ["The cryptic nature and wisdom of Master Kael", "The initial reveal of a clue for the Starfall Map"],
-    "contribution": "Elara gains a crucial piece of information and a potential ally/gatekeeper in Kael, advancing the plot.",
-    "scene_type": "DIALOGUE",
-    "pacing": "MEDIUM",
-    "character_arc_focus": "Elara must articulate her noble motivations, reinforcing her core identity.",
-    "relationship_development": "The relationship between Elara and Kael is established as one of a student and a gatekeeper/mentor."
-  },
-  {
-    "scene_number": 3,
-    "summary": "As Elara leaves, she is ambushed by rival Seekers who try to steal the clue from her. She uses her wits and a minor magical artifact to escape.",
-    "characters_involved": ["Elara Vance", "Rival Seeker (Thane)"],
-    "key_dialogue_points": [
-      "Thane: \\"The old man was a fool to trust you. The map belongs to the Crimson Hand!\\"",
-      "Elara (activating artifact): \\"It belongs to those who would protect it!\\""
-    ],
-    "setting_details": "The narrow, crumbling causeway leading away from the library island.",
-    "scene_focus_elements": ["Sudden danger and threat", "Elara's quick thinking under pressure", "First use of her 'Silvershard' artifact"],
-    "contribution": "Introduces the antagonist faction and demonstrates that Elara is capable of defending herself.",
-    "scene_type": "ACTION",
-    "pacing": "FAST",
-    "character_arc_focus": "Elara is forced from a purely intellectual challenge to a physical one, showing her resilience.",
-    "relationship_development": "An antagonistic relationship with Thane and the Crimson Hand is established."
-  }
-]
-"""
         prompt = render_prompt(
             "narrative_agent/scene_plan.j2",
             {
@@ -213,7 +160,6 @@ class NarrativeAgent:
                 "kg_context_section": kg_context_section,
                 "character_state_snippet_plain_text": character_state_snippet_plain_text,
                 "world_state_snippet_plain_text": world_state_snippet_plain_text,
-                "few_shot_scene_plan_example_str": few_shot_scene_plan_example_str,
             },
         )
         logger.info(
@@ -286,25 +232,32 @@ class NarrativeAgent:
             )
             return None
 
+        # Enhanced JSON cleaning and extraction
+        cleaned_json_text = self._clean_llm_json_response(json_text)
+        
         try:
-            parsed_data = json.loads(json_text)
+            parsed_data = json.loads(cleaned_json_text)
         except json.JSONDecodeError as e:
             logger.error(
-                f"Failed to decode JSON scene plan for Ch {chapter_number}: {e}. Text: {json_text[:500]}..."
+                f"Failed to decode JSON scene plan for Ch {chapter_number}: {e}. Text: {cleaned_json_text[:500]}..."
             )
-            match = re.search(r"\[\s*\{.*\}\s*\]", json_text, re.DOTALL)
-            if match:
-                logger.info(
-                    "Found a JSON array within the malformed JSON string. Attempting to parse that."
-                )
+            
+            # Try multiple extraction strategies
+            extracted_json = self._extract_json_from_malformed_text(cleaned_json_text)
+            if extracted_json:
                 try:
-                    parsed_data = json.loads(match.group(0))
-                except json.JSONDecodeError:
+                    parsed_data = json.loads(extracted_json)
+                    logger.info(f"Successfully parsed extracted JSON for Ch {chapter_number}")
+                except json.JSONDecodeError as extract_error:
                     logger.error(
-                        f"Still failed to parse extracted JSON array for Ch {chapter_number}."
+                        f"Failed to parse extracted JSON for Ch {chapter_number}: {extract_error}"
                     )
+                    # Save malformed JSON for debugging
+                    self._save_malformed_json_for_debugging(cleaned_json_text, chapter_number)
                     return None
             else:
+                # Save malformed JSON for debugging
+                self._save_malformed_json_for_debugging(cleaned_json_text, chapter_number)
                 return None
 
         if not isinstance(parsed_data, list):
@@ -376,6 +329,123 @@ class NarrativeAgent:
         scenes_data.sort(key=lambda x: x.get("scene_number", float("inf")))
         return scenes_data
 
+    def _clean_llm_json_response(self, text: str) -> str:
+        """
+        Clean common LLM JSON response issues.
+        This is a conservative approach that focuses on extracting valid JSON.
+        """
+        if not text or not isinstance(text, str):
+            return text or ""
+        
+        # First, try to extract JSON structure from the text
+        extracted = self._extract_json_from_malformed_text(text)
+        if extracted:
+            return extracted
+            
+        # If no JSON structure found, clean the text conservatively
+        # Remove any text before the first [ or {
+        first_bracket = min(
+            [text.find(char) for char in ['[', '{'] if text.find(char) != -1] or [len(text)]
+        )
+        if first_bracket < len(text):
+            text = text[first_bracket:]
+        
+        # Remove any text after the last ] or }
+        last_bracket = max(
+            [text.rfind(char) for char in [']', '}'] if text.rfind(char) != -1] or [-1]
+        )
+        if last_bracket != -1:
+            text = text[:last_bracket + 1]
+        
+        return text.strip()
+
+    def _extract_json_from_malformed_text(self, text: str) -> str | None:
+        """
+        Extract JSON array or object from malformed text using multiple strategies.
+        """
+        if not text:
+            return None
+            
+        # Strategy 1: Extract complete JSON array
+        array_match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
+        if array_match:
+            potential_json = array_match.group(0)
+            # Validate that it's parseable
+            try:
+                json.loads(potential_json)
+                return potential_json
+            except json.JSONDecodeError:
+                pass
+        
+        # Strategy 2: Extract from code blocks
+        code_block_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', text, re.DOTALL)
+        if code_block_match:
+            potential_json = code_block_match.group(1)
+            try:
+                json.loads(potential_json)
+                return potential_json
+            except json.JSONDecodeError:
+                pass
+        
+        # Strategy 3: Extract from the middle of text
+        # Look for patterns that might indicate JSON start
+        json_start_patterns = [r'\[\s*\{', r'\{[^{]*\{']
+        for pattern in json_start_patterns:
+            start_match = re.search(pattern, text)
+            if start_match:
+                start_pos = start_match.start()
+                # Try to find matching closing brackets
+                bracket_count = 0
+                in_string = False
+                escape_next = False
+                
+                for i, char in enumerate(text[start_pos:], start_pos):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    
+                    if not in_string:
+                        if char in ['[', '{']:
+                            bracket_count += 1
+                        elif char in [']', '}']:
+                            bracket_count -= 1
+                            if bracket_count == 0:
+                                potential_json = text[start_pos:i+1]
+                                try:
+                                    json.loads(potential_json)
+                                    return potential_json
+                                except json.JSONDecodeError:
+                                    break
+        
+        return None
+
+    def _save_malformed_json_for_debugging(self, malformed_json: str, chapter_number: int) -> None:
+        """
+        Save malformed JSON to a file for debugging purposes.
+        """
+        try:
+            import os
+            debug_dir = os.path.join("novel_output", "debug_outputs")
+            os.makedirs(debug_dir, exist_ok=True)
+            
+            filename = f"chapter_{chapter_number:04d}_malformed_scene_plan.json"
+            filepath = os.path.join(debug_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(malformed_json)
+            
+            logger.info(f"Saved malformed JSON for debugging: {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save malformed JSON for debugging: {e}")
+
     # Phase 3: Native agent communication methods (list-based instead of dict-based)
     async def _plan_chapter_scenes_native(
         self,
@@ -405,24 +475,153 @@ class NarrativeAgent:
             )
             return None, None
 
-        # Convert list-based models to dict format for existing prompt logic
-        # TODO: This conversion can be eliminated in future optimization by updating prompts
-        character_profiles_dict = {char.name: char for char in character_profiles}
-        world_building_dict = {}
-        for item in world_building:
-            if item.category not in world_building_dict:
-                world_building_dict[item.category] = {}
-            world_building_dict[item.category][item.name] = item
+        # Build context summary (similar to original method)
+        context_summary_parts: list[str] = []
+        if chapter_number > 1:
+            prev_chap_data = await chapter_queries.get_chapter_data_from_db(
+                chapter_number - 1
+            )
+            if prev_chap_data:
+                prev_summary = prev_chap_data.get("summary")
+                prev_is_provisional = prev_chap_data.get("is_provisional", False)
+                summary_prefix = (
+                    "[Provisional Summary from Prev Ch] "
+                    if prev_is_provisional and prev_summary
+                    else "[Summary from Prev Ch] "
+                )
+                if prev_summary:
+                    context_summary_parts.append(
+                        f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:1000].strip()}...\n"
+                    )
+                else:
+                    prev_text = prev_chap_data.get("text", "")
+                    text_prefix = (
+                        "[Provisional Text Snippet from Prev Ch] "
+                        if prev_is_provisional and prev_text
+                        else "[Text Snippet from Prev Ch] "
+                    )
+                    if prev_text:
+                        context_summary_parts.append(
+                            f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-1000:].strip()}\n"
+                        )
 
-        # Use existing planning logic with converted data
-        return await self._plan_chapter_scenes(
-            plot_outline,
-            character_profiles_dict,
-            world_building_dict,
-            chapter_number,
-            plot_point_focus,
-            plot_point_index,
+        context_summary_str = "".join(context_summary_parts)
+
+        protagonist_name = plot_outline.get(
+            "protagonist_name", self.config.DEFAULT_PROTAGONIST_NAME
         )
+
+        # Use native prompt data getters
+        from prompt_data_getters import (
+            get_character_state_snippet_for_prompt_native,
+            get_reliable_kg_facts_for_drafting_prompt,
+            get_world_state_snippet_for_prompt_native,
+        )
+
+        kg_context_section = await get_reliable_kg_facts_for_drafting_prompt(
+            plot_outline, chapter_number, None
+        )
+        character_state_snippet_plain_text = (
+            await get_character_state_snippet_for_prompt_native(
+                character_profiles, plot_outline, chapter_number
+            )
+        )
+        world_state_snippet_plain_text = await get_world_state_snippet_for_prompt_native(
+            world_building, chapter_number
+        )
+
+        # Build future plot context
+        future_plot_context_parts: list[str] = []
+        all_plot_points = plot_outline.get("plot_points", [])
+        total_plot_points_in_novel = len(all_plot_points)
+
+        if plot_point_index + 1 < total_plot_points_in_novel:
+            next_pp_text = all_plot_points[plot_point_index + 1]
+            if isinstance(next_pp_text, str) and next_pp_text.strip():
+                future_plot_context_parts.append(
+                    f"\n**Anticipated Next Major Plot Point (PP {plot_point_index + 2}/{total_plot_points_in_novel} - for context, not this chapter's focus):**\n{next_pp_text.strip()}\n"
+                )
+            if plot_point_index + 2 < total_plot_points_in_novel:
+                next_next_pp_text = all_plot_points[plot_point_index + 2]
+                if isinstance(next_next_pp_text, str) and next_next_pp_text.strip():
+                    future_plot_context_parts.append(
+                        f"**And Then (PP {plot_point_index + 3}/{total_plot_points_in_novel} - distant context):**\n{next_next_pp_text.strip()}\n"
+                    )
+        future_plot_context_str = "".join(future_plot_context_parts)
+
+        prompt = render_prompt(
+            "narrative_agent/scene_plan.j2",
+            {
+                "no_think": self.config.ENABLE_LLM_NO_THINK_DIRECTIVE,
+                "target_scenes_min": self.config.TARGET_SCENES_MIN,
+                "target_scenes_max": self.config.TARGET_SCENES_MAX,
+                "chapter_number": chapter_number,
+                "novel_title": plot_outline.get("title", "Untitled"),
+                "novel_genre": plot_outline.get("genre", "N/A"),
+                "novel_theme": plot_outline.get("theme", "N/A"),
+                "protagonist_name": protagonist_name,
+                "protagonist_arc": plot_outline.get("character_arc", "N/A"),
+                "plot_point_index_plus1": plot_point_index + 1,
+                "total_plot_points_in_novel": total_plot_points_in_novel,
+                "plot_point_focus": plot_point_focus,
+                "future_plot_context_str": future_plot_context_str,
+                "context_summary_str": context_summary_str,
+                "kg_context_section": kg_context_section,
+                "character_state_snippet_plain_text": character_state_snippet_plain_text,
+                "world_state_snippet_plain_text": world_state_snippet_plain_text,
+            },
+        )
+        logger.info(
+            f"Calling LLM ({self.model}) for detailed scene plan for chapter {chapter_number} (target scenes: {self.config.TARGET_SCENES_MIN}-{self.config.TARGET_SCENES_MAX}, expecting JSON). Plot Point {plot_point_index + 1}/{total_plot_points_in_novel}."
+        )
+
+        (
+            cleaned_plan_text_from_llm,
+            usage_data,
+        ) = await llm_service.async_call_llm(
+            model_name=self.model,
+            prompt=prompt,
+            temperature=self.config.Temperatures.PLANNING,
+            max_tokens=self.config.MAX_PLANNING_TOKENS,
+            allow_fallback=True,
+            stream_to_disk=True,
+            frequency_penalty=self.config.FREQUENCY_PENALTY_PLANNING,
+            presence_penalty=self.config.PRESENCE_PENALTY_PLANNING,
+            auto_clean_response=True,
+        )
+
+        parsed_scenes_list_of_dicts = self._parse_llm_scene_plan_output(
+            cleaned_plan_text_from_llm, chapter_number
+        )
+
+        if parsed_scenes_list_of_dicts:
+            final_scenes_typed: list[SceneDetail] = []
+            for i, scene_dict in enumerate(parsed_scenes_list_of_dicts):
+                if not isinstance(scene_dict, dict):
+                    logger.warning(
+                        f"Parsed scene item {i + 1} for ch {chapter_number} is not a dict. Skipping. Item: {scene_dict}"
+                    )
+                    continue
+
+                # Basic validation for required fields
+                if not scene_dict.get("summary"):
+                    logger.warning(
+                        f"Scene {scene_dict.get('scene_number', i + 1)} from parser for ch {chapter_number} has a missing summary. Skipping."
+                    )
+                    continue
+
+                final_scenes_typed.append(scene_dict)  # type: ignore
+
+            if final_scenes_typed:
+                logger.info(
+                    f"Generated valid detailed scene plan for chapter {chapter_number} with {len(final_scenes_typed)} scenes."
+                )
+                return final_scenes_typed, usage_data
+
+        logger.warning(
+            f"Failed to generate valid scene plan for chapter {chapter_number}. No parsable scenes."
+        )
+        return None, usage_data
 
     async def _draft_chapter(
         self,
@@ -849,21 +1048,46 @@ class NarrativeAgent:
             plot_point_index,
         )
 
-        # Convert models for existing draft logic (temporary until full native implementation)
-        character_profiles_dict = {char.name: char for char in character_profiles}
-        world_building_dict = {}
-        for item in world_building:
-            if item.category not in world_building_dict:
-                world_building_dict[item.category] = {}
-            world_building_dict[item.category][item.name] = item
+        if not scenes:
+            logger.error(f"Failed to plan scenes for chapter {chapter_number}")
+            return (
+                "Failed to generate chapter: scene planning failed",
+                "Error",
+                planning_usage_data or {},
+            )
 
-        # Draft the chapter using existing logic
+        # Generate a hybrid context based on prior chapters and KG facts.
+        # Use a dictionary with plot outline info as the agent_or_props for context generation.
+        try:
+            context_props: dict[str, Any] = {
+                "plot_outline": plot_outline,
+                "plot_outline_full": plot_outline,
+            }
+            hybrid_context_for_draft: str = (
+                await generate_hybrid_chapter_context_native(
+                    context_props,
+                    chapter_number,
+                    scenes,
+                )
+            )
+        except Exception as e:
+            # If hybrid context generation fails for any reason, fall back to basic metadata
+            logger.error(
+                f"Failed to generate hybrid context for chapter {chapter_number}: {e}"
+            )
+            hybrid_context_for_draft = (
+                f"Protagonist: {plot_outline.get('protagonist_name', 'Unknown')}\n"
+                f"Genre: {plot_outline.get('genre', 'Unknown')}\n"
+                f"Theme: {plot_outline.get('theme', 'Unknown')}\n"
+                f"Character Arc: {plot_outline.get('character_arc', 'Unknown')}"
+            )
+
+        # Draft the chapter with the generated hybrid context
         draft_text, raw_output, draft_usage = await self._draft_chapter(
             plot_outline,
             chapter_number,
             plot_point_focus,
-            character_profiles_dict,
-            world_building_dict,
+            hybrid_context_for_draft,
             scenes,
         )
 
@@ -885,5 +1109,6 @@ class NarrativeAgent:
         if not await self._check_quality(draft_text):
             logger.warning(f"Chapter {chapter_number} failed quality checks")
             # Return the draft anyway but mark it as low quality
+            return draft_text, raw_output or "", total_usage
 
         return draft_text, raw_output or "", total_usage

@@ -44,13 +44,13 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
                 "_overview_",
                 {
                     "description": config.CONFIGURED_SETTING_DESCRIPTION,
-                    "source": "default_overview",
+                    "source": "bootstrap_overview",
                     "id": f"{utils._normalize_for_id('_overview_')}_{utils._normalize_for_id('_overview_')}",
                 },
             )
         },
         "is_default": True,  # type: ignore
-        "source": "default_fallback",  # type: ignore
+        "source": "bootstrap_fallback",  # type: ignore
     }
 
     standard_categories = [
@@ -71,7 +71,7 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
                 "",  # Empty name instead of placeholder
                 {
                     "description": "",
-                    "source": "default_placeholder",
+                    "source": "bootstrap_placeholder",
                     "id": f"{utils._normalize_for_id(cat_key)}_",
                 },  # Empty description instead of placeholder
                 allow_empty_name=True,  # Allow empty name during bootstrapping
