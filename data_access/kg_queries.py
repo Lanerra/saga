@@ -512,11 +512,21 @@ async def find_candidate_duplicate_entities(
     WHERE id(e1) < id(e2)
       AND e1.name IS NOT NULL AND e2.name IS NOT NULL
       AND NOT e1:ValueNode AND NOT e2:ValueNode
+    // Handle potential StringArray by converting to string if needed
     WITH e1, e2,
-         toLower(e1.name) AS name1_lower,
-         toLower(e2.name) AS name2_lower,
-         size(e1.name) AS len1,
-         size(e2.name) AS len2
+         CASE 
+             WHEN e1.name IS NOT NULL AND (e1.name + []) = e1.name THEN toString(e1.name[0])
+             ELSE toString(e1.name)
+         END AS name1_string,
+         CASE 
+             WHEN e2.name IS NOT NULL AND (e2.name + []) = e2.name THEN toString(e2.name[0])
+             ELSE toString(e2.name)
+         END AS name2_string
+    WITH e1, e2,
+         toLower(name1_string) AS name1_lower,
+         toLower(name2_string) AS name2_lower,
+         size(name1_string) AS len1,
+         size(name2_string) AS len2
     // Calculate character overlap similarity
     WITH e1, e2, name1_lower, name2_lower, len1, len2,
          [c IN split(name1_lower, '') WHERE c IN split(name2_lower, '')] AS common_chars
@@ -602,20 +612,45 @@ async def merge_entities(target_id: str, source_id: str) -> bool:
              CASE 
                  WHEN targetProps[key] IS NULL THEN []
                  WHEN targetProps[key] IS NOT NULL AND NOT targetProps[key] IN [null] AND (targetProps[key] + []) = targetProps[key] THEN targetProps[key]  // It's an array
-                 ELSE [toString(targetProps[key])]  // Convert single value to array
+                 ELSE [targetProps[key]]  // Convert single value to array (keep as original type)
              END AS targetArray,
              CASE 
                  WHEN source[key] IS NULL THEN []
                  WHEN source[key] IS NOT NULL AND NOT source[key] IN [null] AND (source[key] + []) = source[key] THEN source[key]  // It's an array
-                 ELSE [toString(source[key])]  // Convert single value to array
+                 ELSE [source[key]]  // Convert single value to array (keep as original type)
              END AS sourceArray
-        SET target[key] = targetArray + sourceArray
+        // For StringArray, convert to string by joining elements
+        WITH target, source, key, targetProps,
+             CASE 
+                 WHEN targetArray IS NOT NULL AND NOT targetArray IN [null] AND (targetArray + []) = targetArray THEN 
+                     // It's an array, convert to string by joining elements
+                     apoc.text.join(targetArray, ', ')
+                 ELSE 
+                     targetArray[0]
+             END AS targetValue,
+             CASE 
+                 WHEN sourceArray IS NOT NULL AND NOT sourceArray IN [null] AND (sourceArray + []) = sourceArray THEN 
+                     // It's an array, convert to string by joining elements
+                     apoc.text.join(sourceArray, ', ')
+                 ELSE 
+                     sourceArray[0]
+             END AS sourceValue
+        SET target[key] = targetValue + ', ' + sourceValue
     }
     CALL (target, source, key, targetProps) {
         WITH target, source, key, targetProps
         WITH target, source, key, targetProps
         WHERE targetProps[key] IS NULL
-        SET target[key] = source[key]
+        // Handle StringArray case for source[key] before setting
+        WITH target, source, key, targetProps,
+             CASE 
+                 WHEN source[key] IS NOT NULL AND NOT source[key] IN [null] AND (source[key] + []) = source[key] THEN 
+                     // It's an array, convert to string by joining elements
+                     apoc.text.join(source[key], ', ')
+                 ELSE 
+                     source[key]
+             END AS sourceValue
+        SET target[key] = sourceValue
     }
     RETURN count(*) AS copiedProps
     """

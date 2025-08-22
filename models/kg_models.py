@@ -201,6 +201,12 @@ class WorldItem(BaseModel):
             """Safely extract int from potentially array value."""
             if isinstance(value, list):
                 return int(value[0]) if value else 0
+            elif isinstance(value, str):
+                # Handle comma-separated values by taking first part
+                # Clean potential list representation before splitting
+                cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
+                num_str = cleaned_value.split(',')[0].strip()
+                return int(num_str) if num_str else 0
             return int(value) if value is not None else 0
 
         def _safe_list_extract(value) -> list[str]:

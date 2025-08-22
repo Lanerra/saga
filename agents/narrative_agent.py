@@ -232,25 +232,32 @@ class NarrativeAgent:
             )
             return None
 
+        # Enhanced JSON cleaning and extraction
+        cleaned_json_text = self._clean_llm_json_response(json_text)
+        
         try:
-            parsed_data = json.loads(json_text)
+            parsed_data = json.loads(cleaned_json_text)
         except json.JSONDecodeError as e:
             logger.error(
-                f"Failed to decode JSON scene plan for Ch {chapter_number}: {e}. Text: {json_text[:500]}..."
+                f"Failed to decode JSON scene plan for Ch {chapter_number}: {e}. Text: {cleaned_json_text[:500]}..."
             )
-            match = re.search(r"\[\s*\{.*\}\s*\]", json_text, re.DOTALL)
-            if match:
-                logger.info(
-                    "Found a JSON array within the malformed JSON string. Attempting to parse that."
-                )
+            
+            # Try multiple extraction strategies
+            extracted_json = self._extract_json_from_malformed_text(cleaned_json_text)
+            if extracted_json:
                 try:
-                    parsed_data = json.loads(match.group(0))
-                except json.JSONDecodeError:
+                    parsed_data = json.loads(extracted_json)
+                    logger.info(f"Successfully parsed extracted JSON for Ch {chapter_number}")
+                except json.JSONDecodeError as extract_error:
                     logger.error(
-                        f"Still failed to parse extracted JSON array for Ch {chapter_number}."
+                        f"Failed to parse extracted JSON for Ch {chapter_number}: {extract_error}"
                     )
+                    # Save malformed JSON for debugging
+                    self._save_malformed_json_for_debugging(cleaned_json_text, chapter_number)
                     return None
             else:
+                # Save malformed JSON for debugging
+                self._save_malformed_json_for_debugging(cleaned_json_text, chapter_number)
                 return None
 
         if not isinstance(parsed_data, list):
@@ -321,6 +328,123 @@ class NarrativeAgent:
 
         scenes_data.sort(key=lambda x: x.get("scene_number", float("inf")))
         return scenes_data
+
+    def _clean_llm_json_response(self, text: str) -> str:
+        """
+        Clean common LLM JSON response issues.
+        This is a conservative approach that focuses on extracting valid JSON.
+        """
+        if not text or not isinstance(text, str):
+            return text or ""
+        
+        # First, try to extract JSON structure from the text
+        extracted = self._extract_json_from_malformed_text(text)
+        if extracted:
+            return extracted
+            
+        # If no JSON structure found, clean the text conservatively
+        # Remove any text before the first [ or {
+        first_bracket = min(
+            [text.find(char) for char in ['[', '{'] if text.find(char) != -1] or [len(text)]
+        )
+        if first_bracket < len(text):
+            text = text[first_bracket:]
+        
+        # Remove any text after the last ] or }
+        last_bracket = max(
+            [text.rfind(char) for char in [']', '}'] if text.rfind(char) != -1] or [-1]
+        )
+        if last_bracket != -1:
+            text = text[:last_bracket + 1]
+        
+        return text.strip()
+
+    def _extract_json_from_malformed_text(self, text: str) -> str | None:
+        """
+        Extract JSON array or object from malformed text using multiple strategies.
+        """
+        if not text:
+            return None
+            
+        # Strategy 1: Extract complete JSON array
+        array_match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
+        if array_match:
+            potential_json = array_match.group(0)
+            # Validate that it's parseable
+            try:
+                json.loads(potential_json)
+                return potential_json
+            except json.JSONDecodeError:
+                pass
+        
+        # Strategy 2: Extract from code blocks
+        code_block_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', text, re.DOTALL)
+        if code_block_match:
+            potential_json = code_block_match.group(1)
+            try:
+                json.loads(potential_json)
+                return potential_json
+            except json.JSONDecodeError:
+                pass
+        
+        # Strategy 3: Extract from the middle of text
+        # Look for patterns that might indicate JSON start
+        json_start_patterns = [r'\[\s*\{', r'\{[^{]*\{']
+        for pattern in json_start_patterns:
+            start_match = re.search(pattern, text)
+            if start_match:
+                start_pos = start_match.start()
+                # Try to find matching closing brackets
+                bracket_count = 0
+                in_string = False
+                escape_next = False
+                
+                for i, char in enumerate(text[start_pos:], start_pos):
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    
+                    if char == '\\':
+                        escape_next = True
+                        continue
+                    
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        continue
+                    
+                    if not in_string:
+                        if char in ['[', '{']:
+                            bracket_count += 1
+                        elif char in [']', '}']:
+                            bracket_count -= 1
+                            if bracket_count == 0:
+                                potential_json = text[start_pos:i+1]
+                                try:
+                                    json.loads(potential_json)
+                                    return potential_json
+                                except json.JSONDecodeError:
+                                    break
+        
+        return None
+
+    def _save_malformed_json_for_debugging(self, malformed_json: str, chapter_number: int) -> None:
+        """
+        Save malformed JSON to a file for debugging purposes.
+        """
+        try:
+            import os
+            debug_dir = os.path.join("novel_output", "debug_outputs")
+            os.makedirs(debug_dir, exist_ok=True)
+            
+            filename = f"chapter_{chapter_number:04d}_malformed_scene_plan.json"
+            filepath = os.path.join(debug_dir, filename)
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(malformed_json)
+            
+            logger.info(f"Saved malformed JSON for debugging: {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save malformed JSON for debugging: {e}")
 
     # Phase 3: Native agent communication methods (list-based instead of dict-based)
     async def _plan_chapter_scenes_native(
@@ -924,21 +1048,46 @@ class NarrativeAgent:
             plot_point_index,
         )
 
-        # Convert models for existing draft logic (temporary until full native implementation)
-        character_profiles_dict = {char.name: char for char in character_profiles}
-        world_building_dict = {}
-        for item in world_building:
-            if item.category not in world_building_dict:
-                world_building_dict[item.category] = {}
-            world_building_dict[item.category][item.name] = item
+        if not scenes:
+            logger.error(f"Failed to plan scenes for chapter {chapter_number}")
+            return (
+                "Failed to generate chapter: scene planning failed",
+                "Error",
+                planning_usage_data or {},
+            )
 
-        # Draft the chapter using existing logic
+        # Generate a hybrid context based on prior chapters and KG facts.
+        # Use a dictionary with plot outline info as the agent_or_props for context generation.
+        try:
+            context_props: dict[str, Any] = {
+                "plot_outline": plot_outline,
+                "plot_outline_full": plot_outline,
+            }
+            hybrid_context_for_draft: str = (
+                await generate_hybrid_chapter_context_native(
+                    context_props,
+                    chapter_number,
+                    scenes,
+                )
+            )
+        except Exception as e:
+            # If hybrid context generation fails for any reason, fall back to basic metadata
+            logger.error(
+                f"Failed to generate hybrid context for chapter {chapter_number}: {e}"
+            )
+            hybrid_context_for_draft = (
+                f"Protagonist: {plot_outline.get('protagonist_name', 'Unknown')}\n"
+                f"Genre: {plot_outline.get('genre', 'Unknown')}\n"
+                f"Theme: {plot_outline.get('theme', 'Unknown')}\n"
+                f"Character Arc: {plot_outline.get('character_arc', 'Unknown')}"
+            )
+
+        # Draft the chapter with the generated hybrid context
         draft_text, raw_output, draft_usage = await self._draft_chapter(
             plot_outline,
             chapter_number,
             plot_point_focus,
-            character_profiles_dict,
-            world_building_dict,
+            hybrid_context_for_draft,
             scenes,
         )
 
@@ -960,5 +1109,6 @@ class NarrativeAgent:
         if not await self._check_quality(draft_text):
             logger.warning(f"Chapter {chapter_number} failed quality checks")
             # Return the draft anyway but mark it as low quality
+            return draft_text, raw_output or "", total_usage
 
         return draft_text, raw_output or "", total_usage
