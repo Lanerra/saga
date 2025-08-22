@@ -1,4 +1,5 @@
 # data_access/kg_queries.py
+import difflib
 import logging
 import re
 from typing import Any
@@ -16,6 +17,47 @@ from kg_constants import (
 
 logger = logging.getLogger(__name__)
 
+# Valid relationship types for narrative knowledge graphs
+VALID_RELATIONSHIP_TYPES = {
+    # Character relationships
+    'LOVES', 'HATES', 'FEARS', 'TRUSTS', 'DISTRUSTS', 'RESPECTS',
+    'FAMILY_OF', 'FRIEND_OF', 'ENEMY_OF', 'RIVAL_OF', 'ALLY_OF',
+    'MENTOR_TO', 'STUDENT_OF', 'LEADER_OF', 'MEMBER_OF', 'SERVES',
+    'WORKS_FOR', 'ROMANTIC_WITH', 'MARRIED_TO', 'PARENT_OF', 'CHILD_OF',
+    'KNOWS', 'ENVIES', 'PITIES', 'BETRAYS', 'PROTECTS', 'THREATENS',
+    
+    # Location relationships  
+    'LOCATED_IN', 'LOCATED_AT', 'ADJACENT_TO', 'CONTAINS', 'PART_OF',
+    'CONNECTED_TO', 'NEAR', 'BUILT_BY', 'FOUNDED', 'DESTROYED_BY',
+    'ORIGINATES_FROM', 'TRAVELS_TO', 'BORDERS', 'OVERLOOKS',
+    
+    # Object relationships
+    'OWNS', 'POSSESSES', 'CREATED_BY', 'BELONGS_TO', 'FOUND_AT',
+    'LOST_AT', 'STOLEN_FROM', 'GIVEN_BY', 'INHERITED_FROM',
+    'USED_BY', 'POWERED_BY', 'MADE_OF', 'CONTAINS_ITEM',
+    
+    # Temporal relationships
+    'HAPPENS_BEFORE', 'HAPPENS_AFTER', 'OCCURS_DURING', 'TRIGGERS',
+    'RESULTS_IN', 'CAUSES', 'PREVENTS', 'ENABLES', 'FOLLOWS',
+    'PRECEDES', 'INTERRUPTS', 'COINCIDES_WITH',
+    
+    # Abstract relationships
+    'SYMBOLIZES', 'REPRESENTS', 'EMBODIES', 'CONTRASTS_WITH',
+    'PARALLELS', 'ECHOES', 'FORESHADOWS', 'RELATES_TO',
+    'INFLUENCES', 'INSPIRES', 'REMINDS_OF', 'DEPENDS_ON',
+    'EXTENDS', 'RESONATES_WITH', 'HAS_TRAIT', 'EXTENSION_OF',
+    
+    # Action/Event relationships
+    'PERFORMS', 'WITNESSES', 'EXPERIENCES', 'PARTICIPATES_IN',
+    'INITIATES', 'COMPLETES', 'ABANDONS', 'DISCOVERS',
+    'CREATES', 'DESTROYS', 'MODIFIES', 'OBSERVES',
+    'CONNECTS_TO', 'RESPONDS_TO', 'ACCESSES',
+    
+    # Conflict relationships
+    'OPPOSES', 'SUPPORTS', 'CONFLICTS_WITH', 'COMPETES_WITH',
+    'COLLABORATES_WITH', 'NEGOTIATES_WITH', 'FIGHTS_AGAINST'
+}
+
 # Lookup table for canonical node labels to ensure consistent casing
 _CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
 
@@ -26,41 +68,112 @@ def _to_pascal_case(text: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
 
+def validate_relationship_type(proposed_type: str) -> str:
+    """
+    Validate and normalize a relationship type with fuzzy matching.
+    
+    Args:
+        proposed_type: The relationship type to validate
+        
+    Returns:
+        A valid relationship type from VALID_RELATIONSHIP_TYPES
+    """
+    if not proposed_type or not proposed_type.strip():
+        return 'RELATES_TO'
+    
+    # Clean and normalize input
+    clean_type = proposed_type.strip().upper().replace(' ', '_')
+    
+    # Check if it's already valid
+    if clean_type in VALID_RELATIONSHIP_TYPES:
+        return clean_type
+    
+    # Special handling for DYNAMIC_REL - this is a meta-type, not a content type
+    if clean_type == 'DYNAMIC_REL':
+        logger.debug("DYNAMIC_REL is a meta-type, using RELATES_TO as fallback")
+        return 'RELATES_TO'
+    
+    # Try fuzzy matching with high confidence
+    closest_matches = difflib.get_close_matches(
+        clean_type, 
+        VALID_RELATIONSHIP_TYPES, 
+        n=1, 
+        cutoff=0.7  # High threshold for confidence
+    )
+    
+    if closest_matches:
+        matched_type = closest_matches[0]
+        if clean_type != matched_type:
+            logger.info(f"Corrected relationship type: '{proposed_type}' -> '{matched_type}'")
+        return matched_type
+    
+    # Try semantic similarity for common patterns
+    semantic_mappings = {
+        # Common variations
+        'IS_IN': 'LOCATED_IN',
+        'HAS': 'OWNS',
+        'LIKES': 'FRIEND_OF',
+        'DISLIKES': 'ENEMY_OF',
+        'WORKS_AT': 'WORKS_FOR',
+        'LIVES_IN': 'LOCATED_IN',
+        'COMES_FROM': 'ORIGINATES_FROM',
+        'GOES_TO': 'TRAVELS_TO',
+        'IS_PART_OF': 'PART_OF',
+        'CONTAINS_THING': 'CONTAINS',
+        'IS_CONNECTED_TO': 'CONNECTED_TO',
+        'IS_NEAR': 'NEAR',
+        'MADE_BY': 'CREATED_BY',
+        'BUILT_FROM': 'MADE_OF',
+        
+        # Verb forms
+        'LOVING': 'LOVES',
+        'HATING': 'HATES',
+        'FEARING': 'FEARS',
+        'TRUSTING': 'TRUSTS',
+        'RESPECTING': 'RESPECTS',
+        'LEADING': 'LEADER_OF',
+        'FOLLOWING': 'SERVES',
+        
+        # Past tense
+        'LOVED': 'LOVES',
+        'HATED': 'HATES',
+        'FEARED': 'FEARS',
+        'TRUSTED': 'TRUSTS',
+        'RESPECTED': 'RESPECTS',
+        'LED': 'LEADER_OF',
+        'FOLLOWED': 'SERVES',
+        
+        # Story-specific relationships
+        'HAS_TRAIT': 'HAS_TRAIT',
+        'EXTENSION_OF': 'EXTENSION_OF',
+        'EXTENSION_OF_CONSCIOUSNESS': 'EXTENDS',
+        'EXTENDS_CONSCIOUSNESS': 'EXTENDS',
+        'RESONATES_WITH': 'RESONATES_WITH',
+        'EVOLVED_THROUGH_HUMAN_INTERACTION': 'INFLUENCES',
+        'ACCESSIBLE_BY_NEURAL_ARCHITECTURE_AL': 'ACCESSES',
+        'CONNECTED_BY_COGNITIVE_RESONANCE': 'RESONATES_WITH',
+        'RESPONDS_TO_INTENTION_AND_RECOGN': 'RESPONDS_TO',
+        'MEMORY_TRANSMISSION_LINKS_TO_MEMORY_NETWORK': 'CONNECTS_TO',
+    }
+    
+    mapped_type = semantic_mappings.get(clean_type)
+    if mapped_type:
+        logger.info(f"Semantically mapped relationship type: '{proposed_type}' -> '{mapped_type}'")
+        return mapped_type
+    
+    # Final fallback - log for analysis
+    logger.warning(f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback")
+    return 'RELATES_TO'
+
+
 def normalize_relationship_type(rel_type: str) -> str:
     """Return a canonical representation of a relationship type using predefined taxonomy."""
-    import kg_constants
-    
-    # First clean the input
-    cleaned = rel_type.strip().lower()
-    
-    # Check direct normalization mappings first
-    if cleaned in kg_constants.RELATIONSHIP_NORMALIZATIONS:
-        return kg_constants.RELATIONSHIP_NORMALIZATIONS[cleaned]
-    
-    # Check if it's already a valid canonical type
-    rel_upper = cleaned.upper()
-    if rel_upper in kg_constants.RELATIONSHIP_TYPES:
-        return rel_upper
-    
-    # Try basic cleaning and check again
-    basic_cleaned = re.sub(r"[^a-zA-Z0-9]+", "_", cleaned)
-    basic_cleaned = re.sub(r"_+", "_", basic_cleaned).upper()
-    
-    if basic_cleaned in kg_constants.RELATIONSHIP_TYPES:
-        return basic_cleaned
-    
-    # Use semantic similarity as fallback (simple keyword matching)
-    best_match = _find_best_relationship_match(cleaned)
-    if best_match:
-        return best_match
-    
-    # Final fallback: use basic normalization
-    return basic_cleaned
+    # Use the enhanced validator which handles all the normalization logic
+    return validate_relationship_type(rel_type)
 
 
 def _find_best_relationship_match(rel_type: str) -> str | None:
     """Find the best matching relationship type using simple keyword matching."""
-    import kg_constants
     
     rel_lower = rel_type.lower()
     
@@ -626,7 +739,7 @@ async def find_candidate_duplicate_entities(
     """
     query = """
     MATCH (e1:Entity), (e2:Entity)
-    WHERE id(e1) < id(e2)
+    WHERE elementId(e1) < elementId(e2)
       AND e1.name IS NOT NULL AND e2.name IS NOT NULL
       AND NOT e1:ValueNode AND NOT e2:ValueNode
     // Handle potential StringArray by converting to string if needed
@@ -707,7 +820,7 @@ async def get_entity_context_for_resolution(
         return None
 
 
-async def merge_entities(target_id: str, source_id: str) -> bool:
+async def merge_entities(source_id: str, target_id: str, reason: str) -> bool:
     """
     Merges one entity (source) into another (target) using native Neo4j operations.
     The source node will be deleted after its relationships are moved.
@@ -923,32 +1036,101 @@ async def get_defined_relationship_types() -> list[str]:
 
 
 async def promote_dynamic_relationships() -> int:
-    """Convert dynamic relationships to defined relationship types."""
-    valid_types = await get_defined_relationship_types()
-    # Validate relationship types
-    errors = validate_relationship_types(valid_types)
-    if errors:
-        logger.warning("Invalid relationship types for promotion: %s", errors)
-    query = """
+    """
+    Enhanced relationship type promotion with validation.
+    
+    First validates and corrects relationship types, then promotes valid types
+    to proper relationship types.
+    """
+    total_promoted = 0
+    
+    # Step 1: Validate and correct existing relationship types
+    corrected_count = await _validate_and_correct_relationship_types()
+    logger.info(f"Validated and corrected {corrected_count} relationship types")
+    
+    # Step 2: Promote DYNAMIC_REL to typed relationships  
+    promotion_query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
-    WHERE r.type IN $valid_types
-    WITH s, r, o
+    WHERE r.type IS NOT NULL 
+      AND r.type <> 'UNKNOWN' 
+      AND r.type <> 'DYNAMIC_REL'
+      AND r.type IN $valid_types
+    WITH s, r, o, r.type as rel_type, properties(r) as rel_props
+    
+    // Create new typed relationship
     CALL apoc.create.relationship(
         s,
-        r.type,
-        apoc.map.removeKey(properties(r), 'type'),
+        rel_type,
+        apoc.map.removeKey(rel_props, 'type'),
         o
     ) YIELD rel
+    
+    // Delete old dynamic relationship  
     DELETE r
     RETURN count(rel) AS promoted
     """
+    
     try:
+        # Use our validated relationship types
+        valid_types = list(VALID_RELATIONSHIP_TYPES)
         results = await neo4j_manager.execute_write_query(
-            query, {"valid_types": valid_types}
+            promotion_query, {"valid_types": valid_types}
         )
-        return results[0].get("promoted", 0) if results else 0
-    except Exception as exc:  # pragma: no cover - narrow DB errors
+        promoted_count = results[0].get("promoted", 0) if results else 0
+        total_promoted = corrected_count + promoted_count
+        
+        logger.info(f"Successfully promoted {promoted_count} dynamic relationships to typed relationships")
+        logger.info(f"Total relationship processing: {total_promoted} relationships")
+        
+        return total_promoted
+        
+    except Exception as exc:
         logger.error("Failed to promote dynamic relationships: %s", exc, exc_info=True)
+        return total_promoted  # Return partial success
+
+
+async def _validate_and_correct_relationship_types() -> int:
+    """Validate and correct existing relationship types."""
+    # Find all DYNAMIC_REL relationships with type properties
+    validation_query = """
+    MATCH (s)-[r:DYNAMIC_REL]->(o)
+    WHERE r.type IS NOT NULL 
+      AND r.type <> 'UNKNOWN'
+      AND r.type <> 'DYNAMIC_REL'
+    RETURN elementId(r) as rel_id, r.type as current_type
+    """
+    
+    try:
+        results = await neo4j_manager.execute_read_query(validation_query)
+        if not results:
+            return 0
+            
+        corrected_count = 0
+        
+        for record in results:
+            current_type = record["current_type"]
+            validated_type = validate_relationship_type(current_type)
+            
+            if validated_type != current_type:
+                # Update to validated type
+                update_query = """
+                MATCH ()-[r:DYNAMIC_REL]->()
+                WHERE elementId(r) = $rel_id
+                SET r.type = $new_type
+                RETURN count(*) as updated
+                """
+                
+                await neo4j_manager.execute_write_query(
+                    update_query,
+                    {"rel_id": record["rel_id"], "new_type": validated_type}
+                )
+                corrected_count += 1
+                logger.debug(f"Corrected relationship type: '{current_type}' -> '{validated_type}'")
+                
+        return corrected_count
+        
+    except Exception as exc:
+        logger.error("Failed to validate relationship types: %s", exc, exc_info=True)
         return 0
 
 
@@ -1087,7 +1269,7 @@ async def fetch_unresolved_dynamic_relationships(
     query = """
     MATCH (s:Entity)-[r:DYNAMIC_REL]->(o:Entity)
     WHERE r.type IS NULL OR r.type = 'UNKNOWN'
-    RETURN id(r) AS rel_id,
+    RETURN elementId(r) AS rel_id,
            s.name AS subject,
            labels(s) AS subject_labels,
            coalesce(s.description, '') AS subject_desc,
@@ -1119,13 +1301,14 @@ async def fetch_unresolved_dynamic_relationships(
 
 async def update_dynamic_relationship_type(rel_id: int, new_type: str) -> None:
     """Update a dynamic relationship's type."""
-    # Validate the new relationship type
-    errors = validate_relationship_types([new_type])
-    if errors:
-        logger.warning("Invalid relationship type for update: %s", errors)
-    query = "MATCH ()-[r:DYNAMIC_REL]->() WHERE id(r) = $id SET r.type = $type"
+    # Validate and normalize the new relationship type
+    validated_type = validate_relationship_type(new_type)
+    if validated_type != new_type:
+        logger.info(f"Normalized relationship type for update: '{new_type}' -> '{validated_type}'")
+    
+    query = "MATCH ()-[r:DYNAMIC_REL]->() WHERE elementId(r) = $id SET r.type = $type"
     try:
-        await neo4j_manager.execute_write_query(query, {"id": rel_id, "type": new_type})
+        await neo4j_manager.execute_write_query(query, {"id": rel_id, "type": validated_type})
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error(
             "Failed to update dynamic relationship %s: %s", rel_id, exc, exc_info=True

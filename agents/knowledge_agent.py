@@ -16,7 +16,6 @@ from core.llm_interface import llm_service
 from core.schema_validator import (
     validate_kg_object,
     validate_node_labels,
-    validate_relationship_types,
 )
 from data_access import (
     character_queries,
@@ -1351,6 +1350,7 @@ class KnowledgeAgent:
     ) -> tuple[list[CharacterProfile], list[WorldItem], str]:
         """
         Extract updates and return as models directly - no intermediate dict phase.
+        Now includes proactive duplicate prevention.
 
         Args:
             raw_text: Raw LLM extraction text (JSON format)
@@ -1366,14 +1366,33 @@ class KnowledgeAgent:
         try:
             extraction_data = json.loads(raw_text)
 
-            # Convert character updates directly to models
+            # Import duplicate prevention functions
+            from processing.entity_deduplication import (
+                prevent_character_duplication,
+                prevent_world_item_duplication,
+                generate_entity_id
+            )
+
+            # Convert character updates directly to models with duplicate prevention
             char_data = extraction_data.get("character_updates", {})
             for name, char_info in char_data.items():
                 if isinstance(char_info, dict):
+                    description = char_info.get("description", "")
+                    final_name = name  # Default to original name
+                    
+                    # Check for existing similar character (only if enabled in config)
+                    if config.ENABLE_DUPLICATE_PREVENTION and config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
+                        existing_name = await prevent_character_duplication(name, description)
+                        
+                        if existing_name:
+                            # Use existing character name to prevent duplicate
+                            final_name = existing_name
+                            logger.info(f"Using existing character '{final_name}' instead of creating duplicate '{name}'")
+                    
                     char_updates.append(
                         CharacterProfile(
-                            name=name,  # Use original name - let healing process handle deduplication
-                            description=char_info.get("description", ""),
+                            name=final_name,
+                            description=description,
                             traits=char_info.get("traits", []),
                             status=char_info.get("status", "Unknown"),
                             relationships=char_info.get("relationships", {}),
@@ -1385,12 +1404,33 @@ class KnowledgeAgent:
                         )
                     )
 
-            # Convert world updates directly to models
+            # Convert world updates directly to models with duplicate prevention
             world_data = extraction_data.get("world_updates", {})
             for category, items in world_data.items():
                 if isinstance(items, dict):
                     for item_name, item_info in items.items():
                         if isinstance(item_info, dict):
+                            description = item_info.get("description", "")
+                            
+                            # Check for existing similar world item (only if enabled in config)
+                            if config.ENABLE_DUPLICATE_PREVENTION and config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
+                                existing_id = await prevent_world_item_duplication(
+                                    item_name, category, description
+                                )
+                                
+                                if existing_id:
+                                    # Use existing world item ID to prevent duplicate
+                                    logger.info(f"Using existing world item with ID '{existing_id}' instead of creating duplicate '{item_name}' in category '{category}'")
+                                    # Update the item_info to use existing ID
+                                    item_info["id"] = existing_id
+                                else:
+                                    # Generate deterministic ID for new item
+                                    item_info["id"] = generate_entity_id(item_name, category, chapter_number)
+                            else:
+                                # Use existing ID generation logic when duplicate prevention is disabled
+                                if not item_info.get("id"):
+                                    item_info["id"] = generate_entity_id(item_name, category, chapter_number)
+                            
                             world_updates.append(
                                 WorldItem.from_dict(category, item_name, item_info)
                             )
@@ -2102,7 +2142,9 @@ class KnowledgeAgent:
                             else:
                                 target_id, source_id = id2, id1
 
-                        await kg_queries.merge_entities(target_id, source_id)
+                        # Use LLM's reasoning for the merge
+                        reason = decision_data.get('reason', 'LLM entity resolution merge')
+                        await kg_queries.merge_entities(source_id, target_id, reason)
                     else:
                         logger.info(
                             f"LLM decided NOT to merge '{context1.get('name')}' and '{context2.get('name')}'. "
@@ -2186,10 +2228,7 @@ class KnowledgeAgent:
                 auto_clean_response=True,
             )
             new_type = kg_queries.normalize_relationship_type(new_type_raw)
-            # Validate the new relationship type
-            errors = validate_relationship_types([new_type])
-            if errors:
-                logger.warning("Invalid relationship type from LLM: %s", errors)
+            # The normalize_relationship_type already validates and returns a valid type
             if new_type and new_type != "UNKNOWN":
                 await kg_queries.update_dynamic_relationship_type(
                     rel["rel_id"], new_type

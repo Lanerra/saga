@@ -437,3 +437,9 @@ EARLY_CHAPTER_BALANCED_SELECTION: bool = (
 PROTAGONIST_PRIORITY_START_CHAPTER: int = (
     4  # When to start protagonist-priority selection
 )
+
+# Duplicate Prevention Settings
+ENABLE_DUPLICATE_PREVENTION: bool = True  # Enable proactive duplicate prevention
+DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.85  # Similarity threshold for merging entities
+DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = True  # Enable character duplicate prevention
+DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = True  # Enable world item duplicate prevention
