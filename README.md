@@ -1,6 +1,8 @@
 # SAGA - Semantic And Graph-enhanced Authoring
 # Autonomous Novel-Writing System
 
+**NOTE**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactoring and overhaul. Things may not work as intended. Ingestion, for certain, doesn't work at the moment.
+
 SAGA is a novel-writing system that leverages a knowledge graph and multiple specialized agents to autonomously create and refine stories. It is designed to handle complex narrative structures while maintaining coherence and consistency.
 
 ## Features
@@ -190,4 +192,4 @@ The project uses the following tools to ensure code quality and maintainability:
 
 ## License
 
-SAGA is licensed under the Apache 2.0 license. See `LICENSE` file for complete details.
+SAGA is licensed under the [![Apache-2.0 License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)

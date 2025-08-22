@@ -1586,6 +1586,12 @@ class KnowledgeAgent:
         promoted = await kg_queries.promote_dynamic_relationships()
         if promoted:
             logger.info("KG Healer: Promoted %d dynamic relationships.", promoted)
+        
+        # 5a. Consolidate similar relationships using predefined taxonomy
+        consolidated = await kg_queries.consolidate_similar_relationships()
+        if consolidated:
+            logger.info("KG Healer: Consolidated %d relationships to canonical forms.", consolidated)
+            
         removed = await kg_queries.deduplicate_relationships()
         if removed:
             logger.info("KG Healer: Deduplicated %d relationships.", removed)

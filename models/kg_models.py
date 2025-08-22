@@ -132,7 +132,18 @@ class WorldItem(BaseModel):
             category, name, item_id, allow_empty_name
         )
 
-        created_chapter = int(data.get(KG_NODE_CREATED_CHAPTER, 0))
+        # Extract and validate created_chapter (handle various formats)
+        value = data.get(KG_NODE_CREATED_CHAPTER, "0")
+        if isinstance(value, list):
+            created_chapter = int(value[0]) if value else 0
+        elif isinstance(value, str):
+            cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
+            num_str = cleaned_value.split(',')[0].strip()
+            created_chapter = int(num_str) if num_str else 0
+        else:
+            created_chapter = int(value) if value is not None else 0
+
+        # Extract and validate is_provisional
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
 
         # Extract structured fields
@@ -209,6 +220,81 @@ class WorldItem(BaseModel):
                 return int(num_str) if num_str else 0
             return int(value) if value is not None else 0
 
+        def _safe_timestamp_extract(value) -> int:
+            """Safely extract timestamp from potentially array or comma-separated value."""
+            if isinstance(value, list):
+                return int(value[0]) if value and value[0] else 0
+            elif isinstance(value, str):
+                # Handle comma-separated values by taking first part
+                cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
+                timestamp_str = cleaned_value.split(',')[0].strip()
+                return int(timestamp_str) if timestamp_str else 0
+            return int(value) if value is not None else 0
+
+        def _safe_list_extract(value) -> list[str]:
+            """Safely extract list from potentially mixed value."""
+            if isinstance(value, list):
+                return [str(item) for item in value if item is not None]
+            return [str(value)] if value is not None else []
+
+        # Extract additional properties that aren't core fields
+        core_fields = {
+            "id",
+            "name",
+            "category",
+            "description",
+            "goals",
+            "rules",
+            "key_elements",
+            "traits",
+            "created_chapter",
+            "is_provisional",
+            "chapter_last_updated",
+            "last_updated",
+        }
+        additional_props = {k: v for k, v in dict(node).items() if k not in core_fields}
+
+        # Extract core fields with proper type handling
+        created_chapter_val = node.get("created_chapter", 0)
+        chapter_last_updated_val = node.get("chapter_last_updated", None)
+        last_updated_val = node.get("last_updated", None)
+
+        return cls(
+            id=_safe_string_extract(node.get("id", "")),
+            category=_safe_string_extract(node.get("category", "")),
+            name=_safe_string_extract(node.get("name", "")),
+            description=_safe_string_extract(node.get("description", "")),
+            goals=_safe_list_extract(node.get("goals", [])),
+            rules=_safe_list_extract(node.get("rules", [])),
+            key_elements=_safe_list_extract(node.get("key_elements", [])),
+            traits=_safe_list_extract(node.get("traits", [])),
+            created_chapter=_safe_int_extract(created_chapter_val),
+            is_provisional=bool(node.get("is_provisional", False)),
+            additional_properties=additional_props,
+        )
+
+    @classmethod
+    def from_db_node(cls, node: neo4j.Node) -> WorldItem:
+        """Construct directly from Neo4j node - no dict conversion."""
+        
+        def _safe_string_extract(value) -> str:
+            """Safely extract string from potentially array value."""
+            if isinstance(value, list):
+                return value[0] if value else ""
+            return str(value) if value is not None else ""
+
+        def _safe_int_extract(value) -> int:
+            """Safely extract int from potentially array value."""
+            if isinstance(value, list):
+                return int(value[0]) if value else 0
+            elif isinstance(value, str):
+                # Handle comma-separated values by taking first part
+                # Clean potential list representation before splitting
+                cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
+                num_str = cleaned_value.split(',')[0].strip()
+                return int(num_str) if num_str else 0
+            return int(value) if value is not None else 0
+
         def _safe_list_extract(value) -> list[str]:
             """Safely extract list from potentially mixed value."""
             if isinstance(value, list):
@@ -243,40 +329,6 @@ class WorldItem(BaseModel):
             traits=_safe_list_extract(node.get("traits", [])),
             created_chapter=_safe_int_extract(node.get("created_chapter", 0)),
             is_provisional=bool(node.get("is_provisional", False)),
-            additional_properties=additional_props,
-        )
-
-    @classmethod
-    def from_db_node(cls, node: neo4j.Node) -> WorldItem:
-        """Construct directly from Neo4j node - no dict conversion."""
-        # Extract additional properties that aren't core fields
-        core_fields = {
-            "id",
-            "name",
-            "category",
-            "description",
-            "goals",
-            "rules",
-            "key_elements",
-            "traits",
-            "created_chapter",
-            "is_provisional",
-            "chapter_last_updated",
-            "last_updated",
-        }
-        additional_props = {k: v for k, v in dict(node).items() if k not in core_fields}
-
-        return cls(
-            id=node.get("id", ""),
-            category=node.get("category", ""),
-            name=node.get("name", ""),
-            description=node.get("description", ""),
-            goals=node.get("goals", []),
-            rules=node.get("rules", []),
-            key_elements=node.get("key_elements", []),
-            traits=node.get("traits", []),
-            created_chapter=node.get("created_chapter", 0),
-            is_provisional=node.get("is_provisional", False),
             additional_properties=additional_props,
         )
 
