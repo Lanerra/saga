@@ -460,7 +460,7 @@ class NANA_Orchestrator:
                     }
                 )
 
-        return eval_result_obj, continuity_problems, revision_usage, None
+        return eval_result_obj, continuity_problems, None, None
 
     async def _perform_revisions(
         self,
@@ -511,12 +511,12 @@ class NANA_Orchestrator:
         ):
             new_text, rev_raw_output, new_spans = revision_tuple_result
             patched_spans = new_spans
-            return new_text, rev_raw_output, patched_spans, revision_usage
+            return new_text, rev_raw_output, patched_spans
 
         logger.error(
             f"NANA: Ch {novel_chapter_number} - Revision attempt {attempt} failed to produce usable text."
         )
-        return current_text, None, patched_spans, revision_usage
+        return current_text, None, patched_spans
 
     async def _prepare_chapter_prerequisites(
         self, novel_chapter_number: int
@@ -958,8 +958,6 @@ class NANA_Orchestrator:
         result = {
             "summary": summary,
             "embedding": embedding,
-            "summary_usage": summary_usage,
-            "kg_usage": kg_usage,
         }
 
         await self._save_debug_output(
@@ -1429,8 +1427,6 @@ class NANA_Orchestrator:
             result = {
                 "summary": summary,
                 "embedding": embedding,
-                "summary_usage": summary_usage,
-                "kg_usage": kg_usage,
             }
             if result.get("summary"):
                 summaries.append(str(result["summary"]))
