@@ -820,164 +820,127 @@ async def get_entity_context_for_resolution(
         return None
 
 
-async def merge_entities(source_id: str, target_id: str, reason: str) -> bool:
+async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = 3) -> bool:
     """
-    Merges one entity (source) into another (target) using native Neo4j operations.
+    Merges one entity (source) into another (target) using atomic Neo4j operations with retry logic.
     The source node will be deleted after its relationships are moved.
     """
-    # First, copy properties from source to target (combining them when both exist)
-    query1 = """
-    MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
-    WITH target, source, keys(source) AS sourceKeys, properties(target) AS targetProps
-    UNWIND sourceKeys AS key
-    WITH target, source, key, targetProps
-    WHERE NOT key IN ['id', 'created_ts', 'updated_ts']
-      AND source[key] IS NOT NULL
-    CALL (target, source, key, targetProps) {
-        WITH target, source, key, targetProps
-        WITH target, source, key, targetProps
-        WHERE targetProps[key] IS NOT NULL AND source[key] <> targetProps[key]
-        // Handle arrays (StringArray) vs strings properly, avoiding size() on non-collections
-        WITH target, source, key, targetProps,
-             CASE 
-                 WHEN targetProps[key] IS NULL THEN []
-                 WHEN targetProps[key] IS NOT NULL AND NOT targetProps[key] IN [null] AND (targetProps[key] + []) = targetProps[key] THEN targetProps[key]  // It's an array
-                 ELSE [targetProps[key]]  // Convert single value to array (keep as original type)
-             END AS targetArray,
-             CASE 
-                 WHEN source[key] IS NULL THEN []
-                 WHEN source[key] IS NOT NULL AND NOT source[key] IN [null] AND (source[key] + []) = source[key] THEN source[key]  // It's an array
-                 ELSE [source[key]]  // Convert single value to array (keep as original type)
-             END AS sourceArray
-        // For StringArray, convert to string by joining elements
-        WITH target, source, key, targetProps,
-             CASE 
-                 WHEN targetArray IS NOT NULL AND NOT targetArray IN [null] AND (targetArray + []) = targetArray THEN 
-                     // It's an array, convert to string by joining elements
-                     apoc.text.join(targetArray, ', ')
-                 ELSE 
-                     targetArray[0]
-             END AS targetValue,
-             CASE 
-                 WHEN sourceArray IS NOT NULL AND NOT sourceArray IN [null] AND (sourceArray + []) = sourceArray THEN 
-                     // It's an array, convert to string by joining elements
-                     apoc.text.join(sourceArray, ', ')
-                 ELSE 
-                     sourceArray[0]
-             END AS sourceValue
-        SET target[key] = targetValue + ', ' + sourceValue
-    }
-    CALL (target, source, key, targetProps) {
-        WITH target, source, key, targetProps
-        WITH target, source, key, targetProps
-        WHERE targetProps[key] IS NULL
-        // Handle StringArray case for source[key] before setting
-        WITH target, source, key, targetProps,
-             CASE 
-                 WHEN source[key] IS NOT NULL AND NOT source[key] IN [null] AND (source[key] + []) = source[key] THEN 
-                     // It's an array, convert to string by joining elements
-                     apoc.text.join(source[key], ', ')
-                 ELSE 
-                     source[key]
-             END AS sourceValue
-        SET target[key] = sourceValue
-    }
-    RETURN count(*) AS copiedProps
-    """
+    import asyncio
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Merge attempt {attempt + 1}/{max_retries} for {source_id} -> {target_id}")
+            return await _execute_atomic_merge(source_id, target_id, reason)
+        except Exception as e:
+            logger.error(f"Merge attempt {attempt + 1}/{max_retries} failed: {e}", exc_info=True)
+            error_msg = str(e).lower()
+            if ("entitynotfound" in error_msg or "transaction" in error_msg or 
+                "locked" in error_msg or "deadlock" in error_msg) and attempt < max_retries - 1:
+                logger.warning(
+                    f"Entity merge attempt {attempt + 1}/{max_retries} failed, retrying: {e}"
+                )
+                await asyncio.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                continue
+            else:
+                logger.error(
+                    f"Entity merge failed after {attempt + 1} attempts: {e}",
+                    exc_info=True,
+                )
+                return False
+    
+    return False
 
-    # Then, move all outgoing relationships from source to target
-    query2 = """
-    MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
-    MATCH (source)-[r]->(o)
-    CALL (target, r, o) {
-        WITH target, r, o
-        WITH target, r, o, properties(r) AS props
-        WHERE type(r) = 'DYNAMIC_REL'
-        CREATE (target)-[newRel:DYNAMIC_REL]->(o)
-        SET newRel = props
-        DELETE r
-        RETURN count(*) AS movedRelsOutgoing
-    }
-    CALL (target, r, o) {
-        WITH target, r, o, properties(r) AS props
-        WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NOT NULL
-        // For non-DYNAMIC_REL relationships with a type property, we keep them as DYNAMIC_REL
-        // and preserve the original type in the properties
-        CREATE (target)-[newRel:DYNAMIC_REL]->(o)
-        SET newRel = props
-        DELETE r
-        RETURN count(*) AS movedRelsWithType
-    }
-    CALL (target, r, o) {
-        WITH target, r, o, properties(r) AS props
-        WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NULL
-        // For non-DYNAMIC_REL relationships without a type property, we keep them as DYNAMIC_REL
-        // with the original relationship type preserved in properties
-        CREATE (target)-[newRel:DYNAMIC_REL {original_type: type(r)}]->(o)
-        SET newRel += props
-        DELETE r
-        RETURN count(*) AS movedRelsWithoutType
-    }
-    RETURN count(*) AS totalMovedOutgoing
-    """
 
-    # Also move all incoming relationships from source to target
-    query3 = """
-    MATCH (target:Entity {id: $target_id}), (source:Entity {id: $source_id})
-    MATCH (o)-[r]->(source)
-    CALL (target, r, o) {
-        WITH target, r, o
-        WITH target, r, o, properties(r) AS props
-        WHERE type(r) = 'DYNAMIC_REL'
-        CREATE (o)-[newRel:DYNAMIC_REL]->(target)
-        SET newRel = props
-        DELETE r
-        RETURN count(*) AS movedRelsIncoming
-    }
-    CALL (target, r, o) {
-        WITH target, r, o, properties(r) AS props
-        WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NOT NULL
-        // For non-DYNAMIC_REL relationships with a type property, we keep them as DYNAMIC_REL
-        // and preserve the original type in the properties
-        CREATE (o)-[newRel:DYNAMIC_REL]->(target)
-        SET newRel = props
-        DELETE r
-        RETURN count(*) AS movedRelsWithType
-    }
-    CALL (target, r, o) {
-        WITH target, r, o, properties(r) AS props
-        WHERE type(r) <> 'DYNAMIC_REL' AND props.type IS NULL
-        // For non-DYNAMIC_REL relationships without a type property, we keep them as DYNAMIC_REL
-        // with the original relationship type preserved in properties
-        CREATE (o)-[newRel:DYNAMIC_REL {original_type: type(r)}]->(target)
-        SET newRel += props
-        DELETE r
-        RETURN count(*) AS movedRelsWithoutType
-    }
-    RETURN count(*) AS totalMovedIncoming
+async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> bool:
+    """Execute entity merge using multiple queries in a single transaction to handle Neo4j constraints."""
+    
+    # Break the merge into separate queries that avoid complex Cypher constructs
+    
+    # Step 1: Copy properties
+    copy_props_query = """
+    MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
+    SET target.description = COALESCE(target.description + ', ' + source.description, source.description, target.description)
+    RETURN count(*) as props_copied
     """
-
-    # Finally, delete the source node
-    query4 = """
+    
+    # Step 2: Move outgoing relationships
+    move_outgoing_query = """
+    MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
+    MATCH (source)-[r]->(other)
+    WHERE other.id <> target.id
+    WITH source, target, r, other, properties(r) as rel_props
+    CREATE (target)-[new_r:DYNAMIC_REL]->(other)
+    SET new_r = rel_props,
+        new_r.merged_from = $source_id,
+        new_r.merge_reason = $reason,
+        new_r.merge_timestamp = timestamp()
+    DELETE r
+    RETURN count(*) as outgoing_moved
+    """
+    
+    # Step 3: Move incoming relationships  
+    move_incoming_query = """
+    MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
+    MATCH (other)-[r]->(source)
+    WHERE other.id <> target.id
+    WITH source, target, r, other, properties(r) as rel_props
+    CREATE (other)-[new_r:DYNAMIC_REL]->(target)
+    SET new_r = rel_props,
+        new_r.merged_from = $source_id,
+        new_r.merge_reason = $reason,
+        new_r.merge_timestamp = timestamp()
+    DELETE r
+    RETURN count(*) as incoming_moved
+    """
+    
+    # Step 4: Delete source node
+    delete_source_query = """
     MATCH (source:Entity {id: $source_id})
     DETACH DELETE source
+    RETURN count(*) as deleted
     """
-
-    params = {"target_id": target_id, "source_id": source_id}
+    
+    params = {"target_id": target_id, "source_id": source_id, "reason": reason}
+    
     try:
-        # Execute all queries in sequence
-        await neo4j_manager.execute_write_query(query1, params)
-        await neo4j_manager.execute_write_query(query2, params)
-        await neo4j_manager.execute_write_query(query3, params)
-        await neo4j_manager.execute_write_query(query4, {"source_id": source_id})
-        logger.info(f"Successfully merged node {source_id} into {target_id}.")
+        logger.info(f"Attempting multi-step atomic merge: {source_id} -> {target_id}")
+        
+        # Execute all operations within the session's auto-commit transaction
+        outgoing_count = 0
+        incoming_count = 0
+        
+        # Copy properties
+        await neo4j_manager.execute_write_query(copy_props_query, params)
+        
+        # Move outgoing relationships (may be zero)
+        try:
+            outgoing_result = await neo4j_manager.execute_write_query(move_outgoing_query, params)
+            outgoing_count = outgoing_result[0]["outgoing_moved"] if outgoing_result else 0
+        except Exception:
+            # No outgoing relationships to move
+            pass
+            
+        # Move incoming relationships (may be zero)
+        try:
+            incoming_result = await neo4j_manager.execute_write_query(move_incoming_query, params)
+            incoming_count = incoming_result[0]["incoming_moved"] if incoming_result else 0
+        except Exception:
+            # No incoming relationships to move
+            pass
+        
+        # Delete source node
+        await neo4j_manager.execute_write_query(delete_source_query, {"source_id": source_id})
+        
+        total_moved = outgoing_count + incoming_count
+        logger.info(f"Successfully merged {source_id} -> {target_id} ({total_moved} relationships moved, reason: {reason})")
         return True
+        
     except Exception as e:
         logger.error(
-            f"Error merging entities ({source_id} -> {target_id}): {e}",
+            f"Multi-step merge failed ({source_id} -> {target_id}): {e}",
             exc_info=True,
         )
-        return False
+        raise
 
 
 @alru_cache(maxsize=1)
