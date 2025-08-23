@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 from async_lru import alru_cache  # type: ignore
-from jinja2 import Template
 
 import config
 import utils  # Ensure utils is imported for normalize_trait_name
@@ -65,65 +64,6 @@ async def _llm_summarize_full_chapter_text(
             logger.debug(f"Summary for chapter {chapter_number} was not a JSON object.")
     return summary_text, usage_data
 
-
-# Prompt template for entity resolution, embedded to avoid new file dependency
-ENTITY_RESOLUTION_PROMPT_TEMPLATE = """/no_think
-You are an expert knowledge graph analyst for a creative writing project. Your task is to determine if two entities from the narrative's knowledge graph are referring to the same canonical thing based on their names, properties, and relationships.
-
-**Entity 1 Details:**
-- Name: {{ entity1.name }}
-- Labels: {{ entity1.labels }}
-- Properties:
-{{ entity1.properties | tojson(indent=2) }}
-- Key Relationships (up to 10):
-{% if entity1.relationships %}
-{% for rel in entity1.relationships %}
-  - Related to '{{ rel.other_node_name }}' (Labels: {{ rel.other_node_labels }}) via relationship of type '{{ rel.rel_type }}'
-{% endfor %}
-{% else %}
-  - No relationships found.
-{% endif %}
-
-**Entity 2 Details:**
-- Name: {{ entity2.name }}
-- Labels: {{ entity2.labels }}
-- Properties:
-{{ entity2.properties | tojson(indent=2) }}
-- Key Relationships (up to 10):
-{% if entity2.relationships %}
-{% for rel in entity2.relationships %}
-  - Related to '{{ rel.other_node_name }}' (Labels: {{ rel.other_node_labels }}) via relationship of type '{{ rel.rel_type }}'
-{% endfor %}
-{% else %}
-  - No relationships found.
-{% endif %}
-
-**Analysis Task:**
-Based on all the provided context, including name similarity, properties (like descriptions), and shared relationships, are "Entity 1" and "Entity 2" the same entity within the story's canon? For example, "The Locket" and "The Pendant" might be the same item, or "The Shattered Veil" and "Shattered Veil" are likely the same faction.
-
-**Response Format:**
-Respond in JSON format only, with no other text, commentary, or markdown. Your entire response must be a single, valid JSON object with the following structure:
-{
-  "is_same_entity": boolean,
-  "confidence_score": float (from 0.0 to 1.0, representing your certainty),
-  "reason": "A brief explanation for your decision."
-}
-"""
-
-# Prompt template for dynamic relationship resolution
-DYNAMIC_REL_RESOLUTION_PROMPT_TEMPLATE = """/no_think
-You analyze a relationship from the novel's knowledge graph and provide a
-single, canonical predicate name in ALL_CAPS_WITH_UNDERSCORES describing the
-relationship between the subject and object.
-
-Subject: {{ subject }} ({{ subject_labels }})
-Object: {{ object }} ({{ object_labels }})
-Existing Type: {{ type }}
-Subject Description: {{ subject_desc }}
-Object Description: {{ object_desc }}
-
-Respond with only the predicate string, no extra words.
-"""
 
 # Moved from kg_maintainer/parsing.py
 CHAR_UPDATE_KEY_MAP = {
@@ -1368,9 +1308,9 @@ class KnowledgeAgent:
 
             # Import duplicate prevention functions
             from processing.entity_deduplication import (
+                generate_entity_id,
                 prevent_character_duplication,
                 prevent_world_item_duplication,
-                generate_entity_id
             )
 
             # Convert character updates directly to models with duplicate prevention
@@ -2083,8 +2023,6 @@ class KnowledgeAgent:
                 f"KG Healer: Found {len(candidate_pairs)} candidate pairs for entity resolution."
             )
 
-            jinja_template = Template(ENTITY_RESOLUTION_PROMPT_TEMPLATE)
-
             for pair in candidate_pairs:
                 id1, id2 = pair.get("id1"), pair.get("id2")
                 if not id1 or not id2:
@@ -2101,7 +2039,10 @@ class KnowledgeAgent:
                     )
                     continue
 
-                prompt = jinja_template.render(entity1=context1, entity2=context2)
+                prompt = render_prompt("knowledge_agent/entity_resolution.j2", {
+                    "entity1": context1, 
+                    "entity2": context2
+                })
                 llm_response, _ = await llm_service.async_call_llm(
                     model_name=config.KNOWLEDGE_UPDATE_MODEL,
                     prompt=prompt,
@@ -2217,9 +2158,8 @@ class KnowledgeAgent:
         if not dyn_rels:
             logger.info("KG Healer: No unresolved dynamic relationships found.")
             return
-        jinja_template = Template(DYNAMIC_REL_RESOLUTION_PROMPT_TEMPLATE)
         for rel in dyn_rels:
-            prompt = jinja_template.render(rel)
+            prompt = render_prompt("knowledge_agent/dynamic_relationship_resolution.j2", rel)
             new_type_raw, _ = await llm_service.async_call_llm(
                 model_name=config.MEDIUM_MODEL,
                 prompt=prompt,
