@@ -5,6 +5,18 @@
 
 SAGA is a novel-writing system that leverages a knowledge graph and multiple specialized agents to autonomously create and refine stories. It is designed to handle complex narrative structures while maintaining coherence and consistency.
 
+
+## Progress Window
+*(This is a representation of the Rich CLI progress window)*
+
+![SAGA Progress Window](https://github.com/Lanerra/saga/blob/master/SAGA.png)
+
+
+## Example Knowledge Graph Visualization (4 Chapters)
+
+![SAGA KG Visualization](https://github.com/Lanerra/saga/blob/master/SAGA-KG-Ch4.png)
+
+
 ## Features
 
 - **Knowledge Graph (KG)**: Stores and manages all entities, relationships, and narrative elements using Neo4j.

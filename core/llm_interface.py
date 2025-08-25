@@ -356,25 +356,6 @@ class LLMService:
                     return None
             return None
 
-    def _log_llm_usage(
-        self,
-        model_name: str,
-        usage_data: dict[str, int] | None,
-        async_mode: bool = False,
-        streamed: bool = False,
-    ):
-        """Helper to log LLM token usage if available in the response."""
-        prefix = "Async: " if async_mode else ""
-        stream_prefix = "Streamed " if streamed else ""
-        if usage_data and isinstance(usage_data, dict):
-            logger.info(
-                f"{prefix}{stream_prefix}LLM ('{model_name}') Usage - Prompt: {usage_data.get('prompt_tokens', 'N/A')} tk, "
-                f"Comp: {usage_data.get('completion_tokens', 'N/A')} tk, Total: {usage_data.get('total_tokens', 'N/A')} tk"
-            )
-        else:
-            logger.debug(
-                f"{prefix}{stream_prefix}LLM ('{model_name}') response missing 'usage' information or 'usage' was not a dictionary."
-            )
 
     async def async_call_llm(
         self,
@@ -557,12 +538,6 @@ class LLMService:
 
                                 final_text_response = accumulated_stream_content
                                 current_usage_data = stream_usage_data
-                                self._log_llm_usage(
-                                    current_model_to_try,
-                                    current_usage_data,
-                                    async_mode=True,
-                                    streamed=True,
-                                )
                                 if auto_clean_response:
                                     final_text_response = self.clean_model_response(
                                         final_text_response
@@ -619,12 +594,6 @@ class LLMService:
 
                             final_text_response = raw_text_non_stream
                             current_usage_data = response_data.get("usage")
-                            self._log_llm_usage(
-                                current_model_to_try,
-                                current_usage_data,
-                                async_mode=True,
-                                streamed=False,
-                            )
                             if auto_clean_response:
                                 final_text_response = self.clean_model_response(
                                     final_text_response

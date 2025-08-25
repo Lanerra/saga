@@ -22,6 +22,7 @@ from models import (
     SceneDetail,
     WorldItem,
 )
+from prompt_renderer import render_prompt
 
 logger = logging.getLogger(__name__)
 utils.load_spacy_model_if_needed()  # Ensure spaCy model is loaded when this module is imported
@@ -50,6 +51,11 @@ def _get_plot_point_info(
         return str(plot_point) if plot_point is not None else None, plot_point_index
     return None, -1
 
+
+def _generate_context_window_for_patch(
+    original_doc_text: str, problem: ProblemDetail, window_size_chars: int
+) -> str:
+    """Generate a context window around the problem location for patch generation."""
     quote_text_from_llm = problem["quote_from_original_text"]
     focus_start = problem.get("sentence_char_start")
     focus_end = problem.get("sentence_char_end")
@@ -278,68 +284,22 @@ async def _generate_single_patch_instruction_llm(
         "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
     )
 
-    few_shot_patch_example_str = """
---- Example of how to provide 'replace_with' text (**Ignore the narrative details in this example.**) ---
-IF THE PROBLEM WAS:
-  - Issue Category: narrative_depth
-  - Problem Description: The reaction of Elara to seeing the ghost felt understated.
-  - Original Quote Illustrating Problem: "Elara saw the ghost and gasped."
-  - Suggested Fix Focus: Expand on Elara's internal emotional reaction and physical response.
-THEN YOUR 'replace_with' TEXT MIGHT BE (just the text, no other explanation):
-A chill traced Elara's spine, not from the crypt's cold, but from the translucent figure coalescing before her. Her breath hitched, a silent scream trapped in her throat as the ghostly visage turned its empty sockets towards her. Every instinct screamed to flee, but her feet felt rooted to the stone floor, a terrifying paralysis gripping her.
---- End of Example ---
-"""
-
-    prompt_lines = []
-    if config.ENABLE_LLM_NO_THINK_DIRECTIVE:
-        prompt_lines.append("/no_think")
-
-    prompt_lines.extend(
-        [
-            f'You are a surgical revision expert generating replacement text for Chapter {chapter_number} of a novel titled "{plot_outline.get("title", "Untitled Novel")}" about {protagonist_name}.',
-            "**Novel Context:**",
-            f"  - Genre: {plot_outline.get('genre', 'N/A')}",
-            f"  - Theme: {plot_outline.get('theme', 'N/A')}",
-            f"  - Protagonist: {protagonist_name} ({plot_outline.get('character_arc', 'N/A')})",
-            "",
-            plan_focus_section_str,
-            "**Hybrid Context from Previous Chapters (for consistency with established canon and narrative flow):**",
-            "--- BEGIN HYBRID CONTEXT ---",
-            hybrid_context_for_revision
-            if hybrid_context_for_revision.strip()
-            else "No previous context.",
-            "--- END HYBRID CONTEXT ---",
-            "",
-            "**Specific Problem to Address in the Chapter:**",
-            f"  - Issue Category: {problem['issue_category']}",
-            f"  - Problem Description: {problem['problem_description']}",
-            f'  - Original Quote Illustrating Problem: "{original_quote_text_from_problem}"',
-            f"  - Suggested Fix Focus: {problem['suggested_fix_focus']}",
-            "",
-            "**Text Snippet from Original Chapter (This is the broader context around the problem. If the quote is 'N/A - General Issue', this is general chapter context to inform your new passage):**",
-            "--- BEGIN ORIGINAL TEXT SNIPPET ---",
-            original_chapter_text_snippet_for_llm,
-            "--- END ORIGINAL TEXT SNIPPET ---",
-            length_expansion_instruction_header_str,
-            "```plaintext",
-            few_shot_patch_example_str.strip(),
-            "```",
-            "**Instructions for Generating Replacement Text:**",
-            "1.  Focus EXCLUSIVELY on the problem described, particularly relating to the conceptual area highlighted by: `{original_quote_text_from_problem}` within the 'ORIGINAL TEXT SNIPPET'.",
-            "2.  Generate a `replace_with` text according to the following:",
-            prompt_instruction_for_replacement_scope_str,
-            '3.  The `replace_with` text MUST address the "Problem Description" and "Suggested Fix Focus".',
-            # MODIFICATION START: Added instruction for deletion via empty string.
-            "4.  If the best way to fix the problem is to **completely remove** the 'Original Quote' segment (e.g., it is redundant or unnecessary), then you **MUST output an empty string**. Do not write a justification; simply provide no text as the `replace_with` output.",
-            # MODIFICATION END
-            "5.  Maintain the novel's style, tone, and consistency with all provided context (Novel Context, Plan, Hybrid Context).",
-            "6.  If `length_expansion_instruction_header_str` is present, ensure substantial expansion as guided for the targeted segment or new passage.",
-            '7.  **Output ONLY the `replace_with` text.** Do NOT include JSON, markdown, explanations, or any "Replace with:" prefixes. Just the raw text intended for replacement/insertion. (See example above for how to format the text).',
-            "",
-            f'--- BEGIN REPLACE_WITH TEXT (for the segment related to "{original_quote_text_from_problem}" or as a new passage if quote is "N/A - General Issue") ---',
-        ]
-    )
-    prompt = "\n".join(prompt_lines)
+    prompt = render_prompt("revision_agent/patch_generation.j2", {
+        "config": config,
+        "chapter_number": chapter_number,
+        "novel_title": plot_outline.get("title", "Untitled Novel"),
+        "protagonist_name": protagonist_name,
+        "genre": plot_outline.get('genre', 'N/A'),
+        "theme": plot_outline.get('theme', 'N/A'),
+        "character_arc": plot_outline.get('character_arc', 'N/A'),
+        "plan_focus_section": plan_focus_section_str,
+        "hybrid_context_for_revision": hybrid_context_for_revision,
+        "problem": problem,
+        "original_quote_text_from_problem": original_quote_text_from_problem,
+        "original_chapter_text_snippet_for_llm": original_chapter_text_snippet_for_llm,
+        "length_expansion_instruction_header_str": length_expansion_instruction_header_str,
+        "prompt_instruction_for_replacement_scope_str": prompt_instruction_for_replacement_scope_str
+    })
 
     logger.info(
         f"Calling LLM ({config.PATCH_GENERATION_MODEL}) for patch in Ch {chapter_number}. Problem: '{problem['problem_description'][:60].replace(chr(10), ' ')}...' Quote Text: '{original_quote_text_from_problem[:50].replace(chr(10), ' ')}...' Max Output Tokens: {max_patch_output_tokens}"
@@ -618,13 +578,8 @@ async def _generate_patch_instructions_logic(
     hybrid_context_for_revision: str,
     chapter_plan: list[SceneDetail] | None,
     validator: RevisionAgent,
-) -> tuple[list[PatchInstruction], dict[str, int] | None]:
+) -> list[PatchInstruction]:
     patch_instructions: list[PatchInstruction] = []
-    total_usage: dict[str, int] = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-    }
 
     grouped = _group_problems_for_patch_generation(problems_to_fix)
 
@@ -639,7 +594,7 @@ async def _generate_patch_instructions_logic(
 
     async def _process_group(
         group_idx: int, group_problem: ProblemDetail, group_members: list[ProblemDetail]
-    ) -> tuple[PatchInstruction | None, dict[str, int]]:
+    ) -> PatchInstruction | None:
         context_snippet = await utils._get_context_window_for_patch_llm(
             original_text,
             group_problem,
@@ -647,14 +602,9 @@ async def _generate_patch_instructions_logic(
         )
 
         patch_instr: PatchInstruction | None = None
-        usage_acc: dict[str, int] = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
 
         for _ in range(config.PATCH_GENERATION_ATTEMPTS):
-            patch_instr_tmp, usage = await _generate_single_patch_instruction_llm(
+            patch_instr_tmp, _ = await _generate_single_patch_instruction_llm(
                 plot_outline,
                 context_snippet,
                 group_problem,
@@ -662,20 +612,14 @@ async def _generate_patch_instructions_logic(
                 hybrid_context_for_revision,
                 chapter_plan,
             )
-            if usage:
-                for k, v in usage.items():
-                    usage_acc[k] += v
             if not patch_instr_tmp:
                 continue
             if not config.AGENT_ENABLE_PATCH_VALIDATION:
                 patch_instr = patch_instr_tmp
                 break
-            valid, val_usage = await validator.validate_patch(
+            valid, _ = await validator.validate_patch(
                 context_snippet, patch_instr_tmp, group_members
             )
-            if val_usage:
-                for k, v in val_usage.items():
-                    usage_acc[k] += v
             if valid:
                 patch_instr = patch_instr_tmp
                 break
@@ -684,7 +628,7 @@ async def _generate_patch_instructions_logic(
             logger.warning(
                 f"Failed to generate valid patch for group {group_idx} in Ch {chapter_number}."
             )
-        return patch_instr, usage_acc
+        return patch_instr
 
     tasks = [
         _process_group(idx, gp, gm)
@@ -692,16 +636,14 @@ async def _generate_patch_instructions_logic(
     ]
 
     results = await asyncio.gather(*tasks)
-    for patch_instr, usage_acc in results:
+    for patch_instr in results:
         if patch_instr:
             patch_instructions.append(patch_instr)
-        for k, v in usage_acc.items():
-            total_usage[k] += v
 
     logger.info(
         f"Generated {len(patch_instructions)} patch instructions for Ch {chapter_number}."
     )
-    return patch_instructions, total_usage if total_usage["total_tokens"] > 0 else None
+    return patch_instructions
 
 
 async def _apply_patches_to_text(
@@ -880,23 +822,11 @@ async def revise_chapter_draft_logic(
     chapter_plan: list[SceneDetail] | None,
     is_from_flawed_source: bool = False,
     already_patched_spans: list[tuple[int, int]] | None | None = None,
-) -> tuple[tuple[str, str, list[tuple[int, int]]] | None, dict[str, int] | None]:
+) -> tuple[str, str, list[tuple[int, int]]] | None:
     if already_patched_spans is None:
         already_patched_spans = []
 
-    cumulative_usage_data: dict[str, int] = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0,
-    }
 
-    def _add_usage(usage: dict[str, int] | None):
-        if usage:
-            cumulative_usage_data["prompt_tokens"] += usage.get("prompt_tokens", 0)
-            cumulative_usage_data["completion_tokens"] += usage.get(
-                "completion_tokens", 0
-            )
-            cumulative_usage_data["total_tokens"] += usage.get("total_tokens", 0)
 
     if not original_text:
         logger.error(
@@ -950,10 +880,7 @@ async def revise_chapter_draft_logic(
                     return True, None
 
             validator = _BypassValidator()
-        (
-            patch_instructions,
-            patch_usage,
-        ) = await _generate_patch_instructions_logic(
+        patch_instructions = await _generate_patch_instructions_logic(
             plot_outline,
             original_text,
             problems_to_fix,
@@ -962,7 +889,6 @@ async def revise_chapter_draft_logic(
             chapter_plan,
             validator,
         )
-        _add_usage(patch_usage)
         if patch_instructions:
             (
                 patched_text,
@@ -997,7 +923,7 @@ async def revise_chapter_draft_logic(
             if isinstance(items, dict)
         }
         plot_focus, plot_idx = _get_plot_point_info(plot_outline, chapter_number)
-        post_eval, post_usage = await evaluator.evaluate_chapter_draft(
+        post_eval, _ = await evaluator.evaluate_chapter_draft(
             plot_outline,
             list(character_profiles.keys()),
             world_ids,
@@ -1007,7 +933,6 @@ async def revise_chapter_draft_logic(
             plot_idx,
             hybrid_context_for_revision,
         )
-        _add_usage(post_usage)
         remaining = len(post_eval.get("problems_found", []))
         if remaining <= config.POST_PATCH_PROBLEM_THRESHOLD:
             use_patched_text_as_final = True
@@ -1106,46 +1031,20 @@ async def revise_chapter_draft_logic(
                 "and addresses any resulting narrative gaps or inconsistencies.)**\n"
             )
 
-        prompt_full_rewrite_lines = []
-        if config.ENABLE_LLM_NO_THINK_DIRECTIVE:
-            prompt_full_rewrite_lines.append("/no_think")
-
-        prompt_full_rewrite_lines.extend(
-            [
-                f"You are an expert novelist rewriting Chapter {chapter_number} featuring protagonist {protagonist_name_full_rewrite}.",
-                "**Critique/Reason(s) for Revision (MUST be addressed comprehensively):**",
-                "--- FEEDBACK START ---",
-                llm_service.clean_model_response(revision_reason_str).strip(),
-                "--- FEEDBACK END ---",
-                all_problem_descriptions_str,
-                deduplication_note,
-                length_issue_explicit_instruction_full_rewrite_str,
-                plan_focus_section_full_rewrite_str,
-                "**Hybrid Context from Previous Chapters (for consistency with established canon and narrative flow):**",
-                "--- BEGIN HYBRID CONTEXT ---",
-                hybrid_context_for_revision
-                if hybrid_context_for_revision.strip()
-                else "No previous context.",
-                "--- END HYBRID CONTEXT ---",
-                "**Original Draft Snippet (for reference of what went wrong - DO NOT COPY VERBATIM. Your goal is a fresh rewrite addressing all critique and aligning with the plan/focus):**",
-                "--- BEGIN ORIGINAL DRAFT SNIPPET ---",
-                original_snippet,
-                "--- END ORIGINAL DRAFT SNIPPET ---",
-                "",
-                "**Revision Instructions:**",
-                "1.  **ABSOLUTE PRIORITY:** Thoroughly address ALL issues listed in **Critique/Reason(s) for Revision** and **Detailed Issues to Address**. "
-                "If the original text had content removed (e.g., due to de-duplication) or other flaws as noted, pay special attention to ensuring a smooth, coherent narrative flow and filling any gaps logically.",
-                "2.  **Rewrite the ENTIRE chapter.** Produce a fresh, coherent, and engaging narrative.",
-                "3.  If a Detailed Scene Plan is provided in `plan_focus_section_full_rewrite_str`, follow it closely. Otherwise, align with the `Original Chapter Focus`.",
-                "4.  Ensure seamless narrative flow with the **Hybrid Context**. Pay close attention to any `KEY RELIABLE KG FACTS` mentioned.",
-                f"5.  Maintain the novel's established tone, style, and genre ('{plot_outline.get('genre', 'story')}').",
-                f"6.  Target a substantial chapter length, aiming for at least {config.MIN_ACCEPTABLE_DRAFT_LENGTH} characters of narrative text.",
-                '7.  Output ONLY the rewritten chapter text.** Do NOT include "Chapter X" headers, titles, author commentary, or any meta-discussion.',
-                "",
-                f"--- BEGIN REVISED CHAPTER {chapter_number} TEXT ---",
-            ]
-        )
-        prompt_full_rewrite = "\n".join(prompt_full_rewrite_lines)
+        prompt_full_rewrite = render_prompt("revision_agent/full_chapter_rewrite.j2", {
+            "config": config,
+            "chapter_number": chapter_number,
+            "protagonist_name": protagonist_name_full_rewrite,
+            "revision_reason": llm_service.clean_model_response(revision_reason_str).strip(),
+            "all_problem_descriptions": all_problem_descriptions_str,
+            "deduplication_note": deduplication_note,
+            "length_issue_explicit_instruction": length_issue_explicit_instruction_full_rewrite_str,
+            "plan_focus_section": plan_focus_section_full_rewrite_str,
+            "hybrid_context_for_revision": hybrid_context_for_revision,
+            "original_snippet": original_snippet,
+            "genre": plot_outline.get('genre', 'story'),
+            "min_acceptable_draft_length": config.MIN_ACCEPTABLE_DRAFT_LENGTH
+        })
 
         logger.info(
             f"Calling LLM ({config.REVISION_MODEL}) for Ch {chapter_number} full rewrite. Min length: {config.MIN_ACCEPTABLE_DRAFT_LENGTH} chars."
@@ -1153,7 +1052,7 @@ async def revise_chapter_draft_logic(
 
         (
             raw_revised_llm_output_for_log,
-            full_rewrite_usage,
+            _,
         ) = await llm_service.async_call_llm(
             model_name=config.REVISION_MODEL,
             prompt=prompt_full_rewrite,
@@ -1165,7 +1064,6 @@ async def revise_chapter_draft_logic(
             presence_penalty=config.PRESENCE_PENALTY_REVISION,
             auto_clean_response=False,
         )
-        _add_usage(full_rewrite_usage)
 
         final_revised_text = llm_service.clean_model_response(
             raw_revised_llm_output_for_log
@@ -1181,12 +1079,7 @@ async def revise_chapter_draft_logic(
         logger.error(
             f"Revision process for ch {chapter_number} resulted in no usable content."
         )
-        return (
-            None,
-            cumulative_usage_data
-            if cumulative_usage_data["total_tokens"] > 0
-            else None,
-        )
+        return None
 
     if len(final_revised_text) < config.MIN_ACCEPTABLE_DRAFT_LENGTH:
         logger.warning(
@@ -1200,4 +1093,4 @@ async def revise_chapter_draft_logic(
         final_revised_text,
         final_raw_llm_output,
         final_spans_for_next_cycle,
-    ), cumulative_usage_data if cumulative_usage_data["total_tokens"] > 0 else None
+    )

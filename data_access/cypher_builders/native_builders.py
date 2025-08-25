@@ -45,7 +45,7 @@ class NativeCypherBuilder:
         // Handle relationships as separate merge operations
         WITH c
         UNWIND $relationship_data AS rel_data
-        CALL {
+        CALL (c, rel_data) {
             WITH c, rel_data
             MATCH (other:Entity {name: rel_data.target_name})
             MERGE (c)-[r:RELATIONSHIP {type: rel_data.rel_type}]->(other)

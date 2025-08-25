@@ -166,16 +166,29 @@ class Neo4jManagerSingleton:
                 raise
 
     async def create_db_schema(self) -> None:
-        """Create and verify Neo4j indexes and constraints.
+        """Create and verify Neo4j indexes and constraints in separate phases to avoid transaction conflicts.
 
-        The method issues idempotent `CREATE ... IF NOT EXISTS` statements for
-        all core indexes, constraints, and relationship type tokens. Any batch
-        failures fall back to executing operations individually.
+        Phase 1: Schema-only operations (constraints, indexes)
+        Phase 2: Data operations (relationship and node type placeholders)
         """
         self.logger.info(
-            "Creating/verifying Neo4j schema elements (batch execution)..."
+            "Creating/verifying Neo4j schema elements (phased execution)..."
         )
 
+        # Phase 1: Schema-only operations (constraints and indexes)
+        await self._create_constraints_and_indexes()
+        
+        # Phase 2: Data operations (type placeholders)
+        await self._create_type_placeholders()
+
+        self.logger.info(
+            "Neo4j schema (indexes, constraints, labels, relationship types, vector index) verification process complete."
+        )
+
+    async def _create_constraints_and_indexes(self) -> None:
+        """Create constraints, indexes, and vector index in schema-only transactions."""
+        self.logger.info("Phase 1: Creating constraints and indexes...")
+        
         core_constraints_queries = [
             "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
             "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
@@ -205,6 +218,37 @@ class Neo4jManagerSingleton:
             "CREATE INDEX chapter_is_provisional IF NOT EXISTS FOR (c:`Chapter`) ON (c.is_provisional)",
         ]
 
+        vector_index_query = f"""
+        CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS
+        FOR (c:Chapter) ON (c.embedding_vector)
+        OPTIONS {{indexConfig: {{
+            `vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS},
+            `vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'
+        }}}}
+        """
+
+        schema_only_queries = (
+            core_constraints_queries
+            + index_queries
+            + [vector_index_query]
+        )
+
+        try:
+            await self._execute_schema_batch(schema_only_queries)
+            self.logger.info(
+                f"Phase 1 complete: Successfully created {len(schema_only_queries)} schema elements."
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Phase 1 batch failed: {e}. Attempting individual operations...",
+                exc_info=True,
+            )
+            await self._execute_schema_individually(schema_only_queries)
+
+    async def _create_type_placeholders(self) -> None:
+        """Create relationship type and node label placeholders in separate data transactions."""
+        self.logger.info("Phase 2: Creating type placeholders...")
+        
         # Ensure schema tokens exist to avoid Neo4j warnings when
         # matching on types that have not been used yet. Creating
         # and immediately deleting a dummy node/relationship is sufficient.
@@ -219,54 +263,59 @@ class Neo4jManagerSingleton:
             f"CREATE (a:`{label}`) WITH a DELETE a" for label in NODE_LABELS
         ]
 
-        vector_index_query = f"""
-        CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS
-        FOR (c:Chapter) ON (c.embedding_vector)
-        OPTIONS {{indexConfig: {{
-            `vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS},
-            `vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'
-        }}}}
-        """
-
-        schema_ops_queries = (
-            core_constraints_queries
-            + index_queries
-            + [vector_index_query]
-            + relationship_type_queries
-            + node_label_queries
-        )
-
-        schema_ops_with_params: list[tuple[str, dict[str, Any]]] = [
-            (query, {}) for query in schema_ops_queries
+        data_operations = relationship_type_queries + node_label_queries
+        data_ops_with_params: list[tuple[str, dict[str, Any]]] = [
+            (query, {}) for query in data_operations
         ]
 
         try:
-            await self.execute_cypher_batch(schema_ops_with_params)
+            await self.execute_cypher_batch(data_ops_with_params)
             self.logger.info(
-                f"Successfully executed batch of {len(schema_ops_with_params)} schema operations (constraints, indexes, and type tokens)."
+                f"Phase 2 complete: Successfully created {len(data_operations)} type placeholders."
             )
         except Exception as e:
             self.logger.error(
-                f"Error during schema operation batch execution: {e}. Some schema elements might not be created/verified.",
+                f"Phase 2 batch failed: {e}. Attempting individual operations...",
                 exc_info=True,
             )
-            self.logger.warning(
-                "Attempting to apply schema operations individually as a fallback."
-            )
-            for query_text in schema_ops_queries:
+            for query_text in data_operations:
                 try:
                     await self.execute_write_query(query_text)
-                    self.logger.info(
-                        f"Fallback: Successfully applied schema operation: '{query_text[:100]}...'"
+                    self.logger.debug(
+                        "Phase 2 fallback: Successfully created type placeholder."
                     )
                 except Exception as individual_e:
                     self.logger.warning(
-                        f"Fallback: Failed to apply schema operation '{query_text[:100]}...': {individual_e}"
+                        f"Phase 2 fallback: Failed to create type placeholder: {individual_e}"
                     )
 
-        self.logger.info(
-            "Neo4j schema (indexes, constraints, labels, relationship types, vector index) verification process complete."
-        )
+    async def _execute_schema_batch(self, queries: list[str]) -> None:
+        """Execute schema operations in isolation (no data writes)."""
+        await self._ensure_connected()
+        async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+            tx = await session.begin_transaction()
+            try:
+                for query in queries:
+                    self.logger.debug(f"Schema operation: {query[:100]}...")
+                    await tx.run(query)
+                await tx.commit()
+            except Exception as e:
+                if tx and not tx.closed():  # type: ignore
+                    await tx.rollback()  # type: ignore
+                raise
+
+    async def _execute_schema_individually(self, queries: list[str]) -> None:
+        """Fallback: Execute schema operations individually."""
+        for query_text in queries:
+            try:
+                await self.execute_write_query(query_text)
+                self.logger.info(
+                    f"Fallback: Successfully applied schema operation: '{query_text[:100]}...'"
+                )
+            except Exception as individual_e:
+                self.logger.warning(
+                    f"Fallback: Failed to apply schema operation '{query_text[:100]}...': {individual_e}"
+                )
 
     def embedding_to_list(self, embedding: np.ndarray | None) -> list[float] | None:
         if embedding is None:

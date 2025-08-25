@@ -1,0 +1,19 @@
+/no_think
+You analyze a relationship from the novel's knowledge graph and provide a single, canonical relationship type in ALL_CAPS_WITH_UNDERSCORES format.
+
+**Relationship Context:**
+Subject: {{ subject }} ({{ subject_labels }})
+Object: {{ object }} ({{ object_labels }})
+Current Type: {{ type }}
+
+**Descriptions:**
+Subject: {{ subject_desc | truncate(200) }}
+Object: {{ object_desc | truncate(200) }}
+
+**Preferred Canonical Types:**
+Character: LOVES, HATES, FEARS, TRUSTS, FRIEND_OF, ENEMY_OF, WORKS_FOR, MARRIED_TO, PARENT_OF
+Location: LOCATED_IN, CONTAINS, ADJACENT_TO, TRAVELS_TO, ORIGINATES_FROM  
+Object: OWNS, POSSESSES, CREATED_BY, BELONGS_TO, USED_BY
+Abstract: SYMBOLIZES, INFLUENCES, DEPENDS_ON, CAUSES, PREVENTS
+
+Respond with ONLY the canonical predicate (e.g., "LOCATED_IN"):

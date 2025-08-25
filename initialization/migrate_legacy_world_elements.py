@@ -15,7 +15,7 @@ async def migrate_legacy_world_elements():
     query = """
     MATCH (we:WorldElement)
     WHERE we.category IS NULL OR we.name IS NULL OR we.id IS NULL
-    RETURN id(we) AS node_id, we.name AS name, we.category AS category, we.id AS current_id
+    RETURN elementId(we) AS node_id, we.name AS name, we.category AS category, we.id AS current_id
     """
     results = await neo4j_manager.execute_read_query(query)
 
@@ -47,7 +47,7 @@ async def migrate_legacy_world_elements():
         # Update the node with required fields
         update_query = """
         MATCH (we:WorldElement)
-        WHERE id(we) = $node_id
+        WHERE elementId(we) = $node_id
         SET we.category = $category,
             we.name = $name,
             we.id = $normalized_id,

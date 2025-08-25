@@ -17,35 +17,15 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 - For `world_updates`: Each category should contain items as keys, and each item should have properties like `description`, `goals`, `rules`, etc. Do NOT create items named "elaborations" or "elaboration" - these should be properties within actual items.
 - For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
 - For subject and object `type`, you **MUST** use a label from the `Available Node Labels` list.
-- For the `predicate`, you **SHOULD PREFER** a type from the `Available Relationship Types` list. You may create a new, logical relationship type if absolutely necessary.
+- For the `predicate`, you **SHOULD PREFER** a type from the specific relationship categories above. The system will automatically validate and normalize relationship types using fuzzy matching, so use the most appropriate canonical form.
 
 **Chapter {{ chapter_number }} Text to Analyze:**
---- BEGIN CHAPTER TEXT ---
+```text
 {{ chapter_text }}
---- END CHAPTER TEXT ---
+```
+---
 
-**Example Output Format:**
+**Example of Final Output Structure:**
 ```json
-{
-  "character_updates": {
-    "Elara": {
-      "description": "A determined scholar with a hidden past, now seeking the Starfall Map."
-    }
-  },
-  "world_updates": {
-    "Locations": {
-      "Sunken Library": {
-        "description": "An ancient repository of knowledge, accessible only by solving a riddle at a mist-shrouded lake.",
-        "atmosphere": "mystical and ancient"
-      }
-    },
-    "Systems": {
-      "Magic System": {
-        "rules": ["Must solve riddles to unlock", "Powered by ancient knowledge"],
-        "description": "A knowledge-based magic system"
-      }
-    }
-  },
-  "kg_triples": ["Character:Elara | LOCATED_IN | Location:Sunken Library"]
-}
+{"character_updates":{"Elara":{"description":"A determined scholar with a hidden past, now seeking the Starfall Map."}},"world_updates":{"Sunken Library":{"description":"An ancient repository of knowledge, accessible only by solving a riddle at a mist-shrouded lake."}},"kg_triples":["Character:Elara | LOCATED_IN | Location:Sunken Library"]}
 ```

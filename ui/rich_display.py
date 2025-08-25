@@ -49,7 +49,6 @@ class RichDisplayManager:
         self.status_text_novel_title: Text = Text("Novel: N/A")
         self.status_text_current_chapter: Text = Text("Current Chapter: N/A")
         self.status_text_current_step: Text = Text("Current Step: Initializing...")
-        self.status_text_tokens_generated: Text = Text("Tokens Generated (this run): 0")
         self.status_text_elapsed_time: Text = Text("Elapsed Time: 0s")
         self.status_text_requests_per_minute: Text = Text("Requests/Min: 0.0")
         self.run_start_time: float = 0.0
@@ -61,7 +60,6 @@ class RichDisplayManager:
                 self.status_text_novel_title,
                 self.status_text_current_chapter,
                 self.status_text_current_step,
-                self.status_text_tokens_generated,
                 self.status_text_requests_per_minute,
                 self.status_text_elapsed_time,
             )
@@ -103,7 +101,6 @@ class RichDisplayManager:
         plot_outline: dict[str, Any] | None = None,
         chapter_num: int | None = None,
         step: str | None = None,
-        total_tokens: int = 0,
         run_start_time: float | None = None,
     ) -> None:
         if not (self.live and self.group):
@@ -116,9 +113,6 @@ class RichDisplayManager:
             self.status_text_current_chapter.plain = f"Current Chapter: {chapter_num}"
         if step is not None:
             self.status_text_current_step.plain = f"Current Step: {step}"
-        self.status_text_tokens_generated.plain = (
-            f"Tokens Generated (this run): {total_tokens:,}"
-        )
         start_time = run_start_time or self.run_start_time
         elapsed_seconds = time.time() - start_time
         requests_per_minute = (

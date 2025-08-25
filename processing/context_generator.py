@@ -400,10 +400,6 @@ async def generate_hybrid_chapter_context_native(
     if current_chapter_number <= 0:
         return ""
 
-    logger.info(
-        f"Generating NATIVE hybrid context for Chapter {current_chapter_number}..."
-    )
-
     # Extract plot outline data
     if isinstance(agent_or_props, dict):
         plot_outline_data = agent_or_props.get(

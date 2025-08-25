@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 from async_lru import alru_cache  # type: ignore
-from jinja2 import Template
 
 import config
 import utils  # Ensure utils is imported for normalize_trait_name
@@ -16,7 +15,6 @@ from core.llm_interface import llm_service
 from core.schema_validator import (
     validate_kg_object,
     validate_node_labels,
-    validate_relationship_types,
 )
 from data_access import (
     character_queries,
@@ -66,65 +64,6 @@ async def _llm_summarize_full_chapter_text(
             logger.debug(f"Summary for chapter {chapter_number} was not a JSON object.")
     return summary_text, usage_data
 
-
-# Prompt template for entity resolution, embedded to avoid new file dependency
-ENTITY_RESOLUTION_PROMPT_TEMPLATE = """/no_think
-You are an expert knowledge graph analyst for a creative writing project. Your task is to determine if two entities from the narrative's knowledge graph are referring to the same canonical thing based on their names, properties, and relationships.
-
-**Entity 1 Details:**
-- Name: {{ entity1.name }}
-- Labels: {{ entity1.labels }}
-- Properties:
-{{ entity1.properties | tojson(indent=2) }}
-- Key Relationships (up to 10):
-{% if entity1.relationships %}
-{% for rel in entity1.relationships %}
-  - Related to '{{ rel.other_node_name }}' (Labels: {{ rel.other_node_labels }}) via relationship of type '{{ rel.rel_type }}'
-{% endfor %}
-{% else %}
-  - No relationships found.
-{% endif %}
-
-**Entity 2 Details:**
-- Name: {{ entity2.name }}
-- Labels: {{ entity2.labels }}
-- Properties:
-{{ entity2.properties | tojson(indent=2) }}
-- Key Relationships (up to 10):
-{% if entity2.relationships %}
-{% for rel in entity2.relationships %}
-  - Related to '{{ rel.other_node_name }}' (Labels: {{ rel.other_node_labels }}) via relationship of type '{{ rel.rel_type }}'
-{% endfor %}
-{% else %}
-  - No relationships found.
-{% endif %}
-
-**Analysis Task:**
-Based on all the provided context, including name similarity, properties (like descriptions), and shared relationships, are "Entity 1" and "Entity 2" the same entity within the story's canon? For example, "The Locket" and "The Pendant" might be the same item, or "The Shattered Veil" and "Shattered Veil" are likely the same faction.
-
-**Response Format:**
-Respond in JSON format only, with no other text, commentary, or markdown. Your entire response must be a single, valid JSON object with the following structure:
-{
-  "is_same_entity": boolean,
-  "confidence_score": float (from 0.0 to 1.0, representing your certainty),
-  "reason": "A brief explanation for your decision."
-}
-"""
-
-# Prompt template for dynamic relationship resolution
-DYNAMIC_REL_RESOLUTION_PROMPT_TEMPLATE = """/no_think
-You analyze a relationship from the novel's knowledge graph and provide a
-single, canonical predicate name in ALL_CAPS_WITH_UNDERSCORES describing the
-relationship between the subject and object.
-
-Subject: {{ subject }} ({{ subject_labels }})
-Object: {{ object }} ({{ object_labels }})
-Existing Type: {{ type }}
-Subject Description: {{ subject_desc }}
-Object Description: {{ object_desc }}
-
-Respond with only the predicate string, no extra words.
-"""
 
 # Moved from kg_maintainer/parsing.py
 CHAR_UPDATE_KEY_MAP = {
@@ -1351,6 +1290,7 @@ class KnowledgeAgent:
     ) -> tuple[list[CharacterProfile], list[WorldItem], str]:
         """
         Extract updates and return as models directly - no intermediate dict phase.
+        Now includes proactive duplicate prevention.
 
         Args:
             raw_text: Raw LLM extraction text (JSON format)
@@ -1366,17 +1306,69 @@ class KnowledgeAgent:
         try:
             extraction_data = json.loads(raw_text)
 
-            # Convert character updates directly to models
+            # Import duplicate prevention functions
+            from processing.entity_deduplication import (
+                generate_entity_id,
+                prevent_character_duplication,
+                prevent_world_item_duplication,
+            )
+
+            # Convert character updates directly to models with duplicate prevention
             char_data = extraction_data.get("character_updates", {})
             for name, char_info in char_data.items():
                 if isinstance(char_info, dict):
+                    description = char_info.get("description", "")
+                    final_name = name  # Default to original name
+                    
+                    # Check for existing similar character (only if enabled in config)
+                    if config.ENABLE_DUPLICATE_PREVENTION and config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
+                        existing_name = await prevent_character_duplication(name, description)
+                        
+                        if existing_name:
+                            # Use existing character name to prevent duplicate
+                            final_name = existing_name
+                            logger.info(f"Using existing character '{final_name}' instead of creating duplicate '{name}'")
+                    
+                    # Handle relationships if they need structuring from list to dict
+                    # Assuming LLM provides relationships as a list of strings
+                    # like "Target: Detail" or just "Target"
+                    # Or ideally, as a dict: {"Target": "Detail"}
+                    raw_relationships = char_info.get("relationships", {})
+                    processed_relationships = {}
+                    if isinstance(raw_relationships, list):
+                        rels_list = raw_relationships
+                        for rel_entry in rels_list:
+                            if isinstance(rel_entry, str):
+                                if ":" in rel_entry:
+                                    parts = rel_entry.split(":", 1)
+                                    if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+                                        processed_relationships[parts[0].strip()] = parts[1].strip()
+                                    elif parts[0].strip():  # If only name is there before colon
+                                        processed_relationships[parts[0].strip()] = "related"
+                                elif rel_entry.strip():  # No colon, just a name
+                                    processed_relationships[rel_entry.strip()] = "related"
+                            elif isinstance(rel_entry, dict):  # If LLM sends [{"name": "X", "detail": "Y"}]
+                                target_name = rel_entry.get("name")
+                                detail = rel_entry.get("detail", "related")
+                                if (
+                                    target_name
+                                    and isinstance(target_name, str)
+                                    and target_name.strip()
+                                ):
+                                    processed_relationships[target_name] = detail
+                    elif isinstance(raw_relationships, dict):
+                        processed_relationships = {
+                            str(k): str(v) for k, v in raw_relationships.items()
+                        }
+                    # If it's neither a list nor a dict, we'll use an empty dict
+                    
                     char_updates.append(
                         CharacterProfile(
-                            name=name,  # Use original name - let healing process handle deduplication
-                            description=char_info.get("description", ""),
+                            name=final_name,
+                            description=description,
                             traits=char_info.get("traits", []),
                             status=char_info.get("status", "Unknown"),
-                            relationships=char_info.get("relationships", {}),
+                            relationships=processed_relationships,
                             created_chapter=char_info.get(
                                 "created_chapter", chapter_number
                             ),
@@ -1385,12 +1377,33 @@ class KnowledgeAgent:
                         )
                     )
 
-            # Convert world updates directly to models
+            # Convert world updates directly to models with duplicate prevention
             world_data = extraction_data.get("world_updates", {})
             for category, items in world_data.items():
                 if isinstance(items, dict):
                     for item_name, item_info in items.items():
                         if isinstance(item_info, dict):
+                            description = item_info.get("description", "")
+                            
+                            # Check for existing similar world item (only if enabled in config)
+                            if config.ENABLE_DUPLICATE_PREVENTION and config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
+                                existing_id = await prevent_world_item_duplication(
+                                    item_name, category, description
+                                )
+                                
+                                if existing_id:
+                                    # Use existing world item ID to prevent duplicate
+                                    logger.info(f"Using existing world item with ID '{existing_id}' instead of creating duplicate '{item_name}' in category '{category}'")
+                                    # Update the item_info to use existing ID
+                                    item_info["id"] = existing_id
+                                else:
+                                    # Generate deterministic ID for new item
+                                    item_info["id"] = generate_entity_id(item_name, category, chapter_number)
+                            else:
+                                # Use existing ID generation logic when duplicate prevention is disabled
+                                if not item_info.get("id"):
+                                    item_info["id"] = generate_entity_id(item_name, category, chapter_number)
+                            
                             world_updates.append(
                                 WorldItem.from_dict(category, item_name, item_info)
                             )
@@ -2043,8 +2056,6 @@ class KnowledgeAgent:
                 f"KG Healer: Found {len(candidate_pairs)} candidate pairs for entity resolution."
             )
 
-            jinja_template = Template(ENTITY_RESOLUTION_PROMPT_TEMPLATE)
-
             for pair in candidate_pairs:
                 id1, id2 = pair.get("id1"), pair.get("id2")
                 if not id1 or not id2:
@@ -2061,7 +2072,10 @@ class KnowledgeAgent:
                     )
                     continue
 
-                prompt = jinja_template.render(entity1=context1, entity2=context2)
+                prompt = render_prompt("knowledge_agent/entity_resolution.j2", {
+                    "entity1": context1, 
+                    "entity2": context2
+                })
                 llm_response, _ = await llm_service.async_call_llm(
                     model_name=config.KNOWLEDGE_UPDATE_MODEL,
                     prompt=prompt,
@@ -2102,7 +2116,9 @@ class KnowledgeAgent:
                             else:
                                 target_id, source_id = id2, id1
 
-                        await kg_queries.merge_entities(target_id, source_id)
+                        # Use LLM's reasoning for the merge
+                        reason = decision_data.get('reason', 'LLM entity resolution merge')
+                        await kg_queries.merge_entities(source_id, target_id, reason)
                     else:
                         logger.info(
                             f"LLM decided NOT to merge '{context1.get('name')}' and '{context2.get('name')}'. "
@@ -2170,14 +2186,18 @@ class KnowledgeAgent:
 
     async def _resolve_dynamic_relationships(self) -> None:
         """Resolve generic DYNAMIC_REL types using a lightweight LLM."""
+        # Add early return if normalization is disabled
+        if config.DISABLE_RELATIONSHIP_NORMALIZATION:
+            logger.info("Relationship normalization disabled - skipping dynamic relationship resolution")
+            return
+        
         logger.info("KG Healer: Resolving dynamic relationship types via LLM...")
         dyn_rels = await kg_queries.fetch_unresolved_dynamic_relationships()
         if not dyn_rels:
             logger.info("KG Healer: No unresolved dynamic relationships found.")
             return
-        jinja_template = Template(DYNAMIC_REL_RESOLUTION_PROMPT_TEMPLATE)
         for rel in dyn_rels:
-            prompt = jinja_template.render(rel)
+            prompt = render_prompt("knowledge_agent/dynamic_relationship_resolution.j2", rel)
             new_type_raw, _ = await llm_service.async_call_llm(
                 model_name=config.MEDIUM_MODEL,
                 prompt=prompt,
@@ -2186,10 +2206,7 @@ class KnowledgeAgent:
                 auto_clean_response=True,
             )
             new_type = kg_queries.normalize_relationship_type(new_type_raw)
-            # Validate the new relationship type
-            errors = validate_relationship_types([new_type])
-            if errors:
-                logger.warning("Invalid relationship type from LLM: %s", errors)
+            # The normalize_relationship_type already validates and returns a valid type
             if new_type and new_type != "UNKNOWN":
                 await kg_queries.update_dynamic_relationship_type(
                     rel["rel_id"], new_type
