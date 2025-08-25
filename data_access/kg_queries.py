@@ -36,10 +36,12 @@ VALID_RELATIONSHIP_TYPES = {
     'LOST_AT', 'STOLEN_FROM', 'GIVEN_BY', 'INHERITED_FROM',
     'USED_BY', 'POWERED_BY', 'MADE_OF', 'CONTAINS_ITEM',
     
-    # Temporal relationships
+    # Temporal/Process relationships
     'HAPPENS_BEFORE', 'HAPPENS_AFTER', 'OCCURS_DURING', 'TRIGGERS',
     'RESULTS_IN', 'CAUSES', 'PREVENTS', 'ENABLES', 'FOLLOWS',
-    'PRECEDES', 'INTERRUPTS', 'COINCIDES_WITH',
+    'PRECEDES', 'INTERRUPTS', 'COINCIDES_WITH', 'OCCURRED_IN',
+    'PERFORMS_ACTION', 'IS_PERFORMED_BY', 'IS_USED_FOR',
+    'IS_OPENED_BY', 'IS_FUELED_BY', 'IS_SYNCHRONIZED_WITH',
     
     # Abstract relationships
     'SYMBOLIZES', 'REPRESENTS', 'EMBODIES', 'CONTRASTS_WITH',
@@ -55,7 +57,24 @@ VALID_RELATIONSHIP_TYPES = {
     
     # Conflict relationships
     'OPPOSES', 'SUPPORTS', 'CONFLICTS_WITH', 'COMPETES_WITH',
-    'COLLABORATES_WITH', 'NEGOTIATES_WITH', 'FIGHTS_AGAINST'
+    'COLLABORATES_WITH', 'NEGOTIATES_WITH', 'FIGHTS_AGAINST',
+
+    # Cognitive/Mental state relationships
+    'BELIEVES', 'REALIZES', 'REMEMBERS', 'UNDERSTANDS', 'RECOGNIZES', 
+    'FEELS', 'THINKS_ABOUT', 'PERCEIVES', 'WATCHES', 'SEES',
+
+    # Physical properties:
+    'HAS_PROPERTY', 'HAS_FEATURE', 'HAS_ACCESS', 'HAS_VOICE', 'HAS_PULSE',
+    'PULSES_WITH', 'SYNCED_WITH', 'MOVES_IN_UNISON',
+
+    # Communication/Interaction
+    'COMMUNICATES_THROUGH', 'SPEAKS_TO', 'SPEAKS_WITH', 'DECLARES',
+
+    # Source/Creation relationships
+    'IS_SOURCE_OF', 'WRITTEN_BY', 'RECORDS', 'PRODUCES', 'TRANSFORMED_BY',
+
+    # Rules/Goals (narrative structure)
+    'HAS_RULE', 'HAS_GOAL', 'IS_TRUE_FOR', 'INVOLVES', 'NEEDS'
 }
 
 # Lookup table for canonical node labels to ensure consistent casing
@@ -285,6 +304,54 @@ def validate_relationship_type(proposed_type: str) -> str:
         'RESIDE': 'LOCATED_IN',
         'STAY': 'LOCATED_IN',
         'JOURNEY': 'TRAVELS_TO',
+
+        # Add to semantic_mappings:
+        'REALIZES': 'DISCOVERS',
+        'BELIEVES': 'TRUSTS', 
+        'REMEMBERS': 'KNOWS',
+        'HAS_PROPERTY': 'HAS_TRAIT',
+        'PULSES_WITH': 'CONNECTED_TO',
+
+        # Cognitive mappings (these appear frequently)
+        'REALIZE': 'REALIZES',
+        'REMEMBER': 'REMEMBERS', 
+        'UNDERSTAND': 'UNDERSTANDS',
+        'BELIEVE': 'BELIEVES',
+        'FEEL': 'FEELS',
+        'THINK': 'THINKS_ABOUT',
+        'WATCH': 'WATCHES',
+        'SEE': 'SEES',
+        'PERCEIVE': 'PERCEIVES',
+
+        # Property mappings
+        'PROPERTY': 'HAS_PROPERTY',
+        'FEATURE': 'HAS_FEATURE', 
+        'ACCESS': 'HAS_ACCESS',
+        'PULSE': 'HAS_PULSE',
+        'VOICE': 'HAS_VOICE',
+        'RULE': 'HAS_RULE',
+        'GOAL': 'HAS_GOAL',
+
+        # Communication mappings
+        'COMMUNICATE': 'COMMUNICATES_THROUGH',
+        'SPEAK': 'SPEAKS_TO',
+        'DECLARE': 'DECLARES',
+        'RECORD': 'RECORDS',
+        'WRITE': 'WRITTEN_BY',
+
+        # Process mappings  
+        'OCCUR': 'OCCURRED_IN',
+        'HAPPEN': 'OCCURRED_IN',
+        'PERFORM': 'PERFORMS_ACTION',
+        'USE': 'IS_USED_FOR',
+        'FUEL': 'IS_FUELED_BY',
+        'SYNC': 'IS_SYNCHRONIZED_WITH',
+        'TRANSFORM': 'TRANSFORMED_BY',
+
+        # Existential mappings
+        'EXIST': 'EXISTS_BECAUSE_OF',
+        'LIVING': 'ARE_LIVING_TISSUE',
+        'ACCESSIBLE': 'IS_ACCESSIBLE_ONLY_TO'
     }
     
     mapped_type = semantic_mappings.get(clean_type)
