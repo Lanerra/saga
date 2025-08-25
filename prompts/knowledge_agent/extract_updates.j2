@@ -11,15 +11,6 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 - **Available Node Labels:** {{ available_node_labels | join(', ') }}
 - **Available Relationship Types:** {{ available_relationship_types | join(', ') }}
 
-**Relationship Categories & Examples (PREFER these specific types):**
-- **Character Relationships:** LOVES, HATES, FEARS, TRUSTS, FAMILY_OF, FRIEND_OF, ENEMY_OF, MENTOR_TO, ROMANTIC_WITH, MARRIED_TO, PARENT_OF, CHILD_OF, WORKS_FOR, SERVES
-- **Location Relationships:** LOCATED_IN, LOCATED_AT, ADJACENT_TO, CONTAINS, PART_OF, CONNECTED_TO, NEAR, ORIGINATES_FROM, TRAVELS_TO, BORDERS
-- **Object Relationships:** OWNS, POSSESSES, CREATED_BY, BELONGS_TO, USED_BY, MADE_OF, INHERITED_FROM, GIVEN_BY, STOLEN_FROM
-- **Temporal Relationships:** HAPPENS_BEFORE, HAPPENS_AFTER, OCCURS_DURING, TRIGGERS, RESULTS_IN, CAUSES, PREVENTS, ENABLES, FOLLOWS
-- **Abstract Relationships:** SYMBOLIZES, REPRESENTS, EMBODIES, INFLUENCES, INSPIRES, DEPENDS_ON, RELATES_TO, RESONATES_WITH
-- **Action/Event Relationships:** PERFORMS, WITNESSES, EXPERIENCES, PARTICIPATES_IN, INITIATES, DISCOVERS, CREATES, DESTROYS, OBSERVES
-- **Conflict Relationships:** OPPOSES, SUPPORTS, CONFLICTS_WITH, COMPETES_WITH, COLLABORATES_WITH, FIGHTS_AGAINST
-
 **Instructions for Output:**
 - Your entire response MUST be a single, valid JSON object.
 - The JSON object must have three top-level keys: `character_updates`, `world_updates`, and `kg_triples`.
@@ -27,39 +18,14 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 - For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
 - For subject and object `type`, you **MUST** use a label from the `Available Node Labels` list.
 - For the `predicate`, you **SHOULD PREFER** a type from the specific relationship categories above. The system will automatically validate and normalize relationship types using fuzzy matching, so use the most appropriate canonical form.
-- If you need a relationship not listed, use a clear, descriptive SNAKE_CASE format (e.g., "SECRETLY_ADMIRES" → will normalize to "RESPECTS").
 
 **Chapter {{ chapter_number }} Text to Analyze:**
---- BEGIN CHAPTER TEXT ---
+```text
 {{ chapter_text }}
---- END CHAPTER TEXT ---
+```
+---
 
-**Example Output Format:**
+**Example of Final Output Structure:**
 ```json
-{
-  "character_updates": {
-    "Elara": {
-      "description": "A determined scholar with a hidden past, now seeking the Starfall Map."
-    }
-  },
-  "world_updates": {
-    "Locations": {
-      "Sunken Library": {
-        "description": "An ancient repository of knowledge, accessible only by solving a riddle at a mist-shrouded lake.",
-        "atmosphere": "mystical and ancient"
-      }
-    },
-    "Systems": {
-      "Magic System": {
-        "rules": ["Must solve riddles to unlock", "Powered by ancient knowledge"],
-        "description": "A knowledge-based magic system"
-      }
-    }
-  },
-  "kg_triples": [
-    "Character:Elara | LOCATED_IN | Location:Sunken Library",
-    "Character:Elara | SEEKS | WorldElement:Starfall Map", 
-    "Location:Sunken Library | CONTAINS | WorldElement:Ancient Knowledge"
-  ]
-}
+{"character_updates":{"Elara":{"description":"A determined scholar with a hidden past, now seeking the Starfall Map."}},"world_updates":{"Sunken Library":{"description":"An ancient repository of knowledge, accessible only by solving a riddle at a mist-shrouded lake."}},"kg_triples":["Character:Elara | LOCATED_IN | Location:Sunken Library"]}
 ```

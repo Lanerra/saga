@@ -107,9 +107,144 @@ def validate_relationship_type(proposed_type: str) -> str:
             logger.info(f"Corrected relationship type: '{proposed_type}' -> '{matched_type}'")
         return matched_type
     
-    # Try semantic similarity for common patterns
+    # Enhanced semantic mappings using comprehensive keyword patterns
+    # Convert keyword_mappings structure to direct mappings for faster lookup
     semantic_mappings = {
-        # Common variations
+        # Social relationships - direct mappings
+        'FRIEND': 'FRIEND_OF',
+        'BEFRIEND': 'FRIEND_OF',
+        'ENEMY': 'ENEMY_OF',
+        'ANTAGONIZE': 'ENEMY_OF',
+        'OPPOSE': 'ENEMY_OF',
+        'ALLY': 'ALLY_OF',
+        'ALLIED': 'ALLY_OF',
+        'RIVAL': 'RIVAL_OF',
+        'COMPETE': 'RIVAL_OF',
+        'FAMILY': 'FAMILY_OF',
+        'RELATED': 'FAMILY_OF',
+        'PARENT': 'FAMILY_OF',
+        'CHILD': 'FAMILY_OF',
+        'SIBLING': 'FAMILY_OF',
+        'LOVE': 'ROMANTIC_WITH',
+        'ROMANTIC': 'ROMANTIC_WITH',
+        'DATING': 'ROMANTIC_WITH',
+        'MARRIED': 'ROMANTIC_WITH',
+        'MENTOR': 'MENTOR_TO',
+        'TEACH': 'MENTOR_TO',
+        'GUIDE': 'MENTOR_TO',
+        'STUDENT': 'STUDENT_OF',
+        'LEARN': 'STUDENT_OF',
+        'WORK': 'WORKS_FOR',
+        'EMPLOY': 'WORKS_FOR',
+        'JOB': 'WORKS_FOR',
+        'LEAD': 'LEADS',
+        'COMMAND': 'LEADS',
+        'BOSS': 'LEADS',
+        'SUPERVISE': 'LEADS',
+        'SERVE': 'SERVES',
+        'LOYAL': 'SERVES',
+        'KNOW': 'KNOWS',
+        'ACQUAINT': 'KNOWS',
+        'TRUST': 'TRUSTS',
+        'DISTRUST': 'DISTRUSTS',
+        'MISTRUST': 'DISTRUSTS',
+        
+        # Emotional relationships
+        'HATE': 'HATES',
+        'LOATH': 'HATES',
+        'DESPISE': 'HATES',
+        'FEAR': 'FEARS',
+        'AFRAID': 'FEARS',
+        'SCARE': 'FEARS',
+        'RESPECT': 'RESPECTS',
+        'ADMIRE': 'RESPECTS',
+        'ENVY': 'ENVIES',
+        'JEALOUS': 'ENVIES',
+        'PITY': 'PITIES',
+        'SYMPATHY': 'PITIES',
+        
+        # Causal relationships
+        'CAUSE': 'CAUSES',
+        'LEAD_TO': 'CAUSES',
+        'RESULT': 'CAUSES',
+        'PREVENT': 'PREVENTS',
+        'STOP': 'PREVENTS',
+        'BLOCK': 'PREVENTS',
+        'ENABLE': 'ENABLES',
+        'ALLOW': 'ENABLES',
+        'TRIGGER': 'TRIGGERS',
+        'START': 'TRIGGERS',
+        'DEPEND': 'DEPENDS_ON',
+        'REQUIRE': 'DEPENDS_ON',
+        'CONFLICT': 'CONFLICTS_WITH',
+        'CLASH': 'CONFLICTS_WITH',
+        'SUPPORT': 'SUPPORTS',
+        'HELP': 'SUPPORTS',
+        'AID': 'SUPPORTS',
+        'THREATEN': 'THREATENS',
+        'DANGER': 'THREATENS',
+        'PROTECT': 'PROTECTS',
+        'GUARD': 'PROTECTS',
+        'DEFEND': 'PROTECTS',
+        
+        # Spatial relationships
+        'LOCATED': 'LOCATED_AT',
+        'POSITION': 'LOCATED_AT',
+        'SITUATED': 'LOCATED_AT',
+        'INSIDE': 'LOCATED_IN',
+        'WITHIN': 'LOCATED_IN',
+        'CONTAINED': 'LOCATED_IN',
+        'NEAR': 'NEAR',
+        'CLOSE': 'NEAR',
+        'PROXIMITY': 'NEAR',
+        'ADJACENT': 'ADJACENT_TO',
+        'NEXT': 'ADJACENT_TO',
+        'ORIGIN': 'ORIGINATES_FROM',
+        'FROM': 'ORIGINATES_FROM',
+        'TRAVEL': 'TRAVELS_TO',
+        'MOVE': 'TRAVELS_TO',
+        'GO': 'TRAVELS_TO',
+        
+        # Ownership relationships
+        'OWN': 'OWNS',
+        'POSSESS': 'OWNS',
+        'HAVE': 'OWNS',
+        'BELONG': 'OWNS',
+        'CREATE': 'CREATED_BY',
+        'MAKE': 'CREATED_BY',
+        'BUILD': 'CREATED_BY',
+        'INHERIT': 'INHERITED_FROM',
+        'STEAL': 'STOLEN_FROM',
+        'ROB': 'STOLEN_FROM',
+        'GIVE': 'GIVEN_BY',
+        'GIFT': 'GIVEN_BY',
+        'FIND': 'FOUND_AT',
+        'DISCOVER': 'FOUND_AT',
+        
+        # Organizational relationships
+        'MEMBER': 'MEMBER_OF',
+        'JOIN': 'MEMBER_OF',
+        'LEADER': 'LEADER_OF',
+        'HEAD': 'LEADER_OF',
+        'FOUND': 'FOUNDED',
+        'ESTABLISH': 'FOUNDED',
+        'REPRESENT': 'REPRESENTS',
+        
+        # Physical relationships
+        'PART': 'PART_OF',
+        'COMPONENT': 'PART_OF',
+        'CONTAIN': 'CONTAINS',
+        'HOLD': 'CONTAINS',
+        'CONNECT': 'CONNECTED_TO',
+        'LINK': 'CONNECTED_TO',
+        'DESTROY': 'DESTROYED_BY',
+        'RUIN': 'DESTROYED_BY',
+        'DAMAGE': 'DAMAGED_BY',
+        'HARM': 'DAMAGED_BY',
+        'REPAIR': 'REPAIRED_BY',
+        'FIX': 'REPAIRED_BY',
+        
+        # Additional direct mappings for common variations
         'IS_IN': 'LOCATED_IN',
         'HAS': 'OWNS',
         'LIKES': 'FRIEND_OF',
@@ -143,17 +278,13 @@ def validate_relationship_type(proposed_type: str) -> str:
         'LED': 'LEADER_OF',
         'FOLLOWED': 'SERVES',
         
-        # Story-specific relationships
-        'HAS_TRAIT': 'HAS_TRAIT',
-        'EXTENSION_OF': 'EXTENSION_OF',
-        'EXTENSION_OF_CONSCIOUSNESS': 'EXTENDS',
-        'EXTENDS_CONSCIOUSNESS': 'EXTENDS',
-        'RESONATES_WITH': 'RESONATES_WITH',
-        'EVOLVED_THROUGH_HUMAN_INTERACTION': 'INFLUENCES',
-        'ACCESSIBLE_BY_NEURAL_ARCHITECTURE_AL': 'ACCESSES',
-        'CONNECTED_BY_COGNITIVE_RESONANCE': 'RESONATES_WITH',
-        'RESPONDS_TO_INTENTION_AND_RECOGN': 'RESPONDS_TO',
-        'MEMORY_TRANSMISSION_LINKS_TO_MEMORY_NETWORK': 'CONNECTS_TO',
+        # Additional employment variations
+        'EMPLOY': 'LEADS',
+        'MANAGE': 'LEADS',
+        'LIVE': 'LOCATED_IN',
+        'RESIDE': 'LOCATED_IN',
+        'STAY': 'LOCATED_IN',
+        'JOURNEY': 'TRAVELS_TO',
     }
     
     mapped_type = semantic_mappings.get(clean_type)
@@ -1005,6 +1136,11 @@ async def promote_dynamic_relationships() -> int:
     First validates and corrects relationship types, then promotes valid types
     to proper relationship types.
     """
+    # Add early return if normalization is disabled
+    if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
+        logger.info("Relationship normalization disabled - skipping dynamic relationship resolution")
+        return
+    
     total_promoted = 0
     
     # Step 1: Validate and correct existing relationship types
@@ -1183,6 +1319,11 @@ async def consolidate_similar_relationships() -> int:
 
 async def validate_relationship_types_in_db() -> dict[str, Any]:
     """Validate all relationship types in the database against the predefined taxonomy."""
+    # Add early return if normalization is disabled
+    if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
+        logger.info("Relationship normalization disabled - skipping dynamic relationship resolution")
+        return
+    
     import kg_constants
     
     # Get all relationship types currently in use

@@ -1329,13 +1329,46 @@ class KnowledgeAgent:
                             final_name = existing_name
                             logger.info(f"Using existing character '{final_name}' instead of creating duplicate '{name}'")
                     
+                    # Handle relationships if they need structuring from list to dict
+                    # Assuming LLM provides relationships as a list of strings
+                    # like "Target: Detail" or just "Target"
+                    # Or ideally, as a dict: {"Target": "Detail"}
+                    raw_relationships = char_info.get("relationships", {})
+                    processed_relationships = {}
+                    if isinstance(raw_relationships, list):
+                        rels_list = raw_relationships
+                        for rel_entry in rels_list:
+                            if isinstance(rel_entry, str):
+                                if ":" in rel_entry:
+                                    parts = rel_entry.split(":", 1)
+                                    if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+                                        processed_relationships[parts[0].strip()] = parts[1].strip()
+                                    elif parts[0].strip():  # If only name is there before colon
+                                        processed_relationships[parts[0].strip()] = "related"
+                                elif rel_entry.strip():  # No colon, just a name
+                                    processed_relationships[rel_entry.strip()] = "related"
+                            elif isinstance(rel_entry, dict):  # If LLM sends [{"name": "X", "detail": "Y"}]
+                                target_name = rel_entry.get("name")
+                                detail = rel_entry.get("detail", "related")
+                                if (
+                                    target_name
+                                    and isinstance(target_name, str)
+                                    and target_name.strip()
+                                ):
+                                    processed_relationships[target_name] = detail
+                    elif isinstance(raw_relationships, dict):
+                        processed_relationships = {
+                            str(k): str(v) for k, v in raw_relationships.items()
+                        }
+                    # If it's neither a list nor a dict, we'll use an empty dict
+                    
                     char_updates.append(
                         CharacterProfile(
                             name=final_name,
                             description=description,
                             traits=char_info.get("traits", []),
                             status=char_info.get("status", "Unknown"),
-                            relationships=char_info.get("relationships", {}),
+                            relationships=processed_relationships,
                             created_chapter=char_info.get(
                                 "created_chapter", chapter_number
                             ),
@@ -2153,6 +2186,11 @@ class KnowledgeAgent:
 
     async def _resolve_dynamic_relationships(self) -> None:
         """Resolve generic DYNAMIC_REL types using a lightweight LLM."""
+        # Add early return if normalization is disabled
+        if config.DISABLE_RELATIONSHIP_NORMALIZATION:
+            logger.info("Relationship normalization disabled - skipping dynamic relationship resolution")
+            return
+        
         logger.info("KG Healer: Resolving dynamic relationship types via LLM...")
         dyn_rels = await kg_queries.fetch_unresolved_dynamic_relationships()
         if not dyn_rels:

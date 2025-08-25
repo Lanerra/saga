@@ -973,6 +973,25 @@ class NANA_Orchestrator:
                 chapter_number=novel_chapter_number
             )
 
+        # Save chapter data to Neo4j database
+        try:
+            await chapter_queries.save_chapter_data_to_db(
+                chapter_number=novel_chapter_number,
+                text=final_text_to_process,
+                raw_llm_output=final_raw_llm_output or "",
+                summary=result.get("summary"),
+                embedding_array=result.get("embedding"),
+                is_provisional=is_from_flawed_source_for_kg,
+            )
+            logger.info(
+                f"Neo4j: Successfully saved chapter data for chapter {novel_chapter_number} to database."
+            )
+        except Exception as e:
+            logger.error(
+                f"Neo4j: Failed to save chapter data for chapter {novel_chapter_number} to database: {e}",
+                exc_info=True,
+            )
+
         if result.get("embedding") is None:
             logger.error(
                 "NANA CRITICAL: Failed to generate embedding for final text of Chapter %s. Text saved to file system only.",
