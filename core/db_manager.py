@@ -177,7 +177,7 @@ class Neo4jManagerSingleton:
 
         # Phase 1: Schema-only operations (constraints and indexes)
         await self._create_constraints_and_indexes()
-        
+
         # Phase 2: Data operations (type placeholders)
         await self._create_type_placeholders()
 
@@ -188,7 +188,7 @@ class Neo4jManagerSingleton:
     async def _create_constraints_and_indexes(self) -> None:
         """Create constraints, indexes, and vector index in schema-only transactions."""
         self.logger.info("Phase 1: Creating constraints and indexes...")
-        
+
         core_constraints_queries = [
             "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
             "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
@@ -228,9 +228,7 @@ class Neo4jManagerSingleton:
         """
 
         schema_only_queries = (
-            core_constraints_queries
-            + index_queries
-            + [vector_index_query]
+            core_constraints_queries + index_queries + [vector_index_query]
         )
 
         try:
@@ -248,7 +246,7 @@ class Neo4jManagerSingleton:
     async def _create_type_placeholders(self) -> None:
         """Create relationship type and node label placeholders in separate data transactions."""
         self.logger.info("Phase 2: Creating type placeholders...")
-        
+
         # Ensure schema tokens exist to avoid Neo4j warnings when
         # matching on types that have not been used yet. Creating
         # and immediately deleting a dummy node/relationship is sufficient.
@@ -299,7 +297,7 @@ class Neo4jManagerSingleton:
                     self.logger.debug(f"Schema operation: {query[:100]}...")
                     await tx.run(query)
                 await tx.commit()
-            except Exception as e:
+            except Exception:
                 if tx and not tx.closed():  # type: ignore
                     await tx.rollback()  # type: ignore
                 raise

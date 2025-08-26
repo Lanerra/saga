@@ -234,30 +234,36 @@ class NarrativeAgent:
 
         # Enhanced JSON cleaning and extraction
         cleaned_json_text = self._clean_llm_json_response(json_text)
-        
+
         try:
             parsed_data = json.loads(cleaned_json_text)
         except json.JSONDecodeError as e:
             logger.error(
                 f"Failed to decode JSON scene plan for Ch {chapter_number}: {e}. Text: {cleaned_json_text[:500]}..."
             )
-            
+
             # Try multiple extraction strategies
             extracted_json = self._extract_json_from_malformed_text(cleaned_json_text)
             if extracted_json:
                 try:
                     parsed_data = json.loads(extracted_json)
-                    logger.info(f"Successfully parsed extracted JSON for Ch {chapter_number}")
+                    logger.info(
+                        f"Successfully parsed extracted JSON for Ch {chapter_number}"
+                    )
                 except json.JSONDecodeError as extract_error:
                     logger.error(
                         f"Failed to parse extracted JSON for Ch {chapter_number}: {extract_error}"
                     )
                     # Save malformed JSON for debugging
-                    self._save_malformed_json_for_debugging(cleaned_json_text, chapter_number)
+                    self._save_malformed_json_for_debugging(
+                        cleaned_json_text, chapter_number
+                    )
                     return None
             else:
                 # Save malformed JSON for debugging
-                self._save_malformed_json_for_debugging(cleaned_json_text, chapter_number)
+                self._save_malformed_json_for_debugging(
+                    cleaned_json_text, chapter_number
+                )
                 return None
 
         if not isinstance(parsed_data, list):
@@ -336,27 +342,28 @@ class NarrativeAgent:
         """
         if not text or not isinstance(text, str):
             return text or ""
-        
+
         # First, try to extract JSON structure from the text
         extracted = self._extract_json_from_malformed_text(text)
         if extracted:
             return extracted
-            
+
         # If no JSON structure found, clean the text conservatively
         # Remove any text before the first [ or {
         first_bracket = min(
-            [text.find(char) for char in ['[', '{'] if text.find(char) != -1] or [len(text)]
+            [text.find(char) for char in ["[", "{"] if text.find(char) != -1]
+            or [len(text)]
         )
         if first_bracket < len(text):
             text = text[first_bracket:]
-        
+
         # Remove any text after the last ] or }
         last_bracket = max(
-            [text.rfind(char) for char in [']', '}'] if text.rfind(char) != -1] or [-1]
+            [text.rfind(char) for char in ["]", "}"] if text.rfind(char) != -1] or [-1]
         )
         if last_bracket != -1:
-            text = text[:last_bracket + 1]
-        
+            text = text[: last_bracket + 1]
+
         return text.strip()
 
     def _extract_json_from_malformed_text(self, text: str) -> str | None:
@@ -365,9 +372,9 @@ class NarrativeAgent:
         """
         if not text:
             return None
-            
+
         # Strategy 1: Extract complete JSON array
-        array_match = re.search(r'\[\s*\{.*\}\s*\]', text, re.DOTALL)
+        array_match = re.search(r"\[\s*\{.*\}\s*\]", text, re.DOTALL)
         if array_match:
             potential_json = array_match.group(0)
             # Validate that it's parseable
@@ -376,9 +383,11 @@ class NarrativeAgent:
                 return potential_json
             except json.JSONDecodeError:
                 pass
-        
+
         # Strategy 2: Extract from code blocks
-        code_block_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', text, re.DOTALL)
+        code_block_match = re.search(
+            r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", text, re.DOTALL
+        )
         if code_block_match:
             potential_json = code_block_match.group(1)
             try:
@@ -386,10 +395,10 @@ class NarrativeAgent:
                 return potential_json
             except json.JSONDecodeError:
                 pass
-        
+
         # Strategy 3: Extract from the middle of text
         # Look for patterns that might indicate JSON start
-        json_start_patterns = [r'\[\s*\{', r'\{[^{]*\{']
+        json_start_patterns = [r"\[\s*\{", r"\{[^{]*\{"]
         for pattern in json_start_patterns:
             start_match = re.search(pattern, text)
             if start_match:
@@ -398,50 +407,53 @@ class NarrativeAgent:
                 bracket_count = 0
                 in_string = False
                 escape_next = False
-                
+
                 for i, char in enumerate(text[start_pos:], start_pos):
                     if escape_next:
                         escape_next = False
                         continue
-                    
-                    if char == '\\':
+
+                    if char == "\\":
                         escape_next = True
                         continue
-                    
+
                     if char == '"' and not escape_next:
                         in_string = not in_string
                         continue
-                    
+
                     if not in_string:
-                        if char in ['[', '{']:
+                        if char in ["[", "{"]:
                             bracket_count += 1
-                        elif char in [']', '}']:
+                        elif char in ["]", "}"]:
                             bracket_count -= 1
                             if bracket_count == 0:
-                                potential_json = text[start_pos:i+1]
+                                potential_json = text[start_pos : i + 1]
                                 try:
                                     json.loads(potential_json)
                                     return potential_json
                                 except json.JSONDecodeError:
                                     break
-        
+
         return None
 
-    def _save_malformed_json_for_debugging(self, malformed_json: str, chapter_number: int) -> None:
+    def _save_malformed_json_for_debugging(
+        self, malformed_json: str, chapter_number: int
+    ) -> None:
         """
         Save malformed JSON to a file for debugging purposes.
         """
         try:
             import os
+
             debug_dir = os.path.join("novel_output", "debug_outputs")
             os.makedirs(debug_dir, exist_ok=True)
-            
+
             filename = f"chapter_{chapter_number:04d}_malformed_scene_plan.json"
             filepath = os.path.join(debug_dir, filename)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
+
+            with open(filepath, "w", encoding="utf-8") as f:
                 f.write(malformed_json)
-            
+
             logger.info(f"Saved malformed JSON for debugging: {filepath}")
         except Exception as e:
             logger.error(f"Failed to save malformed JSON for debugging: {e}")
@@ -526,8 +538,10 @@ class NarrativeAgent:
                 character_profiles, plot_outline, chapter_number
             )
         )
-        world_state_snippet_plain_text = await get_world_state_snippet_for_prompt_native(
-            world_building, chapter_number
+        world_state_snippet_plain_text = (
+            await get_world_state_snippet_for_prompt_native(
+                world_building, chapter_number
+            )
         )
 
         # Build future plot context

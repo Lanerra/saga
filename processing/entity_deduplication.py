@@ -6,7 +6,7 @@ Prevents creation of duplicate or semantically similar entities during knowledge
 
 import hashlib
 import re
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -17,33 +17,35 @@ logger = structlog.get_logger(__name__)
 
 def generate_entity_id(name: str, category: str, chapter: int) -> str:
     """Generate deterministic entity IDs to prevent duplicates.
-    
+
     Args:
         name: Entity name
         category: Entity category (for world items) or "character" for characters
         chapter: Current chapter number for context
-        
+
     Returns:
         Deterministic entity ID
     """
     # Normalize name for consistent ID generation
-    normalized_name = re.sub(r'[^\w\s]', '', name.lower().strip())
-    normalized_name = re.sub(r'\s+', '_', normalized_name)
-    
+    normalized_name = re.sub(r"[^\w\s]", "", name.lower().strip())
+    normalized_name = re.sub(r"\s+", "_", normalized_name)
+
     # Use content-based hashing instead of category prefixes
     content_hash = hashlib.md5(f"{normalized_name}_{category}".encode()).hexdigest()[:8]
-    
+
     return f"entity_{content_hash}"
 
 
-async def check_entity_similarity(name: str, entity_type: str, category: str = "") -> Optional[dict[str, Any]]:
+async def check_entity_similarity(
+    name: str, entity_type: str, category: str = ""
+) -> dict[str, Any] | None:
     """Check for existing entities with same semantic content.
-    
+
     Args:
         name: Name of the entity to check
         entity_type: Either "character" or "world_element"
         category: For world elements, the category
-        
+
     Returns:
         Dict with existing entity info if similar entity found, None otherwise
     """
@@ -79,20 +81,20 @@ async def check_entity_similarity(name: str, entity_type: str, category: str = "
             LIMIT 1
             """
             params = {"name": name, "category": category}
-        
+
         result = await neo4j_manager.execute_read_query(similarity_query, params)
-        
+
         if result:
             similar_entity = result[0]
             similarity_score = similar_entity.get("similarity", 0.0)
-            
+
             # Log the similarity check
             logger.debug(
                 f"Entity similarity check for '{name}' (type: {entity_type}): "
                 f"Found similar entity '{similar_entity['existing_name']}' "
                 f"with similarity {similarity_score:.2f}"
             )
-            
+
             # Return the similar entity info
             return {
                 "existing_id": similar_entity.get("existing_id"),
@@ -100,13 +102,15 @@ async def check_entity_similarity(name: str, entity_type: str, category: str = "
                 "existing_category": similar_entity.get("existing_category"),
                 "existing_labels": similar_entity["existing_labels"],
                 "existing_description": similar_entity.get("existing_description", ""),
-                "similarity": similarity_score
+                "similarity": similarity_score,
             }
-        
+
         return None
-        
+
     except Exception as e:
-        logger.error(f"Error checking entity similarity for '{name}': {e}", exc_info=True)
+        logger.error(
+            f"Error checking entity similarity for '{name}': {e}", exc_info=True
+        )
         # On error, don't block creation - return None to allow normal processing
         return None
 
@@ -115,21 +119,21 @@ async def should_merge_entities(
     new_name: str,
     new_description: str,
     existing_entity: dict[str, Any],
-    similarity_threshold: float = 0.65
+    similarity_threshold: float = 0.65,
 ) -> bool:
     """Determine if entities should be merged based on similarity.
-    
+
     Args:
         new_name: Name of new entity
         new_description: Description of new entity
         existing_entity: Dict with existing entity info
         similarity_threshold: Minimum similarity to consider merging
-        
+
     Returns:
         True if entities should be merged, False otherwise
     """
     similarity = existing_entity.get("similarity", 0.0)
-    
+
     # High name similarity - likely the same entity
     if similarity >= similarity_threshold:
         logger.info(
@@ -137,9 +141,13 @@ async def should_merge_entities(
             f"(similarity: {similarity:.2f}). Recommending merge."
         )
         return True
-    
+
     # Medium similarity - check descriptions if available
-    if similarity >= 0.7 and new_description and existing_entity.get("existing_description"):
+    if (
+        similarity >= 0.7
+        and new_description
+        and existing_entity.get("existing_description")
+    ):
         # Could add more sophisticated description similarity checking here
         # For now, use name similarity as primary indicator
         logger.info(
@@ -147,37 +155,38 @@ async def should_merge_entities(
             f"(similarity: {similarity:.2f}). Recommending merge based on name similarity."
         )
         return True
-    
+
     return False
 
 
 async def prevent_character_duplication(
-    name: str, 
-    description: str = "",
-    similarity_threshold: Optional[float] = None
-) -> Optional[str]:
+    name: str, description: str = "", similarity_threshold: float | None = None
+) -> str | None:
     """Check for character duplicates and return existing name if found.
-    
+
     Args:
         name: Character name to check
         description: Character description (for additional context)
         similarity_threshold: Similarity threshold for merging (defaults to config value)
-        
+
     Returns:
         Existing character name if duplicate found, None otherwise
     """
     import config
-    
+
     # Check if duplicate prevention is enabled
-    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
+    if (
+        not config.ENABLE_DUPLICATE_PREVENTION
+        or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED
+    ):
         return None
-        
+
     # Use config default if not specified
     if similarity_threshold is None:
         similarity_threshold = config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD
-    
+
     similar_entity = await check_entity_similarity(name, "character")
-    
+
     if similar_entity and await should_merge_entities(
         name, description, similar_entity, similarity_threshold
     ):
@@ -186,7 +195,7 @@ async def prevent_character_duplication(
             f"character '{similar_entity['existing_name']}'. Using existing character."
         )
         return similar_entity["existing_name"]
-    
+
     return None
 
 
@@ -194,31 +203,34 @@ async def prevent_world_item_duplication(
     name: str,
     category: str,
     description: str = "",
-    similarity_threshold: Optional[float] = None
-) -> Optional[str]:
+    similarity_threshold: float | None = None,
+) -> str | None:
     """Check for world item duplicates and return existing ID if found.
-    
+
     Args:
         name: World item name to check
         category: World item category
         description: World item description (for additional context)
         similarity_threshold: Similarity threshold for merging (defaults to config value)
-        
+
     Returns:
         Existing world item ID if duplicate found, None otherwise
     """
     import config
-    
+
     # Check if duplicate prevention is enabled
-    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
+    if (
+        not config.ENABLE_DUPLICATE_PREVENTION
+        or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED
+    ):
         return None
-        
+
     # Use config default if not specified
     if similarity_threshold is None:
         similarity_threshold = config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD
-    
+
     similar_entity = await check_entity_similarity(name, "world_element", category)
-    
+
     if similar_entity and await should_merge_entities(
         name, description, similar_entity, similarity_threshold
     ):
@@ -227,5 +239,5 @@ async def prevent_world_item_duplication(
             f"is similar to existing item '{similar_entity['existing_name']}'. Using existing item."
         )
         return similar_entity.get("existing_id")
-    
+
     return None

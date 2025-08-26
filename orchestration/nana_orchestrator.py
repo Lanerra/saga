@@ -86,7 +86,6 @@ class NANA_Orchestrator:
             run_start_time=self.run_start_time,
         )
 
-
     async def _generate_plot_points_from_kg(self, count: int) -> None:
         """Generate and persist additional plot points using the planner agent."""
         if count <= 0:
@@ -799,7 +798,6 @@ class NANA_Orchestrator:
                 patched_spans,
             )
 
-
             evaluation_result: EvaluationResult = eval_result_obj
             await self._save_debug_output(
                 novel_chapter_number,
@@ -1303,14 +1301,16 @@ class NANA_Orchestrator:
 
                 current_novel_chapter_number = self.chapter_count + 1
                 plot_point_index = current_novel_chapter_number - 1
-                
+
                 # Get the correct plot point focus for this chapter
                 plot_points = self.plot_outline.get("plot_points", [])
                 if plot_point_index < len(plot_points):
                     plot_point_focus = plot_points[plot_point_index]
                 else:
                     # Fallback to last available plot point if chapter count exceeds plot points
-                    plot_point_focus = plot_points[-1] if plot_points else "No plot point available"
+                    plot_point_focus = (
+                        plot_points[-1] if plot_points else "No plot point available"
+                    )
 
                 logger.info(
                     f"\n--- NANA: Attempting Novel Chapter {current_novel_chapter_number} (attempt {attempts_this_run + 1}/{config.CHAPTERS_PER_RUN}) ---"
@@ -1426,9 +1426,7 @@ class NANA_Orchestrator:
         for idx, chunk in enumerate(chunks, 1):
             self._update_rich_display(chapter_num=idx, step="Ingesting Text")
             # Generate chapter summary
-            summary, _ = await self.knowledge_agent.summarize_chapter(
-                chunk, idx
-            )
+            summary, _ = await self.knowledge_agent.summarize_chapter(chunk, idx)
 
             # Get text embedding
             embedding = await llm_service.async_get_embedding(chunk)
