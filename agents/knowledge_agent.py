@@ -957,7 +957,9 @@ class KnowledgeAgent:
             )
             if bootstrap_context:
                 # Add bootstrap context to the prompt
-                prompt += f"\n\nBootstrap World Context to Consider:\n{bootstrap_context}"
+                prompt += (
+                    f"\n\nBootstrap World Context to Consider:\n{bootstrap_context}"
+                )
 
         try:
             text, usage = await llm_service.async_call_llm(
@@ -981,16 +983,18 @@ class KnowledgeAgent:
         # Only include bootstrap context for early chapters (less than 10 as per clarification)
         if chapter_number >= 10:
             return ""
-           
+
         # Get bootstrap elements from world queries
         bootstrap_elements = await world_queries.get_bootstrap_world_elements()
-       
+
         # Limit to a reasonable number to prevent prompt bloat (6 as suggested in CLAUDE.md)
         context_lines = []
-        for element in bootstrap_elements[:config.MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT]:
+        for element in bootstrap_elements[: config.MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT]:
             if element.description:
-                context_lines.append(f"- {element.name} ({element.category}): {element.description[:150]}...")
-       
+                context_lines.append(
+                    f"- {element.name} ({element.category}): {element.description[:150]}..."
+                )
+
         return "\n".join(context_lines) if context_lines else ""
 
     async def _heal_bootstrap_connectivity(self, chapter_number: int) -> None:
@@ -998,15 +1002,15 @@ class KnowledgeAgent:
         # Only perform bootstrap connectivity healing for early chapters
         if chapter_number > config.BOOTSTRAP_INTEGRATION_CHAPTERS:
             return
-            
+
         # Find orphaned bootstrap elements
         orphaned_bootstrap = await kg_queries.find_orphaned_bootstrap_elements()
-        
+
         # Limit the number of orphaned elements to heal per cycle
-        for element in orphaned_bootstrap[:config.BOOTSTRAP_HEALING_LIMIT]:
+        for element in orphaned_bootstrap[: config.BOOTSTRAP_HEALING_LIMIT]:
             # Find potential bridge characters/locations
             bridge_candidates = await kg_queries.find_potential_bridges(element)
-            
+
             if bridge_candidates:
                 # Create contextual relationship with the most connected bridge candidate
                 await kg_queries.create_contextual_relationship(
@@ -1048,7 +1052,7 @@ class KnowledgeAgent:
                 "LLM extraction returned no text for chapter %d.", chapter_number
             )
             return usage_data
-    
+
         char_updates_raw = "{}"
         world_updates_raw = "{}"
         kg_triples_text = ""
@@ -1319,16 +1323,23 @@ class KnowledgeAgent:
                 if isinstance(char_info, dict):
                     description = char_info.get("description", "")
                     final_name = name  # Default to original name
-                    
+
                     # Check for existing similar character (only if enabled in config)
-                    if config.ENABLE_DUPLICATE_PREVENTION and config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
-                        existing_name = await prevent_character_duplication(name, description)
-                        
+                    if (
+                        config.ENABLE_DUPLICATE_PREVENTION
+                        and config.DUPLICATE_PREVENTION_CHARACTER_ENABLED
+                    ):
+                        existing_name = await prevent_character_duplication(
+                            name, description
+                        )
+
                         if existing_name:
                             # Use existing character name to prevent duplicate
                             final_name = existing_name
-                            logger.info(f"Using existing character '{final_name}' instead of creating duplicate '{name}'")
-                    
+                            logger.info(
+                                f"Using existing character '{final_name}' instead of creating duplicate '{name}'"
+                            )
+
                     # Handle relationships if they need structuring from list to dict
                     # Assuming LLM provides relationships as a list of strings
                     # like "Target: Detail" or just "Target"
@@ -1341,13 +1352,27 @@ class KnowledgeAgent:
                             if isinstance(rel_entry, str):
                                 if ":" in rel_entry:
                                     parts = rel_entry.split(":", 1)
-                                    if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-                                        processed_relationships[parts[0].strip()] = parts[1].strip()
-                                    elif parts[0].strip():  # If only name is there before colon
-                                        processed_relationships[parts[0].strip()] = "related"
+                                    if (
+                                        len(parts) == 2
+                                        and parts[0].strip()
+                                        and parts[1].strip()
+                                    ):
+                                        processed_relationships[parts[0].strip()] = (
+                                            parts[1].strip()
+                                        )
+                                    elif parts[
+                                        0
+                                    ].strip():  # If only name is there before colon
+                                        processed_relationships[parts[0].strip()] = (
+                                            "related"
+                                        )
                                 elif rel_entry.strip():  # No colon, just a name
-                                    processed_relationships[rel_entry.strip()] = "related"
-                            elif isinstance(rel_entry, dict):  # If LLM sends [{"name": "X", "detail": "Y"}]
+                                    processed_relationships[rel_entry.strip()] = (
+                                        "related"
+                                    )
+                            elif isinstance(
+                                rel_entry, dict
+                            ):  # If LLM sends [{"name": "X", "detail": "Y"}]
                                 target_name = rel_entry.get("name")
                                 detail = rel_entry.get("detail", "related")
                                 if (
@@ -1361,7 +1386,7 @@ class KnowledgeAgent:
                             str(k): str(v) for k, v in raw_relationships.items()
                         }
                     # If it's neither a list nor a dict, we'll use an empty dict
-                    
+
                     char_updates.append(
                         CharacterProfile(
                             name=final_name,
@@ -1384,26 +1409,35 @@ class KnowledgeAgent:
                     for item_name, item_info in items.items():
                         if isinstance(item_info, dict):
                             description = item_info.get("description", "")
-                            
+
                             # Check for existing similar world item (only if enabled in config)
-                            if config.ENABLE_DUPLICATE_PREVENTION and config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
+                            if (
+                                config.ENABLE_DUPLICATE_PREVENTION
+                                and config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED
+                            ):
                                 existing_id = await prevent_world_item_duplication(
                                     item_name, category, description
                                 )
-                                
+
                                 if existing_id:
                                     # Use existing world item ID to prevent duplicate
-                                    logger.info(f"Using existing world item with ID '{existing_id}' instead of creating duplicate '{item_name}' in category '{category}'")
+                                    logger.info(
+                                        f"Using existing world item with ID '{existing_id}' instead of creating duplicate '{item_name}' in category '{category}'"
+                                    )
                                     # Update the item_info to use existing ID
                                     item_info["id"] = existing_id
                                 else:
                                     # Generate deterministic ID for new item
-                                    item_info["id"] = generate_entity_id(item_name, category, chapter_number)
+                                    item_info["id"] = generate_entity_id(
+                                        item_name, category, chapter_number
+                                    )
                             else:
                                 # Use existing ID generation logic when duplicate prevention is disabled
                                 if not item_info.get("id"):
-                                    item_info["id"] = generate_entity_id(item_name, category, chapter_number)
-                            
+                                    item_info["id"] = generate_entity_id(
+                                        item_name, category, chapter_number
+                                    )
+
                             world_updates.append(
                                 WorldItem.from_dict(category, item_name, item_info)
                             )
@@ -1544,7 +1578,9 @@ class KnowledgeAgent:
                 item_lookup[update.id] = update
 
     async def heal_and_enrich_kg(
-        self, new_entities: list[dict[str, Any]] | None = None, chapter_number: int | None = None
+        self,
+        new_entities: list[dict[str, Any]] | None = None,
+        chapter_number: int | None = None,
     ):
         """
         Performs maintenance on the Knowledge Graph by enriching thin nodes,
@@ -1599,12 +1635,15 @@ class KnowledgeAgent:
         promoted = await kg_queries.promote_dynamic_relationships()
         if promoted:
             logger.info("KG Healer: Promoted %d dynamic relationships.", promoted)
-        
+
         # 5a. Consolidate similar relationships using predefined taxonomy
         consolidated = await kg_queries.consolidate_similar_relationships()
         if consolidated:
-            logger.info("KG Healer: Consolidated %d relationships to canonical forms.", consolidated)
-            
+            logger.info(
+                "KG Healer: Consolidated %d relationships to canonical forms.",
+                consolidated,
+            )
+
         removed = await kg_queries.deduplicate_relationships()
         if removed:
             logger.info("KG Healer: Deduplicated %d relationships.", removed)
@@ -2045,7 +2084,7 @@ class KnowledgeAgent:
             # Original full graph processing (less efficient)
             # Use lower similarity threshold to catch character name variations like "Nuyara" vs "Nuyara Vex"
             candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
-                similarity_threshold=0.6
+                similarity_threshold=0.65
             )
 
             if not candidate_pairs:
@@ -2072,10 +2111,10 @@ class KnowledgeAgent:
                     )
                     continue
 
-                prompt = render_prompt("knowledge_agent/entity_resolution.j2", {
-                    "entity1": context1, 
-                    "entity2": context2
-                })
+                prompt = render_prompt(
+                    "knowledge_agent/entity_resolution.j2",
+                    {"entity1": context1, "entity2": context2},
+                )
                 llm_response, _ = await llm_service.async_call_llm(
                     model_name=config.KNOWLEDGE_UPDATE_MODEL,
                     prompt=prompt,
@@ -2117,7 +2156,9 @@ class KnowledgeAgent:
                                 target_id, source_id = id2, id1
 
                         # Use LLM's reasoning for the merge
-                        reason = decision_data.get('reason', 'LLM entity resolution merge')
+                        reason = decision_data.get(
+                            "reason", "LLM entity resolution merge"
+                        )
                         await kg_queries.merge_entities(source_id, target_id, reason)
                     else:
                         logger.info(
@@ -2188,16 +2229,20 @@ class KnowledgeAgent:
         """Resolve generic DYNAMIC_REL types using a lightweight LLM."""
         # Add early return if normalization is disabled
         if config.DISABLE_RELATIONSHIP_NORMALIZATION:
-            logger.info("Relationship normalization disabled - skipping dynamic relationship resolution")
+            logger.info(
+                "Relationship normalization disabled - skipping dynamic relationship resolution"
+            )
             return
-        
+
         logger.info("KG Healer: Resolving dynamic relationship types via LLM...")
         dyn_rels = await kg_queries.fetch_unresolved_dynamic_relationships()
         if not dyn_rels:
             logger.info("KG Healer: No unresolved dynamic relationships found.")
             return
         for rel in dyn_rels:
-            prompt = render_prompt("knowledge_agent/dynamic_relationship_resolution.j2", rel)
+            prompt = render_prompt(
+                "knowledge_agent/dynamic_relationship_resolution.j2", rel
+            )
             new_type_raw, _ = await llm_service.async_call_llm(
                 model_name=config.MEDIUM_MODEL,
                 prompt=prompt,

@@ -1067,7 +1067,10 @@ async def get_character_state_snippet_for_prompt_native(
         for char_profile in character_profiles:
             if char_profile.name != protagonist_name:
                 char_names_to_process.append(char_profile.name)
-            if len(char_names_to_process) >= config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET:
+            if (
+                len(char_names_to_process)
+                >= config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET
+            ):
                 break
 
     # Build character profiles from the list
@@ -1080,12 +1083,14 @@ async def get_character_state_snippet_for_prompt_native(
     for char_name in char_names_to_process:
         if char_name in characters_to_include:
             char_profile = characters_to_include[char_name]
-            
+
             # Get character data from Neo4j (using existing logic)
-            neo4j_char_data = await character_queries.get_character_info_for_snippet_from_db(
-                char_name, current_chapter_num_for_filtering
+            neo4j_char_data = (
+                await character_queries.get_character_info_for_snippet_from_db(
+                    char_name, current_chapter_num_for_filtering
+                )
             )
-            
+
             profile_lines = []
             if char_profile.description:
                 profile_lines.append(f"Description: {char_profile.description}")
@@ -1097,10 +1102,20 @@ async def get_character_state_snippet_for_prompt_native(
 
             # Add additional data from updates field
             if char_profile.updates:
-                if "personality" in char_profile.updates and char_profile.updates["personality"]:
-                    profile_lines.append(f"Personality: {char_profile.updates['personality']}")
-                if "background" in char_profile.updates and char_profile.updates["background"]:
-                    profile_lines.append(f"Background: {char_profile.updates['background']}")
+                if (
+                    "personality" in char_profile.updates
+                    and char_profile.updates["personality"]
+                ):
+                    profile_lines.append(
+                        f"Personality: {char_profile.updates['personality']}"
+                    )
+                if (
+                    "background" in char_profile.updates
+                    and char_profile.updates["background"]
+                ):
+                    profile_lines.append(
+                        f"Background: {char_profile.updates['background']}"
+                    )
 
             # Add Neo4j data if available
             if neo4j_char_data:
@@ -1113,7 +1128,7 @@ async def get_character_state_snippet_for_prompt_native(
                     personality = neo4j_char_data.get("personality", "").strip()
                     if personality:
                         profile_lines.append(f"Personality: {personality}")
-                        
+
                 if not any("Background:" in line for line in profile_lines):
                     background = neo4j_char_data.get("background", "").strip()
                     if background:
@@ -1142,7 +1157,7 @@ async def get_world_state_snippet_for_prompt_native(
     Creates a concise plain text string of key world states for prompts.
     """
     text_output_lines_list: list[str] = []
-    
+
     # Group world items by category
     world_by_category: dict[str, list[WorldItem]] = {}
     for item in world_building:
@@ -1150,44 +1165,48 @@ async def get_world_state_snippet_for_prompt_native(
         if category not in world_by_category:
             world_by_category[category] = []
         world_by_category[category].append(item)
-    
+
     # Limit items per category for prompt efficiency
-    max_items_per_category = config.PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY if hasattr(config, 'PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY') else 3
-    
+    max_items_per_category = (
+        config.PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY
+        if hasattr(config, "PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY")
+        else 3
+    )
+
     for category, items in world_by_category.items():
         if not items:
             continue
-            
+
         text_output_lines_list.append(f"**{category}:**")
-        
+
         # Sort by importance/relevance (items with descriptions first)
         sorted_items = sorted(items, key=lambda x: (not bool(x.description), x.name))
-        
+
         for item in sorted_items[:max_items_per_category]:
             item_lines = []
             if item.description:
                 item_lines.append(f"Description: {item.description}")
-            
+
             # Add additional data from the model (goals, rules, key_elements if available)
             if item.goals:
                 goals_str = ", ".join(item.goals[:2])  # Limit to 2 goals
                 item_lines.append(f"Goals: {goals_str}")
-            
+
             if item.rules:
                 rules_str = ", ".join(item.rules[:2])  # Limit to 2 rules
                 item_lines.append(f"Rules: {rules_str}")
-            
+
             if item.key_elements:
                 elements_str = ", ".join(item.key_elements[:3])  # Limit to 3 elements
                 item_lines.append(f"Key Elements: {elements_str}")
-            
+
             if item_lines:
                 text_output_lines_list.append(f"  - **{item.name}:**")
                 for line in item_lines:
                     text_output_lines_list.append(f"    {line}")
             else:
                 text_output_lines_list.append(f"  - **{item.name}**")
-        
+
         text_output_lines_list.append("")
-    
+
     return "\n".join(text_output_lines_list)

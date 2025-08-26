@@ -20,42 +20,160 @@ logger = logging.getLogger(__name__)
 # Valid relationship types for narrative knowledge graphs
 VALID_RELATIONSHIP_TYPES = {
     # Character relationships
-    'LOVES', 'HATES', 'FEARS', 'TRUSTS', 'DISTRUSTS', 'RESPECTS',
-    'FAMILY_OF', 'FRIEND_OF', 'ENEMY_OF', 'RIVAL_OF', 'ALLY_OF',
-    'MENTOR_TO', 'STUDENT_OF', 'LEADER_OF', 'MEMBER_OF', 'SERVES',
-    'WORKS_FOR', 'ROMANTIC_WITH', 'MARRIED_TO', 'PARENT_OF', 'CHILD_OF',
-    'KNOWS', 'ENVIES', 'PITIES', 'BETRAYS', 'PROTECTS', 'THREATENS',
-    
-    # Location relationships  
-    'LOCATED_IN', 'LOCATED_AT', 'ADJACENT_TO', 'CONTAINS', 'PART_OF',
-    'CONNECTED_TO', 'NEAR', 'BUILT_BY', 'FOUNDED', 'DESTROYED_BY',
-    'ORIGINATES_FROM', 'TRAVELS_TO', 'BORDERS', 'OVERLOOKS',
-    
+    "LOVES",
+    "HATES",
+    "FEARS",
+    "TRUSTS",
+    "DISTRUSTS",
+    "RESPECTS",
+    "FAMILY_OF",
+    "FRIEND_OF",
+    "ENEMY_OF",
+    "RIVAL_OF",
+    "ALLY_OF",
+    "MENTOR_TO",
+    "STUDENT_OF",
+    "LEADER_OF",
+    "MEMBER_OF",
+    "SERVES",
+    "WORKS_FOR",
+    "ROMANTIC_WITH",
+    "MARRIED_TO",
+    "PARENT_OF",
+    "CHILD_OF",
+    "KNOWS",
+    "ENVIES",
+    "PITIES",
+    "BETRAYS",
+    "PROTECTS",
+    "THREATENS",
+    # Location relationships
+    "LOCATED_IN",
+    "LOCATED_AT",
+    "ADJACENT_TO",
+    "CONTAINS",
+    "PART_OF",
+    "CONNECTED_TO",
+    "NEAR",
+    "BUILT_BY",
+    "FOUNDED",
+    "DESTROYED_BY",
+    "ORIGINATES_FROM",
+    "TRAVELS_TO",
+    "BORDERS",
+    "OVERLOOKS",
     # Object relationships
-    'OWNS', 'POSSESSES', 'CREATED_BY', 'BELONGS_TO', 'FOUND_AT',
-    'LOST_AT', 'STOLEN_FROM', 'GIVEN_BY', 'INHERITED_FROM',
-    'USED_BY', 'POWERED_BY', 'MADE_OF', 'CONTAINS_ITEM',
-    
-    # Temporal relationships
-    'HAPPENS_BEFORE', 'HAPPENS_AFTER', 'OCCURS_DURING', 'TRIGGERS',
-    'RESULTS_IN', 'CAUSES', 'PREVENTS', 'ENABLES', 'FOLLOWS',
-    'PRECEDES', 'INTERRUPTS', 'COINCIDES_WITH',
-    
+    "OWNS",
+    "POSSESSES",
+    "CREATED_BY",
+    "BELONGS_TO",
+    "FOUND_AT",
+    "LOST_AT",
+    "STOLEN_FROM",
+    "GIVEN_BY",
+    "INHERITED_FROM",
+    "USED_BY",
+    "POWERED_BY",
+    "MADE_OF",
+    "CONTAINS_ITEM",
+    # Temporal/Process relationships
+    "HAPPENS_BEFORE",
+    "HAPPENS_AFTER",
+    "OCCURS_DURING",
+    "TRIGGERS",
+    "RESULTS_IN",
+    "CAUSES",
+    "PREVENTS",
+    "ENABLES",
+    "FOLLOWS",
+    "PRECEDES",
+    "INTERRUPTS",
+    "COINCIDES_WITH",
+    "OCCURRED_IN",
+    "PERFORMS_ACTION",
+    "IS_PERFORMED_BY",
+    "IS_USED_FOR",
+    "IS_OPENED_BY",
+    "IS_FUELED_BY",
+    "IS_SYNCHRONIZED_WITH",
     # Abstract relationships
-    'SYMBOLIZES', 'REPRESENTS', 'EMBODIES', 'CONTRASTS_WITH',
-    'PARALLELS', 'ECHOES', 'FORESHADOWS', 'RELATES_TO',
-    'INFLUENCES', 'INSPIRES', 'REMINDS_OF', 'DEPENDS_ON',
-    'EXTENDS', 'RESONATES_WITH', 'HAS_TRAIT', 'EXTENSION_OF',
-    
+    "SYMBOLIZES",
+    "REPRESENTS",
+    "EMBODIES",
+    "CONTRASTS_WITH",
+    "PARALLELS",
+    "ECHOES",
+    "FORESHADOWS",
+    "RELATES_TO",
+    "INFLUENCES",
+    "INSPIRES",
+    "REMINDS_OF",
+    "DEPENDS_ON",
+    "EXTENDS",
+    "RESONATES_WITH",
+    "HAS_TRAIT",
+    "EXTENSION_OF",
     # Action/Event relationships
-    'PERFORMS', 'WITNESSES', 'EXPERIENCES', 'PARTICIPATES_IN',
-    'INITIATES', 'COMPLETES', 'ABANDONS', 'DISCOVERS',
-    'CREATES', 'DESTROYS', 'MODIFIES', 'OBSERVES',
-    'CONNECTS_TO', 'RESPONDS_TO', 'ACCESSES',
-    
+    "PERFORMS",
+    "WITNESSES",
+    "EXPERIENCES",
+    "PARTICIPATES_IN",
+    "INITIATES",
+    "COMPLETES",
+    "ABANDONS",
+    "DISCOVERS",
+    "CREATES",
+    "DESTROYS",
+    "MODIFIES",
+    "OBSERVES",
+    "CONNECTS_TO",
+    "RESPONDS_TO",
+    "ACCESSES",
     # Conflict relationships
-    'OPPOSES', 'SUPPORTS', 'CONFLICTS_WITH', 'COMPETES_WITH',
-    'COLLABORATES_WITH', 'NEGOTIATES_WITH', 'FIGHTS_AGAINST'
+    "OPPOSES",
+    "SUPPORTS",
+    "CONFLICTS_WITH",
+    "COMPETES_WITH",
+    "COLLABORATES_WITH",
+    "NEGOTIATES_WITH",
+    "FIGHTS_AGAINST",
+    # Cognitive/Mental state relationships
+    "BELIEVES",
+    "REALIZES",
+    "REMEMBERS",
+    "UNDERSTANDS",
+    "RECOGNIZES",
+    "FEELS",
+    "THINKS_ABOUT",
+    "PERCEIVES",
+    "WATCHES",
+    "SEES",
+    # Physical properties:
+    "HAS_PROPERTY",
+    "HAS_FEATURE",
+    "HAS_ACCESS",
+    "HAS_VOICE",
+    "HAS_PULSE",
+    "PULSES_WITH",
+    "SYNCED_WITH",
+    "MOVES_IN_UNISON",
+    # Communication/Interaction
+    "COMMUNICATES_THROUGH",
+    "SPEAKS_TO",
+    "SPEAKS_WITH",
+    "DECLARES",
+    # Source/Creation relationships
+    "IS_SOURCE_OF",
+    "WRITTEN_BY",
+    "RECORDS",
+    "PRODUCES",
+    "TRANSFORMED_BY",
+    # Rules/Goals (narrative structure)
+    "HAS_RULE",
+    "HAS_GOAL",
+    "IS_TRUE_FOR",
+    "INVOLVES",
+    "NEEDS",
 }
 
 # Lookup table for canonical node labels to ensure consistent casing
@@ -71,230 +189,268 @@ def _to_pascal_case(text: str) -> str:
 def validate_relationship_type(proposed_type: str) -> str:
     """
     Validate and normalize a relationship type with fuzzy matching.
-    
+
     Args:
         proposed_type: The relationship type to validate
-        
+
     Returns:
         A valid relationship type from VALID_RELATIONSHIP_TYPES
     """
     if not proposed_type or not proposed_type.strip():
-        return 'RELATES_TO'
-    
+        return "RELATES_TO"
+
     # Clean and normalize input
-    clean_type = proposed_type.strip().upper().replace(' ', '_')
-    
+    clean_type = proposed_type.strip().upper().replace(" ", "_")
+
     # Check if it's already valid
     if clean_type in VALID_RELATIONSHIP_TYPES:
         return clean_type
-    
+
     # Special handling for DYNAMIC_REL - this is a meta-type, not a content type
-    if clean_type == 'DYNAMIC_REL':
+    if clean_type == "DYNAMIC_REL":
         logger.debug("DYNAMIC_REL is a meta-type, using RELATES_TO as fallback")
-        return 'RELATES_TO'
-    
+        return "RELATES_TO"
+
     # Try fuzzy matching with high confidence
     closest_matches = difflib.get_close_matches(
-        clean_type, 
-        VALID_RELATIONSHIP_TYPES, 
-        n=1, 
-        cutoff=0.7  # High threshold for confidence
+        clean_type,
+        VALID_RELATIONSHIP_TYPES,
+        n=1,
+        cutoff=0.7,  # High threshold for confidence
     )
-    
+
     if closest_matches:
         matched_type = closest_matches[0]
         if clean_type != matched_type:
-            logger.info(f"Corrected relationship type: '{proposed_type}' -> '{matched_type}'")
+            logger.info(
+                f"Corrected relationship type: '{proposed_type}' -> '{matched_type}'"
+            )
         return matched_type
-    
+
     # Enhanced semantic mappings using comprehensive keyword patterns
     # Convert keyword_mappings structure to direct mappings for faster lookup
     semantic_mappings = {
         # Social relationships - direct mappings
-        'FRIEND': 'FRIEND_OF',
-        'BEFRIEND': 'FRIEND_OF',
-        'ENEMY': 'ENEMY_OF',
-        'ANTAGONIZE': 'ENEMY_OF',
-        'OPPOSE': 'ENEMY_OF',
-        'ALLY': 'ALLY_OF',
-        'ALLIED': 'ALLY_OF',
-        'RIVAL': 'RIVAL_OF',
-        'COMPETE': 'RIVAL_OF',
-        'FAMILY': 'FAMILY_OF',
-        'RELATED': 'FAMILY_OF',
-        'PARENT': 'FAMILY_OF',
-        'CHILD': 'FAMILY_OF',
-        'SIBLING': 'FAMILY_OF',
-        'LOVE': 'ROMANTIC_WITH',
-        'ROMANTIC': 'ROMANTIC_WITH',
-        'DATING': 'ROMANTIC_WITH',
-        'MARRIED': 'ROMANTIC_WITH',
-        'MENTOR': 'MENTOR_TO',
-        'TEACH': 'MENTOR_TO',
-        'GUIDE': 'MENTOR_TO',
-        'STUDENT': 'STUDENT_OF',
-        'LEARN': 'STUDENT_OF',
-        'WORK': 'WORKS_FOR',
-        'EMPLOY': 'WORKS_FOR',
-        'JOB': 'WORKS_FOR',
-        'LEAD': 'LEADS',
-        'COMMAND': 'LEADS',
-        'BOSS': 'LEADS',
-        'SUPERVISE': 'LEADS',
-        'SERVE': 'SERVES',
-        'LOYAL': 'SERVES',
-        'KNOW': 'KNOWS',
-        'ACQUAINT': 'KNOWS',
-        'TRUST': 'TRUSTS',
-        'DISTRUST': 'DISTRUSTS',
-        'MISTRUST': 'DISTRUSTS',
-        
+        "FRIEND": "FRIEND_OF",
+        "BEFRIEND": "FRIEND_OF",
+        "ENEMY": "ENEMY_OF",
+        "ANTAGONIZE": "ENEMY_OF",
+        "OPPOSE": "ENEMY_OF",
+        "ALLY": "ALLY_OF",
+        "ALLIED": "ALLY_OF",
+        "RIVAL": "RIVAL_OF",
+        "COMPETE": "RIVAL_OF",
+        "FAMILY": "FAMILY_OF",
+        "RELATED": "FAMILY_OF",
+        "PARENT": "FAMILY_OF",
+        "CHILD": "FAMILY_OF",
+        "SIBLING": "FAMILY_OF",
+        "LOVE": "ROMANTIC_WITH",
+        "ROMANTIC": "ROMANTIC_WITH",
+        "DATING": "ROMANTIC_WITH",
+        "MARRIED": "ROMANTIC_WITH",
+        "MENTOR": "MENTOR_TO",
+        "TEACH": "MENTOR_TO",
+        "GUIDE": "MENTOR_TO",
+        "STUDENT": "STUDENT_OF",
+        "LEARN": "STUDENT_OF",
+        "WORK": "WORKS_FOR",
+        "EMPLOY": "WORKS_FOR",
+        "JOB": "WORKS_FOR",
+        "LEAD": "LEADS",
+        "COMMAND": "LEADS",
+        "BOSS": "LEADS",
+        "SUPERVISE": "LEADS",
+        "SERVE": "SERVES",
+        "LOYAL": "SERVES",
+        "KNOW": "KNOWS",
+        "ACQUAINT": "KNOWS",
+        "TRUST": "TRUSTS",
+        "DISTRUST": "DISTRUSTS",
+        "MISTRUST": "DISTRUSTS",
         # Emotional relationships
-        'HATE': 'HATES',
-        'LOATH': 'HATES',
-        'DESPISE': 'HATES',
-        'FEAR': 'FEARS',
-        'AFRAID': 'FEARS',
-        'SCARE': 'FEARS',
-        'RESPECT': 'RESPECTS',
-        'ADMIRE': 'RESPECTS',
-        'ENVY': 'ENVIES',
-        'JEALOUS': 'ENVIES',
-        'PITY': 'PITIES',
-        'SYMPATHY': 'PITIES',
-        
+        "HATE": "HATES",
+        "LOATH": "HATES",
+        "DESPISE": "HATES",
+        "FEAR": "FEARS",
+        "AFRAID": "FEARS",
+        "SCARE": "FEARS",
+        "RESPECT": "RESPECTS",
+        "ADMIRE": "RESPECTS",
+        "ENVY": "ENVIES",
+        "JEALOUS": "ENVIES",
+        "PITY": "PITIES",
+        "SYMPATHY": "PITIES",
         # Causal relationships
-        'CAUSE': 'CAUSES',
-        'LEAD_TO': 'CAUSES',
-        'RESULT': 'CAUSES',
-        'PREVENT': 'PREVENTS',
-        'STOP': 'PREVENTS',
-        'BLOCK': 'PREVENTS',
-        'ENABLE': 'ENABLES',
-        'ALLOW': 'ENABLES',
-        'TRIGGER': 'TRIGGERS',
-        'START': 'TRIGGERS',
-        'DEPEND': 'DEPENDS_ON',
-        'REQUIRE': 'DEPENDS_ON',
-        'CONFLICT': 'CONFLICTS_WITH',
-        'CLASH': 'CONFLICTS_WITH',
-        'SUPPORT': 'SUPPORTS',
-        'HELP': 'SUPPORTS',
-        'AID': 'SUPPORTS',
-        'THREATEN': 'THREATENS',
-        'DANGER': 'THREATENS',
-        'PROTECT': 'PROTECTS',
-        'GUARD': 'PROTECTS',
-        'DEFEND': 'PROTECTS',
-        
+        "CAUSE": "CAUSES",
+        "LEAD_TO": "CAUSES",
+        "RESULT": "CAUSES",
+        "PREVENT": "PREVENTS",
+        "STOP": "PREVENTS",
+        "BLOCK": "PREVENTS",
+        "ENABLE": "ENABLES",
+        "ALLOW": "ENABLES",
+        "TRIGGER": "TRIGGERS",
+        "START": "TRIGGERS",
+        "DEPEND": "DEPENDS_ON",
+        "REQUIRE": "DEPENDS_ON",
+        "CONFLICT": "CONFLICTS_WITH",
+        "CLASH": "CONFLICTS_WITH",
+        "SUPPORT": "SUPPORTS",
+        "HELP": "SUPPORTS",
+        "AID": "SUPPORTS",
+        "THREATEN": "THREATENS",
+        "DANGER": "THREATENS",
+        "PROTECT": "PROTECTS",
+        "GUARD": "PROTECTS",
+        "DEFEND": "PROTECTS",
         # Spatial relationships
-        'LOCATED': 'LOCATED_AT',
-        'POSITION': 'LOCATED_AT',
-        'SITUATED': 'LOCATED_AT',
-        'INSIDE': 'LOCATED_IN',
-        'WITHIN': 'LOCATED_IN',
-        'CONTAINED': 'LOCATED_IN',
-        'NEAR': 'NEAR',
-        'CLOSE': 'NEAR',
-        'PROXIMITY': 'NEAR',
-        'ADJACENT': 'ADJACENT_TO',
-        'NEXT': 'ADJACENT_TO',
-        'ORIGIN': 'ORIGINATES_FROM',
-        'FROM': 'ORIGINATES_FROM',
-        'TRAVEL': 'TRAVELS_TO',
-        'MOVE': 'TRAVELS_TO',
-        'GO': 'TRAVELS_TO',
-        
+        "LOCATED": "LOCATED_AT",
+        "POSITION": "LOCATED_AT",
+        "SITUATED": "LOCATED_AT",
+        "INSIDE": "LOCATED_IN",
+        "WITHIN": "LOCATED_IN",
+        "CONTAINED": "LOCATED_IN",
+        "NEAR": "NEAR",
+        "CLOSE": "NEAR",
+        "PROXIMITY": "NEAR",
+        "ADJACENT": "ADJACENT_TO",
+        "NEXT": "ADJACENT_TO",
+        "ORIGIN": "ORIGINATES_FROM",
+        "FROM": "ORIGINATES_FROM",
+        "TRAVEL": "TRAVELS_TO",
+        "MOVE": "TRAVELS_TO",
+        "GO": "TRAVELS_TO",
         # Ownership relationships
-        'OWN': 'OWNS',
-        'POSSESS': 'OWNS',
-        'HAVE': 'OWNS',
-        'BELONG': 'OWNS',
-        'CREATE': 'CREATED_BY',
-        'MAKE': 'CREATED_BY',
-        'BUILD': 'CREATED_BY',
-        'INHERIT': 'INHERITED_FROM',
-        'STEAL': 'STOLEN_FROM',
-        'ROB': 'STOLEN_FROM',
-        'GIVE': 'GIVEN_BY',
-        'GIFT': 'GIVEN_BY',
-        'FIND': 'FOUND_AT',
-        'DISCOVER': 'FOUND_AT',
-        
+        "OWN": "OWNS",
+        "POSSESS": "OWNS",
+        "HAVE": "OWNS",
+        "BELONG": "OWNS",
+        "CREATE": "CREATED_BY",
+        "MAKE": "CREATED_BY",
+        "BUILD": "CREATED_BY",
+        "INHERIT": "INHERITED_FROM",
+        "STEAL": "STOLEN_FROM",
+        "ROB": "STOLEN_FROM",
+        "GIVE": "GIVEN_BY",
+        "GIFT": "GIVEN_BY",
+        "FIND": "FOUND_AT",
+        "DISCOVER": "FOUND_AT",
         # Organizational relationships
-        'MEMBER': 'MEMBER_OF',
-        'JOIN': 'MEMBER_OF',
-        'LEADER': 'LEADER_OF',
-        'HEAD': 'LEADER_OF',
-        'FOUND': 'FOUNDED',
-        'ESTABLISH': 'FOUNDED',
-        'REPRESENT': 'REPRESENTS',
-        
+        "MEMBER": "MEMBER_OF",
+        "JOIN": "MEMBER_OF",
+        "LEADER": "LEADER_OF",
+        "HEAD": "LEADER_OF",
+        "FOUND": "FOUNDED",
+        "ESTABLISH": "FOUNDED",
+        "REPRESENT": "REPRESENTS",
         # Physical relationships
-        'PART': 'PART_OF',
-        'COMPONENT': 'PART_OF',
-        'CONTAIN': 'CONTAINS',
-        'HOLD': 'CONTAINS',
-        'CONNECT': 'CONNECTED_TO',
-        'LINK': 'CONNECTED_TO',
-        'DESTROY': 'DESTROYED_BY',
-        'RUIN': 'DESTROYED_BY',
-        'DAMAGE': 'DAMAGED_BY',
-        'HARM': 'DAMAGED_BY',
-        'REPAIR': 'REPAIRED_BY',
-        'FIX': 'REPAIRED_BY',
-        
+        "PART": "PART_OF",
+        "COMPONENT": "PART_OF",
+        "CONTAIN": "CONTAINS",
+        "HOLD": "CONTAINS",
+        "CONNECT": "CONNECTED_TO",
+        "LINK": "CONNECTED_TO",
+        "DESTROY": "DESTROYED_BY",
+        "RUIN": "DESTROYED_BY",
+        "DAMAGE": "DAMAGED_BY",
+        "HARM": "DAMAGED_BY",
+        "REPAIR": "REPAIRED_BY",
+        "FIX": "REPAIRED_BY",
         # Additional direct mappings for common variations
-        'IS_IN': 'LOCATED_IN',
-        'HAS': 'OWNS',
-        'LIKES': 'FRIEND_OF',
-        'DISLIKES': 'ENEMY_OF',
-        'WORKS_AT': 'WORKS_FOR',
-        'LIVES_IN': 'LOCATED_IN',
-        'COMES_FROM': 'ORIGINATES_FROM',
-        'GOES_TO': 'TRAVELS_TO',
-        'IS_PART_OF': 'PART_OF',
-        'CONTAINS_THING': 'CONTAINS',
-        'IS_CONNECTED_TO': 'CONNECTED_TO',
-        'IS_NEAR': 'NEAR',
-        'MADE_BY': 'CREATED_BY',
-        'BUILT_FROM': 'MADE_OF',
-        
+        "IS_IN": "LOCATED_IN",
+        "HAS": "OWNS",
+        "LIKES": "FRIEND_OF",
+        "DISLIKES": "ENEMY_OF",
+        "WORKS_AT": "WORKS_FOR",
+        "LIVES_IN": "LOCATED_IN",
+        "COMES_FROM": "ORIGINATES_FROM",
+        "GOES_TO": "TRAVELS_TO",
+        "IS_PART_OF": "PART_OF",
+        "CONTAINS_THING": "CONTAINS",
+        "IS_CONNECTED_TO": "CONNECTED_TO",
+        "IS_NEAR": "NEAR",
+        "MADE_BY": "CREATED_BY",
+        "BUILT_FROM": "MADE_OF",
         # Verb forms
-        'LOVING': 'LOVES',
-        'HATING': 'HATES',
-        'FEARING': 'FEARS',
-        'TRUSTING': 'TRUSTS',
-        'RESPECTING': 'RESPECTS',
-        'LEADING': 'LEADER_OF',
-        'FOLLOWING': 'SERVES',
-        
+        "LOVING": "LOVES",
+        "HATING": "HATES",
+        "FEARING": "FEARS",
+        "TRUSTING": "TRUSTS",
+        "RESPECTING": "RESPECTS",
+        "LEADING": "LEADER_OF",
+        "FOLLOWING": "SERVES",
         # Past tense
-        'LOVED': 'LOVES',
-        'HATED': 'HATES',
-        'FEARED': 'FEARS',
-        'TRUSTED': 'TRUSTS',
-        'RESPECTED': 'RESPECTS',
-        'LED': 'LEADER_OF',
-        'FOLLOWED': 'SERVES',
-        
+        "LOVED": "LOVES",
+        "HATED": "HATES",
+        "FEARED": "FEARS",
+        "TRUSTED": "TRUSTS",
+        "RESPECTED": "RESPECTS",
+        "LED": "LEADER_OF",
+        "FOLLOWED": "SERVES",
         # Additional employment variations
-        'EMPLOY': 'LEADS',
-        'MANAGE': 'LEADS',
-        'LIVE': 'LOCATED_IN',
-        'RESIDE': 'LOCATED_IN',
-        'STAY': 'LOCATED_IN',
-        'JOURNEY': 'TRAVELS_TO',
+        "EMPLOY": "LEADS",
+        "MANAGE": "LEADS",
+        "LIVE": "LOCATED_IN",
+        "RESIDE": "LOCATED_IN",
+        "STAY": "LOCATED_IN",
+        "JOURNEY": "TRAVELS_TO",
+        # Add to semantic_mappings:
+        "REALIZES": "DISCOVERS",
+        "BELIEVES": "TRUSTS",
+        "REMEMBERS": "KNOWS",
+        "HAS_PROPERTY": "HAS_TRAIT",
+        "PULSES_WITH": "CONNECTED_TO",
+        # Cognitive mappings (these appear frequently)
+        "REALIZE": "REALIZES",
+        "REMEMBER": "REMEMBERS",
+        "UNDERSTAND": "UNDERSTANDS",
+        "BELIEVE": "BELIEVES",
+        "FEEL": "FEELS",
+        "THINK": "THINKS_ABOUT",
+        "WATCH": "WATCHES",
+        "SEE": "SEES",
+        "PERCEIVE": "PERCEIVES",
+        # Property mappings
+        "PROPERTY": "HAS_PROPERTY",
+        "FEATURE": "HAS_FEATURE",
+        "ACCESS": "HAS_ACCESS",
+        "PULSE": "HAS_PULSE",
+        "VOICE": "HAS_VOICE",
+        "RULE": "HAS_RULE",
+        "GOAL": "HAS_GOAL",
+        # Communication mappings
+        "COMMUNICATE": "COMMUNICATES_THROUGH",
+        "SPEAK": "SPEAKS_TO",
+        "DECLARE": "DECLARES",
+        "RECORD": "RECORDS",
+        "WRITE": "WRITTEN_BY",
+        # Process mappings
+        "OCCUR": "OCCURRED_IN",
+        "HAPPEN": "OCCURRED_IN",
+        "PERFORM": "PERFORMS_ACTION",
+        "USE": "IS_USED_FOR",
+        "FUEL": "IS_FUELED_BY",
+        "SYNC": "IS_SYNCHRONIZED_WITH",
+        "TRANSFORM": "TRANSFORMED_BY",
+        # Existential mappings
+        "EXIST": "EXISTS_BECAUSE_OF",
+        "LIVING": "ARE_LIVING_TISSUE",
+        "ACCESSIBLE": "IS_ACCESSIBLE_ONLY_TO",
     }
-    
+
     mapped_type = semantic_mappings.get(clean_type)
     if mapped_type:
-        logger.info(f"Semantically mapped relationship type: '{proposed_type}' -> '{mapped_type}'")
+        logger.info(
+            f"Semantically mapped relationship type: '{proposed_type}' -> '{mapped_type}'"
+        )
         return mapped_type
-    
+
     # Final fallback - log for analysis
-    logger.warning(f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback")
-    return 'RELATES_TO'
+    logger.warning(
+        f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
+    )
+    return "RELATES_TO"
 
 
 def normalize_relationship_type(rel_type: str) -> str:
@@ -305,92 +461,85 @@ def normalize_relationship_type(rel_type: str) -> str:
 
 def _find_best_relationship_match(rel_type: str) -> str | None:
     """Find the best matching relationship type using simple keyword matching."""
-    
+
     rel_lower = rel_type.lower()
-    
+
     # Define keyword mappings for common patterns
     keyword_mappings = {
         # Social relationships
-        ('friend', 'befriend'): 'FRIEND_OF',
-        ('enemy', 'antagonize', 'oppose'): 'ENEMY_OF', 
-        ('ally', 'allied'): 'ALLY_OF',
-        ('rival', 'compete'): 'RIVAL_OF',
-        ('family', 'related', 'parent', 'child', 'sibling'): 'FAMILY_OF',
-        ('love', 'romantic', 'dating', 'married'): 'ROMANTIC_WITH',
-        ('mentor', 'teach', 'guide'): 'MENTOR_TO',
-        ('student', 'learn'): 'STUDENT_OF',
-        ('work', 'employ', 'job'): 'WORKS_FOR',
-        ('lead', 'command', 'boss', 'supervise'): 'LEADS',
-        ('serve', 'loyal'): 'SERVES',
-        ('know', 'acquaint'): 'KNOWS',
-        ('trust'): 'TRUSTS',
-        ('distrust', 'mistrust'): 'DISTRUSTS',
-        
-        # Emotional relationships  
-        ('hate', 'loath', 'despise'): 'HATES',
-        ('fear', 'afraid', 'scare'): 'FEARS',
-        ('respect', 'admire'): 'RESPECTS',
-        ('envy', 'jealous'): 'ENVIES',
-        ('pity', 'sympathy'): 'PITIES',
-        
+        ("friend", "befriend"): "FRIEND_OF",
+        ("enemy", "antagonize", "oppose"): "ENEMY_OF",
+        ("ally", "allied"): "ALLY_OF",
+        ("rival", "compete"): "RIVAL_OF",
+        ("family", "related", "parent", "child", "sibling"): "FAMILY_OF",
+        ("love", "romantic", "dating", "married"): "ROMANTIC_WITH",
+        ("mentor", "teach", "guide"): "MENTOR_TO",
+        ("student", "learn"): "STUDENT_OF",
+        ("work", "employ", "job"): "WORKS_FOR",
+        ("lead", "command", "boss", "supervise"): "LEADS",
+        ("serve", "loyal"): "SERVES",
+        ("know", "acquaint"): "KNOWS",
+        ("trust"): "TRUSTS",
+        ("distrust", "mistrust"): "DISTRUSTS",
+        # Emotional relationships
+        ("hate", "loath", "despise"): "HATES",
+        ("fear", "afraid", "scare"): "FEARS",
+        ("respect", "admire"): "RESPECTS",
+        ("envy", "jealous"): "ENVIES",
+        ("pity", "sympathy"): "PITIES",
         # Causal relationships
-        ('cause', 'lead to', 'result'): 'CAUSES',
-        ('prevent', 'stop', 'block'): 'PREVENTS',
-        ('enable', 'allow'): 'ENABLES',
-        ('trigger', 'start'): 'TRIGGERS',
-        ('depend', 'require'): 'DEPENDS_ON',
-        ('conflict', 'clash'): 'CONFLICTS_WITH',
-        ('support', 'help', 'aid'): 'SUPPORTS',
-        ('threaten', 'danger'): 'THREATENS',
-        ('protect', 'guard', 'defend'): 'PROTECTS',
-        
+        ("cause", "lead to", "result"): "CAUSES",
+        ("prevent", "stop", "block"): "PREVENTS",
+        ("enable", "allow"): "ENABLES",
+        ("trigger", "start"): "TRIGGERS",
+        ("depend", "require"): "DEPENDS_ON",
+        ("conflict", "clash"): "CONFLICTS_WITH",
+        ("support", "help", "aid"): "SUPPORTS",
+        ("threaten", "danger"): "THREATENS",
+        ("protect", "guard", "defend"): "PROTECTS",
         # Spatial relationships
-        ('located', 'position', 'situated'): 'LOCATED_AT',
-        ('inside', 'within', 'contained'): 'LOCATED_IN',
-        ('near', 'close', 'proximity'): 'NEAR',
-        ('adjacent', 'next'): 'ADJACENT_TO',
-        ('origin', 'from'): 'ORIGINATES_FROM',
-        ('travel', 'move', 'go'): 'TRAVELS_TO',
-        
+        ("located", "position", "situated"): "LOCATED_AT",
+        ("inside", "within", "contained"): "LOCATED_IN",
+        ("near", "close", "proximity"): "NEAR",
+        ("adjacent", "next"): "ADJACENT_TO",
+        ("origin", "from"): "ORIGINATES_FROM",
+        ("travel", "move", "go"): "TRAVELS_TO",
         # Ownership relationships
-        ('own', 'possess', 'have', 'belong'): 'OWNS',
-        ('create', 'make', 'build'): 'CREATED_BY',
-        ('inherit'): 'INHERITED_FROM',
-        ('steal', 'rob'): 'STOLEN_FROM',
-        ('give', 'gift'): 'GIVEN_BY',
-        ('find', 'discover'): 'FOUND_AT',
-        
+        ("own", "possess", "have", "belong"): "OWNS",
+        ("create", "make", "build"): "CREATED_BY",
+        ("inherit"): "INHERITED_FROM",
+        ("steal", "rob"): "STOLEN_FROM",
+        ("give", "gift"): "GIVEN_BY",
+        ("find", "discover"): "FOUND_AT",
         # Organizational relationships
-        ('member', 'join'): 'MEMBER_OF',
-        ('leader', 'head'): 'LEADER_OF',
-        ('found', 'establish'): 'FOUNDED',
-        ('represent'): 'REPRESENTS',
-        
+        ("member", "join"): "MEMBER_OF",
+        ("leader", "head"): "LEADER_OF",
+        ("found", "establish"): "FOUNDED",
+        ("represent"): "REPRESENTS",
         # Physical relationships
-        ('part', 'component'): 'PART_OF',
-        ('contain', 'hold'): 'CONTAINS',
-        ('connect', 'link'): 'CONNECTED_TO',
-        ('destroy', 'ruin'): 'DESTROYED_BY',
-        ('damage', 'harm'): 'DAMAGED_BY',
-        ('repair', 'fix'): 'REPAIRED_BY',
-        
+        ("part", "component"): "PART_OF",
+        ("contain", "hold"): "CONTAINS",
+        ("connect", "link"): "CONNECTED_TO",
+        ("destroy", "ruin"): "DESTROYED_BY",
+        ("damage", "harm"): "DAMAGED_BY",
+        ("repair", "fix"): "REPAIRED_BY",
         # Additional mappings for better matching
-        ('employ', 'boss', 'manage'): 'LEADS',  # Not WORKS_FOR
-        ('live', 'reside', 'stay'): 'LOCATED_IN',
-        ('travel', 'journey', 'move'): 'TRAVELS_TO',
-        ('own', 'possess', 'hold'): 'OWNS',
+        ("employ", "boss", "manage"): "LEADS",  # Not WORKS_FOR
+        ("live", "reside", "stay"): "LOCATED_IN",
+        ("travel", "journey", "move"): "TRAVELS_TO",
+        ("own", "possess", "hold"): "OWNS",
     }
-    
+
     # Find best match using whole word matching to avoid false positives
     import re
-    
+
     for keywords, canonical_rel in keyword_mappings.items():
         for keyword in keywords:
             # Use word boundary matching to avoid partial matches
-            # e.g., "trust" shouldn't match "destroys" 
-            if re.search(r'\b' + re.escape(keyword) + r'\b', rel_lower):
+            # e.g., "trust" shouldn't match "destroys"
+            if re.search(r"\b" + re.escape(keyword) + r"\b", rel_lower):
                 return canonical_rel
-    
+
     return None
 
 
@@ -951,26 +1100,36 @@ async def get_entity_context_for_resolution(
         return None
 
 
-async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = 3) -> bool:
+async def merge_entities(
+    source_id: str, target_id: str, reason: str, max_retries: int = 3
+) -> bool:
     """
     Merges one entity (source) into another (target) using atomic Neo4j operations with retry logic.
     The source node will be deleted after its relationships are moved.
     """
     import asyncio
-    
+
     for attempt in range(max_retries):
         try:
-            logger.info(f"Merge attempt {attempt + 1}/{max_retries} for {source_id} -> {target_id}")
+            logger.info(
+                f"Merge attempt {attempt + 1}/{max_retries} for {source_id} -> {target_id}"
+            )
             return await _execute_atomic_merge(source_id, target_id, reason)
         except Exception as e:
-            logger.error(f"Merge attempt {attempt + 1}/{max_retries} failed: {e}", exc_info=True)
+            logger.error(
+                f"Merge attempt {attempt + 1}/{max_retries} failed: {e}", exc_info=True
+            )
             error_msg = str(e).lower()
-            if ("entitynotfound" in error_msg or "transaction" in error_msg or 
-                "locked" in error_msg or "deadlock" in error_msg) and attempt < max_retries - 1:
+            if (
+                "entitynotfound" in error_msg
+                or "transaction" in error_msg
+                or "locked" in error_msg
+                or "deadlock" in error_msg
+            ) and attempt < max_retries - 1:
                 logger.warning(
                     f"Entity merge attempt {attempt + 1}/{max_retries} failed, retrying: {e}"
                 )
-                await asyncio.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                await asyncio.sleep(0.1 * (2**attempt))  # Exponential backoff
                 continue
             else:
                 logger.error(
@@ -978,22 +1137,22 @@ async def merge_entities(source_id: str, target_id: str, reason: str, max_retrie
                     exc_info=True,
                 )
                 return False
-    
+
     return False
 
 
 async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> bool:
     """Execute entity merge using multiple queries in a single transaction to handle Neo4j constraints."""
-    
+
     # Break the merge into separate queries that avoid complex Cypher constructs
-    
+
     # Step 1: Copy properties
     copy_props_query = """
     MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
     SET target.description = COALESCE(target.description + ', ' + source.description, source.description, target.description)
     RETURN count(*) as props_copied
     """
-    
+
     # Step 2: Move outgoing relationships
     move_outgoing_query = """
     MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
@@ -1008,8 +1167,8 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
     DELETE r
     RETURN count(*) as outgoing_moved
     """
-    
-    # Step 3: Move incoming relationships  
+
+    # Step 3: Move incoming relationships
     move_incoming_query = """
     MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
     MATCH (other)-[r]->(source)
@@ -1023,49 +1182,61 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
     DELETE r
     RETURN count(*) as incoming_moved
     """
-    
+
     # Step 4: Delete source node
     delete_source_query = """
     MATCH (source:Entity {id: $source_id})
     DETACH DELETE source
     RETURN count(*) as deleted
     """
-    
+
     params = {"target_id": target_id, "source_id": source_id, "reason": reason}
-    
+
     try:
         logger.info(f"Attempting multi-step atomic merge: {source_id} -> {target_id}")
-        
+
         # Execute all operations within the session's auto-commit transaction
         outgoing_count = 0
         incoming_count = 0
-        
+
         # Copy properties
         await neo4j_manager.execute_write_query(copy_props_query, params)
-        
+
         # Move outgoing relationships (may be zero)
         try:
-            outgoing_result = await neo4j_manager.execute_write_query(move_outgoing_query, params)
-            outgoing_count = outgoing_result[0]["outgoing_moved"] if outgoing_result else 0
+            outgoing_result = await neo4j_manager.execute_write_query(
+                move_outgoing_query, params
+            )
+            outgoing_count = (
+                outgoing_result[0]["outgoing_moved"] if outgoing_result else 0
+            )
         except Exception:
             # No outgoing relationships to move
             pass
-            
+
         # Move incoming relationships (may be zero)
         try:
-            incoming_result = await neo4j_manager.execute_write_query(move_incoming_query, params)
-            incoming_count = incoming_result[0]["incoming_moved"] if incoming_result else 0
+            incoming_result = await neo4j_manager.execute_write_query(
+                move_incoming_query, params
+            )
+            incoming_count = (
+                incoming_result[0]["incoming_moved"] if incoming_result else 0
+            )
         except Exception:
             # No incoming relationships to move
             pass
-        
+
         # Delete source node
-        await neo4j_manager.execute_write_query(delete_source_query, {"source_id": source_id})
-        
+        await neo4j_manager.execute_write_query(
+            delete_source_query, {"source_id": source_id}
+        )
+
         total_moved = outgoing_count + incoming_count
-        logger.info(f"Successfully merged {source_id} -> {target_id} ({total_moved} relationships moved, reason: {reason})")
+        logger.info(
+            f"Successfully merged {source_id} -> {target_id} ({total_moved} relationships moved, reason: {reason})"
+        )
         return True
-        
+
     except Exception as e:
         logger.error(
             f"Multi-step merge failed ({source_id} -> {target_id}): {e}",
@@ -1132,22 +1303,24 @@ async def get_defined_relationship_types() -> list[str]:
 async def promote_dynamic_relationships() -> int:
     """
     Enhanced relationship type promotion with validation.
-    
+
     First validates and corrects relationship types, then promotes valid types
     to proper relationship types.
     """
     # Add early return if normalization is disabled
     if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
-        logger.info("Relationship normalization disabled - skipping dynamic relationship resolution")
+        logger.info(
+            "Relationship normalization disabled - skipping dynamic relationship resolution"
+        )
         return
-    
+
     total_promoted = 0
-    
+
     # Step 1: Validate and correct existing relationship types
     corrected_count = await _validate_and_correct_relationship_types()
     logger.info(f"Validated and corrected {corrected_count} relationship types")
-    
-    # Step 2: Promote DYNAMIC_REL to typed relationships  
+
+    # Step 2: Promote DYNAMIC_REL to typed relationships
     promotion_query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
     WHERE r.type IS NOT NULL 
@@ -1168,7 +1341,7 @@ async def promote_dynamic_relationships() -> int:
     DELETE r
     RETURN count(rel) AS promoted
     """
-    
+
     try:
         # Use our validated relationship types
         valid_types = list(VALID_RELATIONSHIP_TYPES)
@@ -1177,12 +1350,14 @@ async def promote_dynamic_relationships() -> int:
         )
         promoted_count = results[0].get("promoted", 0) if results else 0
         total_promoted = corrected_count + promoted_count
-        
-        logger.info(f"Successfully promoted {promoted_count} dynamic relationships to typed relationships")
+
+        logger.info(
+            f"Successfully promoted {promoted_count} dynamic relationships to typed relationships"
+        )
         logger.info(f"Total relationship processing: {total_promoted} relationships")
-        
+
         return total_promoted
-        
+
     except Exception as exc:
         logger.error("Failed to promote dynamic relationships: %s", exc, exc_info=True)
         return total_promoted  # Return partial success
@@ -1198,18 +1373,18 @@ async def _validate_and_correct_relationship_types() -> int:
       AND r.type <> 'DYNAMIC_REL'
     RETURN elementId(r) as rel_id, r.type as current_type
     """
-    
+
     try:
         results = await neo4j_manager.execute_read_query(validation_query)
         if not results:
             return 0
-            
+
         corrected_count = 0
-        
+
         for record in results:
             current_type = record["current_type"]
             validated_type = validate_relationship_type(current_type)
-            
+
             if validated_type != current_type:
                 # Update to validated type
                 update_query = """
@@ -1218,16 +1393,18 @@ async def _validate_and_correct_relationship_types() -> int:
                 SET r.type = $new_type
                 RETURN count(*) as updated
                 """
-                
+
                 await neo4j_manager.execute_write_query(
                     update_query,
-                    {"rel_id": record["rel_id"], "new_type": validated_type}
+                    {"rel_id": record["rel_id"], "new_type": validated_type},
                 )
                 corrected_count += 1
-                logger.debug(f"Corrected relationship type: '{current_type}' -> '{validated_type}'")
-                
+                logger.debug(
+                    f"Corrected relationship type: '{current_type}' -> '{validated_type}'"
+                )
+
         return corrected_count
-        
+
     except Exception as exc:
         logger.error("Failed to validate relationship types: %s", exc, exc_info=True)
         return 0
@@ -1263,33 +1440,33 @@ async def deduplicate_relationships() -> int:
 async def consolidate_similar_relationships() -> int:
     """Consolidate semantically similar relationships using the predefined taxonomy."""
     import kg_constants
-    
+
     # Get all relationship types currently in the database
     query_current = """
     MATCH ()-[r]->()
     RETURN DISTINCT type(r) AS rel_type, count(r) AS count
     ORDER BY count DESC
     """
-    
+
     try:
         current_results = await neo4j_manager.execute_read_query(query_current)
         current_types = [r["rel_type"] for r in current_results if r.get("rel_type")]
-        
+
         consolidation_count = 0
-        
+
         # Process each current relationship type
         for current_type in current_types:
             # Skip if already canonical
             if current_type in kg_constants.RELATIONSHIP_TYPES:
                 continue
-                
+
             # Find canonical version
             canonical_type = normalize_relationship_type(current_type)
-            
+
             # Skip if no change needed
             if current_type == canonical_type:
                 continue
-                
+
             # Consolidate relationships
             consolidate_query = f"""
             MATCH (s)-[r:{current_type}]->(o)
@@ -1298,22 +1475,34 @@ async def consolidate_similar_relationships() -> int:
             DELETE r
             RETURN count(*) AS consolidated
             """
-            
+
             try:
-                consolidate_results = await neo4j_manager.execute_write_query(consolidate_query)
-                count = consolidate_results[0].get("consolidated", 0) if consolidate_results else 0
+                consolidate_results = await neo4j_manager.execute_write_query(
+                    consolidate_query
+                )
+                count = (
+                    consolidate_results[0].get("consolidated", 0)
+                    if consolidate_results
+                    else 0
+                )
                 consolidation_count += count
-                
+
                 if count > 0:
-                    logger.info(f"Consolidated {count} relationships: {current_type} -> {canonical_type}")
-                    
+                    logger.info(
+                        f"Consolidated {count} relationships: {current_type} -> {canonical_type}"
+                    )
+
             except Exception as exc:
-                logger.warning(f"Failed to consolidate {current_type} -> {canonical_type}: {exc}")
-                
+                logger.warning(
+                    f"Failed to consolidate {current_type} -> {canonical_type}: {exc}"
+                )
+
         return consolidation_count
-        
+
     except Exception as exc:
-        logger.error("Failed to consolidate similar relationships: %s", exc, exc_info=True)
+        logger.error(
+            "Failed to consolidate similar relationships: %s", exc, exc_info=True
+        )
         return 0
 
 
@@ -1321,48 +1510,62 @@ async def validate_relationship_types_in_db() -> dict[str, Any]:
     """Validate all relationship types in the database against the predefined taxonomy."""
     # Add early return if normalization is disabled
     if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
-        logger.info("Relationship normalization disabled - skipping dynamic relationship resolution")
+        logger.info(
+            "Relationship normalization disabled - skipping dynamic relationship resolution"
+        )
         return
-    
+
     import kg_constants
-    
+
     # Get all relationship types currently in use
     query = """
     MATCH ()-[r]->()
     RETURN DISTINCT type(r) AS rel_type, count(r) AS usage_count
     ORDER BY usage_count DESC
     """
-    
+
     try:
         results = await neo4j_manager.execute_read_query(query)
-        current_types = {r["rel_type"]: r["usage_count"] for r in results if r.get("rel_type")}
-        
+        current_types = {
+            r["rel_type"]: r["usage_count"] for r in results if r.get("rel_type")
+        }
+
         # Categorize relationship types
         valid_types = {}
         invalid_types = {}
         normalizable_types = {}
-        
+
         for rel_type, count in current_types.items():
             if rel_type in kg_constants.RELATIONSHIP_TYPES:
                 valid_types[rel_type] = count
             else:
                 # Check if it can be normalized
                 canonical = normalize_relationship_type(rel_type)
-                if canonical in kg_constants.RELATIONSHIP_TYPES and canonical != rel_type:
-                    normalizable_types[rel_type] = {"canonical": canonical, "count": count}
+                if (
+                    canonical in kg_constants.RELATIONSHIP_TYPES
+                    and canonical != rel_type
+                ):
+                    normalizable_types[rel_type] = {
+                        "canonical": canonical,
+                        "count": count,
+                    }
                 else:
                     invalid_types[rel_type] = count
-        
+
         return {
             "valid_types": valid_types,
-            "normalizable_types": normalizable_types, 
+            "normalizable_types": normalizable_types,
             "invalid_types": invalid_types,
             "total_relationships": sum(current_types.values()),
-            "taxonomy_coverage": len(valid_types) / len(kg_constants.RELATIONSHIP_TYPES) * 100
+            "taxonomy_coverage": len(valid_types)
+            / len(kg_constants.RELATIONSHIP_TYPES)
+            * 100,
         }
-        
+
     except Exception as exc:
-        logger.error("Failed to validate relationship types in DB: %s", exc, exc_info=True)
+        logger.error(
+            "Failed to validate relationship types in DB: %s", exc, exc_info=True
+        )
         return {}
 
 
@@ -1408,11 +1611,15 @@ async def update_dynamic_relationship_type(rel_id: int, new_type: str) -> None:
     # Validate and normalize the new relationship type
     validated_type = validate_relationship_type(new_type)
     if validated_type != new_type:
-        logger.info(f"Normalized relationship type for update: '{new_type}' -> '{validated_type}'")
-    
+        logger.info(
+            f"Normalized relationship type for update: '{new_type}' -> '{validated_type}'"
+        )
+
     query = "MATCH ()-[r:DYNAMIC_REL]->() WHERE elementId(r) = $id SET r.type = $type"
     try:
-        await neo4j_manager.execute_write_query(query, {"id": rel_id, "type": validated_type})
+        await neo4j_manager.execute_write_query(
+            query, {"id": rel_id, "type": validated_type}
+        )
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error(
             "Failed to update dynamic relationship %s: %s", rel_id, exc, exc_info=True
@@ -1440,7 +1647,6 @@ async def get_shortest_path_length_between_entities(
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error("Failed to compute shortest path length: %s", exc, exc_info=True)
     return None
-
 
 
 async def find_orphaned_bootstrap_elements() -> list[dict[str, Any]]:
@@ -1484,7 +1690,7 @@ async def find_potential_bridges(element: dict[str, Any]) -> list[dict[str, Any]
 async def create_contextual_relationship(
     element1: dict[str, Any],
     element2: dict[str, Any],
-    relationship_type: str = "CONTEXTUALLY_RELATED"
+    relationship_type: str = "CONTEXTUALLY_RELATED",
 ) -> None:
     """Create a contextual relationship between two elements."""
     query = """
@@ -1496,10 +1702,7 @@ async def create_contextual_relationship(
         r.confidence = 0.6
     """
     try:
-        params = {
-            "element1_id": element1.get("id"),
-            "element2_id": element2.get("id")
-        }
+        params = {"element1_id": element1.get("id"), "element2_id": element2.get("id")}
         await neo4j_manager.execute_write_query(query, params)
         logger.info(
             f"Created contextual relationship between '{element1.get('name')}' and '{element2.get('name')}'"

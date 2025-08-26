@@ -174,7 +174,7 @@ class SagaSettings(BaseSettings):
     CONTEXT_CHAPTER_COUNT: int = 3
     CHAPTERS_PER_RUN: int = 4
     KG_HEALING_INTERVAL: int = 2
-    TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 18
+    TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 20
     # Concurrency limiting for chapter processing to prevent resource exhaustion
     MAX_CONCURRENT_CHAPTERS: int = 4
 
@@ -252,7 +252,9 @@ class SagaSettings(BaseSettings):
     MAIN_CHARACTERS_CONTAINER_NODE_ID: str = "main_characters_container"
     MAIN_WORLD_CONTAINER_NODE_ID: str = "main_world_container"
 
-    DISABLE_RELATIONSHIP_NORMALIZATION: bool= False # Toggle relationship normalization for testing
+    DISABLE_RELATIONSHIP_NORMALIZATION: bool = (
+        False  # Toggle relationship normalization for testing
+    )
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
@@ -429,19 +431,23 @@ REVISION_EVALUATION_THRESHOLD = 0.85
 # Bootstrap Integration Settings (Phase 1: Knowledge Graph Integration Strategy)
 BOOTSTRAP_INTEGRATION_ENABLED: bool = True
 BOOTSTRAP_INTEGRATION_CHAPTERS: int = 1
-MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 2  # Limit to prevent prompt bloat
-BOOTSTRAP_HEALING_LIMIT: int = 4  # Max orphaned elements to heal per cycle
+MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 4  # Limit to prevent prompt bloat
+BOOTSTRAP_HEALING_LIMIT: int = 6  # Max orphaned elements to heal per cycle
 
 # Context Selection Settings (Phase 1.1: Balanced Context Selection)
-EARLY_CHAPTER_BALANCED_SELECTION: bool = (
-    False  # Use balanced char selection
-)
+EARLY_CHAPTER_BALANCED_SELECTION: bool = False  # Use balanced char selection
 PROTAGONIST_PRIORITY_START_CHAPTER: int = (
-    3  # When to start protagonist-priority selection
+    4  # When to start protagonist-priority selection
 )
 
 # Duplicate Prevention Settings
 ENABLE_DUPLICATE_PREVENTION: bool = True  # Enable proactive duplicate prevention
-DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.6  # Similarity threshold for merging entities
-DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = True  # Enable character duplicate prevention
-DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = True  # Enable world item duplicate prevention
+DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = (
+    0.65  # Similarity threshold for merging entities
+)
+DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = (
+    True  # Enable character duplicate prevention
+)
+DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
+    True  # Enable world item duplicate prevention
+)

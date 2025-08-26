@@ -137,8 +137,13 @@ class WorldItem(BaseModel):
         if isinstance(value, list):
             created_chapter = int(value[0]) if value else 0
         elif isinstance(value, str):
-            cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
-            num_str = cleaned_value.split(',')[0].strip()
+            cleaned_value = (
+                value.replace("[", "")
+                .replace("]", "")
+                .replace("'", "")
+                .replace('"', "")
+            )
+            num_str = cleaned_value.split(",")[0].strip()
             created_chapter = int(num_str) if num_str else 0
         else:
             created_chapter = int(value) if value is not None else 0
@@ -215,8 +220,13 @@ class WorldItem(BaseModel):
             elif isinstance(value, str):
                 # Handle comma-separated values by taking first part
                 # Clean potential list representation before splitting
-                cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
-                num_str = cleaned_value.split(',')[0].strip()
+                cleaned_value = (
+                    value.replace("[", "")
+                    .replace("]", "")
+                    .replace("'", "")
+                    .replace('"', "")
+                )
+                num_str = cleaned_value.split(",")[0].strip()
                 return int(num_str) if num_str else 0
             return int(value) if value is not None else 0
 
@@ -226,8 +236,13 @@ class WorldItem(BaseModel):
                 return int(value[0]) if value and value[0] else 0
             elif isinstance(value, str):
                 # Handle comma-separated values by taking first part
-                cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
-                timestamp_str = cleaned_value.split(',')[0].strip()
+                cleaned_value = (
+                    value.replace("[", "")
+                    .replace("]", "")
+                    .replace("'", "")
+                    .replace('"', "")
+                )
+                timestamp_str = cleaned_value.split(",")[0].strip()
                 return int(timestamp_str) if timestamp_str else 0
             return int(value) if value is not None else 0
 
@@ -276,7 +291,7 @@ class WorldItem(BaseModel):
     @classmethod
     def from_db_node(cls, node: neo4j.Node) -> WorldItem:
         """Construct directly from Neo4j node - no dict conversion."""
-        
+
         def _safe_string_extract(value) -> str:
             """Safely extract string from potentially array value."""
             if isinstance(value, list):
@@ -290,8 +305,13 @@ class WorldItem(BaseModel):
             elif isinstance(value, str):
                 # Handle comma-separated values by taking first part
                 # Clean potential list representation before splitting
-                cleaned_value = value.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
-                num_str = cleaned_value.split(',')[0].strip()
+                cleaned_value = (
+                    value.replace("[", "")
+                    .replace("]", "")
+                    .replace("'", "")
+                    .replace('"', "")
+                )
+                num_str = cleaned_value.split(",")[0].strip()
                 return int(num_str) if num_str else 0
             return int(value) if value is not None else 0
 

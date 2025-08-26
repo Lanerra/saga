@@ -1,22 +1,24 @@
 """Utility functions for the SAGA project."""
 
-from typing import Any, Dict
+from typing import Any
 
 import config
 
 
-def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dict[str, Any]:
+def flatten_dict(
+    d: dict[str, Any], parent_key: str = "", sep: str = "."
+) -> dict[str, Any]:
     """
     Flatten a nested dictionary by concatenating nested keys with a separator.
-    
+
     Args:
         d: Dictionary to flatten
         parent_key: Prefix to add to keys (used in recursion)
         sep: Separator to use between nested keys
-        
+
     Returns:
         Flattened dictionary with primitive values only
-        
+
     Example:
         >>> flatten_dict({'a': {'b': {'c': 1}}, 'd': 2})
         {'a.b.c': 1, 'd': 2}
@@ -40,10 +42,10 @@ def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = ".") -> Dic
 def is_primitive_type(value: Any) -> bool:
     """
     Check if a value is a primitive type that Neo4j can store as a property.
-    
+
     Args:
         value: Value to check
-        
+
     Returns:
         True if value is a primitive type, False otherwise
     """

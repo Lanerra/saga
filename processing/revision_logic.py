@@ -284,22 +284,25 @@ async def _generate_single_patch_instruction_llm(
         "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
     )
 
-    prompt = render_prompt("revision_agent/patch_generation.j2", {
-        "config": config,
-        "chapter_number": chapter_number,
-        "novel_title": plot_outline.get("title", "Untitled Novel"),
-        "protagonist_name": protagonist_name,
-        "genre": plot_outline.get('genre', 'N/A'),
-        "theme": plot_outline.get('theme', 'N/A'),
-        "character_arc": plot_outline.get('character_arc', 'N/A'),
-        "plan_focus_section": plan_focus_section_str,
-        "hybrid_context_for_revision": hybrid_context_for_revision,
-        "problem": problem,
-        "original_quote_text_from_problem": original_quote_text_from_problem,
-        "original_chapter_text_snippet_for_llm": original_chapter_text_snippet_for_llm,
-        "length_expansion_instruction_header_str": length_expansion_instruction_header_str,
-        "prompt_instruction_for_replacement_scope_str": prompt_instruction_for_replacement_scope_str
-    })
+    prompt = render_prompt(
+        "revision_agent/patch_generation.j2",
+        {
+            "config": config,
+            "chapter_number": chapter_number,
+            "novel_title": plot_outline.get("title", "Untitled Novel"),
+            "protagonist_name": protagonist_name,
+            "genre": plot_outline.get("genre", "N/A"),
+            "theme": plot_outline.get("theme", "N/A"),
+            "character_arc": plot_outline.get("character_arc", "N/A"),
+            "plan_focus_section": plan_focus_section_str,
+            "hybrid_context_for_revision": hybrid_context_for_revision,
+            "problem": problem,
+            "original_quote_text_from_problem": original_quote_text_from_problem,
+            "original_chapter_text_snippet_for_llm": original_chapter_text_snippet_for_llm,
+            "length_expansion_instruction_header_str": length_expansion_instruction_header_str,
+            "prompt_instruction_for_replacement_scope_str": prompt_instruction_for_replacement_scope_str,
+        },
+    )
 
     logger.info(
         f"Calling LLM ({config.PATCH_GENERATION_MODEL}) for patch in Ch {chapter_number}. Problem: '{problem['problem_description'][:60].replace(chr(10), ' ')}...' Quote Text: '{original_quote_text_from_problem[:50].replace(chr(10), ' ')}...' Max Output Tokens: {max_patch_output_tokens}"
@@ -826,8 +829,6 @@ async def revise_chapter_draft_logic(
     if already_patched_spans is None:
         already_patched_spans = []
 
-
-
     if not original_text:
         logger.error(
             f"Revision for ch {chapter_number} aborted: missing original text."
@@ -1031,20 +1032,25 @@ async def revise_chapter_draft_logic(
                 "and addresses any resulting narrative gaps or inconsistencies.)**\n"
             )
 
-        prompt_full_rewrite = render_prompt("revision_agent/full_chapter_rewrite.j2", {
-            "config": config,
-            "chapter_number": chapter_number,
-            "protagonist_name": protagonist_name_full_rewrite,
-            "revision_reason": llm_service.clean_model_response(revision_reason_str).strip(),
-            "all_problem_descriptions": all_problem_descriptions_str,
-            "deduplication_note": deduplication_note,
-            "length_issue_explicit_instruction": length_issue_explicit_instruction_full_rewrite_str,
-            "plan_focus_section": plan_focus_section_full_rewrite_str,
-            "hybrid_context_for_revision": hybrid_context_for_revision,
-            "original_snippet": original_snippet,
-            "genre": plot_outline.get('genre', 'story'),
-            "min_acceptable_draft_length": config.MIN_ACCEPTABLE_DRAFT_LENGTH
-        })
+        prompt_full_rewrite = render_prompt(
+            "revision_agent/full_chapter_rewrite.j2",
+            {
+                "config": config,
+                "chapter_number": chapter_number,
+                "protagonist_name": protagonist_name_full_rewrite,
+                "revision_reason": llm_service.clean_model_response(
+                    revision_reason_str
+                ).strip(),
+                "all_problem_descriptions": all_problem_descriptions_str,
+                "deduplication_note": deduplication_note,
+                "length_issue_explicit_instruction": length_issue_explicit_instruction_full_rewrite_str,
+                "plan_focus_section": plan_focus_section_full_rewrite_str,
+                "hybrid_context_for_revision": hybrid_context_for_revision,
+                "original_snippet": original_snippet,
+                "genre": plot_outline.get("genre", "story"),
+                "min_acceptable_draft_length": config.MIN_ACCEPTABLE_DRAFT_LENGTH,
+            },
+        )
 
         logger.info(
             f"Calling LLM ({config.REVISION_MODEL}) for Ch {chapter_number} full rewrite. Min length: {config.MIN_ACCEPTABLE_DRAFT_LENGTH} chars."

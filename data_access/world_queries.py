@@ -342,11 +342,16 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                     ]
                 ):  # Exclude already handled
                     we_node_props[k_detail] = v_detail
-            
+
             # Add additional properties from WorldItem model
-            if "additional_properties" in details_dict and isinstance(details_dict["additional_properties"], dict):
+            if "additional_properties" in details_dict and isinstance(
+                details_dict["additional_properties"], dict
+            ):
                 for k, v in details_dict["additional_properties"].items():
-                    if isinstance(v, str | int | float | bool) and k not in we_node_props:
+                    if (
+                        isinstance(v, str | int | float | bool)
+                        and k not in we_node_props
+                    ):
                         we_node_props[k] = v
 
             # MERGE WorldElement node

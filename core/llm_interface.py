@@ -356,7 +356,6 @@ class LLMService:
                     return None
             return None
 
-
     async def async_call_llm(
         self,
         model_name: str,

@@ -27,7 +27,6 @@ async def run_genesis_phase() -> (
 ):
     """Execute the initial bootstrapping phase."""
 
-
     model = load_user_supplied_model()
     if model:
         plot_outline, character_profiles, world_building = convert_model_to_objects(
@@ -43,9 +42,7 @@ async def run_genesis_phase() -> (
         world_building = create_default_world()
 
     plot_outline, _ = await bootstrap_plot_outline(plot_outline)
-    character_profiles, _ = await bootstrap_characters(
-        character_profiles, plot_outline
-    )
+    character_profiles, _ = await bootstrap_characters(character_profiles, plot_outline)
     world_building, _ = await bootstrap_world(world_building, plot_outline)
 
     await plot_queries.save_plot_outline_to_db(plot_outline)
