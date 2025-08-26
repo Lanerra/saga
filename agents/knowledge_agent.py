@@ -2045,7 +2045,7 @@ class KnowledgeAgent:
             # Original full graph processing (less efficient)
             # Use lower similarity threshold to catch character name variations like "Nuyara" vs "Nuyara Vex"
             candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
-                similarity_threshold=0.6
+                similarity_threshold=0.65
             )
 
             if not candidate_pairs:

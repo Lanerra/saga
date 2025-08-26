@@ -115,7 +115,7 @@ async def should_merge_entities(
     new_name: str,
     new_description: str,
     existing_entity: dict[str, Any],
-    similarity_threshold: float = 0.85
+    similarity_threshold: float = 0.65
 ) -> bool:
     """Determine if entities should be merged based on similarity.
     
