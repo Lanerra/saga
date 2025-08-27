@@ -229,6 +229,13 @@ class SagaSettings(BaseSettings):
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.85
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
+    # Relationship Constraint Configuration
+    ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
+    RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = 0.2  # Lower threshold to accept more corrections
+    RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = False  # If True, rejects invalid relationships; if False, uses fallbacks
+    RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS: bool = True
+    RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = True  # Allow automatic corrections of relationship types
+
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
     LOG_FORMAT: str = (

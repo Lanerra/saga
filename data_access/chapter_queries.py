@@ -38,13 +38,13 @@ async def save_chapter_data_to_db(
 
     embedding_list = neo4j_manager.embedding_to_list(embedding_array)
 
-    query = f"""
-    MERGE (c:{"Chapter"} {{number: $chapter_number_param}})
+    query = """
+    MERGE (c:Chapter {number: $chapter_number_param})
     SET c.text = $text_param,
         c.raw_llm_output = $raw_llm_output_param,
         c.summary = $summary_param,
         c.is_provisional = $is_provisional_param,
-        c.{"embedding_vector"} = $embedding_vector_param,
+        c.embedding_vector = $embedding_vector_param,
         c.last_updated = timestamp()
     """
     parameters = {
@@ -70,8 +70,8 @@ async def save_chapter_data_to_db(
 async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None:
     if chapter_number <= 0:
         return None
-    query = f"""
-    MATCH (c:{"Chapter"} {{number: $chapter_number_param}})
+    query = """
+    MATCH (c:Chapter {number: $chapter_number_param})
     RETURN c.text AS text, c.raw_llm_output AS raw_llm_output, c.summary AS summary, c.is_provisional AS is_provisional
     """
     try:
@@ -99,10 +99,10 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
 async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
     if chapter_number <= 0:
         return None
-    query = f"""
-    MATCH (c:{"Chapter"} {{number: $chapter_number_param}})
-    WHERE c.{"embedding_vector"} IS NOT NULL
-    RETURN c.{"embedding_vector"} AS embedding_vector
+    query = """
+    MATCH (c:Chapter {number: $chapter_number_param})
+    WHERE c.embedding_vector IS NOT NULL
+    RETURN c.embedding_vector AS embedding_vector
     """
     try:
         result = await neo4j_manager.execute_read_query(

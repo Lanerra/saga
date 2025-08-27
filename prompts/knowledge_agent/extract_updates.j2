@@ -17,7 +17,7 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 - For `world_updates`: Each category should contain items as keys, and each item should have properties like `description`, `goals`, `rules`, etc. Do NOT create items named "elaborations" or "elaboration" - these should be properties within actual items.
 - For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
 - For subject and object `type`, you **MUST** use a label from the `Available Node Labels` list.
-- For the `predicate`, you **SHOULD PREFER** a type from the specific relationship categories above. The system will automatically validate and normalize relationship types using fuzzy matching, so use the most appropriate canonical form.
+- For the `predicate`, you **MUST** use an exact match from the available relationship types listed above. Do not use any variations, abbreviations, or similar terms.
 
 **Chapter {{ chapter_number }} Text to Analyze:**
 ```text

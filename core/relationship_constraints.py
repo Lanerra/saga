@@ -1,0 +1,700 @@
+"""
+Relationship constraint system for validating knowledge graph relationships.
+
+This module provides comprehensive validation of node type compatibility for relationships,
+preventing semantically invalid connections like "Mountain LOVES River" or "Sword FEARS Magic".
+"""
+
+import logging
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
+from kg_constants import NODE_LABELS, RELATIONSHIP_CATEGORIES
+
+logger = logging.getLogger(__name__)
+
+
+# Node type classifications for semantic validation
+class NodeClassifications:
+    """Classification of node types into semantic categories."""
+    
+    SENTIENT = {"Character"}  # Entities capable of thought, emotion, action
+    INANIMATE = {"WorldElement", "System", "ValueNode"}  # Objects, tools, abstract concepts
+    SPATIAL = {"Location", "WorldContainer"}  # Physical spaces and containers
+    ABSTRACT = {"PlotPoint", "Trait", "Lore"}  # Concepts, events, ideas
+    TEMPORAL = {"Chapter", "DevelopmentEvent", "WorldElaborationEvent"}  # Time-based entities
+    ORGANIZATIONAL = {"Faction", "NovelInfo"}  # Groups, institutions
+    
+    # Trait assignments - nodes can have multiple traits
+    PHYSICAL_PRESENCE = {"Character", "WorldElement", "Location", "WorldContainer", "System"}
+    CONSCIOUS = {"Character"}  # Subset of sentient with self-awareness
+    LOCATABLE = {"Character", "WorldElement", "WorldContainer"}  # Can be located
+    OWNABLE = {"WorldElement", "System"}  # Can be owned/possessed
+    SOCIAL = {"Character", "Faction"}  # Can have social relationships
+
+
+# Comprehensive relationship constraint definitions
+RELATIONSHIP_CONSTRAINTS = {
+    # === EMOTIONAL RELATIONSHIPS ===
+    "LOVES": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.SPATIAL | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [
+            # No self-love validation needed - that's philosophically valid
+        ],
+        "bidirectional": True,
+        "description": "Emotional affection between sentient beings, or toward places/concepts",
+        "examples_valid": ["Character:Alice | LOVES | Character:Bob", "Character:Hero | LOVES | Location:Hometown"],
+        "examples_invalid": ["WorldElement:Sword | LOVES | Character:Hero", "Location:Forest | LOVES | Character:Ranger"]
+    },
+    
+    "HATES": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.SPATIAL | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Emotional animosity from sentient beings toward any entity",
+        "examples_valid": ["Character:Villain | HATES | Character:Hero", "Character:Explorer | HATES | Location:Dungeon"],
+        "examples_invalid": ["WorldElement:Rock | HATES | Character:Hero"]
+    },
+    
+    "FEARS": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NODE_LABELS - {"Entity"},  # Can fear anything except the base Entity type
+        "invalid_combinations": [],
+        "bidirectional": False,  # Fear is typically directional
+        "description": "Fear response from sentient beings toward any entity or concept",
+        "examples_valid": ["Character:Child | FEARS | Character:Monster", "Character:Sailor | FEARS | Location:Storm"],
+        "examples_invalid": ["Location:Cave | FEARS | Character:Hero"]
+    },
+    
+    "RESPECTS": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ABSTRACT | NodeClassifications.ORGANIZATIONAL,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Respect between sentient beings or toward abstract concepts/institutions",
+        "examples_valid": ["Character:Student | RESPECTS | Character:Teacher", "Character:Citizen | RESPECTS | Faction:Council"],
+        "examples_invalid": ["WorldElement:Hammer | RESPECTS | Character:Smith"]
+    },
+
+    # === SOCIAL RELATIONSHIPS ===
+    "FAMILY_OF": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Family relationships between sentient beings",
+        "examples_valid": ["Character:Father | FAMILY_OF | Character:Daughter"],
+        "examples_invalid": ["Character:Hero | FAMILY_OF | WorldElement:Sword", "Location:House | FAMILY_OF | Character:Owner"]
+    },
+    
+    "FRIEND_OF": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Friendship between sentient beings",
+        "examples_valid": ["Character:Alice | FRIEND_OF | Character:Bob"],
+        "examples_invalid": ["Character:Hero | FRIEND_OF | WorldElement:Sword"]
+    },
+    
+    "ENEMY_OF": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Enmity between sentient beings or organizations",
+        "examples_valid": ["Character:Hero | ENEMY_OF | Character:Villain", "Faction:Kingdom | ENEMY_OF | Faction:Empire"],
+        "examples_invalid": ["WorldElement:Sword | ENEMY_OF | Character:Hero"]
+    },
+    
+    "ALLY_OF": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Alliance between sentient beings or organizations",
+        "examples_valid": ["Character:Hero | ALLY_OF | Character:Wizard", "Faction:Guild | ALLY_OF | Faction:Order"],
+        "examples_invalid": ["Location:Castle | ALLY_OF | Character:King"]
+    },
+
+    "ROMANTIC_WITH": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Romantic relationships between sentient beings",
+        "examples_valid": ["Character:Romeo | ROMANTIC_WITH | Character:Juliet"],
+        "examples_invalid": ["Character:Hero | ROMANTIC_WITH | WorldElement:Artifact"]
+    },
+
+    # === HIERARCHICAL RELATIONSHIPS ===  
+    "MENTOR_TO": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": False,  # Mentorship has clear direction
+        "description": "Teaching/guidance relationship between sentient beings",
+        "examples_valid": ["Character:Master | MENTOR_TO | Character:Apprentice"],
+        "examples_invalid": ["WorldElement:Book | MENTOR_TO | Character:Student"]
+    },
+    
+    "STUDENT_OF": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Learning relationship between sentient beings",
+        "examples_valid": ["Character:Apprentice | STUDENT_OF | Character:Master"],
+        "examples_invalid": ["Character:Student | STUDENT_OF | WorldElement:TextBook"]
+    },
+    
+    "LEADS": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Leadership relationship",
+        "examples_valid": ["Character:Captain | LEADS | Character:Soldier", "Character:King | LEADS | Faction:Army"],
+        "examples_invalid": ["WorldElement:Crown | LEADS | Character:King"]
+    },
+    
+    "WORKS_FOR": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Employment or service relationship",
+        "examples_valid": ["Character:Guard | WORKS_FOR | Character:Lord", "Character:Merchant | WORKS_FOR | Faction:Guild"],
+        "examples_invalid": ["WorldElement:Tool | WORKS_FOR | Character:Craftsman"]
+    },
+    
+    "SERVES": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Service or allegiance relationship",
+        "examples_valid": ["Character:Knight | SERVES | Character:King", "Character:Priest | SERVES | Lore:God"],
+        "examples_invalid": ["Location:Temple | SERVES | Lore:God"]
+    },
+
+    # === SPATIAL RELATIONSHIPS ===
+    "LOCATED_IN": {
+        "valid_subject_types": NodeClassifications.LOCATABLE,
+        "valid_object_types": NodeClassifications.SPATIAL,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Containment within a spatial location",
+        "examples_valid": ["Character:Hero | LOCATED_IN | Location:Castle", "WorldElement:Treasure | LOCATED_IN | Location:Cave"],
+        "examples_invalid": ["Location:Forest | LOCATED_IN | Character:Ranger", "PlotPoint:Quest | LOCATED_IN | Location:Town"]
+    },
+    
+    "LOCATED_AT": {
+        "valid_subject_types": NodeClassifications.LOCATABLE,
+        "valid_object_types": NodeClassifications.SPATIAL,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Presence at a specific location",
+        "examples_valid": ["Character:Merchant | LOCATED_AT | Location:Market", "WorldElement:Statue | LOCATED_AT | Location:Plaza"],
+        "examples_invalid": ["Trait:Brave | LOCATED_AT | Location:Battlefield"]
+    },
+    
+    "CONTAINS": {
+        "valid_subject_types": NodeClassifications.SPATIAL | {"WorldElement", "Entity"},  # Allow Entity type for containers
+        "valid_object_types": NodeClassifications.LOCATABLE | {"ValueNode", "Entity"},  # Allow Entity type for contained items
+        "invalid_combinations": [
+            ("Character", "Character"),  # Characters don't contain other characters
+        ],
+        "bidirectional": False,
+        "description": "Spatial containment relationship",
+        "examples_valid": ["Location:Chest | CONTAINS | WorldElement:Gold", "Location:Library | CONTAINS | WorldElement:Book", "WorldElement:Device | CONTAINS | ValueNode:Data", "Entity:Container | CONTAINS | Entity:Item"],
+        "examples_invalid": ["Character:Hero | CONTAINS | Character:Friend"]
+    },
+    
+    "NEAR": {
+        "valid_subject_types": NodeClassifications.LOCATABLE | NodeClassifications.SPATIAL,
+        "valid_object_types": NodeClassifications.LOCATABLE | NodeClassifications.SPATIAL,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Proximity relationship",
+        "examples_valid": ["Location:Village | NEAR | Location:Forest", "Character:Guard | NEAR | Location:Gate"],
+        "examples_invalid": ["Trait:Courage | NEAR | Location:Battlefield"]
+    },
+    
+    "ADJACENT_TO": {
+        "valid_subject_types": NodeClassifications.SPATIAL,
+        "valid_object_types": NodeClassifications.SPATIAL,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Direct spatial adjacency",
+        "examples_valid": ["Location:Kitchen | ADJACENT_TO | Location:Dining_Room"],
+        "examples_invalid": ["Character:Cook | ADJACENT_TO | Location:Kitchen"]
+    },
+
+    # === POSSESSION RELATIONSHIPS ===
+    "OWNS": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NodeClassifications.OWNABLE | NodeClassifications.SPATIAL,
+        "invalid_combinations": [
+            # Characters can't own other characters (slavery check)
+            ("Character", "Character"),
+        ],
+        "bidirectional": False,
+        "description": "Ownership relationship",
+        "examples_valid": ["Character:Lord | OWNS | Location:Castle", "Character:Wizard | OWNS | WorldElement:Staff"],
+        "examples_invalid": ["WorldElement:Sword | OWNS | Character:Warrior", "Character:Master | OWNS | Character:Servant"]
+    },
+    
+    "POSSESSES": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.OWNABLE | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [
+            ("Character", "Character"),  # Can't possess people
+        ],
+        "bidirectional": False,
+        "description": "Physical or metaphorical possession",
+        "examples_valid": ["Character:Mage | POSSESSES | WorldElement:Crystal", "Character:Hero | POSSESSES | Trait:Courage"],
+        "examples_invalid": ["WorldElement:Ring | POSSESSES | Character:Wearer"]
+    },
+    
+    "CREATED_BY": {
+        "valid_subject_types": NodeClassifications.INANIMATE | NodeClassifications.SPATIAL | NodeClassifications.ABSTRACT,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL | NodeClassifications.INANIMATE,  # Things can be created by other things
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Creation relationship",
+        "examples_valid": ["WorldElement:Sword | CREATED_BY | Character:Smith", "Location:Bridge | CREATED_BY | Faction:Engineers", "WorldElement:Network | CREATED_BY | WorldElement:Device"],
+        "examples_invalid": ["Character:Hero | CREATED_BY | WorldElement:Potion"]
+    },
+
+    # === TEMPORAL/CAUSAL RELATIONSHIPS ===
+    "CAUSES": {
+        "valid_subject_types": NODE_LABELS,  # Allow Entity type - almost anything can cause something
+        "valid_object_types": NODE_LABELS,   # Allow Entity type for objects too
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Causal relationship between entities or events",
+        "examples_valid": ["Character:Hero | CAUSES | PlotPoint:Victory", "WorldElement:Potion | CAUSES | Trait:Healing", "Entity:Unknown | CAUSES | WorldElement:Effect"],
+        "examples_invalid": []  # Very permissive for narrative flexibility
+    },
+    
+    "OCCURRED_IN": {
+        "valid_subject_types": NodeClassifications.TEMPORAL | NodeClassifications.ABSTRACT,
+        "valid_object_types": NodeClassifications.TEMPORAL | NodeClassifications.SPATIAL | {"ValueNode"},  # Can occur at times or places
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Temporal occurrence relationship",
+        "examples_valid": ["DevelopmentEvent:Battle | OCCURRED_IN | Chapter:Five", "WorldElaborationEvent:Ceremony | OCCURRED_IN | Location:Temple"],
+        "examples_invalid": []
+    },
+    
+    "PREVENTS": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.INANIMATE,
+        "valid_object_types": NODE_LABELS - {"Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Prevention relationship",
+        "examples_valid": ["Character:Guard | PREVENTS | PlotPoint:Theft", "WorldElement:Ward | PREVENTS | Character:Enemy"],
+        "examples_invalid": ["PlotPoint:Quest | PREVENTS | Character:Hero"]
+    },
+    
+    "ENABLES": {
+        "valid_subject_types": NODE_LABELS - {"Entity"},
+        "valid_object_types": NODE_LABELS - {"Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Enablement relationship",
+        "examples_valid": ["WorldElement:Key | ENABLES | PlotPoint:Escape", "Character:Mentor | ENABLES | Character:Student"],
+        "examples_invalid": []  # Very permissive
+    },
+    
+    "TRIGGERS": {
+        "valid_subject_types": NODE_LABELS - {"Entity"},
+        "valid_object_types": NodeClassifications.TEMPORAL | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Triggering of events or states",
+        "examples_valid": ["Character:Hero | TRIGGERS | PlotPoint:Quest", "WorldElement:Trap | TRIGGERS | DevelopmentEvent:Alarm"],
+        "examples_invalid": []
+    },
+
+    # === COGNITIVE/MENTAL RELATIONSHIPS ===
+    "BELIEVES": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.ABSTRACT | NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Belief relationship from sentient beings",
+        "examples_valid": ["Character:Priest | BELIEVES | Lore:Prophecy", "Character:Student | BELIEVES | Character:Teacher"],
+        "examples_invalid": ["WorldElement:Book | BELIEVES | Lore:Truth"]
+    },
+    
+    "REALIZES": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.ABSTRACT | {"PlotPoint"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Realization or understanding",
+        "examples_valid": ["Character:Detective | REALIZES | PlotPoint:Solution", "Character:Hero | REALIZES | Trait:Truth"],
+        "examples_invalid": ["Location:Library | REALIZES | Lore:Knowledge"]
+    },
+    
+    "REMEMBERS": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NODE_LABELS - {"Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Memory relationship from sentient beings",
+        "examples_valid": ["Character:Veteran | REMEMBERS | Character:Friend", "Character:Elder | REMEMBERS | Location:Hometown"],
+        "examples_invalid": ["WorldElement:Diary | REMEMBERS | Character:Writer"]
+    },
+    
+    "UNDERSTANDS": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.ABSTRACT | NodeClassifications.INANIMATE,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Understanding relationship",
+        "examples_valid": ["Character:Scholar | UNDERSTANDS | System:Magic", "Character:Craftsman | UNDERSTANDS | WorldElement:Tool"],
+        "examples_invalid": ["System:Magic | UNDERSTANDS | Character:Wizard"]
+    },
+
+    # === ORGANIZATIONAL RELATIONSHIPS ===
+    "MEMBER_OF": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.ORGANIZATIONAL,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Membership in organizations",
+        "examples_valid": ["Character:Knight | MEMBER_OF | Faction:Order", "Character:Merchant | MEMBER_OF | Faction:Guild"],
+        "examples_invalid": ["WorldElement:Banner | MEMBER_OF | Faction:Army"]
+    },
+    
+    "LEADER_OF": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.ORGANIZATIONAL | NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Leadership role",
+        "examples_valid": ["Character:General | LEADER_OF | Faction:Army", "Character:Captain | LEADER_OF | Character:Squad"],
+        "examples_invalid": ["Faction:Council | LEADER_OF | Character:Mayor"]
+    },
+    
+    "FOUNDED": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NodeClassifications.ORGANIZATIONAL | NodeClassifications.SPATIAL,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Founding relationship",
+        "examples_valid": ["Character:King | FOUNDED | Faction:Kingdom", "Faction:Settlers | FOUNDED | Location:Village"],
+        "examples_invalid": ["Location:City | FOUNDED | Character:Mayor"]
+    },
+
+    # === ABSTRACT/TRAIT RELATIONSHIPS ===
+    "HAS_TRAIT": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.INANIMATE,
+        "valid_object_types": {"Trait"} | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Trait or characteristic relationship",
+        "examples_valid": ["Character:Hero | HAS_TRAIT | Trait:Brave", "WorldElement:Sword | HAS_TRAIT | Trait:Sharp"],
+        "examples_invalid": ["Trait:Courage | HAS_TRAIT | Character:Hero"]
+    },
+    
+    "HAS_VOICE": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.INANIMATE | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Voice or communication channel relationship",
+        "examples_valid": ["Character:Oracle | HAS_VOICE | WorldElement:Crystal", "Character:AI | HAS_VOICE | System:Network"],
+        "examples_invalid": ["WorldElement:Stone | HAS_VOICE | Character:Hero"]
+    },
+    
+    "SYMBOLIZES": {
+        "valid_subject_types": NodeClassifications.INANIMATE | NodeClassifications.SPATIAL,
+        "valid_object_types": NodeClassifications.ABSTRACT | {"Trait"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Symbolic representation",
+        "examples_valid": ["WorldElement:Crown | SYMBOLIZES | Trait:Authority", "Location:Temple | SYMBOLIZES | Lore:Faith"],
+        "examples_invalid": ["Character:King | SYMBOLIZES | WorldElement:Crown"]
+    },
+
+    # === PHYSICAL RELATIONSHIPS ===
+    "PART_OF": {
+        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "valid_object_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "invalid_combinations": [
+            ("Character", "WorldElement"),  # Characters aren't parts of objects
+            ("Character", "Location"),      # Characters aren't parts of places
+        ],
+        "bidirectional": False,
+        "description": "Component relationship",
+        "examples_valid": ["WorldElement:Blade | PART_OF | WorldElement:Sword", "Location:Tower | PART_OF | Location:Castle"],
+        "examples_invalid": ["Character:Guard | PART_OF | Location:Castle"]
+    },
+    
+    "CONNECTED_TO": {
+        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "valid_object_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Physical connection",
+        "examples_valid": ["Location:Bridge | CONNECTED_TO | Location:Shore", "WorldElement:Chain | CONNECTED_TO | WorldElement:Anchor"],
+        "examples_invalid": ["Trait:Loyalty | CONNECTED_TO | Character:Knight"]
+    },
+    
+    "CONNECTS_TO": {
+        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "valid_object_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Physical or functional connection (alias for CONNECTED_TO)",
+        "examples_valid": ["WorldElement:USB_Drive | CONNECTS_TO | Character:User", "Location:Tunnel | CONNECTS_TO | Location:Cave"],
+        "examples_invalid": ["Trait:Courage | CONNECTS_TO | Character:Hero"]
+    },
+    
+    "PULSES_WITH": {
+        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "valid_object_types": NodeClassifications.ABSTRACT | {"ValueNode"},  # Can pulse with emotions, energies, etc.
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Rhythmic emanation or resonance",
+        "examples_valid": ["WorldElement:Crystal | PULSES_WITH | ValueNode:Energy", "WorldElement:Heart | PULSES_WITH | Trait:Life"],
+        "examples_invalid": ["Character:Hero | PULSES_WITH | Character:Villain"]
+    },
+    
+    "RESPONDS_TO": {
+        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE | NodeClassifications.ABSTRACT,
+        "valid_object_types": NODE_LABELS - {"Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Reactive relationship - responds to stimuli or inputs",
+        "examples_valid": ["WorldElement:Sensor | RESPONDS_TO | Character:Movement", "System:Security | RESPONDS_TO | WorldElement:Trigger"],
+        "examples_invalid": []
+    },
+
+    # === DEFAULT FALLBACK ===
+    "RELATES_TO": {
+        "valid_subject_types": NODE_LABELS,  # Allow Entity type for fallback relationships
+        "valid_object_types": NODE_LABELS,   # Allow Entity type for fallback relationships
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Generic relationship fallback - should be minimized",
+        "examples_valid": ["Character:Hero | RELATES_TO | PlotPoint:Quest", "Entity:Unknown | RELATES_TO | WorldElement:Item"],
+        "examples_invalid": []  # Accepts anything as fallback
+    }
+}
+
+# Additional constraints for specific combinations
+SEMANTIC_COMPATIBILITY_RULES = {
+    # Emotional relationships require conscious subjects
+    "emotional_subjects_must_be_conscious": {
+        "relationships": ["LOVES", "HATES", "FEARS", "RESPECTS", "ENVIES", "PITIES"],
+        "rule": "Subject must be from CONSCIOUS classification",
+        "violation_message": "Only conscious entities can have emotional relationships"
+    },
+    
+    # Social relationships require sentient participants  
+    "social_requires_sentient": {
+        "relationships": ["FAMILY_OF", "FRIEND_OF", "ROMANTIC_WITH", "ALLY_OF"],
+        "rule": "Both subject and object must be SENTIENT",
+        "violation_message": "Social relationships require sentient participants"
+    },
+    
+    # Physical relationships require physical presence
+    "physical_requires_presence": {
+        "relationships": ["LOCATED_IN", "LOCATED_AT", "NEAR", "ADJACENT_TO", "PART_OF", "CONTAINS"],
+        "rule": "Both nodes must have PHYSICAL_PRESENCE trait",
+        "violation_message": "Physical relationships require entities with physical presence"
+    },
+    
+    # Ownership cannot create slavery
+    "no_sentient_ownership": {
+        "relationships": ["OWNS", "POSSESSES"],
+        "rule": "Cannot own/possess sentient beings",
+        "violation_message": "Ownership of sentient beings is not permitted"
+    },
+    
+    # Cognitive relationships require conscious subjects
+    "cognitive_requires_consciousness": {
+        "relationships": ["BELIEVES", "REALIZES", "REMEMBERS", "UNDERSTANDS", "THINKS_ABOUT"],
+        "rule": "Subject must be CONSCIOUS",
+        "violation_message": "Cognitive relationships require conscious subjects"
+    }
+}
+
+
+def get_node_classifications(node_type: str) -> Set[str]:
+    """Get all classifications that apply to a given node type."""
+    classifications = set()
+    
+    if node_type in NodeClassifications.SENTIENT:
+        classifications.add("SENTIENT")
+    if node_type in NodeClassifications.INANIMATE:
+        classifications.add("INANIMATE")
+    if node_type in NodeClassifications.SPATIAL:
+        classifications.add("SPATIAL")
+    if node_type in NodeClassifications.ABSTRACT:
+        classifications.add("ABSTRACT")
+    if node_type in NodeClassifications.TEMPORAL:
+        classifications.add("TEMPORAL")
+    if node_type in NodeClassifications.ORGANIZATIONAL:
+        classifications.add("ORGANIZATIONAL")
+    if node_type in NodeClassifications.PHYSICAL_PRESENCE:
+        classifications.add("PHYSICAL_PRESENCE")
+    if node_type in NodeClassifications.CONSCIOUS:
+        classifications.add("CONSCIOUS")
+    if node_type in NodeClassifications.LOCATABLE:
+        classifications.add("LOCATABLE")
+    if node_type in NodeClassifications.OWNABLE:
+        classifications.add("OWNABLE")
+    if node_type in NodeClassifications.SOCIAL:
+        classifications.add("SOCIAL")
+    
+    return classifications
+
+
+def get_constraint_for_relationship(relationship_type: str) -> Optional[Dict[str, Any]]:
+    """Get constraint definition for a relationship type."""
+    return RELATIONSHIP_CONSTRAINTS.get(relationship_type)
+
+
+def get_all_valid_relationships_for_node_pair(subject_type: str, object_type: str) -> List[str]:
+    """Get all valid relationship types between two node types."""
+    valid_relationships = []
+    
+    for rel_type, constraints in RELATIONSHIP_CONSTRAINTS.items():
+        if is_relationship_valid(subject_type, rel_type, object_type):
+            valid_relationships.append(rel_type)
+    
+    return valid_relationships
+
+
+def is_relationship_valid(subject_type: str, relationship_type: str, object_type: str) -> bool:
+    """Check if a specific relationship between two node types is valid."""
+    constraints = RELATIONSHIP_CONSTRAINTS.get(relationship_type)
+    if not constraints:
+        logger.warning(f"No constraints defined for relationship type: {relationship_type}")
+        return False
+    
+    # Check subject type validity
+    valid_subjects = constraints.get("valid_subject_types", set())
+    if subject_type not in valid_subjects:
+        return False
+    
+    # Check object type validity
+    valid_objects = constraints.get("valid_object_types", set())
+    if object_type not in valid_objects:
+        return False
+    
+    # Check invalid combinations
+    invalid_combos = constraints.get("invalid_combinations", [])
+    if (subject_type, object_type) in invalid_combos:
+        return False
+    
+    # Check semantic compatibility rules
+    for rule_name, rule_config in SEMANTIC_COMPATIBILITY_RULES.items():
+        if relationship_type in rule_config["relationships"]:
+            if not _check_semantic_rule(rule_config, subject_type, object_type, relationship_type):
+                return False
+    
+    return True
+
+
+def _check_semantic_rule(rule_config: Dict[str, Any], subject_type: str, object_type: str, relationship_type: str) -> bool:
+    """Check a specific semantic compatibility rule."""
+    rule = rule_config["rule"]
+    
+    if rule == "Subject must be from CONSCIOUS classification":
+        return subject_type in NodeClassifications.CONSCIOUS
+    
+    elif rule == "Both subject and object must be SENTIENT":
+        return (subject_type in NodeClassifications.SENTIENT and 
+                object_type in NodeClassifications.SENTIENT)
+    
+    elif rule == "Both nodes must have PHYSICAL_PRESENCE trait":
+        return (subject_type in NodeClassifications.PHYSICAL_PRESENCE and 
+                object_type in NodeClassifications.PHYSICAL_PRESENCE)
+    
+    elif rule == "Cannot own/possess sentient beings":
+        return not (relationship_type in ["OWNS", "POSSESSES"] and object_type in NodeClassifications.SENTIENT)
+    
+    elif rule == "Subject must be CONSCIOUS":
+        return subject_type in NodeClassifications.CONSCIOUS
+    
+    return True
+
+
+def get_relationship_suggestions(subject_type: str, object_type: str) -> List[Tuple[str, str]]:
+    """Get suggested valid relationships for a node type pair with explanations."""
+    suggestions = []
+    
+    valid_relationships = get_all_valid_relationships_for_node_pair(subject_type, object_type)
+    
+    for rel_type in valid_relationships:
+        constraint = RELATIONSHIP_CONSTRAINTS[rel_type]
+        description = constraint.get("description", "No description available")
+        suggestions.append((rel_type, description))
+    
+    return suggestions
+
+
+def validate_relationship_semantics(subject_type: str, relationship_type: str, object_type: str) -> Tuple[bool, List[str]]:
+    """
+    Comprehensive relationship validation with detailed error messages.
+    
+    Returns:
+        Tuple of (is_valid, list_of_error_messages)
+    """
+    errors = []
+    
+    # Check if relationship type exists
+    if relationship_type not in RELATIONSHIP_CONSTRAINTS:
+        errors.append(f"Unknown relationship type: {relationship_type}")
+        return False, errors
+    
+    # Check if node types are valid
+    if subject_type not in NODE_LABELS:
+        errors.append(f"Invalid subject node type: {subject_type}")
+    if object_type not in NODE_LABELS:
+        errors.append(f"Invalid object node type: {object_type}")
+    
+    if errors:  # Don't proceed if node types are invalid
+        return False, errors
+    
+    constraints = RELATIONSHIP_CONSTRAINTS[relationship_type]
+    
+    # Check subject type constraints
+    valid_subjects = constraints.get("valid_subject_types", set())
+    if subject_type not in valid_subjects:
+        errors.append(
+            f"Invalid subject type '{subject_type}' for relationship '{relationship_type}'. "
+            f"Valid subjects: {sorted(valid_subjects)}"
+        )
+    
+    # Check object type constraints
+    valid_objects = constraints.get("valid_object_types", set())
+    if object_type not in valid_objects:
+        errors.append(
+            f"Invalid object type '{object_type}' for relationship '{relationship_type}'. "
+            f"Valid objects: {sorted(valid_objects)}"
+        )
+    
+    # Check invalid combinations
+    invalid_combos = constraints.get("invalid_combinations", [])
+    if (subject_type, object_type) in invalid_combos:
+        errors.append(
+            f"Invalid combination: {subject_type} {relationship_type} {object_type} "
+            f"is explicitly forbidden"
+        )
+    
+    # Check semantic rules
+    for rule_name, rule_config in SEMANTIC_COMPATIBILITY_RULES.items():
+        if relationship_type in rule_config["relationships"]:
+            if not _check_semantic_rule(rule_config, subject_type, object_type, relationship_type):
+                errors.append(rule_config["violation_message"])
+    
+    return len(errors) == 0, errors

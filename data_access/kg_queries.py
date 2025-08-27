@@ -450,7 +450,7 @@ def validate_relationship_type(proposed_type: str) -> str:
     logger.warning(
         f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
     )
-    return "RELATES_TO"
+    return clean_type
 
 
 def normalize_relationship_type(rel_type: str) -> str:
@@ -623,9 +623,25 @@ async def add_kg_triples_batch_to_db(
         logger.info("Neo4j: add_kg_triples_batch_to_db: No structured triples to add.")
         return
 
-    statements_with_params: list[tuple[str, dict[str, Any]]] = []
+    # Import constraint validation here to avoid circular imports
+    try:
+        from core.relationship_validator import validate_batch_constraints, should_accept_relationship
+        constraint_validation_enabled = True
+    except ImportError:
+        logger.warning("Relationship constraint validation not available - proceeding without validation")
+        constraint_validation_enabled = False
 
-    for triple_dict in structured_triples_data:
+    statements_with_params: list[tuple[str, dict[str, Any]]] = []
+    validation_stats = {"total": 0, "accepted": 0, "rejected": 0, "corrected": 0}
+
+    # Validate all triples before processing if validation is enabled
+    if constraint_validation_enabled:
+        validation_results = validate_batch_constraints(structured_triples_data)
+        logger.info(f"Constraint validation completed for {len(validation_results)} triples")
+    else:
+        validation_results = [None] * len(structured_triples_data)
+
+    for i, triple_dict in enumerate(structured_triples_data):
         subject_info = triple_dict.get("subject")
         predicate_str = triple_dict.get("predicate")
 
@@ -656,7 +672,36 @@ async def add_kg_triples_batch_to_db(
             logger.warning(
                 f"Neo4j (Batch): Empty subject name or predicate after stripping: {triple_dict}"
             )
+            validation_stats["total"] += 1
+            validation_stats["rejected"] += 1
             continue
+
+        # Apply constraint validation if enabled
+        validation_stats["total"] += 1
+        validation_result = validation_results[i] if constraint_validation_enabled else None
+        
+        if constraint_validation_enabled and validation_result:
+            # Check if relationship should be accepted based on validation
+            if not should_accept_relationship(validation_result, min_confidence=0.3):
+                logger.warning(
+                    f"Rejecting relationship due to constraint violation: "
+                    f"{subject_type}:{subject_name} | {predicate_clean} | "
+                    f"{'Literal' if triple_dict.get('is_literal_object') else object_entity_info.get('type', 'Unknown')}. "
+                    f"Errors: {validation_result.errors}"
+                )
+                validation_stats["rejected"] += 1
+                continue
+            
+            # Use the validated predicate (may have been corrected)
+            if validation_result.validated_relationship != predicate_clean:
+                logger.info(
+                    f"Constraint validation corrected predicate: "
+                    f"{predicate_clean} -> {validation_result.validated_relationship}"
+                )
+                predicate_clean = validation_result.validated_relationship
+                validation_stats["corrected"] += 1
+        
+        validation_stats["accepted"] += 1
 
         subject_labels_cypher = _get_cypher_labels(subject_type)
 
@@ -742,9 +787,18 @@ async def add_kg_triples_batch_to_db(
 
     try:
         await neo4j_manager.execute_cypher_batch(statements_with_params)
-        logger.info(
-            f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements."
-        )
+        
+        # Log validation statistics
+        if constraint_validation_enabled:
+            logger.info(
+                f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements. "
+                f"Constraint validation stats: {validation_stats['accepted']}/{validation_stats['total']} accepted, "
+                f"{validation_stats['corrected']} corrected, {validation_stats['rejected']} rejected."
+            )
+        else:
+            logger.info(
+                f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements."
+            )
     except Exception as e:
         # Log first few problematic params for debugging, if any
         first_few_params_str = (
