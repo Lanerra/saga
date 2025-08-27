@@ -16,6 +16,7 @@ from core.relationship_constraints import (
 )
 from data_access.kg_queries import validate_relationship_type, normalize_relationship_type
 import kg_constants
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -97,33 +98,36 @@ class RelationshipConstraintValidator:
         # Step 3: Try to find alternative valid relationships
         suggestions = get_relationship_suggestions(subject_type, object_type)
         
-        # Step 4: Attempt automatic correction based on semantic similarity
-        best_alternative = self._find_best_semantic_match(predicate, subject_type, object_type)
-        
-        if best_alternative:
-            self.validation_stats["corrected_relationships"] += 1
-            logger.info(
-                f"Auto-corrected invalid relationship: "
-                f"{subject_type} {predicate} {object_type} -> "
-                f"{subject_type} {best_alternative} {object_type}"
-            )
+        # Step 4: Attempt automatic correction based on semantic similarity (if enabled)
+        if config.settings.RELATIONSHIP_CONSTRAINT_AUTO_CORRECT:
+            best_alternative = self._find_best_semantic_match(predicate, subject_type, object_type)
             
-            return ValidationResult(
-                is_valid=True,
-                original_relationship=predicate,
-                validated_relationship=best_alternative,
-                errors=[f"Original relationship was invalid, corrected to {best_alternative}"],
-                suggestions=suggestions,
-                confidence=0.7  # Lower confidence for auto-corrections
-            )
+            if best_alternative:
+                self.validation_stats["corrected_relationships"] += 1
+                if config.settings.RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS:
+                    logger.info(
+                        f"Auto-corrected invalid relationship: "
+                        f"{subject_type} {predicate} {object_type} -> "
+                        f"{subject_type} {best_alternative} {object_type}"
+                    )
+                
+                return ValidationResult(
+                    is_valid=True,
+                    original_relationship=predicate,
+                    validated_relationship=best_alternative,
+                    errors=[f"Original relationship was invalid, corrected to {best_alternative}"],
+                    suggestions=suggestions,
+                    confidence=0.7  # Lower confidence for auto-corrections
+                )
         
-        # Step 5: Fall back to RELATES_TO if no better option found
-        if "RELATES_TO" in [rel for rel, _ in suggestions]:
+        # Step 5: Fall back to RELATES_TO if enabled and no better option found
+        if not config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE and "RELATES_TO" in [rel for rel, _ in suggestions]:
             self.validation_stats["fallback_relationships"] += 1
-            logger.warning(
-                f"Using RELATES_TO fallback for invalid relationship: "
-                f"{subject_type} {predicate} {object_type}"
-            )
+            if config.settings.RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS:
+                logger.warning(
+                    f"Using RELATES_TO fallback for invalid relationship: "
+                    f"{subject_type} {predicate} {object_type}"
+                )
             
             return ValidationResult(
                 is_valid=True,  # We're allowing it with fallback
@@ -134,12 +138,31 @@ class RelationshipConstraintValidator:
                 confidence=0.3  # Very low confidence for fallbacks
             )
         
-        # Step 6: Complete rejection
+        # Step 6: Complete rejection (or fallback to ASSOCIATED_WITH in permissive mode)
+        if not config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE and "ASSOCIATED_WITH" in [rel for rel, _ in suggestions]:
+            self.validation_stats["fallback_relationships"] += 1
+            if config.settings.RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS:
+                logger.warning(
+                    f"Using ASSOCIATED_WITH fallback for invalid relationship: "
+                    f"{subject_type} {predicate} {object_type}"
+                )
+            
+            return ValidationResult(
+                is_valid=True,  # Ultimate fallback
+                original_relationship=predicate,
+                validated_relationship="ASSOCIATED_WITH",
+                errors=errors + ["Used ASSOCIATED_WITH ultimate fallback due to invalid relationship"],
+                suggestions=suggestions,
+                confidence=0.1  # Very low confidence for ultimate fallbacks
+            )
+        
+        # Complete rejection
         self.validation_stats["invalid_relationships"] += 1
-        logger.error(
-            f"Relationship completely invalid and no fallback possible: "
-            f"{subject_type} {predicate} {object_type}. Errors: {errors}"
-        )
+        if config.settings.RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS:
+            logger.error(
+                f"Relationship completely invalid and no fallback possible: "
+                f"{subject_type} {predicate} {object_type}. Errors: {errors}"
+            )
         
         return ValidationResult(
             is_valid=False,
@@ -364,18 +387,22 @@ def enhance_triple_with_validation(triple_dict: Dict[str, Any]) -> Dict[str, Any
     return enhanced_triple
 
 
-def should_accept_relationship(validation_result: ValidationResult, min_confidence: float = 0.3) -> bool:
+def should_accept_relationship(validation_result: ValidationResult, min_confidence: Optional[float] = None) -> bool:
     """
     Determine whether to accept a relationship based on validation results.
     
     Args:
         validation_result: Result from relationship validation
-        min_confidence: Minimum confidence threshold for acceptance
+        min_confidence: Minimum confidence threshold for acceptance (uses config if None)
         
     Returns:
         True if the relationship should be accepted and stored
     """
     if not validation_result.is_valid:
         return False
+    
+    # Use configured minimum confidence if not provided
+    if min_confidence is None:
+        min_confidence = config.settings.RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE
     
     return validation_result.confidence >= min_confidence

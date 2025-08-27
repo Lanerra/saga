@@ -25,6 +25,7 @@ from core.relationship_validator import (
     enhance_triple_with_validation,
     should_accept_relationship,
 )
+import config
 
 
 class TestNodeClassifications:
@@ -299,7 +300,7 @@ class TestRelationshipValidator:
             assert len(result.errors) > 0
         else:
             # If valid, should be a fallback
-            assert result.validated_relationship == "RELATES_TO"
+            assert result.validated_relationship in ["RELATES_TO", "ASSOCIATED_WITH"]
             assert result.confidence < 0.5
     
     def test_triple_validation(self):
@@ -528,3 +529,137 @@ class TestConstraintPerformance:
         stats = validator.get_validation_statistics()
         assert stats["total_validations"] == 100
         assert stats["valid_relationships"] == 100
+
+
+class TestConfigurationDrivenValidation:
+    """Test configuration-driven validation behavior."""
+    
+    def test_auto_correct_disabled(self):
+        """Test that auto-correction can be disabled via config."""
+        # Save original config
+        original_auto_correct = config.settings.RELATIONSHIP_CONSTRAINT_AUTO_CORRECT
+        
+        try:
+            # Disable auto-correction
+            config.settings.RELATIONSHIP_CONSTRAINT_AUTO_CORRECT = False
+            validator = RelationshipConstraintValidator()
+            
+            # Test invalid relationship that would normally be auto-corrected
+            # Use a completely invalid relationship for node types (not just normalization)
+            result = validator.validate_relationship("Object", "LOVES", "Character")
+            
+            # Should fall back to RELATES_TO/ASSOCIATED_WITH instead of being auto-corrected
+            assert result.validated_relationship in ["RELATES_TO", "ASSOCIATED_WITH"] or not result.is_valid
+            
+        finally:
+            # Restore original config
+            config.settings.RELATIONSHIP_CONSTRAINT_AUTO_CORRECT = original_auto_correct
+    
+    def test_strict_mode_rejection(self):
+        """Test that strict mode rejects invalid relationships."""
+        # Save original config
+        original_strict_mode = config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE
+        
+        try:
+            # Enable strict mode
+            config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = True
+            validator = RelationshipConstraintValidator()
+            
+            # Test completely invalid relationship
+            result = validator.validate_relationship("Object", "LOVES", "Character")
+            
+            # Should be rejected in strict mode
+            assert not result.is_valid
+            
+        finally:
+            # Restore original config
+            config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = original_strict_mode
+    
+    def test_permissive_mode_fallbacks(self):
+        """Test that permissive mode uses fallbacks."""
+        # Save original config
+        original_strict_mode = config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE
+        
+        try:
+            # Disable strict mode (permissive)
+            config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = False
+            validator = RelationshipConstraintValidator()
+            
+            # Test invalid relationship
+            result = validator.validate_relationship("Object", "LOVES", "Character")
+            
+            # Should use fallback in permissive mode
+            assert result.is_valid
+            assert result.validated_relationship in ["RELATES_TO", "ASSOCIATED_WITH"]
+            assert result.confidence < 0.5
+            
+        finally:
+            # Restore original config
+            config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = original_strict_mode
+    
+    def test_confidence_threshold_acceptance(self):
+        """Test that confidence threshold determines acceptance."""
+        # Save original config
+        original_min_confidence = config.settings.RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE
+        
+        try:
+            # Set high confidence threshold
+            config.settings.RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE = 0.8
+            
+            # Create a low-confidence result (like a fallback)
+            low_confidence_result = ValidationResult(
+                is_valid=True,
+                original_relationship="invalid_rel",
+                validated_relationship="RELATES_TO",
+                confidence=0.3
+            )
+            
+            # Should not be accepted with high threshold
+            assert not should_accept_relationship(low_confidence_result)
+            
+            # Set low confidence threshold
+            config.settings.RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE = 0.1
+            
+            # Should be accepted with low threshold
+            assert should_accept_relationship(low_confidence_result)
+            
+        finally:
+            # Restore original config
+            config.settings.RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE = original_min_confidence
+
+
+class TestIntegrationValidation:
+    """Test validation integration with existing pipeline."""
+    
+    def test_triple_validation_integration(self):
+        """Test that triple validation works with real data structures."""
+        # Test triple from knowledge extraction
+        triple_dict = {
+            "subject": {"name": "Alice", "type": "Character"},
+            "predicate": "LOVES",
+            "object_entity": {"name": "Bob", "type": "Character"},
+            "is_literal_object": False
+        }
+        
+        result = validate_triple_constraint(triple_dict)
+        assert result.is_valid
+        assert result.validated_relationship == "LOVES"
+    
+    def test_enhanced_triple_processing(self):
+        """Test that triple enhancement adds validation metadata."""
+        triple_dict = {
+            "subject": {"name": "Sword", "type": "Object"},
+            "predicate": "LOVES",  # Invalid - objects can't love
+            "object_entity": {"name": "Hero", "type": "Character"},
+            "is_literal_object": False
+        }
+        
+        enhanced_triple = enhance_triple_with_validation(triple_dict)
+        
+        # Should have validation metadata
+        assert "validation" in enhanced_triple
+        validation = enhanced_triple["validation"]
+        
+        # Should not be valid or should be corrected
+        assert not validation["is_valid"] or validation["validated_predicate"] != "LOVES"
+        assert "errors" in validation

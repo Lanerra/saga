@@ -2,7 +2,7 @@
 import difflib
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 from async_lru import alru_cache
 
@@ -574,7 +574,7 @@ def validate_relationship_type(proposed_type: str) -> str:
     logger.warning(
         f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
     )
-    return clean_type
+    return "RELATES_TO"
 
 
 def normalize_relationship_type(rel_type: str) -> str:
@@ -849,7 +849,7 @@ async def add_kg_triples_batch_to_db(
         
         if constraint_validation_enabled and validation_result:
             # Check if relationship should be accepted based on validation
-            if not should_accept_relationship(validation_result, min_confidence=0.3):
+            if not should_accept_relationship(validation_result):
                 logger.warning(
                     f"Rejecting relationship due to constraint violation: "
                     f"{subject_type}:{subject_name} | {predicate_clean} | "
@@ -1964,11 +1964,29 @@ async def create_contextual_relationship(
     element2: dict[str, Any],
     relationship_type: str = "CONTEXTUALLY_RELATED",
 ) -> None:
-    """Create a contextual relationship between two elements."""
-    query = """
+    """Create a contextual relationship between two elements with constraint validation."""
+    # Get node types for validation
+    element1_type = element1.get("type", "Entity")
+    element2_type = element2.get("type", "Entity")
+    
+    # Validate the relationship using constraint system
+    validated_relationship = await validate_single_relationship(
+        element1_type, relationship_type, element2_type
+    )
+    
+    if not validated_relationship:
+        logger.warning(
+            f"Skipping invalid contextual relationship: "
+            f"{element1_type}:{element1.get('name')} | {relationship_type} | "
+            f"{element2_type}:{element2.get('name')}"
+        )
+        return
+    
+    # Use the validated relationship type (may have been corrected)
+    query = f"""
     MATCH (e1), (e2)
     WHERE e1.id = $element1_id AND e2.id = $element2_id
-    MERGE (e1)-[r:CONTEXTUALLY_RELATED]->(e2)
+    MERGE (e1)-[r:{validated_relationship}]->(e2)
     SET r.created_by = 'bootstrap_healing',
         r.created_ts = timestamp(),
         r.confidence = 0.6
@@ -1976,8 +1994,61 @@ async def create_contextual_relationship(
     try:
         params = {"element1_id": element1.get("id"), "element2_id": element2.get("id")}
         await neo4j_manager.execute_write_query(query, params)
-        logger.info(
-            f"Created contextual relationship between '{element1.get('name')}' and '{element2.get('name')}'"
-        )
+        
+        if validated_relationship != relationship_type:
+            logger.info(
+                f"Created validated relationship (corrected from {relationship_type} to {validated_relationship}) "
+                f"between '{element1.get('name')}' and '{element2.get('name')}'"
+            )
+        else:
+            logger.info(
+                f"Created contextual relationship between '{element1.get('name')}' and '{element2.get('name')}'"
+            )
     except Exception as e:
         logger.error(f"Error creating contextual relationship: {e}", exc_info=True)
+
+
+async def validate_single_relationship(
+    subject_type: str, 
+    relationship_type: str, 
+    object_type: str
+) -> Optional[str]:
+    """
+    Validate a single relationship and return the corrected relationship type if valid.
+    
+    Args:
+        subject_type: Type of the subject node
+        relationship_type: Proposed relationship type
+        object_type: Type of the object node
+        
+    Returns:
+        Validated relationship type if valid, None if should be rejected
+    """
+    try:
+        # Import here to avoid circular imports
+        from core.relationship_validator import validate_relationship_constraint, should_accept_relationship
+        
+        # Validate the relationship
+        validation_result = validate_relationship_constraint(
+            subject_type, relationship_type, object_type
+        )
+        
+        # Check if we should accept this relationship (uses configured min confidence)
+        if should_accept_relationship(validation_result):
+            return validation_result.validated_relationship
+        else:
+            logger.debug(
+                f"Relationship validation failed: {subject_type} | {relationship_type} | {object_type}. "
+                f"Errors: {validation_result.errors}"
+            )
+            return None
+            
+    except ImportError:
+        # Fallback to basic validation if constraint system is not available
+        logger.debug("Relationship constraint validation not available - using basic validation")
+        normalized = validate_relationship_type(relationship_type)
+        return normalized if normalized in VALID_RELATIONSHIP_TYPES else None
+    except Exception as e:
+        logger.error(f"Error in relationship validation: {e}", exc_info=True)
+        # Return the original if validation fails
+        return validate_relationship_type(relationship_type)
