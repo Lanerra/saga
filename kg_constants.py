@@ -198,6 +198,7 @@ POSSESSION_RELATIONSHIPS = {
     "OWNS",  # Legal/practical ownership
     "POSSESSES",  # Physical possession
     "CREATED_BY",  # Creator relationship
+    "CREATES",  # Active creation (inverse of CREATED_BY)
     "INHERITED_FROM",  # Inheritance
     "STOLEN_FROM",  # Theft relationship
     "GIVEN_BY",  # Gift relationship
@@ -262,6 +263,61 @@ STATUS_RELATIONSHIPS = {
     "IS_INACTIVE",  # Inactivity state
 }
 
+# Information and Recording Relationships
+INFORMATION_RELATIONSHIPS = {
+    "RECORDS",  # Recording or documenting information
+    "PRESERVES",  # Preservation or archival relationship
+    "HAS_METADATA",  # Contains metadata or descriptive information
+}
+
+# Usage and Accessibility Relationships
+USAGE_RELATIONSHIPS = {
+    "ACCESSIBLE_BY",  # Accessibility relationship
+    "USED_IN",  # Usage in events or contexts
+    "TARGETS",  # Targeting or directing toward something
+}
+
+# Communication and Display Relationships
+COMMUNICATION_RELATIONSHIPS = {
+    "DISPLAYS",  # Display or presentation of information
+    "SPOKEN_BY",  # Communication originating from sentient beings
+    "EMITS",  # Emission of energy, sound, or information
+}
+
+# Operational Relationships
+OPERATIONAL_RELATIONSHIPS = {
+    "EMPLOYS",  # Employment or hiring relationship
+    "CONTROLS",  # Control or management relationship
+    "REQUIRES",  # Dependency or requirement relationship
+}
+
+# Enhanced Temporal and State Relationships
+ENHANCED_TEMPORAL_RELATIONSHIPS = {
+    "REPLACED_BY",  # Replacement or succession relationship
+    "LINKED_TO",  # Connection or linkage relationship
+}
+
+# Status and State Change Relationships
+STATUS_CHANGE_RELATIONSHIPS = {
+    "WAS_REPLACED_BY",  # Past replacement relationship
+    "CHARACTERIZED_BY",  # Characterized or defined by traits
+    "IS_NOW",  # Current role or status
+    "IS_NO_LONGER",  # Former role or status
+    "DIFFERS_FROM",  # Difference or distinction relationship
+}
+
+# Special Action Relationships
+SPECIAL_ACTION_RELATIONSHIPS = {
+    "WHISPERS",  # Quiet communication
+    "WORE",  # Past wearing/carrying
+    "DEPRECATED",  # Marked as obsolete
+}
+
+# Enhanced Association Relationships
+ENHANCED_ASSOCIATION_RELATIONSHIPS = {
+    "ASSOCIATED_WITH",  # General association relationship
+}
+
 # Combine all relationship categories
 RELATIONSHIP_TYPES = (
     STRUCTURAL_RELATIONSHIPS
@@ -275,6 +331,14 @@ RELATIONSHIP_TYPES = (
     | THEMATIC_RELATIONSHIPS
     | ABILITY_RELATIONSHIPS
     | STATUS_RELATIONSHIPS
+    | INFORMATION_RELATIONSHIPS
+    | USAGE_RELATIONSHIPS
+    | COMMUNICATION_RELATIONSHIPS
+    | OPERATIONAL_RELATIONSHIPS
+    | ENHANCED_TEMPORAL_RELATIONSHIPS
+    | STATUS_CHANGE_RELATIONSHIPS
+    | SPECIAL_ACTION_RELATIONSHIPS
+    | ENHANCED_ASSOCIATION_RELATIONSHIPS
 )
 
 # Relationship category mapping for validation and normalization
@@ -290,6 +354,14 @@ RELATIONSHIP_CATEGORIES = {
     "thematic": THEMATIC_RELATIONSHIPS,
     "ability": ABILITY_RELATIONSHIPS,
     "status": STATUS_RELATIONSHIPS,
+    "information": INFORMATION_RELATIONSHIPS,
+    "usage": USAGE_RELATIONSHIPS,
+    "communication": COMMUNICATION_RELATIONSHIPS,
+    "operational": OPERATIONAL_RELATIONSHIPS,
+    "enhanced_temporal": ENHANCED_TEMPORAL_RELATIONSHIPS,
+    "status_change": STATUS_CHANGE_RELATIONSHIPS,
+    "special_action": SPECIAL_ACTION_RELATIONSHIPS,
+    "enhanced_association": ENHANCED_ASSOCIATION_RELATIONSHIPS,
 }
 
 # Common relationship variations that should be normalized
@@ -357,6 +429,43 @@ RELATIONSHIP_NORMALIZATIONS = {
     "hinders": "PREVENTS",
     "destroys": "DESTROYED_BY",
     "ruins": "DESTROYED_BY",
+    # New relationship normalizations
+    "shows": "DISPLAYS",
+    "presents": "DISPLAYS",
+    "reveals": "DISPLAYS",
+    "said_by": "SPOKEN_BY",
+    "uttered_by": "SPOKEN_BY",
+    "voiced_by": "SPOKEN_BY",
+    "radiates": "EMITS",
+    "sends_out": "EMITS",
+    "produces": "EMITS",
+    "hires": "EMPLOYS",
+    "takes_on": "EMPLOYS",
+    "manages": "CONTROLS",
+    "operates": "CONTROLS",
+    "commands": "CONTROLS",
+    "needs": "REQUIRES",
+    "depends_on": "REQUIRES",
+    "substituted_by": "REPLACED_BY",
+    "succeeded_by": "REPLACED_BY",
+    "connected_to": "LINKED_TO",
+    "joined_to": "LINKED_TO",
+    "related_to": "ASSOCIATED_WITH",
+    "affiliated_with": "ASSOCIATED_WITH",
+    # Information relationship normalizations
+    "documents": "RECORDS",
+    "logs": "RECORDS",
+    "saves": "PRESERVES",
+    "keeps": "PRESERVES",
+    "contains_info": "HAS_METADATA",
+    "describes": "HAS_METADATA",
+    # Usage relationship normalizations
+    "used_by": "ACCESSIBLE_BY",
+    "available_to": "ACCESSIBLE_BY",
+    "applied_in": "USED_IN",
+    "utilized_in": "USED_IN",
+    "aims_at": "TARGETS",
+    "directed_at": "TARGETS",
     # Generic fallbacks - these should be used sparingly
     "is_a": "IS_A",  # Only for true type relationships
     "part_of": "PART_OF",

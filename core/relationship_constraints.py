@@ -269,14 +269,14 @@ RELATIONSHIP_CONSTRAINTS = {
     },
     
     "CONTAINS": {
-        "valid_subject_types": NodeClassifications.SPATIAL | {"WorldElement", "Entity"},  # Allow Entity type for containers
-        "valid_object_types": NodeClassifications.LOCATABLE | {"ValueNode", "Entity"},  # Allow Entity type for contained items
+        "valid_subject_types": NodeClassifications.SPATIAL | NodeClassifications.CONTAINERS | NodeClassifications.INFORMATIONAL | NodeClassifications.SYSTEM_ENTITIES | {"WorldElement", "Entity", "Artifact"},  # Expanded to include information containers
+        "valid_object_types": NodeClassifications.LOCATABLE | NodeClassifications.INFORMATIONAL | NodeClassifications.ABSTRACT | {"ValueNode", "Entity"},  # Expanded to include abstract concepts and information
         "invalid_combinations": [
             ("Character", "Character"),  # Characters don't contain other characters
         ],
         "bidirectional": False,
-        "description": "Spatial containment relationship",
-        "examples_valid": ["Location:Chest | CONTAINS | WorldElement:Gold", "Location:Library | CONTAINS | WorldElement:Book", "WorldElement:Device | CONTAINS | ValueNode:Data", "Entity:Container | CONTAINS | Entity:Item"],
+        "description": "Containment relationship - spatial, informational, or conceptual",
+        "examples_valid": ["Location:Chest | CONTAINS | WorldElement:Gold", "Document:Book | CONTAINS | Knowledge:Secrets", "System:Database | CONTAINS | Message:Data", "Artifact:Memory | CONTAINS | Memory:Experience"],
         "examples_invalid": ["Character:Hero | CONTAINS | Character:Friend"]
     },
     
@@ -327,13 +327,23 @@ RELATIONSHIP_CONSTRAINTS = {
     },
     
     "CREATED_BY": {
-        "valid_subject_types": NodeClassifications.INANIMATE | NodeClassifications.SPATIAL | NodeClassifications.ABSTRACT,
-        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL | NodeClassifications.INANIMATE,  # Things can be created by other things
+        "valid_subject_types": NodeClassifications.INANIMATE | NodeClassifications.SPATIAL | NodeClassifications.ABSTRACT | NodeClassifications.INFORMATIONAL | NodeClassifications.SYSTEM_ENTITIES,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL | NodeClassifications.INANIMATE | NodeClassifications.SYSTEM_ENTITIES,  # Things can be created by other things, including systems
         "invalid_combinations": [],
         "bidirectional": False,
-        "description": "Creation relationship",
-        "examples_valid": ["WorldElement:Sword | CREATED_BY | Character:Smith", "Location:Bridge | CREATED_BY | Faction:Engineers", "WorldElement:Network | CREATED_BY | WorldElement:Device"],
+        "description": "Creation relationship - expanded to include documents, systems, and information",
+        "examples_valid": ["WorldElement:Sword | CREATED_BY | Character:Smith", "Document:Report | CREATED_BY | Character:Analyst", "System:Database | CREATED_BY | Organization:TechGuild", "Artifact:Relic | CREATED_BY | Character:Mage"],
         "examples_invalid": ["Character:Hero | CREATED_BY | WorldElement:Potion"]
+    },
+    
+    "CREATES": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL | NodeClassifications.INANIMATE | NodeClassifications.SYSTEM_ENTITIES,  # Inverse of CREATED_BY
+        "valid_object_types": NodeClassifications.INANIMATE | NodeClassifications.SPATIAL | NodeClassifications.ABSTRACT | NodeClassifications.INFORMATIONAL | NodeClassifications.SYSTEM_ENTITIES,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Active creation relationship - inverse of CREATED_BY",
+        "examples_valid": ["Character:Smith | CREATES | WorldElement:Sword", "Character:Analyst | CREATES | Document:Report", "Organization:TechGuild | CREATES | System:Database"],
+        "examples_invalid": ["WorldElement:Potion | CREATES | Character:Hero"]
     },
 
     # === TEMPORAL/CAUSAL RELATIONSHIPS ===
@@ -544,15 +554,253 @@ RELATIONSHIP_CONSTRAINTS = {
         "examples_invalid": []
     },
 
-    # === DEFAULT FALLBACK ===
-    "RELATES_TO": {
-        "valid_subject_types": NODE_LABELS,  # Allow Entity type for fallback relationships
-        "valid_object_types": NODE_LABELS,   # Allow Entity type for fallback relationships
+    # === INFORMATION AND RECORDING RELATIONSHIPS ===
+    "RECORDS": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.SYSTEM_ENTITIES | NodeClassifications.INFORMATIONAL,
+        "valid_object_types": NodeClassifications.INFORMATIONAL | NodeClassifications.ABSTRACT | {"ValueNode", "Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Recording or documenting information",
+        "examples_valid": ["Character:Scribe | RECORDS | Message:Event", "System:Database | RECORDS | Knowledge:Data"],
+        "examples_invalid": []
+    },
+    
+    "PRESERVES": {
+        "valid_subject_types": NodeClassifications.CONTAINERS | NodeClassifications.SPATIAL | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NodeClassifications.INFORMATIONAL | NodeClassifications.INANIMATE | NodeClassifications.ABSTRACT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Preservation or archival relationship",
+        "examples_valid": ["Archive:Library | PRESERVES | Document:Scroll", "Organization:Museum | PRESERVES | Artifact:Relic"],
+        "examples_invalid": []
+    },
+    
+    "HAS_METADATA": {
+        "valid_subject_types": NodeClassifications.INFORMATIONAL | NodeClassifications.INANIMATE | NodeClassifications.SYSTEM_ENTITIES,
+        "valid_object_types": NodeClassifications.INFORMATIONAL | NodeClassifications.ABSTRACT | {"ValueNode", "Attribute"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Contains metadata or descriptive information",
+        "examples_valid": ["Document:File | HAS_METADATA | Attribute:CreationDate", "System:Database | HAS_METADATA | ValueNode:Schema"],
+        "examples_invalid": []
+    },
+    
+    # === ACCESSIBILITY AND USAGE RELATIONSHIPS ===
+    "ACCESSIBLE_BY": {
+        "valid_subject_types": NodeClassifications.SPATIAL | NodeClassifications.INFORMATIONAL | NodeClassifications.INANIMATE,
+        "valid_object_types": NodeClassifications.SENTIENT | NodeClassifications.SPATIAL | {"Path", "Role", "Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Accessibility relationship",
+        "examples_valid": ["Location:Vault | ACCESSIBLE_BY | Character:Keyholder", "Document:File | ACCESSIBLE_BY | Role:Admin"],
+        "examples_invalid": []
+    },
+    
+    "USED_IN": {
+        "valid_subject_types": NodeClassifications.INANIMATE | NodeClassifications.ABSTRACT | NodeClassifications.SYSTEM_ENTITIES,
+        "valid_object_types": NodeClassifications.TEMPORAL | NodeClassifications.ABSTRACT | {"Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Usage in events or contexts",
+        "examples_valid": ["Artifact:Sword | USED_IN | Event:Battle", "System:Magic | USED_IN | Event:Ritual"],
+        "examples_invalid": []
+    },
+    
+    "TARGETS": {
+        "valid_subject_types": NodeClassifications.INFORMATIONAL | NodeClassifications.INANIMATE | NodeClassifications.ABSTRACT,
+        "valid_object_types": NODE_LABELS - {"ValueNode"},  # Can target almost anything
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Targeting or directing toward something",
+        "examples_valid": ["Document:Report | TARGETS | Location:Area", "System:Weapon | TARGETS | Character:Enemy"],
+        "examples_invalid": []
+    },
+
+    # === COMMUNICATION AND DISPLAY RELATIONSHIPS ===
+    "DISPLAYS": {
+        "valid_subject_types": NodeClassifications.INANIMATE | NodeClassifications.SYSTEM_ENTITIES | NodeClassifications.SPATIAL | {"WorldElement", "Entity"},
+        "valid_object_types": NodeClassifications.INFORMATIONAL | NodeClassifications.ABSTRACT | {"ValueNode", "Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Display or presentation of information",
+        "examples_valid": ["System:Screen | DISPLAYS | Message:Alert", "Document:Map | DISPLAYS | Location:Territory"],
+        "examples_invalid": []
+    },
+    
+    "SPOKEN_BY": {
+        "valid_subject_types": NodeClassifications.INFORMATIONAL | {"Message", "ValueNode"},
+        "valid_object_types": NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Communication originating from sentient beings",
+        "examples_valid": ["Message:Warning | SPOKEN_BY | Character:Guard", "ValueNode:Word | SPOKEN_BY | Character:Mage"],
+        "examples_invalid": []
+    },
+    
+    "EMITS": {
+        "valid_subject_types": NodeClassifications.INANIMATE | NodeClassifications.SYSTEM_ENTITIES | {"WorldElement", "Entity"},
+        "valid_object_types": NodeClassifications.ABSTRACT | NodeClassifications.INFORMATIONAL | {"ValueNode", "Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Emission of energy, sound, or information",
+        "examples_valid": ["WorldElement:Crystal | EMITS | ValueNode:Light", "System:Radio | EMITS | Message:Signal"],
+        "examples_invalid": []
+    },
+    
+    # === OPERATIONAL RELATIONSHIPS ===
+    "EMPLOYS": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NodeClassifications.SENTIENT,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Employment or hiring relationship",
+        "examples_valid": ["Organization:Company | EMPLOYS | Character:Worker", "Character:Lord | EMPLOYS | Character:Servant"],
+        "examples_invalid": []
+    },
+    
+    "CONTROLS": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.ORGANIZATIONAL | NodeClassifications.SYSTEM_ENTITIES,
+        "valid_object_types": NodeClassifications.SYSTEM_ENTITIES | NodeClassifications.INANIMATE | {"WorldElement", "Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Control or management relationship",
+        "examples_valid": ["Character:Mage | CONTROLS | System:Magic", "Organization:Guild | CONTROLS | System:Trade"],
+        "examples_invalid": []
+    },
+    
+    "REQUIRES": {
+        "valid_subject_types": NODE_LABELS,  # Almost anything can have requirements
+        "valid_object_types": NODE_LABELS,  # Almost anything can be required
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Dependency or requirement relationship",
+        "examples_valid": ["System:Magic | REQUIRES | Resource:Mana", "Character:Hero | REQUIRES | Item:Sword"],
+        "examples_invalid": []
+    },
+    
+    # === TEMPORAL AND STATE RELATIONSHIPS ===
+    "REPLACED_BY": {
+        "valid_subject_types": NODE_LABELS,
+        "valid_object_types": NODE_LABELS,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Replacement or succession relationship",
+        "examples_valid": ["System:OldMagic | REPLACED_BY | System:NewMagic", "Character:OldKing | REPLACED_BY | Character:NewKing"],
+        "examples_invalid": []
+    },
+    
+    "LINKED_TO": {
+        "valid_subject_types": NODE_LABELS,
+        "valid_object_types": NODE_LABELS,
         "invalid_combinations": [],
         "bidirectional": True,
-        "description": "Generic relationship fallback - should be minimized",
-        "examples_valid": ["Character:Hero | RELATES_TO | PlotPoint:Quest", "Entity:Unknown | RELATES_TO | WorldElement:Item"],
-        "examples_invalid": []  # Accepts anything as fallback
+        "description": "Connection or linkage relationship",
+        "examples_valid": ["System:Network | LINKED_TO | System:Database", "Location:Portal | LINKED_TO | Location:Destination"],
+        "examples_invalid": []
+    },
+    
+    # === ASSOCIATION RELATIONSHIPS ===
+    "ASSOCIATED_WITH": {
+        "valid_subject_types": NODE_LABELS,
+        "valid_object_types": NODE_LABELS,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "General association relationship",
+        "examples_valid": ["Character:Hero | ASSOCIATED_WITH | Faction:Guild", "Symbol:Crown | ASSOCIATED_WITH | Concept:Royalty"],
+        "examples_invalid": []
+    },
+    
+    # === STATUS AND STATE CHANGE RELATIONSHIPS ===
+    "WAS_REPLACED_BY": {
+        "valid_subject_types": NODE_LABELS,
+        "valid_object_types": NODE_LABELS,
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Past replacement relationship (inverse form)",
+        "examples_valid": ["System:OldMagic | WAS_REPLACED_BY | System:NewMagic"],
+        "examples_invalid": []
+    },
+    
+    "CHARACTERIZED_BY": {
+        "valid_subject_types": NodeClassifications.TEMPORAL | NodeClassifications.ABSTRACT | NodeClassifications.SPATIAL,
+        "valid_object_types": NodeClassifications.ABSTRACT | NodeClassifications.INFORMATIONAL | {"Concept", "Attribute"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Characterized or defined by certain traits",
+        "examples_valid": ["Era:Medieval | CHARACTERIZED_BY | Concept:Feudalism"],
+        "examples_invalid": []
+    },
+    
+    "IS_NOW": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.ORGANIZATIONAL | {"Role", "Status"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Current role or status",
+        "examples_valid": ["Character:Hero | IS_NOW | Role:Leader"],
+        "examples_invalid": []
+    },
+    
+    "IS_NO_LONGER": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.ORGANIZATIONAL | {"Role", "Status"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Former role or status",
+        "examples_valid": ["Character:Hero | IS_NO_LONGER | Status:Apprentice"],
+        "examples_invalid": []
+    },
+    
+    "DIFFERS_FROM": {
+        "valid_subject_types": NODE_LABELS,
+        "valid_object_types": NODE_LABELS,
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Difference or distinction relationship",
+        "examples_valid": ["Document:V1 | DIFFERS_FROM | Document:V2"],
+        "examples_invalid": []
+    },
+    
+    # === SPECIAL ACTION RELATIONSHIPS ===
+    "WHISPERS": {
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.SYSTEM_ENTITIES,
+        "valid_object_types": NodeClassifications.INFORMATIONAL | {"Message", "ValueNode"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Quiet communication or subtle emission",
+        "examples_valid": ["Character:Ghost | WHISPERS | Message:Secret", "System:Wind | WHISPERS | Message:Warning"],
+        "examples_invalid": []
+    },
+    
+    "WORE": {
+        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_object_types": NodeClassifications.INANIMATE | {"Item", "Object"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Past wearing or carrying relationship",
+        "examples_valid": ["Character:King | WORE | Item:Crown"],
+        "examples_invalid": []
+    },
+    
+    "DEPRECATED": {
+        "valid_subject_types": NodeClassifications.SYSTEM_ENTITIES | NodeClassifications.ORGANIZATIONAL,
+        "valid_object_types": NODE_LABELS - {"Entity"},
+        "invalid_combinations": [],
+        "bidirectional": False,
+        "description": "Marked as obsolete or no longer recommended",
+        "examples_valid": ["System:Database | DEPRECATED | Document:OldSchema"],
+        "examples_invalid": []
+    },
+
+    # === DEFAULT FALLBACK (RESTRICTED) ===
+    "RELATES_TO": {
+        "valid_subject_types": {"Entity"},  # Only allow generic Entity types - everything else should use specific relationships
+        "valid_object_types": {"Entity"},   # Only allow generic Entity types
+        "invalid_combinations": [],
+        "bidirectional": True,
+        "description": "Generic relationship fallback - RESTRICTED to truly ambiguous Entity relationships only",
+        "examples_valid": ["Entity:Unknown | RELATES_TO | Entity:Mysterious"],
+        "examples_invalid": ["Character:Hero | RELATES_TO | PlotPoint:Quest"]  # Should use specific relationships instead
     }
 }
 
@@ -574,7 +822,7 @@ SEMANTIC_COMPATIBILITY_RULES = {
     
     # Physical relationships require physical presence
     "physical_requires_presence": {
-        "relationships": ["LOCATED_IN", "LOCATED_AT", "NEAR", "ADJACENT_TO", "PART_OF", "CONTAINS"],
+        "relationships": ["LOCATED_IN", "LOCATED_AT", "NEAR", "ADJACENT_TO", "PART_OF"],  # Removed CONTAINS as it now handles informational containment too
         "rule": "Both nodes must have PHYSICAL_PRESENCE trait",
         "violation_message": "Physical relationships require entities with physical presence"
     },
