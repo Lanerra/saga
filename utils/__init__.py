@@ -85,32 +85,6 @@ def format_scene_plan_for_prompt(
     return "\n".join(current_plan_parts)
 
 
-# Deprecated: Use TextDeduplicator class directly instead
-async def deduplicate_text_segments(
-    original_text: str,
-    segment_level: str = "paragraph",
-    similarity_threshold: float = config.DEDUPLICATION_SEMANTIC_THRESHOLD,
-    use_semantic_comparison: bool = config.DEDUPLICATION_USE_SEMANTIC,
-    min_segment_length_chars: int = config.DEDUPLICATION_MIN_SEGMENT_LENGTH,
-    prefer_newer: bool = False,
-) -> tuple[str, int]:
-    """Remove near-duplicate segments from text.
-
-    Deprecated: This function is maintained for backward compatibility but delegates
-    to the TextDeduplicator class for actual implementation.
-    """
-    if not original_text.strip():
-        return original_text, 0
-
-    deduplicator = TextDeduplicator(
-        similarity_threshold=similarity_threshold,
-        use_semantic_comparison=use_semantic_comparison,
-        min_segment_length_chars=min_segment_length_chars,
-        prefer_newer=prefer_newer,
-    )
-    return await deduplicator.deduplicate(original_text, segment_level)
-
-
 def remove_spans_from_text(text: str, spans: list[tuple[int, int]]) -> str:
     """Remove character spans from ``text``."""
     if not spans:
@@ -140,7 +114,6 @@ __all__ = [
     "numpy_cosine_similarity",
     "get_text_segments",
     "format_scene_plan_for_prompt",
-    "deduplicate_text_segments",  # Kept for backward compatibility
     "remove_spans_from_text",
     "validate_world_item_fields",
 ]

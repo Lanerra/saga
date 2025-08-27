@@ -204,46 +204,6 @@ async def find_similar_chapters_in_db(
     return similar_chapters_data
 
 
-async def get_all_past_embeddings_from_db(
-    current_chapter_number: int,
-) -> list[tuple[int, np.ndarray]]:
-    logger.warning(
-        "get_all_past_embeddings_from_db is deprecated. Use find_similar_chapters_in_db for semantic context."
-    )
-    embeddings_list: list[tuple[int, np.ndarray]] = []
-    query = f"""
-    MATCH (c:{"Chapter"})
-    WHERE c.number < $current_chapter_number_param AND c.number > 0
-      AND c.{"embedding_vector"} IS NOT NULL
-    RETURN c.number AS chapter_number, c.{"embedding_vector"} AS embedding_vector
-    ORDER BY c.number DESC
-    """
-    try:
-        results = await neo4j_manager.execute_read_query(
-            query, {"current_chapter_number_param": current_chapter_number}
-        )
-        if results:
-            for record in results:
-                if record.get("embedding_vector"):
-                    deserialized_emb = neo4j_manager.list_to_embedding(
-                        record["embedding_vector"]
-                    )
-                    if deserialized_emb is not None:
-                        embeddings_list.append(
-                            (record["chapter_number"], deserialized_emb)
-                        )
-        logger.info(
-            f"Neo4j (Deprecated Call): Retrieved {len(embeddings_list)} past embeddings for context before chapter {current_chapter_number}."
-        )
-        return embeddings_list
-    except Exception as e:
-        logger.error(
-            f"Neo4j (Deprecated Call): Error getting all past embeddings: {e}",
-            exc_info=True,
-        )
-        return []
-
-
 # Native context functions for performance optimization
 async def find_semantic_context_native(
     query_embedding: np.ndarray, current_chapter_number: int, limit: int = None
