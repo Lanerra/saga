@@ -12,21 +12,113 @@ KG_IS_PROVISIONAL = "is_provisional"
 
 # Set of known node labels used in the knowledge graph.
 NODE_LABELS = {
-    "Entity",  # Base label for all nodes
-    "NovelInfo",
-    "Chapter",
-    "Character",
-    "WorldElement",
-    "WorldContainer",
-    "PlotPoint",
-    "Trait",
-    "ValueNode",  # For literal-like values that need to be nodes
-    "DevelopmentEvent",
-    "WorldElaborationEvent",
-    "Location",
-    "Faction",
-    "System",  # e.g. Magic System
-    "Lore",
+    # === CORE EXISTING TYPES ===
+    "Entity",              # Base label - all nodes inherit this
+    "NovelInfo",           # Novel metadata
+    "Chapter",             # Chapter entities
+    
+    # === PHYSICAL ENTITIES ===
+    # Living Beings
+    "Character",           # Main story characters (active participants)
+    "Person",              # Historical figures, mentioned people (inactive)
+    "Creature",            # Animals, monsters, non-human beings
+    "Spirit",              # Ghosts, ethereal beings, supernatural entities
+    "Deity",               # Gods, divine beings, worshipped entities
+    
+    # Objects & Items
+    "Object",              # Physical items, tools, weapons
+    "Artifact",            # Special/magical/historical objects
+    "Document",            # Books, scrolls, letters, written records
+    "Item",                # General items (synonym for Object)
+    "Relic",               # Ancient/sacred objects
+    
+    # Locations & Structures
+    "Location",            # General places
+    "Structure",           # Buildings, constructions, man-made locations
+    "Region",              # Large geographical areas, territories
+    "Landmark",            # Notable geographical features
+    "Territory",           # Claimed/controlled areas
+    "Path",                # Roads, routes, passages, connections
+    "Room",                # Interior spaces within structures
+    "Settlement",          # Cities, towns, villages
+    
+    # === ABSTRACT ENTITIES ===
+    "Concept",             # Ideas, philosophies, abstract notions
+    "Law",                 # Rules, regulations, natural laws, edicts
+    "Tradition",           # Cultural practices, customs, rituals
+    "Language",            # Languages, dialects, communication systems
+    "Symbol",              # Symbolic representations, emblems, signs
+    "Story",               # Tales, legends, narratives within the narrative
+    "Song",                # Music, ballads, cultural expressions
+    "Dream",               # Dreams, visions, prophecies
+    "Memory",              # Specific memories, recollections
+    "Emotion",             # Emotional states, feelings
+    "Skill",               # Abilities, talents, competencies
+    
+    # === TEMPORAL ENTITIES ===
+    "Event",               # Historical events, battles, ceremonies
+    "Era",                 # Time periods, ages, epochs
+    "Timeline",            # Temporal sequences, chronologies
+    "DevelopmentEvent",    # Character development events (existing)
+    "WorldElaborationEvent", # World expansion events (existing)
+    "Season",              # Natural cycles, recurring periods
+    "Moment",              # Specific points in time, instances
+    
+    # === ORGANIZATIONAL ENTITIES ===
+    "Faction",             # Political groups, organizations with agendas
+    "Organization",        # Generic organizations, institutions
+    "Role",                # Positions, titles, functions within organizations
+    "Rank",                # Hierarchical positions, military ranks
+    "Guild",               # Professional organizations, trade groups
+    "House",               # Noble houses, family organizations
+    "Order",               # Religious or knightly orders
+    "Council",             # Governing bodies, decision-making groups
+    
+    # === SYSTEM ENTITIES ===
+    "System",              # General systems, frameworks
+    "Magic",               # Magical systems, schools of magic
+    "Technology",          # Technological systems, innovations
+    "Religion",            # Religious systems, belief structures
+    "Culture",             # Cultural systems, way of life
+    "Education",           # Learning systems, schools, curricula
+    "Government",          # Governing systems, political structures
+    "Economy",             # Economic systems, trade networks
+    
+    # === RESOURCE ENTITIES ===
+    "Resource",            # Materials, natural resources, commodities
+    "Currency",            # Money, trade systems, units of value
+    "Trade",               # Economic relationships, trade routes
+    "Food",                # Consumable resources, sustenance
+    "Material",            # Building materials, crafting components
+    "Energy",              # Power sources, magical energy, fuel
+    
+    # === INFORMATION ENTITIES ===
+    "Lore",                # Myths, legends, historical knowledge
+    "Knowledge",           # Specific knowledge, information, data
+    "Secret",              # Hidden information, classified knowledge
+    "Rumor",               # Unconfirmed information, gossip
+    "News",                # Current information, recent events
+    "Message",             # Communications, signals, transmissions
+    "ValueNode",           # Literal values, data (existing)
+    "Record",              # Official records, documentation
+    
+    # === QUALITY ENTITIES ===
+    "Trait",               # Character traits, personality aspects (existing)
+    "Attribute",           # Physical or mental attributes
+    "Quality",             # Characteristics, properties
+    "Reputation",          # Social standing, renown
+    "Status",              # Current state, condition
+    
+    # === CONTAINER ENTITIES ===
+    "WorldContainer",      # Containers for world elements (existing)
+    "PlotPoint",           # Plot/story points (existing)
+    "Collection",          # Groups of related items
+    "Archive",             # Storage of documents/information
+    "Treasury",            # Storage of valuable resources
+    "Library",             # Collection of documents/knowledge
+    
+    # === LEGACY SUPPORT ===
+    "WorldElement",        # Legacy type - being phased out
 }
 
 

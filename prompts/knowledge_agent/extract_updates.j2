@@ -11,6 +11,66 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 - **Available Node Labels:** {{ available_node_labels | join(', ') }}
 - **Available Relationship Types:** {{ available_relationship_types | join(', ') }}
 
+**Enhanced Entity Type Selection Guide:**
+Choose the most SPECIFIC node type that fits the entity. Avoid generic types like "Entity" or "WorldElement".
+
+**Living Beings & Characters:**
+- Character: Active story participants (protagonists, major characters)
+- Person: Historical figures, mentioned people, inactive individuals  
+- Creature: Animals, monsters, non-human beings
+- Spirit: Ghosts, ethereal beings, supernatural entities
+- Deity: Gods, divine beings, worshipped entities
+
+**Physical Objects & Items:**
+- Object: General physical items, tools, everyday objects
+- Artifact: Special/magical/historical objects of significance
+- Document: Books, scrolls, letters, written materials
+- Relic: Ancient/sacred objects with historical importance
+- Resource: Materials, natural resources, commodities
+- Currency: Money, trade items, units of value
+
+**Places & Locations:**
+- Location: General places (prefer more specific types when possible)
+- Structure: Buildings, constructions, man-made locations
+- Settlement: Cities, towns, villages
+- Region: Large geographical areas, territories
+- Landmark: Notable geographical features
+- Room: Interior spaces within structures
+- Path: Roads, routes, passages, connections
+
+**Abstract & Conceptual:**
+- Concept: Ideas, philosophies, abstract notions
+- Law: Rules, regulations, natural laws, edicts
+- Tradition: Cultural practices, customs, rituals
+- Language: Languages, dialects, communication systems
+- Lore: Myths, legends, historical knowledge
+- Knowledge: Specific information, data, facts
+- Secret: Hidden information, classified knowledge
+- Memory: Specific memories, recollections
+- Skill: Abilities, talents, competencies
+
+**Organizations & Groups:**
+- Faction: Political groups, organizations with agendas
+- Organization: Generic organizations, institutions
+- Guild: Professional organizations, trade groups
+- House: Noble houses, family organizations
+- Order: Religious or knightly orders
+- Council: Governing bodies, decision-making groups
+
+**Systems & Frameworks:**
+- System: General systems, frameworks
+- Magic: Magical systems, schools of magic
+- Technology: Technological systems, innovations
+- Religion: Religious systems, belief structures
+- Culture: Cultural systems, ways of life
+- Government: Governing systems, political structures
+
+**Time & Events:**
+- Event: Historical events, battles, ceremonies
+- Era: Time periods, ages, epochs
+- Season: Natural cycles, recurring periods
+- Timeline: Temporal sequences, chronologies
+
 **Instructions for Output:**
 - Your entire response MUST be a single, valid JSON object.
 - The JSON object must have three top-level keys: `character_updates`, `world_updates`, and `kg_triples`.
@@ -18,6 +78,37 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 - For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
 - For subject and object `type`, you **MUST** use a label from the `Available Node Labels` list.
 - For the `predicate`, you **MUST** use an exact match from the available relationship types listed above. Do not use any variations, abbreviations, or similar terms.
+
+**Relationship Selection Guidelines:**
+Choose semantically appropriate relationships that make sense for the entity types involved:
+
+**Emotional & Social (require sentient beings):**
+- LOVES, HATES, FEARS, RESPECTS - Only conscious entities can have emotions
+- FAMILY_OF, FRIEND_OF, ENEMY_OF, ALLY_OF - Social relationships between sentient beings
+- ROMANTIC_WITH - Romance between sentient beings
+
+**Spatial & Physical:**
+- LOCATED_IN, LOCATED_AT - Physical entities in physical spaces
+- CONTAINS - Containers holding objects (not characters containing characters)
+- NEAR, ADJACENT_TO - Proximity relationships
+
+**Ownership & Creation:**
+- OWNS, POSSESSES - Sentient beings owning/possessing objects (never other people)
+- CREATED_BY - Objects/structures created by makers
+
+**Hierarchical & Authority:**
+- LEADS, WORKS_FOR, SERVES - Authority relationships between sentient beings
+- MENTOR_TO, STUDENT_OF - Learning relationships
+
+**Cognitive (require consciousness):**
+- BELIEVES, REALIZES, REMEMBERS, UNDERSTANDS - Mental states and knowledge
+
+**Organizational:**
+- MEMBER_OF, LEADER_OF - Group membership and leadership
+
+**Temporal & Causal:**
+- CAUSES, PREVENTS, ENABLES, TRIGGERS - Causal relationships
+- OCCURRED_IN - Events happening at times/places
 
 **Chapter {{ chapter_number }} Text to Analyze:**
 ```text

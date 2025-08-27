@@ -13,23 +13,91 @@ from kg_constants import NODE_LABELS, RELATIONSHIP_CATEGORIES
 logger = logging.getLogger(__name__)
 
 
-# Node type classifications for semantic validation
+# Enhanced node type classifications for semantic validation
 class NodeClassifications:
-    """Classification of node types into semantic categories."""
+    """Enhanced classification of node types into semantic categories."""
     
-    SENTIENT = {"Character"}  # Entities capable of thought, emotion, action
-    INANIMATE = {"WorldElement", "System", "ValueNode"}  # Objects, tools, abstract concepts
-    SPATIAL = {"Location", "WorldContainer"}  # Physical spaces and containers
-    ABSTRACT = {"PlotPoint", "Trait", "Lore"}  # Concepts, events, ideas
-    TEMPORAL = {"Chapter", "DevelopmentEvent", "WorldElaborationEvent"}  # Time-based entities
-    ORGANIZATIONAL = {"Faction", "NovelInfo"}  # Groups, institutions
+    # Living entities capable of action and thought
+    SENTIENT = {
+        "Character", "Person", "Deity", "Spirit", "Creature"
+    }
     
-    # Trait assignments - nodes can have multiple traits
-    PHYSICAL_PRESENCE = {"Character", "WorldElement", "Location", "WorldContainer", "System"}
-    CONSCIOUS = {"Character"}  # Subset of sentient with self-awareness
-    LOCATABLE = {"Character", "WorldElement", "WorldContainer"}  # Can be located
-    OWNABLE = {"WorldElement", "System"}  # Can be owned/possessed
-    SOCIAL = {"Character", "Faction"}  # Can have social relationships
+    # Entities with consciousness and self-awareness (subset of sentient)
+    CONSCIOUS = {
+        "Character", "Person", "Deity"
+    }
+    
+    # Physical objects and entities
+    PHYSICAL_PRESENCE = {
+        "Character", "Person", "Creature", "Spirit", "Deity",
+        "Object", "Artifact", "Document", "Item", "Relic",
+        "Location", "Structure", "Region", "Territory", "Landmark", 
+        "Path", "Room", "Settlement",
+        "Resource", "Material", "Food", "Currency", "WorldElement"
+    }
+    
+    # Entities that can be located in space
+    LOCATABLE = {
+        "Character", "Person", "Creature", "Object", "Artifact", 
+        "Document", "Item", "Relic", "Structure", "WorldElement"
+    }
+    
+    # Entities that can be owned
+    OWNABLE = {
+        "Object", "Artifact", "Document", "Item", "Relic",
+        "Resource", "Material", "Food", "Currency",
+        "Structure", "Territory", "WorldElement"
+    }
+    
+    # Entities capable of social relationships
+    SOCIAL = {
+        "Character", "Person", "Faction", "Organization", 
+        "Guild", "House", "Order", "Council", "Culture"
+    }
+    
+    # Spatial entities that can contain others
+    CONTAINERS = {
+        "Location", "Structure", "Region", "Territory", "Settlement",
+        "Room", "Library", "Archive", "Treasury", "Collection",
+        "WorldContainer"
+    }
+    
+    # Temporal entities
+    TEMPORAL = {
+        "Event", "Era", "Season", "Timeline", "Moment", "Chapter",
+        "DevelopmentEvent", "WorldElaborationEvent"
+    }
+    
+    # Abstract concepts
+    ABSTRACT = {
+        "Concept", "Law", "Tradition", "Language", "Symbol", 
+        "Story", "Song", "Dream", "Memory", "Emotion", "Skill",
+        "Lore", "Knowledge", "Secret", "Rumor", "News",
+        "Trait", "Attribute", "Quality", "Reputation", "Status",
+        "PlotPoint"
+    }
+    
+    # Organizational entities
+    ORGANIZATIONAL = {
+        "Faction", "Organization", "Guild", "House", "Order", 
+        "Council", "Role", "Rank", "Government", "NovelInfo"
+    }
+    
+    # System entities
+    SYSTEM_ENTITIES = {
+        "System", "Magic", "Technology", "Religion", "Culture",
+        "Education", "Government", "Economy"
+    }
+    
+    # Information entities
+    INFORMATIONAL = {
+        "Lore", "Knowledge", "Secret", "Rumor", "News", "Message",
+        "Record", "ValueNode", "NovelInfo", "Document"
+    }
+    
+    # Legacy classifications for backward compatibility
+    INANIMATE = PHYSICAL_PRESENCE - SENTIENT  # Non-living physical entities
+    SPATIAL = CONTAINERS | {"Location", "Region", "Territory"}  # Spatial entities
 
 
 # Comprehensive relationship constraint definitions
