@@ -3,7 +3,7 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
+from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 
 from core.db_manager import (
     Neo4jManagerSingleton,

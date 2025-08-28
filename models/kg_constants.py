@@ -1,4 +1,4 @@
-# kg_constants.py
+# models/kg_constants.py
 """Constants used for property names and the canonical schema in the knowledge graph."""
 
 # Relationship and node property names

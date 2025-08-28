@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 import numpy as np
-from kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
+from models.kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
 
 import config
 from neo4j import (  # type: ignore

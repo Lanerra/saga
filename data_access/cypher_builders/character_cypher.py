@@ -2,7 +2,7 @@
 from typing import Any
 
 import structlog
-from kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
+from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 
 import config
 import utils

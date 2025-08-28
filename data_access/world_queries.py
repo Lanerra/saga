@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from async_lru import alru_cache  # type: ignore
-from kg_constants import (
+from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_NODE_CHAPTER_UPDATED,
     KG_NODE_CREATED_CHAPTER,

@@ -6,7 +6,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-PROMPTS_PATH = Path(__file__).parent / "prompts"
+PROMPTS_PATH = Path(__file__).parent
 _env = Environment(loader=FileSystemLoader(PROMPTS_PATH), autoescape=False)
 
 
