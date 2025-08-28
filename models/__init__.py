@@ -1,3 +1,4 @@
+# models/__init__.py
 """Central package for SAGA data models."""
 
 from .agent_models import (

@@ -1,3 +1,4 @@
+# models/kg_models.py
 """Core data models for characters and world elements."""
 
 from __future__ import annotations

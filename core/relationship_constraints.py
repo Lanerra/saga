@@ -1,3 +1,4 @@
+# core/relationship_constraints.py
 """
 Relationship constraint system for validating knowledge graph relationships.
 

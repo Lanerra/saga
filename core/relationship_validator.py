@@ -1,3 +1,4 @@
+# core/relationship_validator.py
 """
 Core relationship validation framework for the SAGA knowledge graph.
 

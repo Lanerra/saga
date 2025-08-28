@@ -1,3 +1,4 @@
+# processing/context_generator.py
 # context_generation_logic.py
 """
 Handles the generation of contextual information for chapter writing in the SAGA system.

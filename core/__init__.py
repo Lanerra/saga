@@ -1,3 +1,4 @@
+# core/__init__.py
 """Core module for the SAGA application."""
 
 from .schema_validator import (

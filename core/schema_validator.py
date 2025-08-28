@@ -1,3 +1,4 @@
+# core/schema_validator.py
 """Schema validation utilities for the knowledge graph."""
 
 import logging

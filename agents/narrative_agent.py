@@ -1,3 +1,4 @@
+# agents/narrative_agent.py
 import json  # Added for JSON parsing
 import re  # Added for regex operations
 from typing import Any

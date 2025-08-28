@@ -1,3 +1,4 @@
+# tools/relationship_migration.py
 """
 Migration tools for fixing existing invalid relationships in the knowledge graph.
 

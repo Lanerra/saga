@@ -1,3 +1,4 @@
+# initialization/bootstrappers/character_bootstrapper.py
 import asyncio
 from collections.abc import Coroutine
 from typing import Any

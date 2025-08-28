@@ -1,3 +1,4 @@
+# utils/__init__.py
 """General utility functions for the Saga Novel Generation system."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# processing/problem_parser.py
 """Shared utilities for parsing problem lists from LLM JSON output."""
 
 from __future__ import annotations
