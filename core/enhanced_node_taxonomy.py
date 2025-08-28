@@ -7,128 +7,118 @@ the current generic WorldElement + category approach with specific, semantically
 meaningful node types.
 """
 
-from typing import Dict, Set, List, Optional
 from enum import Enum
+
 
 class NodeTypeCategory(Enum):
     """High-level categories for node type organization."""
-    PHYSICAL = "physical"           # Tangible entities
-    ABSTRACT = "abstract"           # Concepts, ideas
-    TEMPORAL = "temporal"           # Time-related entities
-    ORGANIZATIONAL = "organizational" # Groups, structures
-    SYSTEM = "system"               # Frameworks, processes
-    RESOURCE = "resource"           # Materials, commodities
-    INFORMATION = "information"     # Data, knowledge
-    QUALITY = "quality"             # Attributes, traits
-    CONTAINER = "container"         # Grouping entities
+
+    PHYSICAL = "physical"  # Tangible entities
+    ABSTRACT = "abstract"  # Concepts, ideas
+    TEMPORAL = "temporal"  # Time-related entities
+    ORGANIZATIONAL = "organizational"  # Groups, structures
+    SYSTEM = "system"  # Frameworks, processes
+    RESOURCE = "resource"  # Materials, commodities
+    INFORMATION = "information"  # Data, knowledge
+    QUALITY = "quality"  # Attributes, traits
+    CONTAINER = "container"  # Grouping entities
 
 
 # Enhanced Node Type Definitions
 ENHANCED_NODE_LABELS = {
     # === CORE EXISTING TYPES ===
-    "Entity",              # Base label - all nodes inherit this
-    "NovelInfo",           # Novel metadata
-    "Chapter",             # Chapter entities
-    
+    "Entity",  # Base label - all nodes inherit this
+    "NovelInfo",  # Novel metadata
+    "Chapter",  # Chapter entities
     # === PHYSICAL ENTITIES ===
     # Living Beings
-    "Character",           # Main story characters (active participants)
-    "Person",              # Historical figures, mentioned people (inactive)
-    "Creature",            # Animals, monsters, non-human beings
-    "Spirit",              # Ghosts, ethereal beings, supernatural entities
-    "Deity",               # Gods, divine beings, worshipped entities
-    
+    "Character",  # Main story characters (active participants)
+    "Person",  # Historical figures, mentioned people (inactive)
+    "Creature",  # Animals, monsters, non-human beings
+    "Spirit",  # Ghosts, ethereal beings, supernatural entities
+    "Deity",  # Gods, divine beings, worshipped entities
     # Objects & Items
-    "Object",              # Physical items, tools, weapons
-    "Artifact",            # Special/magical/historical objects
-    "Document",            # Books, scrolls, letters, written records
-    "Item",                # General items (synonym for Object)
-    "Relic",               # Ancient/sacred objects
-    
+    "Object",  # Physical items, tools, weapons
+    "Artifact",  # Special/magical/historical objects
+    "Document",  # Books, scrolls, letters, written records
+    "Item",  # General items (synonym for Object)
+    "Relic",  # Ancient/sacred objects
     # Locations & Structures
-    "Location",            # General places
-    "Structure",           # Buildings, constructions, man-made locations
-    "Region",              # Large geographical areas, territories
-    "Landmark",            # Notable geographical features
-    "Territory",           # Claimed/controlled areas
-    "Path",                # Roads, routes, passages, connections
-    "Room",                # Interior spaces within structures
-    "Settlement",          # Cities, towns, villages
-    
+    "Location",  # General places
+    "Structure",  # Buildings, constructions, man-made locations
+    "Region",  # Large geographical areas, territories
+    "Landmark",  # Notable geographical features
+    "Territory",  # Claimed/controlled areas
+    "Path",  # Roads, routes, passages, connections
+    "Room",  # Interior spaces within structures
+    "Settlement",  # Cities, towns, villages
     # === ABSTRACT ENTITIES ===
-    "Concept",             # Ideas, philosophies, abstract notions
-    "Law",                 # Rules, regulations, natural laws, edicts
-    "Tradition",           # Cultural practices, customs, rituals
-    "Language",            # Languages, dialects, communication systems
-    "Symbol",              # Symbolic representations, emblems, signs
-    "Story",               # Tales, legends, narratives within the narrative
-    "Song",                # Music, ballads, cultural expressions
-    "Dream",               # Dreams, visions, prophecies
-    "Memory",              # Specific memories, recollections
-    "Emotion",             # Emotional states, feelings
-    "Skill",               # Abilities, talents, competencies
-    
+    "Concept",  # Ideas, philosophies, abstract notions
+    "Law",  # Rules, regulations, natural laws, edicts
+    "Tradition",  # Cultural practices, customs, rituals
+    "Language",  # Languages, dialects, communication systems
+    "Symbol",  # Symbolic representations, emblems, signs
+    "Story",  # Tales, legends, narratives within the narrative
+    "Song",  # Music, ballads, cultural expressions
+    "Dream",  # Dreams, visions, prophecies
+    "Memory",  # Specific memories, recollections
+    "Emotion",  # Emotional states, feelings
+    "Skill",  # Abilities, talents, competencies
     # === TEMPORAL ENTITIES ===
-    "Event",               # Historical events, battles, ceremonies
-    "Era",                 # Time periods, ages, epochs
-    "Timeline",            # Temporal sequences, chronologies
-    "DevelopmentEvent",    # Character development events (existing)
-    "WorldElaborationEvent", # World expansion events (existing)
-    "Season",              # Natural cycles, recurring periods
-    "Moment",              # Specific points in time, instances
-    
+    "Event",  # Historical events, battles, ceremonies
+    "Era",  # Time periods, ages, epochs
+    "Timeline",  # Temporal sequences, chronologies
+    "DevelopmentEvent",  # Character development events (existing)
+    "WorldElaborationEvent",  # World expansion events (existing)
+    "Season",  # Natural cycles, recurring periods
+    "Moment",  # Specific points in time, instances
     # === ORGANIZATIONAL ENTITIES ===
-    "Faction",             # Political groups, organizations with agendas
-    "Organization",        # Generic organizations, institutions
-    "Role",                # Positions, titles, functions within organizations
-    "Rank",                # Hierarchical positions, military ranks
-    "Guild",               # Professional organizations, trade groups
-    "House",               # Noble houses, family organizations
-    "Order",               # Religious or knightly orders
-    "Council",             # Governing bodies, decision-making groups
-    
+    "Faction",  # Political groups, organizations with agendas
+    "Organization",  # Generic organizations, institutions
+    "Role",  # Positions, titles, functions within organizations
+    "Rank",  # Hierarchical positions, military ranks
+    "Guild",  # Professional organizations, trade groups
+    "House",  # Noble houses, family organizations
+    "Order",  # Religious or knightly orders
+    "Council",  # Governing bodies, decision-making groups
     # === SYSTEM ENTITIES ===
-    "System",              # General systems, frameworks
-    "Magic",               # Magical systems, schools of magic
-    "Technology",          # Technological systems, innovations
-    "Religion",            # Religious systems, belief structures
-    "Culture",             # Cultural systems, way of life
-    "Education",           # Learning systems, schools, curricula
-    "Government",          # Governing systems, political structures
-    "Economy",             # Economic systems, trade networks
-    
+    "System",  # General systems, frameworks
+    "Magic",  # Magical systems, schools of magic
+    "Technology",  # Technological systems, innovations
+    "Religion",  # Religious systems, belief structures
+    "Culture",  # Cultural systems, way of life
+    "Education",  # Learning systems, schools, curricula
+    "Government",  # Governing systems, political structures
+    "Economy",  # Economic systems, trade networks
     # === RESOURCE ENTITIES ===
-    "Resource",            # Materials, natural resources, commodities
-    "Currency",            # Money, trade systems, units of value
-    "Trade",               # Economic relationships, trade routes
-    "Food",                # Consumable resources, sustenance
-    "Material",            # Building materials, crafting components
-    "Energy",              # Power sources, magical energy, fuel
-    
+    "Resource",  # Materials, natural resources, commodities
+    "Currency",  # Money, trade systems, units of value
+    "Trade",  # Economic relationships, trade routes
+    "Food",  # Consumable resources, sustenance
+    "Material",  # Building materials, crafting components
+    "Energy",  # Power sources, magical energy, fuel
     # === INFORMATION ENTITIES ===
-    "Lore",                # Myths, legends, historical knowledge
-    "Knowledge",           # Specific knowledge, information, data
-    "Secret",              # Hidden information, classified knowledge
-    "Rumor",               # Unconfirmed information, gossip
-    "News",                # Current information, recent events
-    "Message",             # Communications, signals, transmissions
-    "ValueNode",           # Literal values, data (existing)
-    "Record",              # Official records, documentation
-    
+    "Lore",  # Myths, legends, historical knowledge
+    "Knowledge",  # Specific knowledge, information, data
+    "Secret",  # Hidden information, classified knowledge
+    "Rumor",  # Unconfirmed information, gossip
+    "News",  # Current information, recent events
+    "Message",  # Communications, signals, transmissions
+    "ValueNode",  # Literal values, data (existing)
+    "Record",  # Official records, documentation
     # === QUALITY ENTITIES ===
-    "Trait",               # Character traits, personality aspects (existing)
-    "Attribute",           # Physical or mental attributes
-    "Quality",             # Characteristics, properties
-    "Reputation",          # Social standing, renown
-    "Status",              # Current state, condition
-    
+    "Trait",  # Character traits, personality aspects (existing)
+    "Attribute",  # Physical or mental attributes
+    "Quality",  # Characteristics, properties
+    "Reputation",  # Social standing, renown
+    "Status",  # Current state, condition
     # === CONTAINER ENTITIES ===
-    "WorldContainer",      # Containers for world elements (existing)
-    "PlotPoint",           # Plot/story points (existing)
-    "Collection",          # Groups of related items
-    "Archive",             # Storage of documents/information
-    "Treasury",            # Storage of valuable resources
-    "Library",             # Collection of documents/knowledge
+    "WorldContainer",  # Containers for world elements (existing)
+    "PlotPoint",  # Plot/story points (existing)
+    "Collection",  # Groups of related items
+    "Archive",  # Storage of documents/information
+    "Treasury",  # Storage of valuable resources
+    "Library",  # Collection of documents/knowledge
 }
 
 # Node Type Hierarchical Relationships
@@ -158,7 +148,7 @@ NODE_TYPE_HIERARCHY = {
                 "Location": {"weight": 5},  # Generic fallback
                 "Room": {"weight": 4},
                 "Path": {"weight": 3},
-            }
+            },
         },
         "Abstract": {
             "Mental": {
@@ -177,7 +167,7 @@ NODE_TYPE_HIERARCHY = {
             },
             "Legal": {
                 "Law": {"weight": 10},
-            }
+            },
         },
         "Temporal": {
             "Event": {"weight": 10},
@@ -204,7 +194,7 @@ NODE_TYPE_HIERARCHY = {
             "Hierarchical": {
                 "Role": {"weight": 10},
                 "Rank": {"weight": 9},
-            }
+            },
         },
         "System": {
             "Magical": {
@@ -231,7 +221,7 @@ NODE_TYPE_HIERARCHY = {
                 "Material": {"weight": 9},
                 "Energy": {"weight": 8},
                 "Resource": {"weight": 7},  # Generic fallback
-            }
+            },
         },
         "Information": {
             "Recorded": {
@@ -262,7 +252,7 @@ NODE_TYPE_HIERARCHY = {
             "Social": {
                 "Reputation": {"weight": 10},
                 "Status": {"weight": 9},
-            }
+            },
         },
         "Container": {
             "Physical": {
@@ -274,97 +264,186 @@ NODE_TYPE_HIERARCHY = {
             "Conceptual": {
                 "PlotPoint": {"weight": 10},
                 "WorldContainer": {"weight": 9},
-            }
-        }
+            },
+        },
     }
 }
+
 
 # Type Classification for Constraint System
 class NodeClassification:
     """Enhanced node classifications for relationship constraints."""
-    
+
     # Living entities capable of action and thought
-    SENTIENT = {
-        "Character", "Person", "Deity", "Spirit"
-    }
-    
+    SENTIENT = {"Character", "Person", "Deity", "Spirit"}
+
     # Entities with consciousness and self-awareness
-    CONSCIOUS = {
-        "Character", "Person", "Deity"
-    }
-    
+    CONSCIOUS = {"Character", "Person", "Deity"}
+
     # Physical objects and entities
     PHYSICAL_PRESENCE = {
-        "Character", "Person", "Creature", "Spirit", "Deity",
-        "Object", "Artifact", "Document", "Item", "Relic",
-        "Location", "Structure", "Region", "Territory", "Landmark", 
-        "Path", "Room", "Settlement",
-        "Resource", "Material", "Food", "Currency"
+        "Character",
+        "Person",
+        "Creature",
+        "Spirit",
+        "Deity",
+        "Object",
+        "Artifact",
+        "Document",
+        "Item",
+        "Relic",
+        "Location",
+        "Structure",
+        "Region",
+        "Territory",
+        "Landmark",
+        "Path",
+        "Room",
+        "Settlement",
+        "Resource",
+        "Material",
+        "Food",
+        "Currency",
     }
-    
+
     # Entities that can be located in space
     LOCATABLE = {
-        "Character", "Person", "Creature", "Object", "Artifact", 
-        "Document", "Item", "Relic", "Structure"
+        "Character",
+        "Person",
+        "Creature",
+        "Object",
+        "Artifact",
+        "Document",
+        "Item",
+        "Relic",
+        "Structure",
     }
-    
+
     # Entities that can be owned
     OWNABLE = {
-        "Object", "Artifact", "Document", "Item", "Relic",
-        "Resource", "Material", "Food", "Currency",
-        "Structure", "Territory"  # Can own buildings and land
+        "Object",
+        "Artifact",
+        "Document",
+        "Item",
+        "Relic",
+        "Resource",
+        "Material",
+        "Food",
+        "Currency",
+        "Structure",
+        "Territory",  # Can own buildings and land
     }
-    
+
     # Entities capable of social relationships
     SOCIAL = {
-        "Character", "Person", "Faction", "Organization", 
-        "Guild", "House", "Order", "Council", "Culture"
+        "Character",
+        "Person",
+        "Faction",
+        "Organization",
+        "Guild",
+        "House",
+        "Order",
+        "Council",
+        "Culture",
     }
-    
+
     # Spatial entities that can contain others
     CONTAINERS = {
-        "Location", "Structure", "Region", "Territory", "Settlement",
-        "Room", "Library", "Archive", "Treasury", "Collection",
-        "WorldContainer"
+        "Location",
+        "Structure",
+        "Region",
+        "Territory",
+        "Settlement",
+        "Room",
+        "Library",
+        "Archive",
+        "Treasury",
+        "Collection",
+        "WorldContainer",
     }
-    
+
     # Temporal entities
     TEMPORAL = {
-        "Event", "Era", "Season", "Timeline", "Moment", "Chapter",
-        "DevelopmentEvent", "WorldElaborationEvent"
+        "Event",
+        "Era",
+        "Season",
+        "Timeline",
+        "Moment",
+        "Chapter",
+        "DevelopmentEvent",
+        "WorldElaborationEvent",
     }
-    
+
     # Abstract concepts
     ABSTRACT = {
-        "Concept", "Law", "Tradition", "Language", "Symbol", 
-        "Story", "Song", "Dream", "Memory", "Emotion", "Skill",
-        "Lore", "Knowledge", "Secret", "Rumor", "News",
-        "Trait", "Attribute", "Quality", "Reputation", "Status",
-        "PlotPoint"
+        "Concept",
+        "Law",
+        "Tradition",
+        "Language",
+        "Symbol",
+        "Story",
+        "Song",
+        "Dream",
+        "Memory",
+        "Emotion",
+        "Skill",
+        "Lore",
+        "Knowledge",
+        "Secret",
+        "Rumor",
+        "News",
+        "Trait",
+        "Attribute",
+        "Quality",
+        "Reputation",
+        "Status",
+        "PlotPoint",
     }
-    
+
     # Organizational entities
     ORGANIZATIONAL = {
-        "Faction", "Organization", "Guild", "House", "Order", 
-        "Council", "Role", "Rank", "Government"
+        "Faction",
+        "Organization",
+        "Guild",
+        "House",
+        "Order",
+        "Council",
+        "Role",
+        "Rank",
+        "Government",
     }
-    
+
     # System entities
     SYSTEM_ENTITIES = {
-        "System", "Magic", "Technology", "Religion", "Culture",
-        "Education", "Government", "Economy"
+        "System",
+        "Magic",
+        "Technology",
+        "Religion",
+        "Culture",
+        "Education",
+        "Government",
+        "Economy",
     }
-    
+
     # Information entities
     INFORMATIONAL = {
-        "Lore", "Knowledge", "Secret", "Rumor", "News", "Message",
-        "Record", "ValueNode", "NovelInfo", "Document"
+        "Lore",
+        "Knowledge",
+        "Secret",
+        "Rumor",
+        "News",
+        "Message",
+        "Record",
+        "ValueNode",
+        "NovelInfo",
+        "Document",
     }
 
 
 def get_node_type_priority(node_type: str) -> int:
     """Get priority weight for node type selection (higher = more specific)."""
-    def find_weight(hierarchy: Dict, target_type: str, current_weight: int = 0) -> int:
+
+    def find_weight(hierarchy: dict, target_type: str, current_weight: int = 0) -> int:
         for key, value in hierarchy.items():
             if key == target_type:
                 return current_weight + value.get("weight", 0)
@@ -374,7 +453,7 @@ def get_node_type_priority(node_type: str) -> int:
                 if result > 0:
                     return result
         return 0
-    
+
     return find_weight(NODE_TYPE_HIERARCHY, node_type)
 
 
@@ -384,7 +463,7 @@ def infer_node_type_from_category(category: str) -> str:
         # Direct mappings
         "locations": "Location",
         "factions": "Faction",
-        "systems": "System", 
+        "systems": "System",
         "lore": "Lore",
         "history": "Lore",
         "society": "Culture",
@@ -426,19 +505,19 @@ def infer_node_type_from_category(category: str) -> str:
         "roles": "Role",
         "ranks": "Rank",
     }
-    
+
     # Clean and normalize category
     clean_category = category.lower().strip()
-    
+
     # Direct lookup
     if clean_category in category_mapping:
         return category_mapping[clean_category]
-    
+
     # Partial matching for plurals and variations
     for cat_key, node_type in category_mapping.items():
         if clean_category in cat_key or cat_key in clean_category:
             return node_type
-    
+
     # Fallback to WorldElement for unknown categories
     return "WorldElement"
 
@@ -447,65 +526,128 @@ def infer_node_type_from_name(name: str, context: str = "") -> str:
     """Infer node type from entity name and context."""
     name_lower = name.lower()
     context_lower = context.lower()
-    
+
     # Character indicators
-    if any(indicator in name_lower for indicator in [
-        "king", "queen", "prince", "princess", "lord", "lady",
-        "sir", "duke", "duchess", "baron", "count", "earl"
-    ]):
+    if any(
+        indicator in name_lower
+        for indicator in [
+            "king",
+            "queen",
+            "prince",
+            "princess",
+            "lord",
+            "lady",
+            "sir",
+            "duke",
+            "duchess",
+            "baron",
+            "count",
+            "earl",
+        ]
+    ):
         return "Character"
-    
+
     # Person indicators (historical/mythical figures)
-    if any(indicator in context_lower for indicator in [
-        "ancient", "legendary", "mythical", "historical", "founder"
-    ]):
+    if any(
+        indicator in context_lower
+        for indicator in ["ancient", "legendary", "mythical", "historical", "founder"]
+    ):
         return "Person"
-    
+
     # Organization indicators
-    if any(indicator in name_lower for indicator in [
-        "guild", "order", "council", "house", "faction", 
-        "ministry", "department", "organization", "company"
-    ]):
+    if any(
+        indicator in name_lower
+        for indicator in [
+            "guild",
+            "order",
+            "council",
+            "house",
+            "faction",
+            "ministry",
+            "department",
+            "organization",
+            "company",
+        ]
+    ):
         return "Organization"
-    
+
     # Location indicators
-    if any(indicator in name_lower for indicator in [
-        "castle", "city", "town", "village", "forest", "mountain",
-        "river", "lake", "temple", "palace", "tower", "bridge"
-    ]):
+    if any(
+        indicator in name_lower
+        for indicator in [
+            "castle",
+            "city",
+            "town",
+            "village",
+            "forest",
+            "mountain",
+            "river",
+            "lake",
+            "temple",
+            "palace",
+            "tower",
+            "bridge",
+        ]
+    ):
         return "Location"
-    
+
     # Object indicators
-    if any(indicator in name_lower for indicator in [
-        "sword", "blade", "staff", "wand", "ring", "crown",
-        "armor", "shield", "gem", "crystal", "orb", "scroll"
-    ]):
-        return "Artifact" if any(magic in context_lower for magic in [
-            "magic", "enchanted", "cursed", "blessed", "ancient", "legendary"
-        ]) else "Object"
-    
+    if any(
+        indicator in name_lower
+        for indicator in [
+            "sword",
+            "blade",
+            "staff",
+            "wand",
+            "ring",
+            "crown",
+            "armor",
+            "shield",
+            "gem",
+            "crystal",
+            "orb",
+            "scroll",
+        ]
+    ):
+        return (
+            "Artifact"
+            if any(
+                magic in context_lower
+                for magic in [
+                    "magic",
+                    "enchanted",
+                    "cursed",
+                    "blessed",
+                    "ancient",
+                    "legendary",
+                ]
+            )
+            else "Object"
+        )
+
     # System indicators
-    if any(indicator in name_lower for indicator in [
-        "system", "protocol", "network", "framework", "method"
-    ]):
+    if any(
+        indicator in name_lower
+        for indicator in ["system", "protocol", "network", "framework", "method"]
+    ):
         return "Technology" if "tech" in context_lower else "System"
-    
+
     # Default to generic types based on patterns
     if name_lower.endswith(("ism", "ology", "ics")):
         return "Concept"
-    
+
     if name_lower.startswith(("the ", "a ", "an ")):
         # Strip articles and re-evaluate
-        return infer_node_type_from_name(name[name.find(" ")+1:], context)
-    
+        return infer_node_type_from_name(name[name.find(" ") + 1 :], context)
+
     # Final fallback
     return "Entity"
 
 
-def get_all_node_classifications(node_type: str) -> Set[str]:
+def get_all_node_classifications(node_type: str) -> set[str]:
     """Get all classifications that apply to a node type."""
     classifications = set()
-    
+
     if node_type in NodeClassification.SENTIENT:
         classifications.add("SENTIENT")
     if node_type in NodeClassification.CONSCIOUS:
@@ -530,7 +672,7 @@ def get_all_node_classifications(node_type: str) -> Set[str]:
         classifications.add("SYSTEM_ENTITIES")
     if node_type in NodeClassification.INFORMATIONAL:
         classifications.add("INFORMATIONAL")
-    
+
     return classifications
 
 
@@ -540,29 +682,31 @@ def validate_node_type(node_type: str) -> bool:
     return node_type in ENHANCED_NODE_LABELS
 
 
-def suggest_better_node_type(current_type: str, name: str, category: str = "", context: str = "") -> str:
+def suggest_better_node_type(
+    current_type: str, name: str, category: str = "", context: str = ""
+) -> str:
     """Suggest a better node type based on available information."""
     # Priority order for type inference
     suggestions = []
-    
+
     # Try category-based inference first (most reliable)
     if category:
         category_suggestion = infer_node_type_from_category(category)
         if category_suggestion != "WorldElement":
             suggestions.append((category_suggestion, 10))
-    
+
     # Try name-based inference
     name_suggestion = infer_node_type_from_name(name, context)
     if name_suggestion != "Entity":
         suggestions.append((name_suggestion, 8))
-    
+
     # If we have suggestions, return the highest priority one
     if suggestions:
         return max(suggestions, key=lambda x: x[1])[0]
-    
+
     # If current type is valid, keep it
     if validate_node_type(current_type):
         return current_type
-    
+
     # Final fallback
     return "Entity"

@@ -3,7 +3,7 @@ import logging
 import sys
 import unittest
 
-from parsing_utils import parse_rdf_triples_with_rdflib
+from processing.parsing_utils import parse_rdf_triples_with_rdflib
 
 
 class TestRdfTripleParsing(unittest.TestCase):

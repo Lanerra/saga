@@ -1,5 +1,4 @@
 # processing/context_generator.py
-# context_generation_logic.py
 """
 Handles the generation of contextual information for chapter writing in the SAGA system.
 Now includes a hybrid approach combining semantic context and Knowledge Graph facts.
@@ -19,7 +18,7 @@ from data_access import (
     chapter_queries,
 )  # For chapter data and similarity search
 from models import SceneDetail
-from prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
+from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
 
 logger = logging.getLogger(__name__)
 

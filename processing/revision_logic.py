@@ -1,5 +1,4 @@
 # processing/revision_logic.py
-# chapter_revision_logic.py
 """
 Handles the revision of chapter drafts based on evaluation feedback for the SAGA system.
 Supports both full rewrite and targeted patch-based revisions.
@@ -23,7 +22,7 @@ from models import (
     SceneDetail,
     WorldItem,
 )
-from prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt
 
 logger = logging.getLogger(__name__)
 utils.load_spacy_model_if_needed()  # Ensure spaCy model is loaded when this module is imported

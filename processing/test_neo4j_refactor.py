@@ -74,7 +74,9 @@ async def test_refactored_prompt_data_getters():
     }
 
     try:
-        from prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
+        from prompts.prompt_data_getters import (
+            get_reliable_kg_facts_for_drafting_prompt,
+        )
 
         facts = await get_reliable_kg_facts_for_drafting_prompt(plot_outline, 1)
         logger.info(f"Reliable KG facts for drafting: {facts[:100]}...")

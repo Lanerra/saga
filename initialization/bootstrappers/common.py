@@ -6,7 +6,7 @@ import structlog
 
 import config
 from core.llm_interface import llm_service
-from prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt
 
 logger = structlog.get_logger(__name__)
 

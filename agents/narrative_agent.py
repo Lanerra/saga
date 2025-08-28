@@ -12,12 +12,12 @@ from models import CharacterProfile, SceneDetail, WorldItem
 from processing.context_generator import (
     generate_hybrid_chapter_context_native,  # Native Phase 2 context generation
 )
-from prompt_data_getters import (
+from prompts.prompt_data_getters import (
     get_character_state_snippet_for_prompt,
     get_reliable_kg_facts_for_drafting_prompt,
     get_world_state_snippet_for_prompt,
 )
-from prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt
 
 logger = structlog.get_logger()
 
@@ -525,7 +525,7 @@ class NarrativeAgent:
         )
 
         # Use native prompt data getters
-        from prompt_data_getters import (
+        from prompts.prompt_data_getters import (
             get_character_state_snippet_for_prompt_native,
             get_reliable_kg_facts_for_drafting_prompt,
             get_world_state_snippet_for_prompt_native,
