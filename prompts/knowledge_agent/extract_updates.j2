@@ -14,40 +14,60 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 **Enhanced Entity Type Selection Guide:**
 Choose the most SPECIFIC node type that fits the entity. Avoid generic types like "Entity" or "WorldElement".
 
-**Living Beings & Characters:**
-- Character: Active story participants (protagonists, major characters)
-- Person: Historical figures, mentioned people, inactive individuals  
+**Living Beings:**
+- Character: Main story characters (active participants)
+- Person: Historical figures, mentioned people, inactive individuals
 - Creature: Animals, monsters, non-human beings
 - Spirit: Ghosts, ethereal beings, supernatural entities
 - Deity: Gods, divine beings, worshipped entities
 
 **Physical Objects & Items:**
-- Object: General physical items, tools, everyday objects
+- Object: General physical items, tools, weapons
 - Artifact: Special/magical/historical objects of significance
-- Document: Books, scrolls, letters, written materials
+- Document: Books, scrolls, letters, written records
+- Item: General items (synonym for Object)
 - Relic: Ancient/sacred objects with historical importance
-- Resource: Materials, natural resources, commodities
-- Currency: Money, trade items, units of value
 
 **Places & Locations:**
-- Location: General places (prefer more specific types when possible)
+- Location: General places
 - Structure: Buildings, constructions, man-made locations
 - Settlement: Cities, towns, villages
 - Region: Large geographical areas, territories
 - Landmark: Notable geographical features
 - Room: Interior spaces within structures
 - Path: Roads, routes, passages, connections
+- Territory: Claimed/controlled areas
 
-**Abstract & Conceptual:**
+**Resources & Materials:**
+- Resource: Materials, natural resources, commodities
+- Currency: Money, trade systems, units of value
+- Trade: Economic relationships, trade routes
+- Food: Consumable resources, sustenance
+- Material: Building materials, crafting components
+- Energy: Power sources, magical energy, fuel
+
+**Abstract Concepts:**
 - Concept: Ideas, philosophies, abstract notions
 - Law: Rules, regulations, natural laws, edicts
 - Tradition: Cultural practices, customs, rituals
 - Language: Languages, dialects, communication systems
-- Lore: Myths, legends, historical knowledge
-- Knowledge: Specific information, data, facts
-- Secret: Hidden information, classified knowledge
+- Symbol: Symbolic representations, emblems, signs
+- Story: Tales, legends, narratives within the narrative
+- Song: Music, ballads, cultural expressions
+- Dream: Dreams, visions, prophecies
 - Memory: Specific memories, recollections
+- Emotion: Emotional states, feelings
 - Skill: Abilities, talents, competencies
+
+**Information & Knowledge:**
+- Lore: Myths, legends, historical knowledge
+- Knowledge: Specific knowledge, information, data
+- Secret: Hidden information, classified knowledge
+- Rumor: Unconfirmed information, gossip
+- News: Current information, recent events
+- Message: Communications, signals, transmissions
+- Record: Official records, documentation
+- ValueNode: Literal values, data
 
 **Organizations & Groups:**
 - Faction: Political groups, organizations with agendas
@@ -56,6 +76,8 @@ Choose the most SPECIFIC node type that fits the entity. Avoid generic types lik
 - House: Noble houses, family organizations
 - Order: Religious or knightly orders
 - Council: Governing bodies, decision-making groups
+- Role: Positions, titles, functions within organizations
+- Rank: Hierarchical positions, military ranks
 
 **Systems & Frameworks:**
 - System: General systems, frameworks
@@ -64,12 +86,33 @@ Choose the most SPECIFIC node type that fits the entity. Avoid generic types lik
 - Religion: Religious systems, belief structures
 - Culture: Cultural systems, ways of life
 - Government: Governing systems, political structures
+- Education: Learning systems, schools, curricula
+- Economy: Economic systems, trade networks
 
 **Time & Events:**
 - Event: Historical events, battles, ceremonies
 - Era: Time periods, ages, epochs
-- Season: Natural cycles, recurring periods
 - Timeline: Temporal sequences, chronologies
+- DevelopmentEvent: Character development events
+- WorldElaborationEvent: World expansion events
+- Season: Natural cycles, recurring periods
+- Moment: Specific points in time, instances
+- Chapter: Chapter entities
+
+**Character Qualities & Attributes:**
+- Trait: Character traits, personality aspects
+- Attribute: Physical or mental attributes
+- Quality: Characteristics, properties
+- Reputation: Social standing, renown
+- Status: Current state, condition
+
+**Containers & Collections:**
+- WorldContainer: Containers for world elements
+- PlotPoint: Plot/story points
+- Collection: Groups of related items
+- Archive: Storage of documents/information
+- Treasury: Storage of valuable resources
+- Library: Collection of documents/knowledge
 
 **Instructions for Output:**
 - Your entire response MUST be a single, valid JSON object.
@@ -109,6 +152,26 @@ Choose semantically appropriate relationships that make sense for the entity typ
 **Temporal & Causal:**
 - CAUSES, PREVENTS, ENABLES, TRIGGERS - Causal relationships
 - OCCURRED_IN - Events happening at times/places
+
+**Information & Communication:**
+- RECORDS, PRESERVES - Information storage relationships
+- DISPLAYS, EMITS - Presentation or emission of information
+- SPEAKS, SPOKEN_BY - Language communication relationships
+
+**System & Resource:**
+- POWERED_BY, CONSUMES, PRODUCES - Energy and resource relationships
+- TEACHES, PRACTICES - Knowledge and skill relationships
+- TRADES_WITH, GOVERNS - Economic and political relationships
+
+**Enhanced Relationships (specific to entity types):**
+- WIELDS - Characters actively using objects/tools
+- CRAFTED_BY - Objects created by conscious beings or organizations
+- FORGED_FROM - Material composition relationships
+- HOLDS_RANK - Characters holding specific positions
+- CELEBRATES - Cultural/religious ceremonial relationships
+- ENCHANTED_BY - Magical enhancement relationships
+- BORDERS - Geographical boundary relationships
+- REVEALS, CONCEALS - Information disclosure relationships
 
 **Chapter {{ chapter_number }} Text to Analyze:**
 ```text
