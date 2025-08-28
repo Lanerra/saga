@@ -1,3 +1,4 @@
+# models/user_input_models.py
 """User-facing models for providing story input data."""
 
 from __future__ import annotations

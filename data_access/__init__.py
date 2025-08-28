@@ -4,7 +4,6 @@
 
 from .chapter_queries import (
     find_similar_chapters_in_db,
-    get_all_past_embeddings_from_db,
     get_chapter_data_from_db,
     get_embedding_from_db,
     load_chapter_count_from_db,
@@ -70,7 +69,6 @@ __all__ = [
     "get_chapter_data_from_db",
     "get_embedding_from_db",
     "find_similar_chapters_in_db",
-    "get_all_past_embeddings_from_db",
     "add_kg_triples_batch_to_db",
     "query_kg_from_db",
     "normalize_existing_relationship_types",

@@ -1,9 +1,10 @@
+# tests/test_yaml_parser.py
 import os
 import unittest
 
 import yaml  # For creating test files
 
-from yaml_parser import (
+from utils.yaml_parser import (
     load_yaml_file,
     normalize_keys_recursive,
 )  # Assuming yaml_parser is in PYTHONPATH

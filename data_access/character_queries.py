@@ -3,12 +3,12 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore
+from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
 import config
 import utils
 from core.db_manager import neo4j_manager
 from core.schema_validator import validate_kg_object
-from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 from models import CharacterProfile
 from neo4j.exceptions import ServiceUnavailable  # type: ignore
 

@@ -1,3 +1,4 @@
+# initialization/data_loader.py
 from typing import Any
 
 import structlog
@@ -5,7 +6,7 @@ import structlog
 import config
 from models import CharacterProfile, WorldItem
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
-from yaml_parser import load_yaml_file
+from utils.yaml_parser import load_yaml_file
 
 logger = structlog.get_logger(__name__)
 

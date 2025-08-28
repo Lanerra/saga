@@ -1,10 +1,11 @@
+# data_access/cypher_builders/character_cypher.py
 from typing import Any
 
 import structlog
+from kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 
 import config
 import utils
-from kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 from models import CharacterProfile
 
 TRAIT_NAME_TO_CANONICAL: dict[str, str] = {}

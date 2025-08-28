@@ -1,3 +1,4 @@
+# agents/knowledge_agent.py
 # knowledge_agent.py
 import asyncio
 import json
@@ -23,10 +24,10 @@ from data_access import (
     world_queries,
 )
 from models.kg_models import CharacterProfile, WorldItem
-from parsing_utils import (
+from processing.parsing_utils import (
     parse_rdf_triples_with_rdflib,
 )
-from prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt
 
 logger = logging.getLogger(__name__)
 

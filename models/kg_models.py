@@ -1,13 +1,14 @@
+# models/kg_models.py
 """Core data models for characters and world elements."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
 from pydantic import BaseModel, Field
 
 import utils
-from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
 
 if TYPE_CHECKING:
     import neo4j

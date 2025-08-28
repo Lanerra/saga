@@ -1,3 +1,4 @@
+# models/agent_models.py
 """TypedDict structures used for inter-agent communication."""
 
 from __future__ import annotations

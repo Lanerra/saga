@@ -5,15 +5,15 @@ import re
 from typing import Any
 
 from async_lru import alru_cache
-
-import config
-from core.db_manager import neo4j_manager
-from core.schema_validator import validate_node_labels, validate_relationship_types
 from kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
     NODE_LABELS,
 )
+
+import config
+from core.db_manager import neo4j_manager
+from core.schema_validator import validate_node_labels, validate_relationship_types
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +178,516 @@ VALID_RELATIONSHIP_TYPES = {
 
 # Lookup table for canonical node labels to ensure consistent casing
 _CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
+
+
+def _infer_specific_node_type(
+    name: str, category: str = "", fallback_type: str = "Entity"
+) -> str:
+    """
+    Infer specific node type from entity name and category.
+    Upgrades generic types like 'WorldElement' to specific types like 'Artifact', 'Location', etc.
+    """
+    name_lower = name.lower()
+    category_lower = category.lower()
+
+    # Living beings - check name patterns
+    if any(
+        term in name_lower
+        for term in [
+            "king",
+            "queen",
+            "lord",
+            "lady",
+            "prince",
+            "princess",
+            "duke",
+            "duchess",
+            "baron",
+            "earl",
+            "knight",
+            "sir",
+            "master",
+            "apprentice",
+            "guard",
+            "soldier",
+            "captain",
+            "general",
+            "warrior",
+            "hero",
+            "villain",
+            "mage",
+            "wizard",
+            "witch",
+            "priest",
+            "sage",
+            "scholar",
+            "merchant",
+            "trader",
+            "blacksmith",
+            "farmer",
+            "hunter",
+        ]
+    ):
+        return "Character"
+
+    if any(term in name_lower for term in ["god", "goddess", "deity", "divine"]):
+        return "Deity"
+
+    if any(
+        term in name_lower
+        for term in ["spirit", "ghost", "phantom", "wraith", "spectre", "soul"]
+    ):
+        return "Spirit"
+
+    if any(
+        term in name_lower
+        for term in [
+            "dragon",
+            "beast",
+            "monster",
+            "creature",
+            "wolf",
+            "bear",
+            "lion",
+            "eagle",
+            "serpent",
+            "snake",
+            "spider",
+            "demon",
+        ]
+    ):
+        return "Creature"
+
+    # Locations and structures
+    if any(
+        term in name_lower
+        for term in [
+            "castle",
+            "tower",
+            "fortress",
+            "palace",
+            "manor",
+            "hall",
+            "temple",
+            "church",
+            "cathedral",
+            "monastery",
+            "house",
+            "building",
+            "bridge",
+            "gate",
+            "wall",
+            "keep",
+        ]
+    ):
+        return "Structure"
+
+    if any(
+        term in name_lower
+        for term in [
+            "city",
+            "town",
+            "village",
+            "settlement",
+            "hamlet",
+            "capital",
+            "metropolis",
+        ]
+    ):
+        return "Settlement"
+
+    if any(
+        term in name_lower
+        for term in [
+            "forest",
+            "mountain",
+            "river",
+            "lake",
+            "sea",
+            "ocean",
+            "desert",
+            "valley",
+            "plain",
+            "hill",
+            "peak",
+            "realm",
+            "kingdom",
+            "empire",
+            "land",
+            "territory",
+            "region",
+            "continent",
+            "island",
+            "cave",
+            "cavern",
+        ]
+    ):
+        return (
+            "Location"
+            if any(
+                term in name_lower
+                for term in [
+                    "forest",
+                    "mountain",
+                    "river",
+                    "lake",
+                    "sea",
+                    "ocean",
+                    "desert",
+                    "valley",
+                    "plain",
+                    "hill",
+                    "peak",
+                    "cave",
+                    "cavern",
+                ]
+            )
+            else "Region"
+        )
+
+    if any(
+        term in name_lower
+        for term in ["road", "path", "route", "trail", "passage", "corridor", "tunnel"]
+    ):
+        return "Path"
+
+    if any(
+        term in name_lower
+        for term in [
+            "room",
+            "chamber",
+            "quarters",
+            "hall",
+            "parlor",
+            "study",
+            "library",
+            "kitchen",
+            "bedroom",
+            "attic",
+            "cellar",
+            "dungeon",
+        ]
+    ):
+        return "Room"
+
+    # Objects and items
+    if any(
+        term in name_lower
+        for term in [
+            "sword",
+            "blade",
+            "dagger",
+            "knife",
+            "axe",
+            "mace",
+            "hammer",
+            "bow",
+            "arrow",
+            "spear",
+            "lance",
+            "shield",
+            "armor",
+            "helmet",
+            "weapon",
+            "tool",
+            "staff",
+            "rod",
+            "wand",
+        ]
+    ):
+        # Check if it's magical/special
+        if any(
+            term in name_lower
+            for term in [
+                "magic",
+                "magical",
+                "enchanted",
+                "cursed",
+                "ancient",
+                "legendary",
+                "divine",
+                "sacred",
+                "holy",
+                "blessed",
+                "artifact",
+                "relic",
+            ]
+        ):
+            return "Artifact"
+        return "Object"
+
+    if any(
+        term in name_lower
+        for term in [
+            "book",
+            "scroll",
+            "tome",
+            "grimoire",
+            "manual",
+            "journal",
+            "diary",
+            "letter",
+            "document",
+            "manuscript",
+            "note",
+            "parchment",
+            "text",
+        ]
+    ):
+        return "Document"
+
+    if any(
+        term in name_lower
+        for term in [
+            "ring",
+            "crown",
+            "amulet",
+            "pendant",
+            "necklace",
+            "bracelet",
+            "orb",
+            "crystal",
+            "gem",
+            "stone",
+            "jewel",
+            "treasure",
+            "artifact",
+            "relic",
+        ]
+    ):
+        return (
+            "Artifact"
+            if any(
+                term in name_lower
+                for term in [
+                    "magic",
+                    "magical",
+                    "ancient",
+                    "legendary",
+                    "divine",
+                    "sacred",
+                    "artifact",
+                    "relic",
+                ]
+            )
+            else "Object"
+        )
+
+    if any(
+        term in name_lower
+        for term in [
+            "gold",
+            "silver",
+            "copper",
+            "coin",
+            "money",
+            "currency",
+            "payment",
+            "tribute",
+            "tax",
+        ]
+    ):
+        return "Currency"
+
+    if any(
+        term in name_lower
+        for term in [
+            "wood",
+            "stone",
+            "metal",
+            "iron",
+            "steel",
+            "bronze",
+            "material",
+            "ore",
+            "resource",
+            "supply",
+            "fuel",
+            "food",
+            "water",
+            "grain",
+            "bread",
+            "meat",
+        ]
+    ):
+        return (
+            "Resource"
+            if not any(
+                term in name_lower
+                for term in [
+                    "food",
+                    "water",
+                    "grain",
+                    "bread",
+                    "meat",
+                    "wine",
+                    "ale",
+                    "beer",
+                ]
+            )
+            else "Food"
+        )
+
+    # Organizations
+    if any(
+        term in name_lower
+        for term in [
+            "guild",
+            "order",
+            "brotherhood",
+            "sisterhood",
+            "council",
+            "court",
+            "assembly",
+            "faction",
+            "clan",
+            "tribe",
+            "house",
+            "family",
+            "dynasty",
+            "organization",
+            "group",
+            "band",
+            "company",
+            "army",
+            "legion",
+            "guard",
+        ]
+    ):
+        if any(term in name_lower for term in ["guild"]):
+            return "Guild"
+        elif any(term in name_lower for term in ["order", "brotherhood", "sisterhood"]):
+            return "Order"
+        elif any(term in name_lower for term in ["council", "court", "assembly"]):
+            return "Council"
+        elif any(term in name_lower for term in ["house", "family", "dynasty"]):
+            return "House"
+        else:
+            return "Faction"
+
+    # Abstract concepts
+    if any(
+        term in name_lower
+        for term in [
+            "magic",
+            "spell",
+            "enchantment",
+            "curse",
+            "blessing",
+            "power",
+            "ability",
+            "skill",
+            "talent",
+            "gift",
+            "knowledge",
+            "wisdom",
+            "lore",
+            "legend",
+            "myth",
+            "story",
+            "tale",
+            "prophecy",
+            "vision",
+            "dream",
+            "memory",
+            "tradition",
+            "custom",
+            "ritual",
+            "ceremony",
+            "law",
+            "rule",
+            "code",
+            "principle",
+        ]
+    ):
+        if any(
+            term in name_lower
+            for term in ["magic", "spell", "enchantment", "curse", "blessing", "power"]
+        ):
+            return "Magic"
+        elif any(term in name_lower for term in ["skill", "talent", "gift", "ability"]):
+            return "Skill"
+        elif any(
+            term in name_lower
+            for term in ["knowledge", "wisdom", "lore", "legend", "myth"]
+        ):
+            return "Lore"
+        elif any(term in name_lower for term in ["story", "tale"]):
+            return "Story"
+        elif any(term in name_lower for term in ["prophecy", "vision", "dream"]):
+            return "Dream"
+        elif any(term in name_lower for term in ["memory"]):
+            return "Memory"
+        elif any(
+            term in name_lower for term in ["tradition", "custom", "ritual", "ceremony"]
+        ):
+            return "Tradition"
+        elif any(term in name_lower for term in ["law", "rule", "code", "principle"]):
+            return "Law"
+        else:
+            return "Concept"
+
+    # Systems
+    if any(
+        term in name_lower
+        for term in ["religion", "faith", "belief", "worship", "church", "cult"]
+    ):
+        return "Religion"
+
+    if any(
+        term in name_lower
+        for term in ["culture", "society", "civilization", "people", "folk"]
+    ):
+        return "Culture"
+
+    if any(
+        term in name_lower
+        for term in [
+            "government",
+            "kingdom",
+            "empire",
+            "republic",
+            "democracy",
+            "monarchy",
+            "dictatorship",
+        ]
+    ):
+        return "Government"
+
+    if any(
+        term in name_lower
+        for term in [
+            "technology",
+            "invention",
+            "device",
+            "machine",
+            "engine",
+            "apparatus",
+        ]
+    ):
+        return "Technology"
+
+    # Use category information if available
+    if category_lower:
+        if any(term in category_lower for term in ["character", "person", "people"]):
+            return "Character"
+        elif any(term in category_lower for term in ["location", "place"]):
+            return "Location"
+        elif any(term in category_lower for term in ["object", "item", "thing"]):
+            return "Object"
+        elif any(
+            term in category_lower for term in ["organization", "faction", "group"]
+        ):
+            return "Faction"
+        elif any(term in category_lower for term in ["concept", "idea", "abstract"]):
+            return "Concept"
+        elif any(term in category_lower for term in ["event", "happening"]):
+            return "Event"
+        elif any(term in category_lower for term in ["system"]):
+            return "System"
+
+    # Return fallback if no specific type inferred
+    return fallback_type if fallback_type != "WorldElement" else "Object"
 
 
 def _to_pascal_case(text: str) -> str:
@@ -614,6 +1124,48 @@ def _get_cypher_labels(entity_type: str | None) -> str:
     return "".join(final_ordered_labels) + entity_label_suffix
 
 
+def _get_constraint_safe_merge(
+    labels_cypher: str, name_param: str, create_ts_var: str = "s"
+) -> tuple[str, list[str]]:
+    """Generate constraint-safe MERGE queries that handle multiple labels correctly.
+
+    Returns:
+        tuple: (merge_query, additional_set_labels)
+    """
+    # Parse the labels to identify constraint-sensitive ones
+    labels = [label.strip() for label in labels_cypher.split(":") if label.strip()]
+    constraint_labels = [
+        "Character",
+        "NovelInfo",
+        "Chapter",
+        "WorldElement",
+    ]  # Labels with uniqueness constraints
+
+    # Find the first constraint-sensitive label to use in MERGE
+    primary_label = None
+    additional_labels = []
+
+    for label in labels:
+        if label in constraint_labels:
+            if primary_label is None:
+                primary_label = label
+            else:
+                additional_labels.append(label)
+        else:
+            additional_labels.append(label)
+
+    # If no constraint-sensitive label found, use Entity as default
+    if primary_label is None:
+        primary_label = "Entity"
+        # Remove Entity from additional labels if it's there
+        additional_labels = [l for l in additional_labels if l != "Entity"]
+
+    # Build the MERGE query with only the primary constraint label
+    merge_query = f"MERGE ({create_ts_var}:{primary_label} {{name: ${name_param}}})"
+
+    return merge_query, additional_labels
+
+
 async def add_kg_triples_batch_to_db(
     structured_triples_data: list[dict[str, Any]],
     chapter_number: int,
@@ -623,9 +1175,33 @@ async def add_kg_triples_batch_to_db(
         logger.info("Neo4j: add_kg_triples_batch_to_db: No structured triples to add.")
         return
 
-    statements_with_params: list[tuple[str, dict[str, Any]]] = []
+    # Import constraint validation here to avoid circular imports
+    try:
+        from core.relationship_validator import (
+            should_accept_relationship,
+            validate_batch_constraints,
+        )
 
-    for triple_dict in structured_triples_data:
+        constraint_validation_enabled = True
+    except ImportError:
+        logger.warning(
+            "Relationship constraint validation not available - proceeding without validation"
+        )
+        constraint_validation_enabled = False
+
+    statements_with_params: list[tuple[str, dict[str, Any]]] = []
+    validation_stats = {"total": 0, "accepted": 0, "rejected": 0, "corrected": 0}
+
+    # Validate all triples before processing if validation is enabled
+    if constraint_validation_enabled:
+        validation_results = validate_batch_constraints(structured_triples_data)
+        logger.info(
+            f"Constraint validation completed for {len(validation_results)} triples"
+        )
+    else:
+        validation_results = [None] * len(structured_triples_data)
+
+    for i, triple_dict in enumerate(structured_triples_data):
         subject_info = triple_dict.get("subject")
         predicate_str = triple_dict.get("predicate")
 
@@ -652,11 +1228,54 @@ async def add_kg_triples_batch_to_db(
         )  # This is a string like "Character", "WorldElement", etc.
         predicate_clean = str(predicate_str).strip().upper().replace(" ", "_")
 
+        # Enhanced Type Inference: Upgrade generic types to specific ones
+        if subject_type in ["WorldElement", "Entity"] and subject_name:
+            subject_category = subject_info.get("category", "")
+            upgraded_type = _infer_specific_node_type(
+                subject_name, subject_category, subject_type
+            )
+            if upgraded_type != subject_type:
+                logger.info(
+                    f"Type inference upgraded {subject_type} -> {upgraded_type} for '{subject_name}'"
+                )
+                subject_type = upgraded_type
+
         if not all([subject_name, predicate_clean]):
             logger.warning(
                 f"Neo4j (Batch): Empty subject name or predicate after stripping: {triple_dict}"
             )
+            validation_stats["total"] += 1
+            validation_stats["rejected"] += 1
             continue
+
+        # Apply constraint validation if enabled
+        validation_stats["total"] += 1
+        validation_result = (
+            validation_results[i] if constraint_validation_enabled else None
+        )
+
+        if constraint_validation_enabled and validation_result:
+            # Check if relationship should be accepted based on validation
+            if not should_accept_relationship(validation_result):
+                logger.warning(
+                    f"Rejecting relationship due to constraint violation: "
+                    f"{subject_type}:{subject_name} | {predicate_clean} | "
+                    f"{'Literal' if triple_dict.get('is_literal_object') else object_entity_info.get('type', 'Unknown')}. "
+                    f"Errors: {validation_result.errors}"
+                )
+                validation_stats["rejected"] += 1
+                continue
+
+            # Use the validated predicate (may have been corrected)
+            if validation_result.validated_relationship != predicate_clean:
+                logger.info(
+                    f"Constraint validation corrected predicate: "
+                    f"{predicate_clean} -> {validation_result.validated_relationship}"
+                )
+                predicate_clean = validation_result.validated_relationship
+                validation_stats["corrected"] += 1
+
+        validation_stats["accepted"] += 1
 
         subject_labels_cypher = _get_cypher_labels(subject_type)
 
@@ -687,9 +1306,20 @@ async def add_kg_triples_batch_to_db(
                 "Literal"  # Generic type for these literal ValueNodes
             )
 
+            # Generate constraint-safe MERGE for subject
+            subject_merge, subject_additional_labels = _get_constraint_safe_merge(
+                subject_labels_cypher, "subject_name_param", "s"
+            )
+
+            # Combine ON CREATE SET clauses for subject
+            subject_create_sets = "s.created_ts = timestamp()"
+            if subject_additional_labels:
+                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
+                subject_create_sets += ", " + ", ".join(label_clauses)
+
             query = f"""
-            MERGE (s{subject_labels_cypher} {{name: $subject_name_param}})
-                ON CREATE SET s.created_ts = timestamp()
+            {subject_merge}
+                ON CREATE SET {subject_create_sets}
             MERGE (o:Entity:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
                 ON CREATE SET o.created_ts = timestamp()
 
@@ -714,14 +1344,45 @@ async def add_kg_triples_batch_to_db(
                 )
                 continue
 
+            # Enhanced Type Inference for object as well
+            if object_type in ["WorldElement", "Entity"] and object_name:
+                object_category = object_entity_info.get("category", "")
+                upgraded_object_type = _infer_specific_node_type(
+                    object_name, object_category, object_type
+                )
+                if upgraded_object_type != object_type:
+                    logger.info(
+                        f"Type inference upgraded object {object_type} -> {upgraded_object_type} for '{object_name}'"
+                    )
+                    object_type = upgraded_object_type
+
             object_labels_cypher = _get_cypher_labels(object_type)
             params["object_name_param"] = object_name
 
+            # Generate constraint-safe MERGE for both subject and object
+            subject_merge, subject_additional_labels = _get_constraint_safe_merge(
+                subject_labels_cypher, "subject_name_param", "s"
+            )
+            object_merge, object_additional_labels = _get_constraint_safe_merge(
+                object_labels_cypher, "object_name_param", "o"
+            )
+
+            # Combine ON CREATE SET clauses for both nodes
+            subject_create_sets = "s.created_ts = timestamp()"
+            if subject_additional_labels:
+                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
+                subject_create_sets += ", " + ", ".join(label_clauses)
+
+            object_create_sets = "o.created_ts = timestamp()"
+            if object_additional_labels:
+                label_clauses = [f"o:`{label}`" for label in object_additional_labels]
+                object_create_sets += ", " + ", ".join(label_clauses)
+
             query = f"""
-            MERGE (s{subject_labels_cypher} {{name: $subject_name_param}})
-                ON CREATE SET s.created_ts = timestamp()
-            MERGE (o{object_labels_cypher} {{name: $object_name_param}})
-                ON CREATE SET o.created_ts = timestamp()
+            {subject_merge}
+                ON CREATE SET {subject_create_sets}
+            {object_merge}
+                ON CREATE SET {object_create_sets}
 
             MERGE (s)-[r:DYNAMIC_REL]->(o)
                 ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
@@ -742,9 +1403,18 @@ async def add_kg_triples_batch_to_db(
 
     try:
         await neo4j_manager.execute_cypher_batch(statements_with_params)
-        logger.info(
-            f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements."
-        )
+
+        # Log validation statistics
+        if constraint_validation_enabled:
+            logger.info(
+                f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements. "
+                f"Constraint validation stats: {validation_stats['accepted']}/{validation_stats['total']} accepted, "
+                f"{validation_stats['corrected']} corrected, {validation_stats['rejected']} rejected."
+            )
+        else:
+            logger.info(
+                f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements."
+            )
     except Exception as e:
         # Log first few problematic params for debugging, if any
         first_few_params_str = (
@@ -1247,28 +1917,45 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
 @alru_cache(maxsize=1)
 async def get_defined_node_labels() -> list[str]:
-    """Queries the database for all defined node labels and caches the result."""
+    """
+    Returns canonical node labels from schema constants, enhanced with database labels.
+    Prioritizes schema-defined types for better entity extraction specificity.
+    """
     try:
+        # Start with our canonical schema labels
+        from kg_constants import NODE_LABELS
+
+        schema_labels = sorted(list(NODE_LABELS))
+
+        # Also get any additional labels from database (for backward compatibility)
         results = await neo4j_manager.execute_read_query("CALL db.labels() YIELD label")
-        # Filter out internal labels
-        labels = [
+        db_labels = [
             r["label"]
             for r in results
-            if r.get("label") and not r["label"].startswith("_")
+            if r.get("label")
+            and not r["label"].startswith("_")
+            and r["label"] not in NODE_LABELS
         ]
-        # Validate labels against schema
-        errors = validate_node_labels(labels)
+
+        # Combine schema labels (priority) + database labels (backward compatibility)
+        all_labels = schema_labels + sorted(db_labels)
+
+        # Validate combined labels
+        errors = validate_node_labels(all_labels)
         if errors:
             logger.warning("Invalid node labels found: %s", errors)
-        return labels
+
+        return all_labels
     except Exception:
-        logger.error("Failed to query defined node labels from Neo4j.", exc_info=True)
+        logger.error("Failed to load defined node labels.", exc_info=True)
         # Fallback to constants if DB query fails
-        labels = list(config.NODE_LABELS)
+        from kg_constants import NODE_LABELS
+
+        labels = sorted(list(NODE_LABELS))
         # Validate labels against schema
         errors = validate_node_labels(labels)
         if errors:
-            logger.warning("Invalid node labels in config: %s", errors)
+            logger.warning("Fallback node labels validation errors: %s", errors)
         return labels
 
 
@@ -1692,11 +2379,29 @@ async def create_contextual_relationship(
     element2: dict[str, Any],
     relationship_type: str = "CONTEXTUALLY_RELATED",
 ) -> None:
-    """Create a contextual relationship between two elements."""
-    query = """
+    """Create a contextual relationship between two elements with constraint validation."""
+    # Get node types for validation
+    element1_type = element1.get("type", "Entity")
+    element2_type = element2.get("type", "Entity")
+
+    # Validate the relationship using constraint system
+    validated_relationship = await validate_single_relationship(
+        element1_type, relationship_type, element2_type
+    )
+
+    if not validated_relationship:
+        logger.warning(
+            f"Skipping invalid contextual relationship: "
+            f"{element1_type}:{element1.get('name')} | {relationship_type} | "
+            f"{element2_type}:{element2.get('name')}"
+        )
+        return
+
+    # Use the validated relationship type (may have been corrected)
+    query = f"""
     MATCH (e1), (e2)
     WHERE e1.id = $element1_id AND e2.id = $element2_id
-    MERGE (e1)-[r:CONTEXTUALLY_RELATED]->(e2)
+    MERGE (e1)-[r:{validated_relationship}]->(e2)
     SET r.created_by = 'bootstrap_healing',
         r.created_ts = timestamp(),
         r.confidence = 0.6
@@ -1704,8 +2409,64 @@ async def create_contextual_relationship(
     try:
         params = {"element1_id": element1.get("id"), "element2_id": element2.get("id")}
         await neo4j_manager.execute_write_query(query, params)
-        logger.info(
-            f"Created contextual relationship between '{element1.get('name')}' and '{element2.get('name')}'"
-        )
+
+        if validated_relationship != relationship_type:
+            logger.info(
+                f"Created validated relationship (corrected from {relationship_type} to {validated_relationship}) "
+                f"between '{element1.get('name')}' and '{element2.get('name')}'"
+            )
+        else:
+            logger.info(
+                f"Created contextual relationship between '{element1.get('name')}' and '{element2.get('name')}'"
+            )
     except Exception as e:
         logger.error(f"Error creating contextual relationship: {e}", exc_info=True)
+
+
+async def validate_single_relationship(
+    subject_type: str, relationship_type: str, object_type: str
+) -> str | None:
+    """
+    Validate a single relationship and return the corrected relationship type if valid.
+
+    Args:
+        subject_type: Type of the subject node
+        relationship_type: Proposed relationship type
+        object_type: Type of the object node
+
+    Returns:
+        Validated relationship type if valid, None if should be rejected
+    """
+    try:
+        # Import here to avoid circular imports
+        from core.relationship_validator import (
+            should_accept_relationship,
+            validate_relationship_constraint,
+        )
+
+        # Validate the relationship
+        validation_result = validate_relationship_constraint(
+            subject_type, relationship_type, object_type
+        )
+
+        # Check if we should accept this relationship (uses configured min confidence)
+        if should_accept_relationship(validation_result):
+            return validation_result.validated_relationship
+        else:
+            logger.debug(
+                f"Relationship validation failed: {subject_type} | {relationship_type} | {object_type}. "
+                f"Errors: {validation_result.errors}"
+            )
+            return None
+
+    except ImportError:
+        # Fallback to basic validation if constraint system is not available
+        logger.debug(
+            "Relationship constraint validation not available - using basic validation"
+        )
+        normalized = validate_relationship_type(relationship_type)
+        return normalized if normalized in VALID_RELATIONSHIP_TYPES else None
+    except Exception as e:
+        logger.error(f"Error in relationship validation: {e}", exc_info=True)
+        # Return the original if validation fails
+        return validate_relationship_type(relationship_type)

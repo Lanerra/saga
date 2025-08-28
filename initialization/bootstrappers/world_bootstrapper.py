@@ -1,3 +1,4 @@
+# initialization/bootstrappers/world_bootstrapper.py
 import asyncio
 from collections.abc import Coroutine
 from typing import Any
@@ -72,7 +73,7 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
                 {
                     "description": "",
                     "source": "bootstrap_placeholder",
-                    "id": f"{utils._normalize_for_id(cat_key)}_{utils._normalize_for_id("")}",
+                    "id": f"{utils._normalize_for_id(cat_key)}_{utils._normalize_for_id('')}",
                 },  # Empty description instead of placeholder
                 allow_empty_name=True,  # Allow empty name during bootstrapping
             )

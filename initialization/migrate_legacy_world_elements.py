@@ -1,3 +1,4 @@
+# initialization/migrate_legacy_world_elements.py
 import asyncio
 import sys
 from pathlib import Path

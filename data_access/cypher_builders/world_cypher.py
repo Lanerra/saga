@@ -1,13 +1,14 @@
+# data_access/cypher_builders/world_cypher.py
 import json
 import logging
 from typing import Any
 
 import config
-from kg_constants import (
+from models import WorldItem
+from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_NODE_CREATED_CHAPTER,
 )
-from models import WorldItem
 
 logger = logging.getLogger(__name__)
 

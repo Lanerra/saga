@@ -12,21 +12,101 @@ KG_IS_PROVISIONAL = "is_provisional"
 
 # Set of known node labels used in the knowledge graph.
 NODE_LABELS = {
-    "Entity",  # Base label for all nodes
-    "NovelInfo",
-    "Chapter",
-    "Character",
-    "WorldElement",
-    "WorldContainer",
-    "PlotPoint",
-    "Trait",
-    "ValueNode",  # For literal-like values that need to be nodes
-    "DevelopmentEvent",
-    "WorldElaborationEvent",
-    "Location",
-    "Faction",
-    "System",  # e.g. Magic System
-    "Lore",
+    # === CORE EXISTING TYPES ===
+    "Entity",  # Base label - all nodes inherit this
+    "NovelInfo",  # Novel metadata
+    "Chapter",  # Chapter entities
+    # === PHYSICAL ENTITIES ===
+    # Living Beings
+    "Character",  # Main story characters (active participants)
+    "Person",  # Historical figures, mentioned people (inactive)
+    "Creature",  # Animals, monsters, non-human beings
+    "Spirit",  # Ghosts, ethereal beings, supernatural entities
+    "Deity",  # Gods, divine beings, worshipped entities
+    # Objects & Items
+    "Object",  # Physical items, tools, weapons
+    "Artifact",  # Special/magical/historical objects
+    "Document",  # Books, scrolls, letters, written records
+    "Item",  # General items (synonym for Object)
+    "Relic",  # Ancient/sacred objects
+    # Locations & Structures
+    "Location",  # General places
+    "Structure",  # Buildings, constructions, man-made locations
+    "Region",  # Large geographical areas, territories
+    "Landmark",  # Notable geographical features
+    "Territory",  # Claimed/controlled areas
+    "Path",  # Roads, routes, passages, connections
+    "Room",  # Interior spaces within structures
+    "Settlement",  # Cities, towns, villages
+    # === ABSTRACT ENTITIES ===
+    "Concept",  # Ideas, philosophies, abstract notions
+    "Law",  # Rules, regulations, natural laws, edicts
+    "Tradition",  # Cultural practices, customs, rituals
+    "Language",  # Languages, dialects, communication systems
+    "Symbol",  # Symbolic representations, emblems, signs
+    "Story",  # Tales, legends, narratives within the narrative
+    "Song",  # Music, ballads, cultural expressions
+    "Dream",  # Dreams, visions, prophecies
+    "Memory",  # Specific memories, recollections
+    "Emotion",  # Emotional states, feelings
+    "Skill",  # Abilities, talents, competencies
+    # === TEMPORAL ENTITIES ===
+    "Event",  # Historical events, battles, ceremonies
+    "Era",  # Time periods, ages, epochs
+    "Timeline",  # Temporal sequences, chronologies
+    "DevelopmentEvent",  # Character development events (existing)
+    "WorldElaborationEvent",  # World expansion events (existing)
+    "Season",  # Natural cycles, recurring periods
+    "Moment",  # Specific points in time, instances
+    # === ORGANIZATIONAL ENTITIES ===
+    "Faction",  # Political groups, organizations with agendas
+    "Organization",  # Generic organizations, institutions
+    "Role",  # Positions, titles, functions within organizations
+    "Rank",  # Hierarchical positions, military ranks
+    "Guild",  # Professional organizations, trade groups
+    "House",  # Noble houses, family organizations
+    "Order",  # Religious or knightly orders
+    "Council",  # Governing bodies, decision-making groups
+    # === SYSTEM ENTITIES ===
+    "System",  # General systems, frameworks
+    "Magic",  # Magical systems, schools of magic
+    "Technology",  # Technological systems, innovations
+    "Religion",  # Religious systems, belief structures
+    "Culture",  # Cultural systems, way of life
+    "Education",  # Learning systems, schools, curricula
+    "Government",  # Governing systems, political structures
+    "Economy",  # Economic systems, trade networks
+    # === RESOURCE ENTITIES ===
+    "Resource",  # Materials, natural resources, commodities
+    "Currency",  # Money, trade systems, units of value
+    "Trade",  # Economic relationships, trade routes
+    "Food",  # Consumable resources, sustenance
+    "Material",  # Building materials, crafting components
+    "Energy",  # Power sources, magical energy, fuel
+    # === INFORMATION ENTITIES ===
+    "Lore",  # Myths, legends, historical knowledge
+    "Knowledge",  # Specific knowledge, information, data
+    "Secret",  # Hidden information, classified knowledge
+    "Rumor",  # Unconfirmed information, gossip
+    "News",  # Current information, recent events
+    "Message",  # Communications, signals, transmissions
+    "ValueNode",  # Literal values, data (existing)
+    "Record",  # Official records, documentation
+    # === QUALITY ENTITIES ===
+    "Trait",  # Character traits, personality aspects (existing)
+    "Attribute",  # Physical or mental attributes
+    "Quality",  # Characteristics, properties
+    "Reputation",  # Social standing, renown
+    "Status",  # Current state, condition
+    # === CONTAINER ENTITIES ===
+    "WorldContainer",  # Containers for world elements (existing)
+    "PlotPoint",  # Plot/story points (existing)
+    "Collection",  # Groups of related items
+    "Archive",  # Storage of documents/information
+    "Treasury",  # Storage of valuable resources
+    "Library",  # Collection of documents/knowledge
+    # === LEGACY SUPPORT ===
+    "WorldElement",  # Legacy type - being phased out
 }
 
 
@@ -106,6 +186,7 @@ POSSESSION_RELATIONSHIPS = {
     "OWNS",  # Legal/practical ownership
     "POSSESSES",  # Physical possession
     "CREATED_BY",  # Creator relationship
+    "CREATES",  # Active creation (inverse of CREATED_BY)
     "INHERITED_FROM",  # Inheritance
     "STOLEN_FROM",  # Theft relationship
     "GIVEN_BY",  # Gift relationship
@@ -170,6 +251,61 @@ STATUS_RELATIONSHIPS = {
     "IS_INACTIVE",  # Inactivity state
 }
 
+# Information and Recording Relationships
+INFORMATION_RELATIONSHIPS = {
+    "RECORDS",  # Recording or documenting information
+    "PRESERVES",  # Preservation or archival relationship
+    "HAS_METADATA",  # Contains metadata or descriptive information
+}
+
+# Usage and Accessibility Relationships
+USAGE_RELATIONSHIPS = {
+    "ACCESSIBLE_BY",  # Accessibility relationship
+    "USED_IN",  # Usage in events or contexts
+    "TARGETS",  # Targeting or directing toward something
+}
+
+# Communication and Display Relationships
+COMMUNICATION_RELATIONSHIPS = {
+    "DISPLAYS",  # Display or presentation of information
+    "SPOKEN_BY",  # Communication originating from sentient beings
+    "EMITS",  # Emission of energy, sound, or information
+}
+
+# Operational Relationships
+OPERATIONAL_RELATIONSHIPS = {
+    "EMPLOYS",  # Employment or hiring relationship
+    "CONTROLS",  # Control or management relationship
+    "REQUIRES",  # Dependency or requirement relationship
+}
+
+# Enhanced Temporal and State Relationships
+ENHANCED_TEMPORAL_RELATIONSHIPS = {
+    "REPLACED_BY",  # Replacement or succession relationship
+    "LINKED_TO",  # Connection or linkage relationship
+}
+
+# Status and State Change Relationships
+STATUS_CHANGE_RELATIONSHIPS = {
+    "WAS_REPLACED_BY",  # Past replacement relationship
+    "CHARACTERIZED_BY",  # Characterized or defined by traits
+    "IS_NOW",  # Current role or status
+    "IS_NO_LONGER",  # Former role or status
+    "DIFFERS_FROM",  # Difference or distinction relationship
+}
+
+# Special Action Relationships
+SPECIAL_ACTION_RELATIONSHIPS = {
+    "WHISPERS",  # Quiet communication
+    "WORE",  # Past wearing/carrying
+    "DEPRECATED",  # Marked as obsolete
+}
+
+# Enhanced Association Relationships
+ENHANCED_ASSOCIATION_RELATIONSHIPS = {
+    "ASSOCIATED_WITH",  # General association relationship
+}
+
 # Combine all relationship categories
 RELATIONSHIP_TYPES = (
     STRUCTURAL_RELATIONSHIPS
@@ -183,6 +319,14 @@ RELATIONSHIP_TYPES = (
     | THEMATIC_RELATIONSHIPS
     | ABILITY_RELATIONSHIPS
     | STATUS_RELATIONSHIPS
+    | INFORMATION_RELATIONSHIPS
+    | USAGE_RELATIONSHIPS
+    | COMMUNICATION_RELATIONSHIPS
+    | OPERATIONAL_RELATIONSHIPS
+    | ENHANCED_TEMPORAL_RELATIONSHIPS
+    | STATUS_CHANGE_RELATIONSHIPS
+    | SPECIAL_ACTION_RELATIONSHIPS
+    | ENHANCED_ASSOCIATION_RELATIONSHIPS
 )
 
 # Relationship category mapping for validation and normalization
@@ -198,6 +342,14 @@ RELATIONSHIP_CATEGORIES = {
     "thematic": THEMATIC_RELATIONSHIPS,
     "ability": ABILITY_RELATIONSHIPS,
     "status": STATUS_RELATIONSHIPS,
+    "information": INFORMATION_RELATIONSHIPS,
+    "usage": USAGE_RELATIONSHIPS,
+    "communication": COMMUNICATION_RELATIONSHIPS,
+    "operational": OPERATIONAL_RELATIONSHIPS,
+    "enhanced_temporal": ENHANCED_TEMPORAL_RELATIONSHIPS,
+    "status_change": STATUS_CHANGE_RELATIONSHIPS,
+    "special_action": SPECIAL_ACTION_RELATIONSHIPS,
+    "enhanced_association": ENHANCED_ASSOCIATION_RELATIONSHIPS,
 }
 
 # Common relationship variations that should be normalized
@@ -265,6 +417,43 @@ RELATIONSHIP_NORMALIZATIONS = {
     "hinders": "PREVENTS",
     "destroys": "DESTROYED_BY",
     "ruins": "DESTROYED_BY",
+    # New relationship normalizations
+    "shows": "DISPLAYS",
+    "presents": "DISPLAYS",
+    "reveals": "DISPLAYS",
+    "said_by": "SPOKEN_BY",
+    "uttered_by": "SPOKEN_BY",
+    "voiced_by": "SPOKEN_BY",
+    "radiates": "EMITS",
+    "sends_out": "EMITS",
+    "produces": "EMITS",
+    "hires": "EMPLOYS",
+    "takes_on": "EMPLOYS",
+    "manages": "CONTROLS",
+    "operates": "CONTROLS",
+    "commands": "CONTROLS",
+    "needs": "REQUIRES",
+    "depends_on": "REQUIRES",
+    "substituted_by": "REPLACED_BY",
+    "succeeded_by": "REPLACED_BY",
+    "connected_to": "LINKED_TO",
+    "joined_to": "LINKED_TO",
+    "related_to": "ASSOCIATED_WITH",
+    "affiliated_with": "ASSOCIATED_WITH",
+    # Information relationship normalizations
+    "documents": "RECORDS",
+    "logs": "RECORDS",
+    "saves": "PRESERVES",
+    "keeps": "PRESERVES",
+    "contains_info": "HAS_METADATA",
+    "describes": "HAS_METADATA",
+    # Usage relationship normalizations
+    "used_by": "ACCESSIBLE_BY",
+    "available_to": "ACCESSIBLE_BY",
+    "applied_in": "USED_IN",
+    "utilized_in": "USED_IN",
+    "aims_at": "TARGETS",
+    "directed_at": "TARGETS",
     # Generic fallbacks - these should be used sparingly
     "is_a": "IS_A",  # Only for true type relationships
     "part_of": "PART_OF",

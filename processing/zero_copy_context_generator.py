@@ -14,7 +14,7 @@ import config
 from core.db_manager import neo4j_manager
 from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
 from models import SceneDetail
-from prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
+from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
 
 logger = logging.getLogger(__name__)
 

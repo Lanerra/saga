@@ -1,3 +1,4 @@
+# processing/text_deduplicator.py
 """Utilities for detecting and removing duplicate text segments."""
 
 from __future__ import annotations

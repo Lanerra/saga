@@ -1,3 +1,4 @@
+# tests/test_initial_setup_logic.py
 import json
 from unittest.mock import AsyncMock, patch
 

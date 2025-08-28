@@ -1,11 +1,12 @@
+# core/db_manager.py
 # core_db/base_db_manager.py
 import logging
 from typing import Any
 
 import numpy as np
+from kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
 
 import config
-from kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
 from neo4j import (  # type: ignore
     AsyncDriver,
     AsyncGraphDatabase,
