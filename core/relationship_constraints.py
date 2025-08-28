@@ -9,7 +9,7 @@ preventing semantically invalid connections like "Mountain LOVES River" or "Swor
 import logging
 from typing import Any
 
-from kg_constants import NODE_LABELS
+from models.kg_constants import NODE_LABELS
 
 logger = logging.getLogger(__name__)
 

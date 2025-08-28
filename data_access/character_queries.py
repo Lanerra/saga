@@ -3,7 +3,7 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore
-from kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
+from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
 import config
 import utils

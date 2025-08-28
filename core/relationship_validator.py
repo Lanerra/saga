@@ -9,7 +9,7 @@ pipeline to validate relationship semantics before they are stored in the databa
 import logging
 from typing import Any
 
-import kg_constants
+import models.kg_constants
 
 import config
 from core.relationship_constraints import (
@@ -236,7 +236,7 @@ class RelationshipConstraintValidator:
             for candidate in valid_relationships:
                 if (
                     candidate
-                    in kg_constants.RELATIONSHIP_CATEGORIES[predicate_category]
+                    in models.kg_constants.RELATIONSHIP_CATEGORIES[predicate_category]
                 ):
                     return candidate
 
@@ -244,7 +244,7 @@ class RelationshipConstraintValidator:
 
     def _get_relationship_category(self, relationship: str) -> str | None:
         """Determine which category a relationship belongs to."""
-        for category, relationships in kg_constants.RELATIONSHIP_CATEGORIES.items():
+        for category, relationships in models.kg_constants.RELATIONSHIP_CATEGORIES.items():
             if relationship in relationships:
                 return category
         return None
@@ -277,7 +277,7 @@ class RelationshipConstraintValidator:
                 object_type = object_info.get("type", "Entity")
 
             # Handle invalid node types gracefully
-            if subject_type not in kg_constants.NODE_LABELS:
+            if subject_type not in models.kg_constants.NODE_LABELS:
                 # Try to infer a better type or default to Entity
                 if "literal" in subject_type.lower() or "value" in subject_type.lower():
                     subject_type = "ValueNode"
@@ -286,7 +286,7 @@ class RelationshipConstraintValidator:
                 else:
                     subject_type = "Entity"
 
-            if object_type not in kg_constants.NODE_LABELS:
+            if object_type not in models.kg_constants.NODE_LABELS:
                 if "literal" in object_type.lower() or "value" in object_type.lower():
                     object_type = "ValueNode"
                 elif "response" in object_type.lower():

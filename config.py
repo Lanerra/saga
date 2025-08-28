@@ -231,16 +231,30 @@ class SagaSettings(BaseSettings):
 
     # Relationship Constraint Configuration
     ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
-    RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = 0.2  # Lower threshold to accept more corrections
-    RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = False  # If True, rejects invalid relationships; if False, uses fallbacks
+    RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = (
+        0.2  # Lower threshold to accept more corrections
+    )
+    RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = (
+        False  # If True, rejects invalid relationships; if False, uses fallbacks
+    )
     RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS: bool = True
-    RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = True  # Allow automatic corrections of relationship types
+    RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = (
+        True  # Allow automatic corrections of relationship types
+    )
 
     # Enhanced Node Type Configuration
-    ENABLE_ENHANCED_NODE_TYPES: bool = True  # Use enhanced specific node types instead of generic ones
-    AUTO_MIGRATE_WORLD_ELEMENTS: bool = True  # Automatically upgrade WorldElement nodes to specific types
-    USE_HIERARCHICAL_TYPES: bool = True  # Use hierarchical type system with semantic categories
-    NODE_TYPE_INFERENCE_ENABLED: bool = True  # Enable automatic type inference from entity names/categories
+    ENABLE_ENHANCED_NODE_TYPES: bool = (
+        True  # Use enhanced specific node types instead of generic ones
+    )
+    AUTO_MIGRATE_WORLD_ELEMENTS: bool = (
+        True  # Automatically upgrade WorldElement nodes to specific types
+    )
+    USE_HIERARCHICAL_TYPES: bool = (
+        True  # Use hierarchical type system with semantic categories
+    )
+    NODE_TYPE_INFERENCE_ENABLED: bool = (
+        True  # Enable automatic type inference from entity names/categories
+    )
 
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
@@ -445,12 +459,12 @@ REVISION_EVALUATION_THRESHOLD = 0.85
 BOOTSTRAP_INTEGRATION_ENABLED: bool = True
 BOOTSTRAP_INTEGRATION_CHAPTERS: int = 1
 MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 4  # Limit to prevent prompt bloat
-BOOTSTRAP_HEALING_LIMIT: int = 6  # Max orphaned elements to heal per cycle
+BOOTSTRAP_HEALING_LIMIT: int = 4  # Max orphaned elements to heal per cycle
 
 # Context Selection Settings (Phase 1.1: Balanced Context Selection)
 EARLY_CHAPTER_BALANCED_SELECTION: bool = False  # Use balanced char selection
 PROTAGONIST_PRIORITY_START_CHAPTER: int = (
-    4  # When to start protagonist-priority selection
+    3  # When to start protagonist-priority selection
 )
 
 # Duplicate Prevention Settings

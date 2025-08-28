@@ -67,7 +67,7 @@ class RichDisplayManager:
             self.live = Live(
                 Panel(
                     self.group,
-                    title="SAGA NANA Progress",
+                    title="SAGA SAGA Progress",
                     border_style="blue",
                     expand=True,
                 ),

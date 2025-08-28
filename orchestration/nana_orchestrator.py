@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 class NANA_Orchestrator:
     def __init__(self):
-        logger.info("Initializing NANA Orchestrator...")
+        logger.info("Initializing SAGA Orchestrator...")
         self.narrative_agent = NarrativeAgent(config)
         self.revision_agent = RevisionAgent()
         self.knowledge_agent = KnowledgeAgent()
@@ -75,7 +75,7 @@ class NANA_Orchestrator:
         self.display = RichDisplayManager()
         self.run_start_time: float = 0.0
         utils.load_spacy_model_if_needed()
-        logger.info("NANA Orchestrator initialized.")
+        logger.info("SAGA Orchestrator initialized.")
 
     def _update_rich_display(
         self, chapter_num: int | None = None, step: str | None = None
@@ -156,7 +156,7 @@ class NANA_Orchestrator:
             logger.error("Failed to refresh plot outline from DB: %s", result)
 
     async def async_init_orchestrator(self):
-        logger.info("NANA Orchestrator async_init_orchestrator started...")
+        logger.info("SAGA Orchestrator async_init_orchestrator started...")
         self._update_rich_display(step="Initializing Orchestrator")
         self.chapter_count = await chapter_queries.load_chapter_count_from_db()
         logger.info(f"Loaded chapter count from Neo4j: {self.chapter_count}")
@@ -182,12 +182,12 @@ class NANA_Orchestrator:
             )
 
         self._update_novel_props_cache()
-        logger.info("NANA Orchestrator async_init_orchestrator complete.")
+        logger.info("SAGA Orchestrator async_init_orchestrator complete.")
         self._update_rich_display(step="Orchestrator Initialized")
 
     async def perform_initial_setup(self):
         self._update_rich_display(step="Performing Initial Setup")
-        logger.info("NANA performing initial setup...")
+        logger.info("SAGA performing initial setup...")
         (
             self.plot_outline,
             character_profiles,
@@ -212,11 +212,11 @@ class NANA_Orchestrator:
 
     async def _prepopulate_kg_if_needed(self):
         self._update_rich_display(step="Pre-populating KG (if needed)")
-        logger.info("NANA: Checking if KG pre-population is needed...")
+        logger.info("SAGA: Checking if KG pre-population is needed...")
 
         plot_source = self.plot_outline.get("source", "")
         logger.info(
-            f"\n--- NANA: Pre-populating Knowledge Graph from Initial Data (Plot Source: '{plot_source}') ---"
+            f"\n--- SAGA: Pre-populating Knowledge Graph from Initial Data (Plot Source: '{plot_source}') ---"
         )
 
         profile_objs: dict[
@@ -339,7 +339,7 @@ class NANA_Orchestrator:
     async def perform_deduplication(
         self, text_to_dedup: str, chapter_number: int
     ) -> tuple[str, int]:
-        logger.info(f"NANA: Performing de-duplication for Chapter {chapter_number}...")
+        logger.info(f"SAGA: Performing de-duplication for Chapter {chapter_number}...")
         if not text_to_dedup or not text_to_dedup.strip():
             logger.info(
                 f"De-duplication for Chapter {chapter_number}: Input text is empty. No action taken."
@@ -475,7 +475,7 @@ class NANA_Orchestrator:
     ) -> tuple[str | None, str | None, list[tuple[int, int]], dict[str, int] | None]:
         if attempt >= config.MAX_REVISION_CYCLES_PER_CHAPTER:
             logger.error(
-                f"NANA: Ch {novel_chapter_number} - Max revision attempts ({config.MAX_REVISION_CYCLES_PER_CHAPTER}) reached."
+                f"SAGA: Ch {novel_chapter_number} - Max revision attempts ({config.MAX_REVISION_CYCLES_PER_CHAPTER}) reached."
             )
             return current_text, None, patched_spans, None
 
@@ -514,7 +514,7 @@ class NANA_Orchestrator:
             return new_text, rev_raw_output, patched_spans
 
         logger.error(
-            f"NANA: Ch {novel_chapter_number} - Revision attempt {attempt} failed to produce usable text."
+            f"SAGA: Ch {novel_chapter_number} - Revision attempt {attempt} failed to produce usable text."
         )
         return current_text, None, patched_spans
 
@@ -531,7 +531,7 @@ class NANA_Orchestrator:
         )
         if plot_point_focus is None:
             logger.error(
-                f"NANA: Ch {novel_chapter_number} prerequisite check failed: no concrete plot point focus (index {plot_point_index})."
+                f"SAGA: Ch {novel_chapter_number} prerequisite check failed: no concrete plot point focus (index {plot_point_index})."
             )
             return None, -1, None, None
 
@@ -599,7 +599,7 @@ class NANA_Orchestrator:
             )
             if plan_problems:
                 logger.warning(
-                    f"NANA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
+                    f"SAGA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
                 )
 
         hybrid_context_for_draft = await generate_hybrid_chapter_context_native(
@@ -608,7 +608,7 @@ class NANA_Orchestrator:
 
         if config.ENABLE_AGENTIC_PLANNING and chapter_plan is None:
             logger.warning(
-                f"NANA: Ch {novel_chapter_number}: Planning Agent failed or plan invalid. Proceeding with plot point focus only."
+                f"SAGA: Ch {novel_chapter_number}: Planning Agent failed or plan invalid. Proceeding with plot point focus only."
             )
         await self._save_debug_output(
             novel_chapter_number,
@@ -658,7 +658,7 @@ class NANA_Orchestrator:
             )
             if not draft_text:
                 logger.error(
-                    f"NANA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
+                    f"SAGA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
                 )
                 await self._save_debug_output(
                     novel_chapter_number,
@@ -684,7 +684,7 @@ class NANA_Orchestrator:
         )
         if not initial_draft_text:
             logger.error(
-                f"NANA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
+                f"SAGA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
             )
             await self._save_debug_output(
                 novel_chapter_number,
@@ -713,7 +713,7 @@ class NANA_Orchestrator:
             and not config.ENABLE_WORLD_CONTINUITY_CHECK
         ):
             logger.info(
-                f"NANA: Ch {novel_chapter_number} - All evaluation agents disabled. Applying de-duplication and finalizing draft."
+                f"SAGA: Ch {novel_chapter_number} - All evaluation agents disabled. Applying de-duplication and finalizing draft."
             )
             self._update_rich_display(
                 step=f"Ch {novel_chapter_number} - Skipping Revisions (disabled)"
@@ -725,7 +725,7 @@ class NANA_Orchestrator:
             is_from_flawed_source_for_kg = removed_char_count > 0
             if is_from_flawed_source_for_kg:
                 logger.info(
-                    f"NANA: Ch {novel_chapter_number} - Text marked as flawed for KG due to de-duplication removing {removed_char_count} characters."
+                    f"SAGA: Ch {novel_chapter_number} - Text marked as flawed for KG due to de-duplication removing {removed_char_count} characters."
                 )
                 await self._save_debug_output(
                     novel_chapter_number,
@@ -749,7 +749,7 @@ class NANA_Orchestrator:
             step=f"Ch {novel_chapter_number} - Post-Draft De-duplication"
         )
         logger.info(
-            f"NANA: Ch {novel_chapter_number} - Applying post-draft de-duplication."
+            f"SAGA: Ch {novel_chapter_number} - Applying post-draft de-duplication."
         )
         (
             deduplicated_text,
@@ -760,7 +760,7 @@ class NANA_Orchestrator:
         if removed_char_count > 0:
             is_from_flawed_source_for_kg = True
             logger.info(
-                f"NANA: Ch {novel_chapter_number} - De-duplication removed {removed_char_count} characters. Text marked as potentially flawed for KG."
+                f"SAGA: Ch {novel_chapter_number} - De-duplication removed {removed_char_count} characters. Text marked as potentially flawed for KG."
             )
             current_text_to_process = deduplicated_text
             await self._save_debug_output(
@@ -770,7 +770,7 @@ class NANA_Orchestrator:
             )
         else:
             logger.info(
-                f"NANA: Ch {novel_chapter_number} - Post-draft de-duplication found no significant changes."
+                f"SAGA: Ch {novel_chapter_number} - Post-draft de-duplication found no significant changes."
             )
 
         revisions_made = 0
@@ -781,7 +781,7 @@ class NANA_Orchestrator:
             attempt = revisions_made + 1
             if current_text_to_process is None:
                 logger.error(
-                    f"NANA: Ch {novel_chapter_number} - Text became None before processing cycle {attempt}. Aborting chapter."
+                    f"SAGA: Ch {novel_chapter_number} - Text became None before processing cycle {attempt}. Aborting chapter."
                 )
                 return None, None, True
             (
@@ -813,7 +813,7 @@ class NANA_Orchestrator:
 
             if continuity_problems:
                 logger.warning(
-                    f"NANA: Ch {novel_chapter_number} (Attempt {attempt}) - Revision Agent found {len(continuity_problems)} issues."
+                    f"SAGA: Ch {novel_chapter_number} (Attempt {attempt}) - Revision Agent found {len(continuity_problems)} issues."
                 )
                 evaluation_result["problems_found"].extend(continuity_problems)
                 if not evaluation_result["needs_revision"]:
@@ -825,7 +825,7 @@ class NANA_Orchestrator:
             needs_revision = evaluation_result["needs_revision"]
             if not needs_revision:
                 logger.info(
-                    f"NANA: Ch {novel_chapter_number} draft passed evaluation (Attempt {attempt}). Text is considered good."
+                    f"SAGA: Ch {novel_chapter_number} draft passed evaluation (Attempt {attempt}). Text is considered good."
                 )
                 self._update_rich_display(
                     step=f"Ch {novel_chapter_number} - Passed Evaluation"
@@ -834,7 +834,7 @@ class NANA_Orchestrator:
             else:
                 is_from_flawed_source_for_kg = True
                 logger.warning(
-                    f"NANA: Ch {novel_chapter_number} draft (Attempt {attempt}) needs revision. Reasons: {'; '.join(evaluation_result.get('reasons', []))}"
+                    f"SAGA: Ch {novel_chapter_number} draft (Attempt {attempt}) needs revision. Reasons: {'; '.join(evaluation_result.get('reasons', []))}"
                 )
                 self._update_rich_display(
                     step=f"Ch {novel_chapter_number} - Revision Attempt {attempt}"
@@ -865,7 +865,7 @@ class NANA_Orchestrator:
                         )
                         if similarity > config.REVISION_SIMILARITY_ACCEPTANCE:
                             logger.warning(
-                                f"NANA: Ch {novel_chapter_number} revision attempt {attempt} produced text too similar to previous (score: {similarity:.4f}). Stopping revisions."
+                                f"SAGA: Ch {novel_chapter_number} revision attempt {attempt} produced text too similar to previous (score: {similarity:.4f}). Stopping revisions."
                             )
                             current_text_to_process = new_text
                             current_raw_llm_output = (
@@ -875,7 +875,7 @@ class NANA_Orchestrator:
                     current_text_to_process = new_text
                     current_raw_llm_output = rev_raw_output or current_raw_llm_output
                     logger.info(
-                        f"NANA: Ch {novel_chapter_number} - Revision attempt {attempt} successful. New text length: {len(current_text_to_process)}. Re-evaluating."
+                        f"SAGA: Ch {novel_chapter_number} - Revision attempt {attempt} successful. New text length: {len(current_text_to_process)}. Re-evaluating."
                     )
                     await self._save_debug_output(
                         novel_chapter_number,
@@ -885,7 +885,7 @@ class NANA_Orchestrator:
                     revisions_made += 1
                 else:
                     logger.error(
-                        f"NANA: Ch {novel_chapter_number} - Revision attempt {attempt} failed to produce usable text. Proceeding with previous draft, marked as flawed."
+                        f"SAGA: Ch {novel_chapter_number} - Revision attempt {attempt} failed to produce usable text. Proceeding with previous draft, marked as flawed."
                     )
                     self._update_rich_display(
                         step=f"Ch {novel_chapter_number} - Revision Failed (Flawed)"
@@ -893,7 +893,7 @@ class NANA_Orchestrator:
                     break
         if current_text_to_process is None:
             logger.critical(
-                f"NANA: Ch {novel_chapter_number} - current_text_to_process is None after revision loop. Aborting chapter."
+                f"SAGA: Ch {novel_chapter_number} - current_text_to_process is None after revision loop. Aborting chapter."
             )
             return None, None, True
 
@@ -902,7 +902,7 @@ class NANA_Orchestrator:
         )
         if removed_after_rev > 0:
             logger.info(
-                f"NANA: Ch {novel_chapter_number} - De-duplication after revisions removed {removed_after_rev} characters."
+                f"SAGA: Ch {novel_chapter_number} - De-duplication after revisions removed {removed_after_rev} characters."
             )
             current_text_to_process = dedup_text_after_rev
             is_from_flawed_source_for_kg = True
@@ -914,7 +914,7 @@ class NANA_Orchestrator:
 
         if len(current_text_to_process) < config.MIN_ACCEPTABLE_DRAFT_LENGTH:
             logger.warning(
-                f"NANA: Final chosen text for Ch {novel_chapter_number} is short ({len(current_text_to_process)} chars). Marked as flawed for KG."
+                f"SAGA: Final chosen text for Ch {novel_chapter_number} is short ({len(current_text_to_process)} chars). Marked as flawed for KG."
             )
             is_from_flawed_source_for_kg = True
 
@@ -993,7 +993,7 @@ class NANA_Orchestrator:
 
         if result.get("embedding") is None:
             logger.error(
-                "NANA CRITICAL: Failed to generate embedding for final text of Chapter %s. Text saved to file system only.",
+                "SAGA CRITICAL: Failed to generate embedding for final text of Chapter %s. Text saved to file system only.",
                 novel_chapter_number,
             )
             await self._save_chapter_text_and_log(
@@ -1021,7 +1021,7 @@ class NANA_Orchestrator:
             or not self.plot_outline.get("protagonist_name")
         ):
             logger.error(
-                f"NANA: Cannot write Ch {novel_chapter_number}: Plot outline or critical plot data missing."
+                f"SAGA: Cannot write Ch {novel_chapter_number}: Plot outline or critical plot data missing."
             )
             self._update_rich_display(
                 step=f"Ch {novel_chapter_number} Failed - Missing Plot Outline"
@@ -1097,14 +1097,14 @@ class NANA_Orchestrator:
                 else "Generated (Marked with Flaws)"
             )
             logger.info(
-                f"=== NANA: Finished Novel Chapter {novel_chapter_number} - {status_message} ==="
+                f"=== SAGA: Finished Novel Chapter {novel_chapter_number} - {status_message} ==="
             )
             self._update_rich_display(
                 step=f"Ch {novel_chapter_number} - {status_message}"
             )
         else:
             logger.error(
-                f"=== NANA: Failed Novel Chapter {novel_chapter_number} - Finalization/Save Error ==="
+                f"=== SAGA: Failed Novel Chapter {novel_chapter_number} - Finalization/Save Error ==="
             )
             self._update_rich_display(
                 step=f"Ch {novel_chapter_number} Failed - Finalization Error"
@@ -1137,13 +1137,13 @@ class NANA_Orchestrator:
 
         if missing_or_empty_configs:
             logger.critical(
-                f"NANA CRITICAL CONFIGURATION ERROR: The following critical configuration(s) are missing or empty: {', '.join(missing_or_empty_configs)}. Please set them (e.g., in .env file or environment variables) and restart."
+                f"SAGA CRITICAL CONFIGURATION ERROR: The following critical configuration(s) are missing or empty: {', '.join(missing_or_empty_configs)}. Please set them (e.g., in .env file or environment variables) and restart."
             )
             return False
 
         if config.EXPECTED_EMBEDDING_DIM <= 0:
             logger.critical(
-                f"NANA CRITICAL CONFIGURATION ERROR: EXPECTED_EMBEDDING_DIM must be a positive integer, but is {config.EXPECTED_EMBEDDING_DIM}."
+                f"SAGA CRITICAL CONFIGURATION ERROR: EXPECTED_EMBEDDING_DIM must be a positive integer, but is {config.EXPECTED_EMBEDDING_DIM}."
             )
             return False
 
@@ -1151,7 +1151,7 @@ class NANA_Orchestrator:
         return True
 
     async def run_novel_generation_loop(self):
-        logger.info("--- NANA: Starting Novel Generation Run ---")
+        logger.info("--- SAGA: Starting Novel Generation Run ---")
 
         if not self._validate_critical_configs():
             self._update_rich_display(step="Critical Config Error - Halting")
@@ -1163,10 +1163,10 @@ class NANA_Orchestrator:
         try:
             await neo4j_manager.connect()
             await neo4j_manager.create_db_schema()
-            logger.info("NANA: Neo4j connection and schema verified.")
+            logger.info("SAGA: Neo4j connection and schema verified.")
 
             await self.knowledge_agent.load_schema_from_db()
-            logger.info("NANA: KG schema loaded into knowledge agent.")
+            logger.info("SAGA: KG schema loaded into knowledge agent.")
 
             await self.async_init_orchestrator()
 
@@ -1189,17 +1189,17 @@ class NANA_Orchestrator:
                 or utils._is_fill_in(self.plot_outline.get("title"))
             ):
                 logger.info(
-                    "NANA: Core plot data missing or insufficient (e.g., no title, no concrete plot points). Performing initial setup..."
+                    "SAGA: Core plot data missing or insufficient (e.g., no title, no concrete plot points). Performing initial setup..."
                 )
                 if not await self.perform_initial_setup():
-                    logger.critical("NANA: Initial setup failed. Halting generation.")
+                    logger.critical("SAGA: Initial setup failed. Halting generation.")
                     self._update_rich_display(step="Initial Setup Failed - Halting")
                     return
                 self._update_novel_props_cache()
 
             # KG pre-population handled within run_genesis_phase
 
-            logger.info("\n--- NANA: Starting Novel Writing Process ---")
+            logger.info("\n--- SAGA: Starting Novel Writing Process ---")
 
             plot_points_raw = self.plot_outline.get("plot_points", [])
             if isinstance(plot_points_raw, list):
@@ -1224,13 +1224,13 @@ class NANA_Orchestrator:
             )
 
             logger.info(
-                f"NANA: Current Novel Chapter Count (State): {self.chapter_count}"
+                f"SAGA: Current Novel Chapter Count (State): {self.chapter_count}"
             )
             logger.info(
-                f"NANA: Total Concrete Plot Points in Outline: {total_concrete_plot_points}"
+                f"SAGA: Total Concrete Plot Points in Outline: {total_concrete_plot_points}"
             )
             logger.info(
-                f"NANA: Remaining Concrete Plot Points to Cover in Novel: {remaining_plot_points_to_address_in_novel}"
+                f"SAGA: Remaining Concrete Plot Points to Cover in Novel: {remaining_plot_points_to_address_in_novel}"
             )
 
             if remaining_plot_points_to_address_in_novel <= 0:
@@ -1238,7 +1238,7 @@ class NANA_Orchestrator:
                 await self.refresh_plot_outline()
 
             logger.info(
-                f"NANA: Starting dynamic chapter loop (max {config.CHAPTERS_PER_RUN} chapter(s) this run)."
+                f"SAGA: Starting dynamic chapter loop (max {config.CHAPTERS_PER_RUN} chapter(s) this run)."
             )
 
             chapters_successfully_written_this_run = 0
@@ -1296,7 +1296,7 @@ class NANA_Orchestrator:
                     )
                     if remaining_plot_points_to_address_in_novel <= 0:
                         logger.info(
-                            "NANA: No plot points available after generation. Ending run early."
+                            "SAGA: No plot points available after generation. Ending run early."
                         )
                         break
 
@@ -1314,7 +1314,7 @@ class NANA_Orchestrator:
                     )
 
                 logger.info(
-                    f"\n--- NANA: Attempting Novel Chapter {current_novel_chapter_number} (attempt {attempts_this_run + 1}/{config.CHAPTERS_PER_RUN}) ---"
+                    f"\n--- SAGA: Attempting Novel Chapter {current_novel_chapter_number} (attempt {attempts_this_run + 1}/{config.CHAPTERS_PER_RUN}) ---"
                 )
                 self._update_rich_display(
                     chapter_num=current_novel_chapter_number,
@@ -1328,7 +1328,7 @@ class NANA_Orchestrator:
                     if chapter_text_result:
                         chapters_successfully_written_this_run += 1
                         logger.info(
-                            f"NANA: Novel Chapter {current_novel_chapter_number}: Processed. Final text length: {len(chapter_text_result)} chars."
+                            f"SAGA: Novel Chapter {current_novel_chapter_number}: Processed. Final text length: {len(chapter_text_result)} chars."
                         )
                         logger.info(
                             f"   Snippet: {chapter_text_result[:200].replace(chr(10), ' ')}..."
@@ -1341,7 +1341,7 @@ class NANA_Orchestrator:
                             == 0
                         ):
                             logger.info(
-                                f"\n--- NANA: Triggering KG Healing/Enrichment after Chapter {current_novel_chapter_number} ---"
+                                f"\n--- SAGA: Triggering KG Healing/Enrichment after Chapter {current_novel_chapter_number} ---"
                             )
                             self._update_rich_display(
                                 step=f"Ch {current_novel_chapter_number} - KG Maintenance"
@@ -1349,11 +1349,11 @@ class NANA_Orchestrator:
                             await self.knowledge_agent.heal_and_enrich_kg()
                             await self.refresh_plot_outline()
                             logger.info(
-                                "--- NANA: KG Healing/Enrichment cycle complete. ---"
+                                "--- SAGA: KG Healing/Enrichment cycle complete. ---"
                             )
                     else:
                         logger.error(
-                            f"NANA: Novel Chapter {current_novel_chapter_number}: Failed to generate or save. Halting run."
+                            f"SAGA: Novel Chapter {current_novel_chapter_number}: Failed to generate or save. Halting run."
                         )
                         self._update_rich_display(
                             step=f"Ch {current_novel_chapter_number} Failed - Halting Run"
@@ -1361,7 +1361,7 @@ class NANA_Orchestrator:
                         break
                 except Exception as e:
                     logger.critical(
-                        f"NANA: Critical unhandled error during Novel Chapter {current_novel_chapter_number} writing process: {e}",
+                        f"SAGA: Critical unhandled error during Novel Chapter {current_novel_chapter_number} writing process: {e}",
                         exc_info=True,
                     )
                     self._update_rich_display(
@@ -1374,12 +1374,12 @@ class NANA_Orchestrator:
             final_chapter_count_from_db = (
                 await chapter_queries.load_chapter_count_from_db()
             )
-            logger.info("\n--- NANA: Novel writing process finished for this run ---")
+            logger.info("\n--- SAGA: Novel writing process finished for this run ---")
             logger.info(
-                f"NANA: Successfully processed {chapters_successfully_written_this_run} chapter(s) in this run."
+                f"SAGA: Successfully processed {chapters_successfully_written_this_run} chapter(s) in this run."
             )
             logger.info(
-                f"NANA: Current total chapters in database after this run: {final_chapter_count_from_db}"
+                f"SAGA: Current total chapters in database after this run: {final_chapter_count_from_db}"
             )
 
             self._update_rich_display(
@@ -1388,18 +1388,18 @@ class NANA_Orchestrator:
 
         except Exception as e:
             logger.critical(
-                f"NANA: Unhandled exception in orchestrator main loop: {e}",
+                f"SAGA: Unhandled exception in orchestrator main loop: {e}",
                 exc_info=True,
             )
             self._update_rich_display(step="Critical Error in Main Loop")
         finally:
             await self.display.stop()
             await neo4j_manager.close()
-            logger.info("NANA: Neo4j driver successfully closed on application exit.")
+            logger.info("SAGA: Neo4j driver successfully closed on application exit.")
 
     async def run_ingestion_process(self, text_file: str) -> None:
         """Ingest existing text and populate the knowledge graph."""
-        logger.info("--- NANA: Starting Ingestion Process ---")
+        logger.info("--- SAGA: Starting Ingestion Process ---")
 
         if not self._validate_critical_configs():
             await self.display.stop()
@@ -1452,7 +1452,7 @@ class NANA_Orchestrator:
 
             if idx % config.KG_HEALING_INTERVAL == 0:
                 logger.info(
-                    f"--- NANA: Triggering KG Healing/Enrichment after Ingestion Chunk {idx} ---"
+                    f"--- SAGA: Triggering KG Healing/Enrichment after Ingestion Chunk {idx} ---"
                 )
                 self._update_rich_display(step=f"Ch {idx} - KG Maintenance")
                 await self.knowledge_agent.heal_and_enrich_kg()
@@ -1468,7 +1468,7 @@ class NANA_Orchestrator:
         await plot_queries.save_plot_outline_to_db(plot_outline)
         await self.display.stop()
         await neo4j_manager.close()
-        logger.info("NANA: Ingestion process completed.")
+        logger.info("SAGA: Ingestion process completed.")
 
 
 def setup_logging_nana():
@@ -1546,5 +1546,5 @@ def setup_logging_nana():
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     root_logger.info(
-        f"NANA Logging setup complete. Application Log Level: {logging.getLevelName(config.LOG_LEVEL_STR)}."
+        f"SAGA Logging setup complete. Application Log Level: {logging.getLevelName(config.LOG_LEVEL_STR)}."
     )

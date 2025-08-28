@@ -23,11 +23,11 @@ def main() -> None:
             asyncio.run(orchestrator.run_novel_generation_loop())
     except KeyboardInterrupt:
         logger.info(
-            "NANA Orchestrator shutting down gracefully due to KeyboardInterrupt..."
+            "SAGA Orchestrator shutting down gracefully due to KeyboardInterrupt..."
         )
     except Exception as main_err:  # pragma: no cover - entry point catch
         logger.critical(
-            "NANA Orchestrator encountered an unhandled main exception: %s",
+            "SAGA Orchestrator encountered an unhandled main exception: %s",
             main_err,
             exc_info=True,
         )

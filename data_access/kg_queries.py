@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from async_lru import alru_cache
-from kg_constants import (
+from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
     NODE_LABELS,
@@ -1923,7 +1923,7 @@ async def get_defined_node_labels() -> list[str]:
     """
     try:
         # Start with our canonical schema labels
-        from kg_constants import NODE_LABELS
+        from models.kg_constants import NODE_LABELS
 
         schema_labels = sorted(list(NODE_LABELS))
 
@@ -1949,7 +1949,7 @@ async def get_defined_node_labels() -> list[str]:
     except Exception:
         logger.error("Failed to load defined node labels.", exc_info=True)
         # Fallback to constants if DB query fails
-        from kg_constants import NODE_LABELS
+        from models.kg_constants import NODE_LABELS
 
         labels = sorted(list(NODE_LABELS))
         # Validate labels against schema
@@ -2126,7 +2126,7 @@ async def deduplicate_relationships() -> int:
 
 async def consolidate_similar_relationships() -> int:
     """Consolidate semantically similar relationships using the predefined taxonomy."""
-    import kg_constants
+    import models.kg_constants
 
     # Get all relationship types currently in the database
     query_current = """
@@ -2144,7 +2144,7 @@ async def consolidate_similar_relationships() -> int:
         # Process each current relationship type
         for current_type in current_types:
             # Skip if already canonical
-            if current_type in kg_constants.RELATIONSHIP_TYPES:
+            if current_type in models.kg_constants.RELATIONSHIP_TYPES:
                 continue
 
             # Find canonical version
@@ -2202,7 +2202,7 @@ async def validate_relationship_types_in_db() -> dict[str, Any]:
         )
         return
 
-    import kg_constants
+    import models.kg_constants
 
     # Get all relationship types currently in use
     query = """
@@ -2223,13 +2223,13 @@ async def validate_relationship_types_in_db() -> dict[str, Any]:
         normalizable_types = {}
 
         for rel_type, count in current_types.items():
-            if rel_type in kg_constants.RELATIONSHIP_TYPES:
+            if rel_type in models.kg_constants.RELATIONSHIP_TYPES:
                 valid_types[rel_type] = count
             else:
                 # Check if it can be normalized
                 canonical = normalize_relationship_type(rel_type)
                 if (
-                    canonical in kg_constants.RELATIONSHIP_TYPES
+                    canonical in models.kg_constants.RELATIONSHIP_TYPES
                     and canonical != rel_type
                 ):
                     normalizable_types[rel_type] = {
@@ -2245,7 +2245,7 @@ async def validate_relationship_types_in_db() -> dict[str, Any]:
             "invalid_types": invalid_types,
             "total_relationships": sum(current_types.values()),
             "taxonomy_coverage": len(valid_types)
-            / len(kg_constants.RELATIONSHIP_TYPES)
+            / len(models.kg_constants.RELATIONSHIP_TYPES)
             * 100,
         }
 

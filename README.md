@@ -1,5 +1,4 @@
 # SAGA - Semantic And Graph-enhanced Authoring
-# Autonomous Novel-Writing System
 
 **NOTE**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactoring and overhaul. Things may not work as intended. Ingestion, for certain, doesn't work at the moment.
 
