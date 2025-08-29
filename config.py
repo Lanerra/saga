@@ -276,6 +276,19 @@ class SagaSettings(BaseSettings):
         False  # Toggle relationship normalization for testing
     )
 
+    # Bootstrap Enhancement Configuration
+    BOOTSTRAP_CREATE_RELATIONSHIPS: bool = True
+    BOOTSTRAP_USE_ENHANCED_NODE_TYPES: bool = True
+    BOOTSTRAP_MIN_CHARACTERS: int = 5
+    BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 16
+    BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 15
+    BOOTSTRAP_USE_VALIDATION: bool = True
+    
+    # Enhanced character bootstrap settings
+    BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
+    BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
+    BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
+
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
         if self.FALLBACK_GENERATION_MODEL is None:
@@ -387,12 +400,12 @@ REVISION_EVALUATION_THRESHOLD = 0.85
 
 # Bootstrap Integration Settings (Phase 1: Knowledge Graph Integration Strategy)
 BOOTSTRAP_INTEGRATION_ENABLED: bool = True
-BOOTSTRAP_INTEGRATION_CHAPTERS: int = 3
+BOOTSTRAP_INTEGRATION_CHAPTERS: int = 1
 MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 8  # Limit to prevent prompt bloat
-BOOTSTRAP_HEALING_LIMIT: int = 0  # Max orphaned elements to heal per cycle
+BOOTSTRAP_HEALING_LIMIT: int = 4  # Max orphaned elements to heal per cycle
 
 # Context Selection Settings (Phase 1.1: Balanced Context Selection)
-EARLY_CHAPTER_BALANCED_SELECTION: bool = False  # Use balanced char selection
+EARLY_CHAPTER_BALANCED_SELECTION: bool = True  # Use balanced char selection
 PROTAGONIST_PRIORITY_START_CHAPTER: int = (
     3  # When to start protagonist-priority selection
 )

@@ -15,11 +15,31 @@ logger = structlog.get_logger(__name__)
 
 
 def create_default_characters(protagonist_name: str) -> dict[str, CharacterProfile]:
-    """Create a default protagonist profile."""
-    profile = CharacterProfile(name=protagonist_name)
-    profile.description = config.FILL_IN
-    profile.updates["role"] = "protagonist"
-    return {protagonist_name: profile}
+    """Create enhanced character roster with protagonist, antagonist, and supporting characters."""
+    profiles = {}
+    
+    # Protagonist (enhanced with more fields)
+    protagonist = CharacterProfile(name=protagonist_name)
+    protagonist.description = config.FILL_IN
+    protagonist.updates["role"] = "protagonist"
+    profiles[protagonist_name] = protagonist
+    
+    # Antagonist 
+    antagonist_name = "Antagonist"  # Will be filled by LLM
+    antagonist = CharacterProfile(name=antagonist_name)
+    antagonist.description = config.FILL_IN
+    antagonist.updates["role"] = "antagonist"
+    profiles[antagonist_name] = antagonist
+    
+    # Supporting characters
+    for i in range(3):
+        support_name = f"SupportingChar{i+1}"  # Will be filled by LLM
+        support = CharacterProfile(name=support_name)
+        support.description = config.FILL_IN
+        support.updates["role"] = "supporting"
+        profiles[support_name] = support
+    
+    return profiles
 
 
 async def bootstrap_characters(
@@ -36,6 +56,13 @@ async def bootstrap_characters(
 
     for name, profile in character_profiles.items():
         context = {"profile": profile.to_dict(), "plot_outline": plot_outline}
+        role = profile.updates.get("role", "supporting")
+
+        # Bootstrap character name if it's a placeholder
+        if name in ["Antagonist", "SupportingChar1", "SupportingChar2", "SupportingChar3"]:
+            tasks[(name, "name")] = bootstrap_field(
+                "name", context, "bootstrapper/fill_character_field.j2"
+            )
 
         if not profile.description or utils._is_fill_in(profile.description):
             tasks[(name, "description")] = bootstrap_field(
@@ -47,14 +74,21 @@ async def bootstrap_characters(
                 "status", context, "bootstrapper/fill_character_field.j2"
             )
 
+        # Enhanced trait generation with role-based minimums
         trait_fill_count = sum(1 for t in profile.traits if utils._is_fill_in(t))
+        role_min_traits = {
+            "protagonist": config.BOOTSTRAP_MIN_TRAITS_PROTAGONIST,
+            "antagonist": config.BOOTSTRAP_MIN_TRAITS_ANTAGONIST,
+            "supporting": config.BOOTSTRAP_MIN_TRAITS_SUPPORTING
+        }.get(role, 3)
+        
         if trait_fill_count or not profile.traits:
             tasks[(name, "traits")] = bootstrap_field(
                 "traits",
                 context,
                 "bootstrapper/fill_character_field.j2",
                 is_list=True,
-                list_count=max(trait_fill_count, 3),
+                list_count=max(trait_fill_count, role_min_traits),
             )
 
         if "motivation" in profile.updates and utils._is_fill_in(
@@ -70,13 +104,20 @@ async def bootstrap_characters(
     results = await asyncio.gather(*tasks.values())
     task_keys = list(tasks.keys())
 
+    # Track name changes for profile key updates
+    name_changes = {}
+    
     for i, (value, usage) in enumerate(results):
         name, field = task_keys[i]
         if usage:
             for k, v in usage.items():
                 usage_data[k] = usage_data.get(k, 0) + v
         if value:
-            if field == "description":
+            if field == "name" and value != name:
+                # Character name was changed from placeholder
+                name_changes[name] = value
+                character_profiles[name].name = value
+            elif field == "description":
                 character_profiles[name].description = value
             elif field == "traits":
                 character_profiles[name].traits = value  # type: ignore
@@ -85,5 +126,11 @@ async def bootstrap_characters(
             else:  # motivation
                 character_profiles[name].updates[field] = value
             character_profiles[name].updates["source"] = "bootstrapped"
+
+    # Update dictionary keys for renamed characters
+    for old_name, new_name in name_changes.items():
+        if old_name in character_profiles:
+            character_profiles[new_name] = character_profiles.pop(old_name)
+            logger.info(f"Renamed character: {old_name} -> {new_name}")
 
     return character_profiles, usage_data if usage_data["total_tokens"] > 0 else None
