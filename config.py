@@ -161,12 +161,6 @@ class SagaSettings(BaseSettings):
 
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
-    UNHINGED_DATA_DIR: str = "unhinged_data"
-    UNHINGED_GENRES_FILE: str = "unhinged_genres.json"
-    UNHINGED_THEMES_FILE: str = "unhinged_themes.json"
-    UNHINGED_SETTINGS_FILE: str = "unhinged_settings_archetypes.json"
-    UNHINGED_PROTAGONISTS_FILE: str = "unhinged_protagonist_archetypes.json"
-    UNHINGED_CONFLICTS_FILE: str = "unhinged_conflict_types.json"
 
     # Generation Parameters
     MAX_CONTEXT_TOKENS: int = 40960
@@ -266,7 +260,6 @@ class SagaSettings(BaseSettings):
     ENABLE_RICH_PROGRESS: bool = True
 
     # Novel Configuration (Defaults / Placeholders)
-    UNHINGED_PLOT_MODE: bool = False
     CONFIGURED_GENRE: str = "grimdark science fiction"
     CONFIGURED_THEME: str = "the hubris of humanity"
     CONFIGURED_SETTING_DESCRIPTION: str = (
@@ -282,6 +275,19 @@ class SagaSettings(BaseSettings):
     DISABLE_RELATIONSHIP_NORMALIZATION: bool = (
         False  # Toggle relationship normalization for testing
     )
+
+    # Bootstrap Enhancement Configuration
+    BOOTSTRAP_CREATE_RELATIONSHIPS: bool = True
+    BOOTSTRAP_USE_ENHANCED_NODE_TYPES: bool = True
+    BOOTSTRAP_MIN_CHARACTERS: int = 5
+    BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 16
+    BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 15
+    BOOTSTRAP_USE_VALIDATION: bool = True
+    
+    # Enhanced character bootstrap settings
+    BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
+    BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
+    BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
@@ -306,53 +312,6 @@ class SagaSettings(BaseSettings):
         return self
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env")
-
-
-# --- Unhinged Mode Data (Loaded from JSON files) ---
-_DEFAULT_GENRE_LIST = ["science fiction", "fantasy", "horror"]
-_DEFAULT_THEMES_LIST = ["the nature of reality", "the cost of power"]
-_DEFAULT_SETTINGS_LIST = ["a floating city", "a derelict starship"]
-_DEFAULT_PROTAGONISTS_LIST = ["a reluctant hero", "a cynical detective"]
-_DEFAULT_CONFLICTS_LIST = ["man vs self", "man vs society"]
-
-# These will be populated by load_unhinged_data_async
-UNHINGED_GENRES: list[str] = []
-UNHINGED_THEMES: list[str] = []
-UNHINGED_SETTINGS_ARCHETYPES: list[str] = []
-UNHINGED_PROTAGONIST_ARCHETYPES: list[str] = []
-UNHINGED_CONFLICT_TYPES: list[str] = []
-
-
-async def load_unhinged_data_async() -> None:
-    """Asynchronously load all unhinged data files."""
-    global UNHINGED_GENRES, UNHINGED_THEMES, UNHINGED_SETTINGS_ARCHETYPES
-    global UNHINGED_PROTAGONIST_ARCHETYPES, UNHINGED_CONFLICT_TYPES
-
-    UNHINGED_GENRES = await _load_list_from_json_async(
-        os.path.join(settings.UNHINGED_DATA_DIR, settings.UNHINGED_GENRES_FILE),
-        _DEFAULT_GENRE_LIST,
-    )
-    UNHINGED_THEMES = await _load_list_from_json_async(
-        os.path.join(settings.UNHINGED_DATA_DIR, settings.UNHINGED_THEMES_FILE),
-        _DEFAULT_THEMES_LIST,
-    )
-    UNHINGED_SETTINGS_ARCHETYPES = await _load_list_from_json_async(
-        os.path.join(settings.UNHINGED_DATA_DIR, settings.UNHINGED_SETTINGS_FILE),
-        _DEFAULT_SETTINGS_LIST,
-    )
-    UNHINGED_PROTAGONIST_ARCHETYPES = await _load_list_from_json_async(
-        os.path.join(settings.UNHINGED_DATA_DIR, settings.UNHINGED_PROTAGONISTS_FILE),
-        _DEFAULT_PROTAGONISTS_LIST,
-    )
-    UNHINGED_CONFLICT_TYPES = await _load_list_from_json_async(
-        os.path.join(settings.UNHINGED_DATA_DIR, settings.UNHINGED_CONFLICTS_FILE),
-        _DEFAULT_CONFLICTS_LIST,
-    )
-
-    if not UNHINGED_GENRES or UNHINGED_GENRES == _DEFAULT_GENRE_LIST:
-        logger.warning(
-            "UNHINGED_GENRES might be using default values. Check unhinged_genres.json."
-        )
 
 
 settings = SagaSettings()
@@ -399,24 +358,8 @@ WORLD_BUILDER_FILE = os.path.join(settings.BASE_OUTPUT_DIR, settings.WORLD_BUILD
 CHAPTERS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTERS_DIR)
 CHAPTER_LOGS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTER_LOGS_DIR)
 DEBUG_OUTPUTS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.DEBUG_OUTPUTS_DIR)
-UNHINGED_GENRES_FILE = os.path.join(
-    settings.UNHINGED_DATA_DIR, settings.UNHINGED_GENRES_FILE
-)
-UNHINGED_THEMES_FILE = os.path.join(
-    settings.UNHINGED_DATA_DIR, settings.UNHINGED_THEMES_FILE
-)
-UNHINGED_SETTINGS_FILE = os.path.join(
-    settings.UNHINGED_DATA_DIR, settings.UNHINGED_SETTINGS_FILE
-)
-UNHINGED_PROTAGONISTS_FILE = os.path.join(
-    settings.UNHINGED_DATA_DIR, settings.UNHINGED_PROTAGONISTS_FILE
-)
-UNHINGED_CONFLICTS_FILE = os.path.join(
-    settings.UNHINGED_DATA_DIR, settings.UNHINGED_CONFLICTS_FILE
-)
 
 # Ensure output directories exist
-os.makedirs(settings.UNHINGED_DATA_DIR, exist_ok=True)
 os.makedirs(settings.BASE_OUTPUT_DIR, exist_ok=True)
 os.makedirs(CHAPTERS_DIR, exist_ok=True)
 os.makedirs(CHAPTER_LOGS_DIR, exist_ok=True)
@@ -458,11 +401,11 @@ REVISION_EVALUATION_THRESHOLD = 0.85
 # Bootstrap Integration Settings (Phase 1: Knowledge Graph Integration Strategy)
 BOOTSTRAP_INTEGRATION_ENABLED: bool = True
 BOOTSTRAP_INTEGRATION_CHAPTERS: int = 1
-MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 4  # Limit to prevent prompt bloat
+MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 8  # Limit to prevent prompt bloat
 BOOTSTRAP_HEALING_LIMIT: int = 4  # Max orphaned elements to heal per cycle
 
 # Context Selection Settings (Phase 1.1: Balanced Context Selection)
-EARLY_CHAPTER_BALANCED_SELECTION: bool = False  # Use balanced char selection
+EARLY_CHAPTER_BALANCED_SELECTION: bool = True  # Use balanced char selection
 PROTAGONIST_PRIORITY_START_CHAPTER: int = (
     3  # When to start protagonist-priority selection
 )

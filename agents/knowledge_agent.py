@@ -868,7 +868,17 @@ class KnowledgeAgent:
         chapter_number_for_delta: int,
         full_sync: bool = False,
     ) -> None:
-        """Persist character profiles to Neo4j."""
+        """Persist character profiles to Neo4j with enhanced validation."""
+        if config.BOOTSTRAP_USE_VALIDATION:
+            from core.schema_validator import validate_kg_object
+            
+            # Validate each profile before persistence
+            for name, profile in profiles_to_persist.items():
+                validation_errors = validate_kg_object(profile)
+                if validation_errors:
+                    logger.warning(f"Validation issues for character {name}: {validation_errors}")
+                    # Continue with persistence - validation is advisory during bootstrap
+        
         await character_queries.sync_characters(
             profiles_to_persist, chapter_number_for_delta, full_sync=full_sync
         )
@@ -879,7 +889,32 @@ class KnowledgeAgent:
         chapter_number_for_delta: int,
         full_sync: bool = False,
     ) -> None:
-        """Persist world elements to Neo4j."""
+        """Persist world elements to Neo4j with enhanced node typing and validation."""
+        if config.BOOTSTRAP_USE_ENHANCED_NODE_TYPES:
+            from core.enhanced_node_taxonomy import suggest_better_node_type
+            from core.schema_validator import validate_kg_object
+            
+            # Enhance world items with proper node typing and validation
+            for category, items_dict in world_items_to_persist.items():
+                if not isinstance(items_dict, dict):
+                    continue
+                    
+                for item_name, world_item in items_dict.items():
+                    if not isinstance(world_item, WorldItem):
+                        continue
+                    
+                    # Use enhanced node taxonomy for better typing
+                    suggested_type = suggest_better_node_type(
+                        "WorldElement", item_name, category, world_item.description
+                    )
+                    world_item.additional_properties["enhanced_node_type"] = suggested_type
+                    
+                    # Validate the world item if validation is enabled
+                    if config.BOOTSTRAP_USE_VALIDATION:
+                        validation_errors = validate_kg_object(world_item)
+                        if validation_errors:
+                            logger.warning(f"Validation issues for world item {category}/{item_name}: {validation_errors}")
+        
         await world_queries.sync_world_items(
             world_items_to_persist, chapter_number_for_delta, full_sync=full_sync
         )

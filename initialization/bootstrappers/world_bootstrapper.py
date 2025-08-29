@@ -25,6 +25,16 @@ WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: dict[str, str] = {
 
 WORLD_DETAIL_LIST_INTERNAL_KEYS: list[str] = []
 
+# Enhanced world building targets
+ENHANCED_WORLD_TARGETS = {
+    "locations": 4,      # vs current ~1
+    "society": 3,        # vs current ~1  
+    "factions": 3,       # vs current ~1
+    "history": 2,        # vs current ~1
+    "lore": 2,          # vs current ~1
+    "systems": 2         # vs current ~1
+}
+
 
 async def generate_world_building_logic(
     world_building: dict[str, Any], plot_outline: dict[str, Any]
@@ -37,7 +47,7 @@ async def generate_world_building_logic(
 
 
 def create_default_world() -> dict[str, dict[str, WorldItem]]:
-    """Create a default world-building structure."""
+    """Create enhanced world-building structure with multiple elements per category."""
     world_data: dict[str, dict[str, WorldItem]] = {
         "_overview_": {
             "_overview_": WorldItem.from_dict(
@@ -54,30 +64,26 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
         "source": "bootstrap_fallback",  # type: ignore
     }
 
-    standard_categories = [
-        "locations",
-        "society",
-        "systems",
-        "lore",
-        "history",
-        "factions",
-    ]
-
-    # Create empty world elements for each category instead of using placeholders
-    for cat_key in standard_categories:
-        # Create an empty WorldItem with empty name and description
-        world_data[cat_key] = {
-            "": WorldItem.from_dict(
+    # Create multiple elements per category using enhanced targets
+    for cat_key, target_count in ENHANCED_WORLD_TARGETS.items():
+        world_data[cat_key] = {}
+        
+        # Create multiple placeholder elements per category
+        for i in range(target_count):
+            element_name = f"{cat_key}_element_{i+1}"  # Will be filled by LLM
+            
+            # Prepare for enhanced node typing (will be used during persistence)
+            world_data[cat_key][element_name] = WorldItem.from_dict(
                 cat_key,
-                "",  # Empty name instead of placeholder
+                element_name,
                 {
-                    "description": "",
+                    "description": "",  # To be filled by LLM
                     "source": "bootstrap_placeholder",
-                    "id": f"{utils._normalize_for_id(cat_key)}_{utils._normalize_for_id('')}",
-                },  # Empty description instead of placeholder
-                allow_empty_name=True,  # Allow empty name during bootstrapping
+                    "id": f"{utils._normalize_for_id(cat_key)}_{i+1}",
+                    "element_index": i + 1,  # For tracking during bootstrap
+                },
+                allow_empty_name=True
             )
-        }
 
     return world_data
 
@@ -142,9 +148,10 @@ async def bootstrap_world(
         if not isinstance(items_dict, dict) or category == "_overview_":
             continue
         for item_name, item_obj in items_dict.items():
-            # Check if the item name is missing or empty (instead of just checking for placeholder)
+            # Check if the item name is missing, empty, or a placeholder pattern
             if isinstance(item_obj, WorldItem) and (
-                not item_obj.name or not item_obj.name.strip()
+                not item_obj.name or not item_obj.name.strip() or 
+                item_name.endswith(('_element_1', '_element_2', '_element_3', '_element_4'))
             ):
                 logger.info(
                     "Identified item for name bootstrapping in category '%s': Current name '%s'",
