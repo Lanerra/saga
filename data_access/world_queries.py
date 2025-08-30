@@ -492,7 +492,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
         (
             """
         MATCH (v:ValueNode:Entity)
-        WHERE NOT EXISTS((:WorldElement:Entity)-[]->(v)) AND NOT EXISTS((:Entity)-[:DYNAMIC_REL]->(v))
+        WHERE NOT EXISTS((:WorldElement:Entity)-[]->(v)) AND NOT EXISTS((:Entity)-->(v))
         DETACH DELETE v
         """,
             {},

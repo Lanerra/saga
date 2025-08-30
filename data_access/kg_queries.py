@@ -180,11 +180,12 @@ VALID_RELATIONSHIP_TYPES = {
 _CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
 
 
-def _infer_specific_node_type(
+# Preserve original static implementation for fallback
+def _infer_specific_node_type_static(
     name: str, category: str = "", fallback_type: str = "Entity"
 ) -> str:
     """
-    Infer specific node type from entity name and category.
+    Original static node type inference (preserved as fallback).
     Upgrades generic types like 'WorldElement' to specific types like 'Artifact', 'Location', etc.
     """
     name_lower = name.lower()
@@ -690,6 +691,59 @@ def _infer_specific_node_type(
     return fallback_type if fallback_type != "WorldElement" else "Object"
 
 
+def _infer_specific_node_type(
+    name: str, category: str = "", fallback_type: str = "Entity"
+) -> str:
+    """
+    Dynamic node type inference with static fallback.
+    
+    Uses the new dynamic schema system when available, falls back to static inference.
+    This is the main interface used throughout the codebase.
+    """
+    if not name or not name.strip():
+        return fallback_type if fallback_type != "WorldElement" else "Entity"
+    
+    # Check if dynamic schema is enabled via configuration
+    try:
+        if getattr(config.settings, 'ENABLE_DYNAMIC_SCHEMA', True):
+            # Import here to avoid circular dependencies and startup issues
+            from core.dynamic_schema_manager import dynamic_schema_manager
+            
+            # Use async context to call the dynamic system
+            import asyncio
+            try:
+                # Try to get the current event loop
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're already in an async context, create a task
+                    # Note: This is a temporary bridge solution for the mixed sync/async codebase
+                    future = asyncio.ensure_future(
+                        dynamic_schema_manager.infer_node_type(name, category, "")
+                    )
+                    # For now, we can't wait in a sync context, so fall back
+                    raise RuntimeError("Cannot call async from sync context")
+                else:
+                    # No event loop running, we can run until complete
+                    result = loop.run_until_complete(
+                        dynamic_schema_manager.infer_node_type(name, category, "")
+                    )
+                    return result
+            except (RuntimeError, asyncio.InvalidStateError):
+                # Can't run async from sync context - this is expected in current codebase
+                # We'll fall back to static inference
+                pass
+            except Exception as e:
+                logger.warning(f"Dynamic schema inference failed for '{name}': {e}")
+                
+    except (ImportError, AttributeError) as e:
+        logger.debug(f"Dynamic schema system not available: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to use dynamic schema system: {e}")
+    
+    # Fallback to static inference
+    return _infer_specific_node_type_static(name, category, fallback_type)
+
+
 def _to_pascal_case(text: str) -> str:
     """Convert underscore or space separated text to PascalCase."""
     parts = re.split(r"[_\s]+", text.strip())
@@ -704,10 +758,15 @@ def validate_relationship_type(proposed_type: str) -> str:
         proposed_type: The relationship type to validate
 
     Returns:
-        A valid relationship type from VALID_RELATIONSHIP_TYPES
+        A valid relationship type from VALID_RELATIONSHIP_TYPES, or the original type if semantic flattening is disabled
     """
     if not proposed_type or not proposed_type.strip():
         return "RELATES_TO"
+    
+    # Check if semantic flattening is disabled
+    if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
+        # Return the original type without any validation or fallbacks
+        return proposed_type.strip().upper().replace(" ", "_")
 
     # Clean and normalize input
     clean_type = proposed_type.strip().upper().replace(" ", "_")
@@ -956,11 +1015,18 @@ def validate_relationship_type(proposed_type: str) -> str:
         )
         return mapped_type
 
-    # Final fallback - log for analysis
-    logger.warning(
-        f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
-    )
-    return "RELATES_TO"
+    # Final fallback - log for analysis, but only use if semantic flattening is not disabled
+    if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
+        # Preserve original relationship type
+        logger.debug(
+            f"Preserving original relationship type '{proposed_type}' (semantic flattening disabled)"
+        )
+        return clean_type
+    else:
+        logger.warning(
+            f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
+        )
+        return "RELATES_TO"
 
 
 def normalize_relationship_type(rel_type: str) -> str:
@@ -1312,7 +1378,7 @@ async def add_kg_triples_batch_to_db(
             )
 
             # Combine ON CREATE SET clauses for subject
-            subject_create_sets = "s.created_ts = timestamp()"
+            subject_create_sets = f"s.created_ts = timestamp(), s.type = '{subject_type}'"
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
@@ -1323,7 +1389,7 @@ async def add_kg_triples_batch_to_db(
             MERGE (o:Entity:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
                 ON CREATE SET o.created_ts = timestamp()
 
-            MERGE (s)-[r:DYNAMIC_REL]->(o)
+            MERGE (s)-[r:`{predicate_clean}`]->(o)
                 ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
                 ON MATCH SET r += $rel_props_param, r.updated_ts = timestamp()
             """
@@ -1368,12 +1434,12 @@ async def add_kg_triples_batch_to_db(
             )
 
             # Combine ON CREATE SET clauses for both nodes
-            subject_create_sets = "s.created_ts = timestamp()"
+            subject_create_sets = f"s.created_ts = timestamp(), s.type = '{subject_type}'"
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
 
-            object_create_sets = "o.created_ts = timestamp()"
+            object_create_sets = f"o.created_ts = timestamp(), o.type = '{object_type}'"
             if object_additional_labels:
                 label_clauses = [f"o:`{label}`" for label in object_additional_labels]
                 object_create_sets += ", " + ", ".join(label_clauses)
@@ -1384,7 +1450,7 @@ async def add_kg_triples_batch_to_db(
             {object_merge}
                 ON CREATE SET {object_create_sets}
 
-            MERGE (s)-[r:DYNAMIC_REL]->(o)
+            MERGE (s)-[r:`{predicate_clean}`]->(o)
                 ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
                 ON MATCH SET r += $rel_props_param, r.updated_ts = timestamp()
             """
@@ -1439,14 +1505,13 @@ async def query_kg_from_db(
 ) -> list[dict[str, Any]]:
     conditions = []
     parameters: dict[str, Any] = {}
-    match_clause = "MATCH (s:Entity)-[r:DYNAMIC_REL]->(o) "
+    match_clause = "MATCH (s:Entity)-[r]->(o) "
 
     if subject is not None:
         conditions.append("s.name = $subject_param")
         parameters["subject_param"] = subject.strip()
     if predicate is not None:
-        conditions.append("r.type = $predicate_param")
-        parameters["predicate_param"] = predicate.strip().upper().replace(" ", "_")
+        match_clause = f"MATCH (s:Entity)-[r:`{predicate.strip().upper().replace(' ', '_')}`]->(o) "
     if obj_val is not None:
         obj_val_stripped = obj_val.strip()
         conditions.append(
@@ -1469,7 +1534,7 @@ async def query_kg_from_db(
 
     return_clause = f"""
     RETURN s.name AS subject,
-           r.type AS predicate,
+           type(r) AS predicate,
            CASE WHEN o:ValueNode THEN o.value ELSE o.name END AS object,
            CASE WHEN o:ValueNode THEN 'Literal' ELSE labels(o)[0] END AS object_type, // Primary label or 'Literal'
            r.{KG_REL_CHAPTER_ADDED} AS {KG_REL_CHAPTER_ADDED},
@@ -1515,13 +1580,69 @@ async def get_most_recent_value_from_db(
         )
         return None
 
-    results = await query_kg_from_db(
-        subject=subject,
-        predicate=predicate,
-        chapter_limit=chapter_limit,
-        include_provisional=include_provisional,
-        limit_results=1,
+    # Direct query for the most recent value to avoid dependency on query_kg_from_db
+    if not subject.strip() or not predicate.strip():
+        logger.warning(
+            f"Neo4j: get_most_recent_value_from_db: empty subject or predicate. S='{subject}', P='{predicate}'"
+        )
+        return None
+
+    conditions = []
+    parameters: dict[str, Any] = {}
+    match_clause = f"MATCH (s:Entity)-[r:`{predicate.strip().upper().replace(' ', '_')}`]->(o) "
+    
+    conditions.append("s.name = $subject_param")
+    parameters["subject_param"] = subject.strip()
+    
+    if chapter_limit is not None:
+        conditions.append(f"r.{KG_REL_CHAPTER_ADDED} <= $chapter_limit_param")
+        parameters["chapter_limit_param"] = chapter_limit
+    if not include_provisional:
+        conditions.append(
+            f"(r.{KG_IS_PROVISIONAL} = FALSE OR r.{KG_IS_PROVISIONAL} IS NULL)"
+        )
+
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+
+    return_clause = f"""
+    RETURN
+           CASE WHEN o:ValueNode THEN o.value ELSE o.name END AS object,
+           r.{KG_REL_CHAPTER_ADDED} AS {KG_REL_CHAPTER_ADDED},
+           r.confidence AS confidence,
+           r.{KG_IS_PROVISIONAL} AS {KG_IS_PROVISIONAL}
+    """
+    order_clause = f" ORDER BY r.{KG_REL_CHAPTER_ADDED} DESC, r.confidence DESC"
+    limit_clause_str = " LIMIT 1"
+
+    full_query = match_clause + where_clause + return_clause + order_clause + limit_clause_str
+    try:
+        results = await neo4j_manager.execute_read_query(full_query, parameters)
+        if results and results[0] and "object" in results[0]:
+            value = results[0]["object"]
+            # Attempt to convert to number if it looks like one, as ValueNode.value stores as string from current triple parsing
+            if isinstance(value, str):
+                if re.match(r"^-?\d+$", value):
+                    value = int(value)
+                elif re.match(r"^-?\d*\.\d+$", value):
+                    value = float(value)
+                elif value.lower() == "true":
+                    value = True
+                elif value.lower() == "false":
+                    value = False
+
+            logger.debug(
+                f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
+            )
+            return value
+    except Exception as e:
+        logger.error(
+            f"Neo4j: Error querying KG. Query: '{full_query[:200]}...', Params: {parameters}, Error: {e}",
+            exc_info=True,
+        )
+    logger.debug(
+        f"Neo4j: No value found for ({subject}, {predicate}) up to Ch {chapter_limit}, include_provisional={include_provisional}."
     )
+    return None
     if results and results[0] and "object" in results[0]:
         value = results[0]["object"]
         # Attempt to convert to number if it looks like one, as ValueNode.value stores as string from current triple parsing
@@ -1588,7 +1709,7 @@ async def get_chapter_context_for_entity(
 
     // Get all paths to potential chapter number sources
     OPTIONAL MATCH (e)-[]->(event) WHERE (event:DevelopmentEvent OR event:WorldElaborationEvent) AND event.chapter_updated IS NOT NULL
-    OPTIONAL MATCH (e)-[r:DYNAMIC_REL]-() WHERE r.chapter_added IS NOT NULL
+    OPTIONAL MATCH (e)-[r]->() WHERE r.chapter_added IS NOT NULL
 
     // Collect all numbers into one list, then process
     WITH
@@ -1656,18 +1777,18 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
     after they were marked as dead.
     """
     query = """
-    MATCH (c:Character)-[death_rel:DYNAMIC_REL {type: 'IS_DEAD'}]->()
+    MATCH (c:Character)-[death_rel:`IS_DEAD`]->()
     WHERE death_rel.is_provisional = false OR death_rel.is_provisional IS NULL
     WITH c, death_rel.chapter_added AS death_chapter
 
-    MATCH (c)-[activity_rel:DYNAMIC_REL]->()
+    MATCH (c)-[activity_rel]->()
     WHERE activity_rel.chapter_added > death_chapter
-      AND NOT activity_rel.type IN ['IS_REMEMBERED_AS', 'WAS_FRIEND_OF'] // Exclude retrospective rels
+      AND NOT type(activity_rel) IN ['IS_REMEMBERED_AS', 'WAS_FRIEND_OF'] // Exclude retrospective rels
     RETURN DISTINCT c.name as character_name,
            death_chapter,
            collect(
              {
-               activity_type: activity_rel.type,
+               activity_type: type(activity_rel),
                activity_chapter: activity_rel.chapter_added
              }
            ) AS post_mortem_activities
@@ -1924,7 +2045,11 @@ async def get_defined_node_labels() -> list[str]:
     try:
         # Start with our canonical schema labels
         from models.kg_constants import NODE_LABELS
-
+        # Also explicitly import enhanced node labels for clarity
+        from core.enhanced_node_taxonomy import ENHANCED_NODE_LABELS
+        
+        # Verify that NODE_LABELS contains all enhanced labels
+        # This is just for documentation/clarity - NODE_LABELS should already contain ENHANCED_NODE_LABELS
         schema_labels = sorted(list(NODE_LABELS))
 
         # Also get any additional labels from database (for backward compatibility)

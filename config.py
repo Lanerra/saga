@@ -235,6 +235,9 @@ class SagaSettings(BaseSettings):
     RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = (
         True  # Allow automatic corrections of relationship types
     )
+    DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING: bool = (
+        True  # If True, preserves original relationship types without fallbacks
+    )
 
     # Enhanced Node Type Configuration
     ENABLE_ENHANCED_NODE_TYPES: bool = (
@@ -273,14 +276,14 @@ class SagaSettings(BaseSettings):
     MAIN_WORLD_CONTAINER_NODE_ID: str = "main_world_container"
 
     DISABLE_RELATIONSHIP_NORMALIZATION: bool = (
-        False  # Toggle relationship normalization for testing
+        True  # Toggle relationship normalization for testing
     )
 
     # Bootstrap Enhancement Configuration
     BOOTSTRAP_CREATE_RELATIONSHIPS: bool = True
     BOOTSTRAP_USE_ENHANCED_NODE_TYPES: bool = True
-    BOOTSTRAP_MIN_CHARACTERS: int = 5
-    BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 16
+    BOOTSTRAP_MIN_CHARACTERS: int = 3
+    BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 8
     BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 15
     BOOTSTRAP_USE_VALIDATION: bool = True
     
@@ -288,6 +291,28 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
+    
+    # Dynamic Schema System Configuration
+    ENABLE_DYNAMIC_SCHEMA: bool = True                   # Master switch for dynamic schema system
+    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True             # Auto-refresh schema data when stale  
+    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2            # Cache time-to-live for schema data
+    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True         # Enable learning from existing data
+    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = True         # Fall back to static methods on failure
+    
+    # Type Inference Configuration
+    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.5   # Min confidence for dynamic inference
+    DYNAMIC_TYPE_LEARNING_SAMPLE_SIZE: int = 5000              # Sample size for pattern learning
+    DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = 3                # Min frequency for patterns to be retained
+    
+    # Constraint System Configuration  
+    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.4       # Min confidence for constraint validation
+    DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3                    # Min samples to learn a constraint
+    DYNAMIC_CONSTRAINT_MAX_AGE_HOURS: int = 0                 # Max age before refreshing constraints
+    
+    # Schema Discovery Configuration
+    SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = 2           # Cache TTL for introspection queries
+    SCHEMA_DISCOVERY_MAX_PATTERNS: int = 200                  # Max relationship patterns to analyze
+    SCHEMA_DISCOVERY_MIN_FREQUENCY: int = 3                   # Min frequency for pattern discovery
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
@@ -399,10 +424,10 @@ root_logger.setLevel(settings.LOG_LEVEL_STR)
 REVISION_EVALUATION_THRESHOLD = 0.85
 
 # Bootstrap Integration Settings (Phase 1: Knowledge Graph Integration Strategy)
-BOOTSTRAP_INTEGRATION_ENABLED: bool = True
-BOOTSTRAP_INTEGRATION_CHAPTERS: int = 1
-MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 8  # Limit to prevent prompt bloat
-BOOTSTRAP_HEALING_LIMIT: int = 4  # Max orphaned elements to heal per cycle
+BOOTSTRAP_INTEGRATION_ENABLED: bool = False
+BOOTSTRAP_INTEGRATION_CHAPTERS: int = 0
+MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 0  # Limit to prevent prompt bloat
+BOOTSTRAP_HEALING_LIMIT: int = 0  # Max orphaned elements to heal per cycle
 
 # Context Selection Settings (Phase 1.1: Balanced Context Selection)
 EARLY_CHAPTER_BALANCED_SELECTION: bool = True  # Use balanced char selection
