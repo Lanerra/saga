@@ -213,48 +213,34 @@ class DynamicSchemaManager:
         self, subject_type: str, relationship_type: str, object_type: str
     ) -> Tuple[bool, float, str]:
         """
-        Comprehensive relationship validation using learned constraints with rule-based fallback.
+        Creative writing-friendly relationship validation - NEVER REJECTS relationships.
         
         Returns:
-            Tuple of (is_valid, confidence, explanation)
+            Tuple of (is_always_valid, confidence, explanation)
         """
         try:
             # Ensure system is initialized
             await self.ensure_initialized()
             await self.refresh_if_needed()
             
-            # Try adaptive constraint validation first
+            # Try adaptive constraint validation first - now always returns True for creative flexibility
             if self.learning_enabled and self.is_initialized:
                 is_valid, confidence, reason = self.constraint_system.validate_relationship(
                     subject_type, relationship_type, object_type
                 )
                 
-                # Use learned constraints if confidence is reasonable
-                if confidence >= 0.4:  # Lower threshold for constraint validation
-                    logger.debug(f"Constraint validation: {subject_type}->{relationship_type}->{object_type} = {is_valid} (conf: {confidence:.3f})")
-                    return is_valid, confidence, reason
+                # Adaptive system now always returns True with varying confidence
+                logger.debug(f"Creative validation: {subject_type}->{relationship_type}->{object_type} (conf: {confidence:.3f}): {reason}")
+                return is_valid, confidence, reason
             
         except Exception as e:
             logger.warning(f"Dynamic constraint validation failed: {e}")
         
-        # Fallback to rule-based constraints if available and enabled
-        if self.enable_fallback:
-            try:
-                from core.relationship_constraints import validate_relationship_semantics
-                rule_valid, errors = validate_relationship_semantics(subject_type, relationship_type, object_type)
-                
-                if not rule_valid:
-                    return False, 0.8, f"Rule violation: {'; '.join(errors)}"
-                else:
-                    return True, 0.6, "Passes rule-based validation"
-                    
-            except ImportError:
-                logger.debug("Rule-based constraints not available")
-            except Exception as e:
-                logger.warning(f"Rule-based validation failed: {e}")
+        # NO MORE RULE-BASED FALLBACK - rules are too rigid for creative writing!
+        # Instead, be encouraging and permissive
         
-        # Final fallback - be permissive but with low confidence
-        return True, 0.3, "No constraints available - allowing with low confidence"
+        # Always allow - creative writing needs maximum flexibility
+        return True, 0.5, f"Creative relationship: {subject_type} {relationship_type} {object_type} - exploring narrative possibilities"
     
     async def suggest_relationship_types(
         self, subject_type: str, object_type: str, limit: int = 5

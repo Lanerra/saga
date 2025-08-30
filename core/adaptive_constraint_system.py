@@ -155,12 +155,15 @@ class AdaptiveConstraintSystem:
     def validate_relationship(
         self, subject_type: str, rel_type: str, object_type: str
     ) -> Tuple[bool, float, str]:
-        """Validate relationship with confidence score and explanation."""
+        """Validate relationship with confidence score and explanation - CREATIVE WRITING FRIENDLY."""
+        
+        # For creative writing, we should be very permissive and accepting
+        # The dynamic system learns from actual usage, not rigid rules
         
         # Check if we have learned constraints for this relationship
         if rel_type not in self.constraints:
-            # No learned constraints - be permissive but with low confidence
-            return True, 0.3, f"No learned constraints for {rel_type} - allowing with low confidence"
+            # No learned constraints - be permissive and encouraging for creative writing
+            return True, 0.6, f"No constraints learned yet for {rel_type} - allowing creative usage"
         
         constraint = self.constraints[rel_type]
         
@@ -170,27 +173,21 @@ class AdaptiveConstraintSystem:
         if subject_valid and object_valid:
             return True, constraint.confidence, f"Matches learned pattern (samples: {constraint.sample_size})"
         
-        # Build detailed error message
-        error_parts = []
+        # CREATIVE WRITING MODE: Instead of rejecting, provide suggestions but still allow
+        suggestions = []
         if not subject_valid:
-            valid_subjects = sorted(list(constraint.subject_types)[:3])  # Show first 3
-            more_subjects = len(constraint.subject_types) - 3
-            subject_list = ', '.join(valid_subjects)
-            if more_subjects > 0:
-                subject_list += f" (+{more_subjects} more)"
-            error_parts.append(f"subject '{subject_type}' not in learned types [{subject_list}]")
+            # Show what we've seen before but don't forbid new usage
+            common_subjects = sorted(list(constraint.subject_types)[:3])
+            suggestions.append(f"commonly used with: {', '.join(common_subjects)}")
         
         if not object_valid:
-            valid_objects = sorted(list(constraint.object_types)[:3])  # Show first 3
-            more_objects = len(constraint.object_types) - 3
-            object_list = ', '.join(valid_objects)
-            if more_objects > 0:
-                object_list += f" (+{more_objects} more)"
-            error_parts.append(f"object '{object_type}' not in learned types [{object_list}]")
+            common_objects = sorted(list(constraint.object_types)[:3])  
+            suggestions.append(f"commonly targets: {', '.join(common_objects)}")
         
-        error_message = f"Violates learned pattern: {'; '.join(error_parts)}"
+        suggestion_text = "; ".join(suggestions) if suggestions else "exploring new creative territory"
         
-        return False, constraint.confidence, error_message
+        # ALLOW the relationship but with lower confidence - creative writing needs flexibility!
+        return True, 0.4, f"Creative usage: {rel_type} {suggestion_text} - allowing for narrative flexibility"
     
     def get_valid_relationships_for_types(
         self, subject_type: str, object_type: str
