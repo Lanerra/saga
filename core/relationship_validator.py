@@ -81,6 +81,17 @@ class RelationshipConstraintValidator:
         """
         self.validation_stats["total_validations"] += 1
 
+        # Early exit if semantic flattening is disabled - preserve original relationship
+        if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
+            # Simply return the original predicate without any validation or correction
+            return ValidationResult(
+                is_valid=True,
+                original_relationship=predicate,
+                validated_relationship=predicate,
+                errors=[],
+                confidence=1.0,
+            )
+
         # Step 1: Normalize the relationship type using existing logic
         normalized_predicate = validate_relationship_type(predicate)
 

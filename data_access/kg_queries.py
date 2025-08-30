@@ -758,10 +758,15 @@ def validate_relationship_type(proposed_type: str) -> str:
         proposed_type: The relationship type to validate
 
     Returns:
-        A valid relationship type from VALID_RELATIONSHIP_TYPES
+        A valid relationship type from VALID_RELATIONSHIP_TYPES, or the original type if semantic flattening is disabled
     """
     if not proposed_type or not proposed_type.strip():
         return "RELATES_TO"
+    
+    # Check if semantic flattening is disabled
+    if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
+        # Return the original type without any validation or fallbacks
+        return proposed_type.strip().upper().replace(" ", "_")
 
     # Clean and normalize input
     clean_type = proposed_type.strip().upper().replace(" ", "_")
@@ -1010,11 +1015,18 @@ def validate_relationship_type(proposed_type: str) -> str:
         )
         return mapped_type
 
-    # Final fallback - log for analysis
-    logger.warning(
-        f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
-    )
-    return "RELATES_TO"
+    # Final fallback - log for analysis, but only use if semantic flattening is not disabled
+    if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
+        # Preserve original relationship type
+        logger.debug(
+            f"Preserving original relationship type '{proposed_type}' (semantic flattening disabled)"
+        )
+        return clean_type
+    else:
+        logger.warning(
+            f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
+        )
+        return "RELATES_TO"
 
 
 def normalize_relationship_type(rel_type: str) -> str:
