@@ -82,6 +82,9 @@ NEO4J_PASSWORD=saga_password
 NEO4J_DATABASE=neo4j
 NEO4J_VECTOR_DIMENSIONS=768
 
+# Note: The APOC plugin must be installed in Neo4j for the migration script to work.
+# See https://neo4j.com/labs/apoc/ for installation instructions.
+
 # Model Aliases
 LARGE_MODEL="qwen3-a3b"
 MEDIUM_MODEL="qwen3-a3b"
@@ -199,6 +202,24 @@ The project uses the following tools to ensure code quality and maintainability:
 - **pytest**: Testing framework with custom markers for test categorization.
 - **Neo4j**: Knowledge graph for narrative structure, character relationships, and world elements.
 - **LLM Integration**: Uses LLMs for creative and analytical tasks in the novel generation process.
+
+## Migration
+
+### DYNAMIC_REL Removal
+
+As of recent updates, the generic `DYNAMIC_REL` relationship type has been removed from SAGA in favor of specific, typed relationships.
+This change improves query performance and data integrity.
+
+If you have an existing database with `DYNAMIC_REL` relationships, you'll need to run the migration script:
+
+```bash
+python migrations/001_remove_dynamic_rel.py
+```
+
+This script will:
+1. Drop indexes related to `DYNAMIC_REL` relationships
+2. Convert existing `DYNAMIC_REL` relationships to typed relationships based on their `type` property
+3. Remove any remaining `DYNAMIC_REL` relationships that don't have a type property
 
 ## License
 

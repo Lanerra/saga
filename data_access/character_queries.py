@@ -257,7 +257,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (c1:Character:Entity {name: $char_name_val})-[r:DYNAMIC_REL]->(c2:Entity)
+            MATCH (c1:Character:Entity {name: $char_name_val})-[r]->(c2:Entity)
             WHERE r.source_profile_managed = TRUE AND NOT c2.name IN $target_chars_list
             DELETE r
             """,
@@ -317,7 +317,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                     MATCH (s:Character:Entity {name: $subject_param})
                     MERGE (o:Entity {name: $object_param})
                         ON CREATE SET o.description = 'Auto-created via relationship from ' + $subject_param, o.created_ts = timestamp()
-                    MERGE (s)-[r:DYNAMIC_REL {type: $predicate_param, chapter_added: $chapter_added_val }]->(o)
+                    MERGE (s)-[r:`$predicate_param`]->(o)
                     ON CREATE SET r = $props_param, r.created_ts = timestamp()
                     ON MATCH SET  r += $props_param, r.updated_ts = timestamp()
                     """,
@@ -390,9 +390,9 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     )
 
     rels_query = """
-        MATCH (:Character:Entity {name: $char_name})-[r:DYNAMIC_REL]->(target:Entity)
+        MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
         WHERE r.source_profile_managed = TRUE
-        RETURN target.name AS target_name, properties(r) AS rel_props
+        RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
     """
     rel_results = await neo4j_manager.execute_read_query(
         rels_query, {"char_name": name}
@@ -493,9 +493,9 @@ async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
         )
 
         rels_query = """
-        MATCH (:Character:Entity {name: $char_name})-[r:DYNAMIC_REL]->(target:Entity)
+        MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
         WHERE r.source_profile_managed = TRUE
-        RETURN target.name AS target_name, properties(r) AS rel_props
+        RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
         """
         rel_results = await neo4j_manager.execute_read_query(
             rels_query, {"char_name": char_name}
@@ -586,7 +586,7 @@ async def get_character_info_for_snippet_from_db(
         RETURN (
             c.is_provisional = TRUE OR
             EXISTS {
-                MATCH (c)-[r:DYNAMIC_REL]-(:Entity)
+                MATCH (c)-[r]-(:Entity)
                 WHERE r.is_provisional = TRUE AND r.chapter_added <= $chapter_limit_param
             } OR
             EXISTS {

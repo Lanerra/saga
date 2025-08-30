@@ -292,7 +292,7 @@ class SagaSettings(BaseSettings):
     # Dynamic Schema System Configuration
     ENABLE_DYNAMIC_SCHEMA: bool = True                    # Master switch for dynamic schema system
     DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True             # Auto-refresh schema data when stale  
-    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 60           # Cache time-to-live for schema data
+    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2           # Cache time-to-live for schema data
     DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True         # Enable learning from existing data
     DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = True         # Fall back to static methods on failure
     

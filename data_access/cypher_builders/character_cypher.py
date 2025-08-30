@@ -186,21 +186,18 @@ def generate_character_node_cypher(
                                 c2.created_ts = timestamp()
 
                         MERGE (
-                            c1
-                        )-[
-                            r:DYNAMIC_REL {
-                                type: $rel_type_str,
-                                chapter_added: $chapter_num_delta
-                            }
-                        ]->(
-                            c2
-                        )
-                            ON CREATE SET
-                                r = $rel_props,
-                                r.created_ts = timestamp()
-                            ON MATCH SET
-                                r += $rel_props,
-                                r.updated_ts = timestamp()
+                        c1
+                    )-[
+                        r:`$rel_type_str`
+                    ]->(
+                        c2
+                    )
+                        ON CREATE SET
+                            r = $rel_props,
+                        r.created_ts = timestamp()
+                        ON MATCH SET
+                            r += $rel_props,
+                        r.updated_ts = timestamp()
                         """,
                         {
                             "source_name": profile.name,

@@ -1167,6 +1167,11 @@ class KnowledgeAgent:
 
         parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
 
+        # Log each parsed triple
+        for triple in parsed_triples_structured:
+            object_value = triple.get('object_entity', triple.get('object_literal'))
+            logger.info(f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}")
+
         logger.info(
             f"Chapter {chapter_number} LLM Extraction: "
             f"{len(char_updates_from_llm)} char updates, "
@@ -1276,6 +1281,11 @@ class KnowledgeAgent:
 
             # Process KG triples for relationships (CRITICAL: This was missing!)
             parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
+
+            # Log each parsed triple
+            for triple in parsed_triples_structured:
+                object_value = triple.get('object_entity', triple.get('object_literal'))
+                logger.info(f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}")
 
             # Merge updates directly into existing model lists
             self._merge_character_updates_native(

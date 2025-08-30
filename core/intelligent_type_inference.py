@@ -249,7 +249,7 @@ class IntelligentTypeInference:
             weighted_score = label_probability * weight
             scores[label] += weighted_score
     
-    def get_pattern_summary(self) -> Dict[str, Any]:
+    def get_pattern_summary(self) -> Dict[str, any]:
         """Get summary of learned patterns for debugging."""
         if not self.learned_patterns:
             return {"status": "No patterns learned", "last_update": None}
@@ -269,7 +269,7 @@ class IntelligentTypeInference:
             "most_common_patterns": self._get_most_common_patterns(10)
         }
     
-    def _get_most_common_patterns(self, limit: int) -> List[Dict[str, Any]]:
+    def _get_most_common_patterns(self, limit: int) -> List[Dict[str, any]]:
         """Get most common patterns for debugging."""
         pattern_frequencies = []
         
