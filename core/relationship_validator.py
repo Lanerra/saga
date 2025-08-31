@@ -276,7 +276,41 @@ class RelationshipConstraintValidator:
         """
         try:
             subject_info = triple_dict.get("subject", {})
-            subject_type = subject_info.get("type", "Entity")
+            subject_type = subject_info.get("type")
+            
+            # Enhanced type handling - if type is missing or None, try to infer it
+            if subject_type is None or subject_type == "":
+                # Log the issue for debugging
+                subject_name = subject_info.get("name", "UNKNOWN")
+                logger.warning(f"Subject type missing or None for subject '{subject_name}'. Using 'Entity' fallback.")
+                subject_type = "Entity"
+            elif subject_type not in models.kg_constants.NODE_LABELS:
+                # Type exists but is not in our valid labels - try to infer better type
+                logger.warning(f"Subject type '{subject_type}' not in valid node labels. Attempting inference.")
+                # Try to use enhanced node taxonomy for better type inference
+                try:
+                    from core.enhanced_node_taxonomy import (
+                        validate_node_type,
+                        suggest_better_node_type,
+                        infer_node_type_from_name,
+                        infer_node_type_from_category
+                    )
+                    # Try to get category information if available
+                    category = subject_info.get("category", "")
+                    subject_name = subject_info.get("name", "")
+                    # Attempt inference using enhanced taxonomy
+                    inferred_type = suggest_better_node_type(subject_type, subject_name, category)
+                    if validate_node_type(inferred_type):
+                        subject_type = inferred_type
+                        logger.info(f"Inferred better subject type: {subject_type}")
+                    else:
+                        # Fallback to Entity if inference fails
+                        subject_type = "Entity"
+                        logger.warning(f"Fallback to 'Entity' for subject '{subject_name}' after inference")
+                except Exception as inference_error:
+                    logger.warning(f"Type inference failed for subject '{subject_name}': {inference_error}")
+                    subject_type = "Entity"
+            
             predicate = triple_dict.get("predicate", "")
 
             # Handle literal vs entity objects
@@ -286,17 +320,41 @@ class RelationshipConstraintValidator:
             else:
                 object_info = triple_dict.get("object_entity", {})
                 object_type = object_info.get("type", "Entity")
+            
+            # Enhanced object type handling - if type is missing or None, try to infer it
+            if object_type is None or object_type == "":
+                # Log the issue for debugging
+                object_name = object_info.get("name", "UNKNOWN") if object_info else "UNKNOWN"
+                logger.warning(f"Object type missing or None for object '{object_name}'. Using 'Entity' fallback.")
+                object_type = "Entity"
+            elif object_type not in models.kg_constants.NODE_LABELS:
+                # Type exists but is not in our valid labels - try to infer better type
+                logger.warning(f"Object type '{object_type}' not in valid node labels. Attempting inference.")
+                # Try to use enhanced node taxonomy for better type inference
+                try:
+                    from core.enhanced_node_taxonomy import (
+                        validate_node_type,
+                        suggest_better_node_type,
+                        infer_node_type_from_name,
+                        infer_node_type_from_category
+                    )
+                    # Try to get category information if available
+                    category = object_info.get("category", "") if object_info else ""
+                    object_name = object_info.get("name", "") if object_info else ""
+                    # Attempt inference using enhanced taxonomy
+                    inferred_type = suggest_better_node_type(object_type, object_name, category)
+                    if validate_node_type(inferred_type):
+                        object_type = inferred_type
+                        logger.info(f"Inferred better object type: {object_type}")
+                    else:
+                        # Fallback to Entity if inference fails
+                        object_type = "Entity"
+                        logger.warning(f"Fallback to 'Entity' for object '{object_name}' after inference")
+                except Exception as inference_error:
+                    logger.warning(f"Object type inference failed for object '{object_name}': {inference_error}")
+                    object_type = "Entity"
 
-            # Handle invalid node types gracefully
-            if subject_type not in models.kg_constants.NODE_LABELS:
-                # Try to infer a better type or default to Entity
-                if "literal" in subject_type.lower() or "value" in subject_type.lower():
-                    subject_type = "ValueNode"
-                elif "response" in subject_type.lower():
-                    subject_type = "ValueNode"  # Treat responses as value nodes
-                else:
-                    subject_type = "Entity"
-
+            # Handle invalid object types gracefully
             if object_type not in models.kg_constants.NODE_LABELS:
                 if "literal" in object_type.lower() or "value" in object_type.lower():
                     object_type = "ValueNode"

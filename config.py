@@ -104,7 +104,7 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_PATCH: float = 0.7
 
     # Placeholder fill-in
-    FILL_IN: str = "[Fill-in]"
+    FILL_IN: str = ""
 
     # LLM Call Settings & Fallbacks
     LLM_RETRY_ATTEMPTS: int = 3
@@ -212,7 +212,6 @@ class SagaSettings(BaseSettings):
     MAX_KG_TRIPLE_TOKENS: int = 8192
     MAX_PREPOP_KG_TOKENS: int = 16384
 
-    MIN_ACCEPTABLE_DRAFT_LENGTH_DEFAULT: int = 12000
     MIN_ACCEPTABLE_DRAFT_LENGTH: int = 12000
 
     ENABLE_DYNAMIC_STATE_ADAPTATION: bool = True
@@ -226,14 +225,14 @@ class SagaSettings(BaseSettings):
     # Relationship Constraint Configuration
     ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
     RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = (
-        0.2  # Lower threshold to accept more corrections
+        0.3  # Lower threshold to accept more corrections
     )
     RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = (
         False  # If True, rejects invalid relationships; if False, uses fallbacks
     )
     RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS: bool = True
     RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = (
-        True  # Allow automatic corrections of relationship types
+        False  # Allow automatic corrections of relationship types
     )
     DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING: bool = (
         True  # If True, preserves original relationship types without fallbacks
@@ -242,15 +241,6 @@ class SagaSettings(BaseSettings):
     # Enhanced Node Type Configuration
     ENABLE_ENHANCED_NODE_TYPES: bool = (
         True  # Use enhanced specific node types instead of generic ones
-    )
-    AUTO_MIGRATE_WORLD_ELEMENTS: bool = (
-        True  # Automatically upgrade WorldElement nodes to specific types
-    )
-    USE_HIERARCHICAL_TYPES: bool = (
-        True  # Use hierarchical type system with semantic categories
-    )
-    NODE_TYPE_INFERENCE_ENABLED: bool = (
-        True  # Enable automatic type inference from entity names/categories
     )
 
     # Logging & UI
@@ -283,8 +273,8 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_CREATE_RELATIONSHIPS: bool = True
     BOOTSTRAP_USE_ENHANCED_NODE_TYPES: bool = True
     BOOTSTRAP_MIN_CHARACTERS: int = 3
-    BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 8
-    BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 15
+    BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 4
+    BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 8
     BOOTSTRAP_USE_VALIDATION: bool = True
     
     # Enhanced character bootstrap settings
@@ -297,22 +287,18 @@ class SagaSettings(BaseSettings):
     DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True             # Auto-refresh schema data when stale  
     DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2            # Cache time-to-live for schema data
     DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True         # Enable learning from existing data
-    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = True         # Fall back to static methods on failure
+    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = False         # Fall back to static methods on failure
     
     # Type Inference Configuration
-    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.5   # Min confidence for dynamic inference
-    DYNAMIC_TYPE_LEARNING_SAMPLE_SIZE: int = 5000              # Sample size for pattern learning
+    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.3   # Min confidence for dynamic inference
     DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = 3                # Min frequency for patterns to be retained
     
     # Constraint System Configuration  
-    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.4       # Min confidence for constraint validation
+    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.3       # Min confidence for constraint validation
     DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3                    # Min samples to learn a constraint
-    DYNAMIC_CONSTRAINT_MAX_AGE_HOURS: int = 0                 # Max age before refreshing constraints
     
     # Schema Discovery Configuration
     SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = 2           # Cache TTL for introspection queries
-    SCHEMA_DISCOVERY_MAX_PATTERNS: int = 200                  # Max relationship patterns to analyze
-    SCHEMA_DISCOVERY_MIN_FREQUENCY: int = 3                   # Min frequency for pattern discovery
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
@@ -427,10 +413,10 @@ REVISION_EVALUATION_THRESHOLD = 0.85
 BOOTSTRAP_INTEGRATION_ENABLED: bool = False
 BOOTSTRAP_INTEGRATION_CHAPTERS: int = 0
 MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 0  # Limit to prevent prompt bloat
-BOOTSTRAP_HEALING_LIMIT: int = 0  # Max orphaned elements to heal per cycle
+BOOTSTRAP_HEALING_LIMIT: int = 0
 
 # Context Selection Settings (Phase 1.1: Balanced Context Selection)
-EARLY_CHAPTER_BALANCED_SELECTION: bool = True  # Use balanced char selection
+EARLY_CHAPTER_BALANCED_SELECTION: bool = False  # Use balanced char selection
 PROTAGONIST_PRIORITY_START_CHAPTER: int = (
     3  # When to start protagonist-priority selection
 )
