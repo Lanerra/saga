@@ -219,12 +219,12 @@ class NANA_Orchestrator:
             f"\n--- SAGA: Pre-populating Knowledge Graph from Initial Data (Plot Source: '{plot_source}') ---"
         )
 
-        profile_objs: dict[
-            str, CharacterProfile
-        ] = await character_queries.get_character_profiles_from_db()
-        world_objs: dict[
-            str, dict[str, WorldItem]
-        ] = await world_queries.get_world_building_from_db()
+        profile_objs: list[
+            CharacterProfile
+        ] = await get_character_profiles_native()
+        world_objs: list[
+            WorldItem
+        ] = await get_world_building_native()
 
         await self.knowledge_agent.persist_profiles(
             profile_objs, config.KG_PREPOPULATION_CHAPTER_NUM

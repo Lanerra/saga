@@ -121,6 +121,7 @@ STRUCTURAL_RELATIONSHIPS = {
     "CONTAINS_ELEMENT",
     "DEVELOPED_IN_CHAPTER",
     "ELABORATED_IN_CHAPTER",
+    "IS_A",  # Type relationship
 }
 
 # Character Social Relationships
@@ -214,6 +215,7 @@ PHYSICAL_RELATIONSHIPS = {
     "DESTROYED_BY",  # Destruction
     "DAMAGED_BY",  # Partial destruction
     "REPAIRED_BY",  # Restoration
+    "OWNED_BY",  # Ownership (inverse of OWNS)
 }
 
 # Abstract/Thematic Relationships
@@ -306,30 +308,8 @@ ENHANCED_ASSOCIATION_RELATIONSHIPS = {
     "ASSOCIATED_WITH",  # General association relationship
 }
 
-# Combine all relationship categories
-RELATIONSHIP_TYPES = (
-    STRUCTURAL_RELATIONSHIPS
-    | CHARACTER_SOCIAL_RELATIONSHIPS
-    | CHARACTER_EMOTIONAL_RELATIONSHIPS
-    | PLOT_CAUSAL_RELATIONSHIPS
-    | SPATIAL_TEMPORAL_RELATIONSHIPS
-    | POSSESSION_RELATIONSHIPS
-    | ORGANIZATIONAL_RELATIONSHIPS
-    | PHYSICAL_RELATIONSHIPS
-    | THEMATIC_RELATIONSHIPS
-    | ABILITY_RELATIONSHIPS
-    | STATUS_RELATIONSHIPS
-    | INFORMATION_RELATIONSHIPS
-    | USAGE_RELATIONSHIPS
-    | COMMUNICATION_RELATIONSHIPS
-    | OPERATIONAL_RELATIONSHIPS
-    | ENHANCED_TEMPORAL_RELATIONSHIPS
-    | STATUS_CHANGE_RELATIONSHIPS
-    | SPECIAL_ACTION_RELATIONSHIPS
-    | ENHANCED_ASSOCIATION_RELATIONSHIPS
-)
-
 # Relationship category mapping for validation and normalization
+# Generated programmatically from the category sets above
 RELATIONSHIP_CATEGORIES = {
     "structural": STRUCTURAL_RELATIONSHIPS,
     "character_social": CHARACTER_SOCIAL_RELATIONSHIPS,
@@ -351,6 +331,12 @@ RELATIONSHIP_CATEGORIES = {
     "special_action": SPECIAL_ACTION_RELATIONSHIPS,
     "enhanced_association": ENHANCED_ASSOCIATION_RELATIONSHIPS,
 }
+
+# Combine all relationship categories into a single set
+# This is the single source of truth for all valid relationship types
+RELATIONSHIP_TYPES = set()
+for category_set in RELATIONSHIP_CATEGORIES.values():
+    RELATIONSHIP_TYPES.update(category_set)
 
 # Common relationship variations that should be normalized
 # Maps variations -> canonical relationship

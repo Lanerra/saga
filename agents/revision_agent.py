@@ -7,6 +7,8 @@ import utils
 from config import NARRATIVE_MODEL, REVISION_EVALUATION_THRESHOLD
 from core.llm_interface import llm_service
 from data_access import chapter_queries, character_queries, world_queries
+# Import native versions for performance optimization
+from data_access.character_queries import get_character_profiles_native
 from models import ProblemDetail
 from processing.problem_parser import parse_problem_list
 from prompts.prompt_data_getters import (
@@ -116,13 +118,13 @@ class RevisionAgent:
         )
 
         protagonist_name_str = plot_outline.get("protagonist_name", "The Protagonist")
-        characters = await character_queries.get_character_profiles_from_db()
+        characters = await get_character_profiles_native()
         world_item_ids_by_category = (
             await world_queries.get_all_world_item_ids_by_category()
         )
         char_profiles_plain_text = (
             await get_filtered_character_profiles_for_prompt_plain_text(
-                list(characters.keys()),  # Pass character names, not the dict
+                [char.name for char in characters],  # Extract names from CharacterProfile objects
                 chapter_number - 1,
             )
         )
@@ -441,9 +443,9 @@ class RevisionAgent:
         if not character_names:
             logger.info("Fetching character profiles from database for evaluation...")
             character_profiles_dict = (
-                await character_queries.get_character_profiles_from_db()
+                await get_character_profiles_native()
             )
-            character_names = list(character_profiles_dict.keys())
+            character_names = [profile.name for profile in character_profiles_dict]
             logger.info(
                 f"Found {len(character_names)} characters for evaluation: {character_names}"
             )
