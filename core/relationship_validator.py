@@ -21,9 +21,9 @@ from core.relationship_constraints import (
 try:  # pragma: no cover - fallback when data access layer unavailable
     from data_access.kg_queries import validate_relationship_type
 except Exception:  # pragma: no cover
-    def validate_relationship_type(rel_type: str) -> str:
+    def validate_relationship_type(proposed_type: str) -> str:
         """Fallback normalizer when data layer is unavailable."""
-        return rel_type.upper()
+        return proposed_type.upper()
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class ValidationResult:
 class RelationshipConstraintValidator:
     """Main validation engine for relationship constraints."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.validation_stats = {
             "total_validations": 0,
             "valid_relationships": 0,
@@ -291,7 +291,7 @@ class RelationshipConstraintValidator:
         predicate_words = set(predicate_lower.replace("_", " ").split())
 
         best_match = None
-        best_score = 0
+        best_score = 0.0
 
         for candidate in valid_relationships:
             candidate_words = set(candidate.lower().replace("_", " ").split())

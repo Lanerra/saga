@@ -7,7 +7,7 @@ class NodeClassifications:
     SENTIENT = {"Character", "Person", "Deity", "Spirit", "Creature"}
 
     # Entities with consciousness and self-awareness (subset of sentient)
-    CONSCIOUS = {"Character", "Person", "Deity"}
+    CONSCIOUS = {"Character", "Person", "Deity", "Creature", "Spirit"}
 
     # Physical objects and entities
     PHYSICAL_PRESENCE = {

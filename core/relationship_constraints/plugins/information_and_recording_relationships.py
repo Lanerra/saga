@@ -1,6 +1,6 @@
 """Relationship constraints for category: information_and_recording_relationships."""
+
 from ..classifications import NodeClassifications
-from models.kg_constants import NODE_LABELS
 
 RELATIONSHIP_CONSTRAINTS = {
     "RECORDS": {

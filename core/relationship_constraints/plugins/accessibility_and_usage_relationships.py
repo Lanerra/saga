@@ -1,6 +1,7 @@
 """Relationship constraints for category: accessibility_and_usage_relationships."""
-from ..classifications import NodeClassifications
 from models.kg_constants import NODE_LABELS
+
+from ..classifications import NodeClassifications
 
 RELATIONSHIP_CONSTRAINTS = {
     "ACCESSIBLE_BY": {

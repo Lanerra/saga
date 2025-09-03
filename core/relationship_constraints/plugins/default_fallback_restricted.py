@@ -1,6 +1,4 @@
 """Relationship constraints for category: default_fallback_restricted."""
-from ..classifications import NodeClassifications
-from models.kg_constants import NODE_LABELS
 
 RELATIONSHIP_CONSTRAINTS = {
     "RELATES_TO": {

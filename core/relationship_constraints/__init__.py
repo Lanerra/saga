@@ -123,7 +123,7 @@ def get_all_valid_relationships_for_node_pair(
     """Get all valid relationship types between two node types."""
     valid_relationships = []
 
-    for rel_type, constraints in RELATIONSHIP_CONSTRAINTS.items():
+    for rel_type, _constraints in RELATIONSHIP_CONSTRAINTS.items():
         if is_relationship_valid(subject_type, rel_type, object_type):
             valid_relationships.append(rel_type)
 
@@ -157,7 +157,7 @@ def is_relationship_valid(
         return False
 
     # Check semantic compatibility rules
-    for rule_name, rule_config in SEMANTIC_COMPATIBILITY_RULES.items():
+    for _rule_name, rule_config in SEMANTIC_COMPATIBILITY_RULES.items():
         if relationship_type in rule_config["relationships"]:
             if not _check_semantic_rule(
                 rule_config, subject_type, object_type, relationship_type
@@ -268,7 +268,7 @@ def validate_relationship_semantics(
         )
 
     # Check semantic rules
-    for rule_name, rule_config in SEMANTIC_COMPATIBILITY_RULES.items():
+    for _rule_name, rule_config in SEMANTIC_COMPATIBILITY_RULES.items():
         if relationship_type in rule_config["relationships"]:
             if not _check_semantic_rule(
                 rule_config, subject_type, object_type, relationship_type
