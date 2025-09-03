@@ -1126,7 +1126,7 @@ async def normalize_existing_relationship_types() -> None:
     try:
         results = await neo4j_manager.execute_read_query(query)
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Error reading existing relationship types: %s", exc)
+        logger.error(f"Error reading existing relationship types: {exc}")
         return
 
     statements: list[tuple[str, dict[str, Any]]] = []
@@ -2046,7 +2046,7 @@ async def get_defined_node_labels() -> list[str]:
         # Validate combined labels
         errors = validate_node_labels(all_labels)
         if errors:
-            logger.warning("Invalid node labels found: %s", errors)
+            logger.warning(f"Invalid node labels found: {errors}")
 
         return all_labels
     except Exception:
@@ -2058,7 +2058,7 @@ async def get_defined_node_labels() -> list[str]:
         # Validate labels against schema
         errors = validate_node_labels(labels)
         if errors:
-            logger.warning("Fallback node labels validation errors: %s", errors)
+            logger.warning(f"Fallback node labels validation errors: {errors}")
         return labels
 
 
@@ -2075,7 +2075,7 @@ async def get_defined_relationship_types() -> list[str]:
         # Validate relationship types against schema
         errors = validate_relationship_types(rel_types)
         if errors:
-            logger.warning("Invalid relationship types found: %s", errors)
+            logger.warning(f"Invalid relationship types found: {errors}")
         return rel_types
     except Exception:
         logger.error(
@@ -2086,7 +2086,7 @@ async def get_defined_relationship_types() -> list[str]:
         # Validate relationship types against schema
         errors = validate_relationship_types(rel_types)
         if errors:
-            logger.warning("Invalid relationship types in config: %s", errors)
+            logger.warning(f"Invalid relationship types in config: {errors}")
         return rel_types
 
 
@@ -2149,7 +2149,7 @@ async def promote_dynamic_relationships() -> int:
         return total_promoted
 
     except Exception as exc:
-        logger.error("Failed to promote dynamic relationships: %s", exc, exc_info=True)
+        logger.error(f"Failed to promote dynamic relationships: {exc}", exc_info=True)
         return total_promoted  # Return partial success
 
 
@@ -2196,7 +2196,7 @@ async def _validate_and_correct_relationship_types() -> int:
         return corrected_count
 
     except Exception as exc:
-        logger.error("Failed to validate relationship types: %s", exc, exc_info=True)
+        logger.error(f"Failed to validate relationship types: {exc}", exc_info=True)
         return 0
 
 
@@ -2223,7 +2223,7 @@ async def deduplicate_relationships() -> int:
         results = await neo4j_manager.execute_write_query(query)
         return results[0].get("removed", 0) if results else 0
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Failed to deduplicate relationships: %s", exc, exc_info=True)
+        logger.error(f"Failed to deduplicate relationships: {exc}", exc_info=True)
         return 0
 
 
@@ -2435,7 +2435,7 @@ async def get_shortest_path_length_between_entities(
         if results:
             return results[0].get("len")
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Failed to compute shortest path length: %s", exc, exc_info=True)
+        logger.error(f"Failed to compute shortest path length: {exc}", exc_info=True)
     return None
 
 

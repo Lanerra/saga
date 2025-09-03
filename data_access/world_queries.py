@@ -140,7 +140,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
         )
         errors = validate_kg_object(overview_item)
         if errors:
-            logger.warning("Invalid WorldItem for '_overview_': %s", errors)
+            logger.warning(f"Invalid WorldItem for '_overview_': {errors}")
 
         wc_props = {
             "id": wc_id_param,  # Ensure ID is part of props for SET
@@ -512,7 +512,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
 @alru_cache(maxsize=128)
 async def get_world_item_by_id(item_id: str) -> WorldItem | None:
     """Retrieve a single ``WorldItem`` from Neo4j by its ID or fall back to name."""
-    logger.info("Loading world item '%s' from Neo4j...", item_id)
+    logger.info(f"Loading world item '{item_id}' from Neo4j...")
 
     query = (
         "MATCH (we:WorldElement:Entity {id: $id})"
@@ -526,7 +526,7 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
             results = await neo4j_manager.execute_read_query(query, {"id": alt_id})
 
     if not results or not results[0].get("we"):
-        logger.info("No world item found for id '%s'.", item_id)
+        logger.info(f"No world item found for id '{item_id}'.")
         return None
 
     we_node = results[0]["we"]
@@ -921,7 +921,7 @@ async def sync_world_items_native(
     for item in world_items:
         errors = validate_kg_object(item)
         if errors:
-            logger.warning("Invalid WorldItem '%s': %s", item.name, errors)
+            logger.warning(f"Invalid WorldItem '{item.name}': {errors}")
 
     # Update name mapping
     WORLD_NAME_TO_ID.clear()
@@ -979,7 +979,7 @@ async def get_world_building_native() -> list[WorldItem]:
         return world_items
 
     except Exception as exc:
-        logger.error("Error fetching world building: %s", exc, exc_info=True)
+        logger.error(f"Error fetching world building: {exc}", exc_info=True)
         return []
 
 

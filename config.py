@@ -376,25 +376,42 @@ os.makedirs(CHAPTERS_DIR, exist_ok=True)
 os.makedirs(CHAPTER_LOGS_DIR, exist_ok=True)
 os.makedirs(DEBUG_OUTPUTS_DIR, exist_ok=True)
 
-# Configure structlog
+# Configure structlog to integrate with standard logging and output human-readable messages
 structlog.configure(
     processors=[
+        # Add logger name and level
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
+        # Handle positional arguments properly
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        # Process timestamps
+        structlog.processors.TimeStamper(fmt="iso"),
+        # Handle stack info
+        structlog.processors.StackInfoRenderer(),
+        # Handle exceptions
+        structlog.processors.format_exc_info,
+        # Unicode decoder processor
+        structlog.processors.UnicodeDecoder(),
+        # Wrap for standard logging formatter
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],
+    context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
     wrapper_class=structlog.stdlib.BoundLogger,
     cache_logger_on_first_use=True,
 )
 
+# Simple human-readable formatter for structlog
 formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
-        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
-    processors=[structlog.dev.ConsoleRenderer()],
+    processors=[
+        structlog.dev.ConsoleRenderer(colors=False)
+    ],
 )
 
 handler = stdlib_logging.StreamHandler()

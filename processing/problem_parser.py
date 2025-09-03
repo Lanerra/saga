@@ -34,7 +34,7 @@ def parse_problem_list(text: str, category: str | None = None) -> list[ProblemDe
         if not isinstance(data, list):
             raise ValueError("LLM output was not a list of problems")
     except json.JSONDecodeError as exc:
-        logger.error("Failed to decode JSON: %s", exc)
+        logger.error(f"Failed to decode JSON: {exc}")
         return [
             {
                 "issue_category": category or "meta",
@@ -51,7 +51,7 @@ def parse_problem_list(text: str, category: str | None = None) -> list[ProblemDe
     problems: list[ProblemDetail] = []
     for item in data:
         if not isinstance(item, dict):
-            logger.warning("Problem item is not a dict: %s", item)
+            logger.warning(f"Problem item is not a dict: {item}")
             continue
         prob: ProblemDetail = {
             "issue_category": item.get("issue_category", category or "meta"),

@@ -21,7 +21,7 @@ async def ensure_novel_info() -> None:
             """,
             {"id": novel_id, "title": config.DEFAULT_PLOT_OUTLINE_TITLE},
         )
-        logger.info("Created NovelInfo node with id '%s'", novel_id)
+        logger.info(f"Created NovelInfo node with id '{novel_id}'")
 
 
 async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:

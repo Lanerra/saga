@@ -113,7 +113,7 @@ class NANA_Orchestrator:
 
         for desc in new_points:
             if await plot_queries.plot_point_exists(desc):
-                logger.info("Plot point already exists, skipping: %s", desc)
+                logger.info(f"Plot point already exists, skipping: {desc}")
                 continue
             prev_id = await plot_queries.get_last_plot_point_id()
             await self.knowledge_agent.add_plot_point(desc, prev_id or "")
@@ -153,7 +153,7 @@ class NANA_Orchestrator:
             self.plot_outline = result
             self._update_novel_props_cache()
         else:
-            logger.error("Failed to refresh plot outline from DB: %s", result)
+            logger.error(f"Failed to refresh plot outline from DB: {result}")
 
     async def async_init_orchestrator(self):
         logger.info("SAGA Orchestrator async_init_orchestrator started...")
@@ -1525,17 +1525,14 @@ def setup_logging_nana():
                 encoding="utf-8",
             )
             file_handler.setLevel(config.LOG_LEVEL_STR)
-            formatter = logging.Formatter(
-                config.LOG_FORMAT, datefmt=config.LOG_DATE_FORMAT
-            )
-            file_handler.setFormatter(formatter)
+            # Use the structlog formatter for human-readable output
+            file_handler.setFormatter(config.formatter)
             root_logger.addHandler(file_handler)
             root_logger.info(f"File logging enabled. Log file: {config.LOG_FILE}")
         except Exception as e:
             console_handler_fallback = logging.StreamHandler()
-            console_handler_fallback.setFormatter(
-                logging.Formatter(config.LOG_FORMAT, datefmt=config.LOG_DATE_FORMAT)
-            )
+            # Use the structlog formatter for human-readable output
+            console_handler_fallback.setFormatter(config.formatter)
             root_logger.addHandler(console_handler_fallback)
             root_logger.error(
                 f"Failed to configure file logging to {config.LOG_FILE}: {e}. Logging to console instead.",
@@ -1564,10 +1561,8 @@ def setup_logging_nana():
     elif not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
         stream_handler = logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
-        stream_formatter = logging.Formatter(
-            config.LOG_FORMAT, datefmt=config.LOG_DATE_FORMAT
-        )
-        stream_handler.setFormatter(stream_formatter)
+        # Use the structlog formatter for human-readable output
+        stream_handler.setFormatter(config.formatter)
         root_logger.addHandler(stream_handler)
         root_logger.info("Standard stream logging handler enabled for console.")
 

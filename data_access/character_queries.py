@@ -42,7 +42,7 @@ async def sync_characters(
     for name, profile in profiles.items():
         errors = validate_kg_object(profile)
         if errors:
-            logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
+            logger.warning(f"Invalid CharacterProfile for '{name}': {errors}")
 
     if full_sync:
         profile_dicts = {k: v.to_dict() for k, v in profiles.items()}
@@ -120,7 +120,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         profile = CharacterProfile.from_dict(char_name, profile_dict)
         errors = validate_kg_object(profile)
         if errors:
-            logger.warning("Invalid CharacterProfile for '%s': %s", char_name, errors)
+            logger.warning(f"Invalid CharacterProfile for '{char_name}': {errors}")
 
         char_direct_props = {
             k: v
@@ -360,7 +360,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
 async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     """Retrieve a single ``CharacterProfile`` from Neo4j by character name."""
     canonical_name = resolve_character_name(name)
-    logger.info("Loading character profile '%s' from Neo4j...", canonical_name)
+    logger.info(f"Loading character profile '{canonical_name}' from Neo4j...")
 
     query = (
         "MATCH (c:Character:Entity {name: $name})"
@@ -369,7 +369,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     )
     results = await neo4j_manager.execute_read_query(query, {"name": canonical_name})
     if not results or not results[0].get("c"):
-        logger.info("No character profile found for '%s'.", canonical_name)
+        logger.info(f"No character profile found for '{canonical_name}'.")
         return None
 
     char_node = results[0]["c"]
@@ -724,7 +724,7 @@ async def sync_characters_native(
     for char in characters:
         errors = validate_kg_object(char)
         if errors:
-            logger.warning("Invalid CharacterProfile for '%s': %s", char.name, errors)
+            logger.warning(f"Invalid CharacterProfile for '{char.name}': {errors}")
 
     try:
         cypher_builder = NativeCypherBuilder()
@@ -781,7 +781,7 @@ async def get_character_profiles_native() -> list[CharacterProfile]:
         return characters
 
     except Exception as exc:
-        logger.error("Error fetching character profiles: %s", exc, exc_info=True)
+        logger.error(f"Error fetching character profiles: {exc}", exc_info=True)
         return []
 
 

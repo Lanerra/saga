@@ -657,7 +657,7 @@ def merge_character_profile_updates(
     for name, update in updates.items():
         errors = validate_kg_object(update)
         if errors:
-            logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
+            logger.warning(f"Invalid CharacterProfile for '{name}': {errors}")
 
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for name, update in updates.items():
@@ -701,7 +701,7 @@ def merge_character_profile_updates(
         if from_flawed_draft:
             profile.updates[provisional_key] = "provisional_from_unrevised_draft"
         if modified:
-            logger.debug("Profile for %s modified", name)
+            logger.debug(f"Profile for {name} modified")
 
 
 def merge_world_item_updates(
@@ -2346,7 +2346,7 @@ class KnowledgeAgent:
             await neo4j_manager.execute_cypher_batch(statements)
             await kg_queries.normalize_existing_relationship_types()
         except Exception as exc:  # pragma: no cover - narrow DB errors
-            logger.error("KG Healer: Schema healing failed: %s", exc, exc_info=True)
+            logger.error(f"KG Healer: Schema healing failed: {exc}", exc_info=True)
 
 
 __all__ = ["KnowledgeAgent"]

@@ -23,14 +23,14 @@ def _load_plugins() -> None:
     try:
         pkg = importlib.import_module(package)
     except ModuleNotFoundError:
-        logger.error("Plugin package %s not found", package)
+        logger.error(f"Plugin package {package} not found")
         return
 
     for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
         module = importlib.import_module(f"{package}.{module_name}")
         constraints = getattr(module, "RELATIONSHIP_CONSTRAINTS", {})
         RELATIONSHIP_CONSTRAINTS.update(constraints)
-        logger.debug("Loaded %d constraints from %s", len(constraints), module_name)
+        logger.debug(f"Loaded {len(constraints)} constraints from {module_name}")
 
 
 _load_plugins()
