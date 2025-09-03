@@ -23,6 +23,13 @@ from data_access import (
     plot_queries,
     world_queries,
 )
+# Import native versions for performance optimization
+from data_access.character_queries import (
+    sync_characters_native,
+)
+from data_access.world_queries import (
+    sync_world_items_native,
+)
 from models.kg_models import CharacterProfile, WorldItem
 from processing.parsing_utils import (
     parse_rdf_triples_with_rdflib,
@@ -650,7 +657,7 @@ def merge_character_profile_updates(
     for name, update in updates.items():
         errors = validate_kg_object(update)
         if errors:
-            logger.warning("Invalid CharacterProfile for '%s': %s", name, errors)
+            logger.warning(f"Invalid CharacterProfile for '{name}': {errors}")
 
     provisional_key = f"source_quality_chapter_{chapter_number}"
     for name, update in updates.items():
@@ -694,7 +701,7 @@ def merge_character_profile_updates(
         if from_flawed_draft:
             profile.updates[provisional_key] = "provisional_from_unrevised_draft"
         if modified:
-            logger.debug("Profile for %s modified", name)
+            logger.debug(f"Profile for {name} modified")
 
 
 def merge_world_item_updates(
@@ -864,28 +871,35 @@ class KnowledgeAgent:
 
     async def persist_profiles(
         self,
-        profiles_to_persist: dict[str, CharacterProfile],
+        profiles_to_persist: dict[str, CharacterProfile] | list[CharacterProfile],
         chapter_number_for_delta: int,
         full_sync: bool = False,
     ) -> None:
         """Persist character profiles to Neo4j with enhanced validation."""
-        if config.BOOTSTRAP_USE_VALIDATION:
-            from core.schema_validator import validate_kg_object
-            
-            # Validate each profile before persistence
+        
+        # Handle both dict and list input formats
+        profiles_list = []
+        if isinstance(profiles_to_persist, dict):
+            # Validate all profiles before persisting
             for name, profile in profiles_to_persist.items():
                 validation_errors = validate_kg_object(profile)
                 if validation_errors:
-                    logger.warning(f"Validation issues for character {name}: {validation_errors}")
-                    # Continue with persistence - validation is advisory during bootstrap
+                    logger.warning(f"Validation issues for character profile {name}: {validation_errors}")
+            profiles_list = list(profiles_to_persist.values())
+        else:
+            # Validate all profiles before persisting
+            for profile in profiles_to_persist:
+                validation_errors = validate_kg_object(profile)
+                if validation_errors:
+                    logger.warning(f"Validation issues for character profile {profile.name}: {validation_errors}")
+            profiles_list = profiles_to_persist
         
-        await character_queries.sync_characters(
-            profiles_to_persist, chapter_number_for_delta, full_sync=full_sync
-        )
+        # Use native model version for better performance
+        await sync_characters_native(profiles_list, chapter_number_for_delta)
 
     async def persist_world(
         self,
-        world_items_to_persist: dict[str, dict[str, WorldItem]],
+        world_items_to_persist: dict[str, dict[str, WorldItem]] | list[WorldItem],
         chapter_number_for_delta: int,
         full_sync: bool = False,
     ) -> None:
@@ -894,30 +908,34 @@ class KnowledgeAgent:
             from core.enhanced_node_taxonomy import suggest_better_node_type
             from core.schema_validator import validate_kg_object
             
-            # Enhance world items with proper node typing and validation
-            for category, items_dict in world_items_to_persist.items():
-                if not isinstance(items_dict, dict):
-                    continue
-                    
-                for item_name, world_item in items_dict.items():
-                    if not isinstance(world_item, WorldItem):
+            # Handle both dict and list input formats
+            if isinstance(world_items_to_persist, dict):
+                # Enhance world items with proper node typing and validation
+                for category, items_dict in world_items_to_persist.items():
+                    if not isinstance(items_dict, dict):
                         continue
-                    
-                    # Use enhanced node taxonomy for better typing
-                    suggested_type = suggest_better_node_type(
-                        "WorldElement", item_name, category, world_item.description
-                    )
-                    world_item.additional_properties["enhanced_node_type"] = suggested_type
-                    
-                    # Validate the world item if validation is enabled
-                    if config.BOOTSTRAP_USE_VALIDATION:
-                        validation_errors = validate_kg_object(world_item)
+                        
+                    for item_name, item in items_dict.items():
+                        if not isinstance(item, WorldItem):
+                            continue
+                            
+                        # Validate and enhance with better node typing
+                        validation_errors = validate_kg_object(item)
                         if validation_errors:
                             logger.warning(f"Validation issues for world item {category}/{item_name}: {validation_errors}")
         
-        await world_queries.sync_world_items(
-            world_items_to_persist, chapter_number_for_delta, full_sync=full_sync
-        )
+        # Use native model version for better performance
+        # Convert to list format if needed
+        if isinstance(world_items_to_persist, dict):
+            # Flatten the nested dict structure into a list
+            world_items_list = []
+            for category_items in world_items_to_persist.values():
+                if isinstance(category_items, dict):
+                    world_items_list.extend(category_items.values())
+        else:
+            world_items_list = world_items_to_persist
+            
+        await sync_world_items_native(world_items_list, chapter_number_for_delta)
 
     async def add_plot_point(self, description: str, prev_plot_point_id: str) -> str:
         """Persist a new plot point and link it in sequence."""
@@ -2328,7 +2346,7 @@ class KnowledgeAgent:
             await neo4j_manager.execute_cypher_batch(statements)
             await kg_queries.normalize_existing_relationship_types()
         except Exception as exc:  # pragma: no cover - narrow DB errors
-            logger.error("KG Healer: Schema healing failed: %s", exc, exc_info=True)
+            logger.error(f"KG Healer: Schema healing failed: {exc}", exc_info=True)
 
 
 __all__ = ["KnowledgeAgent"]

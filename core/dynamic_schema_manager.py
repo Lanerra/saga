@@ -8,7 +8,7 @@ schema understanding.
 """
 
 import asyncio
-import logging
+import structlog
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -17,7 +17,7 @@ from core.schema_introspector import SchemaIntrospector
 from core.intelligent_type_inference import IntelligentTypeInference
 from core.adaptive_constraint_system import AdaptiveConstraintSystem
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class DynamicSchemaManager:

@@ -1,12 +1,12 @@
 # core/schema_validator.py
 """Schema validation utilities for the knowledge graph."""
 
-import logging
 from typing import Any
 
+import structlog
 from models.kg_models import CharacterProfile, WorldItem
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def validate_kg_object(obj: Any) -> list[str]:
@@ -113,71 +113,7 @@ def validate_node_labels(labels: list[str]) -> list[str]:
     return errors
 
 
-def validate_relationship_types(rel_types: list[str]) -> list[str]:
-    """
-    Validate relationship types against the predefined narrative taxonomy.
-
-    Returns a list of validation errors. Empty list means valid.
-    """
-    import models.kg_constants
-
-    errors = []
-
-    if not isinstance(rel_types, list):
-        errors.append("Relationship types must be a list")
-        return errors
-
-    for rel_type in rel_types:
-        if not isinstance(rel_type, str) or not rel_type.strip():
-            errors.append("Relationship types must be non-empty strings")
-            continue
-
-        # Basic format validation
-        if not rel_type.isupper():
-            errors.append(f"Relationship type '{rel_type}' should be uppercase")
-
-        # Check against predefined taxonomy
-        if rel_type not in models.kg_constants.RELATIONSHIP_TYPES:
-            # Check if it can be normalized to a valid type
-            from data_access.kg_queries import normalize_relationship_type
-
-            normalized = normalize_relationship_type(rel_type)
-
-            if normalized in models.kg_constants.RELATIONSHIP_TYPES:
-                # It's normalizable - suggest normalization rather than error
-                logger.info(
-                    f"Relationship type '{rel_type}' can be normalized to '{normalized}'"
-                )
-            else:
-                errors.append(
-                    f"Relationship type '{rel_type}' is not in the predefined narrative taxonomy"
-                )
-
-    return errors
-
-
-def suggest_relationship_normalization(rel_types: list[str]) -> dict[str, str]:
-    """
-    Suggest normalizations for relationship types that don't match the predefined taxonomy.
-
-    Returns a dict mapping original -> suggested canonical form.
-    """
-    import models.kg_constants
-    from data_access.kg_queries import normalize_relationship_type
-
-    suggestions = {}
-
-    for rel_type in rel_types:
-        if isinstance(rel_type, str) and rel_type.strip():
-            if rel_type not in models.kg_constants.RELATIONSHIP_TYPES:
-                normalized = normalize_relationship_type(rel_type)
-                if (
-                    normalized in models.kg_constants.RELATIONSHIP_TYPES
-                    and normalized != rel_type
-                ):
-                    suggestions[rel_type] = normalized
-
-    return suggestions
+# Deprecated functions have been removed - use core.relationship_validator instead
 
 
 def validate_character_profile(profile: CharacterProfile) -> list[str]:
@@ -186,24 +122,8 @@ def validate_character_profile(profile: CharacterProfile) -> list[str]:
 
     Returns a list of validation errors. Empty list means valid.
     """
-    errors = []
-    # Check name
-    if not profile.name or not profile.name.strip():
-        errors.append("CharacterProfile name cannot be empty")
-    # Check traits
-    if not isinstance(profile.traits, list):
-        errors.append("CharacterProfile traits must be a list")
-    else:
-        for trait in profile.traits:
-            if not isinstance(trait, str) or not trait.strip():
-                errors.append("CharacterProfile traits must be non-empty strings")
-    # Check relationships (just dict)
-    if not isinstance(profile.relationships, dict):
-        errors.append("CharacterProfile relationships must be a dict")
-    # Check status
-    if not isinstance(profile.status, str):
-        errors.append("CharacterProfile status must be a string")
-    return errors
+    # Use centralized validation logic to eliminate code duplication
+    return validate_kg_object(profile)
 
 
 def validate_world_item(item: WorldItem) -> list[str]:
@@ -212,41 +132,5 @@ def validate_world_item(item: WorldItem) -> list[str]:
 
     Returns a list of validation errors. Empty list means valid.
     """
-    errors = []
-    if not item.name or not item.name.strip():
-        errors.append("WorldItem name cannot be empty")
-    if not item.category or not item.category.strip():
-        errors.append("WorldItem category cannot be empty")
-    if not isinstance(item.description, str):
-        errors.append("WorldItem description must be a string")
-    if not isinstance(item.goals, list):
-        errors.append("WorldItem goals must be a list")
-    else:
-        for goal in item.goals:
-            if not isinstance(goal, str) or not goal.strip():
-                errors.append("WorldItem goals must be non-empty strings")
-    # Check rules
-    if not isinstance(item.rules, list):
-        errors.append("WorldItem rules must be a list")
-    else:
-        for rule in item.rules:
-            if not isinstance(rule, str) or not rule.strip():
-                errors.append("WorldItem rules must be non-empty strings")
-    # Check key_elements
-    if not isinstance(item.key_elements, list):
-        errors.append("WorldItem key_elements must be a list")
-    else:
-        for element in item.key_elements:
-            if not isinstance(element, str) or not element.strip():
-                errors.append("WorldItem key_elements must be non-empty strings")
-    # Check traits
-    if not isinstance(item.traits, list):
-        errors.append("WorldItem traits must be a list")
-    else:
-        for trait in item.traits:
-            if not isinstance(trait, str) or not trait.strip():
-                errors.append("WorldItem traits must be non-empty strings")
-    # Check additional_properties
-    if not isinstance(item.additional_properties, dict):
-        errors.append("WorldItem additional_properties must be a dict")
-    return errors
+    # Use centralized validation logic to eliminate code duplication
+    return validate_kg_object(item)

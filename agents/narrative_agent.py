@@ -859,7 +859,7 @@ class NarrativeAgent:
             if isinstance(parsed, list):
                 return [str(p) for p in parsed if str(p).strip()], usage
         except json.JSONDecodeError:
-            logger.error("Failed to parse continuation plan JSON: %s", cleaned)
+            logger.error(f"Failed to parse continuation plan JSON: {cleaned}")
         return None, usage
 
     async def _check_quality(self, draft_text: str) -> bool:

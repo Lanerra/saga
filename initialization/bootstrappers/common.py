@@ -19,7 +19,7 @@ async def bootstrap_field(
     list_count: int = 1,
 ) -> tuple[Any, dict[str, int] | None]:
     """Call LLM to fill a single field or list of fields."""
-    logger.info("Bootstrapping field: '%s'...", field_name)
+    logger.info(f"Bootstrapping field: '{field_name}'...")
     prompt = render_prompt(
         prompt_template_path,
         {"context": context_data, "field_name": field_name, "list_count": list_count},

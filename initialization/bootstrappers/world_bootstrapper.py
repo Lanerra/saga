@@ -323,9 +323,7 @@ async def bootstrap_world(
             # For structured fields like description, goals, rules, key_elements, traits
             if not item_obj.description:
                 logger.info(
-                    "Identified property 'description' for bootstrapping in item '%s/%s'.",
-                    category,
-                    item_name,
+                    f"Identified property 'description' for bootstrapping in item '{category}/{item_name}'."
                 )
                 task_key = (category, item_name, "description")
                 context_data = {
@@ -345,10 +343,7 @@ async def bootstrap_world(
                     isinstance(prop_value, str) and not prop_value.strip()
                 ):
                     logger.info(
-                        "Identified property '%s' for bootstrapping in item '%s/%s'.",
-                        prop_name,
-                        category,
-                        item_name,
+                        f"Identified property '{prop_name}' for bootstrapping in item '{category}/{item_name}'."
                     )
                     task_key = (category, item_name, prop_name)
                     context_data = {

@@ -106,7 +106,7 @@ class KnowledgeGraphService:
             return characters
 
         except Exception as exc:
-            logger.error("Error fetching characters: %s", exc, exc_info=True)
+            logger.error(f"Error fetching characters: {exc}", exc_info=True)
             return []
 
     async def fetch_world_items(
@@ -141,7 +141,7 @@ class KnowledgeGraphService:
             return world_items
 
         except Exception as exc:
-            logger.error("Error fetching world items: %s", exc, exc_info=True)
+            logger.error(f"Error fetching world items: {exc}", exc_info=True)
             return []
 
     async def fetch_entities_for_context(

@@ -27,8 +27,7 @@ def main() -> None:
         )
     except Exception as main_err:  # pragma: no cover - entry point catch
         logger.critical(
-            "SAGA Orchestrator encountered an unhandled main exception: %s",
-            main_err,
+            f"SAGA Orchestrator encountered an unhandled main exception: {main_err}",
             exc_info=True,
         )
     finally:
@@ -46,8 +45,7 @@ def main() -> None:
                 asyncio.run(_close_driver_main())
             except Exception as e:
                 logger.warning(
-                    "Could not explicitly close driver from main: %s",
-                    e,
+                    f"Could not explicitly close driver from main: {e}",
                 )
 
 

@@ -19,7 +19,7 @@ def load_user_supplied_model() -> UserStoryInputModel | None:
     try:
         return UserStoryInputModel(**data)
     except Exception as exc:  # pragma: no cover
-        logger.error("Failed to parse user story YAML: %s", exc)
+        logger.error(f"Failed to parse user story YAML: {exc}")
         return None
 
 

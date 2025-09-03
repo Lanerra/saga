@@ -537,7 +537,7 @@ async def _get_character_profiles_dict_with_notes(
             continue
 
         if not profile_obj:
-            logger.warning("Character '%s' not found in Neo4j.", char_name)
+            logger.warning(f"Character '{char_name}' not found in Neo4j.")
             continue
 
         profile_dict = profile_obj.to_dict()

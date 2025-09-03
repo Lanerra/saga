@@ -9,172 +9,19 @@ from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
     NODE_LABELS,
+    RELATIONSHIP_NORMALIZATIONS,
+    RELATIONSHIP_TYPES,
 )
 
 import config
 from core.db_manager import neo4j_manager
-from core.schema_validator import validate_node_labels, validate_relationship_types
+from core.schema_validator import validate_node_labels
+from core.relationship_validator import validate_relationship_types
 
 logger = logging.getLogger(__name__)
 
-# Valid relationship types for narrative knowledge graphs
-VALID_RELATIONSHIP_TYPES = {
-    # Character relationships
-    "LOVES",
-    "HATES",
-    "FEARS",
-    "TRUSTS",
-    "DISTRUSTS",
-    "RESPECTS",
-    "FAMILY_OF",
-    "FRIEND_OF",
-    "ENEMY_OF",
-    "RIVAL_OF",
-    "ALLY_OF",
-    "MENTOR_TO",
-    "STUDENT_OF",
-    "LEADER_OF",
-    "MEMBER_OF",
-    "SERVES",
-    "WORKS_FOR",
-    "ROMANTIC_WITH",
-    "MARRIED_TO",
-    "PARENT_OF",
-    "CHILD_OF",
-    "KNOWS",
-    "ENVIES",
-    "PITIES",
-    "BETRAYS",
-    "PROTECTS",
-    "THREATENS",
-    # Location relationships
-    "LOCATED_IN",
-    "LOCATED_AT",
-    "ADJACENT_TO",
-    "CONTAINS",
-    "PART_OF",
-    "CONNECTED_TO",
-    "NEAR",
-    "BUILT_BY",
-    "FOUNDED",
-    "DESTROYED_BY",
-    "ORIGINATES_FROM",
-    "TRAVELS_TO",
-    "BORDERS",
-    "OVERLOOKS",
-    # Object relationships
-    "OWNS",
-    "POSSESSES",
-    "CREATED_BY",
-    "BELONGS_TO",
-    "FOUND_AT",
-    "LOST_AT",
-    "STOLEN_FROM",
-    "GIVEN_BY",
-    "INHERITED_FROM",
-    "USED_BY",
-    "POWERED_BY",
-    "MADE_OF",
-    "CONTAINS_ITEM",
-    # Temporal/Process relationships
-    "HAPPENS_BEFORE",
-    "HAPPENS_AFTER",
-    "OCCURS_DURING",
-    "TRIGGERS",
-    "RESULTS_IN",
-    "CAUSES",
-    "PREVENTS",
-    "ENABLES",
-    "FOLLOWS",
-    "PRECEDES",
-    "INTERRUPTS",
-    "COINCIDES_WITH",
-    "OCCURRED_IN",
-    "PERFORMS_ACTION",
-    "IS_PERFORMED_BY",
-    "IS_USED_FOR",
-    "IS_OPENED_BY",
-    "IS_FUELED_BY",
-    "IS_SYNCHRONIZED_WITH",
-    # Abstract relationships
-    "SYMBOLIZES",
-    "REPRESENTS",
-    "EMBODIES",
-    "CONTRASTS_WITH",
-    "PARALLELS",
-    "ECHOES",
-    "FORESHADOWS",
-    "RELATES_TO",
-    "INFLUENCES",
-    "INSPIRES",
-    "REMINDS_OF",
-    "DEPENDS_ON",
-    "EXTENDS",
-    "RESONATES_WITH",
-    "HAS_TRAIT",
-    "EXTENSION_OF",
-    # Action/Event relationships
-    "PERFORMS",
-    "WITNESSES",
-    "EXPERIENCES",
-    "PARTICIPATES_IN",
-    "INITIATES",
-    "COMPLETES",
-    "ABANDONS",
-    "DISCOVERS",
-    "CREATES",
-    "DESTROYS",
-    "MODIFIES",
-    "OBSERVES",
-    "CONNECTS_TO",
-    "RESPONDS_TO",
-    "ACCESSES",
-    # Conflict relationships
-    "OPPOSES",
-    "SUPPORTS",
-    "CONFLICTS_WITH",
-    "COMPETES_WITH",
-    "COLLABORATES_WITH",
-    "NEGOTIATES_WITH",
-    "FIGHTS_AGAINST",
-    # Cognitive/Mental state relationships
-    "BELIEVES",
-    "REALIZES",
-    "REMEMBERS",
-    "UNDERSTANDS",
-    "RECOGNIZES",
-    "FEELS",
-    "THINKS_ABOUT",
-    "PERCEIVES",
-    "WATCHES",
-    "SEES",
-    # Physical properties:
-    "HAS_PROPERTY",
-    "HAS_FEATURE",
-    "HAS_ACCESS",
-    "HAS_VOICE",
-    "HAS_PULSE",
-    "PULSES_WITH",
-    "SYNCED_WITH",
-    "MOVES_IN_UNISON",
-    # Communication/Interaction
-    "COMMUNICATES_THROUGH",
-    "SPEAKS_TO",
-    "SPEAKS_WITH",
-    "DECLARES",
-    # Source/Creation relationships
-    "IS_SOURCE_OF",
-    "WRITTEN_BY",
-    "RECORDS",
-    "PRODUCES",
-    "TRANSFORMED_BY",
-    # Rules/Goals (narrative structure)
-    "HAS_RULE",
-    "HAS_GOAL",
-    "IS_TRUE_FOR",
-    "INVOLVES",
-    "NEEDS",
-}
+# Valid relationship types for narrative knowledge graphs - use canonical constants
+VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
 # Lookup table for canonical node labels to ensure consistent casing
 _CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
@@ -770,6 +617,13 @@ def validate_relationship_type(proposed_type: str) -> str:
 
     # Clean and normalize input
     clean_type = proposed_type.strip().upper().replace(" ", "_")
+    
+    # Check normalization mappings first (using lowercase key)
+    lower_key = proposed_type.strip().lower().replace(" ", "_")
+    if lower_key in RELATIONSHIP_NORMALIZATIONS:
+        normalized_type = RELATIONSHIP_NORMALIZATIONS[lower_key]
+        logger.debug(f"Applied normalization: '{proposed_type}' -> '{normalized_type}'")
+        return normalized_type
 
     # Check if it's already valid
     if clean_type in VALID_RELATIONSHIP_TYPES:
@@ -1125,7 +979,7 @@ async def normalize_existing_relationship_types() -> None:
     try:
         results = await neo4j_manager.execute_read_query(query)
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Error reading existing relationship types: %s", exc)
+        logger.error(f"Error reading existing relationship types: {exc}")
         return
 
     statements: list[tuple[str, dict[str, Any]]] = []
@@ -1495,6 +1349,7 @@ async def add_kg_triples_batch_to_db(
         raise
 
 
+@alru_cache(maxsize=256, ttl=300)  # Cache for 5 minutes with 256 entries max
 async def query_kg_from_db(
     subject: str | None = None,
     predicate: str | None = None,
@@ -1511,7 +1366,8 @@ async def query_kg_from_db(
         conditions.append("s.name = $subject_param")
         parameters["subject_param"] = subject.strip()
     if predicate is not None:
-        match_clause = f"MATCH (s:Entity)-[r:`{predicate.strip().upper().replace(' ', '_')}`]->(o) "
+        normalized_predicate = validate_relationship_type(predicate)
+        match_clause = f"MATCH (s:Entity)-[r:`{normalized_predicate}`]->(o) "
     if obj_val is not None:
         obj_val_stripped = obj_val.strip()
         conditions.append(
@@ -1589,7 +1445,8 @@ async def get_most_recent_value_from_db(
 
     conditions = []
     parameters: dict[str, Any] = {}
-    match_clause = f"MATCH (s:Entity)-[r:`{predicate.strip().upper().replace(' ', '_')}`]->(o) "
+    normalized_predicate = validate_relationship_type(predicate)
+    match_clause = f"MATCH (s:Entity)-[r:`{normalized_predicate}`]->(o) "
     
     conditions.append("s.name = $subject_param")
     parameters["subject_param"] = subject.strip()
@@ -1643,30 +1500,9 @@ async def get_most_recent_value_from_db(
         f"Neo4j: No value found for ({subject}, {predicate}) up to Ch {chapter_limit}, include_provisional={include_provisional}."
     )
     return None
-    if results and results[0] and "object" in results[0]:
-        value = results[0]["object"]
-        # Attempt to convert to number if it looks like one, as ValueNode.value stores as string from current triple parsing
-        if isinstance(value, str):
-            if re.match(r"^-?\d+$", value):
-                value = int(value)
-            elif re.match(r"^-?\d*\.\d+$", value):
-                value = float(value)
-            elif value.lower() == "true":
-                value = True
-            elif value.lower() == "false":
-                value = False
-
-        logger.debug(
-            f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
-        )
-        return value
-
-    logger.debug(
-        f"Neo4j: No value found for ({subject}, {predicate}) up to Ch {chapter_limit}, include_provisional={include_provisional}."
-    )
-    return None
 
 
+@alru_cache(maxsize=64, ttl=600)  # Cache novel info properties for 10 minutes
 async def get_novel_info_property_from_db(property_key: str) -> Any | None:
     """Return a property value from the NovelInfo node."""
     if not property_key.strip():
@@ -2046,10 +1882,7 @@ async def get_defined_node_labels() -> list[str]:
         # Start with our canonical schema labels
         from models.kg_constants import NODE_LABELS
         # Also explicitly import enhanced node labels for clarity
-        from core.enhanced_node_taxonomy import ENHANCED_NODE_LABELS
-        
         # Verify that NODE_LABELS contains all enhanced labels
-        # This is just for documentation/clarity - NODE_LABELS should already contain ENHANCED_NODE_LABELS
         schema_labels = sorted(list(NODE_LABELS))
 
         # Also get any additional labels from database (for backward compatibility)
@@ -2068,7 +1901,7 @@ async def get_defined_node_labels() -> list[str]:
         # Validate combined labels
         errors = validate_node_labels(all_labels)
         if errors:
-            logger.warning("Invalid node labels found: %s", errors)
+            logger.warning(f"Invalid node labels found: {errors}")
 
         return all_labels
     except Exception:
@@ -2080,7 +1913,7 @@ async def get_defined_node_labels() -> list[str]:
         # Validate labels against schema
         errors = validate_node_labels(labels)
         if errors:
-            logger.warning("Fallback node labels validation errors: %s", errors)
+            logger.warning(f"Fallback node labels validation errors: {errors}")
         return labels
 
 
@@ -2097,7 +1930,7 @@ async def get_defined_relationship_types() -> list[str]:
         # Validate relationship types against schema
         errors = validate_relationship_types(rel_types)
         if errors:
-            logger.warning("Invalid relationship types found: %s", errors)
+            logger.warning(f"Invalid relationship types found: {errors}")
         return rel_types
     except Exception:
         logger.error(
@@ -2108,7 +1941,7 @@ async def get_defined_relationship_types() -> list[str]:
         # Validate relationship types against schema
         errors = validate_relationship_types(rel_types)
         if errors:
-            logger.warning("Invalid relationship types in config: %s", errors)
+            logger.warning(f"Invalid relationship types in config: {errors}")
         return rel_types
 
 
@@ -2171,7 +2004,7 @@ async def promote_dynamic_relationships() -> int:
         return total_promoted
 
     except Exception as exc:
-        logger.error("Failed to promote dynamic relationships: %s", exc, exc_info=True)
+        logger.error(f"Failed to promote dynamic relationships: {exc}", exc_info=True)
         return total_promoted  # Return partial success
 
 
@@ -2218,7 +2051,7 @@ async def _validate_and_correct_relationship_types() -> int:
         return corrected_count
 
     except Exception as exc:
-        logger.error("Failed to validate relationship types: %s", exc, exc_info=True)
+        logger.error(f"Failed to validate relationship types: {exc}", exc_info=True)
         return 0
 
 
@@ -2245,7 +2078,7 @@ async def deduplicate_relationships() -> int:
         results = await neo4j_manager.execute_write_query(query)
         return results[0].get("removed", 0) if results else 0
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Failed to deduplicate relationships: %s", exc, exc_info=True)
+        logger.error(f"Failed to deduplicate relationships: {exc}", exc_info=True)
         return 0
 
 
@@ -2457,7 +2290,7 @@ async def get_shortest_path_length_between_entities(
         if results:
             return results[0].get("len")
     except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error("Failed to compute shortest path length: %s", exc, exc_info=True)
+        logger.error(f"Failed to compute shortest path length: {exc}", exc_info=True)
     return None
 
 
@@ -2497,6 +2330,48 @@ async def find_potential_bridges(element: dict[str, Any]) -> list[dict[str, Any]
     except Exception as e:
         logger.error(f"Error finding potential bridges: {e}", exc_info=True)
         return []
+
+
+async def create_relationship_with_properties(
+    subject_name: str,
+    relationship_type: str,
+    object_name: str,
+    properties: dict[str, Any] | None = None,
+) -> None:
+    """Create a relationship between two entities by name with optional properties."""
+    if not properties:
+        properties = {}
+    
+    # Default properties for bootstrap relationships
+    default_props = {
+        "source": "bootstrap",
+        "confidence": 0.8,
+        "chapter_added": 0,
+    }
+    default_props.update(properties)
+    
+    # Create structured triple data for the batch processor
+    triple_data = {
+        "subject": {"name": subject_name.strip()},
+        "predicate": relationship_type.upper().strip(),
+        "object_entity": {"name": object_name.strip()},
+        "is_literal_object": False,
+        "subject_type": "Entity",  # Will be refined by validation
+        "object_type": "Entity",   # Will be refined by validation
+        "properties": default_props,
+    }
+    
+    # Use existing batch infrastructure to create the relationship
+    await add_kg_triples_batch_to_db(
+        [triple_data],
+        chapter_number=properties.get("chapter_added", 0),
+        is_from_flawed_draft=False
+    )
+    
+    logger.debug(
+        f"Created relationship: {subject_name} {relationship_type} {object_name} "
+        f"with properties: {default_props}"
+    )
 
 
 async def create_contextual_relationship(
