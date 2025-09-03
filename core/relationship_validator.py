@@ -4,6 +4,11 @@ Core relationship validation framework for the SAGA knowledge graph.
 
 This module provides the main validation engine that integrates with the existing
 pipeline to validate relationship semantics before they are stored in the database.
+
+REFACTORED: This module has been refactored as part of Phase 3 architectural improvements.
+- Type inference logic extracted to core.type_inference_service
+- Complex triple processing extracted to core.triple_processor  
+- Global validator instance replaced with dependency injection via core.validation_service_provider
 """
 
 from typing import Any
@@ -30,7 +35,14 @@ logger = structlog.get_logger(__name__)
 
 def validate_relationship_types(rel_types: list[str]) -> list[str]:
     """
+    DEPRECATED: This function is deprecated and should not be used in new code.
+    
     Validate relationship types against the predefined narrative taxonomy.
+    
+    MIGRATION: Use the new validation service provider with proper dependency injection:
+        from core.validation_service_provider import get_validation_service
+        validation_service = get_validation_service()
+        # Use validation_service methods instead
 
     Returns a list of validation errors. Empty list means valid.
     """
@@ -71,7 +83,14 @@ def validate_relationship_types(rel_types: list[str]) -> list[str]:
 
 def suggest_relationship_normalization(rel_types: list[str]) -> dict[str, str]:
     """
+    DEPRECATED: This function is deprecated and should not be used in new code.
+    
     Suggest normalizations for relationship types that don't match the predefined taxonomy.
+    
+    MIGRATION: Use the new validation service provider with proper dependency injection:
+        from core.validation_service_provider import get_validation_service
+        validation_service = get_validation_service()
+        # Use validation_service.suggest_alternatives() instead
 
     Returns a dict mapping original -> suggested canonical form.
     """
@@ -116,9 +135,14 @@ class ValidationResult:
 
 
 class RelationshipConstraintValidator:
-    """Main validation engine for relationship constraints."""
+    """
+    Main validation engine for relationship constraints.
+    
+    REFACTORED: Simplified to focus only on core relationship validation logic.
+    Complex type inference and triple processing have been extracted to separate services.
+    """
 
-    def __init__(self) -> None:
+    def __init__(self, triple_processor=None) -> None:
         self.validation_stats = {
             "total_validations": 0,
             "valid_relationships": 0,
@@ -126,6 +150,8 @@ class RelationshipConstraintValidator:
             "corrected_relationships": 0,
             "fallback_relationships": 0,
         }
+        # Dependency injection for triple processor
+        self._triple_processor = triple_processor
 
     def validate_relationship(
         self,
@@ -330,108 +356,33 @@ class RelationshipConstraintValidator:
     def validate_triple(self, triple_dict: dict[str, Any]) -> ValidationResult:
         """
         Validate a complete triple from the extraction pipeline.
+        
+        REFACTORED: Simplified to use TripleProcessor for complex extraction logic.
+        This method now focuses only on orchestrating validation rather than handling
+        complex type inference and entity extraction.
 
         Args:
             triple_dict: Dictionary containing subject, predicate, object information
-                        Expected format: {
-                            "subject": {"name": "...", "type": "..."},
-                            "predicate": "...",
-                            "object_entity": {"name": "...", "type": "..."} | None,
-                            "object_literal": "..." | None,
-                            "is_literal_object": bool
-                        }
         """
         try:
-            subject_info = triple_dict.get("subject", {})
-            subject_type = subject_info.get("type")
+            # Use triple processor to extract and prepare entity information
+            triple_processor = self._get_triple_processor()
+            processed_triple = triple_processor.process_triple(triple_dict)
             
-            # Enhanced type handling - if type is missing or None, try to infer it
-            if subject_type is None or subject_type == "":
-                # Log the issue for debugging
-                subject_name = subject_info.get("name", "UNKNOWN")
-                logger.warning(f"Subject type missing or None for subject '{subject_name}'. Using 'Entity' fallback.")
-                subject_type = "Entity"
-            elif subject_type not in models.kg_constants.NODE_LABELS:
-                # Type exists but is not in our valid labels - try to infer better type
-                logger.warning(f"Subject type '{subject_type}' not in valid node labels. Attempting inference.")
-                # Try to use enhanced node taxonomy for better type inference
-                try:
-                    from core.enhanced_node_taxonomy import (
-                        validate_node_type,
-                        suggest_better_node_type,
-                        infer_node_type_from_name,
-                        infer_node_type_from_category
-                    )
-                    # Try to get category information if available
-                    category = subject_info.get("category", "")
-                    subject_name = subject_info.get("name", "")
-                    # Attempt inference using enhanced taxonomy
-                    inferred_type = suggest_better_node_type(subject_type, subject_name, category)
-                    if validate_node_type(inferred_type):
-                        subject_type = inferred_type
-                        logger.info(f"Inferred better subject type: {subject_type}")
-                    else:
-                        # Fallback to Entity if inference fails
-                        subject_type = "Entity"
-                        logger.warning(f"Fallback to 'Entity' for subject '{subject_name}' after inference")
-                except Exception as inference_error:
-                    logger.warning(f"Type inference failed for subject '{subject_name}': {inference_error}")
-                    subject_type = "Entity"
-            
-            predicate = triple_dict.get("predicate", "")
+            if not processed_triple:
+                # Triple processing failed
+                return ValidationResult(
+                    is_valid=False,
+                    original_relationship=triple_dict.get("predicate", "UNKNOWN"),
+                    errors=["Failed to process triple - invalid or incomplete information"],
+                )
 
-            # Handle literal vs entity objects
-            is_literal_object = triple_dict.get("is_literal_object", False)
-            if is_literal_object:
-                object_type = "ValueNode"  # Literals become ValueNode entities
-            else:
-                object_info = triple_dict.get("object_entity", {})
-                object_type = object_info.get("type", "Entity")
-            
-            # Enhanced object type handling - if type is missing or None, try to infer it
-            if object_type is None or object_type == "":
-                # Log the issue for debugging
-                object_name = object_info.get("name", "UNKNOWN") if object_info else "UNKNOWN"
-                logger.warning(f"Object type missing or None for object '{object_name}'. Using 'Entity' fallback.")
-                object_type = "Entity"
-            elif object_type not in models.kg_constants.NODE_LABELS:
-                # Type exists but is not in our valid labels - try to infer better type
-                logger.warning(f"Object type '{object_type}' not in valid node labels. Attempting inference.")
-                # Try to use enhanced node taxonomy for better type inference
-                try:
-                    from core.enhanced_node_taxonomy import (
-                        validate_node_type,
-                        suggest_better_node_type,
-                        infer_node_type_from_name,
-                        infer_node_type_from_category
-                    )
-                    # Try to get category information if available
-                    category = object_info.get("category", "") if object_info else ""
-                    object_name = object_info.get("name", "") if object_info else ""
-                    # Attempt inference using enhanced taxonomy
-                    inferred_type = suggest_better_node_type(object_type, object_name, category)
-                    if validate_node_type(inferred_type):
-                        object_type = inferred_type
-                        logger.info(f"Inferred better object type: {object_type}")
-                    else:
-                        # Fallback to Entity if inference fails
-                        object_type = "Entity"
-                        logger.warning(f"Fallback to 'Entity' for object '{object_name}' after inference")
-                except Exception as inference_error:
-                    logger.warning(f"Object type inference failed for object '{object_name}': {inference_error}")
-                    object_type = "Entity"
-
-            # Handle invalid object types gracefully
-            if object_type not in models.kg_constants.NODE_LABELS:
-                if "literal" in object_type.lower() or "value" in object_type.lower():
-                    object_type = "ValueNode"
-                elif "response" in object_type.lower():
-                    object_type = "ValueNode"
-                else:
-                    object_type = "Entity"
-
+            # Delegate to relationship validation with processed information
             return self.validate_relationship(
-                subject_type, predicate, object_type, triple_dict
+                processed_triple["subject_type"],
+                processed_triple["predicate"], 
+                processed_triple["object_type"],
+                triple_dict  # Pass original context
             )
 
         except Exception as e:
@@ -441,6 +392,19 @@ class RelationshipConstraintValidator:
                 original_relationship=triple_dict.get("predicate", "UNKNOWN"),
                 errors=[f"Validation error: {str(e)}"],
             )
+    
+    def _get_triple_processor(self):
+        """Get triple processor via dependency injection."""
+        if self._triple_processor is None:
+            # Use lazy initialization with dependency injection
+            try:
+                from core.triple_processor import TripleProcessor
+                self._triple_processor = TripleProcessor()
+            except Exception as e:
+                logger.error(f"Failed to initialize triple processor: {e}")
+                raise
+        
+        return self._triple_processor
 
     def validate_batch(self, triples: list[dict[str, Any]]) -> list[ValidationResult]:
         """Validate a batch of triples efficiently."""
@@ -482,9 +446,9 @@ class RelationshipConstraintValidator:
         return get_all_valid_relationships_for_node_pair(subject_type, object_type)
 
 
-# Global validator instance
-validator = RelationshipConstraintValidator()
-
+# REFACTORED: Replaced global singleton with dependency injection
+# The global validator instance has been replaced with service provider pattern
+# for better testability, thread safety, and dependency management.
 
 def validate_relationship_constraint(
     subject_type: str,
@@ -493,43 +457,88 @@ def validate_relationship_constraint(
     context: dict[str, Any] | None = None,
 ) -> ValidationResult:
     """
-    Convenience function for relationship validation.
+    Convenience function for relationship validation using dependency injection.
 
+    REFACTORED: Now uses validation service provider instead of global singleton.
     This is the main entry point that should be used throughout the codebase.
     """
-    return validator.validate_relationship(
-        subject_type, predicate, object_type, context
-    )
+    try:
+        from core.validation_service_provider import get_validation_service
+        validation_service = get_validation_service()
+        return validation_service.validate_relationship(
+            subject_type, predicate, object_type, context
+        )
+    except Exception as e:
+        logger.error(f"Failed to get validation service, using fallback: {e}")
+        # Fallback to direct instantiation for backward compatibility
+        fallback_validator = RelationshipConstraintValidator()
+        return fallback_validator.validate_relationship(
+            subject_type, predicate, object_type, context
+        )
 
 
 def validate_triple_constraint(triple_dict: dict[str, Any]) -> ValidationResult:
     """
-    Convenience function for triple validation.
+    Convenience function for triple validation using dependency injection.
 
+    REFACTORED: Now uses validation service provider instead of global singleton.
     Validates a complete triple extracted from text.
     """
-    return validator.validate_triple(triple_dict)
+    try:
+        from core.validation_service_provider import get_validation_service
+        validation_service = get_validation_service()
+        return validation_service.validate_triple(triple_dict)
+    except Exception as e:
+        logger.error(f"Failed to get validation service, using fallback: {e}")
+        # Fallback to direct instantiation for backward compatibility
+        fallback_validator = RelationshipConstraintValidator()
+        return fallback_validator.validate_triple(triple_dict)
 
 
 def validate_batch_constraints(triples: list[dict[str, Any]]) -> list[ValidationResult]:
     """
-    Convenience function for batch validation.
+    Convenience function for batch validation using dependency injection.
 
+    REFACTORED: Now uses validation service provider instead of global singleton.
     Efficiently validates multiple triples at once.
     """
-    return validator.validate_batch(triples)
+    try:
+        from core.validation_service_provider import get_validation_service
+        validation_service = get_validation_service()
+        return validation_service.validate_batch(triples)
+    except Exception as e:
+        logger.error(f"Failed to get validation service, using fallback: {e}")
+        # Fallback to direct instantiation for backward compatibility
+        fallback_validator = RelationshipConstraintValidator()
+        return fallback_validator.validate_batch(triples)
 
 
 def get_relationship_alternatives(
     subject_type: str, object_type: str
 ) -> list[tuple[str, str]]:
     """Get suggested alternative relationships for a node type pair."""
-    return validator.suggest_alternatives(subject_type, object_type)
+    try:
+        from core.validation_service_provider import get_validation_service
+        validation_service = get_validation_service()
+        return validation_service.suggest_alternatives(subject_type, object_type)
+    except Exception as e:
+        logger.error(f"Failed to get validation service, using fallback: {e}")
+        # Fallback to direct instantiation for backward compatibility
+        fallback_validator = RelationshipConstraintValidator()
+        return fallback_validator.suggest_alternatives(subject_type, object_type)
 
 
 def get_validation_stats() -> dict[str, Any]:
     """Get current validation statistics."""
-    return validator.get_validation_statistics()
+    try:
+        from core.validation_service_provider import get_validation_service
+        validation_service = get_validation_service()
+        return validation_service.get_validation_statistics()
+    except Exception as e:
+        logger.error(f"Failed to get validation service, using fallback: {e}")
+        # Fallback to direct instantiation for backward compatibility
+        fallback_validator = RelationshipConstraintValidator()
+        return fallback_validator.get_validation_statistics()
 
 
 # Integration helper functions for existing codebase
