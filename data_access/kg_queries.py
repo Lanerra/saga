@@ -9,6 +9,8 @@ from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
     NODE_LABELS,
+    RELATIONSHIP_NORMALIZATIONS,
+    RELATIONSHIP_TYPES,
 )
 
 import config
@@ -18,164 +20,8 @@ from core.relationship_validator import validate_relationship_types
 
 logger = logging.getLogger(__name__)
 
-# Valid relationship types for narrative knowledge graphs
-VALID_RELATIONSHIP_TYPES = {
-    # Character relationships
-    "LOVES",
-    "HATES",
-    "FEARS",
-    "TRUSTS",
-    "DISTRUSTS",
-    "RESPECTS",
-    "FAMILY_OF",
-    "FRIEND_OF",
-    "ENEMY_OF",
-    "RIVAL_OF",
-    "ALLY_OF",
-    "MENTOR_TO",
-    "STUDENT_OF",
-    "LEADER_OF",
-    "MEMBER_OF",
-    "SERVES",
-    "WORKS_FOR",
-    "ROMANTIC_WITH",
-    "MARRIED_TO",
-    "PARENT_OF",
-    "CHILD_OF",
-    "KNOWS",
-    "ENVIES",
-    "PITIES",
-    "BETRAYS",
-    "PROTECTS",
-    "THREATENS",
-    # Location relationships
-    "LOCATED_IN",
-    "LOCATED_AT",
-    "ADJACENT_TO",
-    "CONTAINS",
-    "PART_OF",
-    "CONNECTED_TO",
-    "NEAR",
-    "BUILT_BY",
-    "FOUNDED",
-    "DESTROYED_BY",
-    "ORIGINATES_FROM",
-    "TRAVELS_TO",
-    "BORDERS",
-    "OVERLOOKS",
-    # Object relationships
-    "OWNS",
-    "POSSESSES",
-    "CREATED_BY",
-    "BELONGS_TO",
-    "FOUND_AT",
-    "LOST_AT",
-    "STOLEN_FROM",
-    "GIVEN_BY",
-    "INHERITED_FROM",
-    "USED_BY",
-    "POWERED_BY",
-    "MADE_OF",
-    "CONTAINS_ITEM",
-    # Temporal/Process relationships
-    "HAPPENS_BEFORE",
-    "HAPPENS_AFTER",
-    "OCCURS_DURING",
-    "TRIGGERS",
-    "RESULTS_IN",
-    "CAUSES",
-    "PREVENTS",
-    "ENABLES",
-    "FOLLOWS",
-    "PRECEDES",
-    "INTERRUPTS",
-    "COINCIDES_WITH",
-    "OCCURRED_IN",
-    "PERFORMS_ACTION",
-    "IS_PERFORMED_BY",
-    "IS_USED_FOR",
-    "IS_OPENED_BY",
-    "IS_FUELED_BY",
-    "IS_SYNCHRONIZED_WITH",
-    # Abstract relationships
-    "SYMBOLIZES",
-    "REPRESENTS",
-    "EMBODIES",
-    "CONTRASTS_WITH",
-    "PARALLELS",
-    "ECHOES",
-    "FORESHADOWS",
-    "RELATES_TO",
-    "INFLUENCES",
-    "INSPIRES",
-    "REMINDS_OF",
-    "DEPENDS_ON",
-    "EXTENDS",
-    "RESONATES_WITH",
-    "HAS_TRAIT",
-    "EXTENSION_OF",
-    # Action/Event relationships
-    "PERFORMS",
-    "WITNESSES",
-    "EXPERIENCES",
-    "PARTICIPATES_IN",
-    "INITIATES",
-    "COMPLETES",
-    "ABANDONS",
-    "DISCOVERS",
-    "CREATES",
-    "DESTROYS",
-    "MODIFIES",
-    "OBSERVES",
-    "CONNECTS_TO",
-    "RESPONDS_TO",
-    "ACCESSES",
-    # Conflict relationships
-    "OPPOSES",
-    "SUPPORTS",
-    "CONFLICTS_WITH",
-    "COMPETES_WITH",
-    "COLLABORATES_WITH",
-    "NEGOTIATES_WITH",
-    "FIGHTS_AGAINST",
-    # Cognitive/Mental state relationships
-    "BELIEVES",
-    "REALIZES",
-    "REMEMBERS",
-    "UNDERSTANDS",
-    "RECOGNIZES",
-    "FEELS",
-    "THINKS_ABOUT",
-    "PERCEIVES",
-    "WATCHES",
-    "SEES",
-    # Physical properties:
-    "HAS_PROPERTY",
-    "HAS_FEATURE",
-    "HAS_ACCESS",
-    "HAS_VOICE",
-    "HAS_PULSE",
-    "PULSES_WITH",
-    "SYNCED_WITH",
-    "MOVES_IN_UNISON",
-    # Communication/Interaction
-    "COMMUNICATES_THROUGH",
-    "SPEAKS_TO",
-    "SPEAKS_WITH",
-    "DECLARES",
-    # Source/Creation relationships
-    "IS_SOURCE_OF",
-    "WRITTEN_BY",
-    "RECORDS",
-    "PRODUCES",
-    "TRANSFORMED_BY",
-    # Rules/Goals (narrative structure)
-    "HAS_RULE",
-    "HAS_GOAL",
-    "IS_TRUE_FOR",
-    "INVOLVES",
-    "NEEDS",
-}
+# Valid relationship types for narrative knowledge graphs - use canonical constants
+VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
 # Lookup table for canonical node labels to ensure consistent casing
 _CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
@@ -771,6 +617,13 @@ def validate_relationship_type(proposed_type: str) -> str:
 
     # Clean and normalize input
     clean_type = proposed_type.strip().upper().replace(" ", "_")
+    
+    # Check normalization mappings first (using lowercase key)
+    lower_key = proposed_type.strip().lower().replace(" ", "_")
+    if lower_key in RELATIONSHIP_NORMALIZATIONS:
+        normalized_type = RELATIONSHIP_NORMALIZATIONS[lower_key]
+        logger.debug(f"Applied normalization: '{proposed_type}' -> '{normalized_type}'")
+        return normalized_type
 
     # Check if it's already valid
     if clean_type in VALID_RELATIONSHIP_TYPES:
@@ -1513,7 +1366,8 @@ async def query_kg_from_db(
         conditions.append("s.name = $subject_param")
         parameters["subject_param"] = subject.strip()
     if predicate is not None:
-        match_clause = f"MATCH (s:Entity)-[r:`{predicate.strip().upper().replace(' ', '_')}`]->(o) "
+        normalized_predicate = validate_relationship_type(predicate)
+        match_clause = f"MATCH (s:Entity)-[r:`{normalized_predicate}`]->(o) "
     if obj_val is not None:
         obj_val_stripped = obj_val.strip()
         conditions.append(
@@ -1591,7 +1445,8 @@ async def get_most_recent_value_from_db(
 
     conditions = []
     parameters: dict[str, Any] = {}
-    match_clause = f"MATCH (s:Entity)-[r:`{predicate.strip().upper().replace(' ', '_')}`]->(o) "
+    normalized_predicate = validate_relationship_type(predicate)
+    match_clause = f"MATCH (s:Entity)-[r:`{normalized_predicate}`]->(o) "
     
     conditions.append("s.name = $subject_param")
     parameters["subject_param"] = subject.strip()
