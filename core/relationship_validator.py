@@ -17,9 +17,13 @@ from core.relationship_constraints import (
     get_relationship_suggestions,
     validate_relationship_semantics,
 )
-from data_access.kg_queries import (
-    validate_relationship_type,
-)
+
+try:  # pragma: no cover - fallback when data access layer unavailable
+    from data_access.kg_queries import validate_relationship_type
+except Exception:  # pragma: no cover
+    def validate_relationship_type(rel_type: str) -> str:
+        """Fallback normalizer when data layer is unavailable."""
+        return rel_type.upper()
 
 logger = logging.getLogger(__name__)
 
