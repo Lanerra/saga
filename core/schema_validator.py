@@ -1,12 +1,12 @@
 # core/schema_validator.py
 """Schema validation utilities for the knowledge graph."""
 
-import logging
 from typing import Any
 
+import structlog
 from models.kg_models import CharacterProfile, WorldItem
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def validate_kg_object(obj: Any) -> list[str]:
@@ -122,24 +122,8 @@ def validate_character_profile(profile: CharacterProfile) -> list[str]:
 
     Returns a list of validation errors. Empty list means valid.
     """
-    errors = []
-    # Check name
-    if not profile.name or not profile.name.strip():
-        errors.append("CharacterProfile name cannot be empty")
-    # Check traits
-    if not isinstance(profile.traits, list):
-        errors.append("CharacterProfile traits must be a list")
-    else:
-        for trait in profile.traits:
-            if not isinstance(trait, str) or not trait.strip():
-                errors.append("CharacterProfile traits must be non-empty strings")
-    # Check relationships (just dict)
-    if not isinstance(profile.relationships, dict):
-        errors.append("CharacterProfile relationships must be a dict")
-    # Check status
-    if not isinstance(profile.status, str):
-        errors.append("CharacterProfile status must be a string")
-    return errors
+    # Use centralized validation logic to eliminate code duplication
+    return validate_kg_object(profile)
 
 
 def validate_world_item(item: WorldItem) -> list[str]:
@@ -148,41 +132,5 @@ def validate_world_item(item: WorldItem) -> list[str]:
 
     Returns a list of validation errors. Empty list means valid.
     """
-    errors = []
-    if not item.name or not item.name.strip():
-        errors.append("WorldItem name cannot be empty")
-    if not item.category or not item.category.strip():
-        errors.append("WorldItem category cannot be empty")
-    if not isinstance(item.description, str):
-        errors.append("WorldItem description must be a string")
-    if not isinstance(item.goals, list):
-        errors.append("WorldItem goals must be a list")
-    else:
-        for goal in item.goals:
-            if not isinstance(goal, str) or not goal.strip():
-                errors.append("WorldItem goals must be non-empty strings")
-    # Check rules
-    if not isinstance(item.rules, list):
-        errors.append("WorldItem rules must be a list")
-    else:
-        for rule in item.rules:
-            if not isinstance(rule, str) or not rule.strip():
-                errors.append("WorldItem rules must be non-empty strings")
-    # Check key_elements
-    if not isinstance(item.key_elements, list):
-        errors.append("WorldItem key_elements must be a list")
-    else:
-        for element in item.key_elements:
-            if not isinstance(element, str) or not element.strip():
-                errors.append("WorldItem key_elements must be non-empty strings")
-    # Check traits
-    if not isinstance(item.traits, list):
-        errors.append("WorldItem traits must be a list")
-    else:
-        for trait in item.traits:
-            if not isinstance(trait, str) or not trait.strip():
-                errors.append("WorldItem traits must be non-empty strings")
-    # Check additional_properties
-    if not isinstance(item.additional_properties, dict):
-        errors.append("WorldItem additional_properties must be a dict")
-    return errors
+    # Use centralized validation logic to eliminate code duplication
+    return validate_kg_object(item)

@@ -1,12 +1,17 @@
 # core/db_manager.py
 # core_db/base_db_manager.py
-import logging
 from typing import Any
 
 import numpy as np
+import structlog
 from models.kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
 
 import config
+from core.exceptions import (
+    DatabaseConnectionError,
+    DatabaseTransactionError,
+    handle_database_error
+)
 from neo4j import (  # type: ignore
     AsyncDriver,
     AsyncGraphDatabase,
@@ -14,7 +19,7 @@ from neo4j import (  # type: ignore
 )
 from neo4j.exceptions import ServiceUnavailable  # type: ignore
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class Neo4jManagerSingleton:
@@ -30,7 +35,7 @@ class Neo4jManagerSingleton:
         if self._initialized_flag:
             return
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = structlog.get_logger(__name__)
         self.driver: AsyncDriver | None = None
         self._initialized_flag = True
         self.logger.info(
@@ -59,16 +64,28 @@ class Neo4jManagerSingleton:
             self.logger.info(f"Successfully connected to Neo4j at {config.NEO4J_URI}")
         except ServiceUnavailable as e:
             self.logger.critical(
-                f"Neo4j connection failed: {e}. Ensure the Neo4j database is running and accessible."
+                "Neo4j service unavailable",
+                uri=config.NEO4J_URI,
+                error=str(e)
             )
             self.driver = None
-            raise
+            raise DatabaseConnectionError(
+                "Neo4j database is not available",
+                details={
+                    "uri": config.NEO4J_URI,
+                    "original_error": str(e),
+                    "suggestion": "Ensure the Neo4j database is running and accessible"
+                }
+            )
         except Exception as e:
             self.logger.critical(
-                f"Unexpected error during Neo4j connection: {e}", exc_info=True
+                "Unexpected error during Neo4j connection",
+                uri=config.NEO4J_URI,
+                error=str(e),
+                exc_info=True
             )
             self.driver = None
-            raise
+            raise handle_database_error("connection", e, uri=config.NEO4J_URI)
 
     async def close(self):
         if self.driver:
@@ -90,7 +107,12 @@ class Neo4jManagerSingleton:
             await self.connect()
 
         if self.driver is None:
-            raise ConnectionError("Neo4j driver not initialized or connection failed.")
+            raise DatabaseConnectionError(
+                "Neo4j driver not initialized",
+                details={
+                    "suggestion": "Call connect() method first to establish database connection"
+                }
+            )
 
     async def _execute_query_tx(
         self,
@@ -138,13 +160,22 @@ class Neo4jManagerSingleton:
                 )
             except Exception as e:
                 self.logger.error(
-                    f"Error in Cypher batch execution: {e}. Rolling back.",
+                    "Error in Cypher batch execution",
+                    batch_size=len(cypher_statements_with_params),
+                    error=str(e),
                     exc_info=True,
                 )
                 # Use the same clean rollback pattern as _execute_schema_batch
                 if tx and not tx.closed():  # type: ignore
                     await tx.rollback()  # type: ignore
-                raise
+                raise DatabaseTransactionError(
+                    "Batch Cypher execution failed",
+                    details={
+                        "batch_size": len(cypher_statements_with_params),
+                        "original_error": str(e),
+                        "operation": "batch_execution"
+                    }
+                )
 
     async def create_db_schema(self) -> None:
         """Create and verify Neo4j indexes and constraints in separate phases to avoid transaction conflicts.

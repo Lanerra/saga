@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import importlib
-import logging
 import pkgutil
 from typing import Any
 
+import structlog
 from models.kg_constants import NODE_LABELS
 
 from .classifications import NodeClassifications
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Global registry populated from plugins
 RELATIONSHIP_CONSTRAINTS: dict[str, dict[str, Any]] = {}

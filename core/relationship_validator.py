@@ -6,9 +6,9 @@ This module provides the main validation engine that integrates with the existin
 pipeline to validate relationship semantics before they are stored in the database.
 """
 
-import logging
 from typing import Any
 
+import structlog
 import models.kg_constants
 
 import config
@@ -25,7 +25,7 @@ except Exception:  # pragma: no cover
         """Fallback normalizer when data layer is unavailable."""
         return proposed_type.upper()
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def validate_relationship_types(rel_types: list[str]) -> list[str]:

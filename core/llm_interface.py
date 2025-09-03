@@ -25,7 +25,6 @@ Copyright 2025 Dennis Lewis
 import asyncio
 import functools
 import json
-import logging
 import os
 import re
 import tempfile
@@ -38,13 +37,14 @@ import httpx
 
 # Third-party imports
 import numpy as np
+import structlog
 import tiktoken
 from async_lru import alru_cache
 
 # Local imports
 import config
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @contextmanager
