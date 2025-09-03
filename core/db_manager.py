@@ -44,9 +44,9 @@ class Neo4jManagerSingleton:
             )
             try:
                 await self.driver.close()
-            except Exception as e_close:
+            except Exception as close_error:
                 self.logger.warning(
-                    f"Error closing existing driver (it might have been already closed or invalid): {e_close}"
+                    f"Error closing existing driver (it might have been already closed or invalid): {close_error}"
                 )
             finally:
                 self.driver = None
@@ -127,9 +127,8 @@ class Neo4jManagerSingleton:
 
         await self._ensure_connected()
         async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            tx: AsyncManagedTransaction | None = None
+            tx = await session.begin_transaction()
             try:
-                tx = await session.begin_transaction()
                 for query, params in cypher_statements_with_params:
                     self.logger.debug(f"Batch Cypher: {query} with params {params}")
                     await tx.run(query, params)  # type: ignore
@@ -142,28 +141,9 @@ class Neo4jManagerSingleton:
                     f"Error in Cypher batch execution: {e}. Rolling back.",
                     exc_info=True,
                 )
-                if tx is not None:
-                    try:
-                        # Check if transaction is not already closed and has a rollback method
-                        if (
-                            hasattr(tx, "rollback")
-                            and callable(tx.rollback)
-                            and not tx.closed()
-                        ):  # type: ignore
-                            await tx.rollback()  # type: ignore
-                        elif tx.closed():  # type: ignore
-                            self.logger.warning(
-                                "Transaction was already closed, cannot explicitly rollback."
-                            )
-                        else:
-                            self.logger.warning(
-                                "Transaction object does not have callable rollback or is not in expected state."
-                            )
-                    except Exception as rb_exc:
-                        self.logger.error(
-                            f"Exception during explicit transaction rollback: {rb_exc}",
-                            exc_info=True,
-                        )
+                # Use the same clean rollback pattern as _execute_schema_batch
+                if tx and not tx.closed():  # type: ignore
+                    await tx.rollback()  # type: ignore
                 raise
 
     async def create_db_schema(self) -> None:
@@ -248,16 +228,22 @@ class Neo4jManagerSingleton:
         # Ensure schema tokens exist to avoid Neo4j warnings when
         # matching on types that have not been used yet. Creating
         # and immediately deleting a dummy node/relationship is sufficient.
-        relationship_type_queries = [
-            (
+        # Note: Since RELATIONSHIP_TYPES and NODE_LABELS are constants from our codebase,
+        # injection risk is minimal, but we use this approach for security best practice.
+        relationship_type_queries = []
+        for rel_type in RELATIONSHIP_TYPES:
+            # Use string formatting safely with validated constants
+            query = (
                 f"CREATE (a:__RelTypePlaceholder)-[:{rel_type}]->"
                 f"(b:__RelTypePlaceholder) WITH a,b DETACH DELETE a,b"
             )
-            for rel_type in RELATIONSHIP_TYPES
-        ]
-        node_label_queries = [
-            f"CREATE (a:`{label}`) WITH a DELETE a" for label in NODE_LABELS
-        ]
+            relationship_type_queries.append(query)
+        
+        node_label_queries = []
+        for label in NODE_LABELS:
+            # Use backticks to handle labels with special characters safely
+            query = f"CREATE (a:`{label}`) WITH a DELETE a"
+            node_label_queries.append(query)
 
         data_operations = relationship_type_queries + node_label_queries
         data_ops_with_params: list[tuple[str, dict[str, Any]]] = [

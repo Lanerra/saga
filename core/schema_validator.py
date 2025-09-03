@@ -113,34 +113,7 @@ def validate_node_labels(labels: list[str]) -> list[str]:
     return errors
 
 
-def validate_relationship_types(rel_types: list[str]) -> list[str]:
-    """
-    Validate relationship types against the predefined narrative taxonomy.
-    
-    DEPRECATED: This function has been moved to core.relationship_validator.py
-    Please update your imports to use the new location.
-
-    Returns a list of validation errors. Empty list means valid.
-    """
-    # Import the new implementation to maintain backward compatibility
-    from core.relationship_validator import validate_relationship_types as new_validate
-    
-    return new_validate(rel_types)
-
-
-def suggest_relationship_normalization(rel_types: list[str]) -> dict[str, str]:
-    """
-    Suggest normalizations for relationship types that don't match the predefined taxonomy.
-    
-    DEPRECATED: This function has been moved to core.relationship_validator.py
-    Please update your imports to use the new location.
-
-    Returns a dict mapping original -> suggested canonical form.
-    """
-    # Import the new implementation to maintain backward compatibility
-    from core.relationship_validator import suggest_relationship_normalization as new_suggest
-    
-    return new_suggest(rel_types)
+# Deprecated functions have been removed - use core.relationship_validator instead
 
 
 def validate_character_profile(profile: CharacterProfile) -> list[str]:

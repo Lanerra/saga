@@ -13,7 +13,8 @@ from models.kg_constants import (
 
 import config
 from core.db_manager import neo4j_manager
-from core.schema_validator import validate_node_labels, validate_relationship_types
+from core.schema_validator import validate_node_labels
+from core.relationship_validator import validate_relationship_types
 
 logger = logging.getLogger(__name__)
 
@@ -1495,6 +1496,7 @@ async def add_kg_triples_batch_to_db(
         raise
 
 
+@alru_cache(maxsize=256, ttl=300)  # Cache for 5 minutes with 256 entries max
 async def query_kg_from_db(
     subject: str | None = None,
     predicate: str | None = None,
@@ -1643,30 +1645,9 @@ async def get_most_recent_value_from_db(
         f"Neo4j: No value found for ({subject}, {predicate}) up to Ch {chapter_limit}, include_provisional={include_provisional}."
     )
     return None
-    if results and results[0] and "object" in results[0]:
-        value = results[0]["object"]
-        # Attempt to convert to number if it looks like one, as ValueNode.value stores as string from current triple parsing
-        if isinstance(value, str):
-            if re.match(r"^-?\d+$", value):
-                value = int(value)
-            elif re.match(r"^-?\d*\.\d+$", value):
-                value = float(value)
-            elif value.lower() == "true":
-                value = True
-            elif value.lower() == "false":
-                value = False
-
-        logger.debug(
-            f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
-        )
-        return value
-
-    logger.debug(
-        f"Neo4j: No value found for ({subject}, {predicate}) up to Ch {chapter_limit}, include_provisional={include_provisional}."
-    )
-    return None
 
 
+@alru_cache(maxsize=64, ttl=600)  # Cache novel info properties for 10 minutes
 async def get_novel_info_property_from_db(property_key: str) -> Any | None:
     """Return a property value from the NovelInfo node."""
     if not property_key.strip():
@@ -2046,10 +2027,7 @@ async def get_defined_node_labels() -> list[str]:
         # Start with our canonical schema labels
         from models.kg_constants import NODE_LABELS
         # Also explicitly import enhanced node labels for clarity
-        from core.enhanced_node_taxonomy import ENHANCED_NODE_LABELS
-        
         # Verify that NODE_LABELS contains all enhanced labels
-        # This is just for documentation/clarity - NODE_LABELS should already contain ENHANCED_NODE_LABELS
         schema_labels = sorted(list(NODE_LABELS))
 
         # Also get any additional labels from database (for backward compatibility)
@@ -2497,6 +2475,48 @@ async def find_potential_bridges(element: dict[str, Any]) -> list[dict[str, Any]
     except Exception as e:
         logger.error(f"Error finding potential bridges: {e}", exc_info=True)
         return []
+
+
+async def create_relationship_with_properties(
+    subject_name: str,
+    relationship_type: str,
+    object_name: str,
+    properties: dict[str, Any] | None = None,
+) -> None:
+    """Create a relationship between two entities by name with optional properties."""
+    if not properties:
+        properties = {}
+    
+    # Default properties for bootstrap relationships
+    default_props = {
+        "source": "bootstrap",
+        "confidence": 0.8,
+        "chapter_added": 0,
+    }
+    default_props.update(properties)
+    
+    # Create structured triple data for the batch processor
+    triple_data = {
+        "subject": {"name": subject_name.strip()},
+        "predicate": relationship_type.upper().strip(),
+        "object_entity": {"name": object_name.strip()},
+        "is_literal_object": False,
+        "subject_type": "Entity",  # Will be refined by validation
+        "object_type": "Entity",   # Will be refined by validation
+        "properties": default_props,
+    }
+    
+    # Use existing batch infrastructure to create the relationship
+    await add_kg_triples_batch_to_db(
+        [triple_data],
+        chapter_number=properties.get("chapter_added", 0),
+        is_from_flawed_draft=False
+    )
+    
+    logger.debug(
+        f"Created relationship: {subject_name} {relationship_type} {object_name} "
+        f"with properties: {default_props}"
+    )
 
 
 async def create_contextual_relationship(

@@ -29,6 +29,7 @@ import logging
 import os
 import re
 import tempfile
+from contextlib import contextmanager
 
 # Type hints
 from typing import Any
@@ -44,6 +45,27 @@ from async_lru import alru_cache
 import config
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def secure_temp_file(suffix: str = ".tmp", text: bool = True):
+    """
+    Context manager for secure temporary file handling.
+    Guarantees cleanup even if exceptions occur.
+    """
+    temp_fd = None
+    temp_path = None
+    try:
+        temp_fd, temp_path = tempfile.mkstemp(suffix=suffix, text=text)
+        os.close(temp_fd)  # Close the file descriptor immediately
+        yield temp_path
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+                logger.debug(f"Cleaned up temporary file: {temp_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to cleanup temporary file {temp_path}: {cleanup_error}")
 
 
 # Token parameter handling
@@ -432,7 +454,6 @@ class LLMService:
                     payload["presence_penalty"] = presence_penalty
 
                 last_exception_for_current_model: Exception | None = None
-                temp_file_path_for_stream: str | None = None
 
                 for retry_attempt in range(config.LLM_RETRY_ATTEMPTS):
                     penalty_log_str = ""
@@ -451,123 +472,69 @@ class LLMService:
                     try:
                         if stream_to_disk:
                             payload["stream"] = True
-                            _tmp_fd, temp_file_path_for_stream = tempfile.mkstemp(
-                                suffix=".llmstream.txt", text=True
-                            )
-                            os.close(_tmp_fd)
+                            
+                            # Use secure context manager for temporary file handling
+                            with secure_temp_file(suffix=".llmstream.txt", text=True) as temp_file_path:
+                                accumulated_stream_content = ""
+                                stream_usage_data: dict[str, int] | None = None
 
-                            accumulated_stream_content = ""
-                            stream_usage_data: dict[str, int] | None = None
+                                try:
+                                    self.request_count += 1
+                                    async with self._client.stream(
+                                        "POST",
+                                        f"{config.OPENAI_API_BASE}/chat/completions",
+                                        json=payload,
+                                        headers=headers,
+                                    ) as response_stream:
+                                        response_stream.raise_for_status()
 
-                            try:
-                                self.request_count += 1
-                                async with self._client.stream(
-                                    "POST",
-                                    f"{config.OPENAI_API_BASE}/chat/completions",
-                                    json=payload,
-                                    headers=headers,
-                                ) as response_stream:
-                                    response_stream.raise_for_status()
+                                        with open(temp_file_path, "w", encoding="utf-8") as tmp_f_write:
+                                            async for line in response_stream.aiter_lines():
+                                                if line.startswith("data: "):
+                                                    data_json_str = line[len("data: "):].strip()
+                                                    if data_json_str == "[DONE]":
+                                                        break
+                                                    try:
+                                                        chunk_data = json.loads(data_json_str)
+                                                        if chunk_data.get("choices"):
+                                                            delta = chunk_data["choices"][0].get("delta", {})
+                                                            content_piece = delta.get("content")
+                                                            if content_piece:
+                                                                accumulated_stream_content += content_piece
+                                                                tmp_f_write.write(content_piece)
 
-                                    with open(
-                                        temp_file_path_for_stream,
-                                        "w",
-                                        encoding="utf-8",
-                                    ) as tmp_f_write:
-                                        async for line in response_stream.aiter_lines():
-                                            if line.startswith("data: "):
-                                                data_json_str = line[
-                                                    len("data: ") :
-                                                ].strip()
-                                                if data_json_str == "[DONE]":
-                                                    break
-                                                try:
-                                                    chunk_data = json.loads(
-                                                        data_json_str
-                                                    )
-                                                    if chunk_data.get("choices"):
-                                                        delta = chunk_data["choices"][
-                                                            0
-                                                        ].get("delta", {})
-                                                        content_piece = delta.get(
-                                                            "content"
+                                                            if chunk_data["choices"][0].get("finish_reason") is not None:
+                                                                potential_usage = chunk_data.get("usage")
+                                                                if (not potential_usage 
+                                                                    and chunk_data.get("x_groq") 
+                                                                    and chunk_data["x_groq"].get("usage")):
+                                                                    potential_usage = chunk_data["x_groq"]["usage"]
+                                                                if potential_usage and isinstance(potential_usage, dict):
+                                                                    stream_usage_data = potential_usage
+                                                    except json.JSONDecodeError:
+                                                        logger.warning(
+                                                            f"Async LLM Stream: Could not decode JSON from line: {line}"
                                                         )
-                                                        if content_piece:
-                                                            accumulated_stream_content += content_piece
-                                                            tmp_f_write.write(
-                                                                content_piece
-                                                            )
 
-                                                        if (
-                                                            chunk_data["choices"][
-                                                                0
-                                                            ].get("finish_reason")
-                                                            is not None
-                                                        ):
-                                                            potential_usage = (
-                                                                chunk_data.get("usage")
-                                                            )
-                                                            if (
-                                                                not potential_usage
-                                                                and chunk_data.get(
-                                                                    "x_groq"
-                                                                )
-                                                                and chunk_data[
-                                                                    "x_groq"
-                                                                ].get("usage")
-                                                            ):
-                                                                potential_usage = (
-                                                                    chunk_data[
-                                                                        "x_groq"
-                                                                    ]["usage"]
-                                                                )
-                                                            if (
-                                                                potential_usage
-                                                                and isinstance(
-                                                                    potential_usage,
-                                                                    dict,
-                                                                )
-                                                            ):
-                                                                stream_usage_data = (
-                                                                    potential_usage
-                                                                )
-                                                except json.JSONDecodeError:
-                                                    logger.warning(
-                                                        f"Async LLM Stream: Could not decode JSON from line: {line}"
-                                                    )
-
-                                final_text_response = accumulated_stream_content
-                                current_usage_data = stream_usage_data
-                                if auto_clean_response:
-                                    final_text_response = self.clean_model_response(
-                                        final_text_response
+                                    final_text_response = accumulated_stream_content
+                                    current_usage_data = stream_usage_data
+                                    if auto_clean_response:
+                                        final_text_response = self.clean_model_response(final_text_response)
+                                    return final_text_response, current_usage_data
+                                    
+                                except Exception as stream_err:
+                                    last_exception_for_current_model = stream_err
+                                    logger.warning(
+                                        f"Async LLM Stream ('{current_model_to_try}' Attempt {retry_attempt + 1}): Error during stream: {stream_err}",
+                                        exc_info=True,
                                     )
-                                return final_text_response, current_usage_data
-                            except Exception as stream_err:
-                                last_exception_for_current_model = stream_err
-                                logger.warning(
-                                    f"Async LLM Stream ('{current_model_to_try}' Attempt {retry_attempt + 1}): Error during stream: {stream_err}",
-                                    exc_info=True,
-                                )
-                            finally:
-                                if temp_file_path_for_stream and os.path.exists(
-                                    temp_file_path_for_stream
-                                ):
+                                    # If there was an error, try to read partial content from temp file
                                     try:
-                                        if last_exception_for_current_model is None:
-                                            os.remove(temp_file_path_for_stream)
-                                        else:
-                                            with open(
-                                                temp_file_path_for_stream,
-                                                encoding="utf-8",
-                                            ) as f_read_final_err:
-                                                final_text_response = (
-                                                    f_read_final_err.read()
-                                                )
-                                    except Exception as e_clean:
-                                        logger.error(
-                                            f"Error handling temp file {temp_file_path_for_stream} in stream finally block: {e_clean}"
-                                        )
+                                        with open(temp_file_path, "r", encoding="utf-8") as f_read_partial:
+                                            final_text_response = f_read_partial.read()
+                                    except Exception as read_error:
+                                        logger.warning(f"Could not read partial content from temp file: {read_error}")
+                                    # Context manager will handle cleanup automatically
                         else:
                             payload["stream"] = False
                             self.request_count += 1
@@ -659,21 +626,8 @@ class LLMService:
                             exc_info=True,
                         )
                     finally:
-                        if (
-                            stream_to_disk
-                            and temp_file_path_for_stream
-                            and os.path.exists(temp_file_path_for_stream)
-                            and last_exception_for_current_model is not None
-                        ):
-                            try:
-                                logger.info(
-                                    f"Cleaning up temp stream file due to error: {temp_file_path_for_stream}"
-                                )
-                                os.remove(temp_file_path_for_stream)
-                            except Exception as e_clean_err:
-                                logger.error(
-                                    f"Error cleaning up temp file {temp_file_path_for_stream} after failed LLM attempt: {e_clean_err}"
-                                )
+                        # Temp file cleanup is now handled by the secure_temp_file context manager
+                        pass
 
                     if (
                         retry_attempt < config.LLM_RETRY_ATTEMPTS - 1
@@ -717,17 +671,7 @@ class LLMService:
             logger.error(
                 f"Async LLM: Call failed for '{model_name}' after all primary and potential fallback attempts. Returning last captured text ('{final_text_response[:50]}...') and usage."
             )
-            if (
-                stream_to_disk
-                and temp_file_path_for_stream
-                and os.path.exists(temp_file_path_for_stream)
-            ):
-                try:
-                    os.remove(temp_file_path_for_stream)
-                except Exception as e_final_clean:
-                    logger.error(
-                        f"Error during final cleanup of temp file {temp_file_path_for_stream}: {e_final_clean}"
-                    )
+            # Final temp file cleanup is now handled by the secure_temp_file context manager
 
             if auto_clean_response:
                 final_text_response = self.clean_model_response(final_text_response)
