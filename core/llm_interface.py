@@ -1,6 +1,25 @@
 # core/llm_interface.py
 # llm_interface.py
 """
+DEPRECATED: This module is deprecated as part of Phase 3 architectural improvements.
+
+The original monolithic LLMService has been refactored into separate, focused services
+to improve maintainability, testability, and separation of concerns.
+
+MIGRATION GUIDE:
+- For new code, use: from core.llm_interface_refactored import get_llm_service
+- The API remains compatible, but new features will only be added to the refactored version
+- HTTP client concerns: core.http_client_service
+- Text processing concerns: core.text_processing_service  
+- Service interfaces: core.llm_service_interfaces
+
+The refactored architecture provides:
+- Better separation of HTTP client and text processing concerns
+- Proper abstraction layers with dependency injection
+- Improved testability with mock service support
+- Cleaner service composition and lifecycle management
+
+ORIGINAL DESCRIPTION:
 Handles all direct interactions with Large Language Models (LLMs)
 and embedding models (via Ollama). Includes functions for API calls,
 response cleaning, and embedding generation with caching.
