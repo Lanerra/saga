@@ -945,7 +945,7 @@ class NANA_Orchestrator:
         characters = await get_character_profiles_native()
         world_items = await get_world_building_native()
 
-        _ = await self.knowledge_agent.extract_and_merge_knowledge_native(
+        _ = await self.knowledge_agent.extract_and_merge_knowledge(
             self.plot_outline,
             characters,  # List of CharacterProfile models
             world_items,  # List of WorldItem models
@@ -1436,7 +1436,7 @@ class NANA_Orchestrator:
             embedding = await llm_service.async_get_embedding(chunk)
 
             # Extract and merge knowledge updates using NATIVE implementation
-            _ = await self.knowledge_agent.extract_and_merge_knowledge_native(
+            _ = await self.knowledge_agent.extract_and_merge_knowledge(
                 plot_outline,
                 characters,  # List of CharacterProfile models
                 world_items,  # List of WorldItem models

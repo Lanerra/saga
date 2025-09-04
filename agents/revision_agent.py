@@ -542,11 +542,11 @@ class RevisionAgent:
         cleaned_evaluation_text, usage_data = await llm_service.async_call_llm(
             model_name=self.model_name,
             prompt=prompt,
-            temperature=0.3,  # EVALUATION temperature
+            temperature=self.config.TEMPERATURE_EVALUATION,  # EVALUATION temperature
             allow_fallback=True,
             stream_to_disk=False,
-            frequency_penalty=0.0,  # FREQUENCY_PENALTY_EVALUATION
-            presence_penalty=1.5,  # PRESENCE_PENALTY_EVALUATION
+            frequency_penalty=self.config.FREQUENCY_PENALTY_EVALUATION,
+            presence_penalty=self.config.PRESENCE_PENALTY_EVALUATION,
             auto_clean_response=True,
         )
 

@@ -165,335 +165,23 @@ def _normalize_attributes(
     return normalized_attrs
 
 
+
+
 def parse_unified_character_updates(
     json_text_block: str, chapter_number: int
 ) -> dict[str, CharacterProfile]:
-    """Parse character update JSON provided by LLM."""
-    char_updates: dict[str, CharacterProfile] = {}
-    if not json_text_block.strip():
-        return char_updates
-
-    try:
-        # LLM is expected to output a dict where keys are character names
-        # and values are dicts of their attributes.
-        parsed_data = json.loads(json_text_block)
-        if not isinstance(parsed_data, dict):
-            logger.error(
-                "Character updates JSON was not a dictionary. Received: %s",
-                type(parsed_data),
-            )
-            return char_updates
-    except json.JSONDecodeError as e:
-        logger.error(
-            "Failed to parse character updates JSON: %s. Input: %s...",
-            e,
-            json_text_block[:500],
-        )
-        return char_updates
-
-    for char_name, char_attributes_llm in parsed_data.items():
-        if not char_name or not isinstance(char_attributes_llm, dict):
-            logger.warning(
-                "Skipping character with invalid name or attributes: Name='%s',"
-                " Attrs_Type='%s'",
-                char_name,
-                type(char_attributes_llm),
-            )
-            continue
-
-        # Normalize keys from LLM (e.g. "desc" to "description")
-        # and ensure list types
-        processed_char_attributes = _normalize_attributes(
-            char_attributes_llm, CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS
-        )
-
-        # Canonicalize trait names for consistency
-        traits_val = processed_char_attributes.get("traits", [])
-        if isinstance(traits_val, list):
-            processed_char_attributes["traits"] = [
-                utils.normalize_trait_name(t)
-                for t in traits_val
-                if isinstance(t, str) and utils.normalize_trait_name(t)
-            ]
-
-        # Handle relationships if they need structuring from list to dict
-        # Assuming LLM provides relationships as a list of strings
-        # like "Target: Detail" or just "Target"
-        # Or ideally, as a dict: {"Target": "Detail"}
-        rels_val = processed_char_attributes.get("relationships")
-        if isinstance(rels_val, list):
-            rels_list = rels_val
-            rels_dict: dict[str, str] = {}
-            for rel_entry in rels_list:
-                if isinstance(rel_entry, str):
-                    if ":" in rel_entry:
-                        parts = rel_entry.split(":", 1)
-                        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-                            rels_dict[parts[0].strip()] = parts[1].strip()
-                        elif parts[0].strip():  # If only name is there before colon
-                            rels_dict[parts[0].strip()] = "related"
-                    elif rel_entry.strip():  # No colon, just a name
-                        rels_dict[rel_entry.strip()] = "related"
-                elif isinstance(
-                    rel_entry, dict
-                ):  # If LLM sends [{"name": "X", "detail": "Y"}]
-                    target_name = rel_entry.get("name")
-                    detail = rel_entry.get("detail", "related")
-                    if (
-                        target_name
-                        and isinstance(target_name, str)
-                        and target_name.strip()
-                    ):
-                        rels_dict[target_name] = detail
-
-            processed_char_attributes["relationships"] = rels_dict
-        elif isinstance(rels_val, dict):
-            processed_char_attributes["relationships"] = {
-                str(k): str(v) for k, v in rels_val.items()
-            }
-        else:  # Ensure it's always a dict
-            processed_char_attributes["relationships"] = {}
-
-        dev_key_standard = f"development_in_chapter_{chapter_number}"
-        # If LLM includes this key (even with different casing/spacing), it will be normalized by _normalize_attributes
-        # if dev_key_standard is in CHAR_UPDATE_KEY_MAP. For now, handle it explicitly.
-        specific_dev_key_from_llm = next(
-            (
-                k
-                for k in processed_char_attributes
-                if k.lower().replace(" ", "_") == dev_key_standard
-            ),
-            None,
-        )
-
-        if specific_dev_key_from_llm and specific_dev_key_from_llm != dev_key_standard:
-            processed_char_attributes[dev_key_standard] = processed_char_attributes.pop(
-                specific_dev_key_from_llm
-            )
-
-        # Add default development note if no specific one and other attributes exist
-        has_other_meaningful_attrs = any(
-            k not in ["modification_proposal", dev_key_standard] and v
-            for k, v in processed_char_attributes.items()
-        )
-        if (
-            not processed_char_attributes.get(dev_key_standard)
-            and has_other_meaningful_attrs
-        ):
-            processed_char_attributes[dev_key_standard] = (
-                f"Character '{char_name}' details updated in Chapter {chapter_number}."
-            )
-
-        try:
-            char_updates[char_name] = CharacterProfile.from_dict(
-                char_name, processed_char_attributes
-            )
-        except Exception as e:
-            logger.error(
-                f"Error creating CharacterProfile for '{char_name}': {e}. Attributes: {processed_char_attributes}",
-                exc_info=True,
-            )
-
-    return char_updates
-
-
-def parse_unified_world_updates(
-    json_text_block: str, chapter_number: int
-) -> dict[str, dict[str, WorldItem]]:
-    """Parse world update JSON provided by LLM."""
-    world_updates: dict[str, dict[str, WorldItem]] = {}
-    if not json_text_block.strip():
-        return world_updates
-
-    try:
-        # LLM is expected to output a dict where keys are category display names (e.g., "Locations")
-        # and values are dicts of item names to their attribute dicts.
-        parsed_data = json.loads(json_text_block)
-        if not isinstance(parsed_data, dict):
-            logger.error(
-                f"World updates JSON was not a dictionary. Received: {type(parsed_data)}"
-            )
-            return world_updates
-    except json.JSONDecodeError as e:
-        logger.error(
-            f"Failed to parse world updates JSON: {e}. Input: {json_text_block[:500]}..."
-        )
-        return world_updates
-
-    results: dict[str, dict[str, WorldItem]] = {}
-    for category_name_llm, items_llm in parsed_data.items():
-        if not isinstance(items_llm, dict):
-            logger.warning(
-                f"Skipping category '{category_name_llm}' as its content is not a dictionary of items."
-            )
-            continue
-
-        # category_name_llm is e.g. "Locations", "Faction Alpha". This is used as the .category for WorldItem
-        # The WorldItem model itself might normalize this for ID generation.
-
-        category_dict_by_item_name: dict[str, WorldItem] = {}
-        elaboration_key_standard = f"elaboration_in_chapter_{chapter_number}"
-
-        if (
-            category_name_llm.lower() == "overview"
-            or category_name_llm.lower() == "_overview_"
-        ):
-            # Overview is a single item, its details are directly in items_llm
-            processed_overview_details = _normalize_attributes(
-                items_llm,
-                WORLD_UPDATE_DETAIL_KEY_MAP,
-                WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
-            )
-
-            # Handle common LLM output variations for elaborations
-            if "elaborations" in processed_overview_details:
-                processed_overview_details[elaboration_key_standard] = (
-                    processed_overview_details.pop("elaborations")
-                )
-            elif "elaboration" in processed_overview_details:
-                processed_overview_details[elaboration_key_standard] = (
-                    processed_overview_details.pop("elaboration")
-                )
-            if any(k != "modification_proposal" for k in processed_overview_details):
-                # check if any meaningful data
-                # Add default elaboration if not present
-                if not processed_overview_details.get(elaboration_key_standard):
-                    processed_overview_details[elaboration_key_standard] = (
-                        f"Overall world overview updated in Chapter {chapter_number}."
-                    )
-                try:
-                    # For overview, item_name is fixed (e.g., "_overview_")
-                    overview_item = WorldItem.from_dict(
-                        category_name_llm,
-                        "_overview_",
-                        processed_overview_details,
-                    )
-                    results.setdefault(category_name_llm, {})["_overview_"] = (
-                        overview_item
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Error creating WorldItem for overview in category '%s': %s",
-                        category_name_llm,
-                        e,
-                        exc_info=True,
-                    )
-        else:  # Regular category with multiple items
-            for item_name_llm, item_attributes_llm in items_llm.items():
-                if not item_name_llm or not isinstance(item_attributes_llm, dict):
-                    # Check if this might be a property that was incorrectly placed at the item level
-                    # This can happen when LLM outputs properties at the category level instead of item level
-                    if item_name_llm and isinstance(item_name_llm, str):
-                        # Check if the "item name" is actually a known property name
-                        normalized_key = item_name_llm.lower().replace(" ", "_")
-                        # Include common elaboration variations that should be treated as properties, not items
-                        known_property_names = (
-                            set(WORLD_UPDATE_DETAIL_KEY_MAP.keys())
-                            | set(WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS)
-                            | {"elaborations", "elaboration"}
-                        )
-                        if normalized_key in known_property_names:
-                            logger.debug(
-                                "Ignoring property '%s' at item level in category '%s' (likely LLM formatting issue)",
-                                item_name_llm,
-                                category_name_llm,
-                            )
-                            continue
-
-                    logger.warning(
-                        "Skipping item with invalid name or attributes in "
-                        "category '%s': Name='%s'",
-                        category_name_llm,
-                        item_name_llm,
-                    )
-                    continue
-
-                processed_item_details = _normalize_attributes(
-                    item_attributes_llm,
-                    WORLD_UPDATE_DETAIL_KEY_MAP,
-                    WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
-                )
-
-                # Handle common LLM output variations for elaborations
-                if "elaborations" in processed_item_details:
-                    processed_item_details[elaboration_key_standard] = (
-                        processed_item_details.pop("elaborations")
-                    )
-                elif "elaboration" in processed_item_details:
-                    processed_item_details[elaboration_key_standard] = (
-                        processed_item_details.pop("elaboration")
-                    )
-
-                # Add default elaboration if not present and other
-                # attributes exist
-                has_other_meaningful_item_attrs = any(
-                    k
-                    not in [
-                        "modification_proposal",
-                        elaboration_key_standard,
-                    ]
-                    and v
-                    for k, v in processed_item_details.items()
-                )
-                if (
-                    not processed_item_details.get(elaboration_key_standard)
-                    and has_other_meaningful_item_attrs
-                ):
-                    processed_item_details[elaboration_key_standard] = (
-                        f"Item '{item_name_llm}' in category '{category_name_llm}' "
-                        f"updated in Chapter {chapter_number}."
-                    )
-
-                if not category_name_llm or not category_name_llm.strip():
-                    logger.warning(
-                        "Skipping WorldItem with missing category: %s", item_name_llm
-                    )
-                    continue
-
-                try:
-                    # item_name_llm is the display name from JSON key.
-                    # WorldItem stores this as .name and normalizes it for .id
-                    # along with category_name_llm.
-                    world_item_instance = WorldItem.from_dict(
-                        category_name_llm,
-                        item_name_llm,
-                        processed_item_details,
-                    )
-
-                    # Store in this category's dictionary using the item's display name as key.
-                    # If LLM provides duplicate item names within the same category, last one wins.
-                    category_dict_by_item_name[world_item_instance.name] = (
-                        world_item_instance
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Error creating WorldItem for '%s' in category '%s': %s",
-                        item_name_llm,
-                        category_name_llm,
-                        e,
-                        exc_info=True,
-                    )
-
-            if category_dict_by_item_name:
-                results[category_name_llm] = category_dict_by_item_name
-
-    return results
-
-
-# Phase 3 optimization: Native parsing methods that eliminate dict conversion overhead
-def parse_unified_character_updates_native(
-    json_text_block: str, chapter_number: int
-) -> dict[str, CharacterProfile]:
-    """
-    Native version of character update parsing that creates models directly.
-    Eliminates .from_dict() conversion overhead.
-    """
+    """Parse character update JSON provided by LLM and create models directly."""
     char_updates: dict[str, CharacterProfile] = {}
     if not json_text_block or json_text_block.strip() in ["null", "None", ""]:
         return char_updates
 
     try:
         parsed_json = json.loads(json_text_block)
+        if not isinstance(parsed_json, dict):
+            logger.error(
+                f"Character updates JSON was not a dictionary. Received: {type(parsed_json)}"
+            )
+            return char_updates
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse character updates JSON: {e}")
         return char_updates
@@ -505,69 +193,71 @@ def parse_unified_character_updates_native(
             )
             continue
 
-        processed_char_attributes = {}
-        for key, value in raw_attributes.items():
-            if key in ["traits", "relationships", "skills"]:
-                if isinstance(value, str):
-                    processed_char_attributes[key] = [
-                        item.strip() for item in value.split(",") if item.strip()
-                    ]
-                elif isinstance(value, list):
-                    processed_char_attributes[key] = [
-                        str(item).strip() for item in value if str(item).strip()
-                    ]
-                else:
-                    processed_char_attributes[key] = []
-            else:
-                processed_char_attributes[key] = value
+        # Simple, efficient attribute processing
+        traits = []
+        skills = []
+        relationships = {}
+        
+        # Process key attributes efficiently
+        if "traits" in raw_attributes:
+            traits_val = raw_attributes["traits"]
+            if isinstance(traits_val, list):
+                traits = [str(item).strip() for item in traits_val if str(item).strip()]
+            elif isinstance(traits_val, str):
+                traits = [item.strip() for item in traits_val.split(",") if item.strip()]
+        
+        if "skills" in raw_attributes:
+            skills_val = raw_attributes["skills"]
+            if isinstance(skills_val, list):
+                skills = [str(item).strip() for item in skills_val if str(item).strip()]
+            elif isinstance(skills_val, str):
+                skills = [item.strip() for item in skills_val.split(",") if item.strip()]
+        
+        if "relationships" in raw_attributes:
+            rels_val = raw_attributes["relationships"]
+            if isinstance(rels_val, dict):
+                relationships = {str(k): str(v) for k, v in rels_val.items()}
+            elif isinstance(rels_val, list):
+                # Convert list to dict with default relationship
+                for rel_entry in rels_val:
+                    if isinstance(rel_entry, str) and rel_entry.strip():
+                        relationships[rel_entry.strip()] = "related"
 
         try:
             # Create model directly without dict intermediate
             char_updates[char_name] = CharacterProfile(
                 name=char_name,
-                description=processed_char_attributes.get("description", ""),
-                traits=processed_char_attributes.get("traits", []),
-                relationships=processed_char_attributes.get("relationships", []),
-                skills=processed_char_attributes.get("skills", []),
-                status=processed_char_attributes.get("status", "active"),
-                # Copy any additional attributes
-                **{
-                    k: v
-                    for k, v in processed_char_attributes.items()
-                    if k
-                    not in [
-                        "name",
-                        "description",
-                        "traits",
-                        "relationships",
-                        "skills",
-                        "status",
-                    ]
-                },
+                description=raw_attributes.get("description", ""),
+                traits=traits,
+                relationships=relationships,
+                skills=skills,
+                status=raw_attributes.get("status", "active"),
             )
         except Exception as e:
             logger.error(
                 f"Error creating CharacterProfile for '{char_name}': {e}. "
-                f"Attributes: {processed_char_attributes}",
+                f"Attributes: {raw_attributes}",
                 exc_info=True,
             )
 
     return char_updates
 
 
-def parse_unified_world_updates_native(
+def parse_unified_world_updates(
     json_text_block: str, chapter_number: int
 ) -> dict[str, dict[str, WorldItem]]:
-    """
-    Native version of world update parsing that creates models directly.
-    Eliminates .from_dict() conversion overhead.
-    """
+    """Parse world update JSON provided by LLM and create models directly."""
     world_updates: dict[str, dict[str, WorldItem]] = {}
     if not json_text_block or json_text_block.strip() in ["null", "None", ""]:
         return world_updates
 
     try:
         parsed_json = json.loads(json_text_block)
+        if not isinstance(parsed_json, dict):
+            logger.error(
+                f"World updates JSON was not a dictionary. Received: {type(parsed_json)}"
+            )
+            return world_updates
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse world updates JSON: {e}")
         return world_updates
@@ -591,7 +281,11 @@ def parse_unified_world_updates_native(
 
             try:
                 # Create model directly without dict intermediate
+                # Generate ID from name and category
+                item_id = f"{category_name_llm.lower().replace(' ', '_')}_{item_name_llm.lower().replace(' ', '_')}"
+                
                 world_item_instance = WorldItem(
+                    id=item_id,
                     name=item_name_llm,
                     category=category_name_llm,
                     description=raw_item_attributes.get("description", ""),
@@ -599,7 +293,7 @@ def parse_unified_world_updates_native(
                     **{
                         k: v
                         for k, v in raw_item_attributes.items()
-                        if k not in ["name", "category", "description"]
+                        if k not in ["id", "name", "category", "description"]
                     },
                 )
                 category_dict_by_item_name[item_name_llm] = world_item_instance
@@ -839,18 +533,6 @@ class KnowledgeAgent:
         """Parse world update text into structured items."""
         return parse_unified_world_updates(text, chapter_number)
 
-    # Phase 3 optimization: Native parsing methods
-    def parse_character_updates_native(
-        self, text: str, chapter_number: int
-    ) -> dict[str, CharacterProfile]:
-        """Native character update parsing that eliminates dict conversion overhead."""
-        return parse_unified_character_updates_native(text, chapter_number)
-
-    def parse_world_updates_native(
-        self, text: str, chapter_number: int
-    ) -> dict[str, dict[str, WorldItem]]:
-        """Native world update parsing that eliminates dict conversion overhead."""
-        return parse_unified_world_updates_native(text, chapter_number)
 
     def merge_updates(
         self,
@@ -1075,171 +757,8 @@ class KnowledgeAgent:
                     f"to '{bridge_candidates[0].get('name')}' to establish narrative presence."
                 )
 
+
     async def extract_and_merge_knowledge(
-        self,
-        plot_outline: dict[str, Any],
-        character_profiles: dict[str, CharacterProfile],
-        world_building: dict[str, dict[str, WorldItem]],
-        chapter_number: int,
-        chapter_text: str,
-        is_from_flawed_draft: bool = False,
-    ) -> dict[str, int] | None:
-        if not chapter_text:
-            logger.warning(
-                "Skipping knowledge extraction for chapter %s: no text provided.",
-                chapter_number,
-            )
-            return None
-
-        logger.info(
-            "KnowledgeAgent: Starting knowledge extraction for chapter %d. Flawed draft: %s",
-            chapter_number,
-            is_from_flawed_draft,
-        )
-
-        raw_extracted_text, usage_data = await self._llm_extract_updates(
-            plot_outline, chapter_text, chapter_number
-        )
-
-        if not raw_extracted_text.strip():
-            logger.warning(
-                "LLM extraction returned no text for chapter %d.", chapter_number
-            )
-            return usage_data
-
-        char_updates_raw = "{}"
-        world_updates_raw = "{}"
-        kg_triples_text = ""
-
-        try:
-            parsed_json = json.loads(raw_extracted_text)
-            char_updates_raw = json.dumps(parsed_json.get("character_updates", {}))
-            world_updates_raw = json.dumps(parsed_json.get("world_updates", {}))
-            kg_triples_list = parsed_json.get("kg_triples", [])
-            if isinstance(kg_triples_list, list):
-                kg_triples_text = "\n".join([str(t) for t in kg_triples_list])
-            else:
-                kg_triples_text = str(kg_triples_list)
-
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"Failed to parse full extraction JSON for chapter {chapter_number}: {e}. "
-                f"Attempting to extract individual sections with regex."
-            )
-            # Fallback to regex extraction
-            char_match = re.search(
-                r'"character_updates"\s*:\s*({.*?})', raw_extracted_text, re.DOTALL
-            )
-            if char_match:
-                char_updates_raw = char_match.group(1)
-                logger.info(
-                    f"Regex successfully extracted character_updates block for Ch {chapter_number}."
-                )
-            else:
-                logger.warning(
-                    f"Could not find character_updates JSON block via regex for Ch {chapter_number}."
-                )
-
-            world_match = re.search(
-                r'"world_updates"\s*:\s*({.*?})', raw_extracted_text, re.DOTALL
-            )
-            if world_match:
-                world_updates_raw = world_match.group(1)
-                logger.info(
-                    f"Regex successfully extracted world_updates block for Ch {chapter_number}."
-                )
-            else:
-                logger.warning(
-                    f"Could not find world_updates JSON block via regex for Ch {chapter_number}."
-                )
-
-            triples_match = re.search(
-                r'"kg_triples"\s*:\s*(\[.*?\])', raw_extracted_text, re.DOTALL
-            )
-            if triples_match:
-                try:
-                    triples_list_from_regex = json.loads(triples_match.group(1))
-                    if isinstance(triples_list_from_regex, list):
-                        kg_triples_text = "\n".join(
-                            [str(t) for t in triples_list_from_regex]
-                        )
-                        logger.info(
-                            f"Regex successfully extracted and parsed kg_triples block for Ch {chapter_number}."
-                        )
-                except json.JSONDecodeError:
-                    logger.warning(
-                        f"Found kg_triples block via regex for Ch {chapter_number}, but it was invalid JSON."
-                    )
-            else:
-                logger.warning(
-                    f"Could not find kg_triples JSON array via regex for Ch {chapter_number}."
-                )
-
-        # Use native parsing for optimal performance (Phase 3 optimization)
-        char_updates_from_llm = self.parse_character_updates_native(
-            char_updates_raw, chapter_number
-        )
-        world_updates_from_llm = self.parse_world_updates_native(
-            world_updates_raw, chapter_number
-        )
-
-        parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
-
-        # Log each parsed triple
-        for triple in parsed_triples_structured:
-            object_value = triple.get('object_entity', triple.get('object_literal'))
-            logger.info(f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}")
-
-        logger.info(
-            f"Chapter {chapter_number} LLM Extraction: "
-            f"{len(char_updates_from_llm)} char updates, "
-            f"{sum(len(items) for items in world_updates_from_llm.values())} world item updates, "
-            f"{len(parsed_triples_structured)} KG triples."
-        )
-
-        current_char_profiles_models = character_profiles
-        current_world_models = world_building
-
-        self.merge_updates(
-            current_char_profiles_models,  # Pass model instances
-            current_world_models,  # Pass model instances
-            char_updates_from_llm,  # Already model instances
-            world_updates_from_llm,  # Already model instances
-            chapter_number,
-            is_from_flawed_draft,
-        )
-        logger.info(
-            f"Merged LLM updates into in-memory state for chapter {chapter_number}."
-        )
-
-        # Persist the DELTA of updates (char_updates_from_llm, world_updates_from_llm)
-        # These functions expect model instances and the chapter number for delta context.
-        if char_updates_from_llm:
-            await self.persist_profiles(char_updates_from_llm, chapter_number)
-        if world_updates_from_llm:
-            await self.persist_world(world_updates_from_llm, chapter_number)
-
-        if parsed_triples_structured:
-            try:
-                await kg_queries.add_kg_triples_batch_to_db(
-                    parsed_triples_structured, chapter_number, is_from_flawed_draft
-                )
-                logger.info(
-                    f"Persisted {len(parsed_triples_structured)} KG triples for chapter {chapter_number} to Neo4j."
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to persist KG triples for chapter {chapter_number}: {e}",
-                    exc_info=True,
-                )
-
-        logger.info(
-            "Knowledge extraction, in-memory merge, and delta persistence complete for chapter %d.",
-            chapter_number,
-        )
-        return usage_data
-
-    async def extract_and_merge_knowledge_native(
         self,
         plot_outline: dict[str, Any],
         characters: list[CharacterProfile],
@@ -1249,8 +768,8 @@ class KnowledgeAgent:
         is_from_flawed_draft: bool = False,
     ) -> dict[str, int] | None:
         """
-        Native model version of extract_and_merge_knowledge.
-        Eliminates dict conversion overhead by working directly with model instances.
+        Extract knowledge from chapter text and merge into existing model lists.
+        Works directly with model instances for optimal performance.
 
         Args:
             plot_outline: Plot information dict
