@@ -49,176 +49,6 @@ class NarrativeAgent:
         self.config = config
         self.model = NARRATIVE_MODEL
 
-    async def _plan_chapter_scenes(
-        self,
-        plot_outline: dict[str, Any],
-        character_profiles: dict[str, CharacterProfile],
-        world_building: dict[str, dict[str, WorldItem]],
-        chapter_number: int,
-        plot_point_focus: str | None,
-        plot_point_index: int,
-    ) -> tuple[list[SceneDetail] | None, dict[str, int] | None]:
-        """
-        Generates a detailed scene plan for the chapter.
-        Returns the plan and LLM usage data.
-        """
-        if not self.config.ENABLE_AGENTIC_PLANNING:
-            logger.info(
-                f"Agentic planning disabled. Skipping detailed planning for Chapter {chapter_number}."
-            )
-            return None, None
-
-        logger.info(
-            f"NarrativeAgent planning Chapter {chapter_number} with detailed scenes..."
-        )
-        if plot_point_focus is None:
-            logger.error(
-                f"Cannot plan chapter {chapter_number}: No plot point focus available."
-            )
-            return None, None
-
-        context_summary_parts: list[str] = []
-        if chapter_number > 1:
-            prev_chap_data = await chapter_queries.get_chapter_data_from_db(
-                chapter_number - 1
-            )
-            if prev_chap_data:
-                prev_summary = prev_chap_data.get("summary")
-                prev_is_provisional = prev_chap_data.get("is_provisional", False)
-                summary_prefix = (
-                    "[Provisional Summary from Prev Ch] "
-                    if prev_is_provisional and prev_summary
-                    else "[Summary from Prev Ch] "
-                )
-                if prev_summary:
-                    context_summary_parts.append(
-                        f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:1000].strip()}...\n"
-                    )
-                else:
-                    prev_text = prev_chap_data.get("text", "")
-                    text_prefix = (
-                        "[Provisional Text Snippet from Prev Ch] "
-                        if prev_is_provisional and prev_text
-                        else "[Text Snippet from Prev Ch] "
-                    )
-                    if prev_text:
-                        context_summary_parts.append(
-                            f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-1000:].strip()}\n"
-                        )
-
-        context_summary_str = "".join(context_summary_parts)
-
-        protagonist_name = plot_outline.get(
-            "protagonist_name", self.config.DEFAULT_PROTAGONIST_NAME
-        )
-        kg_context_section = await get_reliable_kg_facts_for_drafting_prompt(
-            plot_outline, chapter_number, None
-        )
-        character_state_snippet_plain_text = (
-            await get_character_state_snippet_for_prompt(
-                character_profiles, plot_outline, chapter_number
-            )
-        )
-        world_state_snippet_plain_text = await get_world_state_snippet_for_prompt(
-            world_building, chapter_number
-        )
-
-        future_plot_context_parts: list[str] = []
-        all_plot_points = plot_outline.get("plot_points", [])
-        total_plot_points_in_novel = len(all_plot_points)
-
-        if plot_point_index + 1 < total_plot_points_in_novel:
-            next_pp_text = all_plot_points[plot_point_index + 1]
-            if isinstance(next_pp_text, str) and next_pp_text.strip():
-                future_plot_context_parts.append(
-                    f"\n**Anticipated Next Major Plot Point (PP {plot_point_index + 2}/{total_plot_points_in_novel} - for context, not this chapter's focus):**\n{next_pp_text.strip()}\n"
-                )
-            if plot_point_index + 2 < total_plot_points_in_novel:
-                next_next_pp_text = all_plot_points[plot_point_index + 2]
-                if isinstance(next_next_pp_text, str) and next_next_pp_text.strip():
-                    future_plot_context_parts.append(
-                        f"**And Then (PP {plot_point_index + 3}/{total_plot_points_in_novel} - distant context):**\n{next_next_pp_text.strip()}\n"
-                    )
-        future_plot_context_str = "".join(future_plot_context_parts)
-
-        prompt = render_prompt(
-            "narrative_agent/scene_plan.j2",
-            {
-                "no_think": self.config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-                "target_scenes_min": self.config.TARGET_SCENES_MIN,
-                "target_scenes_max": self.config.TARGET_SCENES_MAX,
-                "chapter_number": chapter_number,
-                "novel_title": plot_outline.get("title", "Untitled"),
-                "novel_genre": plot_outline.get("genre", "N/A"),
-                "novel_theme": plot_outline.get("theme", "N/A"),
-                "protagonist_name": protagonist_name,
-                "protagonist_arc": plot_outline.get("character_arc", "N/A"),
-                "plot_point_index_plus1": plot_point_index + 1,
-                "total_plot_points_in_novel": total_plot_points_in_novel,
-                "plot_point_focus": plot_point_focus,
-                "future_plot_context_str": future_plot_context_str,
-                "context_summary_str": context_summary_str,
-                "kg_context_section": kg_context_section,
-                "character_state_snippet_plain_text": character_state_snippet_plain_text,
-                "world_state_snippet_plain_text": world_state_snippet_plain_text,
-            },
-        )
-        logger.info(
-            f"Calling LLM ({self.model}) for detailed scene plan for chapter {chapter_number} (target scenes: {self.config.TARGET_SCENES_MIN}-{self.config.TARGET_SCENES_MAX}, expecting JSON). Plot Point {plot_point_index + 1}/{total_plot_points_in_novel}."
-        )
-
-        (
-            cleaned_plan_text_from_llm,
-            usage_data,
-        ) = await llm_service.async_call_llm(
-            model_name=self.model,
-            prompt=prompt,
-            temperature=self.config.Temperatures.PLANNING,
-            max_tokens=self.config.MAX_PLANNING_TOKENS,
-            allow_fallback=True,
-            stream_to_disk=True,
-            frequency_penalty=self.config.FREQUENCY_PENALTY_PLANNING,
-            presence_penalty=self.config.PRESENCE_PENALTY_PLANNING,
-            auto_clean_response=True,
-        )
-
-        parsed_scenes_list_of_dicts = self._parse_llm_scene_plan_output(
-            cleaned_plan_text_from_llm, chapter_number
-        )
-
-        if parsed_scenes_list_of_dicts:
-            final_scenes_typed: list[SceneDetail] = []
-            for i, scene_dict in enumerate(parsed_scenes_list_of_dicts):
-                if not isinstance(scene_dict, dict):
-                    logger.warning(
-                        f"Parsed scene item {i + 1} for ch {chapter_number} is not a dict. Skipping. Item: {scene_dict}"
-                    )
-                    continue
-
-                # Basic validation for required fields
-                if not scene_dict.get("summary"):
-                    logger.warning(
-                        f"Scene {scene_dict.get('scene_number', i + 1)} from parser for ch {chapter_number} has a missing summary. Skipping."
-                    )
-                    continue
-
-                final_scenes_typed.append(scene_dict)  # type: ignore
-
-            if final_scenes_typed:
-                logger.info(
-                    f"Generated valid detailed scene plan for chapter {chapter_number} with {len(final_scenes_typed)} scenes."
-                )
-                return final_scenes_typed, usage_data
-            else:
-                logger.error(
-                    f"Parsed list was empty or all scenes were invalid after parsing for chapter {chapter_number}. Cleaned LLM output: '{cleaned_plan_text_from_llm[:500]}...'"
-                )
-                return None, usage_data
-        else:
-            logger.error(
-                f"Failed to parse a valid list of scenes for chapter {chapter_number}. Cleaned LLM output: '{cleaned_plan_text_from_llm[:500]}...'"
-            )
-            return None, usage_data
 
     def _parse_llm_scene_plan_output(
         self, json_text: str, chapter_number: int
@@ -459,8 +289,7 @@ class NarrativeAgent:
         except Exception as e:
             logger.error(f"Failed to save malformed JSON for debugging: {e}")
 
-    # Phase 3: Native agent communication methods (list-based instead of dict-based)
-    async def _plan_chapter_scenes_native(
+    async def _plan_chapter_scenes(
         self,
         plot_outline: dict[str, Any],
         character_profiles: list[CharacterProfile],  # List instead of dict
@@ -470,8 +299,8 @@ class NarrativeAgent:
         plot_point_index: int,
     ) -> tuple[list[SceneDetail] | None, dict[str, int] | None]:
         """
-        Native version of scene planning that works directly with model lists.
-        Eliminates dictionary conversion overhead in agent communication.
+        Generates a detailed scene plan for the chapter using native model lists.
+        Returns the plan and LLM usage data.
         """
         if not self.config.ENABLE_AGENTIC_PLANNING:
             logger.info(
@@ -480,7 +309,7 @@ class NarrativeAgent:
             return None, None
 
         logger.info(
-            f"NarrativeAgent planning Chapter {chapter_number} with detailed scenes (NATIVE)..."
+            f"NarrativeAgent planning Chapter {chapter_number} with detailed scenes..."
         )
         if plot_point_focus is None:
             logger.error(
@@ -924,16 +753,18 @@ class NarrativeAgent:
         logger.info("Quality checks passed")
         return True
 
+
     async def generate_chapter(
         self,
         plot_outline: dict,
-        character_profiles: dict,
-        world_building: dict,
+        character_profiles: list[CharacterProfile],  # List instead of dict
+        world_building: list[WorldItem],  # List instead of nested dict
         chapter_number: int,
         plot_point_focus: str,
     ) -> tuple[str, str, dict[str, int]]:
-        """Generate a new chapter based on plot outline and
-        character/world context.
+        """
+        Generate a new chapter based on plot outline and character/world context.
+        Works directly with model lists for optimal performance.
 
         Returns:
             Tuple of (draft_text, raw_llm_output, usage_data)
@@ -954,107 +785,6 @@ class NarrativeAgent:
 
         # Plan the chapter scenes
         scenes, planning_usage_data = await self._plan_chapter_scenes(
-            plot_outline,
-            character_profiles,
-            world_building,
-            chapter_number,
-            plot_point_focus,
-            plot_point_index,
-        )
-
-        if not scenes:
-            logger.error(f"Failed to plan scenes for chapter {chapter_number}")
-            return (
-                "Failed to generate chapter: scene planning failed",
-                "Error",
-                planning_usage_data or {},
-            )
-
-        # Generate a hybrid context based on prior chapters and KG facts.
-        # Use a dictionary with plot outline info as the agent_or_props for context generation.
-        try:
-            context_props: dict[str, Any] = {
-                "plot_outline": plot_outline,
-                "plot_outline_full": plot_outline,
-            }
-            hybrid_context_for_draft: str = (
-                await generate_hybrid_chapter_context_native(
-                    context_props,
-                    chapter_number,
-                    scenes,
-                )
-            )
-        except Exception as e:
-            # If hybrid context generation fails for any reason, fall back to basic metadata
-            logger.error(
-                f"Failed to generate hybrid context for chapter {chapter_number}: {e}"
-            )
-            hybrid_context_for_draft = (
-                f"Protagonist: {plot_outline.get('protagonist_name', 'Unknown')}\n"
-                f"Genre: {plot_outline.get('genre', 'Unknown')}\n"
-                f"Theme: {plot_outline.get('theme', 'Unknown')}\n"
-                f"Character Arc: {plot_outline.get('character_arc', 'Unknown')}"
-            )
-
-        # Draft the chapter with the generated hybrid context
-        draft_text, raw_output, draft_usage = await self._draft_chapter(
-            plot_outline,
-            chapter_number,
-            plot_point_focus,
-            hybrid_context_for_draft,
-            scenes,
-        )
-
-        if not draft_text:
-            logger.error(f"Failed to draft chapter {chapter_number}")
-            return (
-                "Failed to generate chapter: drafting failed",
-                raw_output or "Error",
-                draft_usage or {},
-            )
-
-        # Combine usage data from planning and drafting
-        total_usage = planning_usage_data or {}
-        if draft_usage:
-            for key, value in draft_usage.items():
-                total_usage[key] = total_usage.get(key, 0) + value
-
-        # Perform quality checks
-        if not await self._check_quality(draft_text):
-            logger.warning(f"Chapter {chapter_number} failed quality checks")
-            # Return the draft anyway but mark it as low quality
-            return draft_text, raw_output or "", total_usage
-
-        return draft_text, raw_output or "", total_usage
-
-    async def generate_chapter_native(
-        self,
-        plot_outline: dict,
-        character_profiles: list[CharacterProfile],  # List instead of dict
-        world_building: list[WorldItem],  # List instead of nested dict
-        chapter_number: int,
-        plot_point_focus: str,
-    ) -> tuple[str, str, dict[str, int]]:
-        """
-        Native version of chapter generation that works directly with model lists.
-        Eliminates dictionary conversion overhead in agent communication.
-        """
-        self.logger.info("Generating chapter (NATIVE)", chapter=chapter_number)
-
-        # Get the current plot point index
-        all_plot_points = plot_outline.get("plot_points", [])
-        plot_point_index = -1
-        for i, pp in enumerate(all_plot_points):
-            if isinstance(pp, str) and pp.strip() == plot_point_focus:
-                plot_point_index = i
-                break
-
-        if plot_point_index == -1:
-            logger.error(f"Could not find plot point focus: {plot_point_focus}")
-            return "Failed to generate chapter: plot point focus not found", "Error", {}
-
-        # Plan the chapter scenes using native method
-        scenes, planning_usage_data = await self._plan_chapter_scenes_native(
             plot_outline,
             character_profiles,
             world_building,

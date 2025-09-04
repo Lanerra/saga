@@ -520,7 +520,7 @@ class RevisionAgent:
                 "chapter_number": chapter_number,
                 "novel_title": plot_outline.get("title", "Untitled Novel"),
                 "protagonist_name_str": protagonist_name_str,
-                "min_length": 12000,  # MIN_ACCEPTABLE_DRAFT_LENGTH
+                "min_length": self.config.MIN_ACCEPTABLE_DRAFT_LENGTH,
                 "novel_genre": plot_outline.get("genre", "N/A"),
                 "novel_theme": plot_outline.get("theme", "N/A"),
                 "novel_protagonist": plot_outline.get("protagonist_name", "N/A"),

@@ -537,17 +537,17 @@ class NANA_Orchestrator:
 
         self._update_novel_props_cache()
 
-        # Use native scene planning for optimal performance (Phase 3 optimization)
+        # Use scene planning for optimal performance
         characters_for_planning = await get_character_profiles_native()
         world_items_for_planning = await get_world_building_native()
 
         (
             chapter_plan,
             plan_usage,
-        ) = await self.narrative_agent._plan_chapter_scenes_native(
+        ) = await self.narrative_agent._plan_chapter_scenes(
             self.plot_outline,
-            characters_for_planning,  # List[CharacterProfile] - native format
-            world_items_for_planning,  # List[WorldItem] - native format
+            characters_for_planning,  # List[CharacterProfile]
+            world_items_for_planning,  # List[WorldItem]
             novel_chapter_number,
             plot_point_focus,
             plot_point_index,
@@ -670,15 +670,15 @@ class NANA_Orchestrator:
                 novel_chapter_number, "initial_draft", draft_text
             )
             return draft_text, raw_output
-        # Fallback: if no valid plan/context, use native generate_chapter for optimal performance
+        # Fallback: if no valid plan/context, use generate_chapter for optimal performance
         (
             initial_draft_text,
             initial_raw_llm_text,
             draft_usage,
-        ) = await self.narrative_agent.generate_chapter_native(
+        ) = await self.narrative_agent.generate_chapter(
             self.plot_outline,
-            characters,  # List[CharacterProfile] - native format
-            world_items,  # List[WorldItem] - native format
+            characters,  # List[CharacterProfile]
+            world_items,  # List[WorldItem]
             novel_chapter_number,
             plot_point_focus,
         )

@@ -262,8 +262,6 @@ class SagaSettings(BaseSettings):
     DEFAULT_PLOT_OUTLINE_TITLE: str = "Untitled Narrative"
 
     MAIN_NOVEL_INFO_NODE_ID: str = "main_novel_info"
-    MAIN_CHARACTERS_CONTAINER_NODE_ID: str = "main_characters_container"
-    MAIN_WORLD_CONTAINER_NODE_ID: str = "main_world_container"
 
     DISABLE_RELATIONSHIP_NORMALIZATION: bool = (
         True  # Toggle relationship normalization for testing
