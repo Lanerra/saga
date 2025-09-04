@@ -90,8 +90,23 @@ NODE_LABELS = {
     "Rumor",  # Unconfirmed information, gossip
     "News",  # Current information, recent events
     "Message",  # Communications, signals, transmissions
+    "Signal",  # Electronic/magical signals, transmissions
     "ValueNode",  # Literal values, data (existing)
     "Record",  # Official records, documentation
+    # === ACTION/EVENT ENTITIES ===
+    "Action",  # Specific actions, deeds, activities
+    "Reaction",  # Responses, reactions to events
+    "Change",  # Transformations, alterations
+    "Pattern",  # Behavioral patterns, recurring structures
+    # === PHYSICAL/SENSORY ENTITIES ===
+    "Sound",  # Auditory phenomena, noise, music
+    "Pollen",  # Biological particles, airborne substances
+    # === PURPOSE/INTENT ENTITIES ===
+    "Purpose",  # Intentions, goals, objectives
+    "Goal",  # Specific targets, aims, desired outcomes
+    "Outcome",  # Results, consequences, end states
+    # === RELATIONSHIP/ABSTRACT ===
+    "Relationship",  # Social/conceptual connections (meta)
     # === QUALITY ENTITIES ===
     "Trait",  # Character traits, personality aspects (existing)
     "Attribute",  # Physical or mental attributes

@@ -65,69 +65,6 @@ Copy the `.env.example` file to `.env` and update the configuration values as ne
 cp .env.example .env
 ```
 
-Example configuration values:
-
-```
-# API and Model Configuration
-OLLAMA_EMBED_URL=http://127.0.0.1:11434
-OPENAI_API_BASE=http://127.0.0.1:8080/v1
-OPENAI_API_KEY=sk-nope
-EMBEDDING_MODEL="nomic-embed-text:latest"
-EXPECTED_EMBEDDING_DIM=768
-
-# Neo4j Connection Settings
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=saga_password
-NEO4J_DATABASE=neo4j
-NEO4J_VECTOR_DIMENSIONS=768
-
-# Note: The APOC plugin must be installed in Neo4j for the migration script to work.
-# See https://neo4j.com/labs/apoc/ for installation instructions.
-
-# Model Aliases
-LARGE_MODEL="qwen3-a3b"
-MEDIUM_MODEL="qwen3-a3b"
-SMALL_MODEL="qwen3-a3b"
-NARRATIVE_MODEL="qwen3-a3b"
-
-# SAGA Generation Parameters
-ENABLE_LLM_NO_THINK_DIRECTIVE=True
-
-# Generation Run Settings
-TARGET_PLOT_POINTS_INITIAL_GENERATION=18
-CHAPTERS_PER_RUN=6
-TARGET_SCENES_MIN=4
-TARGET_SCENES_MAX=6
-
-# Token Limits
-MAX_CONTEXT_TOKENS=40960
-MAX_GENERATION_TOKENS=32768
-MAX_SUMMARY_TOKENS=4096
-MAX_KG_TRIPLE_TOKENS=8192
-MAX_PREPOP_KG_TOKENS=16384
-MAX_PLANNING_TOKENS=16384
-
-# Draft Quality & Length
-MIN_ACCEPTABLE_DRAFT_LENGTH=12000
-
-# Revision Process
-ENABLE_PATCH_BASED_REVISION=True
-AGENT_ENABLE_PATCH_VALIDATION=True
-MAX_PATCH_INSTRUCTIONS_TO_GENERATE=10
-REVISION_COHERENCE_THRESHOLD=0.60
-REVISION_SIMILARITY_ACCEPTANCE=0.995
-
-# LLM Call Robustness
-LLM_RETRY_ATTEMPTS=3
-
-# Logging
-LOG_LEVEL=INFO
-
-# Rich Progress Display
-ENABLE_RICH_PROGRESS=True
-```
-
 ### 6. Start the System
 
 Run the system using the `main.py` entry point:
@@ -194,33 +131,8 @@ python main.py
 
 The system will generate chapters and refine them using the defined agents and workflows.
 
-## Development Practices
-
-The project uses the following tools to ensure code quality and maintainability:
-
-- **Ruff**: Linter and formatter for PEP8 compliance and bug detection.
-- **pytest**: Testing framework with custom markers for test categorization.
-- **Neo4j**: Knowledge graph for narrative structure, character relationships, and world elements.
-- **LLM Integration**: Uses LLMs for creative and analytical tasks in the novel generation process.
-
-## Migration
-
-### DYNAMIC_REL Removal
-
-As of recent updates, the generic `DYNAMIC_REL` relationship type has been removed from SAGA in favor of specific, typed relationships.
-This change improves query performance and data integrity.
-
-If you have an existing database with `DYNAMIC_REL` relationships, you'll need to run the migration script:
-
-```bash
-python migrations/001_remove_dynamic_rel.py
-```
-
-This script will:
-1. Drop indexes related to `DYNAMIC_REL` relationships
-2. Convert existing `DYNAMIC_REL` relationships to typed relationships based on their `type` property
-3. Remove any remaining `DYNAMIC_REL` relationships that don't have a type property
-
 ## License
 
 SAGA is licensed under the [![Apache-2.0 License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Lanerra/saga)

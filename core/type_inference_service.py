@@ -195,7 +195,7 @@ class TypeInferenceService:
 
     def _apply_common_type_mappings(self, invalid_type: str) -> str:
         """
-        Apply common type mappings for known problematic types.
+        Apply comprehensive type mappings for known problematic types.
 
         Args:
             invalid_type: The problematic type string
@@ -205,19 +205,91 @@ class TypeInferenceService:
         """
         type_lower = invalid_type.lower()
         
-        # Common mappings for frequently seen invalid types
-        if "literal" in type_lower or "value" in type_lower:
+        # === COMPREHENSIVE TYPE MAPPINGS BASED ON LOG ANALYSIS ===
+        
+        # Information/Communication types
+        if type_lower in ["signal", "transmission", "communication"]:
+            return "Signal"
+        elif type_lower in ["message", "msg", "communication", "word", "speech"]:
+            return "Message"
+        elif type_lower in ["sound", "noise", "audio", "voice", "cry", "call"]:
+            return "Sound"
+        
+        # Action/Event types
+        elif type_lower in ["action", "act", "deed", "activity", "behavior"]:
+            return "Action"
+        elif type_lower in ["reaction", "response", "reply", "answer"]:
+            return "Reaction"
+        elif type_lower in ["change", "transformation", "alteration", "shift"]:
+            return "Change"
+        elif type_lower in ["pattern", "sequence", "trend", "rhythm"]:
+            return "Pattern"
+        
+        # Purpose/Intent types
+        elif type_lower in ["purpose", "intent", "intention", "aim"]:
+            return "Purpose"
+        elif type_lower in ["goal", "objective", "target", "mission"]:
+            return "Goal"
+        elif type_lower in ["outcome", "result", "consequence", "effect"]:
+            return "Outcome"
+        
+        # Relationship/Social types
+        elif type_lower in ["relationship", "connection", "bond", "link"]:
+            return "Relationship"
+        
+        # Physical/Material types
+        elif type_lower in ["pollen", "spore", "particle", "dust"]:
+            return "Pollen"
+        elif type_lower in ["material", "substance", "matter", "element"]:
+            return "Material"
+        
+        # Existing mappings (enhanced)
+        elif "literal" in type_lower or "value" in type_lower:
             return "ValueNode"
         elif "response" in type_lower:
             return "ValueNode"
-        elif "person" in type_lower or "human" in type_lower:
+        elif "person" in type_lower or "human" in type_lower or "individual" in type_lower:
             return "Character"
-        elif "place" in type_lower or "location" in type_lower:
+        elif "place" in type_lower or "location" in type_lower or "spot" in type_lower:
             return "Location"
-        elif "item" in type_lower or "object" in type_lower:
+        elif "item" in type_lower or "object" in type_lower or "thing" in type_lower:
             return "Object"
-        elif "group" in type_lower or "organization" in type_lower:
+        elif "group" in type_lower or "organization" in type_lower or "faction" in type_lower:
             return "Faction"
+        elif "building" in type_lower or "structure" in type_lower or "construct" in type_lower:
+            return "Structure"
+        elif "area" in type_lower or "region" in type_lower or "territory" in type_lower:
+            return "Region"
+        elif "emotion" in type_lower or "feeling" in type_lower or "sentiment" in type_lower:
+            return "Emotion"
+        elif "memory" in type_lower or "recollection" in type_lower or "remembrance" in type_lower:
+            return "Memory"
+        elif "concept" in type_lower or "idea" in type_lower or "notion" in type_lower:
+            return "Concept"
+        elif "skill" in type_lower or "ability" in type_lower or "talent" in type_lower:
+            return "Skill"
+        elif "event" in type_lower or "happening" in type_lower or "occurrence" in type_lower:
+            return "Event"
+        elif "secret" in type_lower or "mystery" in type_lower or "hidden" in type_lower:
+            return "Secret"
+        elif "knowledge" in type_lower or "information" in type_lower or "data" in type_lower:
+            return "Knowledge"
+        elif "energy" in type_lower or "power" in type_lower or "force" in type_lower:
+            return "Energy"
+        elif "role" in type_lower or "position" in type_lower or "title" in type_lower:
+            return "Role"
+        elif "status" in type_lower or "state" in type_lower or "condition" in type_lower:
+            return "Status"
+        elif "artifact" in type_lower or "relic" in type_lower or "ancient" in type_lower:
+            return "Artifact"
+        elif "creature" in type_lower or "being" in type_lower or "entity" in type_lower:
+            return "Creature"
+        elif "magic" in type_lower or "spell" in type_lower or "enchantment" in type_lower:
+            return "Magic"
+        elif "resource" in type_lower or "commodity" in type_lower or "supply" in type_lower:
+            return "Resource"
+        elif "culture" in type_lower or "tradition" in type_lower or "custom" in type_lower:
+            return "Culture"
         
         return invalid_type  # No mapping found
 

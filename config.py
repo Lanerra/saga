@@ -290,11 +290,11 @@ class SagaSettings(BaseSettings):
     DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = False         # Fall back to static methods on failure
     
     # Type Inference Configuration
-    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.3   # Min confidence for dynamic inference
+    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.6   # Min confidence for dynamic inference
     DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = 3                # Min frequency for patterns to be retained
     
     # Constraint System Configuration  
-    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.3       # Min confidence for constraint validation
+    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.6       # Min confidence for constraint validation
     DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3                    # Min samples to learn a constraint
     
     # Schema Discovery Configuration
