@@ -5,13 +5,13 @@ You are an expert knowledge graph analyst for a creative writing project. Your t
 - Name: {{ entity1.name }}
 - Type: {{ entity1.labels | join(', ') }}
 - Description: {{ entity1.properties.description or 'No description available' }}
-- Key Properties: {% for key, value in entity1.properties.items() if key != 'description' %}{{ key }}: {{ value | string | truncate(50) }}{% if not loop.last %}, {% endif %}{% endfor %}
+- Key Properties: {% for key, value in entity1.properties.items() if key != 'description' %}{{ key }}: {{ value | string }}{% if not loop.last %}, {% endif %}{% endfor %}
 
 **Entity 2:**
 - Name: {{ entity2.name }}
 - Type: {{ entity2.labels | join(', ') }}  
 - Description: {{ entity2.properties.description or 'No description available' }}
-- Key Properties: {% for key, value in entity2.properties.items() if key != 'description' %}{{ key }}: {{ value | string | truncate(50) }}{% if not loop.last %}, {% endif %}{% endfor %}
+- Key Properties: {% for key, value in entity2.properties.items() if key != 'description' %}{{ key }}: {{ value | string }}{% if not loop.last %}, {% endif %}{% endfor %}
 
 **Relationship Context:**
 {% if entity1.relationships or entity2.relationships %}

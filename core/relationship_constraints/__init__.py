@@ -7,6 +7,7 @@ import pkgutil
 from typing import Any
 
 import structlog
+
 from models.kg_constants import NODE_LABELS
 
 from .classifications import NodeClassifications

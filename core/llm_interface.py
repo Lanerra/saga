@@ -10,7 +10,7 @@ MIGRATION GUIDE:
 - For new code, use: from core.llm_interface_refactored import get_llm_service
 - The API remains compatible, but new features will only be added to the refactored version
 - HTTP client concerns: core.http_client_service
-- Text processing concerns: core.text_processing_service  
+- Text processing concerns: core.text_processing_service
 - Service interfaces: core.llm_service_interfaces
 
 The refactored architecture provides:
@@ -84,7 +84,9 @@ def secure_temp_file(suffix: str = ".tmp", text: bool = True):
                 os.remove(temp_path)
                 logger.debug(f"Cleaned up temporary file: {temp_path}")
             except Exception as cleanup_error:
-                logger.error(f"Failed to cleanup temporary file {temp_path}: {cleanup_error}")
+                logger.error(
+                    f"Failed to cleanup temporary file {temp_path}: {cleanup_error}"
+                )
 
 
 # Token parameter handling
@@ -491,9 +493,11 @@ class LLMService:
                     try:
                         if stream_to_disk:
                             payload["stream"] = True
-                            
+
                             # Use secure context manager for temporary file handling
-                            with secure_temp_file(suffix=".llmstream.txt", text=True) as temp_file_path:
+                            with secure_temp_file(
+                                suffix=".llmstream.txt", text=True
+                            ) as temp_file_path:
                                 accumulated_stream_content = ""
                                 stream_usage_data: dict[str, int] | None = None
 
@@ -507,28 +511,67 @@ class LLMService:
                                     ) as response_stream:
                                         response_stream.raise_for_status()
 
-                                        with open(temp_file_path, "w", encoding="utf-8") as tmp_f_write:
-                                            async for line in response_stream.aiter_lines():
+                                        with open(
+                                            temp_file_path, "w", encoding="utf-8"
+                                        ) as tmp_f_write:
+                                            async for (
+                                                line
+                                            ) in response_stream.aiter_lines():
                                                 if line.startswith("data: "):
-                                                    data_json_str = line[len("data: "):].strip()
+                                                    data_json_str = line[
+                                                        len("data: ") :
+                                                    ].strip()
                                                     if data_json_str == "[DONE]":
                                                         break
                                                     try:
-                                                        chunk_data = json.loads(data_json_str)
+                                                        chunk_data = json.loads(
+                                                            data_json_str
+                                                        )
                                                         if chunk_data.get("choices"):
-                                                            delta = chunk_data["choices"][0].get("delta", {})
-                                                            content_piece = delta.get("content")
+                                                            delta = chunk_data[
+                                                                "choices"
+                                                            ][0].get("delta", {})
+                                                            content_piece = delta.get(
+                                                                "content"
+                                                            )
                                                             if content_piece:
                                                                 accumulated_stream_content += content_piece
-                                                                tmp_f_write.write(content_piece)
+                                                                tmp_f_write.write(
+                                                                    content_piece
+                                                                )
 
-                                                            if chunk_data["choices"][0].get("finish_reason") is not None:
-                                                                potential_usage = chunk_data.get("usage")
-                                                                if (not potential_usage 
-                                                                    and chunk_data.get("x_groq") 
-                                                                    and chunk_data["x_groq"].get("usage")):
-                                                                    potential_usage = chunk_data["x_groq"]["usage"]
-                                                                if potential_usage and isinstance(potential_usage, dict):
+                                                            if (
+                                                                chunk_data["choices"][
+                                                                    0
+                                                                ].get("finish_reason")
+                                                                is not None
+                                                            ):
+                                                                potential_usage = (
+                                                                    chunk_data.get(
+                                                                        "usage"
+                                                                    )
+                                                                )
+                                                                if (
+                                                                    not potential_usage
+                                                                    and chunk_data.get(
+                                                                        "x_groq"
+                                                                    )
+                                                                    and chunk_data[
+                                                                        "x_groq"
+                                                                    ].get("usage")
+                                                                ):
+                                                                    potential_usage = (
+                                                                        chunk_data[
+                                                                            "x_groq"
+                                                                        ]["usage"]
+                                                                    )
+                                                                if (
+                                                                    potential_usage
+                                                                    and isinstance(
+                                                                        potential_usage,
+                                                                        dict,
+                                                                    )
+                                                                ):
                                                                     stream_usage_data = potential_usage
                                                     except json.JSONDecodeError:
                                                         logger.warning(
@@ -538,9 +581,11 @@ class LLMService:
                                     final_text_response = accumulated_stream_content
                                     current_usage_data = stream_usage_data
                                     if auto_clean_response:
-                                        final_text_response = self.clean_model_response(final_text_response)
+                                        final_text_response = self.clean_model_response(
+                                            final_text_response
+                                        )
                                     return final_text_response, current_usage_data
-                                    
+
                                 except Exception as stream_err:
                                     last_exception_for_current_model = stream_err
                                     logger.warning(
@@ -549,10 +594,14 @@ class LLMService:
                                     )
                                     # If there was an error, try to read partial content from temp file
                                     try:
-                                        with open(temp_file_path, "r", encoding="utf-8") as f_read_partial:
+                                        with open(
+                                            temp_file_path, encoding="utf-8"
+                                        ) as f_read_partial:
                                             final_text_response = f_read_partial.read()
                                     except Exception as read_error:
-                                        logger.warning(f"Could not read partial content from temp file: {read_error}")
+                                        logger.warning(
+                                            f"Could not read partial content from temp file: {read_error}"
+                                        )
                                     # Context manager will handle cleanup automatically
                         else:
                             payload["stream"] = False

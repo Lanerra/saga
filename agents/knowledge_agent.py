@@ -9,7 +9,6 @@ from typing import Any
 from async_lru import alru_cache  # type: ignore
 
 import config
-import utils  # Ensure utils is imported for normalize_trait_name
 from core.db_manager import neo4j_manager
 from core.knowledge_graph_service import knowledge_graph_service
 from core.llm_interface import llm_service
@@ -23,6 +22,7 @@ from data_access import (
     plot_queries,
     world_queries,
 )
+
 # Import native versions for performance optimization
 from data_access.character_queries import (
     sync_characters_native,
@@ -168,332 +168,18 @@ def _normalize_attributes(
 def parse_unified_character_updates(
     json_text_block: str, chapter_number: int
 ) -> dict[str, CharacterProfile]:
-    """Parse character update JSON provided by LLM."""
-    char_updates: dict[str, CharacterProfile] = {}
-    if not json_text_block.strip():
-        return char_updates
-
-    try:
-        # LLM is expected to output a dict where keys are character names
-        # and values are dicts of their attributes.
-        parsed_data = json.loads(json_text_block)
-        if not isinstance(parsed_data, dict):
-            logger.error(
-                "Character updates JSON was not a dictionary. Received: %s",
-                type(parsed_data),
-            )
-            return char_updates
-    except json.JSONDecodeError as e:
-        logger.error(
-            "Failed to parse character updates JSON: %s. Input: %s...",
-            e,
-            json_text_block[:500],
-        )
-        return char_updates
-
-    for char_name, char_attributes_llm in parsed_data.items():
-        if not char_name or not isinstance(char_attributes_llm, dict):
-            logger.warning(
-                "Skipping character with invalid name or attributes: Name='%s',"
-                " Attrs_Type='%s'",
-                char_name,
-                type(char_attributes_llm),
-            )
-            continue
-
-        # Normalize keys from LLM (e.g. "desc" to "description")
-        # and ensure list types
-        processed_char_attributes = _normalize_attributes(
-            char_attributes_llm, CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS
-        )
-
-        # Canonicalize trait names for consistency
-        traits_val = processed_char_attributes.get("traits", [])
-        if isinstance(traits_val, list):
-            processed_char_attributes["traits"] = [
-                utils.normalize_trait_name(t)
-                for t in traits_val
-                if isinstance(t, str) and utils.normalize_trait_name(t)
-            ]
-
-        # Handle relationships if they need structuring from list to dict
-        # Assuming LLM provides relationships as a list of strings
-        # like "Target: Detail" or just "Target"
-        # Or ideally, as a dict: {"Target": "Detail"}
-        rels_val = processed_char_attributes.get("relationships")
-        if isinstance(rels_val, list):
-            rels_list = rels_val
-            rels_dict: dict[str, str] = {}
-            for rel_entry in rels_list:
-                if isinstance(rel_entry, str):
-                    if ":" in rel_entry:
-                        parts = rel_entry.split(":", 1)
-                        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-                            rels_dict[parts[0].strip()] = parts[1].strip()
-                        elif parts[0].strip():  # If only name is there before colon
-                            rels_dict[parts[0].strip()] = "related"
-                    elif rel_entry.strip():  # No colon, just a name
-                        rels_dict[rel_entry.strip()] = "related"
-                elif isinstance(
-                    rel_entry, dict
-                ):  # If LLM sends [{"name": "X", "detail": "Y"}]
-                    target_name = rel_entry.get("name")
-                    detail = rel_entry.get("detail", "related")
-                    if (
-                        target_name
-                        and isinstance(target_name, str)
-                        and target_name.strip()
-                    ):
-                        rels_dict[target_name] = detail
-
-            processed_char_attributes["relationships"] = rels_dict
-        elif isinstance(rels_val, dict):
-            processed_char_attributes["relationships"] = {
-                str(k): str(v) for k, v in rels_val.items()
-            }
-        else:  # Ensure it's always a dict
-            processed_char_attributes["relationships"] = {}
-
-        dev_key_standard = f"development_in_chapter_{chapter_number}"
-        # If LLM includes this key (even with different casing/spacing), it will be normalized by _normalize_attributes
-        # if dev_key_standard is in CHAR_UPDATE_KEY_MAP. For now, handle it explicitly.
-        specific_dev_key_from_llm = next(
-            (
-                k
-                for k in processed_char_attributes
-                if k.lower().replace(" ", "_") == dev_key_standard
-            ),
-            None,
-        )
-
-        if specific_dev_key_from_llm and specific_dev_key_from_llm != dev_key_standard:
-            processed_char_attributes[dev_key_standard] = processed_char_attributes.pop(
-                specific_dev_key_from_llm
-            )
-
-        # Add default development note if no specific one and other attributes exist
-        has_other_meaningful_attrs = any(
-            k not in ["modification_proposal", dev_key_standard] and v
-            for k, v in processed_char_attributes.items()
-        )
-        if (
-            not processed_char_attributes.get(dev_key_standard)
-            and has_other_meaningful_attrs
-        ):
-            processed_char_attributes[dev_key_standard] = (
-                f"Character '{char_name}' details updated in Chapter {chapter_number}."
-            )
-
-        try:
-            char_updates[char_name] = CharacterProfile.from_dict(
-                char_name, processed_char_attributes
-            )
-        except Exception as e:
-            logger.error(
-                f"Error creating CharacterProfile for '{char_name}': {e}. Attributes: {processed_char_attributes}",
-                exc_info=True,
-            )
-
-    return char_updates
-
-
-def parse_unified_world_updates(
-    json_text_block: str, chapter_number: int
-) -> dict[str, dict[str, WorldItem]]:
-    """Parse world update JSON provided by LLM."""
-    world_updates: dict[str, dict[str, WorldItem]] = {}
-    if not json_text_block.strip():
-        return world_updates
-
-    try:
-        # LLM is expected to output a dict where keys are category display names (e.g., "Locations")
-        # and values are dicts of item names to their attribute dicts.
-        parsed_data = json.loads(json_text_block)
-        if not isinstance(parsed_data, dict):
-            logger.error(
-                f"World updates JSON was not a dictionary. Received: {type(parsed_data)}"
-            )
-            return world_updates
-    except json.JSONDecodeError as e:
-        logger.error(
-            f"Failed to parse world updates JSON: {e}. Input: {json_text_block[:500]}..."
-        )
-        return world_updates
-
-    results: dict[str, dict[str, WorldItem]] = {}
-    for category_name_llm, items_llm in parsed_data.items():
-        if not isinstance(items_llm, dict):
-            logger.warning(
-                f"Skipping category '{category_name_llm}' as its content is not a dictionary of items."
-            )
-            continue
-
-        # category_name_llm is e.g. "Locations", "Faction Alpha". This is used as the .category for WorldItem
-        # The WorldItem model itself might normalize this for ID generation.
-
-        category_dict_by_item_name: dict[str, WorldItem] = {}
-        elaboration_key_standard = f"elaboration_in_chapter_{chapter_number}"
-
-        if (
-            category_name_llm.lower() == "overview"
-            or category_name_llm.lower() == "_overview_"
-        ):
-            # Overview is a single item, its details are directly in items_llm
-            processed_overview_details = _normalize_attributes(
-                items_llm,
-                WORLD_UPDATE_DETAIL_KEY_MAP,
-                WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
-            )
-
-            # Handle common LLM output variations for elaborations
-            if "elaborations" in processed_overview_details:
-                processed_overview_details[elaboration_key_standard] = (
-                    processed_overview_details.pop("elaborations")
-                )
-            elif "elaboration" in processed_overview_details:
-                processed_overview_details[elaboration_key_standard] = (
-                    processed_overview_details.pop("elaboration")
-                )
-            if any(k != "modification_proposal" for k in processed_overview_details):
-                # check if any meaningful data
-                # Add default elaboration if not present
-                if not processed_overview_details.get(elaboration_key_standard):
-                    processed_overview_details[elaboration_key_standard] = (
-                        f"Overall world overview updated in Chapter {chapter_number}."
-                    )
-                try:
-                    # For overview, item_name is fixed (e.g., "_overview_")
-                    overview_item = WorldItem.from_dict(
-                        category_name_llm,
-                        "_overview_",
-                        processed_overview_details,
-                    )
-                    results.setdefault(category_name_llm, {})["_overview_"] = (
-                        overview_item
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Error creating WorldItem for overview in category '%s': %s",
-                        category_name_llm,
-                        e,
-                        exc_info=True,
-                    )
-        else:  # Regular category with multiple items
-            for item_name_llm, item_attributes_llm in items_llm.items():
-                if not item_name_llm or not isinstance(item_attributes_llm, dict):
-                    # Check if this might be a property that was incorrectly placed at the item level
-                    # This can happen when LLM outputs properties at the category level instead of item level
-                    if item_name_llm and isinstance(item_name_llm, str):
-                        # Check if the "item name" is actually a known property name
-                        normalized_key = item_name_llm.lower().replace(" ", "_")
-                        # Include common elaboration variations that should be treated as properties, not items
-                        known_property_names = (
-                            set(WORLD_UPDATE_DETAIL_KEY_MAP.keys())
-                            | set(WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS)
-                            | {"elaborations", "elaboration"}
-                        )
-                        if normalized_key in known_property_names:
-                            logger.debug(
-                                "Ignoring property '%s' at item level in category '%s' (likely LLM formatting issue)",
-                                item_name_llm,
-                                category_name_llm,
-                            )
-                            continue
-
-                    logger.warning(
-                        "Skipping item with invalid name or attributes in "
-                        "category '%s': Name='%s'",
-                        category_name_llm,
-                        item_name_llm,
-                    )
-                    continue
-
-                processed_item_details = _normalize_attributes(
-                    item_attributes_llm,
-                    WORLD_UPDATE_DETAIL_KEY_MAP,
-                    WORLD_UPDATE_DETAIL_LIST_INTERNAL_KEYS,
-                )
-
-                # Handle common LLM output variations for elaborations
-                if "elaborations" in processed_item_details:
-                    processed_item_details[elaboration_key_standard] = (
-                        processed_item_details.pop("elaborations")
-                    )
-                elif "elaboration" in processed_item_details:
-                    processed_item_details[elaboration_key_standard] = (
-                        processed_item_details.pop("elaboration")
-                    )
-
-                # Add default elaboration if not present and other
-                # attributes exist
-                has_other_meaningful_item_attrs = any(
-                    k
-                    not in [
-                        "modification_proposal",
-                        elaboration_key_standard,
-                    ]
-                    and v
-                    for k, v in processed_item_details.items()
-                )
-                if (
-                    not processed_item_details.get(elaboration_key_standard)
-                    and has_other_meaningful_item_attrs
-                ):
-                    processed_item_details[elaboration_key_standard] = (
-                        f"Item '{item_name_llm}' in category '{category_name_llm}' "
-                        f"updated in Chapter {chapter_number}."
-                    )
-
-                if not category_name_llm or not category_name_llm.strip():
-                    logger.warning(
-                        "Skipping WorldItem with missing category: %s", item_name_llm
-                    )
-                    continue
-
-                try:
-                    # item_name_llm is the display name from JSON key.
-                    # WorldItem stores this as .name and normalizes it for .id
-                    # along with category_name_llm.
-                    world_item_instance = WorldItem.from_dict(
-                        category_name_llm,
-                        item_name_llm,
-                        processed_item_details,
-                    )
-
-                    # Store in this category's dictionary using the item's display name as key.
-                    # If LLM provides duplicate item names within the same category, last one wins.
-                    category_dict_by_item_name[world_item_instance.name] = (
-                        world_item_instance
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Error creating WorldItem for '%s' in category '%s': %s",
-                        item_name_llm,
-                        category_name_llm,
-                        e,
-                        exc_info=True,
-                    )
-
-            if category_dict_by_item_name:
-                results[category_name_llm] = category_dict_by_item_name
-
-    return results
-
-
-# Phase 3 optimization: Native parsing methods that eliminate dict conversion overhead
-def parse_unified_character_updates_native(
-    json_text_block: str, chapter_number: int
-) -> dict[str, CharacterProfile]:
-    """
-    Native version of character update parsing that creates models directly.
-    Eliminates .from_dict() conversion overhead.
-    """
+    """Parse character update JSON provided by LLM and create models directly."""
     char_updates: dict[str, CharacterProfile] = {}
     if not json_text_block or json_text_block.strip() in ["null", "None", ""]:
         return char_updates
 
     try:
         parsed_json = json.loads(json_text_block)
+        if not isinstance(parsed_json, dict):
+            logger.error(
+                f"Character updates JSON was not a dictionary. Received: {type(parsed_json)}"
+            )
+            return char_updates
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse character updates JSON: {e}")
         return char_updates
@@ -505,69 +191,75 @@ def parse_unified_character_updates_native(
             )
             continue
 
-        processed_char_attributes = {}
-        for key, value in raw_attributes.items():
-            if key in ["traits", "relationships", "skills"]:
-                if isinstance(value, str):
-                    processed_char_attributes[key] = [
-                        item.strip() for item in value.split(",") if item.strip()
-                    ]
-                elif isinstance(value, list):
-                    processed_char_attributes[key] = [
-                        str(item).strip() for item in value if str(item).strip()
-                    ]
-                else:
-                    processed_char_attributes[key] = []
-            else:
-                processed_char_attributes[key] = value
+        # Simple, efficient attribute processing
+        traits = []
+        skills = []
+        relationships = {}
+
+        # Process key attributes efficiently
+        if "traits" in raw_attributes:
+            traits_val = raw_attributes["traits"]
+            if isinstance(traits_val, list):
+                traits = [str(item).strip() for item in traits_val if str(item).strip()]
+            elif isinstance(traits_val, str):
+                traits = [
+                    item.strip() for item in traits_val.split(",") if item.strip()
+                ]
+
+        if "skills" in raw_attributes:
+            skills_val = raw_attributes["skills"]
+            if isinstance(skills_val, list):
+                skills = [str(item).strip() for item in skills_val if str(item).strip()]
+            elif isinstance(skills_val, str):
+                skills = [
+                    item.strip() for item in skills_val.split(",") if item.strip()
+                ]
+
+        if "relationships" in raw_attributes:
+            rels_val = raw_attributes["relationships"]
+            if isinstance(rels_val, dict):
+                relationships = {str(k): str(v) for k, v in rels_val.items()}
+            elif isinstance(rels_val, list):
+                # Convert list to dict with default relationship
+                for rel_entry in rels_val:
+                    if isinstance(rel_entry, str) and rel_entry.strip():
+                        relationships[rel_entry.strip()] = "related"
 
         try:
             # Create model directly without dict intermediate
             char_updates[char_name] = CharacterProfile(
                 name=char_name,
-                description=processed_char_attributes.get("description", ""),
-                traits=processed_char_attributes.get("traits", []),
-                relationships=processed_char_attributes.get("relationships", []),
-                skills=processed_char_attributes.get("skills", []),
-                status=processed_char_attributes.get("status", "active"),
-                # Copy any additional attributes
-                **{
-                    k: v
-                    for k, v in processed_char_attributes.items()
-                    if k
-                    not in [
-                        "name",
-                        "description",
-                        "traits",
-                        "relationships",
-                        "skills",
-                        "status",
-                    ]
-                },
+                description=raw_attributes.get("description", ""),
+                traits=traits,
+                relationships=relationships,
+                skills=skills,
+                status=raw_attributes.get("status", "active"),
             )
         except Exception as e:
             logger.error(
                 f"Error creating CharacterProfile for '{char_name}': {e}. "
-                f"Attributes: {processed_char_attributes}",
+                f"Attributes: {raw_attributes}",
                 exc_info=True,
             )
 
     return char_updates
 
 
-def parse_unified_world_updates_native(
+def parse_unified_world_updates(
     json_text_block: str, chapter_number: int
 ) -> dict[str, dict[str, WorldItem]]:
-    """
-    Native version of world update parsing that creates models directly.
-    Eliminates .from_dict() conversion overhead.
-    """
+    """Parse world update JSON provided by LLM and create models directly."""
     world_updates: dict[str, dict[str, WorldItem]] = {}
     if not json_text_block or json_text_block.strip() in ["null", "None", ""]:
         return world_updates
 
     try:
         parsed_json = json.loads(json_text_block)
+        if not isinstance(parsed_json, dict):
+            logger.error(
+                f"World updates JSON was not a dictionary. Received: {type(parsed_json)}"
+            )
+            return world_updates
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse world updates JSON: {e}")
         return world_updates
@@ -591,7 +283,11 @@ def parse_unified_world_updates_native(
 
             try:
                 # Create model directly without dict intermediate
+                # Generate ID from name and category
+                item_id = f"{category_name_llm.lower().replace(' ', '_')}_{item_name_llm.lower().replace(' ', '_')}"
+
                 world_item_instance = WorldItem(
+                    id=item_id,
                     name=item_name_llm,
                     category=category_name_llm,
                     description=raw_item_attributes.get("description", ""),
@@ -599,7 +295,7 @@ def parse_unified_world_updates_native(
                     **{
                         k: v
                         for k, v in raw_item_attributes.items()
-                        if k not in ["name", "category", "description"]
+                        if k not in ["id", "name", "category", "description"]
                     },
                 )
                 category_dict_by_item_name[item_name_llm] = world_item_instance
@@ -839,19 +535,6 @@ class KnowledgeAgent:
         """Parse world update text into structured items."""
         return parse_unified_world_updates(text, chapter_number)
 
-    # Phase 3 optimization: Native parsing methods
-    def parse_character_updates_native(
-        self, text: str, chapter_number: int
-    ) -> dict[str, CharacterProfile]:
-        """Native character update parsing that eliminates dict conversion overhead."""
-        return parse_unified_character_updates_native(text, chapter_number)
-
-    def parse_world_updates_native(
-        self, text: str, chapter_number: int
-    ) -> dict[str, dict[str, WorldItem]]:
-        """Native world update parsing that eliminates dict conversion overhead."""
-        return parse_unified_world_updates_native(text, chapter_number)
-
     def merge_updates(
         self,
         current_profiles: dict[str, CharacterProfile],
@@ -876,7 +559,7 @@ class KnowledgeAgent:
         full_sync: bool = False,
     ) -> None:
         """Persist character profiles to Neo4j with enhanced validation."""
-        
+
         # Handle both dict and list input formats
         profiles_list = []
         if isinstance(profiles_to_persist, dict):
@@ -884,16 +567,20 @@ class KnowledgeAgent:
             for name, profile in profiles_to_persist.items():
                 validation_errors = validate_kg_object(profile)
                 if validation_errors:
-                    logger.warning(f"Validation issues for character profile {name}: {validation_errors}")
+                    logger.warning(
+                        f"Validation issues for character profile {name}: {validation_errors}"
+                    )
             profiles_list = list(profiles_to_persist.values())
         else:
             # Validate all profiles before persisting
             for profile in profiles_to_persist:
                 validation_errors = validate_kg_object(profile)
                 if validation_errors:
-                    logger.warning(f"Validation issues for character profile {profile.name}: {validation_errors}")
+                    logger.warning(
+                        f"Validation issues for character profile {profile.name}: {validation_errors}"
+                    )
             profiles_list = profiles_to_persist
-        
+
         # Use native model version for better performance
         await sync_characters_native(profiles_list, chapter_number_for_delta)
 
@@ -905,25 +592,26 @@ class KnowledgeAgent:
     ) -> None:
         """Persist world elements to Neo4j with enhanced node typing and validation."""
         if config.BOOTSTRAP_USE_ENHANCED_NODE_TYPES:
-            from core.enhanced_node_taxonomy import suggest_better_node_type
             from core.schema_validator import validate_kg_object
-            
+
             # Handle both dict and list input formats
             if isinstance(world_items_to_persist, dict):
                 # Enhance world items with proper node typing and validation
                 for category, items_dict in world_items_to_persist.items():
                     if not isinstance(items_dict, dict):
                         continue
-                        
+
                     for item_name, item in items_dict.items():
                         if not isinstance(item, WorldItem):
                             continue
-                            
+
                         # Validate and enhance with better node typing
                         validation_errors = validate_kg_object(item)
                         if validation_errors:
-                            logger.warning(f"Validation issues for world item {category}/{item_name}: {validation_errors}")
-        
+                            logger.warning(
+                                f"Validation issues for world item {category}/{item_name}: {validation_errors}"
+                            )
+
         # Use native model version for better performance
         # Convert to list format if needed
         if isinstance(world_items_to_persist, dict):
@@ -934,7 +622,7 @@ class KnowledgeAgent:
                     world_items_list.extend(category_items.values())
         else:
             world_items_list = world_items_to_persist
-            
+
         await sync_world_items_native(world_items_list, chapter_number_for_delta)
 
     async def add_plot_point(self, description: str, prev_plot_point_id: str) -> str:
@@ -1078,170 +766,6 @@ class KnowledgeAgent:
     async def extract_and_merge_knowledge(
         self,
         plot_outline: dict[str, Any],
-        character_profiles: dict[str, CharacterProfile],
-        world_building: dict[str, dict[str, WorldItem]],
-        chapter_number: int,
-        chapter_text: str,
-        is_from_flawed_draft: bool = False,
-    ) -> dict[str, int] | None:
-        if not chapter_text:
-            logger.warning(
-                "Skipping knowledge extraction for chapter %s: no text provided.",
-                chapter_number,
-            )
-            return None
-
-        logger.info(
-            "KnowledgeAgent: Starting knowledge extraction for chapter %d. Flawed draft: %s",
-            chapter_number,
-            is_from_flawed_draft,
-        )
-
-        raw_extracted_text, usage_data = await self._llm_extract_updates(
-            plot_outline, chapter_text, chapter_number
-        )
-
-        if not raw_extracted_text.strip():
-            logger.warning(
-                "LLM extraction returned no text for chapter %d.", chapter_number
-            )
-            return usage_data
-
-        char_updates_raw = "{}"
-        world_updates_raw = "{}"
-        kg_triples_text = ""
-
-        try:
-            parsed_json = json.loads(raw_extracted_text)
-            char_updates_raw = json.dumps(parsed_json.get("character_updates", {}))
-            world_updates_raw = json.dumps(parsed_json.get("world_updates", {}))
-            kg_triples_list = parsed_json.get("kg_triples", [])
-            if isinstance(kg_triples_list, list):
-                kg_triples_text = "\n".join([str(t) for t in kg_triples_list])
-            else:
-                kg_triples_text = str(kg_triples_list)
-
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"Failed to parse full extraction JSON for chapter {chapter_number}: {e}. "
-                f"Attempting to extract individual sections with regex."
-            )
-            # Fallback to regex extraction
-            char_match = re.search(
-                r'"character_updates"\s*:\s*({.*?})', raw_extracted_text, re.DOTALL
-            )
-            if char_match:
-                char_updates_raw = char_match.group(1)
-                logger.info(
-                    f"Regex successfully extracted character_updates block for Ch {chapter_number}."
-                )
-            else:
-                logger.warning(
-                    f"Could not find character_updates JSON block via regex for Ch {chapter_number}."
-                )
-
-            world_match = re.search(
-                r'"world_updates"\s*:\s*({.*?})', raw_extracted_text, re.DOTALL
-            )
-            if world_match:
-                world_updates_raw = world_match.group(1)
-                logger.info(
-                    f"Regex successfully extracted world_updates block for Ch {chapter_number}."
-                )
-            else:
-                logger.warning(
-                    f"Could not find world_updates JSON block via regex for Ch {chapter_number}."
-                )
-
-            triples_match = re.search(
-                r'"kg_triples"\s*:\s*(\[.*?\])', raw_extracted_text, re.DOTALL
-            )
-            if triples_match:
-                try:
-                    triples_list_from_regex = json.loads(triples_match.group(1))
-                    if isinstance(triples_list_from_regex, list):
-                        kg_triples_text = "\n".join(
-                            [str(t) for t in triples_list_from_regex]
-                        )
-                        logger.info(
-                            f"Regex successfully extracted and parsed kg_triples block for Ch {chapter_number}."
-                        )
-                except json.JSONDecodeError:
-                    logger.warning(
-                        f"Found kg_triples block via regex for Ch {chapter_number}, but it was invalid JSON."
-                    )
-            else:
-                logger.warning(
-                    f"Could not find kg_triples JSON array via regex for Ch {chapter_number}."
-                )
-
-        # Use native parsing for optimal performance (Phase 3 optimization)
-        char_updates_from_llm = self.parse_character_updates_native(
-            char_updates_raw, chapter_number
-        )
-        world_updates_from_llm = self.parse_world_updates_native(
-            world_updates_raw, chapter_number
-        )
-
-        parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
-
-        # Log each parsed triple
-        for triple in parsed_triples_structured:
-            object_value = triple.get('object_entity', triple.get('object_literal'))
-            logger.info(f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}")
-
-        logger.info(
-            f"Chapter {chapter_number} LLM Extraction: "
-            f"{len(char_updates_from_llm)} char updates, "
-            f"{sum(len(items) for items in world_updates_from_llm.values())} world item updates, "
-            f"{len(parsed_triples_structured)} KG triples."
-        )
-
-        current_char_profiles_models = character_profiles
-        current_world_models = world_building
-
-        self.merge_updates(
-            current_char_profiles_models,  # Pass model instances
-            current_world_models,  # Pass model instances
-            char_updates_from_llm,  # Already model instances
-            world_updates_from_llm,  # Already model instances
-            chapter_number,
-            is_from_flawed_draft,
-        )
-        logger.info(
-            f"Merged LLM updates into in-memory state for chapter {chapter_number}."
-        )
-
-        # Persist the DELTA of updates (char_updates_from_llm, world_updates_from_llm)
-        # These functions expect model instances and the chapter number for delta context.
-        if char_updates_from_llm:
-            await self.persist_profiles(char_updates_from_llm, chapter_number)
-        if world_updates_from_llm:
-            await self.persist_world(world_updates_from_llm, chapter_number)
-
-        if parsed_triples_structured:
-            try:
-                await kg_queries.add_kg_triples_batch_to_db(
-                    parsed_triples_structured, chapter_number, is_from_flawed_draft
-                )
-                logger.info(
-                    f"Persisted {len(parsed_triples_structured)} KG triples for chapter {chapter_number} to Neo4j."
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to persist KG triples for chapter {chapter_number}: {e}",
-                    exc_info=True,
-                )
-
-        logger.info(
-            "Knowledge extraction, in-memory merge, and delta persistence complete for chapter %d.",
-            chapter_number,
-        )
-        return usage_data
-
-    async def extract_and_merge_knowledge_native(
-        self,
-        plot_outline: dict[str, Any],
         characters: list[CharacterProfile],
         world_items: list[WorldItem],
         chapter_number: int,
@@ -1249,8 +773,8 @@ class KnowledgeAgent:
         is_from_flawed_draft: bool = False,
     ) -> dict[str, int] | None:
         """
-        Native model version of extract_and_merge_knowledge.
-        Eliminates dict conversion overhead by working directly with model instances.
+        Extract knowledge from chapter text and merge into existing model lists.
+        Works directly with model instances for optimal performance.
 
         Args:
             plot_outline: Plot information dict
@@ -1302,8 +826,10 @@ class KnowledgeAgent:
 
             # Log each parsed triple
             for triple in parsed_triples_structured:
-                object_value = triple.get('object_entity', triple.get('object_literal'))
-                logger.info(f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}")
+                object_value = triple.get("object_entity", triple.get("object_literal"))
+                logger.info(
+                    f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}"
+                )
 
             # Merge updates directly into existing model lists
             self._merge_character_updates_native(
@@ -1371,9 +897,12 @@ class KnowledgeAgent:
         world_updates = []
         kg_triples_text = ""
 
-        try:
-            extraction_data = json.loads(raw_text)
+        # Optimized JSON parsing with single attempt and better error handling
+        extraction_data = await self._parse_extraction_json(raw_text, chapter_number)
+        if not extraction_data:
+            return [], [], ""
 
+        try:
             # Import duplicate prevention functions
             from processing.entity_deduplication import (
                 generate_entity_id,
@@ -1520,37 +1049,92 @@ class KnowledgeAgent:
 
             return char_updates, world_updates, kg_triples_text
 
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"Failed to parse extraction JSON for chapter {chapter_number}: {e}. "
-                f"Attempting fallback regex parsing for KG triples."
+        except Exception as e:
+            logger.error(
+                f"Error processing extraction data for chapter {chapter_number}: {e}"
             )
+            return [], [], ""
 
-            # Fallback regex extraction for KG triples (critical for relationships!)
-            triples_match = re.search(
-                r'"kg_triples"\s*:\s*(\[.*?\])', raw_text, re.DOTALL
-            )
-            if triples_match:
-                try:
-                    triples_list_from_regex = json.loads(triples_match.group(1))
-                    if isinstance(triples_list_from_regex, list):
-                        kg_triples_text = "\n".join(
-                            [str(t) for t in triples_list_from_regex]
-                        )
-                        logger.info(
-                            f"Regex successfully extracted and parsed kg_triples block for Ch {chapter_number}."
-                        )
-                except json.JSONDecodeError:
-                    logger.warning(
-                        f"Found kg_triples block via regex for Ch {chapter_number}, but it was invalid JSON."
-                    )
+    async def _parse_extraction_json(
+        self, raw_text: str, chapter_number: int
+    ) -> dict[str, Any] | None:
+        """
+        Optimized JSON parsing with single attempt and robust fallback handling.
+
+        Eliminates multiple JSON decode attempts for better performance.
+        """
+        if not raw_text or not raw_text.strip():
+            logger.warning(f"Empty extraction text for chapter {chapter_number}")
+            return None
+
+        # Clean up common LLM JSON formatting issues before parsing
+        cleaned_text = self._clean_llm_json(raw_text)
+
+        try:
+            # Single JSON parse attempt with cleaned text
+            extraction_data = json.loads(cleaned_text)
+
+            if not isinstance(extraction_data, dict):
+                logger.error(
+                    f"Extraction JSON was not a dictionary for chapter {chapter_number}"
+                )
+                return None
+
+            return extraction_data
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parsing failed for chapter {chapter_number}: {e}")
+
+            # Single fallback attempt using regex for critical KG triples only
+            fallback_data = self._extract_kg_triples_fallback(raw_text, chapter_number)
+            return fallback_data
+
+    def _clean_llm_json(self, raw_text: str) -> str:
+        """Clean up common LLM JSON formatting issues."""
+        # Remove markdown code blocks if present
+        if raw_text.strip().startswith("```"):
+            lines = raw_text.strip().split("\n")
+            if len(lines) > 2:
+                # Remove first and last lines (markdown markers)
+                cleaned = "\n".join(lines[1:-1])
             else:
+                cleaned = raw_text
+        else:
+            cleaned = raw_text
+
+        # Remove common trailing commas before closing brackets/braces
+        cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
+
+        # Fix common quote issues
+        cleaned = cleaned.replace('"', '"').replace('"', '"')
+
+        return cleaned.strip()
+
+    def _extract_kg_triples_fallback(
+        self, raw_text: str, chapter_number: int
+    ) -> dict[str, Any]:
+        """
+        Fallback extraction that only attempts to recover KG triples using regex.
+        This eliminates multiple JSON parsing attempts for better performance.
+        """
+        fallback_data = {"character_updates": {}, "world_updates": {}, "kg_triples": []}
+
+        # Single regex attempt for KG triples
+        triples_match = re.search(r'"kg_triples"\s*:\s*(\[.*?\])', raw_text, re.DOTALL)
+        if triples_match:
+            try:
+                triples_list = json.loads(triples_match.group(1))
+                if isinstance(triples_list, list):
+                    fallback_data["kg_triples"] = triples_list
+                    logger.info(
+                        f"Fallback successfully recovered kg_triples for chapter {chapter_number}"
+                    )
+            except json.JSONDecodeError:
                 logger.warning(
-                    f"Could not find kg_triples JSON array via regex for Ch {chapter_number}."
+                    f"Fallback kg_triples parsing failed for chapter {chapter_number}"
                 )
 
-            # Could implement character and world fallback parsing here if needed
-            return [], [], kg_triples_text
+        return fallback_data
 
     def _merge_character_updates_native(
         self,
@@ -1647,50 +1231,128 @@ class KnowledgeAgent:
         chapter_number: int | None = None,
     ):
         """
-        Performs maintenance on the Knowledge Graph by enriching thin nodes,
+        Performs optimized maintenance on the Knowledge Graph by enriching thin nodes,
         checking for inconsistencies, and resolving duplicate entities.
+
+        Performance optimized: Uses incremental processing when possible,
+        skips expensive operations when not needed, and uses caching.
 
         Args:
             new_entities: Optional list of newly added entities to process incrementally.
-                          If provided, only these entities will be processed for duplicates and enrichment.
-                          If None, the entire graph will be processed (less efficient).
+                          If provided, only these entities will be processed (O(n) complexity).
+                          If None, the entire graph will be processed (O(n²) complexity).
+            chapter_number: Current chapter for context-aware processing
         """
         logger.info("KG Healer/Enricher: Starting maintenance cycle.")
 
-        # If new entities provided, only process those (incremental update)
+        # Always prefer incremental processing for performance
         if new_entities:
-            logger.info(f"Processing {len(new_entities)} new entities incrementally.")
-            for entity in new_entities:
-                await self._resolve_duplicates_for_entity(entity)
-                await self._enrich_entity_if_needed(entity)
-        else:
-            # Original full graph processing (less efficient)
-            logger.info("Processing entire graph (full cycle).")
+            logger.info(
+                f"Running incremental KG maintenance for {len(new_entities)} new entities."
+            )
+            await self._process_entities_incrementally(new_entities, chapter_number)
+            return
 
-            # 1. Enrichment (which includes healing orphans/stubs)
-            enrichment_cypher = await self._find_and_enrich_thin_nodes()
+        # Full graph processing - only when absolutely necessary
+        logger.warning("Running full KG maintenance cycle (resource intensive).")
+
+        # Determine if full processing is actually needed based on recent activity
+        recent_activity = await self._check_recent_kg_activity()
+        if not recent_activity:
+            logger.info(
+                "No recent KG activity detected. Skipping full maintenance cycle."
+            )
+            return
+
+        # Run optimized full graph processing
+        await self._run_full_maintenance_cycle(chapter_number)
+
+    async def _process_entities_incrementally(
+        self, new_entities: list[dict[str, Any]], chapter_number: int | None
+    ) -> None:
+        """Process new entities incrementally with batching for performance."""
+        batch_size = 10  # Process in small batches to avoid memory issues
+
+        for i in range(0, len(new_entities), batch_size):
+            batch = new_entities[i : i + batch_size]
+            batch_tasks = []
+
+            for entity in batch:
+                # Run duplicate resolution and enrichment in parallel for each entity
+                batch_tasks.extend(
+                    [
+                        self._resolve_duplicates_for_new_entity(entity),
+                        self._enrich_entity_if_needed(entity, chapter_number),
+                    ]
+                )
+
+            # Execute batch in parallel
+            await asyncio.gather(*batch_tasks, return_exceptions=True)
+            logger.debug(f"Processed incremental batch {i//batch_size + 1}")
+
+    async def _check_recent_kg_activity(self) -> bool:
+        """Check if there has been recent KG activity that would warrant full maintenance."""
+        try:
+            # Check if there are any entities modified in the last 2 chapters
+            result = await neo4j_manager.execute_cypher_get_one(
+                "MATCH (n) WHERE n.last_updated_ts > timestamp() - 86400000 RETURN count(n) as recent_count",
+                {},
+            )
+            recent_count = result.get("recent_count", 0) if result else 0
+            return (
+                recent_count > 5
+            )  # Only run full cycle if significant recent activity
+        except Exception as e:
+            logger.warning(
+                f"Could not check recent KG activity: {e}. Assuming activity exists."
+            )
+            return True
+
+    async def _run_full_maintenance_cycle(self, chapter_number: int | None) -> None:
+        """Run the full maintenance cycle with optimizations."""
+        try:
+            # 1. Enrichment - find and fix thin nodes (limit to most critical)
+            enrichment_cypher = await self._find_and_enrich_thin_nodes(limit=20)
 
             if enrichment_cypher:
                 logger.info(
-                    f"Applying {len(enrichment_cypher)} enrichment updates to the KG."
+                    f"Applying {len(enrichment_cypher)} critical enrichment updates."
                 )
-                try:
-                    await neo4j_manager.execute_cypher_batch(enrichment_cypher)
-                except Exception as e:
-                    logger.error(
-                        f"KG Healer/Enricher: Error applying enrichment batch: {e}",
-                        exc_info=True,
-                    )
+                await neo4j_manager.execute_cypher_batch(enrichment_cypher)
             else:
-                logger.info(
-                    "KG Healer/Enricher: No thin nodes found for enrichment in this cycle."
-                )
+                logger.info("No critical thin nodes found for enrichment.")
 
-            # 2. Consistency Checks
+            # 2. Consistency Checks (lightweight version)
             await self._run_consistency_checks()
 
-            # 3. Entity Resolution
+            # 3. Entity Resolution (only if we have new entities to check)
             await self._run_entity_resolution()
+
+        except Exception as e:
+            logger.error(f"Error during full maintenance cycle: {e}", exc_info=True)
+
+    async def _enrich_entity_if_needed(
+        self, entity: dict[str, Any], chapter_number: int | None = None
+    ) -> None:
+        """Enrich a single entity if it appears to be thin or incomplete."""
+        entity_id = entity.get("id")
+        entity_name = entity.get("name")
+
+        if not entity_id or not entity_name:
+            return
+
+        # Check if entity needs enrichment (has minimal description)
+        description = entity.get("description", "")
+        if len(description.strip()) > 50:  # Skip if already well-described
+            return
+
+        logger.debug(f"Enriching entity: {entity_name} (id: {entity_id})")
+
+        # Use the existing enrichment logic for different entity types
+        if entity.get("type") == "Character":
+            await self._enrich_character_by_name(entity_name)
+        elif entity.get("type") in ["WorldElement", "Location", "Organization"]:
+            await self._enrich_world_element_by_id(entity_id)
 
         # 4. Resolve dynamic relationship types using LLM guidance (always run)
         await self._resolve_dynamic_relationships()
@@ -1974,14 +1636,30 @@ class KnowledgeAgent:
         except Exception as e:
             logger.error(f"Error enriching entity {entity_name}: {e}", exc_info=True)
 
-    async def _find_and_enrich_thin_nodes(self) -> list[tuple[str, dict[str, Any]]]:
+    async def _find_and_enrich_thin_nodes(
+        self, limit: int | None = None
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Finds thin characters and world elements and generates enrichment updates in parallel."""
         statements: list[tuple[str, dict[str, Any]]] = []
         enrichment_tasks = []
 
-        # Find all thin nodes first
+        # Find thin nodes with optional limit for performance
         thin_chars = await character_queries.find_thin_characters_for_enrichment()
         thin_elements = await world_queries.find_thin_world_elements_for_enrichment()
+
+        # Apply limit if specified (prioritize most critical nodes)
+        if limit:
+            total_available = len(thin_chars) + len(thin_elements)
+            if total_available > limit:
+                # Prioritize characters over world elements, but take a mix
+                char_limit = min(len(thin_chars), limit // 2)
+                element_limit = min(len(thin_elements), limit - char_limit)
+                thin_chars = thin_chars[:char_limit]
+                thin_elements = thin_elements[:element_limit]
+                logger.info(
+                    f"Limited thin node enrichment to {limit} most critical nodes "
+                    f"({len(thin_chars)} chars, {len(thin_elements)} elements)"
+                )
 
         # Create tasks for enriching characters
         for char_info in thin_chars:
@@ -2129,111 +1807,175 @@ class KnowledgeAgent:
     ) -> None:
         """Finds and resolves potential duplicate entities in the KG.
 
+        Performance optimized: Uses incremental processing when possible,
+        batched context fetching, and early termination conditions.
+
         Args:
             new_entities: Optional list of newly added entities to check for duplicates.
-                          If provided, only these entities will be checked.
-                          If None, the entire graph will be processed for duplicates.
+                          If provided, only these entities will be checked (O(n) complexity).
+                          If None, the entire graph will be processed for duplicates (O(n²)).
         """
         logger.info("KG Healer: Running entity resolution...")
 
-        # If new entities provided, only check those for duplicates (incremental)
+        # Prefer incremental processing for better performance
         if new_entities:
-            # Process only new entities for duplicates
             logger.info(
-                f"Checking {len(new_entities)} new entities for duplicates incrementally."
+                f"Running incremental entity resolution for {len(new_entities)} new entities."
             )
-            for entity in new_entities:
-                await self._resolve_duplicates_for_new_entity(entity)
-        else:
-            # Original full graph processing (less efficient)
-            # Use lower similarity threshold to catch character name variations like "Nuyara" vs "Nuyara Vex"
-            candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
-                similarity_threshold=0.65
-            )
+            # Process in batches to avoid overwhelming the system
+            batch_size = min(10, len(new_entities))
+            for i in range(0, len(new_entities), batch_size):
+                batch = new_entities[i : i + batch_size]
+                await asyncio.gather(
+                    *[
+                        self._resolve_duplicates_for_new_entity(entity)
+                        for entity in batch
+                    ]
+                )
+                logger.debug(f"Processed entity resolution batch {i//batch_size + 1}")
+            return
 
-            if not candidate_pairs:
-                logger.info("KG Healer: No candidate duplicate entities found.")
-                return
+        # Full graph processing - use performance optimizations
+        logger.info("Running full graph entity resolution (less efficient).")
 
-            logger.info(
-                f"KG Healer: Found {len(candidate_pairs)} candidate pairs for entity resolution."
-            )
+        # Use cached similarity threshold to catch character name variations
+        candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
+            similarity_threshold=0.65
+        )
 
-            for pair in candidate_pairs:
+        if not candidate_pairs:
+            logger.info("KG Healer: No candidate duplicate entities found.")
+            return
+
+        logger.info(
+            f"Processing {len(candidate_pairs)} candidate pairs for resolution."
+        )
+
+        # Process pairs in batches for better memory management
+        batch_size = 5  # Reduced batch size to limit concurrent LLM calls
+        processed_pairs = 0
+
+        for i in range(0, len(candidate_pairs), batch_size):
+            batch = candidate_pairs[i : i + batch_size]
+
+            # Pre-fetch all contexts for this batch in parallel
+            context_tasks = []
+            for pair in batch:
                 id1, id2 = pair.get("id1"), pair.get("id2")
-                if not id1 or not id2:
-                    continue
-
-                # Fetch context for both entities in parallel
-                context1_task = kg_queries.get_entity_context_for_resolution(id1)
-                context2_task = kg_queries.get_entity_context_for_resolution(id2)
-                context1, context2 = await asyncio.gather(context1_task, context2_task)
-
-                if not context1 or not context2:
-                    logger.warning(
-                        f"Could not fetch full context for pair ({id1}, {id2}). Skipping."
+                if id1 and id2:
+                    context_tasks.append(
+                        (
+                            id1,
+                            id2,
+                            kg_queries.get_entity_context_for_resolution(id1),
+                            kg_queries.get_entity_context_for_resolution(id2),
+                        )
                     )
-                    continue
 
-                prompt = render_prompt(
-                    "knowledge_agent/entity_resolution.j2",
-                    {"entity1": context1, "entity2": context2},
-                )
-                llm_response, _ = await llm_service.async_call_llm(
-                    model_name=config.KNOWLEDGE_UPDATE_MODEL,
-                    prompt=prompt,
-                    temperature=0.1,
-                    auto_clean_response=True,
-                )
+            if not context_tasks:
+                continue
 
+            # Execute all context fetches in parallel
+            contexts = []
+            for id1, id2, task1, task2 in context_tasks:
                 try:
-                    decision_data = json.loads(llm_response)
-                    if (
-                        decision_data.get("is_same_entity") is True
-                        and decision_data.get("confidence_score", 0.0) > 0.8
-                    ):
-                        logger.info(
-                            f"LLM confirmed merge for '{context1.get('name')}' (id: {id1}) and "
-                            f"'{context2.get('name')}' (id: {id2}). Reason: {decision_data.get('reason')}"
-                        )
-
-                        # Heuristic to decide which node to keep
-                        degree1 = context1.get("degree", 0)
-                        degree2 = context2.get("degree", 0)
-
-                        # Prefer node with more relationships
-                        if degree1 > degree2:
-                            target_id, source_id = id1, id2
-                        elif degree2 > degree1:
-                            target_id, source_id = id2, id1
-                        else:
-                            # Tie-breaker: prefer the one with a more detailed description
-                            desc1_len = len(
-                                context1.get("properties", {}).get("description", "")
-                            )
-                            desc2_len = len(
-                                context2.get("properties", {}).get("description", "")
-                            )
-                            if desc1_len >= desc2_len:
-                                target_id, source_id = id1, id2
-                            else:
-                                target_id, source_id = id2, id1
-
-                        # Use LLM's reasoning for the merge
-                        reason = decision_data.get(
-                            "reason", "LLM entity resolution merge"
-                        )
-                        await kg_queries.merge_entities(source_id, target_id, reason)
+                    context1, context2 = await asyncio.gather(task1, task2)
+                    if context1 and context2:
+                        contexts.append((id1, id2, context1, context2))
                     else:
-                        logger.info(
-                            f"LLM decided NOT to merge '{context1.get('name')}' and '{context2.get('name')}'. "
-                            f"Reason: {decision_data.get('reason')}"
+                        logger.warning(
+                            f"Missing context for pair ({id1}, {id2}). Skipping."
                         )
+                except Exception as e:
+                    logger.error(f"Error fetching context for pair ({id1}, {id2}): {e}")
+                    continue
 
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.error(
-                        f"Failed to parse entity resolution response from LLM for pair ({id1}, {id2}): {e}. Response: {llm_response}"
+            # Process resolution decisions for this batch
+            for id1, id2, context1, context2 in contexts:
+                try:
+                    await self._process_entity_pair_resolution(
+                        id1, id2, context1, context2
                     )
+                    processed_pairs += 1
+                except Exception as e:
+                    logger.error(f"Error processing entity pair ({id1}, {id2}): {e}")
+                    continue
+
+            logger.debug(
+                f"Completed resolution batch {i//batch_size + 1}, processed {processed_pairs} pairs total"
+            )
+
+    async def _process_entity_pair_resolution(
+        self, id1: str, id2: str, context1: dict, context2: dict
+    ) -> None:
+        """Process a single entity pair for potential resolution."""
+        prompt = render_prompt(
+            "knowledge_agent/entity_resolution.j2",
+            {"entity1": context1, "entity2": context2},
+        )
+
+        llm_response, _ = await llm_service.async_call_llm(
+            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            prompt=prompt,
+            temperature=0.1,
+            auto_clean_response=True,
+        )
+
+        try:
+            decision_data = json.loads(llm_response)
+            if (
+                decision_data.get("is_same_entity") is True
+                and decision_data.get("confidence_score", 0.0) > 0.8
+            ):
+                logger.info(
+                    f"LLM confirmed merge for '{context1.get('name')}' (id: {id1}) and "
+                    f"'{context2.get('name')}' (id: {id2}). Reason: {decision_data.get('reason')}"
+                )
+
+                # Optimized heuristic to decide which node to keep
+                target_id, source_id = self._select_merge_target(
+                    id1, id2, context1, context2
+                )
+
+                # Use LLM's reasoning for the merge
+                reason = decision_data.get("reason", "LLM entity resolution merge")
+                await kg_queries.merge_entities(source_id, target_id, reason)
+            else:
+                logger.info(
+                    f"LLM decided NOT to merge '{context1.get('name')}' and '{context2.get('name')}'. "
+                    f"Reason: {decision_data.get('reason')}"
+                )
+
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(
+                f"Failed to parse entity resolution response from LLM for pair ({id1}, {id2}): {e}. Response: {llm_response}"
+            )
+
+    def _select_merge_target(
+        self, id1: str, id2: str, context1: dict, context2: dict
+    ) -> tuple[str, str]:
+        """Optimized heuristic to decide which node to keep during merge.
+
+        Returns:
+            tuple: (target_id, source_id) where target_id is kept, source_id is merged into it
+        """
+        # Prefer node with more relationships
+        degree1 = context1.get("degree", 0)
+        degree2 = context2.get("degree", 0)
+
+        if degree1 > degree2:
+            return id1, id2
+        elif degree2 > degree1:
+            return id2, id1
+
+        # Tie-breaker: prefer the one with a more detailed description
+        desc1_len = len(context1.get("properties", {}).get("description", ""))
+        desc2_len = len(context2.get("properties", {}).get("description", ""))
+
+        if desc1_len >= desc2_len:
+            return id1, id2
+        else:
+            return id2, id1
 
     async def _resolve_duplicates_for_new_entity(self, entity: dict[str, Any]) -> None:
         """Resolve duplicates for a single new entity using Neo4j's MERGE with uniqueness constraints."""

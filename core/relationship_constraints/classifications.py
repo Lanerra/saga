@@ -1,5 +1,6 @@
 """Node classifications for relationship constraint system."""
 
+
 class NodeClassifications:
     """Enhanced classification of node types into semantic categories."""
 

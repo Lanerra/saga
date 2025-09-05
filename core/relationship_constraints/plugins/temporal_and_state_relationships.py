@@ -1,4 +1,5 @@
 """Relationship constraints for category: temporal_and_state_relationships."""
+
 from models.kg_constants import NODE_LABELS
 
 RELATIONSHIP_CONSTRAINTS = {

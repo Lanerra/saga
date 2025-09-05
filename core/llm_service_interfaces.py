@@ -14,28 +14,29 @@ REFACTORED: Created as part of Phase 3 architectural improvements.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Dict, Protocol, Tuple
+from collections.abc import AsyncGenerator
+from typing import Any, Protocol
 
 import numpy as np
 
 
 class HTTPClientInterface(Protocol):
     """Protocol defining the interface for HTTP client services."""
-    
+
     async def post_json(
         self,
         url: str,
         payload: dict[str, Any],
         headers: dict[str, str] | None = None,
-        max_retries: int | None = None
+        max_retries: int | None = None,
     ) -> Any:  # httpx.Response
         """Make a POST request with JSON payload and retry logic."""
         ...
-    
+
     async def aclose(self) -> None:
         """Close the HTTP client and cleanup resources."""
         ...
-    
+
     def get_statistics(self) -> dict[str, Any]:
         """Get HTTP client statistics."""
         ...
@@ -43,11 +44,11 @@ class HTTPClientInterface(Protocol):
 
 class TokenizerInterface(Protocol):
     """Protocol defining the interface for tokenization services."""
-    
+
     def count_tokens(self, text: str, model_name: str) -> int:
         """Count tokens in text for a given model."""
         ...
-    
+
     def truncate_text_by_tokens(
         self,
         text: str,
@@ -57,7 +58,7 @@ class TokenizerInterface(Protocol):
     ) -> str:
         """Truncate text to maximum number of tokens."""
         ...
-    
+
     def get_statistics(self) -> dict[str, Any]:
         """Get tokenizer statistics."""
         ...
@@ -65,11 +66,11 @@ class TokenizerInterface(Protocol):
 
 class ResponseCleanerInterface(Protocol):
     """Protocol defining the interface for response cleaning services."""
-    
+
     def clean_response(self, text: str) -> str:
         """Clean artifacts from LLM response text."""
         ...
-    
+
     def get_statistics(self) -> dict[str, Any]:
         """Get cleaning statistics."""
         ...
@@ -77,15 +78,13 @@ class ResponseCleanerInterface(Protocol):
 
 class StreamProcessorInterface(Protocol):
     """Protocol defining the interface for stream processing services."""
-    
+
     def process_streaming_chunks(
-        self, 
-        chunks: AsyncGenerator[dict[str, Any], None],
-        auto_clean: bool = True
-    ) -> Tuple[str, dict[str, Any] | None]:
+        self, chunks: AsyncGenerator[dict[str, Any], None], auto_clean: bool = True
+    ) -> tuple[str, dict[str, Any] | None]:
         """Process streaming chunks into accumulated content."""
         ...
-    
+
     def get_statistics(self) -> dict[str, Any]:
         """Get stream processing statistics."""
         ...
@@ -93,11 +92,11 @@ class StreamProcessorInterface(Protocol):
 
 class EmbeddingServiceInterface(Protocol):
     """Protocol defining the interface for embedding services."""
-    
+
     async def get_embedding(self, text: str) -> np.ndarray | None:
         """Get embedding vector for text."""
         ...
-    
+
     def get_statistics(self) -> dict[str, Any]:
         """Get embedding service statistics."""
         ...
@@ -105,29 +104,29 @@ class EmbeddingServiceInterface(Protocol):
 
 class CompletionServiceInterface(Protocol):
     """Protocol defining the interface for completion services."""
-    
+
     async def get_completion(
         self,
         model_name: str,
         prompt: str,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        **kwargs
-    ) -> Tuple[str, dict[str, int] | None]:
+        **kwargs,
+    ) -> tuple[str, dict[str, int] | None]:
         """Get completion from LLM."""
         ...
-    
+
     async def get_streaming_completion(
         self,
         model_name: str,
         prompt: str,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> AsyncGenerator[str, None]:
         """Get streaming completion from LLM."""
         ...
-    
+
     def get_statistics(self) -> dict[str, Any]:
         """Get completion service statistics."""
         ...
@@ -135,11 +134,11 @@ class CompletionServiceInterface(Protocol):
 
 class LLMServiceInterface(Protocol):
     """Protocol defining the unified interface for LLM services."""
-    
+
     async def get_embedding(self, text: str) -> np.ndarray | None:
         """Get embedding for text."""
         ...
-    
+
     async def call_llm(
         self,
         model_name: str,
@@ -149,19 +148,19 @@ class LLMServiceInterface(Protocol):
         allow_fallback: bool = False,
         stream_to_disk: bool = False,
         auto_clean_response: bool = True,
-        **kwargs
-    ) -> Tuple[str, dict[str, int] | None]:
+        **kwargs,
+    ) -> tuple[str, dict[str, int] | None]:
         """Call LLM with comprehensive options."""
         ...
-    
+
     def clean_response(self, text: str) -> str:
         """Clean LLM response text."""
         ...
-    
+
     def count_tokens(self, text: str, model_name: str) -> int:
         """Count tokens in text."""
         ...
-    
+
     async def aclose(self) -> None:
         """Close service and cleanup resources."""
         ...
@@ -170,7 +169,7 @@ class LLMServiceInterface(Protocol):
 class LLMServiceFactory(ABC):
     """
     Abstract factory for creating LLM service implementations.
-    
+
     This factory enables dependency injection and makes it easy to
     switch between different implementations (e.g., for testing).
     """
@@ -210,7 +209,7 @@ class LLMServiceFactory(ABC):
         http_client: HTTPClientInterface,
         tokenizer: TokenizerInterface,
         response_cleaner: ResponseCleanerInterface,
-        stream_processor: StreamProcessorInterface
+        stream_processor: StreamProcessorInterface,
     ) -> CompletionServiceInterface:
         """Create completion service instance."""
         pass
@@ -221,7 +220,7 @@ class LLMServiceFactory(ABC):
         completion_service: CompletionServiceInterface,
         embedding_service: EmbeddingServiceInterface,
         tokenizer: TokenizerInterface,
-        response_cleaner: ResponseCleanerInterface
+        response_cleaner: ResponseCleanerInterface,
     ) -> LLMServiceInterface:
         """Create unified LLM service instance."""
         pass
@@ -230,7 +229,7 @@ class LLMServiceFactory(ABC):
 class ServiceLocator:
     """
     Service locator for managing LLM service dependencies.
-    
+
     This provides centralized service management and dependency injection
     capabilities for the LLM service architecture.
     """
@@ -238,7 +237,7 @@ class ServiceLocator:
     def __init__(self, factory: LLMServiceFactory):
         """
         Initialize service locator with a factory.
-        
+
         Args:
             factory: Factory for creating service instances
         """
@@ -277,8 +276,8 @@ class ServiceLocator:
         """Get embedding service instance."""
         if "embedding_service" not in self._services:
             http_client = self.get_http_client()
-            self._services["embedding_service"] = self._factory.create_embedding_service(
-                http_client
+            self._services["embedding_service"] = (
+                self._factory.create_embedding_service(http_client)
             )
         return self._services["embedding_service"]
 
@@ -289,9 +288,11 @@ class ServiceLocator:
             tokenizer = self.get_tokenizer()
             response_cleaner = self.get_response_cleaner()
             stream_processor = self.get_stream_processor()
-            
-            self._services["completion_service"] = self._factory.create_completion_service(
-                http_client, tokenizer, response_cleaner, stream_processor
+
+            self._services["completion_service"] = (
+                self._factory.create_completion_service(
+                    http_client, tokenizer, response_cleaner, stream_processor
+                )
             )
         return self._services["completion_service"]
 
@@ -302,7 +303,7 @@ class ServiceLocator:
             embedding_service = self.get_embedding_service()
             tokenizer = self.get_tokenizer()
             response_cleaner = self.get_response_cleaner()
-            
+
             self._services["llm_service"] = self._factory.create_llm_service(
                 completion_service, embedding_service, tokenizer, response_cleaner
             )
@@ -313,22 +314,22 @@ class ServiceLocator:
         # Close HTTP client if it exists
         if "http_client" in self._services:
             await self._services["http_client"].aclose()
-        
+
         # Close LLM service if it exists
         if "llm_service" in self._services:
             await self._services["llm_service"].aclose()
-        
+
         self._services.clear()
         self._initialized = False
 
     def get_all_statistics(self) -> dict[str, Any]:
         """Get combined statistics from all services."""
         stats = {}
-        
+
         for service_name, service in self._services.items():
-            if hasattr(service, 'get_statistics'):
+            if hasattr(service, "get_statistics"):
                 stats[service_name] = service.get_statistics()
-        
+
         return stats
 
 
@@ -339,7 +340,7 @@ _service_locator: ServiceLocator | None = None
 def get_service_locator() -> ServiceLocator:
     """
     Get the global service locator instance.
-    
+
     Raises:
         RuntimeError: If service locator has not been initialized
     """
@@ -354,10 +355,10 @@ def get_service_locator() -> ServiceLocator:
 def initialize_service_locator(factory: LLMServiceFactory) -> ServiceLocator:
     """
     Initialize the global service locator with a factory.
-    
+
     Args:
         factory: Factory for creating service instances
-        
+
     Returns:
         Initialized service locator instance
     """

@@ -17,20 +17,20 @@ logger = structlog.get_logger(__name__)
 def create_default_characters(protagonist_name: str) -> dict[str, CharacterProfile]:
     """Create enhanced character roster with protagonist, antagonist, and supporting characters."""
     profiles = {}
-    
+
     # Protagonist (enhanced with more fields)
     protagonist = CharacterProfile(name=protagonist_name)
     protagonist.description = config.FILL_IN
     protagonist.updates["role"] = "protagonist"
     profiles[protagonist_name] = protagonist
-    
-    # Antagonist 
+
+    # Antagonist
     antagonist_name = "Antagonist"  # Will be filled by LLM
     antagonist = CharacterProfile(name=antagonist_name)
     antagonist.description = config.FILL_IN
     antagonist.updates["role"] = "antagonist"
     profiles[antagonist_name] = antagonist
-    
+
     # Supporting characters
     for i in range(3):
         support_name = f"SupportingChar{i+1}"  # Will be filled by LLM
@@ -38,7 +38,7 @@ def create_default_characters(protagonist_name: str) -> dict[str, CharacterProfi
         support.description = config.FILL_IN
         support.updates["role"] = "supporting"
         profiles[support_name] = support
-    
+
     return profiles
 
 
@@ -59,7 +59,12 @@ async def bootstrap_characters(
         role = profile.updates.get("role", "supporting")
 
         # Bootstrap character name if it's a placeholder
-        if name in ["Antagonist", "SupportingChar1", "SupportingChar2", "SupportingChar3"]:
+        if name in [
+            "Antagonist",
+            "SupportingChar1",
+            "SupportingChar2",
+            "SupportingChar3",
+        ]:
             tasks[(name, "name")] = bootstrap_field(
                 "name", context, "bootstrapper/fill_character_field.j2"
             )
@@ -79,9 +84,9 @@ async def bootstrap_characters(
         role_min_traits = {
             "protagonist": config.BOOTSTRAP_MIN_TRAITS_PROTAGONIST,
             "antagonist": config.BOOTSTRAP_MIN_TRAITS_ANTAGONIST,
-            "supporting": config.BOOTSTRAP_MIN_TRAITS_SUPPORTING
+            "supporting": config.BOOTSTRAP_MIN_TRAITS_SUPPORTING,
         }.get(role, 3)
-        
+
         if trait_fill_count or not profile.traits:
             tasks[(name, "traits")] = bootstrap_field(
                 "traits",
@@ -106,7 +111,7 @@ async def bootstrap_characters(
 
     # Track name changes for profile key updates
     name_changes = {}
-    
+
     for i, (value, usage) in enumerate(results):
         name, field = task_keys[i]
         if usage:

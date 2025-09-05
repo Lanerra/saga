@@ -65,7 +65,7 @@ class NANA_Orchestrator:
     def __init__(self):
         logger.info("Initializing SAGA Orchestrator...")
         self.narrative_agent = NarrativeAgent(config)
-        self.revision_agent = RevisionAgent()
+        self.revision_agent = RevisionAgent(config)
         self.knowledge_agent = KnowledgeAgent()
 
         self.plot_outline: dict[str, Any] = {}
@@ -219,12 +219,8 @@ class NANA_Orchestrator:
             f"\n--- SAGA: Pre-populating Knowledge Graph from Initial Data (Plot Source: '{plot_source}') ---"
         )
 
-        profile_objs: list[
-            CharacterProfile
-        ] = await get_character_profiles_native()
-        world_objs: list[
-            WorldItem
-        ] = await get_world_building_native()
+        profile_objs: list[CharacterProfile] = await get_character_profiles_native()
+        world_objs: list[WorldItem] = await get_world_building_native()
 
         await self.knowledge_agent.persist_profiles(
             profile_objs, config.KG_PREPOPULATION_CHAPTER_NUM
@@ -537,17 +533,17 @@ class NANA_Orchestrator:
 
         self._update_novel_props_cache()
 
-        # Use native scene planning for optimal performance (Phase 3 optimization)
+        # Use scene planning for optimal performance
         characters_for_planning = await get_character_profiles_native()
         world_items_for_planning = await get_world_building_native()
 
         (
             chapter_plan,
             plan_usage,
-        ) = await self.narrative_agent._plan_chapter_scenes_native(
+        ) = await self.narrative_agent._plan_chapter_scenes(
             self.plot_outline,
-            characters_for_planning,  # List[CharacterProfile] - native format
-            world_items_for_planning,  # List[WorldItem] - native format
+            characters_for_planning,  # List[CharacterProfile]
+            world_items_for_planning,  # List[WorldItem]
             novel_chapter_number,
             plot_point_focus,
             plot_point_index,
@@ -670,15 +666,15 @@ class NANA_Orchestrator:
                 novel_chapter_number, "initial_draft", draft_text
             )
             return draft_text, raw_output
-        # Fallback: if no valid plan/context, use native generate_chapter for optimal performance
+        # Fallback: if no valid plan/context, use generate_chapter for optimal performance
         (
             initial_draft_text,
             initial_raw_llm_text,
             draft_usage,
-        ) = await self.narrative_agent.generate_chapter_native(
+        ) = await self.narrative_agent.generate_chapter(
             self.plot_outline,
-            characters,  # List[CharacterProfile] - native format
-            world_items,  # List[WorldItem] - native format
+            characters,  # List[CharacterProfile]
+            world_items,  # List[WorldItem]
             novel_chapter_number,
             plot_point_focus,
         )
@@ -945,7 +941,7 @@ class NANA_Orchestrator:
         characters = await get_character_profiles_native()
         world_items = await get_world_building_native()
 
-        _ = await self.knowledge_agent.extract_and_merge_knowledge_native(
+        _ = await self.knowledge_agent.extract_and_merge_knowledge(
             self.plot_outline,
             characters,  # List of CharacterProfile models
             world_items,  # List of WorldItem models
@@ -1436,7 +1432,7 @@ class NANA_Orchestrator:
             embedding = await llm_service.async_get_embedding(chunk)
 
             # Extract and merge knowledge updates using NATIVE implementation
-            _ = await self.knowledge_agent.extract_and_merge_knowledge_native(
+            _ = await self.knowledge_agent.extract_and_merge_knowledge(
                 plot_outline,
                 characters,  # List of CharacterProfile models
                 world_items,  # List of WorldItem models
@@ -1477,28 +1473,34 @@ class NANA_Orchestrator:
         """Refresh dynamic schema patterns after chapter completion."""
         try:
             # Only refresh if dynamic schema is enabled
-            if not getattr(config.settings, 'ENABLE_DYNAMIC_SCHEMA', True):
+            if not getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
                 return
-                
-            logger.info(f"Refreshing dynamic schema patterns after chapter {chapter_number} completion...")
-            
+
+            logger.info(
+                f"Refreshing dynamic schema patterns after chapter {chapter_number} completion..."
+            )
+
             # Import here to avoid circular dependencies
             from core.dynamic_schema_manager import dynamic_schema_manager
-            
+
             # Trigger pattern refresh - this will re-learn from all entities including new ones
             await dynamic_schema_manager.initialize(force_refresh=True)
-            
+
             # Get status for logging
             status = await dynamic_schema_manager.get_system_status()
             type_patterns = status.get("type_inference", {}).get("total_patterns", 0)
             constraints = status.get("constraints", {}).get("total_constraints", 0)
-            
-            logger.info(f"Dynamic schema refresh complete after chapter {chapter_number}: "
-                       f"{type_patterns} type patterns, {constraints} relationship constraints")
-                       
+
+            logger.info(
+                f"Dynamic schema refresh complete after chapter {chapter_number}: "
+                f"{type_patterns} type patterns, {constraints} relationship constraints"
+            )
+
         except Exception as e:
             # Don't fail chapter completion if schema refresh fails
-            logger.warning(f"Failed to refresh dynamic schema patterns after chapter {chapter_number}: {e}")
+            logger.warning(
+                f"Failed to refresh dynamic schema patterns after chapter {chapter_number}: {e}"
+            )
 
 
 def setup_logging_nana():

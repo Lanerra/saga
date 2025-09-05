@@ -4,6 +4,7 @@
 from typing import Any
 
 import structlog
+
 from models.kg_models import CharacterProfile, WorldItem
 
 logger = structlog.get_logger(__name__)

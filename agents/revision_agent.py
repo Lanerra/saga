@@ -6,7 +6,8 @@ import structlog
 import utils
 from config import NARRATIVE_MODEL, REVISION_EVALUATION_THRESHOLD
 from core.llm_interface import llm_service
-from data_access import chapter_queries, character_queries, world_queries
+from data_access import chapter_queries, world_queries
+
 # Import native versions for performance optimization
 from data_access.character_queries import get_character_profiles_native
 from models import ProblemDetail
@@ -22,8 +23,9 @@ logger = structlog.get_logger()
 
 
 class RevisionAgent:
-    def __init__(self, model_name: str = NARRATIVE_MODEL):
+    def __init__(self, config: dict, model_name: str = NARRATIVE_MODEL):
         self.model_name = model_name
+        self.config = config
         self.threshold = REVISION_EVALUATION_THRESHOLD
         logger.info(f"RevisionAgent initialized with model: {self.model_name}")
         utils.load_spacy_model_if_needed()
@@ -124,7 +126,9 @@ class RevisionAgent:
         )
         char_profiles_plain_text = (
             await get_filtered_character_profiles_for_prompt_plain_text(
-                [char.name for char in characters],  # Extract names from CharacterProfile objects
+                [
+                    char.name for char in characters
+                ],  # Extract names from CharacterProfile objects
                 chapter_number - 1,
             )
         )
@@ -143,34 +147,6 @@ class RevisionAgent:
         )
         plot_points_summary_str = "\n".join(plot_points_summary_lines)
 
-        # Few-shot example for consistency check
-        few_shot_consistency_example_str = """
-**Ignore the narrative details in this example. It shows the required format only.**
-[
-  {
-    "issue_category": "consistency",
-    "problem_description": "The 'Sunstone' is described as glowing blue in this"
-    " chapter, but the world building notes explicitly state all Sunstones are"
-    " crimson red.",
-    "quote_from_original_text": "She admired the brilliant blue glow of the"
-    " Sunstone clutched in her hand.",
-    "suggested_fix_focus": "Change the Sunstone's color to 'crimson red' to"
-    " align with established world canon."
-  },
-  {
-    "issue_category": "consistency",
-    "problem_description": "Character Kael claims to have never met Elara before,"
-    " but Previous Chapter Context (KG Fact) states \"Kael | mentored | Elara"
-    " (Ch: 3)\".",
-    "quote_from_original_text": "\\"I do not believe we have crossed paths"
-    " before, young one,\\" Kael said, peering at Elara.",
-    "suggested_fix_focus": "Adjust Kael's dialogue to acknowledge his prior"
-    " mentorship of Elara, or introduce a reason for his feigned ignorance"
-    " (e.g., memory loss, testing her)."
-  }
-]
-"""
-
         prompt = render_prompt(
             "revision_agent/consistency_check.j2",
             {
@@ -188,7 +164,6 @@ class RevisionAgent:
                 "world_building_plain_text": world_building_plain_text,
                 "previous_chapters_context": previous_chapters_context,
                 "draft_text": chapter_text,
-                "few_shot_consistency_example_str": few_shot_consistency_example_str,
             },
         )
 
@@ -241,10 +216,10 @@ class RevisionAgent:
             needs_revision = True
             reasons_for_revision_summary.append("Draft is empty")
             return needs_revision, reasons_for_revision_summary
-        elif len(chapter_text) < 12000:  # MIN_ACCEPTABLE_DRAFT_LENGTH
+        elif len(chapter_text) < self.config.MIN_ACCEPTABLE_DRAFT_LENGTH:
             needs_revision = True
             reasons_for_revision_summary.append(
-                f"Draft is too short ({len(chapter_text)} chars). Minimum required: 12000."
+                f"Draft is too short ({len(chapter_text)} chars). Minimum required: {self.config.MIN_ACCEPTABLE_DRAFT_LENGTH}."
             )
 
         # Check coherence with previous chapter if available
@@ -442,9 +417,7 @@ class RevisionAgent:
         # Fetch character and world data if not provided (empty parameters)
         if not character_names:
             logger.info("Fetching character profiles from database for evaluation...")
-            character_profiles_dict = (
-                await get_character_profiles_native()
-            )
+            character_profiles_dict = await get_character_profiles_native()
             character_names = [profile.name for profile in character_profiles_dict]
             logger.info(
                 f"Found {len(character_names)} characters for evaluation: {character_names}"
@@ -482,37 +455,6 @@ class RevisionAgent:
         )
         plot_points_summary_str = "\n".join(plot_points_summary_lines)
 
-        # Few-shot example for evaluation
-        few_shot_eval_example_str = """
-**Ignore the narrative details in this example. It shows the required format only.**
-[
-  {
-    "issue_category": "CONSISTENCY",
-    "problem_description": "Character Elara states she has never left her village, but her profile mentions she trained at the Royal Academy in the Capital.",
-    "quote_from_original_text": "\\"I've never seen anything beyond these village walls,\\" Elara sighed, gazing at the distant mountains.",
-    "suggested_fix_focus": "Adjust Elara's dialogue to align with her established backstory of training in the Capital, or reconcile this statement with her past (e.g., she's being metaphorical or hiding her past)."
-  },
-  {
-    "issue_category": "PLOT_ARC",
-    "problem_description": "The chapter focuses heavily on a minor side character's backstory, which doesn't significantly advance the intended plot point about finding the Sunstone.",
-    "quote_from_original_text": "The old merchant then spent a long while recounting his youthful adventures in the spice trade, detailing three different voyages.",
-    "suggested_fix_focus": "Reduce the side character's backstory significantly or tie it directly into how it helps or hinders the search for the Sunstone. Ensure the main plot point progression is central."
-  },
-  {
-    "issue_category": "REPETITION_AND_REDUNDANCY",
-    "problem_description": "The phrase 'the cost of loyalty' is repeated almost verbatim in three separate paragraphs, diminishing its impact.",
-    "quote_from_original_text": "The cost of loyalty was not just in what he gave, but in what he lost.",
-    "suggested_fix_focus": "Rephrase the concept in subsequent mentions. Explore different facets of this theme instead of restating the same sentence. For example, show the cost through a character's actions or a difficult choice, rather than repeating the phrase."
-  },
-  {
-    "issue_category": "NARRATIVE_DEPTH_AND_LENGTH",
-    "problem_description": "The confrontation with the antagonist feels rushed and lacks emotional impact. The protagonist's internal reaction to the antagonist's reveal is minimal.",
-    "quote_from_original_text": "\\"It was you all along!\\" John exclaimed. The Baron merely smiled. Then they fought.",
-    "suggested_fix_focus": "Expand on John's internal thoughts and feelings upon discovering the Baron's betrayal. Show, don't just tell, the emotional weight of this moment. Describe the fight with more detail and tension."
-  }
-]
-"""
-
         prompt = render_prompt(
             "revision_agent/evaluate_chapter.j2",
             {
@@ -520,7 +462,7 @@ class RevisionAgent:
                 "chapter_number": chapter_number,
                 "novel_title": plot_outline.get("title", "Untitled Novel"),
                 "protagonist_name_str": protagonist_name_str,
-                "min_length": 12000,  # MIN_ACCEPTABLE_DRAFT_LENGTH
+                "min_length": self.config.MIN_ACCEPTABLE_DRAFT_LENGTH,
                 "novel_genre": plot_outline.get("genre", "N/A"),
                 "novel_theme": plot_outline.get("theme", "N/A"),
                 "novel_protagonist": plot_outline.get("protagonist_name", "N/A"),
@@ -532,7 +474,6 @@ class RevisionAgent:
                 "kg_check_results_text": kg_check_results_text,
                 "previous_chapters_context": previous_chapters_context,
                 "draft_text": draft_text,
-                "few_shot_eval_example_str": few_shot_eval_example_str,
             },
         )
 
@@ -542,11 +483,11 @@ class RevisionAgent:
         cleaned_evaluation_text, usage_data = await llm_service.async_call_llm(
             model_name=self.model_name,
             prompt=prompt,
-            temperature=0.3,  # EVALUATION temperature
+            temperature=self.config.TEMPERATURE_EVALUATION,  # EVALUATION temperature
             allow_fallback=True,
             stream_to_disk=False,
-            frequency_penalty=0.0,  # FREQUENCY_PENALTY_EVALUATION
-            presence_penalty=1.5,  # PRESENCE_PENALTY_EVALUATION
+            frequency_penalty=self.config.FREQUENCY_PENALTY_EVALUATION,
+            presence_penalty=self.config.PRESENCE_PENALTY_EVALUATION,
             auto_clean_response=True,
         )
 

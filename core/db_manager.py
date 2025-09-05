@@ -4,20 +4,20 @@ from typing import Any
 
 import numpy as np
 import structlog
-from models.kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
-
-import config
-from core.exceptions import (
-    DatabaseConnectionError,
-    DatabaseTransactionError,
-    handle_database_error
-)
 from neo4j import (  # type: ignore
     AsyncDriver,
     AsyncGraphDatabase,
     AsyncManagedTransaction,
 )
 from neo4j.exceptions import ServiceUnavailable  # type: ignore
+
+import config
+from core.exceptions import (
+    DatabaseConnectionError,
+    DatabaseTransactionError,
+    handle_database_error,
+)
+from models.kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
 
 logger = structlog.get_logger(__name__)
 
@@ -64,9 +64,7 @@ class Neo4jManagerSingleton:
             self.logger.info(f"Successfully connected to Neo4j at {config.NEO4J_URI}")
         except ServiceUnavailable as e:
             self.logger.critical(
-                "Neo4j service unavailable",
-                uri=config.NEO4J_URI,
-                error=str(e)
+                "Neo4j service unavailable", uri=config.NEO4J_URI, error=str(e)
             )
             self.driver = None
             raise DatabaseConnectionError(
@@ -74,15 +72,15 @@ class Neo4jManagerSingleton:
                 details={
                     "uri": config.NEO4J_URI,
                     "original_error": str(e),
-                    "suggestion": "Ensure the Neo4j database is running and accessible"
-                }
+                    "suggestion": "Ensure the Neo4j database is running and accessible",
+                },
             )
         except Exception as e:
             self.logger.critical(
                 "Unexpected error during Neo4j connection",
                 uri=config.NEO4J_URI,
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
             self.driver = None
             raise handle_database_error("connection", e, uri=config.NEO4J_URI)
@@ -111,7 +109,7 @@ class Neo4jManagerSingleton:
                 "Neo4j driver not initialized",
                 details={
                     "suggestion": "Call connect() method first to establish database connection"
-                }
+                },
             )
 
     async def _execute_query_tx(
@@ -173,8 +171,8 @@ class Neo4jManagerSingleton:
                     details={
                         "batch_size": len(cypher_statements_with_params),
                         "original_error": str(e),
-                        "operation": "batch_execution"
-                    }
+                        "operation": "batch_execution",
+                    },
                 )
 
     async def create_db_schema(self) -> None:
@@ -269,7 +267,7 @@ class Neo4jManagerSingleton:
                 f"(b:__RelTypePlaceholder) WITH a,b DETACH DELETE a,b"
             )
             relationship_type_queries.append(query)
-        
+
         node_label_queries = []
         for label in NODE_LABELS:
             # Use backticks to handle labels with special characters safely

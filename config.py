@@ -161,7 +161,6 @@ class SagaSettings(BaseSettings):
 
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
-
     # Generation Parameters
     MAX_CONTEXT_TOKENS: int = 40960
     MAX_GENERATION_TOKENS: int = 16384
@@ -214,6 +213,12 @@ class SagaSettings(BaseSettings):
 
     MIN_ACCEPTABLE_DRAFT_LENGTH: int = 12000
 
+    # Narrative Agent Configuration
+    NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS: int = 1000
+    NARRATIVE_CONTEXT_TEXT_TAIL_CHARS: int = 1000
+    NARRATIVE_TOKEN_BUFFER: int = 200
+    NARRATIVE_JSON_DEBUG_SAVE: bool = True
+
     ENABLE_DYNAMIC_STATE_ADAPTATION: bool = True
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
 
@@ -262,8 +267,6 @@ class SagaSettings(BaseSettings):
     DEFAULT_PLOT_OUTLINE_TITLE: str = "Untitled Narrative"
 
     MAIN_NOVEL_INFO_NODE_ID: str = "main_novel_info"
-    MAIN_CHARACTERS_CONTAINER_NODE_ID: str = "main_characters_container"
-    MAIN_WORLD_CONTAINER_NODE_ID: str = "main_world_container"
 
     DISABLE_RELATIONSHIP_NORMALIZATION: bool = (
         True  # Toggle relationship normalization for testing
@@ -276,29 +279,39 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 4
     BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 8
     BOOTSTRAP_USE_VALIDATION: bool = True
-    
+
     # Enhanced character bootstrap settings
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
-    
+
     # Dynamic Schema System Configuration
-    ENABLE_DYNAMIC_SCHEMA: bool = True                   # Master switch for dynamic schema system
-    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True             # Auto-refresh schema data when stale  
-    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2            # Cache time-to-live for schema data
-    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True         # Enable learning from existing data
-    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = False         # Fall back to static methods on failure
-    
+    ENABLE_DYNAMIC_SCHEMA: bool = True  # Master switch for dynamic schema system
+    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True  # Auto-refresh schema data when stale
+    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2  # Cache time-to-live for schema data
+    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True  # Enable learning from existing data
+    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = (
+        False  # Fall back to static methods on failure
+    )
+
     # Type Inference Configuration
-    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.6   # Min confidence for dynamic inference
-    DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = 3                # Min frequency for patterns to be retained
-    
-    # Constraint System Configuration  
-    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.6       # Min confidence for constraint validation
-    DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3                    # Min samples to learn a constraint
-    
+    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = (
+        0.6  # Min confidence for dynamic inference
+    )
+    DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = (
+        3  # Min frequency for patterns to be retained
+    )
+
+    # Constraint System Configuration
+    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = (
+        0.6  # Min confidence for constraint validation
+    )
+    DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3  # Min samples to learn a constraint
+
     # Schema Discovery Configuration
-    SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = 2           # Cache TTL for introspection queries
+    SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = (
+        2  # Cache TTL for introspection queries
+    )
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
@@ -409,9 +422,7 @@ formatter = structlog.stdlib.ProcessorFormatter(
         structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
-    processors=[
-        structlog.dev.ConsoleRenderer(colors=False)
-    ],
+    processors=[structlog.dev.ConsoleRenderer(colors=False)],
 )
 
 handler = stdlib_logging.StreamHandler()

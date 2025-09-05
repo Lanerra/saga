@@ -1,4 +1,5 @@
 """Relationship constraints for category: association_relationships."""
+
 from models.kg_constants import NODE_LABELS
 
 RELATIONSHIP_CONSTRAINTS = {

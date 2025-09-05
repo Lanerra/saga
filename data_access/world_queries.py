@@ -3,17 +3,17 @@ import logging
 from typing import Any
 
 from async_lru import alru_cache  # type: ignore
-from models.kg_constants import (
-    KG_IS_PROVISIONAL,
-    KG_NODE_CHAPTER_UPDATED,
-    KG_NODE_CREATED_CHAPTER,
-)
 
 import config
 import utils
 from core.db_manager import neo4j_manager
 from core.schema_validator import validate_kg_object
 from models import WorldItem
+from models.kg_constants import (
+    KG_IS_PROVISIONAL,
+    KG_NODE_CHAPTER_UPDATED,
+    KG_NODE_CREATED_CHAPTER,
+)
 
 from .cypher_builders.native_builders import NativeCypherBuilder
 from .cypher_builders.world_cypher import generate_world_element_node_cypher
