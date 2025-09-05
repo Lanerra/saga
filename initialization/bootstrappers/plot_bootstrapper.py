@@ -106,7 +106,11 @@ async def bootstrap_plot_outline(
         field = task_keys[i]
         if usage:
             for k, v in usage.items():
-                usage_data[k] = usage_data.get(k, 0) + v
+                if isinstance(v, dict):
+                    for sub_k, sub_v in v.items():
+                        usage_data[sub_k] = usage_data.get(sub_k, 0) + sub_v
+                else:
+                    usage_data[k] = usage_data.get(k, 0) + v
         if field == "plot_points":
             new_points = value
             final_points = [
