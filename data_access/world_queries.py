@@ -898,35 +898,32 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
 
 
 # Native model functions for performance optimization
-async def sync_world_items_native(
-    world_items: list[WorldItem],
+async def sync_world_items(
+    world_items: dict[str, dict[str, WorldItem]] | list[WorldItem],
     chapter_number: int,
+    full_sync: bool = False,
 ) -> bool:
-    """
-    Native model version of sync_world_items.
-    Persist world item data directly from models without dict conversion.
-
-    Args:
-        world_items: List of WorldItem models
-        chapter_number: Current chapter for tracking updates
-
-    Returns:
-        True if successful, False otherwise
-    """
-    if not world_items:
-        logger.info("No world items to sync")
-        return True
+    """Persist world element data to Neo4j."""
+    # Convert dict format to list if needed (backward compatibility)
+    if isinstance(world_items, dict):
+        world_items_list = []
+        for category_items in world_items.values():
+            if isinstance(category_items, dict):
+                world_items_list.extend(category_items.values())
+        world_items = world_items_list
 
     # Validate all world items before syncing
     for item in world_items:
-        errors = validate_kg_object(item)
-        if errors:
-            logger.warning(f"Invalid WorldItem '{item.name}': {errors}")
+        if isinstance(item, WorldItem):
+            errors = validate_kg_object(item)
+            if errors:
+                logger.warning(f"Invalid WorldItem '{item.name}': {errors}")
 
     # Update name mapping
     WORLD_NAME_TO_ID.clear()
     for item in world_items:
-        WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+        if isinstance(item, WorldItem):
+            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
 
     try:
         cypher_builder = NativeCypherBuilder()
@@ -955,7 +952,7 @@ async def sync_world_items_native(
         return False
 
 
-async def get_world_building_native() -> list[WorldItem]:
+async def get_world_building() -> list[WorldItem]:
     """
     Native model version of get_world_building_from_db.
     Returns world items as model instances without dict conversion.
@@ -1034,43 +1031,49 @@ async def get_world_items_for_chapter_context_native(
         return []
 
 
-def get_world_item_by_id_native(
-    world_items: list[WorldItem], item_id: str
+@alru_cache(maxsize=128)
+async def get_world_item_by_id(item_id: str) -> WorldItem | None:
+    """Retrieve a single WorldItem from Neo4j by its ID or fall back to name."""
+    logger.info(f"Loading world item '{item_id}' from Neo4j...")
+
+    query = (
+        "MATCH (we:WorldElement:Entity {id: $id})"
+        " WHERE we.is_deleted IS NULL OR we.is_deleted = FALSE"
+        " RETURN we"
+    )
+    results = await neo4j_manager.execute_read_query(query, {"id": item_id})
+    if not results or not results[0].get("we"):
+        alt_id = resolve_world_name(item_id)
+        if alt_id and alt_id != item_id:
+            results = await neo4j_manager.execute_read_query(query, {"id": alt_id})
+        if not results or not results[0].get("we"):
+            logger.warning(f"No world item found for ID '{item_id}'")
+            return None
+
+    world_element_node = results[0]["we"]
+    item_id_actual = world_element_node["id"]
+    item_category = world_element_node.get("category", "miscellaneous")
+    item_name = world_element_node["name"]
+
+    item_detail = dict(world_element_node)
+    item_detail["id"] = item_id_actual
+    return WorldItem.from_dict(item_category, item_name, item_detail)
+
+
+def get_world_item_by_name(
+    world_data: dict[str, dict[str, WorldItem]], name: str
 ) -> WorldItem | None:
-    """
-    Retrieve a WorldItem from a list by ID using native models.
-
-    Args:
-        world_items: List of WorldItem models to search
-        item_id: ID to search for
-
-    Returns:
-        WorldItem model if found, None otherwise
-    """
-    for item in world_items:
-        if item.id == item_id:
-            return item
-    return None
-
-
-def get_world_item_by_name_native(
-    world_items: list[WorldItem], name: str
-) -> WorldItem | None:
-    """
-    Retrieve a WorldItem from a list using fuzzy name lookup with native models.
-
-    Args:
-        world_items: List of WorldItem models to search
-        name: Name to search for
-
-    Returns:
-        WorldItem model if found, None otherwise
-    """
+    """Retrieve a WorldItem from cached data using a fuzzy name lookup."""
     item_id = resolve_world_name(name)
     if not item_id:
         return None
-
-    return get_world_item_by_id_native(world_items, item_id)
+    for items in world_data.values():
+        if not isinstance(items, dict):
+            continue
+        for item in items.values():
+            if isinstance(item, WorldItem) and item.id == item_id:
+                return item
+    return None
 
 
 # Phase 1.2: Bootstrap Element Injection - New functions for bootstrap element discovery

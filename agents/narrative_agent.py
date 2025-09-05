@@ -366,22 +366,20 @@ class NarrativeAgent:
 
         # Use native prompt data getters
         from prompts.prompt_data_getters import (
-            get_character_state_snippet_for_prompt_native,
-            get_world_state_snippet_for_prompt_native,
+            get_character_state_snippet_for_prompt,
+            get_world_state_snippet_for_prompt,
         )
 
         kg_context_section = await get_reliable_kg_facts_for_drafting_prompt(
             plot_outline, chapter_number, None
         )
         character_state_snippet_plain_text = (
-            await get_character_state_snippet_for_prompt_native(
+            await get_character_state_snippet_for_prompt(
                 character_profiles, plot_outline, chapter_number
             )
         )
-        world_state_snippet_plain_text = (
-            await get_world_state_snippet_for_prompt_native(
-                world_building, chapter_number
-            )
+        world_state_snippet_plain_text = await get_world_state_snippet_for_prompt(
+            world_building, chapter_number
         )
 
         # Build future plot context
