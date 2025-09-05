@@ -147,34 +147,6 @@ class RevisionAgent:
         )
         plot_points_summary_str = "\n".join(plot_points_summary_lines)
 
-        # Few-shot example for consistency check
-        few_shot_consistency_example_str = """
-**Ignore the narrative details in this example. It shows the required format only.**
-[
-  {
-    "issue_category": "consistency",
-    "problem_description": "The 'Sunstone' is described as glowing blue in this"
-    " chapter, but the world building notes explicitly state all Sunstones are"
-    " crimson red.",
-    "quote_from_original_text": "She admired the brilliant blue glow of the"
-    " Sunstone clutched in her hand.",
-    "suggested_fix_focus": "Change the Sunstone's color to 'crimson red' to"
-    " align with established world canon."
-  },
-  {
-    "issue_category": "consistency",
-    "problem_description": "Character Kael claims to have never met Elara before,"
-    " but Previous Chapter Context (KG Fact) states \"Kael | mentored | Elara"
-    " (Ch: 3)\".",
-    "quote_from_original_text": "\\"I do not believe we have crossed paths"
-    " before, young one,\\" Kael said, peering at Elara.",
-    "suggested_fix_focus": "Adjust Kael's dialogue to acknowledge his prior"
-    " mentorship of Elara, or introduce a reason for his feigned ignorance"
-    " (e.g., memory loss, testing her)."
-  }
-]
-"""
-
         prompt = render_prompt(
             "revision_agent/consistency_check.j2",
             {
@@ -192,7 +164,6 @@ class RevisionAgent:
                 "world_building_plain_text": world_building_plain_text,
                 "previous_chapters_context": previous_chapters_context,
                 "draft_text": chapter_text,
-                "few_shot_consistency_example_str": few_shot_consistency_example_str,
             },
         )
 
@@ -484,37 +455,6 @@ class RevisionAgent:
         )
         plot_points_summary_str = "\n".join(plot_points_summary_lines)
 
-        # Few-shot example for evaluation
-        few_shot_eval_example_str = """
-**Ignore the narrative details in this example. It shows the required format only.**
-[
-  {
-    "issue_category": "CONSISTENCY",
-    "problem_description": "Character Elara states she has never left her village, but her profile mentions she trained at the Royal Academy in the Capital.",
-    "quote_from_original_text": "\\"I've never seen anything beyond these village walls,\\" Elara sighed, gazing at the distant mountains.",
-    "suggested_fix_focus": "Adjust Elara's dialogue to align with her established backstory of training in the Capital, or reconcile this statement with her past (e.g., she's being metaphorical or hiding her past)."
-  },
-  {
-    "issue_category": "PLOT_ARC",
-    "problem_description": "The chapter focuses heavily on a minor side character's backstory, which doesn't significantly advance the intended plot point about finding the Sunstone.",
-    "quote_from_original_text": "The old merchant then spent a long while recounting his youthful adventures in the spice trade, detailing three different voyages.",
-    "suggested_fix_focus": "Reduce the side character's backstory significantly or tie it directly into how it helps or hinders the search for the Sunstone. Ensure the main plot point progression is central."
-  },
-  {
-    "issue_category": "REPETITION_AND_REDUNDANCY",
-    "problem_description": "The phrase 'the cost of loyalty' is repeated almost verbatim in three separate paragraphs, diminishing its impact.",
-    "quote_from_original_text": "The cost of loyalty was not just in what he gave, but in what he lost.",
-    "suggested_fix_focus": "Rephrase the concept in subsequent mentions. Explore different facets of this theme instead of restating the same sentence. For example, show the cost through a character's actions or a difficult choice, rather than repeating the phrase."
-  },
-  {
-    "issue_category": "NARRATIVE_DEPTH_AND_LENGTH",
-    "problem_description": "The confrontation with the antagonist feels rushed and lacks emotional impact. The protagonist's internal reaction to the antagonist's reveal is minimal.",
-    "quote_from_original_text": "\\"It was you all along!\\" John exclaimed. The Baron merely smiled. Then they fought.",
-    "suggested_fix_focus": "Expand on John's internal thoughts and feelings upon discovering the Baron's betrayal. Show, don't just tell, the emotional weight of this moment. Describe the fight with more detail and tension."
-  }
-]
-"""
-
         prompt = render_prompt(
             "revision_agent/evaluate_chapter.j2",
             {
@@ -534,7 +474,6 @@ class RevisionAgent:
                 "kg_check_results_text": kg_check_results_text,
                 "previous_chapters_context": previous_chapters_context,
                 "draft_text": draft_text,
-                "few_shot_eval_example_str": few_shot_eval_example_str,
             },
         )
 

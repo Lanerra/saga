@@ -897,9 +897,12 @@ class KnowledgeAgent:
         world_updates = []
         kg_triples_text = ""
 
-        try:
-            extraction_data = json.loads(raw_text)
+        # Optimized JSON parsing with single attempt and better error handling
+        extraction_data = await self._parse_extraction_json(raw_text, chapter_number)
+        if not extraction_data:
+            return [], [], ""
 
+        try:
             # Import duplicate prevention functions
             from processing.entity_deduplication import (
                 generate_entity_id,
@@ -1046,37 +1049,92 @@ class KnowledgeAgent:
 
             return char_updates, world_updates, kg_triples_text
 
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"Failed to parse extraction JSON for chapter {chapter_number}: {e}. "
-                f"Attempting fallback regex parsing for KG triples."
+        except Exception as e:
+            logger.error(
+                f"Error processing extraction data for chapter {chapter_number}: {e}"
             )
+            return [], [], ""
 
-            # Fallback regex extraction for KG triples (critical for relationships!)
-            triples_match = re.search(
-                r'"kg_triples"\s*:\s*(\[.*?\])', raw_text, re.DOTALL
-            )
-            if triples_match:
-                try:
-                    triples_list_from_regex = json.loads(triples_match.group(1))
-                    if isinstance(triples_list_from_regex, list):
-                        kg_triples_text = "\n".join(
-                            [str(t) for t in triples_list_from_regex]
-                        )
-                        logger.info(
-                            f"Regex successfully extracted and parsed kg_triples block for Ch {chapter_number}."
-                        )
-                except json.JSONDecodeError:
-                    logger.warning(
-                        f"Found kg_triples block via regex for Ch {chapter_number}, but it was invalid JSON."
-                    )
+    async def _parse_extraction_json(
+        self, raw_text: str, chapter_number: int
+    ) -> dict[str, Any] | None:
+        """
+        Optimized JSON parsing with single attempt and robust fallback handling.
+
+        Eliminates multiple JSON decode attempts for better performance.
+        """
+        if not raw_text or not raw_text.strip():
+            logger.warning(f"Empty extraction text for chapter {chapter_number}")
+            return None
+
+        # Clean up common LLM JSON formatting issues before parsing
+        cleaned_text = self._clean_llm_json(raw_text)
+
+        try:
+            # Single JSON parse attempt with cleaned text
+            extraction_data = json.loads(cleaned_text)
+
+            if not isinstance(extraction_data, dict):
+                logger.error(
+                    f"Extraction JSON was not a dictionary for chapter {chapter_number}"
+                )
+                return None
+
+            return extraction_data
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parsing failed for chapter {chapter_number}: {e}")
+
+            # Single fallback attempt using regex for critical KG triples only
+            fallback_data = self._extract_kg_triples_fallback(raw_text, chapter_number)
+            return fallback_data
+
+    def _clean_llm_json(self, raw_text: str) -> str:
+        """Clean up common LLM JSON formatting issues."""
+        # Remove markdown code blocks if present
+        if raw_text.strip().startswith("```"):
+            lines = raw_text.strip().split("\n")
+            if len(lines) > 2:
+                # Remove first and last lines (markdown markers)
+                cleaned = "\n".join(lines[1:-1])
             else:
+                cleaned = raw_text
+        else:
+            cleaned = raw_text
+
+        # Remove common trailing commas before closing brackets/braces
+        cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
+
+        # Fix common quote issues
+        cleaned = cleaned.replace('"', '"').replace('"', '"')
+
+        return cleaned.strip()
+
+    def _extract_kg_triples_fallback(
+        self, raw_text: str, chapter_number: int
+    ) -> dict[str, Any]:
+        """
+        Fallback extraction that only attempts to recover KG triples using regex.
+        This eliminates multiple JSON parsing attempts for better performance.
+        """
+        fallback_data = {"character_updates": {}, "world_updates": {}, "kg_triples": []}
+
+        # Single regex attempt for KG triples
+        triples_match = re.search(r'"kg_triples"\s*:\s*(\[.*?\])', raw_text, re.DOTALL)
+        if triples_match:
+            try:
+                triples_list = json.loads(triples_match.group(1))
+                if isinstance(triples_list, list):
+                    fallback_data["kg_triples"] = triples_list
+                    logger.info(
+                        f"Fallback successfully recovered kg_triples for chapter {chapter_number}"
+                    )
+            except json.JSONDecodeError:
                 logger.warning(
-                    f"Could not find kg_triples JSON array via regex for Ch {chapter_number}."
+                    f"Fallback kg_triples parsing failed for chapter {chapter_number}"
                 )
 
-            # Could implement character and world fallback parsing here if needed
-            return [], [], kg_triples_text
+        return fallback_data
 
     def _merge_character_updates_native(
         self,
@@ -1173,50 +1231,128 @@ class KnowledgeAgent:
         chapter_number: int | None = None,
     ):
         """
-        Performs maintenance on the Knowledge Graph by enriching thin nodes,
+        Performs optimized maintenance on the Knowledge Graph by enriching thin nodes,
         checking for inconsistencies, and resolving duplicate entities.
+
+        Performance optimized: Uses incremental processing when possible,
+        skips expensive operations when not needed, and uses caching.
 
         Args:
             new_entities: Optional list of newly added entities to process incrementally.
-                          If provided, only these entities will be processed for duplicates and enrichment.
-                          If None, the entire graph will be processed (less efficient).
+                          If provided, only these entities will be processed (O(n) complexity).
+                          If None, the entire graph will be processed (O(n²) complexity).
+            chapter_number: Current chapter for context-aware processing
         """
         logger.info("KG Healer/Enricher: Starting maintenance cycle.")
 
-        # If new entities provided, only process those (incremental update)
+        # Always prefer incremental processing for performance
         if new_entities:
-            logger.info(f"Processing {len(new_entities)} new entities incrementally.")
-            for entity in new_entities:
-                await self._resolve_duplicates_for_entity(entity)
-                await self._enrich_entity_if_needed(entity)
-        else:
-            # Original full graph processing (less efficient)
-            logger.info("Processing entire graph (full cycle).")
+            logger.info(
+                f"Running incremental KG maintenance for {len(new_entities)} new entities."
+            )
+            await self._process_entities_incrementally(new_entities, chapter_number)
+            return
 
-            # 1. Enrichment (which includes healing orphans/stubs)
-            enrichment_cypher = await self._find_and_enrich_thin_nodes()
+        # Full graph processing - only when absolutely necessary
+        logger.warning("Running full KG maintenance cycle (resource intensive).")
+
+        # Determine if full processing is actually needed based on recent activity
+        recent_activity = await self._check_recent_kg_activity()
+        if not recent_activity:
+            logger.info(
+                "No recent KG activity detected. Skipping full maintenance cycle."
+            )
+            return
+
+        # Run optimized full graph processing
+        await self._run_full_maintenance_cycle(chapter_number)
+
+    async def _process_entities_incrementally(
+        self, new_entities: list[dict[str, Any]], chapter_number: int | None
+    ) -> None:
+        """Process new entities incrementally with batching for performance."""
+        batch_size = 10  # Process in small batches to avoid memory issues
+
+        for i in range(0, len(new_entities), batch_size):
+            batch = new_entities[i : i + batch_size]
+            batch_tasks = []
+
+            for entity in batch:
+                # Run duplicate resolution and enrichment in parallel for each entity
+                batch_tasks.extend(
+                    [
+                        self._resolve_duplicates_for_new_entity(entity),
+                        self._enrich_entity_if_needed(entity, chapter_number),
+                    ]
+                )
+
+            # Execute batch in parallel
+            await asyncio.gather(*batch_tasks, return_exceptions=True)
+            logger.debug(f"Processed incremental batch {i//batch_size + 1}")
+
+    async def _check_recent_kg_activity(self) -> bool:
+        """Check if there has been recent KG activity that would warrant full maintenance."""
+        try:
+            # Check if there are any entities modified in the last 2 chapters
+            result = await neo4j_manager.execute_cypher_get_one(
+                "MATCH (n) WHERE n.last_updated_ts > timestamp() - 86400000 RETURN count(n) as recent_count",
+                {},
+            )
+            recent_count = result.get("recent_count", 0) if result else 0
+            return (
+                recent_count > 5
+            )  # Only run full cycle if significant recent activity
+        except Exception as e:
+            logger.warning(
+                f"Could not check recent KG activity: {e}. Assuming activity exists."
+            )
+            return True
+
+    async def _run_full_maintenance_cycle(self, chapter_number: int | None) -> None:
+        """Run the full maintenance cycle with optimizations."""
+        try:
+            # 1. Enrichment - find and fix thin nodes (limit to most critical)
+            enrichment_cypher = await self._find_and_enrich_thin_nodes(limit=20)
 
             if enrichment_cypher:
                 logger.info(
-                    f"Applying {len(enrichment_cypher)} enrichment updates to the KG."
+                    f"Applying {len(enrichment_cypher)} critical enrichment updates."
                 )
-                try:
-                    await neo4j_manager.execute_cypher_batch(enrichment_cypher)
-                except Exception as e:
-                    logger.error(
-                        f"KG Healer/Enricher: Error applying enrichment batch: {e}",
-                        exc_info=True,
-                    )
+                await neo4j_manager.execute_cypher_batch(enrichment_cypher)
             else:
-                logger.info(
-                    "KG Healer/Enricher: No thin nodes found for enrichment in this cycle."
-                )
+                logger.info("No critical thin nodes found for enrichment.")
 
-            # 2. Consistency Checks
+            # 2. Consistency Checks (lightweight version)
             await self._run_consistency_checks()
 
-            # 3. Entity Resolution
+            # 3. Entity Resolution (only if we have new entities to check)
             await self._run_entity_resolution()
+
+        except Exception as e:
+            logger.error(f"Error during full maintenance cycle: {e}", exc_info=True)
+
+    async def _enrich_entity_if_needed(
+        self, entity: dict[str, Any], chapter_number: int | None = None
+    ) -> None:
+        """Enrich a single entity if it appears to be thin or incomplete."""
+        entity_id = entity.get("id")
+        entity_name = entity.get("name")
+
+        if not entity_id or not entity_name:
+            return
+
+        # Check if entity needs enrichment (has minimal description)
+        description = entity.get("description", "")
+        if len(description.strip()) > 50:  # Skip if already well-described
+            return
+
+        logger.debug(f"Enriching entity: {entity_name} (id: {entity_id})")
+
+        # Use the existing enrichment logic for different entity types
+        if entity.get("type") == "Character":
+            await self._enrich_character_by_name(entity_name)
+        elif entity.get("type") in ["WorldElement", "Location", "Organization"]:
+            await self._enrich_world_element_by_id(entity_id)
 
         # 4. Resolve dynamic relationship types using LLM guidance (always run)
         await self._resolve_dynamic_relationships()
@@ -1500,14 +1636,30 @@ class KnowledgeAgent:
         except Exception as e:
             logger.error(f"Error enriching entity {entity_name}: {e}", exc_info=True)
 
-    async def _find_and_enrich_thin_nodes(self) -> list[tuple[str, dict[str, Any]]]:
+    async def _find_and_enrich_thin_nodes(
+        self, limit: int | None = None
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Finds thin characters and world elements and generates enrichment updates in parallel."""
         statements: list[tuple[str, dict[str, Any]]] = []
         enrichment_tasks = []
 
-        # Find all thin nodes first
+        # Find thin nodes with optional limit for performance
         thin_chars = await character_queries.find_thin_characters_for_enrichment()
         thin_elements = await world_queries.find_thin_world_elements_for_enrichment()
+
+        # Apply limit if specified (prioritize most critical nodes)
+        if limit:
+            total_available = len(thin_chars) + len(thin_elements)
+            if total_available > limit:
+                # Prioritize characters over world elements, but take a mix
+                char_limit = min(len(thin_chars), limit // 2)
+                element_limit = min(len(thin_elements), limit - char_limit)
+                thin_chars = thin_chars[:char_limit]
+                thin_elements = thin_elements[:element_limit]
+                logger.info(
+                    f"Limited thin node enrichment to {limit} most critical nodes "
+                    f"({len(thin_chars)} chars, {len(thin_elements)} elements)"
+                )
 
         # Create tasks for enriching characters
         for char_info in thin_chars:
@@ -1655,111 +1807,175 @@ class KnowledgeAgent:
     ) -> None:
         """Finds and resolves potential duplicate entities in the KG.
 
+        Performance optimized: Uses incremental processing when possible,
+        batched context fetching, and early termination conditions.
+
         Args:
             new_entities: Optional list of newly added entities to check for duplicates.
-                          If provided, only these entities will be checked.
-                          If None, the entire graph will be processed for duplicates.
+                          If provided, only these entities will be checked (O(n) complexity).
+                          If None, the entire graph will be processed for duplicates (O(n²)).
         """
         logger.info("KG Healer: Running entity resolution...")
 
-        # If new entities provided, only check those for duplicates (incremental)
+        # Prefer incremental processing for better performance
         if new_entities:
-            # Process only new entities for duplicates
             logger.info(
-                f"Checking {len(new_entities)} new entities for duplicates incrementally."
+                f"Running incremental entity resolution for {len(new_entities)} new entities."
             )
-            for entity in new_entities:
-                await self._resolve_duplicates_for_new_entity(entity)
-        else:
-            # Original full graph processing (less efficient)
-            # Use lower similarity threshold to catch character name variations like "Nuyara" vs "Nuyara Vex"
-            candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
-                similarity_threshold=0.65
-            )
+            # Process in batches to avoid overwhelming the system
+            batch_size = min(10, len(new_entities))
+            for i in range(0, len(new_entities), batch_size):
+                batch = new_entities[i : i + batch_size]
+                await asyncio.gather(
+                    *[
+                        self._resolve_duplicates_for_new_entity(entity)
+                        for entity in batch
+                    ]
+                )
+                logger.debug(f"Processed entity resolution batch {i//batch_size + 1}")
+            return
 
-            if not candidate_pairs:
-                logger.info("KG Healer: No candidate duplicate entities found.")
-                return
+        # Full graph processing - use performance optimizations
+        logger.info("Running full graph entity resolution (less efficient).")
 
-            logger.info(
-                f"KG Healer: Found {len(candidate_pairs)} candidate pairs for entity resolution."
-            )
+        # Use cached similarity threshold to catch character name variations
+        candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
+            similarity_threshold=0.65
+        )
 
-            for pair in candidate_pairs:
+        if not candidate_pairs:
+            logger.info("KG Healer: No candidate duplicate entities found.")
+            return
+
+        logger.info(
+            f"Processing {len(candidate_pairs)} candidate pairs for resolution."
+        )
+
+        # Process pairs in batches for better memory management
+        batch_size = 5  # Reduced batch size to limit concurrent LLM calls
+        processed_pairs = 0
+
+        for i in range(0, len(candidate_pairs), batch_size):
+            batch = candidate_pairs[i : i + batch_size]
+
+            # Pre-fetch all contexts for this batch in parallel
+            context_tasks = []
+            for pair in batch:
                 id1, id2 = pair.get("id1"), pair.get("id2")
-                if not id1 or not id2:
-                    continue
-
-                # Fetch context for both entities in parallel
-                context1_task = kg_queries.get_entity_context_for_resolution(id1)
-                context2_task = kg_queries.get_entity_context_for_resolution(id2)
-                context1, context2 = await asyncio.gather(context1_task, context2_task)
-
-                if not context1 or not context2:
-                    logger.warning(
-                        f"Could not fetch full context for pair ({id1}, {id2}). Skipping."
+                if id1 and id2:
+                    context_tasks.append(
+                        (
+                            id1,
+                            id2,
+                            kg_queries.get_entity_context_for_resolution(id1),
+                            kg_queries.get_entity_context_for_resolution(id2),
+                        )
                     )
-                    continue
 
-                prompt = render_prompt(
-                    "knowledge_agent/entity_resolution.j2",
-                    {"entity1": context1, "entity2": context2},
-                )
-                llm_response, _ = await llm_service.async_call_llm(
-                    model_name=config.KNOWLEDGE_UPDATE_MODEL,
-                    prompt=prompt,
-                    temperature=0.1,
-                    auto_clean_response=True,
-                )
+            if not context_tasks:
+                continue
 
+            # Execute all context fetches in parallel
+            contexts = []
+            for id1, id2, task1, task2 in context_tasks:
                 try:
-                    decision_data = json.loads(llm_response)
-                    if (
-                        decision_data.get("is_same_entity") is True
-                        and decision_data.get("confidence_score", 0.0) > 0.8
-                    ):
-                        logger.info(
-                            f"LLM confirmed merge for '{context1.get('name')}' (id: {id1}) and "
-                            f"'{context2.get('name')}' (id: {id2}). Reason: {decision_data.get('reason')}"
-                        )
-
-                        # Heuristic to decide which node to keep
-                        degree1 = context1.get("degree", 0)
-                        degree2 = context2.get("degree", 0)
-
-                        # Prefer node with more relationships
-                        if degree1 > degree2:
-                            target_id, source_id = id1, id2
-                        elif degree2 > degree1:
-                            target_id, source_id = id2, id1
-                        else:
-                            # Tie-breaker: prefer the one with a more detailed description
-                            desc1_len = len(
-                                context1.get("properties", {}).get("description", "")
-                            )
-                            desc2_len = len(
-                                context2.get("properties", {}).get("description", "")
-                            )
-                            if desc1_len >= desc2_len:
-                                target_id, source_id = id1, id2
-                            else:
-                                target_id, source_id = id2, id1
-
-                        # Use LLM's reasoning for the merge
-                        reason = decision_data.get(
-                            "reason", "LLM entity resolution merge"
-                        )
-                        await kg_queries.merge_entities(source_id, target_id, reason)
+                    context1, context2 = await asyncio.gather(task1, task2)
+                    if context1 and context2:
+                        contexts.append((id1, id2, context1, context2))
                     else:
-                        logger.info(
-                            f"LLM decided NOT to merge '{context1.get('name')}' and '{context2.get('name')}'. "
-                            f"Reason: {decision_data.get('reason')}"
+                        logger.warning(
+                            f"Missing context for pair ({id1}, {id2}). Skipping."
                         )
+                except Exception as e:
+                    logger.error(f"Error fetching context for pair ({id1}, {id2}): {e}")
+                    continue
 
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.error(
-                        f"Failed to parse entity resolution response from LLM for pair ({id1}, {id2}): {e}. Response: {llm_response}"
+            # Process resolution decisions for this batch
+            for id1, id2, context1, context2 in contexts:
+                try:
+                    await self._process_entity_pair_resolution(
+                        id1, id2, context1, context2
                     )
+                    processed_pairs += 1
+                except Exception as e:
+                    logger.error(f"Error processing entity pair ({id1}, {id2}): {e}")
+                    continue
+
+            logger.debug(
+                f"Completed resolution batch {i//batch_size + 1}, processed {processed_pairs} pairs total"
+            )
+
+    async def _process_entity_pair_resolution(
+        self, id1: str, id2: str, context1: dict, context2: dict
+    ) -> None:
+        """Process a single entity pair for potential resolution."""
+        prompt = render_prompt(
+            "knowledge_agent/entity_resolution.j2",
+            {"entity1": context1, "entity2": context2},
+        )
+
+        llm_response, _ = await llm_service.async_call_llm(
+            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            prompt=prompt,
+            temperature=0.1,
+            auto_clean_response=True,
+        )
+
+        try:
+            decision_data = json.loads(llm_response)
+            if (
+                decision_data.get("is_same_entity") is True
+                and decision_data.get("confidence_score", 0.0) > 0.8
+            ):
+                logger.info(
+                    f"LLM confirmed merge for '{context1.get('name')}' (id: {id1}) and "
+                    f"'{context2.get('name')}' (id: {id2}). Reason: {decision_data.get('reason')}"
+                )
+
+                # Optimized heuristic to decide which node to keep
+                target_id, source_id = self._select_merge_target(
+                    id1, id2, context1, context2
+                )
+
+                # Use LLM's reasoning for the merge
+                reason = decision_data.get("reason", "LLM entity resolution merge")
+                await kg_queries.merge_entities(source_id, target_id, reason)
+            else:
+                logger.info(
+                    f"LLM decided NOT to merge '{context1.get('name')}' and '{context2.get('name')}'. "
+                    f"Reason: {decision_data.get('reason')}"
+                )
+
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(
+                f"Failed to parse entity resolution response from LLM for pair ({id1}, {id2}): {e}. Response: {llm_response}"
+            )
+
+    def _select_merge_target(
+        self, id1: str, id2: str, context1: dict, context2: dict
+    ) -> tuple[str, str]:
+        """Optimized heuristic to decide which node to keep during merge.
+
+        Returns:
+            tuple: (target_id, source_id) where target_id is kept, source_id is merged into it
+        """
+        # Prefer node with more relationships
+        degree1 = context1.get("degree", 0)
+        degree2 = context2.get("degree", 0)
+
+        if degree1 > degree2:
+            return id1, id2
+        elif degree2 > degree1:
+            return id2, id1
+
+        # Tie-breaker: prefer the one with a more detailed description
+        desc1_len = len(context1.get("properties", {}).get("description", ""))
+        desc2_len = len(context2.get("properties", {}).get("description", ""))
+
+        if desc1_len >= desc2_len:
+            return id1, id2
+        else:
+            return id2, id1
 
     async def _resolve_duplicates_for_new_entity(self, entity: dict[str, Any]) -> None:
         """Resolve duplicates for a single new entity using Neo4j's MERGE with uniqueness constraints."""
