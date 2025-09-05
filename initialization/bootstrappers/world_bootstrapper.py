@@ -27,12 +27,12 @@ WORLD_DETAIL_LIST_INTERNAL_KEYS: list[str] = []
 
 # Enhanced world building targets
 ENHANCED_WORLD_TARGETS = {
-    "locations": 4,      # vs current ~1
-    "society": 3,        # vs current ~1  
-    "factions": 3,       # vs current ~1
-    "history": 2,        # vs current ~1
-    "lore": 2,          # vs current ~1
-    "systems": 2         # vs current ~1
+    "locations": 4,  # vs current ~1
+    "society": 3,  # vs current ~1
+    "factions": 3,  # vs current ~1
+    "history": 2,  # vs current ~1
+    "lore": 2,  # vs current ~1
+    "systems": 2,  # vs current ~1
 }
 
 
@@ -67,11 +67,11 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
     # Create multiple elements per category using enhanced targets
     for cat_key, target_count in ENHANCED_WORLD_TARGETS.items():
         world_data[cat_key] = {}
-        
+
         # Create multiple placeholder elements per category
         for i in range(target_count):
             element_name = f"{cat_key}_element_{i+1}"  # Will be filled by LLM
-            
+
             # Prepare for enhanced node typing (will be used during persistence)
             world_data[cat_key][element_name] = WorldItem.from_dict(
                 cat_key,
@@ -82,7 +82,7 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
                     "id": f"{utils._normalize_for_id(cat_key)}_{i+1}",
                     "element_index": i + 1,  # For tracking during bootstrap
                 },
-                allow_empty_name=True
+                allow_empty_name=True,
             )
 
     return world_data
@@ -150,8 +150,11 @@ async def bootstrap_world(
         for item_name, item_obj in items_dict.items():
             # Check if the item name is missing, empty, or a placeholder pattern
             if isinstance(item_obj, WorldItem) and (
-                not item_obj.name or not item_obj.name.strip() or 
-                item_name.endswith(('_element_1', '_element_2', '_element_3', '_element_4'))
+                not item_obj.name
+                or not item_obj.name.strip()
+                or item_name.endswith(
+                    ("_element_1", "_element_2", "_element_3", "_element_4")
+                )
             ):
                 logger.info(
                     "Identified item for name bootstrapping in category '%s': Current name '%s'",

@@ -525,48 +525,48 @@ def infer_node_type_from_category(category: str) -> str:
 def infer_node_type_from_name(name: str, context: str = "") -> str:
     """
     Infer node type from entity name and context using genre-agnostic linguistic patterns.
-    
+
     Uses structural and grammatical analysis rather than domain-specific keywords.
     """
     name_lower = name.lower()
     context_lower = context.lower()
     words = name.split()
-    
+
     # Order matters: Most specific to least specific
-    
+
     # === SYSTEM RECOGNITION (Most specific patterns) ===
     if _is_system_by_structure(name, words, context_lower):
         return "System"
-    
+
     # === EVENT RECOGNITION (Very specific patterns) ===
     if _is_event_by_structure(name, words, context_lower):
         return "Event"
-    
+
     # === ORGANIZATION RECOGNITION (Specific suffixes) ===
     if _is_organization_by_structure(name, words, context_lower):
         return "Organization"
-    
+
     # === OBJECT/ARTIFACT RECOGNITION (Specific patterns) ===
     object_type = _classify_object_by_structure(name, words, context_lower)
     if object_type:
         return object_type
-    
+
     # === MEMORY RECOGNITION (Specific patterns) ===
     if _is_memory_by_structure(name, words, context_lower):
         return "Memory"
-    
+
     # === ENERGY/POWER RECOGNITION (Specific patterns) ===
     if _is_energy_by_structure(name, words, context_lower):
         return "Energy"
-    
+
     # === ABSTRACT CONCEPT RECOGNITION (Suffix-based) ===
     if _is_concept_by_structure(name, words, context_lower):
         return "Concept"
-    
+
     # === LOCATION RECOGNITION (Geographic patterns) ===
     if _is_location_by_structure(name, words, context_lower):
         return "Location"
-    
+
     # === CHARACTER/PERSON RECOGNITION (Last resort for proper nouns) ===
     if _is_character_by_structure(name, words, context_lower):
         return "Character"
@@ -581,283 +581,483 @@ def infer_node_type_from_name(name: str, context: str = "") -> str:
 
 # === GENRE-AGNOSTIC STRUCTURAL CLASSIFICATION HELPERS ===
 
+
 def _is_location_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify locations using structural patterns rather than keywords."""
     name_lower = name.lower()
-    
+
     # Geographic compound patterns: [Name] + [Geographic descriptor] - MOST SPECIFIC
     if len(words) == 2 and words[0][0].isupper() and words[1][0].isupper():
         # Generic geographic endings (not genre-specific)
         geographic_suffixes = {
             # Natural features
-            "Falls", "River", "Lake", "Bay", "Point", "Heights", "Hills", "Plains",
-            "Valley", "Creek", "Stream", "Pond", "Beach", "Coast", "Shore", "Island",
+            "Falls",
+            "River",
+            "Lake",
+            "Bay",
+            "Point",
+            "Heights",
+            "Hills",
+            "Plains",
+            "Valley",
+            "Creek",
+            "Stream",
+            "Pond",
+            "Beach",
+            "Coast",
+            "Shore",
+            "Island",
             "Belt",  # Added for "Asteroid Belt" etc - but not "Field"
-            # Elevation features  
-            "Ridge", "Peak", "Summit", "Cliff", "Mesa", "Gorge", "Canyon", "Pass",
+            # Elevation features
+            "Ridge",
+            "Peak",
+            "Summit",
+            "Cliff",
+            "Mesa",
+            "Gorge",
+            "Canyon",
+            "Pass",
             # Areas/regions
-            "District", "Quarter", "Sector", "Zone", "Area", "Region", "Territory",
+            "District",
+            "Quarter",
+            "Sector",
+            "Zone",
+            "Area",
+            "Region",
+            "Territory",
             # Settlements (structural, not fantasy-specific)
-            "City", "Town", "Village", "Settlement", "Colony", "Outpost", "Base",
+            "City",
+            "Town",
+            "Village",
+            "Settlement",
+            "Colony",
+            "Outpost",
+            "Base",
             # Buildings/structures
-            "Hospital", "Park", "Center", "Square", "Plaza", "Mall", "Station"
+            "Hospital",
+            "Park",
+            "Center",
+            "Square",
+            "Plaza",
+            "Mall",
+            "Station",
         }
         if words[1] in geographic_suffixes:
             return True
-    
+
     # Specific location words in compound names
     location_words = ["park", "hospital", "scene", "center", "station", "square"]
     if any(word in name_lower for word in location_words):
         return True
-    
+
     # Context clues for location
-    location_contexts = ["located", "situated", "found", "place", "area", "region", "site"]
+    location_contexts = [
+        "located",
+        "situated",
+        "found",
+        "place",
+        "area",
+        "region",
+        "site",
+    ]
     if any(ctx in context for ctx in location_contexts):
         return True
-        
+
     return False
 
 
 def _is_character_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify characters using structural patterns."""
     name_lower = name.lower()
-    
+
     # Single names with titles/roles (structural pattern recognition) - MOST SPECIFIC
     title_patterns = {
         # Formal titles (universal across genres)
-        "Dr.", "Doctor", "Professor", "Captain", "Commander", "Lieutenant", 
-        "Sergeant", "Chief", "Director", "Manager", "President", "Chairman",
+        "Dr.",
+        "Doctor",
+        "Professor",
+        "Captain",
+        "Commander",
+        "Lieutenant",
+        "Sergeant",
+        "Chief",
+        "Director",
+        "Manager",
+        "President",
+        "Chairman",
         # Honorifics (genre-neutral)
-        "Mr.", "Mrs.", "Ms.", "Miss", "Sir", "Madam", "Lady", "Lord"
+        "Mr.",
+        "Mrs.",
+        "Ms.",
+        "Miss",
+        "Sir",
+        "Madam",
+        "Lady",
+        "Lord",
     }
     if any(title in name for title in title_patterns):
         return True
-    
+
     # Two-word proper noun pattern (First Last) - but exclude organizations and compound objects
-    if (len(words) == 2 and 
-        all(word.isalpha() and word[0].isupper() for word in words)):
+    if len(words) == 2 and all(word.isalpha() and word[0].isupper() for word in words):
         # Exclude if it looks like an organization or location
         org_indicators = ["Corp", "Inc", "LLC", "Ltd", "Group", "Company", "Co"]
-        location_indicators = ["River", "Lake", "Bay", "Park", "Street", "Avenue", "City", "Town"]
+        location_indicators = [
+            "River",
+            "Lake",
+            "Bay",
+            "Park",
+            "Street",
+            "Avenue",
+            "City",
+            "Town",
+        ]
         if not any(ind in name for ind in org_indicators + location_indicators):
             return True
-    
+
     # Context clues for characters
-    character_contexts = ["person", "individual", "character", "who", "said", "spoke", "thinks"]
+    character_contexts = [
+        "person",
+        "individual",
+        "character",
+        "who",
+        "said",
+        "spoke",
+        "thinks",
+    ]
     if any(ctx in context for ctx in character_contexts):
         return True
-        
+
     return False
 
 
 def _is_organization_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify organizations using structural patterns."""
     name_lower = name.lower()
-    
+
     # Organizational suffixes (genre-neutral) - VERY SPECIFIC
     org_suffixes = {
-        "Corporation", "Corp", "Company", "Co", "Inc", "LLC", "Ltd", "Group",
-        "Organization", "Institute", "Foundation", "Association", "Society",
-        "Union", "Alliance", "Federation", "Coalition", "Consortium",
-        "Department", "Ministry", "Bureau", "Agency", "Office", "Division",
-        "Council", "Committee", "Board", "Commission", "Empire", "Rebellion"
+        "Corporation",
+        "Corp",
+        "Company",
+        "Co",
+        "Inc",
+        "LLC",
+        "Ltd",
+        "Group",
+        "Organization",
+        "Institute",
+        "Foundation",
+        "Association",
+        "Society",
+        "Union",
+        "Alliance",
+        "Federation",
+        "Coalition",
+        "Consortium",
+        "Department",
+        "Ministry",
+        "Bureau",
+        "Agency",
+        "Office",
+        "Division",
+        "Council",
+        "Committee",
+        "Board",
+        "Commission",
+        "Empire",
+        "Rebellion",
     }
-    
+
     if any(suffix in name for suffix in org_suffixes):
         return True
-    
+
     # "The [Organization]" patterns for collective entities
     if name.startswith("The ") and len(words) >= 2:
         org_words = ["Rebellion", "Empire", "Government", "Party", "Movement"]
         if any(word in name for word in org_words):
             return True
-    
+
     # "[Name] of [Something]" pattern
     if " of " in name_lower and len(words) >= 3:
         return True
-        
+
     # Context clues
     org_contexts = ["organization", "group", "company", "institution", "entity"]
     if any(ctx in context for ctx in org_contexts):
         return True
-        
+
     return False
 
 
-def _classify_object_by_structure(name: str, words: list[str], context: str) -> str | None:
+def _classify_object_by_structure(
+    name: str, words: list[str], context: str
+) -> str | None:
     """Classify objects using structural patterns, returns Object/Artifact or None."""
     name_lower = name.lower()
-    
+
     # Object words - SPECIFIC DETECTION
     object_words = ["diary", "letters", "device", "blaster", "gun", "sword", "evidence"]
     if any(word in name_lower for word in object_words):
         # Check if context suggests special significance
-        special_contexts = ["ancient", "legendary", "magical", "powerful", "sacred", "unique"]
+        special_contexts = [
+            "ancient",
+            "legendary",
+            "magical",
+            "powerful",
+            "sacred",
+            "unique",
+        ]
         if any(ctx in context for ctx in special_contexts):
             return "Artifact"
         return "Object"
-        
+
     # Special handling for "core" - could be object or memory
     if "core" in name_lower:
         if "memory" in name_lower:
             return "Object"  # Memory Core = computer storage
         return "Object"
-    
-    # Possessive patterns: [Name]'s [Thing] 
+
+    # Possessive patterns: [Name]'s [Thing]
     if "'s " in name and len(words) >= 2:
         # Exclude memories and character names
-        memory_indicators = ["memory", "death", "dream", "nightmare", "vision", "thought"]
+        memory_indicators = [
+            "memory",
+            "death",
+            "dream",
+            "nightmare",
+            "vision",
+            "thought",
+        ]
         if not any(mem in name_lower for mem in memory_indicators):
             # Check if context suggests special significance
-            special_contexts = ["ancient", "legendary", "magical", "powerful", "sacred", "unique"]
+            special_contexts = [
+                "ancient",
+                "legendary",
+                "magical",
+                "powerful",
+                "sacred",
+                "unique",
+            ]
             if any(ctx in context for ctx in special_contexts):
                 return "Artifact"
             return "Object"
-    
+
     # Material composition patterns
     material_patterns = ["made of", "crafted from", "forged from", "built with"]
     if any(pattern in context for pattern in material_patterns):
         return "Object"
-    
+
     # Tool/device patterns (structural)
     if name_lower.endswith(("er", "or", "device", "tool", "instrument", "apparatus")):
         return "Object"
-        
+
     return None
 
 
 def _is_memory_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify memories using linguistic patterns."""
     name_lower = name.lower()
-    
+
     # Direct memory indicators
     memory_words = ["memory", "recollection", "remembrance", "flashback"]
     if any(mem in name_lower for mem in memory_words):
         return True
-    
+
     # Possessive memory patterns: [Name]'s [memory-related]
     if "'s " in name:
         memory_objects = ["last", "first", "final", "dying", "childhood", "earliest"]
         if any(mem in name_lower for mem in memory_objects):
             return True
-    
+
     # Personal experience patterns
     if name.startswith(("Her ", "His ", "Their ", "My ", "Your ")):
         return True
-        
+
     # Context clues
     memory_contexts = ["remembered", "recalled", "thought back", "reminisced"]
     if any(ctx in context for ctx in memory_contexts):
         return True
-        
+
     return False
 
 
 def _is_concept_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify abstract concepts using linguistic patterns."""
     name_lower = name.lower()
-    
+
     # Abstract noun suffixes - MOST RELIABLE
     abstract_suffixes = (
-        "ism", "ity", "ness", "ment", "tion", "sion", "ence", "ance", 
-        "ship", "hood", "dom", "ology", "ics", "ure", "age"
+        "ism",
+        "ity",
+        "ness",
+        "ment",
+        "tion",
+        "sion",
+        "ence",
+        "ance",
+        "ship",
+        "hood",
+        "dom",
+        "ology",
+        "ics",
+        "ure",
+        "age",
     )
     if name_lower.endswith(abstract_suffixes):
         return True
-    
+
     # Academic/analytical patterns
-    analytical_words = ["analysis", "study", "theory", "principle", "concept", "idea", 
-                       "philosophy", "strategy", "condition", "commentary", "metaphor",
-                       "alibi"]
+    analytical_words = [
+        "analysis",
+        "study",
+        "theory",
+        "principle",
+        "concept",
+        "idea",
+        "philosophy",
+        "strategy",
+        "condition",
+        "commentary",
+        "metaphor",
+        "alibi",
+    ]
     if any(word in name_lower for word in analytical_words):
         return True
-        
+
     # Two-word abstract concepts
     if len(words) == 2 and not name.startswith("The "):
         abstract_first = ["human", "social", "economic", "political"]
         abstract_second = ["condition", "commentary", "theory", "analysis", "strategy"]
-        if (any(word in words[0].lower() for word in abstract_first) or
-            any(word in words[1].lower() for word in abstract_second)):
+        if any(word in words[0].lower() for word in abstract_first) or any(
+            word in words[1].lower() for word in abstract_second
+        ):
             return True
-    
+
     # Context-dependent abstract concepts
-    abstract_contexts = ["represents", "symbolizes", "embodies", "concept", "idea", "notion"]
+    abstract_contexts = [
+        "represents",
+        "symbolizes",
+        "embodies",
+        "concept",
+        "idea",
+        "notion",
+    ]
     if any(ctx in context for ctx in abstract_contexts):
         return True
-            
+
     return False
 
 
 def _is_event_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify events using linguistic patterns."""
     name_lower = name.lower()
-    
+
     # Event suffixes - MOST SPECIFIC
     if name.endswith(("Event", "Incident", "Occurrence", "Happening", "Episode")):
         return True
-    
+
     # Common event words
-    event_words = ["battle", "war", "revolution", "murder", "accident", "wedding", "haunting"]
+    event_words = [
+        "battle",
+        "war",
+        "revolution",
+        "murder",
+        "accident",
+        "wedding",
+        "haunting",
+    ]
     if any(word in name_lower for word in event_words):
         return True
-    
+
     # "The [Event]" pattern with temporal context
     if name.startswith("The ") and len(words) >= 2:
-        temporal_contexts = ["happened", "occurred", "took place", "during", "when", "after", "before"]
+        temporal_contexts = [
+            "happened",
+            "occurred",
+            "took place",
+            "during",
+            "when",
+            "after",
+            "before",
+        ]
         if any(ctx in context for ctx in temporal_contexts):
             return True
-            
+
         # Event-like nouns after "The"
-        event_nouns = ["Battle", "War", "Revolution", "Murder", "Accident", "Wedding", "Haunting"]
+        event_nouns = [
+            "Battle",
+            "War",
+            "Revolution",
+            "Murder",
+            "Accident",
+            "Wedding",
+            "Haunting",
+        ]
         if any(noun in name for noun in event_nouns):
             return True
-    
+
     return False
 
 
 def _is_system_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify systems using structural patterns."""
     name_lower = name.lower()
-    
+
     # System-related suffixes - VERY SPECIFIC
-    system_suffixes = ["System", "Network", "Protocol", "Framework", "Method", "Process", "Investigation"]
+    system_suffixes = [
+        "System",
+        "Network",
+        "Protocol",
+        "Framework",
+        "Method",
+        "Process",
+        "Investigation",
+    ]
     if any(suffix in name for suffix in system_suffixes):
         return True
-    
+
     # "The [System]" patterns
     if name.startswith("The ") and len(words) >= 2:
         system_words = ["Internet", "Network", "System", "Protocol"]
         if any(word in name for word in system_words):
             return True
-    
+
     # Context clues
-    system_contexts = ["operates", "functions", "works", "mechanism", "process", "procedure"]
+    system_contexts = [
+        "operates",
+        "functions",
+        "works",
+        "mechanism",
+        "process",
+        "procedure",
+    ]
     if any(ctx in context for ctx in system_contexts):
         return True
-        
+
     return False
 
 
 def _is_energy_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify energy/power using linguistic patterns."""
     name_lower = name.lower()
-    
+
     # Energy-related words (genre-neutral) - prioritize "field" for energy
     energy_words = ["energy", "power", "force", "wave", "current", "flow", "charge"]
     if any(word in name_lower for word in energy_words):
         return True
-        
+
     # Special case: "[Type] Field" can be energy (Plasma Field, Force Field)
     if "field" in name_lower and len(words) == 2:
         field_types = ["plasma", "force", "energy", "magnetic", "electric", "psychic"]
         if any(ftype in name_lower for ftype in field_types):
             return True
-        
+
     # Context clues
     energy_contexts = ["flows", "radiates", "emanates", "pulses", "vibrates"]
     if any(ctx in context for ctx in energy_contexts):
         return True
-        
+
     return False
 
 

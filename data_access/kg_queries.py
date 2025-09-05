@@ -5,6 +5,11 @@ import re
 from typing import Any
 
 from async_lru import alru_cache
+
+import config
+from core.db_manager import neo4j_manager
+from core.relationship_validator import validate_relationship_types
+from core.schema_validator import validate_node_labels
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
@@ -12,11 +17,6 @@ from models.kg_constants import (
     RELATIONSHIP_NORMALIZATIONS,
     RELATIONSHIP_TYPES,
 )
-
-import config
-from core.db_manager import neo4j_manager
-from core.schema_validator import validate_node_labels
-from core.relationship_validator import validate_relationship_types
 
 logger = logging.getLogger(__name__)
 
@@ -543,21 +543,22 @@ def _infer_specific_node_type(
 ) -> str:
     """
     Dynamic node type inference with static fallback.
-    
+
     Uses the new dynamic schema system when available, falls back to static inference.
     This is the main interface used throughout the codebase.
     """
     if not name or not name.strip():
         return fallback_type if fallback_type != "WorldElement" else "Entity"
-    
+
     # Check if dynamic schema is enabled via configuration
     try:
-        if getattr(config.settings, 'ENABLE_DYNAMIC_SCHEMA', True):
+        if getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
             # Import here to avoid circular dependencies and startup issues
-            from core.dynamic_schema_manager import dynamic_schema_manager
-            
             # Use async context to call the dynamic system
             import asyncio
+
+            from core.dynamic_schema_manager import dynamic_schema_manager
+
             try:
                 # Try to get the current event loop
                 loop = asyncio.get_event_loop()
@@ -581,12 +582,12 @@ def _infer_specific_node_type(
                 pass
             except Exception as e:
                 logger.warning(f"Dynamic schema inference failed for '{name}': {e}")
-                
+
     except (ImportError, AttributeError) as e:
         logger.debug(f"Dynamic schema system not available: {e}")
     except Exception as e:
         logger.warning(f"Failed to use dynamic schema system: {e}")
-    
+
     # Fallback to static inference
     return _infer_specific_node_type_static(name, category, fallback_type)
 
@@ -609,7 +610,7 @@ def validate_relationship_type(proposed_type: str) -> str:
     """
     if not proposed_type or not proposed_type.strip():
         return "RELATES_TO"
-    
+
     # Check if semantic flattening is disabled
     if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
         # Return the original type without any validation or fallbacks
@@ -617,7 +618,7 @@ def validate_relationship_type(proposed_type: str) -> str:
 
     # Clean and normalize input
     clean_type = proposed_type.strip().upper().replace(" ", "_")
-    
+
     # Check normalization mappings first (using lowercase key)
     lower_key = proposed_type.strip().lower().replace(" ", "_")
     if lower_key in RELATIONSHIP_NORMALIZATIONS:
@@ -1232,7 +1233,9 @@ async def add_kg_triples_batch_to_db(
             )
 
             # Combine ON CREATE SET clauses for subject
-            subject_create_sets = f"s.created_ts = timestamp(), s.type = '{subject_type}'"
+            subject_create_sets = (
+                f"s.created_ts = timestamp(), s.type = '{subject_type}'"
+            )
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
@@ -1288,7 +1291,9 @@ async def add_kg_triples_batch_to_db(
             )
 
             # Combine ON CREATE SET clauses for both nodes
-            subject_create_sets = f"s.created_ts = timestamp(), s.type = '{subject_type}'"
+            subject_create_sets = (
+                f"s.created_ts = timestamp(), s.type = '{subject_type}'"
+            )
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
@@ -1447,10 +1452,10 @@ async def get_most_recent_value_from_db(
     parameters: dict[str, Any] = {}
     normalized_predicate = validate_relationship_type(predicate)
     match_clause = f"MATCH (s:Entity)-[r:`{normalized_predicate}`]->(o) "
-    
+
     conditions.append("s.name = $subject_param")
     parameters["subject_param"] = subject.strip()
-    
+
     if chapter_limit is not None:
         conditions.append(f"r.{KG_REL_CHAPTER_ADDED} <= $chapter_limit_param")
         parameters["chapter_limit_param"] = chapter_limit
@@ -1471,7 +1476,9 @@ async def get_most_recent_value_from_db(
     order_clause = f" ORDER BY r.{KG_REL_CHAPTER_ADDED} DESC, r.confidence DESC"
     limit_clause_str = " LIMIT 1"
 
-    full_query = match_clause + where_clause + return_clause + order_clause + limit_clause_str
+    full_query = (
+        match_clause + where_clause + return_clause + order_clause + limit_clause_str
+    )
     try:
         results = await neo4j_manager.execute_read_query(full_query, parameters)
         if results and results[0] and "object" in results[0]:
@@ -1881,6 +1888,7 @@ async def get_defined_node_labels() -> list[str]:
     try:
         # Start with our canonical schema labels
         from models.kg_constants import NODE_LABELS
+
         # Also explicitly import enhanced node labels for clarity
         # Verify that NODE_LABELS contains all enhanced labels
         schema_labels = sorted(list(NODE_LABELS))
@@ -2341,7 +2349,7 @@ async def create_relationship_with_properties(
     """Create a relationship between two entities by name with optional properties."""
     if not properties:
         properties = {}
-    
+
     # Default properties for bootstrap relationships
     default_props = {
         "source": "bootstrap",
@@ -2349,7 +2357,7 @@ async def create_relationship_with_properties(
         "chapter_added": 0,
     }
     default_props.update(properties)
-    
+
     # Create structured triple data for the batch processor
     triple_data = {
         "subject": {"name": subject_name.strip()},
@@ -2357,17 +2365,17 @@ async def create_relationship_with_properties(
         "object_entity": {"name": object_name.strip()},
         "is_literal_object": False,
         "subject_type": "Entity",  # Will be refined by validation
-        "object_type": "Entity",   # Will be refined by validation
+        "object_type": "Entity",  # Will be refined by validation
         "properties": default_props,
     }
-    
+
     # Use existing batch infrastructure to create the relationship
     await add_kg_triples_batch_to_db(
         [triple_data],
         chapter_number=properties.get("chapter_added", 0),
-        is_from_flawed_draft=False
+        is_from_flawed_draft=False,
     )
-    
+
     logger.debug(
         f"Created relationship: {subject_name} {relationship_type} {object_name} "
         f"with properties: {default_props}"

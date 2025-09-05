@@ -7,16 +7,16 @@ pipeline to validate relationship semantics before they are stored in the databa
 
 REFACTORED: This module has been refactored as part of Phase 3 architectural improvements.
 - Type inference logic extracted to core.type_inference_service
-- Complex triple processing extracted to core.triple_processor  
+- Complex triple processing extracted to core.triple_processor
 - Global validator instance replaced with dependency injection via core.validation_service_provider
 """
 
 from typing import Any
 
 import structlog
-import models.kg_constants
 
 import config
+import models.kg_constants
 from core.relationship_constraints import (
     get_all_valid_relationships_for_node_pair,
     get_relationship_suggestions,
@@ -26,9 +26,11 @@ from core.relationship_constraints import (
 try:  # pragma: no cover - fallback when data access layer unavailable
     from data_access.kg_queries import validate_relationship_type
 except Exception:  # pragma: no cover
+
     def validate_relationship_type(proposed_type: str) -> str:
         """Fallback normalizer when data layer is unavailable."""
         return proposed_type.upper()
+
 
 logger = structlog.get_logger(__name__)
 
@@ -36,9 +38,9 @@ logger = structlog.get_logger(__name__)
 def validate_relationship_types(rel_types: list[str]) -> list[str]:
     """
     DEPRECATED: This function is deprecated and should not be used in new code.
-    
+
     Validate relationship types against the predefined narrative taxonomy.
-    
+
     MIGRATION: Use the new validation service provider with proper dependency injection:
         from core.validation_service_provider import get_validation_service
         validation_service = get_validation_service()
@@ -84,9 +86,9 @@ def validate_relationship_types(rel_types: list[str]) -> list[str]:
 def suggest_relationship_normalization(rel_types: list[str]) -> dict[str, str]:
     """
     DEPRECATED: This function is deprecated and should not be used in new code.
-    
+
     Suggest normalizations for relationship types that don't match the predefined taxonomy.
-    
+
     MIGRATION: Use the new validation service provider with proper dependency injection:
         from core.validation_service_provider import get_validation_service
         validation_service = get_validation_service()
@@ -100,6 +102,7 @@ def suggest_relationship_normalization(rel_types: list[str]) -> dict[str, str]:
         if isinstance(rel_type, str) and rel_type.strip():
             if rel_type not in models.kg_constants.RELATIONSHIP_TYPES:
                 from data_access.kg_queries import normalize_relationship_type
+
                 normalized = normalize_relationship_type(rel_type)
                 if (
                     normalized in models.kg_constants.RELATIONSHIP_TYPES
@@ -137,7 +140,7 @@ class ValidationResult:
 class RelationshipConstraintValidator:
     """
     Main validation engine for relationship constraints.
-    
+
     REFACTORED: Simplified to focus only on core relationship validation logic.
     Complex type inference and triple processing have been extracted to separate services.
     """
@@ -348,7 +351,10 @@ class RelationshipConstraintValidator:
 
     def _get_relationship_category(self, relationship: str) -> str | None:
         """Determine which category a relationship belongs to."""
-        for category, relationships in models.kg_constants.RELATIONSHIP_CATEGORIES.items():
+        for (
+            category,
+            relationships,
+        ) in models.kg_constants.RELATIONSHIP_CATEGORIES.items():
             if relationship in relationships:
                 return category
         return None
@@ -356,7 +362,7 @@ class RelationshipConstraintValidator:
     def validate_triple(self, triple_dict: dict[str, Any]) -> ValidationResult:
         """
         Validate a complete triple from the extraction pipeline.
-        
+
         REFACTORED: Simplified to use TripleProcessor for complex extraction logic.
         This method now focuses only on orchestrating validation rather than handling
         complex type inference and entity extraction.
@@ -368,21 +374,23 @@ class RelationshipConstraintValidator:
             # Use triple processor to extract and prepare entity information
             triple_processor = self._get_triple_processor()
             processed_triple = triple_processor.process_triple(triple_dict)
-            
+
             if not processed_triple:
                 # Triple processing failed
                 return ValidationResult(
                     is_valid=False,
                     original_relationship=triple_dict.get("predicate", "UNKNOWN"),
-                    errors=["Failed to process triple - invalid or incomplete information"],
+                    errors=[
+                        "Failed to process triple - invalid or incomplete information"
+                    ],
                 )
 
             # Delegate to relationship validation with processed information
             return self.validate_relationship(
                 processed_triple["subject_type"],
-                processed_triple["predicate"], 
+                processed_triple["predicate"],
                 processed_triple["object_type"],
-                triple_dict  # Pass original context
+                triple_dict,  # Pass original context
             )
 
         except Exception as e:
@@ -392,18 +400,19 @@ class RelationshipConstraintValidator:
                 original_relationship=triple_dict.get("predicate", "UNKNOWN"),
                 errors=[f"Validation error: {str(e)}"],
             )
-    
+
     def _get_triple_processor(self):
         """Get triple processor via dependency injection."""
         if self._triple_processor is None:
             # Use lazy initialization with dependency injection
             try:
                 from core.triple_processor import TripleProcessor
+
                 self._triple_processor = TripleProcessor()
             except Exception as e:
                 logger.error(f"Failed to initialize triple processor: {e}")
                 raise
-        
+
         return self._triple_processor
 
     def validate_batch(self, triples: list[dict[str, Any]]) -> list[ValidationResult]:
@@ -450,6 +459,7 @@ class RelationshipConstraintValidator:
 # The global validator instance has been replaced with service provider pattern
 # for better testability, thread safety, and dependency management.
 
+
 def validate_relationship_constraint(
     subject_type: str,
     predicate: str,
@@ -464,6 +474,7 @@ def validate_relationship_constraint(
     """
     try:
         from core.validation_service_provider import get_validation_service
+
         validation_service = get_validation_service()
         return validation_service.validate_relationship(
             subject_type, predicate, object_type, context
@@ -486,6 +497,7 @@ def validate_triple_constraint(triple_dict: dict[str, Any]) -> ValidationResult:
     """
     try:
         from core.validation_service_provider import get_validation_service
+
         validation_service = get_validation_service()
         return validation_service.validate_triple(triple_dict)
     except Exception as e:
@@ -504,6 +516,7 @@ def validate_batch_constraints(triples: list[dict[str, Any]]) -> list[Validation
     """
     try:
         from core.validation_service_provider import get_validation_service
+
         validation_service = get_validation_service()
         return validation_service.validate_batch(triples)
     except Exception as e:
@@ -519,6 +532,7 @@ def get_relationship_alternatives(
     """Get suggested alternative relationships for a node type pair."""
     try:
         from core.validation_service_provider import get_validation_service
+
         validation_service = get_validation_service()
         return validation_service.suggest_alternatives(subject_type, object_type)
     except Exception as e:
@@ -532,6 +546,7 @@ def get_validation_stats() -> dict[str, Any]:
     """Get current validation statistics."""
     try:
         from core.validation_service_provider import get_validation_service
+
         validation_service = get_validation_service()
         return validation_service.get_validation_statistics()
     except Exception as e:
@@ -573,7 +588,7 @@ def should_accept_relationship(
 ) -> bool:
     """
     CREATIVE WRITING MODE: Always accept relationships for narrative flexibility.
-    
+
     Creative writing systems need maximum flexibility to explore narrative possibilities.
     Rigid constraints inhibit storytelling creativity and prevent interesting relationships.
 
@@ -586,9 +601,11 @@ def should_accept_relationship(
     """
     # ALWAYS ACCEPT for creative writing - no more rejections!
     # Creative writers should be free to explore any relationship they can imagine
-    
+
     if not validation_result.is_valid:
         # Log the creative usage for learning but don't reject
-        logger.debug(f"Creative relationship usage: {validation_result.errors} - allowing for narrative exploration")
-    
+        logger.debug(
+            f"Creative relationship usage: {validation_result.errors} - allowing for narrative exploration"
+        )
+
     return True  # Always accept - creativity over constraints!

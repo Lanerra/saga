@@ -9,7 +9,9 @@ def test_plugin_category_loading():
     import core.relationship_constraints.plugins as plugins_pkg
 
     for _, name, _ in pkgutil.iter_modules(plugins_pkg.__path__):
-        module = importlib.import_module(f"core.relationship_constraints.plugins.{name}")
+        module = importlib.import_module(
+            f"core.relationship_constraints.plugins.{name}"
+        )
         constraints = getattr(module, "RELATIONSHIP_CONSTRAINTS", {})
         assert constraints, f"{name} provides no constraints"
         first_rel = next(iter(constraints.keys()))
@@ -21,7 +23,9 @@ def test_plugin_example_valid():
     import core.relationship_constraints.plugins as plugins_pkg
 
     for _, name, _ in pkgutil.iter_modules(plugins_pkg.__path__):
-        module = importlib.import_module(f"core.relationship_constraints.plugins.{name}")
+        module = importlib.import_module(
+            f"core.relationship_constraints.plugins.{name}"
+        )
         constraints = getattr(module, "RELATIONSHIP_CONSTRAINTS", {})
         if not constraints:
             continue

@@ -6,7 +6,8 @@ import structlog
 import utils
 from config import NARRATIVE_MODEL, REVISION_EVALUATION_THRESHOLD
 from core.llm_interface import llm_service
-from data_access import chapter_queries, character_queries, world_queries
+from data_access import chapter_queries, world_queries
+
 # Import native versions for performance optimization
 from data_access.character_queries import get_character_profiles_native
 from models import ProblemDetail
@@ -125,7 +126,9 @@ class RevisionAgent:
         )
         char_profiles_plain_text = (
             await get_filtered_character_profiles_for_prompt_plain_text(
-                [char.name for char in characters],  # Extract names from CharacterProfile objects
+                [
+                    char.name for char in characters
+                ],  # Extract names from CharacterProfile objects
                 chapter_number - 1,
             )
         )
@@ -443,9 +446,7 @@ class RevisionAgent:
         # Fetch character and world data if not provided (empty parameters)
         if not character_names:
             logger.info("Fetching character profiles from database for evaluation...")
-            character_profiles_dict = (
-                await get_character_profiles_native()
-            )
+            character_profiles_dict = await get_character_profiles_native()
             character_names = [profile.name for profile in character_profiles_dict]
             logger.info(
                 f"Found {len(character_names)} characters for evaluation: {character_names}"

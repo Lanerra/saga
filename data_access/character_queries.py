@@ -3,14 +3,14 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore
-from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
+from neo4j.exceptions import ServiceUnavailable  # type: ignore
 
 import config
 import utils
 from core.db_manager import neo4j_manager
 from core.schema_validator import validate_kg_object
 from models import CharacterProfile
-from neo4j.exceptions import ServiceUnavailable  # type: ignore
+from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
 from .cypher_builders.character_cypher import (
     TRAIT_NAME_TO_CANONICAL,

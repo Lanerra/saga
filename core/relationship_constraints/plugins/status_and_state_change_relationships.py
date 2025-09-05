@@ -1,4 +1,5 @@
 """Relationship constraints for category: status_and_state_change_relationships."""
+
 from models.kg_constants import NODE_LABELS
 
 from ..classifications import NodeClassifications

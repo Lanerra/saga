@@ -9,7 +9,6 @@ separating concerns from the main validation logic to improve maintainability.
 from typing import Any
 
 import structlog
-import models.kg_constants
 
 logger = structlog.get_logger(__name__)
 
@@ -17,7 +16,7 @@ logger = structlog.get_logger(__name__)
 class TripleProcessor:
     """
     Service for processing and preparing triples for validation.
-    
+
     This class handles the complex logic of extracting and preparing entity
     information from triple dictionaries, separating this concern from the
     core validation logic.
@@ -26,7 +25,7 @@ class TripleProcessor:
     def __init__(self, type_inference_service=None):
         """
         Initialize the triple processor.
-        
+
         Args:
             type_inference_service: Service for inferring entity types.
                                   If None, will use dependency injection to get one.
@@ -36,7 +35,7 @@ class TripleProcessor:
             "total_triples_processed": 0,
             "successful_extractions": 0,
             "extraction_errors": 0,
-            "type_inferences": 0
+            "type_inferences": 0,
         }
 
     def process_triple(self, triple_dict: dict[str, Any]) -> dict[str, Any] | None:
@@ -94,7 +93,9 @@ class TripleProcessor:
             self._processing_stats["extraction_errors"] += 1
             return None
 
-    def _extract_subject_info(self, triple_dict: dict[str, Any]) -> dict[str, Any] | None:
+    def _extract_subject_info(
+        self, triple_dict: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Extract and validate subject information from triple."""
         subject_info = triple_dict.get("subject")
         if not isinstance(subject_info, dict):
@@ -107,13 +108,15 @@ class TripleProcessor:
             return None
 
         # Use type inference service to get proper subject type
-        subject_type = self._get_type_inference_service().infer_subject_type(subject_info)
+        subject_type = self._get_type_inference_service().infer_subject_type(
+            subject_info
+        )
         self._processing_stats["type_inferences"] += 1
 
         return {
             "name": str(subject_name).strip(),
             "type": subject_type,
-            "original_info": subject_info
+            "original_info": subject_info,
         }
 
     def _extract_predicate(self, triple_dict: dict[str, Any]) -> str | None:
@@ -125,7 +128,9 @@ class TripleProcessor:
 
         return str(predicate).strip()
 
-    def _extract_object_info(self, triple_dict: dict[str, Any]) -> dict[str, Any] | None:
+    def _extract_object_info(
+        self, triple_dict: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Extract and validate object information from triple."""
         is_literal_object = triple_dict.get("is_literal_object", False)
 
@@ -133,14 +138,16 @@ class TripleProcessor:
             # Handle literal objects
             literal_value = triple_dict.get("object_literal")
             if literal_value is None:
-                logger.warning(f"Missing literal value in literal triple: {triple_dict}")
+                logger.warning(
+                    f"Missing literal value in literal triple: {triple_dict}"
+                )
                 return None
 
             return {
                 "type": "ValueNode",
                 "name": str(literal_value),
                 "is_literal": True,
-                "original_value": literal_value
+                "original_value": literal_value,
             }
         else:
             # Handle entity objects
@@ -164,7 +171,7 @@ class TripleProcessor:
                 "type": object_type,
                 "name": str(object_name).strip(),
                 "is_literal": False,
-                "original_info": object_entity_info
+                "original_info": object_entity_info,
             }
 
     def _get_type_inference_service(self):
@@ -173,11 +180,13 @@ class TripleProcessor:
             # Use dependency injection to get the service
             try:
                 from core.validation_service_provider import get_type_inference_service
+
                 self._type_inference_service = get_type_inference_service()
             except Exception as e:
                 logger.error(f"Failed to get type inference service: {e}")
                 # Fallback to direct import
                 from core.type_inference_service import TypeInferenceService
+
                 self._type_inference_service = TypeInferenceService()
 
         return self._type_inference_service
@@ -193,7 +202,7 @@ class TripleProcessor:
             List of processed triple information (excluding invalid triples)
         """
         processed_triples = []
-        
+
         for triple_dict in triples:
             processed = self.process_triple(triple_dict)
             if processed:
@@ -210,9 +219,14 @@ class TripleProcessor:
 
         return {
             **self._processing_stats,
-            "success_rate": self._processing_stats["successful_extractions"] / total * 100,
+            "success_rate": self._processing_stats["successful_extractions"]
+            / total
+            * 100,
             "error_rate": self._processing_stats["extraction_errors"] / total * 100,
-            "avg_inferences_per_triple": self._processing_stats["type_inferences"] / total if total > 0 else 0
+            "avg_inferences_per_triple": self._processing_stats["type_inferences"]
+            / total
+            if total > 0
+            else 0,
         }
 
     def reset_statistics(self):
@@ -221,5 +235,5 @@ class TripleProcessor:
             "total_triples_processed": 0,
             "successful_extractions": 0,
             "extraction_errors": 0,
-            "type_inferences": 0
+            "type_inferences": 0,
         }

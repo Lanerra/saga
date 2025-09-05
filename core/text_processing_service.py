@@ -15,9 +15,9 @@ REFACTORED: Extracted from core.llm_interface as part of Phase 3 architectural i
 
 import functools
 import re
-from typing import Any, Dict, Generator, Tuple
+from collections.abc import Generator
+from typing import Any
 
-import numpy as np
 import structlog
 import tiktoken
 
@@ -29,7 +29,7 @@ logger = structlog.get_logger(__name__)
 class TokenizerService:
     """
     Service for handling tokenization operations.
-    
+
     Provides cached tokenizer access and token-related utilities
     with proper fallback mechanisms.
     """
@@ -41,22 +41,22 @@ class TokenizerService:
             "tokenizer_requests": 0,
             "cache_hits": 0,
             "cache_misses": 0,
-            "fallback_used": 0
+            "fallback_used": 0,
         }
 
     @functools.lru_cache(maxsize=config.TOKENIZER_CACHE_SIZE)
     def get_tokenizer(self, model_name: str) -> tiktoken.Encoding | None:
         """
         Get a tiktoken encoder for the given model name, with caching.
-        
+
         Args:
             model_name: Name of the model to get tokenizer for
-            
+
         Returns:
             Tokenizer encoding or None if unavailable
         """
         self._stats["tokenizer_requests"] += 1
-        
+
         if model_name in self._tokenizer_cache:
             self._stats["cache_hits"] += 1
             return self._tokenizer_cache[model_name]
@@ -79,14 +79,14 @@ class TokenizerService:
                 f"Tokenizer for model '{model_name}' (using actual encoder '{encoder.name}') found and cached."
             )
             return encoder
-            
+
         except KeyError:
             logger.error(
                 f"Default tiktoken encoding '{config.TIKTOKEN_DEFAULT_ENCODING}' also not found. "
                 f"Token counting will fall back to character-based heuristic for '{model_name}'."
             )
             return None
-            
+
         except Exception as e:
             logger.error(
                 f"Unexpected error getting tokenizer for '{model_name}': {e}",
@@ -97,11 +97,11 @@ class TokenizerService:
     def count_tokens(self, text: str, model_name: str) -> int:
         """
         Count the number of tokens in a string for a given model.
-        
+
         Args:
             text: Text to count tokens for
             model_name: Model to use for tokenization
-            
+
         Returns:
             Number of tokens in the text
         """
@@ -132,13 +132,13 @@ class TokenizerService:
     ) -> str:
         """
         Truncate text to a maximum number of tokens for a given model.
-        
+
         Args:
             text: Text to truncate
             model_name: Model to use for tokenization
             max_tokens: Maximum number of tokens to keep
             truncation_marker: Marker to add when text is truncated
-            
+
         Returns:
             Truncated text with marker if applicable
         """
@@ -220,15 +220,19 @@ class TokenizerService:
         total_requests = self._stats["tokenizer_requests"]
         return {
             **self._stats,
-            "cache_hit_rate": (self._stats["cache_hits"] / total_requests * 100) if total_requests > 0 else 0,
-            "fallback_rate": (self._stats["fallback_used"] / total_requests * 100) if total_requests > 0 else 0
+            "cache_hit_rate": (self._stats["cache_hits"] / total_requests * 100)
+            if total_requests > 0
+            else 0,
+            "fallback_rate": (self._stats["fallback_used"] / total_requests * 100)
+            if total_requests > 0
+            else 0,
         }
 
 
 class ResponseCleaningService:
     """
     Service for cleaning and normalizing LLM responses.
-    
+
     Handles removal of common artifacts, think tags, and other
     unwanted content from LLM outputs.
     """
@@ -240,16 +244,24 @@ class ResponseCleaningService:
             "think_tags_removed": 0,
             "code_blocks_cleaned": 0,
             "phrases_removed": 0,
-            "significant_reductions": 0  # >0.5% reduction
+            "significant_reductions": 0,  # >0.5% reduction
         }
 
         # Pre-compile regex patterns for better performance
         self._think_tags = [
-            "think", "thought", "thinking", "reasoning", "rationale",
-            "meta", "reflection", "internal_monologue", "plan",
-            "analysis", "no_think"
+            "think",
+            "thought",
+            "thinking",
+            "reasoning",
+            "rationale",
+            "meta",
+            "reflection",
+            "internal_monologue",
+            "plan",
+            "analysis",
+            "no_think",
         ]
-        
+
         self._compiled_patterns = self._compile_cleaning_patterns()
 
     def _compile_cleaning_patterns(self) -> dict[str, list[re.Pattern]]:
@@ -261,7 +273,7 @@ class ResponseCleaningService:
             "think_closing": [],
             "code_blocks": [],
             "chapter_headers": [],
-            "common_phrases": []
+            "common_phrases": [],
         }
 
         # Think tag patterns
@@ -323,10 +335,10 @@ class ResponseCleaningService:
     def clean_response(self, text: str) -> str:
         """
         Clean common artifacts from LLM text responses.
-        
+
         Args:
             text: Raw LLM response text
-            
+
         Returns:
             Cleaned and normalized text
         """
@@ -346,7 +358,7 @@ class ResponseCleaningService:
             self._compiled_patterns["think_blocks"],
             self._compiled_patterns["think_self_closing"],
             self._compiled_patterns["think_opening"],
-            self._compiled_patterns["think_closing"]
+            self._compiled_patterns["think_closing"],
         ]:
             for pattern in pattern_list:
                 cleaned_text = pattern.sub("", cleaned_text)
@@ -380,13 +392,13 @@ class ResponseCleaningService:
                     cleaned_text = new_text
             else:
                 cleaned_text = pattern.sub("", cleaned_text, count=1).strip()
-            
+
             if len(cleaned_text) < len(original_text):
                 self._stats["phrases_removed"] += 1
 
         # Final normalization
         final_text = cleaned_text.strip()
-        
+
         # Normalize multiple newlines
         final_text = re.sub(r"\n\s*\n(\s*\n)+", "\n\n", final_text)
         final_text = re.sub(r"\n{3,}", "\n\n", final_text)
@@ -410,24 +422,40 @@ class ResponseCleaningService:
         total_cleaned = self._stats["responses_cleaned"]
         return {
             **self._stats,
-            "think_removal_rate": (self._stats["think_tags_removed"] / total_cleaned * 100) if total_cleaned > 0 else 0,
-            "code_cleaning_rate": (self._stats["code_blocks_cleaned"] / total_cleaned * 100) if total_cleaned > 0 else 0,
-            "phrase_removal_rate": (self._stats["phrases_removed"] / total_cleaned * 100) if total_cleaned > 0 else 0,
-            "significant_reduction_rate": (self._stats["significant_reductions"] / total_cleaned * 100) if total_cleaned > 0 else 0
+            "think_removal_rate": (
+                self._stats["think_tags_removed"] / total_cleaned * 100
+            )
+            if total_cleaned > 0
+            else 0,
+            "code_cleaning_rate": (
+                self._stats["code_blocks_cleaned"] / total_cleaned * 100
+            )
+            if total_cleaned > 0
+            else 0,
+            "phrase_removal_rate": (
+                self._stats["phrases_removed"] / total_cleaned * 100
+            )
+            if total_cleaned > 0
+            else 0,
+            "significant_reduction_rate": (
+                self._stats["significant_reductions"] / total_cleaned * 100
+            )
+            if total_cleaned > 0
+            else 0,
         }
 
 
 class StreamProcessingService:
     """
     Service for processing streaming content from LLM APIs.
-    
+
     Handles parsing of streaming responses and accumulation of content.
     """
 
     def __init__(self, response_cleaner: ResponseCleaningService):
         """
         Initialize stream processing service.
-        
+
         Args:
             response_cleaner: Service for cleaning responses
         """
@@ -436,21 +464,19 @@ class StreamProcessingService:
             "streams_processed": 0,
             "chunks_processed": 0,
             "json_errors": 0,
-            "usage_extracted": 0
+            "usage_extracted": 0,
         }
 
     def process_streaming_chunks(
-        self, 
-        chunks: Generator[dict[str, Any], None, None],
-        auto_clean: bool = True
-    ) -> Tuple[str, dict[str, Any] | None]:
+        self, chunks: Generator[dict[str, Any], None, None], auto_clean: bool = True
+    ) -> tuple[str, dict[str, Any] | None]:
         """
         Process streaming chunks from LLM API into accumulated content.
-        
+
         Args:
             chunks: Generator of parsed JSON chunks
             auto_clean: Whether to auto-clean the final response
-            
+
         Returns:
             Tuple of (accumulated_content, usage_data)
         """
@@ -460,7 +486,7 @@ class StreamProcessingService:
 
         for chunk_data in chunks:
             self._stats["chunks_processed"] += 1
-            
+
             try:
                 if chunk_data.get("choices"):
                     delta = chunk_data["choices"][0].get("delta", {})
@@ -471,13 +497,15 @@ class StreamProcessingService:
                     # Check for finish reason and extract usage
                     if chunk_data["choices"][0].get("finish_reason") is not None:
                         potential_usage = chunk_data.get("usage")
-                        
+
                         # Check for Groq-specific usage location
-                        if (not potential_usage 
-                            and chunk_data.get("x_groq") 
-                            and chunk_data["x_groq"].get("usage")):
+                        if (
+                            not potential_usage
+                            and chunk_data.get("x_groq")
+                            and chunk_data["x_groq"].get("usage")
+                        ):
                             potential_usage = chunk_data["x_groq"]["usage"]
-                            
+
                         if potential_usage and isinstance(potential_usage, dict):
                             usage_data = potential_usage
                             self._stats["usage_extracted"] += 1
@@ -488,7 +516,9 @@ class StreamProcessingService:
 
         # Clean the accumulated content if requested
         if auto_clean:
-            accumulated_content = self._response_cleaner.clean_response(accumulated_content)
+            accumulated_content = self._response_cleaner.clean_response(
+                accumulated_content
+            )
 
         return accumulated_content, usage_data
 
@@ -496,19 +526,27 @@ class StreamProcessingService:
         """Get stream processing statistics."""
         total_streams = self._stats["streams_processed"]
         total_chunks = self._stats["chunks_processed"]
-        
+
         return {
             **self._stats,
-            "avg_chunks_per_stream": (total_chunks / total_streams) if total_streams > 0 else 0,
-            "chunk_error_rate": (self._stats["json_errors"] / total_chunks * 100) if total_chunks > 0 else 0,
-            "usage_extraction_rate": (self._stats["usage_extracted"] / total_streams * 100) if total_streams > 0 else 0
+            "avg_chunks_per_stream": (total_chunks / total_streams)
+            if total_streams > 0
+            else 0,
+            "chunk_error_rate": (self._stats["json_errors"] / total_chunks * 100)
+            if total_chunks > 0
+            else 0,
+            "usage_extraction_rate": (
+                self._stats["usage_extracted"] / total_streams * 100
+            )
+            if total_streams > 0
+            else 0,
         }
 
 
 class TextProcessingService:
     """
     Main text processing service that coordinates all text-related operations.
-    
+
     This service provides a unified interface for all text processing needs,
     combining tokenization, cleaning, and streaming functionality.
     """
@@ -518,7 +556,7 @@ class TextProcessingService:
         self.tokenizer = TokenizerService()
         self.response_cleaner = ResponseCleaningService()
         self.stream_processor = StreamProcessingService(self.response_cleaner)
-        
+
         logger.info("TextProcessingService initialized with all sub-services")
 
     def get_combined_statistics(self) -> dict[str, Any]:
@@ -526,7 +564,7 @@ class TextProcessingService:
         return {
             "tokenizer": self.tokenizer.get_statistics(),
             "response_cleaner": self.response_cleaner.get_statistics(),
-            "stream_processor": self.stream_processor.get_statistics()
+            "stream_processor": self.stream_processor.get_statistics(),
         }
 
 

@@ -219,12 +219,8 @@ class NANA_Orchestrator:
             f"\n--- SAGA: Pre-populating Knowledge Graph from Initial Data (Plot Source: '{plot_source}') ---"
         )
 
-        profile_objs: list[
-            CharacterProfile
-        ] = await get_character_profiles_native()
-        world_objs: list[
-            WorldItem
-        ] = await get_world_building_native()
+        profile_objs: list[CharacterProfile] = await get_character_profiles_native()
+        world_objs: list[WorldItem] = await get_world_building_native()
 
         await self.knowledge_agent.persist_profiles(
             profile_objs, config.KG_PREPOPULATION_CHAPTER_NUM
@@ -1477,28 +1473,34 @@ class NANA_Orchestrator:
         """Refresh dynamic schema patterns after chapter completion."""
         try:
             # Only refresh if dynamic schema is enabled
-            if not getattr(config.settings, 'ENABLE_DYNAMIC_SCHEMA', True):
+            if not getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
                 return
-                
-            logger.info(f"Refreshing dynamic schema patterns after chapter {chapter_number} completion...")
-            
+
+            logger.info(
+                f"Refreshing dynamic schema patterns after chapter {chapter_number} completion..."
+            )
+
             # Import here to avoid circular dependencies
             from core.dynamic_schema_manager import dynamic_schema_manager
-            
+
             # Trigger pattern refresh - this will re-learn from all entities including new ones
             await dynamic_schema_manager.initialize(force_refresh=True)
-            
+
             # Get status for logging
             status = await dynamic_schema_manager.get_system_status()
             type_patterns = status.get("type_inference", {}).get("total_patterns", 0)
             constraints = status.get("constraints", {}).get("total_constraints", 0)
-            
-            logger.info(f"Dynamic schema refresh complete after chapter {chapter_number}: "
-                       f"{type_patterns} type patterns, {constraints} relationship constraints")
-                       
+
+            logger.info(
+                f"Dynamic schema refresh complete after chapter {chapter_number}: "
+                f"{type_patterns} type patterns, {constraints} relationship constraints"
+            )
+
         except Exception as e:
             # Don't fail chapter completion if schema refresh fails
-            logger.warning(f"Failed to refresh dynamic schema patterns after chapter {chapter_number}: {e}")
+            logger.warning(
+                f"Failed to refresh dynamic schema patterns after chapter {chapter_number}: {e}"
+            )
 
 
 def setup_logging_nana():

@@ -2,11 +2,11 @@
 from typing import Any
 
 import structlog
-from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 
 import config
 import utils
 from models import CharacterProfile
+from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 
 TRAIT_NAME_TO_CANONICAL: dict[str, str] = {}
 

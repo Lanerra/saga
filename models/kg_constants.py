@@ -259,7 +259,7 @@ ABILITY_RELATIONSHIPS = {
 # Status/State Relationships
 STATUS_RELATIONSHIPS = {
     "HAS_STATUS",  # Current state/condition
-    "STATUS_IS",   # Alternative form of HAS_STATUS (legacy support)
+    "STATUS_IS",  # Alternative form of HAS_STATUS (legacy support)
     "IS_DEAD",  # Death state
     "IS_ALIVE",  # Life state
     "IS_MISSING",  # Absence state
@@ -458,7 +458,7 @@ RELATIONSHIP_NORMALIZATIONS = {
     "directed_at": "TARGETS",
     # Status relationship normalizations
     "status_is": "HAS_STATUS",
-    "current_status": "HAS_STATUS", 
+    "current_status": "HAS_STATUS",
     "state_is": "HAS_STATUS",
     # Generic fallbacks - these should be used sparingly
     "is_a": "IS_A",  # Only for true type relationships

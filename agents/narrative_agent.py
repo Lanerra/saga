@@ -65,17 +65,17 @@ class NarrativeAgent:
         prev_chap_data = await chapter_queries.get_chapter_data_from_db(
             chapter_number - 1
         )
-        
+
         if prev_chap_data:
             prev_summary = prev_chap_data.get("summary")
             prev_is_provisional = prev_chap_data.get("is_provisional", False)
-            
+
             summary_prefix = (
                 "[Provisional Summary from Prev Ch] "
                 if prev_is_provisional and prev_summary
                 else "[Summary from Prev Ch] "
             )
-            
+
             if prev_summary:
                 context_summary_parts.append(
                     f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:config.settings.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS].strip()}...\n"
@@ -93,7 +93,6 @@ class NarrativeAgent:
                     )
 
         return "".join(context_summary_parts)
-
 
     def _parse_llm_scene_plan_output(
         self, json_text: str, chapter_number: int
@@ -254,7 +253,7 @@ class NarrativeAgent:
         strategies = [
             # Strategy 1: Extract complete JSON array
             (r"\[\s*\{.*\}\s*\]", 0),
-            # Strategy 2: Extract from code blocks  
+            # Strategy 2: Extract from code blocks
             (r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", 1),
         ]
 
@@ -541,7 +540,9 @@ class NarrativeAgent:
 
             prompt_tokens = self._cached_count_tokens(prompt, self.model)
             available_for_generation = (
-                self.config.MAX_CONTEXT_TOKENS - prompt_tokens - config.settings.NARRATIVE_TOKEN_BUFFER
+                self.config.MAX_CONTEXT_TOKENS
+                - prompt_tokens
+                - config.settings.NARRATIVE_TOKEN_BUFFER
             )  # Safety buffer
             max_gen_tokens = min(
                 self.config.MAX_GENERATION_TOKENS // 2, available_for_generation
@@ -647,7 +648,9 @@ class NarrativeAgent:
             prompt_tokens = self._cached_count_tokens(prompt, self.model)
             max_gen_tokens = min(
                 self.config.MAX_GENERATION_TOKENS,
-                self.config.MAX_CONTEXT_TOKENS - prompt_tokens - config.settings.NARRATIVE_TOKEN_BUFFER // 2,
+                self.config.MAX_CONTEXT_TOKENS
+                - prompt_tokens
+                - config.settings.NARRATIVE_TOKEN_BUFFER // 2,
             )
             chapter_text, usage_data = await llm_service.async_call_llm(
                 model_name=self.model,
@@ -763,7 +766,6 @@ class NarrativeAgent:
 
         logger.info("Quality checks passed")
         return True
-
 
     async def generate_chapter(
         self,

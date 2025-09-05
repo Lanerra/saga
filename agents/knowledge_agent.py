@@ -9,7 +9,6 @@ from typing import Any
 from async_lru import alru_cache  # type: ignore
 
 import config
-import utils  # Ensure utils is imported for normalize_trait_name
 from core.db_manager import neo4j_manager
 from core.knowledge_graph_service import knowledge_graph_service
 from core.llm_interface import llm_service
@@ -23,6 +22,7 @@ from data_access import (
     plot_queries,
     world_queries,
 )
+
 # Import native versions for performance optimization
 from data_access.character_queries import (
     sync_characters_native,
@@ -165,8 +165,6 @@ def _normalize_attributes(
     return normalized_attrs
 
 
-
-
 def parse_unified_character_updates(
     json_text_block: str, chapter_number: int
 ) -> dict[str, CharacterProfile]:
@@ -197,22 +195,26 @@ def parse_unified_character_updates(
         traits = []
         skills = []
         relationships = {}
-        
+
         # Process key attributes efficiently
         if "traits" in raw_attributes:
             traits_val = raw_attributes["traits"]
             if isinstance(traits_val, list):
                 traits = [str(item).strip() for item in traits_val if str(item).strip()]
             elif isinstance(traits_val, str):
-                traits = [item.strip() for item in traits_val.split(",") if item.strip()]
-        
+                traits = [
+                    item.strip() for item in traits_val.split(",") if item.strip()
+                ]
+
         if "skills" in raw_attributes:
             skills_val = raw_attributes["skills"]
             if isinstance(skills_val, list):
                 skills = [str(item).strip() for item in skills_val if str(item).strip()]
             elif isinstance(skills_val, str):
-                skills = [item.strip() for item in skills_val.split(",") if item.strip()]
-        
+                skills = [
+                    item.strip() for item in skills_val.split(",") if item.strip()
+                ]
+
         if "relationships" in raw_attributes:
             rels_val = raw_attributes["relationships"]
             if isinstance(rels_val, dict):
@@ -283,7 +285,7 @@ def parse_unified_world_updates(
                 # Create model directly without dict intermediate
                 # Generate ID from name and category
                 item_id = f"{category_name_llm.lower().replace(' ', '_')}_{item_name_llm.lower().replace(' ', '_')}"
-                
+
                 world_item_instance = WorldItem(
                     id=item_id,
                     name=item_name_llm,
@@ -533,7 +535,6 @@ class KnowledgeAgent:
         """Parse world update text into structured items."""
         return parse_unified_world_updates(text, chapter_number)
 
-
     def merge_updates(
         self,
         current_profiles: dict[str, CharacterProfile],
@@ -558,7 +559,7 @@ class KnowledgeAgent:
         full_sync: bool = False,
     ) -> None:
         """Persist character profiles to Neo4j with enhanced validation."""
-        
+
         # Handle both dict and list input formats
         profiles_list = []
         if isinstance(profiles_to_persist, dict):
@@ -566,16 +567,20 @@ class KnowledgeAgent:
             for name, profile in profiles_to_persist.items():
                 validation_errors = validate_kg_object(profile)
                 if validation_errors:
-                    logger.warning(f"Validation issues for character profile {name}: {validation_errors}")
+                    logger.warning(
+                        f"Validation issues for character profile {name}: {validation_errors}"
+                    )
             profiles_list = list(profiles_to_persist.values())
         else:
             # Validate all profiles before persisting
             for profile in profiles_to_persist:
                 validation_errors = validate_kg_object(profile)
                 if validation_errors:
-                    logger.warning(f"Validation issues for character profile {profile.name}: {validation_errors}")
+                    logger.warning(
+                        f"Validation issues for character profile {profile.name}: {validation_errors}"
+                    )
             profiles_list = profiles_to_persist
-        
+
         # Use native model version for better performance
         await sync_characters_native(profiles_list, chapter_number_for_delta)
 
@@ -587,25 +592,26 @@ class KnowledgeAgent:
     ) -> None:
         """Persist world elements to Neo4j with enhanced node typing and validation."""
         if config.BOOTSTRAP_USE_ENHANCED_NODE_TYPES:
-            from core.enhanced_node_taxonomy import suggest_better_node_type
             from core.schema_validator import validate_kg_object
-            
+
             # Handle both dict and list input formats
             if isinstance(world_items_to_persist, dict):
                 # Enhance world items with proper node typing and validation
                 for category, items_dict in world_items_to_persist.items():
                     if not isinstance(items_dict, dict):
                         continue
-                        
+
                     for item_name, item in items_dict.items():
                         if not isinstance(item, WorldItem):
                             continue
-                            
+
                         # Validate and enhance with better node typing
                         validation_errors = validate_kg_object(item)
                         if validation_errors:
-                            logger.warning(f"Validation issues for world item {category}/{item_name}: {validation_errors}")
-        
+                            logger.warning(
+                                f"Validation issues for world item {category}/{item_name}: {validation_errors}"
+                            )
+
         # Use native model version for better performance
         # Convert to list format if needed
         if isinstance(world_items_to_persist, dict):
@@ -616,7 +622,7 @@ class KnowledgeAgent:
                     world_items_list.extend(category_items.values())
         else:
             world_items_list = world_items_to_persist
-            
+
         await sync_world_items_native(world_items_list, chapter_number_for_delta)
 
     async def add_plot_point(self, description: str, prev_plot_point_id: str) -> str:
@@ -757,7 +763,6 @@ class KnowledgeAgent:
                     f"to '{bridge_candidates[0].get('name')}' to establish narrative presence."
                 )
 
-
     async def extract_and_merge_knowledge(
         self,
         plot_outline: dict[str, Any],
@@ -821,8 +826,10 @@ class KnowledgeAgent:
 
             # Log each parsed triple
             for triple in parsed_triples_structured:
-                object_value = triple.get('object_entity', triple.get('object_literal'))
-                logger.info(f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}")
+                object_value = triple.get("object_entity", triple.get("object_literal"))
+                logger.info(
+                    f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}"
+                )
 
             # Merge updates directly into existing model lists
             self._merge_character_updates_native(
