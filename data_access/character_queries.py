@@ -701,7 +701,7 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
 
 
 # Native model functions for performance optimization
-async def sync_characters_native(
+async def sync_characters(
     characters: list[CharacterProfile],
     chapter_number: int,
 ) -> bool:
@@ -757,7 +757,7 @@ async def sync_characters_native(
         return False
 
 
-async def get_character_profiles_native() -> list[CharacterProfile]:
+async def get_character_profiles() -> list[CharacterProfile]:
     """
     Native model version of get_character_profiles_from_db.
     Returns characters as model instances without dict conversion.

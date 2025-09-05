@@ -3,7 +3,7 @@ import pytest
 
 from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 from utils.ingestion_utils import split_text_into_chapters
 
 

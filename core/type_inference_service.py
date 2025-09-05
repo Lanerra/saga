@@ -30,6 +30,8 @@ class TypeInferenceService:
             "fallbacks_to_entity": 0,
             "inference_errors": 0,
         }
+        # Cache to prevent repeated type upgrade logging for the same entity
+        self._upgrade_logged = set()
 
     def infer_subject_type(self, subject_info: dict[str, Any]) -> str:
         """

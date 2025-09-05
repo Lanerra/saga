@@ -14,6 +14,12 @@ You are an expert knowledge graph extractor for a creative writing project. Your
 **Enhanced Entity Type Selection Guide:**
 Choose the most SPECIFIC node type that fits the entity. Avoid generic types like "Entity" or "WorldElement".
 
+**IMPORTANT FILTERING RULES:**
+- DO NOT create entities for: colors, sounds, lights, feelings, descriptive adjectives, temporary states
+- DO NOT create entities for: atmospheric descriptions, sensory details, metaphors, or literary devices
+- FOCUS ON: concrete characters, objects, locations, organizations, and major story concepts only
+- Only extract entities that are NAMED or have significant story impact beyond the current scene
+
 **Living Beings:**
 - Character: Main story characters (active participants)
 - Person: Historical figures, mentioned people, inactive individuals
@@ -46,18 +52,17 @@ Choose the most SPECIFIC node type that fits the entity. Avoid generic types lik
 - Material: Building materials, crafting components
 - Energy: Power sources, magical energy, fuel
 
-**Abstract Concepts:**
-- Concept: Ideas, philosophies, abstract notions
-- Law: Rules, regulations, natural laws, edicts
-- Tradition: Cultural practices, customs, rituals
-- Language: Languages, dialects, communication systems
-- Symbol: Symbolic representations, emblems, signs
-- Story: Tales, legends, narratives within the narrative
-- Song: Music, ballads, cultural expressions
-- Dream: Dreams, visions, prophecies
-- Memory: Specific memories, recollections
-- Emotion: Emotional states, feelings
-- Skill: Abilities, talents, competencies
+**Abstract Concepts (Use Sparingly - Only for Major Story Elements):**
+- Concept: Major philosophical ideas central to the plot (NOT emotions or descriptive concepts)
+- Law: Important rules, regulations, natural laws that drive story events
+- Tradition: Significant cultural practices that affect characters or plot
+- Language: Named languages, dialects important to worldbuilding
+- Symbol: Specific named symbols with story significance (NOT general descriptions)
+- Story: Important tales, legends referenced by characters
+- Song: Named songs, ballads with cultural significance
+- Dream: Prophetic dreams or visions that affect the plot
+- Memory: Specific named memories crucial to character development
+- Skill: Named abilities, specific competencies with story impact
 
 **Information & Knowledge:**
 - Lore: Myths, legends, historical knowledge
@@ -123,7 +128,13 @@ Choose the most SPECIFIC node type that fits the entity. Avoid generic types lik
 - For the `predicate`, you **MUST** use an exact match from the available relationship types listed above. Do not use any variations, abbreviations, or similar terms.
 
 **Relationship Selection Guidelines:**
-Choose semantically appropriate relationships that make sense for the entity types involved:
+Choose semantically appropriate relationships that make sense for the entity types involved.
+
+**CRITICAL: Ensure Correct Subject-Verb-Object Direction:**
+- WRONG: "Sound:Resonant Hum | EMITS | Entity:Veil" 
+- CORRECT: "Entity:Veil | EMITS | Sound:Resonant Hum"
+- The SUBJECT (left side) performs the action, OBJECT (right side) receives it
+- Ask: "Who/what is doing the action?" = Subject. "Who/what is receiving/affected?" = Object
 
 **Emotional & Social (require sentient beings):**
 - LOVES, HATES, FEARS, RESPECTS - Only conscious entities can have emotions

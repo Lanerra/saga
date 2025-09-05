@@ -11,7 +11,7 @@ from async_lru import alru_cache  # type: ignore
 import config
 from core.db_manager import neo4j_manager
 from core.knowledge_graph_service import knowledge_graph_service
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 from core.schema_validator import (
     validate_kg_object,
     validate_node_labels,
@@ -25,10 +25,10 @@ from data_access import (
 
 # Import native versions for performance optimization
 from data_access.character_queries import (
-    sync_characters_native,
+    sync_characters,
 )
 from data_access.world_queries import (
-    sync_world_items_native,
+    sync_world_items,
 )
 from models.kg_models import CharacterProfile, WorldItem
 from processing.parsing_utils import (
@@ -582,7 +582,7 @@ class KnowledgeAgent:
             profiles_list = profiles_to_persist
 
         # Use native model version for better performance
-        await sync_characters_native(profiles_list, chapter_number_for_delta)
+        await sync_characters(profiles_list, chapter_number_for_delta)
 
     async def persist_world(
         self,
@@ -623,7 +623,7 @@ class KnowledgeAgent:
         else:
             world_items_list = world_items_to_persist
 
-        await sync_world_items_native(world_items_list, chapter_number_for_delta)
+        await sync_world_items(world_items_list, chapter_number_for_delta)
 
     async def add_plot_point(self, description: str, prev_plot_point_id: str) -> str:
         """Persist a new plot point and link it in sequence."""

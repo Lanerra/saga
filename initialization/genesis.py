@@ -159,9 +159,9 @@ async def _create_bootstrap_relationships(
         if factions:
             faction_names = list(factions.keys())
             if faction_names:
-                faction = faction_names[
-                    hash(char_name) % len(faction_names)
-                ]  # Distribute characters
+                # Use deterministic character-based distribution instead of hash()
+                faction_index = sum(ord(c) for c in char_name) % len(faction_names)
+                faction = faction_names[faction_index]
                 validation_result = validator.validate_relationship(
                     "Character", "MEMBER_OF", "Faction"
                 )
@@ -178,7 +178,10 @@ async def _create_bootstrap_relationships(
         if locations:
             location_names = list(locations.keys())
             if location_names:
-                location = location_names[hash(char_name + "loc") % len(location_names)]
+                # Use deterministic character-based distribution instead of hash()
+                location_key = char_name + "loc"
+                location_index = sum(ord(c) for c in location_key) % len(location_names)
+                location = location_names[location_index]
                 validation_result = validator.validate_relationship(
                     "Character", "LOCATED_IN", "Location"
                 )

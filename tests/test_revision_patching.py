@@ -8,7 +8,7 @@ import pytest
 import config
 import processing.revision_logic as chapter_revision_logic
 from agents.revision_agent import RevisionAgent
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 from processing.revision_logic import _apply_patches_to_text
 from processing.text_deduplicator import TextDeduplicator
 

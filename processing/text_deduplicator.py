@@ -12,7 +12,7 @@ import numpy as np
 
 import config
 import utils
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 
 logger = logging.getLogger(__name__)
 

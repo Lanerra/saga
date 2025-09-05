@@ -7,7 +7,8 @@ import structlog
 
 import config
 from config import NARRATIVE_MODEL
-from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
+from core.llm_interface_refactored import count_tokens, llm_service
+from core.text_processing_service import truncate_text_by_tokens
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
 from processing.context_generator import (
@@ -366,22 +367,20 @@ class NarrativeAgent:
 
         # Use native prompt data getters
         from prompts.prompt_data_getters import (
-            get_character_state_snippet_for_prompt_native,
-            get_world_state_snippet_for_prompt_native,
+            get_character_state_snippet_for_prompt,
+            get_world_state_snippet_for_prompt,
         )
 
         kg_context_section = await get_reliable_kg_facts_for_drafting_prompt(
             plot_outline, chapter_number, None
         )
         character_state_snippet_plain_text = (
-            await get_character_state_snippet_for_prompt_native(
+            await get_character_state_snippet_for_prompt(
                 character_profiles, plot_outline, chapter_number
             )
         )
-        world_state_snippet_plain_text = (
-            await get_world_state_snippet_for_prompt_native(
-                world_building, chapter_number
-            )
+        world_state_snippet_plain_text = await get_world_state_snippet_for_prompt(
+            world_building, chapter_number
         )
 
         # Build future plot context

@@ -20,6 +20,9 @@ from models.kg_constants import (
 
 logger = logging.getLogger(__name__)
 
+# Cache to prevent repeated type upgrade logging for the same entity
+_upgrade_logged = set()
+
 # Valid relationship types for narrative knowledge graphs - use canonical constants
 VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
@@ -1156,9 +1159,12 @@ async def add_kg_triples_batch_to_db(
                 subject_name, subject_category, subject_type
             )
             if upgraded_type != subject_type:
-                logger.info(
-                    f"Type inference upgraded {subject_type} -> {upgraded_type} for '{subject_name}'"
-                )
+                upgrade_key = f"{subject_name}:{subject_type}->{upgraded_type}"
+                if upgrade_key not in _upgrade_logged:
+                    logger.info(
+                        f"Type inference upgraded {subject_type} -> {upgraded_type} for '{subject_name}'"
+                    )
+                    _upgrade_logged.add(upgrade_key)
                 subject_type = upgraded_type
 
         if not all([subject_name, predicate_clean]):
@@ -1274,9 +1280,12 @@ async def add_kg_triples_batch_to_db(
                     object_name, object_category, object_type
                 )
                 if upgraded_object_type != object_type:
-                    logger.info(
-                        f"Type inference upgraded object {object_type} -> {upgraded_object_type} for '{object_name}'"
-                    )
+                    upgrade_key = f"object:{object_name}:{object_type}->{upgraded_object_type}"
+                    if upgrade_key not in _upgrade_logged:
+                        logger.info(
+                            f"Type inference upgraded object {object_type} -> {upgraded_object_type} for '{object_name}'"
+                        )
+                        _upgrade_logged.add(upgrade_key)
                     object_type = upgraded_object_type
 
             object_labels_cypher = _get_cypher_labels(object_type)
@@ -1652,9 +1661,10 @@ async def find_candidate_duplicate_entities(
     Finds pairs of entities with similar names using native Neo4j string similarity.
     """
     query = """
-    MATCH (e1:Entity), (e2:Entity)
+    MATCH (e1), (e2)
     WHERE elementId(e1) < elementId(e2)
       AND e1.name IS NOT NULL AND e2.name IS NOT NULL
+      AND e1.id IS NOT NULL AND e2.id IS NOT NULL
       AND NOT e1:ValueNode AND NOT e2:ValueNode
     // Handle potential StringArray by converting to string if needed
     WITH e1, e2,
@@ -1704,8 +1714,9 @@ async def get_entity_context_for_resolution(
     Gathers comprehensive context for an entity to help an LLM decide on a merge.
     """
     query = """
-    MATCH (e:Entity {id: $entity_id})
-    OPTIONAL MATCH (e)-[r]-(o:Entity)
+    MATCH (e {id: $entity_id})
+    OPTIONAL MATCH (e)-[r]-(o)
+    WHERE o.id IS NOT NULL
     WITH e,
          COUNT(r) as degree,
          COLLECT({
@@ -1725,7 +1736,20 @@ async def get_entity_context_for_resolution(
     params = {"entity_id": entity_id}
     try:
         results = await neo4j_manager.execute_read_query(query, params)
-        return results[0] if results else None
+        if results:
+            return results[0]
+        else:
+            # Debug: Check if entity exists with any labels
+            debug_query = "MATCH (e {id: $entity_id}) RETURN e.name AS name, labels(e) AS labels"
+            debug_results = await neo4j_manager.execute_read_query(debug_query, params)
+            if debug_results:
+                logger.debug(
+                    f"Entity {entity_id} exists with name '{debug_results[0]['name']}' "
+                    f"and labels {debug_results[0]['labels']} but returned no context"
+                )
+            else:
+                logger.debug(f"Entity {entity_id} does not exist in database")
+            return None
     except Exception as e:
         logger.error(
             f"Error getting context for entity resolution (id: {entity_id}): {e}",
@@ -1782,14 +1806,14 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
     # Step 1: Copy properties
     copy_props_query = """
-    MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
+    MATCH (source {id: $source_id}), (target {id: $target_id})
     SET target.description = COALESCE(target.description + ', ' + source.description, source.description, target.description)
     RETURN count(*) as props_copied
     """
 
     # Step 2: Move outgoing relationships
     move_outgoing_query = """
-    MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
+    MATCH (source {id: $source_id}), (target {id: $target_id})
     MATCH (source)-[r]->(other)
     WHERE other.id <> target.id
     WITH source, target, r, other, properties(r) as rel_props
@@ -1804,7 +1828,7 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
     # Step 3: Move incoming relationships
     move_incoming_query = """
-    MATCH (source:Entity {id: $source_id}), (target:Entity {id: $target_id})
+    MATCH (source {id: $source_id}), (target {id: $target_id})
     MATCH (other)-[r]->(source)
     WHERE other.id <> target.id
     WITH source, target, r, other, properties(r) as rel_props
@@ -1819,7 +1843,7 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
     # Step 4: Delete source node
     delete_source_query = """
-    MATCH (source:Entity {id: $source_id})
+    MATCH (source {id: $source_id})
     DETACH DELETE source
     RETURN count(*) as deleted
     """

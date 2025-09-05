@@ -15,7 +15,7 @@ from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from agents.revision_agent import RevisionAgent
 from core.db_manager import neo4j_manager
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 from data_access import (
     chapter_queries,
     character_queries,
@@ -25,10 +25,10 @@ from data_access import (
 
 # Import native versions for performance optimization
 from data_access.character_queries import (
-    get_character_profiles_native,
+    get_character_profiles,
 )
 from data_access.world_queries import (
-    get_world_building_native,
+    get_world_building,
 )
 from initialization.genesis import run_genesis_phase
 from models import (
@@ -219,8 +219,8 @@ class NANA_Orchestrator:
             f"\n--- SAGA: Pre-populating Knowledge Graph from Initial Data (Plot Source: '{plot_source}') ---"
         )
 
-        profile_objs: list[CharacterProfile] = await get_character_profiles_native()
-        world_objs: list[WorldItem] = await get_world_building_native()
+        profile_objs: list[CharacterProfile] = await get_character_profiles()
+        world_objs: list[WorldItem] = await get_world_building()
 
         await self.knowledge_agent.persist_profiles(
             profile_objs, config.KG_PREPOPULATION_CHAPTER_NUM
@@ -476,8 +476,8 @@ class NANA_Orchestrator:
             return current_text, None, patched_spans, None
 
         # Use native queries for optimal performance (Phase 3 optimization)
-        characters_for_revision = await get_character_profiles_native()
-        world_items_for_revision = await get_world_building_native()
+        characters_for_revision = await get_character_profiles()
+        world_items_for_revision = await get_world_building()
 
         # Convert to dict format for existing revision logic (temporary)
         characters_dict = {char.name: char for char in characters_for_revision}
@@ -534,8 +534,8 @@ class NANA_Orchestrator:
         self._update_novel_props_cache()
 
         # Use scene planning for optimal performance
-        characters_for_planning = await get_character_profiles_native()
-        world_items_for_planning = await get_world_building_native()
+        characters_for_planning = await get_character_profiles()
+        world_items_for_planning = await get_world_building()
 
         (
             chapter_plan,
@@ -636,8 +636,8 @@ class NANA_Orchestrator:
         )
         # Prefer using precomputed chapter_plan and hybrid context if available to avoid re-planning and ensure continuity.
         # Use native queries for optimal performance (Phase 3 optimization)
-        characters = await get_character_profiles_native()
-        world_items = await get_world_building_native()
+        characters = await get_character_profiles()
+        world_items = await get_world_building()
         if chapter_plan is not None and hybrid_context_for_draft is not None:
             # Draft the chapter directly using the prepared scenes and context.
             # _draft_chapter expects: plot_outline, chapter_number, plot_point_focus, hybrid_context_for_draft, chapter_plan
@@ -938,8 +938,8 @@ class NANA_Orchestrator:
         embedding = await llm_service.async_get_embedding(final_text_to_process)
 
         # Extract and merge knowledge updates using native models for performance
-        characters = await get_character_profiles_native()
-        world_items = await get_world_building_native()
+        characters = await get_character_profiles()
+        world_items = await get_world_building()
 
         _ = await self.knowledge_agent.extract_and_merge_knowledge(
             self.plot_outline,
