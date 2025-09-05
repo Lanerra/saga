@@ -280,7 +280,7 @@ class EmbeddingHTTPClient:
         )
 
         response = await self._http_client.post_json(
-            f"{config.OLLAMA_EMBED_URL}/api/embeddings", payload
+            f"{config.EMBEDDING_API_BASE}/api/embeddings", payload
         )
 
         return response.json()

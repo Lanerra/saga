@@ -303,7 +303,7 @@ class LLMService:
                 try:
                     self.request_count += 1
                     api_response = await self._client.post(
-                        f"{config.OLLAMA_EMBED_URL}/api/embeddings", json=payload
+                        f"{config.EMBEDDING_API_BASE}/api/embeddings", json=payload
                     )
                     api_response.raise_for_status()
                     data = api_response.json()

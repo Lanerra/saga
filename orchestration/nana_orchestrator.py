@@ -1120,7 +1120,7 @@ class NANA_Orchestrator:
 
     def _validate_critical_configs(self) -> bool:
         critical_str_configs = {
-            "OLLAMA_EMBED_URL": config.OLLAMA_EMBED_URL,
+            "EMBEDDING_API_BASE": config.EMBEDDING_API_BASE,
             "OPENAI_API_BASE": config.OPENAI_API_BASE,
             "EMBEDDING_MODEL": config.EMBEDDING_MODEL,
             "NEO4J_URI": config.NEO4J_URI,

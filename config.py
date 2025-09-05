@@ -62,7 +62,8 @@ class SagaSettings(BaseSettings):
     """Full configuration for the Saga system."""
 
     # API and Model Configuration
-    OLLAMA_EMBED_URL: str = "http://127.0.0.1:11434"
+    EMBEDDING_API_BASE: str = "http://127.0.0.1:11434"
+    EMBEDDING_API_KEY: str = ""
     OPENAI_API_BASE: str = "http://127.0.0.1:8080/v1"
     OPENAI_API_KEY: str = "nope"
 
