@@ -871,7 +871,7 @@ async def revise_chapter_draft_logic(
         )
         sentence_embeddings = await _get_sentence_embeddings(original_text)
         if config.AGENT_ENABLE_PATCH_VALIDATION:
-            validator: RevisionAgent | Any = RevisionAgent()
+            validator: RevisionAgent | Any = RevisionAgent(config)
         else:
 
             class _BypassValidator:
@@ -917,7 +917,7 @@ async def revise_chapter_draft_logic(
 
     use_patched_text_as_final = False
     if patched_text is not None and patched_text != original_text:
-        evaluator = RevisionAgent()
+        evaluator = RevisionAgent(config)
         world_ids = {
             cat: [item.id for item in items.values() if isinstance(item, WorldItem)]
             for cat, items in world_building.items()

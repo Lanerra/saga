@@ -65,7 +65,7 @@ class NANA_Orchestrator:
     def __init__(self):
         logger.info("Initializing SAGA Orchestrator...")
         self.narrative_agent = NarrativeAgent(config)
-        self.revision_agent = RevisionAgent()
+        self.revision_agent = RevisionAgent(config)
         self.knowledge_agent = KnowledgeAgent()
 
         self.plot_outline: dict[str, Any] = {}

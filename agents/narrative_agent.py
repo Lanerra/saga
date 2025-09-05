@@ -783,8 +783,8 @@ class NarrativeAgent:
             logger.error(f"Could not find plot point focus: {plot_point_focus}")
             return "Failed to generate chapter: plot point focus not found", "Error", {}
 
-        # Plan the chapter scenes
-        scenes, planning_usage_data = await self._plan_chapter_scenes(
+        # Plan the chapter scenes using native method
+        scenes, planning_usage_data = await self._plan_chapter_scenes_native(
             plot_outline,
             character_profiles,
             world_building,

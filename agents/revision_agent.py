@@ -22,8 +22,9 @@ logger = structlog.get_logger()
 
 
 class RevisionAgent:
-    def __init__(self, model_name: str = NARRATIVE_MODEL):
+    def __init__(self, config: dict, model_name: str = NARRATIVE_MODEL):
         self.model_name = model_name
+        self.config = config
         self.threshold = REVISION_EVALUATION_THRESHOLD
         logger.info(f"RevisionAgent initialized with model: {self.model_name}")
         utils.load_spacy_model_if_needed()
