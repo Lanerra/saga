@@ -11,7 +11,7 @@ from async_lru import alru_cache  # type: ignore
 import config
 from core.db_manager import neo4j_manager
 from core.knowledge_graph_service import knowledge_graph_service
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 from core.schema_validator import (
     validate_kg_object,
     validate_node_labels,

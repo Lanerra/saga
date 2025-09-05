@@ -45,6 +45,57 @@ def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | Non
     }
 
 
+# Blacklisted entity patterns that should not be created as entities
+ENTITY_BLACKLIST_PATTERNS = [
+    # Sensory/descriptive elements
+    "resonant hum", "pulsing", "violet glow", "glow", "light", "sound", "hum",
+    "color", "bright", "dim", "loud", "quiet", "warm", "cold",
+    # Emotions and feelings
+    "belonging", "fear", "joy", "sadness", "anger", "love", "hate",
+    "feeling", "emotion", "sentiment", "mood",
+    # Abstract descriptive concepts
+    "memory as survival", "return is possible", "awakening", "recognition",
+    # Physical descriptions
+    "height", "weight", "size", "shape", "appearance",
+    # Temporal/ephemeral states
+    "moment", "instant", "second", "minute", "now", "then", "current",
+]
+
+def _should_filter_entity(entity_name: str, entity_type: str = None) -> bool:
+    """
+    Filter out problematic entity names that create noise in the knowledge graph.
+    
+    Args:
+        entity_name: The name of the entity to check
+        entity_type: Optional type for additional filtering
+        
+    Returns:
+        True if entity should be filtered out (not created)
+    """
+    if not entity_name:
+        return True
+        
+    name_lower = entity_name.lower().strip()
+    
+    # Filter very short or generic names
+    if len(name_lower) <= 2:
+        return True
+        
+    # Filter blacklisted patterns
+    for pattern in ENTITY_BLACKLIST_PATTERNS:
+        if pattern in name_lower:
+            return True
+            
+    # Filter entities that are just adjectives or descriptive words
+    descriptive_words = {
+        "beautiful", "ugly", "big", "small", "fast", "slow", "new", "old",
+        "good", "bad", "high", "low", "strong", "weak", "bright", "dark"
+    }
+    if name_lower in descriptive_words:
+        return True
+        
+    return False
+
 def parse_rdf_triples_with_rdflib(
     text_block: str,
     rdf_format: str = "turtle",
@@ -53,6 +104,8 @@ def parse_rdf_triples_with_rdflib(
     Custom parser for LLM-generated plain text triples.
     Expected format: 'SubjectEntityType:SubjectName | Predicate | ObjectEntityType:ObjectName'
                  OR 'SubjectEntityType:SubjectName | Predicate | LiteralValue'
+    
+    Includes filtering to prevent creation of problematic entities.
     """
     logger_func = logging.getLogger(__name__)
     triples_list: list[dict[str, Any]] = []
@@ -145,6 +198,23 @@ def parse_rdf_triples_with_rdflib(
             object_literal_payload = object_text.strip()
             is_literal_object = True
             object_entity_payload = None
+
+        # Apply filtering to prevent problematic entities
+        subject_name = subject_details.get("name")
+        if _should_filter_entity(subject_name, subject_details.get("type")):
+            logger_func.info(
+                f"Line {line_num + 1}: Filtered out problematic subject entity: '{subject_name}'"
+            )
+            continue
+            
+        # Filter object entity if it exists
+        if not is_literal_object and object_entity_payload:
+            object_name = object_entity_payload.get("name")
+            if _should_filter_entity(object_name, object_entity_payload.get("type")):
+                logger_func.info(
+                    f"Line {line_num + 1}: Filtered out problematic object entity: '{object_name}'"
+                )
+                continue
 
         triples_list.append(
             {

@@ -7,7 +7,8 @@ import structlog
 
 import config
 from config import NARRATIVE_MODEL
-from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
+from core.llm_interface_refactored import count_tokens, llm_service
+from core.text_processing_service import truncate_text_by_tokens
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
 from processing.context_generator import (

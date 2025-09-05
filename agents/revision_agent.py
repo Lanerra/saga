@@ -5,7 +5,7 @@ import structlog
 
 import utils
 from config import NARRATIVE_MODEL, REVISION_EVALUATION_THRESHOLD
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 from data_access import chapter_queries, world_queries
 
 # Import native versions for performance optimization

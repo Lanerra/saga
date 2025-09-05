@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 import config
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 
 try:
     from rich.console import Group
@@ -116,11 +116,17 @@ class RichDisplayManager:
             self.status_text_current_step.plain = f"Current Step: {step}"
         start_time = run_start_time or self.run_start_time
         elapsed_seconds = time.time() - start_time
-        requests_per_minute = (
-            llm_service.request_count / (elapsed_seconds / 60)
-            if elapsed_seconds > 0
-            else 0.0
-        )
+        # Get request count from the refactored service statistics
+        try:
+            stats = llm_service.get_combined_statistics()
+            request_count = stats.get("completion_service", {}).get("completions_requested", 0)
+            requests_per_minute = (
+                request_count / (elapsed_seconds / 60)
+                if elapsed_seconds > 0
+                else 0.0
+            )
+        except (AttributeError, KeyError):
+            requests_per_minute = 0.0
         self.status_text_requests_per_minute.plain = (
             f"Requests/Min: {requests_per_minute:.2f}"
         )

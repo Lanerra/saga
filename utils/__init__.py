@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import numpy as np
 
 import config
-from core.llm_interface import count_tokens, llm_service
+from core.llm_interface_refactored import count_tokens, llm_service
 from processing.text_deduplicator import TextDeduplicator
 
 from .helpers import _is_fill_in

@@ -9,11 +9,8 @@ import logging
 from typing import Any
 
 import config
-from core.llm_interface import (
-    count_tokens,
-    llm_service,
-    truncate_text_by_tokens,
-)  # MODIFIED
+from core.llm_interface_refactored import count_tokens, llm_service  # MODIFIED
+from core.text_processing_service import truncate_text_by_tokens
 from data_access import (
     chapter_queries,
 )  # For chapter data and similarity search

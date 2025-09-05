@@ -638,13 +638,3 @@ def count_tokens(text: str, model_name: str) -> int:
     return llm_service.count_tokens(text, model_name)
 
 
-def truncate_text_by_tokens(
-    text: str,
-    model_name: str,
-    max_tokens: int,
-    truncation_marker: str = "\n... (truncated)",
-) -> str:
-    """Backward compatibility function for text truncation."""
-    return llm_service.truncate_text_by_tokens(
-        text, model_name, max_tokens, truncation_marker
-    )

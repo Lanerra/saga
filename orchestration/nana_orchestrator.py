@@ -15,7 +15,7 @@ from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from agents.revision_agent import RevisionAgent
 from core.db_manager import neo4j_manager
-from core.llm_interface import llm_service
+from core.llm_interface_refactored import llm_service
 from data_access import (
     chapter_queries,
     character_queries,
