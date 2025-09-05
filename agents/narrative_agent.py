@@ -5,6 +5,7 @@ from typing import Any
 
 import structlog
 
+import config
 from config import NARRATIVE_MODEL
 from core.llm_interface import count_tokens, llm_service, truncate_text_by_tokens
 from data_access import chapter_queries
@@ -13,9 +14,7 @@ from processing.context_generator import (
     generate_hybrid_chapter_context_native,  # Native Phase 2 context generation
 )
 from prompts.prompt_data_getters import (
-    get_character_state_snippet_for_prompt,
     get_reliable_kg_facts_for_drafting_prompt,
-    get_world_state_snippet_for_prompt,
 )
 from prompts.prompt_renderer import render_prompt
 
@@ -48,6 +47,52 @@ class NarrativeAgent:
         self.logger = structlog.get_logger()
         self.config = config
         self.model = NARRATIVE_MODEL
+        self._token_cache: dict[tuple[str, str], int] = {}
+
+    def _cached_count_tokens(self, text: str, model: str) -> int:
+        """Cache token counting to avoid redundant calculations."""
+        cache_key = (text, model)
+        if cache_key not in self._token_cache:
+            self._token_cache[cache_key] = count_tokens(text, model)
+        return self._token_cache[cache_key]
+
+    async def _build_previous_chapter_context(self, chapter_number: int) -> str:
+        """Build context summary from previous chapter data."""
+        if chapter_number <= 1:
+            return ""
+
+        context_summary_parts: list[str] = []
+        prev_chap_data = await chapter_queries.get_chapter_data_from_db(
+            chapter_number - 1
+        )
+        
+        if prev_chap_data:
+            prev_summary = prev_chap_data.get("summary")
+            prev_is_provisional = prev_chap_data.get("is_provisional", False)
+            
+            summary_prefix = (
+                "[Provisional Summary from Prev Ch] "
+                if prev_is_provisional and prev_summary
+                else "[Summary from Prev Ch] "
+            )
+            
+            if prev_summary:
+                context_summary_parts.append(
+                    f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:config.settings.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS].strip()}...\n"
+                )
+            else:
+                prev_text = prev_chap_data.get("text", "")
+                text_prefix = (
+                    "[Provisional Text Snippet from Prev Ch] "
+                    if prev_is_provisional and prev_text
+                    else "[Text Snippet from Prev Ch] "
+                )
+                if prev_text:
+                    context_summary_parts.append(
+                        f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-config.settings.NARRATIVE_CONTEXT_TEXT_TAIL_CHARS:].strip()}\n"
+                    )
+
+        return "".join(context_summary_parts)
 
 
     def _parse_llm_scene_plan_output(
@@ -85,16 +130,18 @@ class NarrativeAgent:
                     logger.error(
                         f"Failed to parse extracted JSON for Ch {chapter_number}: {extract_error}"
                     )
-                    # Save malformed JSON for debugging
+                    # Save malformed JSON for debugging if enabled
+                    if config.settings.NARRATIVE_JSON_DEBUG_SAVE:
+                        self._save_malformed_json_for_debugging(
+                            cleaned_json_text, chapter_number
+                        )
+                    return None
+            else:
+                # Save malformed JSON for debugging if enabled
+                if config.settings.NARRATIVE_JSON_DEBUG_SAVE:
                     self._save_malformed_json_for_debugging(
                         cleaned_json_text, chapter_number
                     )
-                    return None
-            else:
-                # Save malformed JSON for debugging
-                self._save_malformed_json_for_debugging(
-                    cleaned_json_text, chapter_number
-                )
                 return None
 
         if not isinstance(parsed_data, list):
@@ -199,33 +246,27 @@ class NarrativeAgent:
 
     def _extract_json_from_malformed_text(self, text: str) -> str | None:
         """
-        Extract JSON array or object from malformed text using multiple strategies.
+        Extract JSON array or object from malformed text using efficient strategies.
         """
         if not text:
             return None
 
-        # Strategy 1: Extract complete JSON array
-        array_match = re.search(r"\[\s*\{.*\}\s*\]", text, re.DOTALL)
-        if array_match:
-            potential_json = array_match.group(0)
-            # Validate that it's parseable
-            try:
-                json.loads(potential_json)
-                return potential_json
-            except json.JSONDecodeError:
-                pass
+        strategies = [
+            # Strategy 1: Extract complete JSON array
+            (r"\[\s*\{.*\}\s*\]", 0),
+            # Strategy 2: Extract from code blocks  
+            (r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", 1),
+        ]
 
-        # Strategy 2: Extract from code blocks
-        code_block_match = re.search(
-            r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", text, re.DOTALL
-        )
-        if code_block_match:
-            potential_json = code_block_match.group(1)
-            try:
-                json.loads(potential_json)
-                return potential_json
-            except json.JSONDecodeError:
-                pass
+        for pattern, group_index in strategies:
+            match = re.search(pattern, text, re.DOTALL)
+            if match:
+                potential_json = match.group(group_index)
+                try:
+                    json.loads(potential_json)
+                    return potential_json
+                except json.JSONDecodeError:
+                    continue
 
         # Strategy 3: Extract from the middle of text
         # Look for patterns that might indicate JSON start
@@ -317,37 +358,8 @@ class NarrativeAgent:
             )
             return None, None
 
-        # Build context summary (similar to original method)
-        context_summary_parts: list[str] = []
-        if chapter_number > 1:
-            prev_chap_data = await chapter_queries.get_chapter_data_from_db(
-                chapter_number - 1
-            )
-            if prev_chap_data:
-                prev_summary = prev_chap_data.get("summary")
-                prev_is_provisional = prev_chap_data.get("is_provisional", False)
-                summary_prefix = (
-                    "[Provisional Summary from Prev Ch] "
-                    if prev_is_provisional and prev_summary
-                    else "[Summary from Prev Ch] "
-                )
-                if prev_summary:
-                    context_summary_parts.append(
-                        f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:1000].strip()}...\n"
-                    )
-                else:
-                    prev_text = prev_chap_data.get("text", "")
-                    text_prefix = (
-                        "[Provisional Text Snippet from Prev Ch] "
-                        if prev_is_provisional and prev_text
-                        else "[Text Snippet from Prev Ch] "
-                    )
-                    if prev_text:
-                        context_summary_parts.append(
-                            f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-1000:].strip()}\n"
-                        )
-
-        context_summary_str = "".join(context_summary_parts)
+        # Build context summary using helper method
+        context_summary_str = await self._build_previous_chapter_context(chapter_number)
 
         protagonist_name = plot_outline.get(
             "protagonist_name", self.config.DEFAULT_PROTAGONIST_NAME
@@ -356,7 +368,6 @@ class NarrativeAgent:
         # Use native prompt data getters
         from prompts.prompt_data_getters import (
             get_character_state_snippet_for_prompt_native,
-            get_reliable_kg_facts_for_drafting_prompt,
             get_world_state_snippet_for_prompt_native,
         )
 
@@ -528,9 +539,9 @@ class NarrativeAgent:
                 },
             )
 
-            prompt_tokens = count_tokens(prompt, self.model)
+            prompt_tokens = self._cached_count_tokens(prompt, self.model)
             available_for_generation = (
-                self.config.MAX_CONTEXT_TOKENS - prompt_tokens - 200
+                self.config.MAX_CONTEXT_TOKENS - prompt_tokens - config.settings.NARRATIVE_TOKEN_BUFFER
             )  # Safety buffer
             max_gen_tokens = min(
                 self.config.MAX_GENERATION_TOKENS // 2, available_for_generation
@@ -633,10 +644,10 @@ class NarrativeAgent:
                     "min_length": self.config.MIN_ACCEPTABLE_DRAFT_LENGTH,
                 },
             )
-            prompt_tokens = count_tokens(prompt, self.model)
+            prompt_tokens = self._cached_count_tokens(prompt, self.model)
             max_gen_tokens = min(
                 self.config.MAX_GENERATION_TOKENS,
-                self.config.MAX_CONTEXT_TOKENS - prompt_tokens - 100,
+                self.config.MAX_CONTEXT_TOKENS - prompt_tokens - config.settings.NARRATIVE_TOKEN_BUFFER // 2,
             )
             chapter_text, usage_data = await llm_service.async_call_llm(
                 model_name=self.model,
@@ -783,8 +794,8 @@ class NarrativeAgent:
             logger.error(f"Could not find plot point focus: {plot_point_focus}")
             return "Failed to generate chapter: plot point focus not found", "Error", {}
 
-        # Plan the chapter scenes using native method
-        scenes, planning_usage_data = await self._plan_chapter_scenes_native(
+        # Plan the chapter scenes
+        scenes, planning_usage_data = await self._plan_chapter_scenes(
             plot_outline,
             character_profiles,
             world_building,
