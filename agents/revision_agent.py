@@ -242,10 +242,10 @@ class RevisionAgent:
             needs_revision = True
             reasons_for_revision_summary.append("Draft is empty")
             return needs_revision, reasons_for_revision_summary
-        elif len(chapter_text) < 12000:  # MIN_ACCEPTABLE_DRAFT_LENGTH
+        elif len(chapter_text) < self.config.MIN_ACCEPTABLE_DRAFT_LENGTH:
             needs_revision = True
             reasons_for_revision_summary.append(
-                f"Draft is too short ({len(chapter_text)} chars). Minimum required: 12000."
+                f"Draft is too short ({len(chapter_text)} chars). Minimum required: {self.config.MIN_ACCEPTABLE_DRAFT_LENGTH}."
             )
 
         # Check coherence with previous chapter if available

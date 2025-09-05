@@ -13,7 +13,7 @@ Your task is to analyze the provided chapter context where this character appear
 **From Chapter {{ chapter.chapter_number }}:**
 Summary: {{ chapter.summary | default('N/A') }}
 Relevant Text Snippet:
-{{ chapter.text | truncate(500) | default('N/A') }}
+{{ chapter.text | truncate(1500) | default('N/A') }}
 ---
 {% endfor %}
 {% else %}
@@ -25,5 +25,5 @@ No specific chapter context was found for this character. Base your description 
 2. Write a single, concise, in-universe description for this character.
 3. Your response MUST be a single, valid JSON object with ONE key: "description". Do NOT include any other text, commentary, or markdown.
 
-**Example Response:**
+**Example Response (IGNORE CONTEXT, FORMAT ONLY):**
 {"description": "Master Kael, the enigmatic keeper of the Sunken Library, tests seekers for knowledge."}
