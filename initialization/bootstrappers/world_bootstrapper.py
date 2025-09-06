@@ -380,6 +380,14 @@ async def _bootstrap_world_names(
         
         # Update the WorldItem object
         item_obj.name = generated_name
+        
+        # CRITICAL FIX: Update the ID to match the new name
+        # This ensures the database uses proper IDs instead of placeholder numbers
+        normalized_category = utils._normalize_for_id(category)
+        normalized_name = utils._normalize_for_id(generated_name)
+        new_id = f"{normalized_category}_{normalized_name}" if normalized_category and normalized_name else f"element_{hash(category + generated_name)}"
+        item_obj.id = new_id
+        
         current_source = item_obj.additional_properties.get("source", "")
         if isinstance(current_source, str):
             item_obj.additional_properties["source"] = (

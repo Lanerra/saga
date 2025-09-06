@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-import utils
 from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
+from models.db_extraction_utils import Neo4jExtractor
+from models.validation_utils import validate_world_item_fields
 
 if TYPE_CHECKING:
     import neo4j
@@ -47,7 +48,7 @@ class CharacterProfile(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
+    def from_db_record(cls, record: "neo4j.Record") -> CharacterProfile:
         """Construct directly from Neo4j record - no dict conversion."""
         node = record["c"]  # Assuming 'c' is the character node alias
 
@@ -73,7 +74,7 @@ class CharacterProfile(BaseModel):
         )
 
     @classmethod
-    def from_db_node(cls, node: neo4j.Node) -> CharacterProfile:
+    def from_db_node(cls, node: "neo4j.Node") -> CharacterProfile:
         """Construct directly from Neo4j node - no dict conversion."""
         return cls(
             name=node.get("name", ""),
@@ -129,25 +130,12 @@ class WorldItem(BaseModel):
         item_id = data.get("id", "")
 
         # Validate and normalize all core fields
-        category, name, item_id = utils.validate_world_item_fields(
+        category, name, item_id = validate_world_item_fields(
             category, name, item_id, allow_empty_name
         )
 
-        # Extract and validate created_chapter (handle various formats)
-        value = data.get(KG_NODE_CREATED_CHAPTER, "0")
-        if isinstance(value, list):
-            created_chapter = int(value[0]) if value else 0
-        elif isinstance(value, str):
-            cleaned_value = (
-                value.replace("[", "")
-                .replace("]", "")
-                .replace("'", "")
-                .replace('"', "")
-            )
-            num_str = cleaned_value.split(",")[0].strip()
-            created_chapter = int(num_str) if num_str else 0
-        else:
-            created_chapter = int(value) if value is not None else 0
+        # Extract and validate created_chapter using shared utility
+        created_chapter = Neo4jExtractor.safe_int_extract(data.get(KG_NODE_CREATED_CHAPTER, 0))
 
         # Extract and validate is_provisional
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
@@ -201,59 +189,14 @@ class WorldItem(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: neo4j.Record) -> WorldItem:
+    def from_db_record(cls, record: "neo4j.Record") -> WorldItem:
         """Construct directly from Neo4j record - no dict conversion."""
         # Try both 'w' and 'we' node aliases for compatibility
         node = record.get("w") or record.get("we")
         if not node:
             raise ValueError("No world element node found in record")
 
-        def _safe_string_extract(value) -> str:
-            """Safely extract string from potentially array value."""
-            if isinstance(value, list):
-                return value[0] if value else ""
-            return str(value) if value is not None else ""
-
-        def _safe_int_extract(value) -> int:
-            """Safely extract int from potentially array value."""
-            if isinstance(value, list):
-                return int(value[0]) if value else 0
-            elif isinstance(value, str):
-                # Handle comma-separated values by taking first part
-                # Clean potential list representation before splitting
-                cleaned_value = (
-                    value.replace("[", "")
-                    .replace("]", "")
-                    .replace("'", "")
-                    .replace('"', "")
-                )
-                num_str = cleaned_value.split(",")[0].strip()
-                return int(num_str) if num_str else 0
-            return int(value) if value is not None else 0
-
-        def _safe_timestamp_extract(value) -> int:
-            """Safely extract timestamp from potentially array or comma-separated value."""
-            if isinstance(value, list):
-                return int(value[0]) if value and value[0] else 0
-            elif isinstance(value, str):
-                # Handle comma-separated values by taking first part
-                cleaned_value = (
-                    value.replace("[", "")
-                    .replace("]", "")
-                    .replace("'", "")
-                    .replace('"', "")
-                )
-                timestamp_str = cleaned_value.split(",")[0].strip()
-                return int(timestamp_str) if timestamp_str else 0
-            return int(value) if value is not None else 0
-
-        def _safe_list_extract(value) -> list[str]:
-            """Safely extract list from potentially mixed value."""
-            if isinstance(value, list):
-                return [str(item) for item in value if item is not None]
-            return [str(value)] if value is not None else []
-
-        # Extract additional properties that aren't core fields
+        # Define core fields that shouldn't go into additional_properties
         core_fields = {
             "id",
             "name",
@@ -268,61 +211,29 @@ class WorldItem(BaseModel):
             "chapter_last_updated",
             "last_updated",
         }
-        additional_props = {k: v for k, v in dict(node).items() if k not in core_fields}
-
-        # Extract core fields with proper type handling
-        created_chapter_val = node.get("created_chapter", 0)
-        chapter_last_updated_val = node.get("chapter_last_updated", None)
-        last_updated_val = node.get("last_updated", None)
+        
+        # Extract additional properties using shared utility
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
         return cls(
-            id=_safe_string_extract(node.get("id", "")),
-            category=_safe_string_extract(node.get("category", "")),
-            name=_safe_string_extract(node.get("name", "")),
-            description=_safe_string_extract(node.get("description", "")),
-            goals=_safe_list_extract(node.get("goals", [])),
-            rules=_safe_list_extract(node.get("rules", [])),
-            key_elements=_safe_list_extract(node.get("key_elements", [])),
-            traits=_safe_list_extract(node.get("traits", [])),
-            created_chapter=_safe_int_extract(created_chapter_val),
+            id=Neo4jExtractor.safe_string_extract(node.get("id", "")),
+            category=Neo4jExtractor.safe_string_extract(node.get("category", "")),
+            name=Neo4jExtractor.safe_string_extract(node.get("name", "")),
+            description=Neo4jExtractor.safe_string_extract(node.get("description", "")),
+            goals=Neo4jExtractor.safe_list_extract(node.get("goals", [])),
+            rules=Neo4jExtractor.safe_list_extract(node.get("rules", [])),
+            key_elements=Neo4jExtractor.safe_list_extract(node.get("key_elements", [])),
+            traits=Neo4jExtractor.safe_list_extract(node.get("traits", [])),
+            created_chapter=Neo4jExtractor.safe_int_extract(node.get("created_chapter", 0)),
             is_provisional=bool(node.get("is_provisional", False)),
             additional_properties=additional_props,
         )
 
     @classmethod
-    def from_db_node(cls, node: neo4j.Node) -> WorldItem:
+    def from_db_node(cls, node: "neo4j.Node") -> WorldItem:
         """Construct directly from Neo4j node - no dict conversion."""
 
-        def _safe_string_extract(value) -> str:
-            """Safely extract string from potentially array value."""
-            if isinstance(value, list):
-                return value[0] if value else ""
-            return str(value) if value is not None else ""
-
-        def _safe_int_extract(value) -> int:
-            """Safely extract int from potentially array value."""
-            if isinstance(value, list):
-                return int(value[0]) if value else 0
-            elif isinstance(value, str):
-                # Handle comma-separated values by taking first part
-                # Clean potential list representation before splitting
-                cleaned_value = (
-                    value.replace("[", "")
-                    .replace("]", "")
-                    .replace("'", "")
-                    .replace('"', "")
-                )
-                num_str = cleaned_value.split(",")[0].strip()
-                return int(num_str) if num_str else 0
-            return int(value) if value is not None else 0
-
-        def _safe_list_extract(value) -> list[str]:
-            """Safely extract list from potentially mixed value."""
-            if isinstance(value, list):
-                return [str(item) for item in value if item is not None]
-            return [str(value)] if value is not None else []
-
-        # Extract additional properties that aren't core fields
+        # Define core fields that shouldn't go into additional_properties
         core_fields = {
             "id",
             "name",
@@ -337,18 +248,20 @@ class WorldItem(BaseModel):
             "chapter_last_updated",
             "last_updated",
         }
-        additional_props = {k: v for k, v in dict(node).items() if k not in core_fields}
+        
+        # Extract additional properties using shared utility
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
         return cls(
-            id=_safe_string_extract(node.get("id", "")),
-            category=_safe_string_extract(node.get("category", "")),
-            name=_safe_string_extract(node.get("name", "")),
-            description=_safe_string_extract(node.get("description", "")),
-            goals=_safe_list_extract(node.get("goals", [])),
-            rules=_safe_list_extract(node.get("rules", [])),
-            key_elements=_safe_list_extract(node.get("key_elements", [])),
-            traits=_safe_list_extract(node.get("traits", [])),
-            created_chapter=_safe_int_extract(node.get("created_chapter", 0)),
+            id=Neo4jExtractor.safe_string_extract(node.get("id", "")),
+            category=Neo4jExtractor.safe_string_extract(node.get("category", "")),
+            name=Neo4jExtractor.safe_string_extract(node.get("name", "")),
+            description=Neo4jExtractor.safe_string_extract(node.get("description", "")),
+            goals=Neo4jExtractor.safe_list_extract(node.get("goals", [])),
+            rules=Neo4jExtractor.safe_list_extract(node.get("rules", [])),
+            key_elements=Neo4jExtractor.safe_list_extract(node.get("key_elements", [])),
+            traits=Neo4jExtractor.safe_list_extract(node.get("traits", [])),
+            created_chapter=Neo4jExtractor.safe_int_extract(node.get("created_chapter", 0)),
             is_provisional=bool(node.get("is_provisional", False)),
             additional_properties=additional_props,
         )

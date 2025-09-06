@@ -1293,12 +1293,13 @@ class KnowledgeAgent:
     async def _check_recent_kg_activity(self) -> bool:
         """Check if there has been recent KG activity that would warrant full maintenance."""
         try:
-            # Check if there are any entities modified in the last 2 chapters
-            result = await neo4j_manager.execute_cypher_get_one(
-                "MATCH (n) WHERE n.last_updated_ts > timestamp() - 86400000 RETURN count(n) as recent_count",
+            # Check if there are any entities modified in the last 24 hours
+            # Use actual timestamp properties that exist: created_ts, updated_ts
+            results = await neo4j_manager.execute_read_query(
+                "MATCH (n) WHERE n.created_ts > timestamp() - 86400000 OR n.updated_ts > timestamp() - 86400000 RETURN count(n) as recent_count",
                 {},
             )
-            recent_count = result.get("recent_count", 0) if result else 0
+            recent_count = results[0].get("recent_count", 0) if results else 0
             return (
                 recent_count > 5
             )  # Only run full cycle if significant recent activity
@@ -1840,7 +1841,7 @@ class KnowledgeAgent:
 
         # Use cached similarity threshold to catch character name variations
         candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
-            similarity_threshold=0.65
+            similarity_threshold=0.4
         )
 
         if not candidate_pairs:

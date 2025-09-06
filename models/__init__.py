@@ -8,6 +8,7 @@ from .agent_models import (
     SceneDetail,
 )
 from .kg_models import CharacterProfile, WorldItem
+from .db_extraction_utils import Neo4jExtractor
 from .user_input_models import (
     CharacterGroupModel,
     KeyLocationModel,
@@ -27,6 +28,7 @@ __all__ = [
     "PatchInstruction",
     "CharacterProfile",
     "WorldItem",
+    "Neo4jExtractor",
     "NovelConceptModel",
     "RelationshipModel",
     "ProtagonistModel",
