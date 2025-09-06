@@ -178,13 +178,152 @@ async def _bootstrap_world_names(
         "Found %d items requiring name bootstrapping.", len(items_needing_names)
     )
 
-    # Process sequentially to inject context about existing names
+    # Process names in parallel with semaphore to limit concurrent LLM calls
     generated_names: dict[str, str] = {}  # name -> category mapping
     new_items_to_add_stage1: dict[str, dict[str, WorldItem]] = {}
     items_to_remove_stage1: dict[str, list[str]] = {}
-
+    
+    # Use parallel processing for better performance
+    semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_LLM_CALLS)
+    name_generation_tasks = []
+    
+    async def generate_name_for_item(
+        category: str, item_name: str, item_obj: WorldItem
+    ) -> tuple[str, str, WorldItem, str | None, dict[str, int] | None]:
+        """Generate a name for a single item with retry logic."""
+        async with semaphore:
+            # Get snapshot of existing names at time of generation
+            existing_names = set(generated_names.keys())
+            existing_category_names = set(world_building.get(category, {}).keys())
+            
+            context_data = {
+                "world_item": item_obj.to_dict(),
+                "plot_outline": plot_outline,
+                "target_category": category,
+                "category_description": f"Bootstrap a name for a {category} element in the world.",
+                "existing_world_names": list(existing_names),
+            }
+            
+            max_retries = 3
+            generated_name = None
+            cumulative_usage = None
+            
+            for attempt in range(max_retries):
+                temp_name, temp_usage = await bootstrap_field(
+                    "name", context_data, "bootstrapper/fill_world_item_field.j2"
+                )
+                
+                # Accumulate usage across retries
+                if cumulative_usage is None:
+                    cumulative_usage = temp_usage or {}
+                elif temp_usage:
+                    for key, val in temp_usage.items():
+                        cumulative_usage[key] = cumulative_usage.get(key, 0) + val
+                
+                if (
+                    temp_name
+                    and isinstance(temp_name, str)
+                    and temp_name.strip()
+                    and not utils._is_fill_in(temp_name)
+                    and temp_name != config.FILL_IN
+                    and temp_name not in existing_names
+                    and temp_name not in existing_category_names
+                ):
+                    generated_name = temp_name
+                    break
+                else:
+                    if attempt < max_retries - 1:
+                        logger.debug(
+                            f"Name generation attempt {attempt + 1} for '{category}/{item_name}' "
+                            f"resulted in duplicate or invalid name '{temp_name}'. Retrying."
+                        )
+                        # Update context for retry
+                        context_data["retry_attempt"] = attempt + 1
+                        context_data["diversity_instruction"] = (
+                            "Generate a unique name that does not match any of the existing names listed."
+                        )
+            
+            return category, item_name, item_obj, generated_name, cumulative_usage
+    
+    # Create all name generation tasks
     for category, item_name, item_obj in items_needing_names:
-        # Inject existing generated names to prevent duplicates
+        task = generate_name_for_item(category, item_name, item_obj)
+        name_generation_tasks.append(task)
+    
+    logger.info(f"Starting parallel name generation for {len(name_generation_tasks)} items...")
+    
+    # Execute all name generation tasks in parallel
+    name_results = await asyncio.gather(*name_generation_tasks, return_exceptions=True)
+    
+    # Process results and check for duplicates
+    successful_generations = []
+    failed_generations = []
+    
+    for result in name_results:
+        if isinstance(result, Exception):
+            from ..error_handling import handle_bootstrap_error, ErrorSeverity
+            handle_bootstrap_error(
+                result,
+                "Parallel name generation task",
+                ErrorSeverity.ERROR,
+                {"task_type": "name_generation"}
+            )
+            continue
+        
+        category, item_name, item_obj, generated_name, name_usage = result
+        _accumulate_usage(name_usage)
+        
+        if generated_name:
+            successful_generations.append((category, item_name, item_obj, generated_name))
+        else:
+            failed_generations.append((category, item_name))
+    
+    # Handle duplicate resolution for parallel generation
+    name_conflicts = {}
+    final_assignments = {}
+    
+    for category, item_name, item_obj, generated_name in successful_generations:
+        if generated_name not in name_conflicts:
+            name_conflicts[generated_name] = []
+        name_conflicts[generated_name].append((category, item_name, item_obj))
+    
+    # Resolve conflicts - first item wins, others get sequential retry
+    for generated_name, conflicting_items in name_conflicts.items():
+        if len(conflicting_items) == 1:
+            # No conflict
+            category, item_name, item_obj = conflicting_items[0]
+            final_assignments[f"{category}:{item_name}"] = (item_obj, generated_name)
+            generated_names[generated_name] = category
+        else:
+            # Conflict resolution: first item keeps name, others get retried
+            logger.warning(
+                f"Name conflict detected for '{generated_name}' among {len(conflicting_items)} items. "
+                "Resolving with sequential fallback."
+            )
+            
+            # First item gets the name
+            category, item_name, item_obj = conflicting_items[0]
+            final_assignments[f"{category}:{item_name}"] = (item_obj, generated_name)
+            generated_names[generated_name] = category
+            
+            # Other items need new names (fallback to sequential)
+            for category, item_name, item_obj in conflicting_items[1:]:
+                failed_generations.append((category, item_name))
+    
+    # Sequential fallback for failed/conflicted items
+    for category, item_name in failed_generations:
+        # Find the original item_obj from items_needing_names
+        item_obj = None
+        for orig_cat, orig_name, orig_obj in items_needing_names:
+            if orig_cat == category and orig_name == item_name:
+                item_obj = orig_obj
+                break
+        
+        if item_obj is None:
+            logger.error(f"Could not find original item object for {category}:{item_name}")
+            continue
+        
+        # Sequential retry with current generated_names context
         existing_names_list = list(generated_names.keys())
         context_data = {
             "world_item": item_obj.to_dict(),
@@ -192,19 +331,19 @@ async def _bootstrap_world_names(
             "target_category": category,
             "category_description": f"Bootstrap a name for a {category} element in the world.",
             "existing_world_names": existing_names_list,
+            "fallback_generation": True,
         }
-
-        # Attempt generation with retry for duplicates
+        
         max_retries = 3
         generated_name = None
         name_usage = None
-
+        
         for attempt in range(max_retries):
             temp_name, temp_usage = await bootstrap_field(
                 "name", context_data, "bootstrapper/fill_world_item_field.j2"
             )
             name_usage = temp_usage
-
+            
             if (
                 temp_name
                 and isinstance(temp_name, str)
@@ -219,56 +358,46 @@ async def _bootstrap_world_names(
                 break
             else:
                 if attempt < max_retries - 1:
-                    logger.warning(
-                        "Name generation attempt %d for '%s/%s' resulted in duplicate or invalid name '%s'. Retrying with updated context.",
-                        attempt + 1,
-                        category,
-                        item_name,
-                        temp_name,
-                    )
-                    # Update context with more explicit diversity instruction
-                    context_data["existing_world_names"] = existing_names_list
+                    context_data["existing_world_names"] = list(generated_names.keys())
                     context_data["retry_attempt"] = attempt + 1
-                    context_data[
-                        "diversity_instruction"
-                    ] = "Generate a unique name that does not match any of the existing names listed."
-
+        
         _accumulate_usage(name_usage)
-
+        
         if generated_name:
-            logger.info(
-                "Successfully generated name '%s' for item '%s' in category '%s'.",
-                generated_name,
-                item_name,
-                category,
-            )
-            # Update the WorldItem object
-            item_obj.name = generated_name
-            current_source = item_obj.additional_properties.get("source", "")
-            if isinstance(current_source, str):
-                item_obj.additional_properties["source"] = (
-                    f"{current_source}_name_bootstrapped"
-                    if current_source
-                    else "name_bootstrapped"
-                )
-            else:
-                item_obj.additional_properties["source"] = "name_bootstrapped"
-
-            # Add to the new items list for world_building dictionary update
-            original_category = category
-            new_items_to_add_stage1.setdefault(original_category, {})[
-                generated_name
-            ] = item_obj
-            items_to_remove_stage1.setdefault(original_category, []).append(
-                item_name
-            )
+            final_assignments[f"{category}:{item_name}"] = (item_obj, generated_name)
         else:
             logger.warning(
-                "Failed to generate a unique name for item '%s' in category '%s' after %d attempts.",
-                item_name,
-                category,
-                max_retries,
+                f"Failed to generate name for '{category}/{item_name}' after parallel and sequential attempts."
             )
+    
+    # Update world items with final name assignments
+    for item_key, (item_obj, generated_name) in final_assignments.items():
+        category, item_name = item_key.split(":", 1)
+        
+        logger.info(
+            f"Assigned name '{generated_name}' to item '{item_name}' in category '{category}'."
+        )
+        
+        # Update the WorldItem object
+        item_obj.name = generated_name
+        current_source = item_obj.additional_properties.get("source", "")
+        if isinstance(current_source, str):
+            item_obj.additional_properties["source"] = (
+                f"{current_source}_name_bootstrapped"
+                if current_source
+                else "name_bootstrapped"
+            )
+        else:
+            item_obj.additional_properties["source"] = "name_bootstrapped"
+        
+        # Add to the new items list for world_building dictionary update
+        new_items_to_add_stage1.setdefault(category, {})[generated_name] = item_obj
+        items_to_remove_stage1.setdefault(category, []).append(item_name)
+    
+    logger.info(
+        f"Parallel name generation complete. Successfully generated {len(final_assignments)} names "
+        f"out of {len(items_needing_names)} requested."
+    )
 
     # Update world_building dictionary
     for category_to_update, items_to_remove in items_to_remove_stage1.items():
@@ -371,8 +500,12 @@ async def _bootstrap_world_properties(
             property_bootstrap_tasks.keys(), property_results, strict=False
         ):
             if isinstance(result, Exception):
-                logger.error(
-                    f"Error bootstrapping property '{prop_name}' for '{category}/{item_name}': {result}"
+                from ..error_handling import handle_bootstrap_error, ErrorSeverity
+                handle_bootstrap_error(
+                    result,
+                    f"Property bootstrapping: {category}/{item_name}.{prop_name}",
+                    ErrorSeverity.ERROR,
+                    {"category": category, "item_name": item_name, "property": prop_name}
                 )
                 continue
 

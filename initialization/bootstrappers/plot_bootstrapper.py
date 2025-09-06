@@ -22,6 +22,7 @@ def create_default_plot(default_protagonist_name: str) -> dict[str, Any]:
         "genre": config.CONFIGURED_GENRE,
         "setting": config.CONFIGURED_SETTING_DESCRIPTION,
         "theme": config.CONFIGURED_THEME,
+        "summary": config.FILL_IN,
         "logline": config.FILL_IN,
         "inciting_incident": config.FILL_IN,
         "central_conflict": config.FILL_IN,
@@ -57,6 +58,8 @@ async def bootstrap_plot_outline(
         or utils._is_fill_in(plot_outline.get("setting")),
         "theme": not plot_outline.get("theme")
         or utils._is_fill_in(plot_outline.get("theme")),
+        "summary": not plot_outline.get("summary")
+        or utils._is_fill_in(plot_outline.get("summary")),
         "logline": not plot_outline.get("logline")
         or utils._is_fill_in(plot_outline.get("logline")),
         "inciting_incident": not plot_outline.get("inciting_incident")

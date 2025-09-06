@@ -71,6 +71,24 @@ async def run_genesis_phase() -> (
         )
         logger.info("Bootstrap relationship network complete.")
 
+    # Validate bootstrap results before proceeding
+    from .bootstrap_validator import validate_bootstrap_results
+    validation_result = await validate_bootstrap_results(
+        plot_outline, character_profiles, world_items_for_kg
+    )
+    
+    if not validation_result.is_valid:
+        error_summary = "; ".join(validation_result.errors[:3])  # Show first 3 errors
+        if len(validation_result.errors) > 3:
+            error_summary += f" (and {len(validation_result.errors) - 3} more)"
+        raise RuntimeError(f"Bootstrap validation failed: {error_summary}")
+    
+    if validation_result.warnings:
+        warning_count = len(validation_result.warnings)
+        logger.warning(f"Bootstrap completed with {warning_count} warnings")
+    else:
+        logger.info("Bootstrap validation passed with no warnings")
+
     # Refresh dynamic schema patterns after bootstrap completion
     await _refresh_dynamic_schema_after_bootstrap()
 
@@ -231,8 +249,12 @@ async def _create_bootstrap_relationships(
             )
             relationships_created += 1
         except Exception as e:
-            logger.warning(
-                f"Failed to create bootstrap relationship {subj} {rel} {obj}: {e}"
+            from .error_handling import handle_bootstrap_error, ErrorSeverity
+            handle_bootstrap_error(
+                e,
+                f"Bootstrap relationship creation: {subj} {rel} {obj}",
+                ErrorSeverity.WARNING,
+                {"subject": subj, "relationship": rel, "object": obj}
             )
 
     logger.info(
@@ -275,6 +297,10 @@ async def _refresh_dynamic_schema_after_bootstrap() -> None:
 
     except Exception as e:
         # Don't fail bootstrap if schema refresh fails
-        logger.warning(
-            f"Failed to refresh dynamic schema patterns after bootstrap: {e}"
+        from .error_handling import handle_bootstrap_error, ErrorSeverity
+        handle_bootstrap_error(
+            e,
+            "Dynamic schema refresh after bootstrap",
+            ErrorSeverity.WARNING,
+            {"phase": "post_bootstrap_schema_refresh"}
         )

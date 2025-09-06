@@ -34,8 +34,12 @@ async def bootstrap_field(
     )
 
     if not response_text.strip():
-        logger.warning(
-            "LLM returned empty response for bootstrapping field '%s'.", field_name
+        from ..error_handling import handle_bootstrap_error, ErrorSeverity
+        handle_bootstrap_error(
+            ValueError("Empty LLM response"),
+            f"LLM bootstrap field generation: {field_name}",
+            ErrorSeverity.WARNING,
+            {"field_name": field_name, "is_list": is_list}
         )
         return ([] if is_list else ""), usage_data
 
@@ -61,14 +65,20 @@ async def bootstrap_field(
             elif isinstance(value, str):
                 return value.strip(), usage_data
 
-            logger.warning(
-                "LLM JSON for '%s' had unexpected type: %s", field_name, type(value)
+            from ..error_handling import handle_bootstrap_error, ErrorSeverity
+            handle_bootstrap_error(
+                TypeError(f"Unexpected type {type(value)} for field {field_name}"),
+                f"LLM field type validation: {field_name}",
+                ErrorSeverity.WARNING,
+                {"field_name": field_name, "expected_type": "list" if is_list else "str", "actual_type": type(value).__name__}
             )
         else:
-            logger.warning(
-                "LLM response for '%s' was not a JSON object. Response: %s",
-                field_name,
-                response_text[:100],
+            from ..error_handling import handle_bootstrap_error, ErrorSeverity
+            handle_bootstrap_error(
+                ValueError("LLM response was not a JSON object"),
+                f"LLM JSON parsing: {field_name}",
+                ErrorSeverity.WARNING,
+                {"field_name": field_name, "response_text": response_text[:100]}
             )
     except json.JSONDecodeError:
         if is_list:
