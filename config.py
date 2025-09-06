@@ -399,7 +399,7 @@ structlog.configure(
         # Handle positional arguments properly
         structlog.stdlib.PositionalArgumentsFormatter(),
         # Process timestamps
-        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M"),
         # Handle stack info
         structlog.processors.StackInfoRenderer(),
         # Handle exceptions
