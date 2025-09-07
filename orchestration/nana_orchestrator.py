@@ -539,7 +539,7 @@ class NANA_Orchestrator:
 
         (
             chapter_plan,
-            plan_usage,
+            _,  # unused usage data
         ) = await self.narrative_agent._plan_chapter_scenes(
             self.plot_outline,
             characters_for_planning,  # List[CharacterProfile]
@@ -644,7 +644,7 @@ class NANA_Orchestrator:
             (
                 draft_text,
                 raw_output,
-                draft_usage,
+                _,  # unused usage data
             ) = await self.narrative_agent._draft_chapter(
                 self.plot_outline,
                 novel_chapter_number,
@@ -670,7 +670,7 @@ class NANA_Orchestrator:
         (
             initial_draft_text,
             initial_raw_llm_text,
-            draft_usage,
+            _,  # unused usage data
         ) = await self.narrative_agent.generate_chapter(
             self.plot_outline,
             characters,  # List[CharacterProfile]
@@ -783,8 +783,8 @@ class NANA_Orchestrator:
             (
                 eval_result_obj,
                 continuity_problems,
-                eval_usage,
-                continuity_usage,
+                _,  # unused eval usage data
+                _,  # unused continuity usage data
             ) = await self._run_evaluation_cycle(
                 novel_chapter_number,
                 attempt,
@@ -839,7 +839,7 @@ class NANA_Orchestrator:
                     new_text,
                     rev_raw_output,
                     patched_spans,
-                    revision_usage,
+                    _,  # unused revision usage data
                 ) = await self._perform_revisions(
                     novel_chapter_number,
                     attempt,
