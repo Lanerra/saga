@@ -413,7 +413,7 @@ class ZeroCopyContextGenerator:
             full_content = f"{prefix}{content}{suffix}"
 
             # Check token limit
-            content_tokens = count_tokens(full_content, config.DRAFTING_MODEL)
+            content_tokens = count_tokens(full_content, config.NARRATIVE_MODEL)
 
             if total_tokens + content_tokens <= max_tokens:
                 context_parts.append(full_content)
@@ -422,12 +422,12 @@ class ZeroCopyContextGenerator:
                 # Try to fit truncated version
                 remaining_tokens = max_tokens - total_tokens
                 prefix_suffix_tokens = count_tokens(
-                    prefix + suffix, config.DRAFTING_MODEL
+                    prefix + suffix, config.NARRATIVE_MODEL
                 )
 
                 if remaining_tokens > prefix_suffix_tokens + 10:
                     truncated_content = truncate_text_by_tokens(
-                        full_content, config.DRAFTING_MODEL, remaining_tokens
+                        full_content, config.NARRATIVE_MODEL, remaining_tokens
                     )
                     context_parts.append(truncated_content)
                     total_tokens += remaining_tokens
@@ -439,7 +439,7 @@ class ZeroCopyContextGenerator:
             )
 
         final_context = "\n".join(reversed(context_parts)).strip()
-        final_tokens = count_tokens(final_context, config.DRAFTING_MODEL)
+        final_tokens = count_tokens(final_context, config.NARRATIVE_MODEL)
 
         logger.info(
             f"Built semantic context: {final_tokens} tokens from {len(context_parts)} chapters."
@@ -473,7 +473,7 @@ class ZeroCopyContextGenerator:
                     ).strip()
                     if content:
                         formatted = f"[Fallback Context from Chapter {chapter_num}]:\n{content}\n---\n"
-                        content_tokens = count_tokens(formatted, config.DRAFTING_MODEL)
+                        content_tokens = count_tokens(formatted, config.NARRATIVE_MODEL)
 
                         if total_tokens + content_tokens <= max_semantic_tokens:
                             context_parts.append(formatted)
@@ -489,7 +489,7 @@ class ZeroCopyContextGenerator:
 
         final_context = "\n".join(reversed(context_parts)).strip()
         logger.info(
-            f"Built fallback semantic context: {count_tokens(final_context, config.DRAFTING_MODEL)} tokens."
+            f"Built fallback semantic context: {count_tokens(final_context, config.NARRATIVE_MODEL)} tokens."
         )
         return final_context
 

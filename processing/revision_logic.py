@@ -255,10 +255,10 @@ async def _perform_full_rewrite(
     )
     
     # Prepare original snippet
-    max_original_snippet_tokens = config.MAX_CONTEXT_TOKENS // 3
+    max_original_snippet_tokens = config.MAX_CONTEXT_TOKENS
     original_snippet = truncate_text_by_tokens(
         original_text,
-        config.REVISION_MODEL,
+        config.MEDIUM_MODEL,
         max_original_snippet_tokens,
         truncation_marker="\n... (original draft snippet truncated for brevity in rewrite prompt)",
     )
@@ -271,7 +271,7 @@ async def _perform_full_rewrite(
     if config.ENABLE_AGENTIC_PLANNING and chapter_plan:
         formatted_plan_fr = _get_formatted_scene_plan_from_agent_or_fallback(
             chapter_plan,
-            config.REVISION_MODEL,
+            config.MEDIUM_MODEL,
             max_plan_tokens_for_full_rewrite,
         )
         plan_focus_section_parts.append(formatted_plan_fr)
@@ -360,11 +360,11 @@ async def _perform_full_rewrite(
     
     # Call LLM
     logger.info(
-        f"Calling LLM ({config.REVISION_MODEL}) for Ch {chapter_number} full rewrite. Min length: {config.MIN_ACCEPTABLE_DRAFT_LENGTH} chars."
+        f"Calling LLM ({config.MEDIUM_MODEL}) for Ch {chapter_number} full rewrite. Min length: {config.MIN_ACCEPTABLE_DRAFT_LENGTH} chars."
     )
     
     raw_revised_llm_output, _ = await llm_service.async_call_llm(
-        model_name=config.REVISION_MODEL,
+        model_name=config.MEDIUM_MODEL,
         prompt=prompt_full_rewrite,
         temperature=config.Temperatures.REVISION,
         max_tokens=None,
@@ -569,7 +569,7 @@ async def _generate_single_patch_instruction_llm(
     if config.ENABLE_AGENTIC_PLANNING and chapter_plan:
         formatted_plan = _get_formatted_scene_plan_from_agent_or_fallback(
             chapter_plan,
-            config.PATCH_GENERATION_MODEL,
+            config.MEDIUM_MODEL,
             max_plan_tokens_for_patch_prompt,
         )
         plan_focus_section_parts.append(formatted_plan)
@@ -648,7 +648,7 @@ async def _generate_single_patch_instruction_llm(
         )
         original_snippet_tokens = count_tokens(
             original_chapter_text_snippet_for_llm,
-            config.PATCH_GENERATION_MODEL,
+            config.MEDIUM_MODEL,
         )
         expansion_factor = 2.5 if length_expansion_instruction_header_str else 1.5
         max_patch_output_tokens = int(original_snippet_tokens * expansion_factor)
@@ -688,14 +688,14 @@ async def _generate_single_patch_instruction_llm(
     )
 
     logger.info(
-        f"Calling LLM ({config.PATCH_GENERATION_MODEL}) for patch in Ch {chapter_number}. Problem: '{problem['problem_description'][:60].replace(chr(10), ' ')}...' Quote Text: '{original_quote_text_from_problem[:50].replace(chr(10), ' ')}...' Max Output Tokens: {max_patch_output_tokens}"
+        f"Calling LLM ({config.MEDIUM_MODEL}) for patch in Ch {chapter_number}. Problem: '{problem['problem_description'][:60].replace(chr(10), ' ')}...' Quote Text: '{original_quote_text_from_problem[:50].replace(chr(10), ' ')}...' Max Output Tokens: {max_patch_output_tokens}"
     )
 
     (
         replace_with_text_cleaned,
         usage_data,
     ) = await llm_service.async_call_llm(
-        model_name=config.PATCH_GENERATION_MODEL,
+        model_name=config.MEDIUM_MODEL,
         prompt=prompt,
         temperature=config.Temperatures.PATCH,
         max_tokens=max_patch_output_tokens,

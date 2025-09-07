@@ -514,7 +514,7 @@ class NarrativeAgent:
             logger.info(f"Drafting Scene {scene_number} of Chapter {chapter_number}...")
 
             previous_scenes_prose = "\n\n".join(all_scenes_prose)
-            max_tokens_for_prev_scenes = self.config.MAX_GENERATION_TOKENS // 2
+            max_tokens_for_prev_scenes = self.config.MAX_GENERATION_TOKENS
             previous_scenes_prose_for_prompt = truncate_text_by_tokens(
                 previous_scenes_prose,
                 self.model,

@@ -506,7 +506,7 @@ def merge_world_item_updates(
 class KnowledgeAgent:
     """High level interface for KG parsing and persistence."""
 
-    def __init__(self, model_name: str = config.KNOWLEDGE_UPDATE_MODEL):
+    def __init__(self, model_name: str = config.SMALL_MODEL):
         self.model_name = model_name
         self.node_labels: list[str] = []
         self.relationship_types: list[str] = []
@@ -1569,7 +1569,7 @@ class KnowledgeAgent:
 
             # Call LLM to generate enrichment
             enrichment_text, _ = await llm_service.async_call_llm(
-                model_name=config.KNOWLEDGE_UPDATE_MODEL,
+                model_name=config.SMALL_MODEL,
                 prompt=prompt,
                 temperature=config.Temperatures.KG_EXTRACTION,
                 auto_clean_response=True,
@@ -1704,7 +1704,7 @@ class KnowledgeAgent:
             {"character_name": char_name, "chapter_context": context_chapters},
         )
         enrichment_text, _ = await llm_service.async_call_llm(
-            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            model_name=config.SMALL_MODEL,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             auto_clean_response=True,
@@ -1745,7 +1745,7 @@ class KnowledgeAgent:
             {"element": element_info, "chapter_context": context_chapters},
         )
         enrichment_text, _ = await llm_service.async_call_llm(
-            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            model_name=config.SMALL_MODEL,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             auto_clean_response=True,
@@ -1916,7 +1916,7 @@ class KnowledgeAgent:
         )
 
         llm_response, _ = await llm_service.async_call_llm(
-            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            model_name=config.SMALL_MODEL,
             prompt=prompt,
             temperature=0.1,
             auto_clean_response=True,
