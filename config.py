@@ -304,8 +304,6 @@ class SagaSettings(BaseSettings):
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
-        if self.FALLBACK_GENERATION_MODEL is None:
-            self.FALLBACK_GENERATION_MODEL = self.MEDIUM_MODEL
         return self
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env")

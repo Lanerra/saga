@@ -26,7 +26,7 @@ async def bootstrap_field(
     )
 
     response_text, usage_data = await llm_service.async_call_llm(
-        model_name=config.INITIAL_SETUP_MODEL,
+        model_name=config.NARRATIVE_MODEL,
         prompt=prompt,
         temperature=config.Temperatures.INITIAL_SETUP,
         stream_to_disk=False,
