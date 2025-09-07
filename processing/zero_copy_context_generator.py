@@ -492,3 +492,48 @@ class ZeroCopyContextGenerator:
             f"Built fallback semantic context: {count_tokens(final_context, config.DRAFTING_MODEL)} tokens."
         )
         return final_context
+
+
+# Backward compatibility wrapper for legacy agent_or_props interface
+async def generate_hybrid_chapter_context_native(
+    agent_or_props: Any,
+    current_chapter_number: int,
+    chapter_plan: list[SceneDetail] | None,
+) -> str:
+    """
+    Backward compatibility wrapper for the legacy interface.
+    Extracts plot_outline from agent_or_props and delegates to ZeroCopyContextGenerator.
+    
+    Args:
+        agent_or_props: NANA_Orchestrator instance or novel_props dictionary
+        current_chapter_number: Current chapter being processed
+        chapter_plan: Optional scene details for KG facts
+    
+    Returns:
+        Formatted hybrid context string
+    """
+    import warnings
+    warnings.warn(
+        "generate_hybrid_chapter_context_native with agent_or_props is deprecated. "
+        "Use ZeroCopyContextGenerator.generate_hybrid_context_native with plot_outline directly.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    if current_chapter_number <= 0:
+        return ""
+
+    # Extract plot outline data (same logic as legacy function)
+    if isinstance(agent_or_props, dict):
+        plot_outline_data = agent_or_props.get(
+            "plot_outline_full", agent_or_props.get("plot_outline", {})
+        )
+    else:
+        plot_outline_data = getattr(agent_or_props, "plot_outline_full", None)
+        if not plot_outline_data:
+            plot_outline_data = getattr(agent_or_props, "plot_outline", {})
+
+    # Delegate to the zero-copy implementation
+    return await ZeroCopyContextGenerator.generate_hybrid_context_native(
+        plot_outline_data, current_chapter_number, chapter_plan
+    )

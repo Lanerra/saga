@@ -11,8 +11,8 @@ from core.llm_interface_refactored import count_tokens, llm_service
 from core.text_processing_service import truncate_text_by_tokens
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
-from processing.context_generator import (
-    generate_hybrid_chapter_context_native,  # Native Phase 2 context generation
+from processing.zero_copy_context_generator import (
+    generate_hybrid_chapter_context_native,  # Native Phase 2 context generation (deprecated wrapper)
 )
 from prompts.prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
