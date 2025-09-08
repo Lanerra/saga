@@ -232,9 +232,13 @@ class RevisionAgent:
                 current_embedding = await current_embedding_task
 
                 if current_embedding is not None and prev_embedding is not None:
-                    coherence_score = utils.numpy_cosine_similarity(
-                        current_embedding, prev_embedding
-                    )
+                    try:
+                        coherence_score = utils.numpy_cosine_similarity(
+                            current_embedding, prev_embedding
+                        )
+                    except ValueError:
+                        logger.warning("Cosine similarity shape mismatch handled: setting to 0.0 for coherence check compatibility.")
+                        coherence_score = 0.0
                     logger.info(
                         f"Coherence score with previous chapter ({chapter_number - 1}): {coherence_score:.4f}"
                     )

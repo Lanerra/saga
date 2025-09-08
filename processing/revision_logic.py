@@ -1019,13 +1019,17 @@ async def _apply_patches_to_text(
             if (
                 orig_emb is not None
                 and repl_emb is not None
-                and utils.numpy_cosine_similarity(orig_emb, repl_emb)
-                >= config.REVISION_SIMILARITY_ACCEPTANCE
             ):
-                logger.info(
-                    f"Patch {patch_idx + 1}: replacement highly similar to original segment {segment_start}-{segment_end}. Skipping."
-                )
-                continue
+                try:
+                    similarity = utils.numpy_cosine_similarity(orig_emb, repl_emb)
+                except ValueError:
+                    logger.warning("Cosine similarity shape mismatch handled: setting to 0.0 for patch similarity check.")
+                    similarity = 0.0
+                if similarity >= config.REVISION_SIMILARITY_ACCEPTANCE:
+                    logger.info(
+                        f"Patch {patch_idx + 1}: replacement highly similar to original segment {segment_start}-{segment_end}. Skipping."
+                    )
+                    continue
 
         replacements.append((segment_start, segment_end, replacement_text))
         log_action = "DELETION" if not replacement_text.strip() else "REPLACEMENT"

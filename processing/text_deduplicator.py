@@ -102,7 +102,11 @@ class TextDeduplicator:
                     emb_j = embeddings[kept_idx]
                     if emb_j is None:
                         continue
-                    similarity = utils.numpy_cosine_similarity(embeddings[idx], emb_j)
+                    try:
+                        similarity = utils.numpy_cosine_similarity(embeddings[idx], emb_j)
+                    except ValueError:
+                        logger.warning("Cosine similarity shape mismatch handled: setting to 0.0 for deduplication compatibility.")
+                        similarity = 0.0
                     if similarity > self.similarity_threshold:
                         remove_idx = idx if not self.prefer_newer else kept_idx
                         indices_to_remove.add(remove_idx)
