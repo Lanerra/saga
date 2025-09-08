@@ -7,6 +7,7 @@ import spacy
 from rapidfuzz.fuzz import partial_ratio_alignment
 
 import config
+from utils import _is_fill_in
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +88,12 @@ class SpaCyModelManager:
         if self._nlp is not None:
             return
         try:
-            self._nlp = spacy.load("en_core_web_sm")
-            logger.info("spaCy model 'en_core_web_sm' loaded successfully.")
+            self._nlp = spacy.load("en_core_web_trf")
+            logger.info("spaCy model 'en_core_web_trf' loaded successfully.")
         except OSError:
             logger.error(
-                "spaCy model 'en_core_web_sm' not found. "
-                "Please run: python -m spacy download en_core_web_sm. "
+                "spaCy model 'en_core_web_trf' not found. "
+                "Please run: python -m spacy download en_core_web_trf. "
                 "spaCy dependent features will be disabled."
             )
             self._nlp = None
@@ -105,11 +106,6 @@ class SpaCyModelManager:
 
 
 spacy_manager = SpaCyModelManager()
-
-
-def _is_fill_in(value: Any) -> bool:
-    """Return True if ``value`` is the fill-in placeholder."""
-    return isinstance(value, str) and value.strip() == config.FILL_IN
 
 
 def load_spacy_model_if_needed() -> None:
