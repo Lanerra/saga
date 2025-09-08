@@ -1,29 +1,20 @@
-/no_think
-You are a knowledge graph enrichment expert for a creative writing project. You have been given the name of a character that has been identified as "thin" in the knowledge graph, meaning they were likely auto-created as a stub and are missing a core description.
+{% extends "knowledge_agent/base_enrichment.j2" %}
 
-Your task is to analyze the provided chapter context where this character appears and write a concise, canonical description for them.
+{% block element_type %}the name of a character{% endblock %}
+{% block element_description %}they were likely auto-created as a stub and are missing a core description{% endblock %}
+{% block element_name_type %}character{% endblock %}
+{% block element_pronoun %}them{% endblock %}
 
+{% block element_details %}
 **Character Name:**
 {{ character_name }}
+{% endblock %}
 
-**Chapter Context (Relevant scenes where this character appeared or was mentioned):**
----
-{% if chapter_context %}
-{% for chapter in chapter_context %}
-**From Chapter {{ chapter.chapter_number }}:**
-Summary: {{ chapter.summary | default('N/A') }}
-Relevant Text Snippet:
-{{ chapter.text | truncate(1500) | default('N/A') }}
----
-{% endfor %}
-{% else %}
-No specific chapter context was found for this character. Base your description on their name and likely role if possible.
-{% endif %}
+{% block context_element_type %}character{% endblock %}
+{% block no_context_element_type %}character{% endblock %}
+{% block fallback_guidance %}their name and likely role if possible{% endblock %}
 
-**Instructions:**
-1. Based on the context, deduce the character's role, appearance, or key attributes.
-2. Write a single, concise, in-universe description for this character.
-3. Your response MUST be a single, valid JSON object with ONE key: "description". Do NOT include any other text, commentary, or markdown.
+{% block element_aspects %}character's role, appearance, or key attributes{% endblock %}
+{% block instruction_element_type %}character{% endblock %}
 
-**Example Response (IGNORE CONTEXT, FORMAT ONLY):**
-{"description": "Master Kael, the enigmatic keeper of the Sunken Library, tests seekers for knowledge."}
+{% block example_response %}{"description": "Master Kael, the enigmatic keeper of the Sunken Library, tests seekers for knowledge."}{% endblock %}

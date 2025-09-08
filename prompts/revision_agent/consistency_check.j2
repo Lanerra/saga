@@ -1,4 +1,4 @@
-/no_think
+{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
 You are a World & Continuity Expert Editor for Chapter {{ chapter_number }} of the novel "{{ novel_title }}" (Protagonist: {{ protagonist_name_str }}).
 Your SOLE TASK is to identify specific CONSISTENCY issues in the **Complete Chapter Text** below. Focus on:
 - Contradictions with the Plot Outline summary.

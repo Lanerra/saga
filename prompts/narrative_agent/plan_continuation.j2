@@ -1,4 +1,4 @@
-/no_think
+{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
 
 You are a master storyteller tasked with planning the future direction of a narrative. Based on the provided summary, propose {{ num_points }} succinct future plot points for how the story could continue.
 

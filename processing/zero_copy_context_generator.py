@@ -413,7 +413,7 @@ class ZeroCopyContextGenerator:
             full_content = f"{prefix}{content}{suffix}"
 
             # Check token limit
-            content_tokens = count_tokens(full_content, config.DRAFTING_MODEL)
+            content_tokens = count_tokens(full_content, config.NARRATIVE_MODEL)
 
             if total_tokens + content_tokens <= max_tokens:
                 context_parts.append(full_content)
@@ -422,12 +422,12 @@ class ZeroCopyContextGenerator:
                 # Try to fit truncated version
                 remaining_tokens = max_tokens - total_tokens
                 prefix_suffix_tokens = count_tokens(
-                    prefix + suffix, config.DRAFTING_MODEL
+                    prefix + suffix, config.NARRATIVE_MODEL
                 )
 
                 if remaining_tokens > prefix_suffix_tokens + 10:
                     truncated_content = truncate_text_by_tokens(
-                        full_content, config.DRAFTING_MODEL, remaining_tokens
+                        full_content, config.NARRATIVE_MODEL, remaining_tokens
                     )
                     context_parts.append(truncated_content)
                     total_tokens += remaining_tokens
@@ -439,7 +439,7 @@ class ZeroCopyContextGenerator:
             )
 
         final_context = "\n".join(reversed(context_parts)).strip()
-        final_tokens = count_tokens(final_context, config.DRAFTING_MODEL)
+        final_tokens = count_tokens(final_context, config.NARRATIVE_MODEL)
 
         logger.info(
             f"Built semantic context: {final_tokens} tokens from {len(context_parts)} chapters."
@@ -473,7 +473,7 @@ class ZeroCopyContextGenerator:
                     ).strip()
                     if content:
                         formatted = f"[Fallback Context from Chapter {chapter_num}]:\n{content}\n---\n"
-                        content_tokens = count_tokens(formatted, config.DRAFTING_MODEL)
+                        content_tokens = count_tokens(formatted, config.NARRATIVE_MODEL)
 
                         if total_tokens + content_tokens <= max_semantic_tokens:
                             context_parts.append(formatted)
@@ -489,6 +489,51 @@ class ZeroCopyContextGenerator:
 
         final_context = "\n".join(reversed(context_parts)).strip()
         logger.info(
-            f"Built fallback semantic context: {count_tokens(final_context, config.DRAFTING_MODEL)} tokens."
+            f"Built fallback semantic context: {count_tokens(final_context, config.NARRATIVE_MODEL)} tokens."
         )
         return final_context
+
+
+# Backward compatibility wrapper for legacy agent_or_props interface
+async def generate_hybrid_chapter_context_native(
+    agent_or_props: Any,
+    current_chapter_number: int,
+    chapter_plan: list[SceneDetail] | None,
+) -> str:
+    """
+    Backward compatibility wrapper for the legacy interface.
+    Extracts plot_outline from agent_or_props and delegates to ZeroCopyContextGenerator.
+    
+    Args:
+        agent_or_props: NANA_Orchestrator instance or novel_props dictionary
+        current_chapter_number: Current chapter being processed
+        chapter_plan: Optional scene details for KG facts
+    
+    Returns:
+        Formatted hybrid context string
+    """
+    import warnings
+    warnings.warn(
+        "generate_hybrid_chapter_context_native with agent_or_props is deprecated. "
+        "Use ZeroCopyContextGenerator.generate_hybrid_context_native with plot_outline directly.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
+    if current_chapter_number <= 0:
+        return ""
+
+    # Extract plot outline data (same logic as legacy function)
+    if isinstance(agent_or_props, dict):
+        plot_outline_data = agent_or_props.get(
+            "plot_outline_full", agent_or_props.get("plot_outline", {})
+        )
+    else:
+        plot_outline_data = getattr(agent_or_props, "plot_outline_full", None)
+        if not plot_outline_data:
+            plot_outline_data = getattr(agent_or_props, "plot_outline", {})
+
+    # Delegate to the zero-copy implementation
+    return await ZeroCopyContextGenerator.generate_hybrid_context_native(
+        plot_outline_data, current_chapter_number, chapter_plan
+    )

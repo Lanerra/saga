@@ -1,30 +1,28 @@
-/no_think
+{% extends "narrative_agent/base_draft.j2" %}
 
-You are an expert novelist tasked with writing a single scene.
+{% block task_description %}writing a single scene{% endblock %}
 
-**Novel Details:**
-- Title: {{ novel_title }}
-- Genre: {{ novel_genre }}
-
+{% block focus_section %}
 **Chapter & Scene Focus:**
 - Chapter Number: {{ chapter_number }}
 - Scene Number: {{ scene_detail.scene_number }}
 - Scene Summary: "{{ scene_detail.summary }}"
+{% endblock %}
 
-**Hybrid Context (for canonical consistency):**
---- BEGIN HYBRID CONTEXT ---
-{{ hybrid_context_for_draft }}
---- END HYBRID CONTEXT ---
-
+{% block additional_context %}
 **Prior Scene Prose (for continuity within this chapter):**
 --- BEGIN PRIOR SCENES ---
 {{ previous_scenes_prose }}
 --- END PRIOR SCENES ---
+{% endblock %}
 
-**Instructions:**
+{% block instructions %}
 1. Write the narrative prose for this scene only. Do not include headings or meta-commentary.
 2. Ensure the prose aligns with the Hybrid Context and Prior Scene Prose.
 3. Aim for at least {{ min_length_per_scene }} characters of text.
 4. Output ONLY the scene text.
+{% endblock %}
 
+{% block output_header %}
 --- BEGIN SCENE {{ scene_detail.scene_number }} TEXT ---
+{% endblock %}

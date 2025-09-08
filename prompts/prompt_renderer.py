@@ -6,6 +6,8 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+import config
+
 PROMPTS_PATH = Path(__file__).parent
 _env = Environment(loader=FileSystemLoader(PROMPTS_PATH), autoescape=False)
 
@@ -13,4 +15,6 @@ _env = Environment(loader=FileSystemLoader(PROMPTS_PATH), autoescape=False)
 def render_prompt(template_name: str, context: dict[str, Any]) -> str:
     """Render a Jinja2 template from the prompts directory."""
     template = _env.get_template(template_name)
-    return template.render(**context)
+    # Always include config in template context
+    template_context = {"config": config, **context}
+    return template.render(**template_context)

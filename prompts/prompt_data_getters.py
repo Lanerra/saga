@@ -9,6 +9,7 @@ import asyncio
 import copy
 import logging
 import re
+from functools import lru_cache
 from typing import Any
 
 import config
@@ -17,6 +18,70 @@ from data_access import character_queries, kg_queries, world_queries
 from models import CharacterProfile, SceneDetail, WorldItem
 
 logger = logging.getLogger(__name__)
+
+# Context cache for expensive operations within a single chapter generation
+_context_cache = {}
+
+def clear_context_cache() -> None:
+    """Clear the context cache. Should be called at the start of each chapter generation."""
+    global _context_cache
+    _context_cache.clear()
+
+async def _cached_character_info(char_name: str, chapter_limit: int | None) -> dict[str, Any] | None:
+    """Cache character database queries to avoid redundant lookups."""
+    cache_key = f"char_info_{char_name}_{chapter_limit}"
+    if cache_key not in _context_cache:
+        result = await character_queries.get_character_info_for_snippet_from_db(
+            char_name, chapter_limit
+        )
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_world_elements() -> list[WorldItem]:
+    """Cache world elements to avoid redundant database queries."""
+    cache_key = "world_elements"
+    if cache_key not in _context_cache:
+        result = await world_queries.get_all_world_items()
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
+    """Cache individual world item lookups."""
+    cache_key = f"world_item_{item_id}"
+    if cache_key not in _context_cache:
+        result = await world_queries.get_world_item_by_id(item_id)
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_character_profiles_plain_text(
+    character_profiles: list[CharacterProfile], current_chapter: int | None = None
+) -> str:
+    """Cache formatted character profiles to avoid reprocessing."""
+    # Create cache key from character names and chapter
+    char_names = sorted([cp.name for cp in character_profiles])
+    cache_key = f"char_profiles_{'-'.join(char_names)}_{current_chapter}"
+    
+    if cache_key not in _context_cache:
+        result = await get_filtered_character_profiles_for_prompt_plain_text(
+            character_profiles, current_chapter
+        )
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_world_data_plain_text(
+    world_data: list[WorldItem], current_chapter: int | None = None
+) -> str:
+    """Cache formatted world data to avoid reprocessing."""
+    # Create cache key from world item IDs and chapter
+    world_ids = sorted([wi.id for wi in world_data if wi.id])
+    cache_key = f"world_data_{'-'.join(world_ids)}_{current_chapter}"
+    
+    if cache_key not in _context_cache:
+        result = await get_filtered_world_data_for_prompt_plain_text(
+            world_data, current_chapter
+        )
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
 
 
 def _format_dict_for_plain_text_prompt(
@@ -269,7 +334,7 @@ async def _get_world_data_dict_with_notes(
 
         for item_id in item_id_list:
             try:
-                item_obj = await world_queries.get_world_item_by_id(item_id)
+                item_obj = await _cached_world_item_by_id(item_id)
             except Exception as exc:
                 logger.error(
                     "Error fetching world item '%s' from Neo4j: %s",
@@ -385,6 +450,17 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     max_facts_per_char: int = 2,
     max_total_facts: int = 7,
 ) -> str:
+    """
+    Gather reliable KG facts for drafting prompts by combining novel-level info 
+    and character-specific data from the knowledge graph.
+    
+    This function orchestrates the collection of contextually relevant facts by:
+    1. Discovering characters of interest from plot outline and chapter plans
+    2. Applying protagonist-proximity filtering to focus on connected characters  
+    3. Gathering novel-level information (theme, central conflict)
+    4. Collecting character-specific facts (status, location, relationships)
+    5. Assembling the results into a formatted prompt snippet
+    """
     if chapter_number <= 0:
         return "No KG facts applicable for pre-first chapter."
 
@@ -395,224 +471,32 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     )
 
     facts_for_prompt_list: list[str] = []
+    protagonist_name = plot_outline.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME)
 
-    plot_outline_data = plot_outline
-    protagonist_name = plot_outline_data.get(
-        "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
+    # Step 1: Discover characters of interest
+    characters_of_interest = await _discover_characters_of_interest(
+        plot_outline, chapter_plan, chapter_number
     )
 
-    # Phase 1.1: Balanced Context Selection - Check if we should use balanced selection for early chapters
-    use_balanced_selection = (
-        config.EARLY_CHAPTER_BALANCED_SELECTION
-        and chapter_number < config.PROTAGONIST_PRIORITY_START_CHAPTER
+    # Step 2: Apply protagonist-proximity filtering
+    characters_of_interest = await _apply_protagonist_proximity_filtering(
+        characters_of_interest, protagonist_name
     )
 
-    if use_balanced_selection:
-        # Early chapters: Include all characters, not just protagonist-connected ones
-        logger.info(
-            f"Using balanced character selection for KG facts in chapter {chapter_number} "
-            f"(protagonist filtering starts at chapter {config.PROTAGONIST_PRIORITY_START_CHAPTER})"
-        )
-        characters_of_interest: set[str] = set()
+    # Step 3: Gather novel-level facts
+    await _gather_novel_info_facts(facts_for_prompt_list, max_total_facts)
 
-        # Add protagonist if available
-        if protagonist_name and not utils._is_fill_in(protagonist_name):
-            characters_of_interest.add(protagonist_name)
-    else:
-        # Later chapters: Use protagonist-centric filtering (existing logic)
-        logger.debug(
-            f"Using protagonist-centric character filtering for KG facts in chapter {chapter_number}"
-        )
-        characters_of_interest: set[str] = (
-            {protagonist_name}
-            if protagonist_name and not utils._is_fill_in(protagonist_name)
-            else set()
-        )
-
-    if chapter_plan and isinstance(chapter_plan, list):
-        for scene_detail in chapter_plan:
-            if (
-                isinstance(scene_detail, dict)
-                and "characters_involved" in scene_detail
-                and isinstance(scene_detail["characters_involved"], list)
-            ):
-                for char_name_in_plan in scene_detail["characters_involved"]:
-                    if (
-                        isinstance(char_name_in_plan, str)
-                        and char_name_in_plan.strip()
-                        and not utils._is_fill_in(char_name_in_plan)
-                    ):
-                        characters_of_interest.add(char_name_in_plan.strip())
-
-    logger.debug(
-        f"KG fact gathering for Ch {chapter_number} draft: Chars of interest: {characters_of_interest}, KG chapter limit: {kg_chapter_limit}"
+    # Step 4: Gather character-specific facts
+    await _gather_character_facts(
+        characters_of_interest, kg_chapter_limit, facts_for_prompt_list,
+        max_facts_per_char, max_total_facts
     )
 
-    # Apply protagonist-proximity filtering only for later chapters
-    if not use_balanced_selection and protagonist_name and characters_of_interest:
-        pruned: set[str] = set()
-        for c in characters_of_interest:
-            if c == protagonist_name:
-                pruned.add(c)
-                continue
-            path_len = await kg_queries.get_shortest_path_length_between_entities(
-                protagonist_name, c
-            )
-            if path_len is not None and path_len <= 3:
-                pruned.add(c)
-        characters_of_interest = pruned
-        logger.debug(f"After protagonist-proximity filtering: {characters_of_interest}")
-    # Parallel execution of novel info property queries
-    novel_info_tasks = [
-        kg_queries.get_novel_info_property_from_db("theme"),
-        kg_queries.get_novel_info_property_from_db("central_conflict"),
-    ]
-    novel_info_results = await asyncio.gather(*novel_info_tasks, return_exceptions=True)
-
-    # Process theme
-    if len(facts_for_prompt_list) < max_total_facts and not isinstance(
-        novel_info_results[0], Exception
-    ):
-        value = novel_info_results[0]
-        if value:
-            fact_text = f"- The novel's central theme is: {value}."
-            if fact_text not in facts_for_prompt_list:
-                facts_for_prompt_list.append(fact_text)
-    elif isinstance(novel_info_results[0], Exception):
-        logger.warning(
-            f"KG Query for novel context 'theme' failed: {novel_info_results[0]}"
-        )
-
-    # Process central conflict
-    if len(facts_for_prompt_list) < max_total_facts and not isinstance(
-        novel_info_results[1], Exception
-    ):
-        value = novel_info_results[1]
-        if value:
-            fact_text = f"- The main conflict summary: {value}."
-            if fact_text not in facts_for_prompt_list:
-                facts_for_prompt_list.append(fact_text)
-    elif isinstance(novel_info_results[1], Exception):
-        logger.warning(
-            f"KG Query for novel context 'central_conflict' failed: {novel_info_results[1]}"
-        )
-
-    # Prepare character-related queries for parallel execution
-    character_tasks = []
-    character_names_list = list(characters_of_interest)[:3]
-
-    # Create tasks for all character-related queries
-    for char_name in character_names_list:
-        character_tasks.extend(
-            [
-                kg_queries.get_most_recent_value_from_db(
-                    char_name, "status_is", kg_chapter_limit
-                ),
-                kg_queries.get_most_recent_value_from_db(
-                    char_name, "located_in", kg_chapter_limit
-                ),
-                kg_queries.query_kg_from_db(
-                    subject=char_name, chapter_limit=kg_chapter_limit
-                ),
-            ]
-        )
-
-    # Execute all character-related queries in parallel
-    character_results = await asyncio.gather(*character_tasks, return_exceptions=True)
-
-    # Process results
-    for i, char_name in enumerate(character_names_list):
-        if len(facts_for_prompt_list) >= max_total_facts:
-            break
-        facts_for_this_char = 0
-
-        # Get results for this character (3 results per character)
-        status_result = character_results[i * 3]
-        location_result = character_results[i * 3 + 1]
-        relationships_result = character_results[i * 3 + 2]
-
-        # Process status
-        if (
-            not isinstance(status_result, Exception)
-            and status_result
-            and facts_for_this_char < max_facts_per_char
-            and len(facts_for_prompt_list) < max_total_facts
-        ):
-            fact_text = f"- {char_name}'s status is: {status_result}."
-            if fact_text not in facts_for_prompt_list:
-                facts_for_prompt_list.append(fact_text)
-                facts_for_this_char += 1
-        elif isinstance(status_result, Exception):
-            logger.warning(f"KG Query for {char_name}'s status failed: {status_result}")
-
-        # Process location
-        if (
-            not isinstance(location_result, Exception)
-            and location_result
-            and facts_for_this_char < max_facts_per_char
-            and len(facts_for_prompt_list) < max_total_facts
-        ):
-            fact_text = f"- {char_name} is located in: {location_result}."
-            if fact_text not in facts_for_prompt_list:
-                facts_for_prompt_list.append(fact_text)
-                facts_for_this_char += 1
-        elif isinstance(location_result, Exception):
-            logger.warning(
-                f"KG Query for {char_name}'s location failed: {location_result}"
-            )
-
-        # Process relationships
-        if (
-            not isinstance(relationships_result, Exception)
-            and facts_for_this_char < max_facts_per_char
-            and len(facts_for_prompt_list) < max_total_facts
-        ):
-            interesting_rel_types = [
-                "ally_of",
-                "enemy_of",
-                "mentor_of",
-                "protege_of",
-                "works_for",
-                "related_to",
-            ]
-            for rel_res in relationships_result:
-                if (
-                    facts_for_this_char >= max_facts_per_char
-                    or len(facts_for_prompt_list) >= max_total_facts
-                ):
-                    break
-                if rel_res.get("predicate") in interesting_rel_types:
-                    rel_type_display = rel_res["predicate"].replace("_", " ")
-                    fact_text = f"- {char_name} has a key relationship ({rel_type_display}) with: {rel_res.get('object')}."
-                    if fact_text not in facts_for_prompt_list:
-                        facts_for_prompt_list.append(fact_text)
-                        facts_for_this_char += 1
-        elif isinstance(relationships_result, Exception):
-            logger.warning(
-                f"KG Query for {char_name}'s relationships failed: {relationships_result}"
-            )
-
+    # Step 5: Assemble final result
     if not facts_for_prompt_list:
         return "No specific reliable KG facts identified as highly relevant for this chapter's current focus from Neo4j."
 
     unique_facts = sorted(list(set(facts_for_prompt_list)))
-
-    # Phase 1.2: Bootstrap Element Injection for early chapters
-    if (
-        config.BOOTSTRAP_INTEGRATION_ENABLED
-        and chapter_number <= config.BOOTSTRAP_INTEGRATION_CHAPTERS
-    ):
-        bootstrap_facts = await _inject_bootstrap_world_elements(
-            plot_outline, chapter_number
-        )
-        if bootstrap_facts:
-            logger.info(
-                f"Adding {len(bootstrap_facts)} bootstrap world elements to KG facts for chapter {chapter_number}"
-            )
-            facts_for_prompt_list.extend(bootstrap_facts)
-            # Re-process unique facts after adding bootstrap elements
-            unique_facts = sorted(list(set(facts_for_prompt_list)))
-
     final_prompt_parts = [
         "**Key Reliable KG Facts (from Neo4j - up to previous chapter/initial state):**"
     ]
@@ -620,71 +504,6 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     return "\n".join(final_prompt_parts)
 
 
-# Phase 1.2: Bootstrap Element Injection - Helper function
-async def _inject_bootstrap_world_elements(
-    plot_outline: dict[str, Any], chapter_number: int
-) -> list[str]:
-    """
-    Inject bootstrap world elements into early chapter context to establish narrative presence.
-
-    This function retrieves bootstrap world-building elements (society, factions, history, lore, etc.)
-    and formats them for inclusion in chapter context. The goal is to establish these elements
-    in early chapters so they can be organically referenced in later chapters.
-
-    Args:
-        plot_outline: Plot information dict
-        chapter_number: Current chapter number for rotation/selection logic
-
-    Returns:
-        List of formatted bootstrap facts for inclusion in KG facts
-    """
-    try:
-        # Get bootstrap elements from the knowledge graph
-        world_elements = await world_queries.get_bootstrap_world_elements()
-
-        if not world_elements:
-            logger.debug(
-                f"No bootstrap world elements found for chapter {chapter_number} injection"
-            )
-            return []
-
-        bootstrap_facts = []
-
-        # Select elements to include based on chapter number to rotate exposure
-        # This ensures different bootstrap elements are highlighted in different early chapters
-        elements_per_chapter = min(
-            config.MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT, len(world_elements)
-        )
-        start_idx = ((chapter_number - 1) * elements_per_chapter) % len(world_elements)
-
-        selected_elements = []
-        for i in range(elements_per_chapter):
-            element_idx = (start_idx + i) % len(world_elements)
-            selected_elements.append(world_elements[element_idx])
-
-        # Format bootstrap elements as KG facts
-        for element in selected_elements:
-            if element.description and element.description.strip():
-                # Truncate description to prevent context bloat
-                description = element.description[:200]
-                if len(element.description) > 200:
-                    description += "..."
-
-                fact_text = f"- World Context ({element.category}): {element.name} - {description}"
-                bootstrap_facts.append(fact_text)
-
-        logger.debug(
-            f"Selected {len(bootstrap_facts)} bootstrap elements for chapter {chapter_number}: "
-            f"{[elem.name for elem in selected_elements]}"
-        )
-
-        return bootstrap_facts
-
-    except Exception as e:
-        logger.error(
-            f"Error injecting bootstrap world elements for chapter {chapter_number}: {e}"
-        )
-        return []
 
 
 # Native list-based prompt data getters for improved performance
@@ -702,38 +521,19 @@ async def get_character_state_snippet_for_prompt(
 
     protagonist_name = plot_outline.get("protagonist_name")
 
-    # Phase 1.1: Balanced Context Selection - Check if we should use balanced selection for early chapters
-    use_balanced_selection = (
-        config.EARLY_CHAPTER_BALANCED_SELECTION
-        and current_chapter_num_for_filtering is not None
-        and current_chapter_num_for_filtering
-        < config.PROTAGONIST_PRIORITY_START_CHAPTER
-    )
+    # Use protagonist priority
+    if protagonist_name:
+        char_names_to_process.append(protagonist_name)
 
-    if use_balanced_selection:
-        # Early chapters: Balanced character selection (no protagonist priority)
-        logger.info(
-            f"Using balanced character selection for chapter {current_chapter_num_for_filtering} "
-            f"(protagonist priority starts at chapter {config.PROTAGONIST_PRIORITY_START_CHAPTER})"
-        )
-        # Select characters in alphabetical order up to the limit
-        char_names_to_process = sorted([char.name for char in character_profiles])[
-            : config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET
-        ]
-    else:
-        # Later chapters or when balanced selection is disabled: Protagonist priority
-        if protagonist_name:
-            char_names_to_process.append(protagonist_name)
-
-        # Add other characters up to limit
-        for char_profile in character_profiles:
-            if char_profile.name != protagonist_name:
-                char_names_to_process.append(char_profile.name)
-            if (
-                len(char_names_to_process)
-                >= config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET
-            ):
-                break
+    # Add other characters up to limit
+    for char_profile in character_profiles:
+        if char_profile.name != protagonist_name:
+            char_names_to_process.append(char_profile.name)
+        if (
+            len(char_names_to_process)
+            >= config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET
+        ):
+            break
 
     # Build character profiles from the list
     characters_to_include = {}
@@ -746,11 +546,9 @@ async def get_character_state_snippet_for_prompt(
         if char_name in characters_to_include:
             char_profile = characters_to_include[char_name]
 
-            # Get character data from Neo4j (using existing logic)
-            neo4j_char_data = (
-                await character_queries.get_character_info_for_snippet_from_db(
-                    char_name, current_chapter_num_for_filtering
-                )
+            # Get character data from Neo4j (using cached query)
+            neo4j_char_data = await _cached_character_info(
+                char_name, current_chapter_num_for_filtering
             )
 
             profile_lines = []
@@ -808,6 +606,187 @@ async def get_character_state_snippet_for_prompt(
                 text_output_lines_list.append("")
 
     return "\n".join(text_output_lines_list)
+
+
+# Helper functions for KG facts gathering - extracted from get_reliable_kg_facts_for_drafting_prompt
+async def _discover_characters_of_interest(
+    plot_outline: dict[str, Any],
+    chapter_plan: list[SceneDetail] | None,
+    chapter_number: int,
+) -> set[str]:
+    """Discover characters of interest from plot outline and chapter plan."""
+    protagonist_name = plot_outline.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME)
+    
+    # Start with protagonist-centric filtering
+    characters_of_interest: set[str] = (
+        {protagonist_name}
+        if protagonist_name and not utils._is_fill_in(protagonist_name)
+        else set()
+    )
+
+    # Add characters from chapter plan
+    if chapter_plan and isinstance(chapter_plan, list):
+        for scene_detail in chapter_plan:
+            if (
+                isinstance(scene_detail, dict)
+                and "characters_involved" in scene_detail
+                and isinstance(scene_detail["characters_involved"], list)
+            ):
+                for char_name_in_plan in scene_detail["characters_involved"]:
+                    if (
+                        isinstance(char_name_in_plan, str)
+                        and char_name_in_plan.strip()
+                        and not utils._is_fill_in(char_name_in_plan)
+                    ):
+                        characters_of_interest.add(char_name_in_plan.strip())
+
+    logger.debug(
+        f"KG fact gathering for Ch {chapter_number} draft: Chars of interest: {characters_of_interest}"
+    )
+    return characters_of_interest
+
+
+async def _apply_protagonist_proximity_filtering(
+    characters_of_interest: set[str], 
+    protagonist_name: str,
+) -> set[str]:
+    """Filter characters by proximity to protagonist in the knowledge graph."""
+    if not protagonist_name or not characters_of_interest:
+        return characters_of_interest
+    
+    pruned: set[str] = set()
+    for c in characters_of_interest:
+        if c == protagonist_name:
+            pruned.add(c)
+            continue
+        path_len = await kg_queries.get_shortest_path_length_between_entities(
+            protagonist_name, c
+        )
+        if path_len is not None and path_len <= 3:
+            pruned.add(c)
+    
+    logger.debug(f"After protagonist-proximity filtering: {pruned}")
+    return pruned
+
+
+async def _gather_novel_info_facts(
+    facts_list: list[str], 
+    max_total_facts: int,
+) -> None:
+    """Gather novel-level information facts (theme, central conflict) in parallel."""
+    if len(facts_list) >= max_total_facts:
+        return
+        
+    # Parallel execution of novel info property queries
+    novel_info_tasks = [
+        kg_queries.get_novel_info_property_from_db("theme"),
+        kg_queries.get_novel_info_property_from_db("central_conflict"),
+    ]
+    novel_info_results = await asyncio.gather(*novel_info_tasks, return_exceptions=True)
+
+    # Process theme
+    if len(facts_list) < max_total_facts and not isinstance(novel_info_results[0], Exception):
+        value = novel_info_results[0]
+        if value:
+            fact_text = f"- The novel's central theme is: {value}."
+            if fact_text not in facts_list:
+                facts_list.append(fact_text)
+    elif isinstance(novel_info_results[0], Exception):
+        logger.warning(f"KG Query for novel context 'theme' failed: {novel_info_results[0]}")
+
+    # Process central conflict
+    if len(facts_list) < max_total_facts and not isinstance(novel_info_results[1], Exception):
+        value = novel_info_results[1]
+        if value:
+            fact_text = f"- The main conflict summary: {value}."
+            if fact_text not in facts_list:
+                facts_list.append(fact_text)
+    elif isinstance(novel_info_results[1], Exception):
+        logger.warning(f"KG Query for novel context 'central_conflict' failed: {novel_info_results[1]}")
+
+
+async def _gather_character_facts(
+    characters_of_interest: set[str],
+    kg_chapter_limit: int,
+    facts_list: list[str],
+    max_facts_per_char: int,
+    max_total_facts: int,
+) -> None:
+    """Gather character-specific facts (status, location, relationships) in parallel."""
+    character_names_list = list(characters_of_interest)[:3]
+    if not character_names_list:
+        return
+    
+    # Prepare character-related queries for parallel execution
+    character_tasks = []
+    for char_name in character_names_list:
+        character_tasks.extend([
+            kg_queries.get_most_recent_value_from_db(char_name, "status_is", kg_chapter_limit),
+            kg_queries.get_most_recent_value_from_db(char_name, "located_in", kg_chapter_limit),
+            kg_queries.query_kg_from_db(subject=char_name, chapter_limit=kg_chapter_limit),
+        ])
+
+    # Execute all character-related queries in parallel
+    character_results = await asyncio.gather(*character_tasks, return_exceptions=True)
+
+    # Process results
+    interesting_rel_types = ["ally_of", "enemy_of", "mentor_of", "protege_of", "works_for", "related_to"]
+    
+    for i, char_name in enumerate(character_names_list):
+        if len(facts_list) >= max_total_facts:
+            break
+            
+        facts_for_this_char = 0
+        # Get results for this character (3 results per character)
+        status_result = character_results[i * 3]
+        location_result = character_results[i * 3 + 1]
+        relationships_result = character_results[i * 3 + 2]
+
+        # Process status
+        if (
+            not isinstance(status_result, Exception)
+            and status_result
+            and facts_for_this_char < max_facts_per_char
+            and len(facts_list) < max_total_facts
+        ):
+            fact_text = f"- {char_name}'s status is: {status_result}."
+            if fact_text not in facts_list:
+                facts_list.append(fact_text)
+                facts_for_this_char += 1
+        elif isinstance(status_result, Exception):
+            logger.warning(f"KG Query for {char_name}'s status failed: {status_result}")
+
+        # Process location
+        if (
+            not isinstance(location_result, Exception)
+            and location_result
+            and facts_for_this_char < max_facts_per_char
+            and len(facts_list) < max_total_facts
+        ):
+            fact_text = f"- {char_name} is located in: {location_result}."
+            if fact_text not in facts_list:
+                facts_list.append(fact_text)
+                facts_for_this_char += 1
+        elif isinstance(location_result, Exception):
+            logger.warning(f"KG Query for {char_name}'s location failed: {location_result}")
+
+        # Process relationships
+        if (
+            not isinstance(relationships_result, Exception)
+            and facts_for_this_char < max_facts_per_char
+            and len(facts_list) < max_total_facts
+        ):
+            for rel_res in relationships_result:
+                if facts_for_this_char >= max_facts_per_char or len(facts_list) >= max_total_facts:
+                    break
+                if rel_res.get("predicate") in interesting_rel_types:
+                    rel_type_display = rel_res["predicate"].replace("_", " ")
+                    fact_text = f"- {char_name} has a key relationship ({rel_type_display}) with: {rel_res.get('object')}."
+                    if fact_text not in facts_list:
+                        facts_list.append(fact_text)
+                        facts_for_this_char += 1
+        elif isinstance(relationships_result, Exception):
+            logger.warning(f"KG Query for {char_name}'s relationships failed: {relationships_result}")
 
 
 async def get_world_state_snippet_for_prompt(
@@ -872,3 +851,6 @@ async def get_world_state_snippet_for_prompt(
         text_output_lines_list.append("")
 
     return "\n".join(text_output_lines_list)
+
+
+# Helper functions for KG facts gathering - extracted from get_reliable_kg_facts_for_drafting_prompt

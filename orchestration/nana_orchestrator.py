@@ -40,7 +40,7 @@ from models import (
 )
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
-from processing.context_generator import generate_hybrid_chapter_context_native
+from processing.zero_copy_context_generator import generate_hybrid_chapter_context_native
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
 from ui.rich_display import RichDisplayManager
@@ -539,7 +539,7 @@ class NANA_Orchestrator:
 
         (
             chapter_plan,
-            plan_usage,
+            _,  # unused usage data
         ) = await self.narrative_agent._plan_chapter_scenes(
             self.plot_outline,
             characters_for_planning,  # List[CharacterProfile]
@@ -644,7 +644,7 @@ class NANA_Orchestrator:
             (
                 draft_text,
                 raw_output,
-                draft_usage,
+                _,  # unused usage data
             ) = await self.narrative_agent._draft_chapter(
                 self.plot_outline,
                 novel_chapter_number,
@@ -670,7 +670,7 @@ class NANA_Orchestrator:
         (
             initial_draft_text,
             initial_raw_llm_text,
-            draft_usage,
+            _,  # unused usage data
         ) = await self.narrative_agent.generate_chapter(
             self.plot_outline,
             characters,  # List[CharacterProfile]
@@ -783,8 +783,8 @@ class NANA_Orchestrator:
             (
                 eval_result_obj,
                 continuity_problems,
-                eval_usage,
-                continuity_usage,
+                _,  # unused eval usage data
+                _,  # unused continuity usage data
             ) = await self._run_evaluation_cycle(
                 novel_chapter_number,
                 attempt,
@@ -839,7 +839,7 @@ class NANA_Orchestrator:
                     new_text,
                     rev_raw_output,
                     patched_spans,
-                    revision_usage,
+                    _,  # unused revision usage data
                 ) = await self._perform_revisions(
                     novel_chapter_number,
                     attempt,
@@ -959,14 +959,6 @@ class NANA_Orchestrator:
             novel_chapter_number, "final_summary", result.get("summary")
         )
 
-        # Bootstrap connectivity healing for early chapters
-        if (
-            config.BOOTSTRAP_INTEGRATION_ENABLED
-            and novel_chapter_number <= config.BOOTSTRAP_INTEGRATION_CHAPTERS
-        ):
-            await self.knowledge_agent.heal_and_enrich_kg(
-                chapter_number=novel_chapter_number
-            )
 
         # Save chapter data to Neo4j database
         try:

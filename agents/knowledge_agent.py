@@ -506,7 +506,7 @@ def merge_world_item_updates(
 class KnowledgeAgent:
     """High level interface for KG parsing and persistence."""
 
-    def __init__(self, model_name: str = config.KNOWLEDGE_UPDATE_MODEL):
+    def __init__(self, model_name: str = config.SMALL_MODEL):
         self.model_name = model_name
         self.node_labels: list[str] = []
         self.relationship_types: list[str] = []
@@ -689,19 +689,6 @@ class KnowledgeAgent:
             },
         )
 
-        # Include bootstrap elements in extraction prompt for early chapters
-        if (
-            config.BOOTSTRAP_INTEGRATION_ENABLED
-            and chapter_number <= config.BOOTSTRAP_INTEGRATION_CHAPTERS
-        ):
-            bootstrap_context = await self._get_bootstrap_context_for_extraction(
-                chapter_number
-            )
-            if bootstrap_context:
-                # Add bootstrap context to the prompt
-                prompt += (
-                    f"\n\nBootstrap World Context to Consider:\n{bootstrap_context}"
-                )
 
         try:
             text, usage = await llm_service.async_call_llm(
@@ -720,48 +707,7 @@ class KnowledgeAgent:
             logger.error(f"LLM call for KG extraction failed: {e}", exc_info=True)
             return "", None
 
-    async def _get_bootstrap_context_for_extraction(self, chapter_number: int) -> str:
-        """Get bootstrap elements that should be considered for relationship extraction."""
-        # Only include bootstrap context for early chapters (less than 10 as per clarification)
-        if chapter_number >= 10:
-            return ""
 
-        # Get bootstrap elements from world queries
-        bootstrap_elements = await world_queries.get_bootstrap_world_elements()
-
-        # Limit to a reasonable number to prevent prompt bloat (6 as suggested in CLAUDE.md)
-        context_lines = []
-        for element in bootstrap_elements[: config.MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT]:
-            if element.description:
-                context_lines.append(
-                    f"- {element.name} ({element.category}): {element.description[:150]}..."
-                )
-
-        return "\n".join(context_lines) if context_lines else ""
-
-    async def _heal_bootstrap_connectivity(self, chapter_number: int) -> None:
-        """Connect orphaned bootstrap elements to the active narrative graph."""
-        # Only perform bootstrap connectivity healing for early chapters
-        if chapter_number > config.BOOTSTRAP_INTEGRATION_CHAPTERS:
-            return
-
-        # Find orphaned bootstrap elements
-        orphaned_bootstrap = await kg_queries.find_orphaned_bootstrap_elements()
-
-        # Limit the number of orphaned elements to heal per cycle
-        for element in orphaned_bootstrap[: config.BOOTSTRAP_HEALING_LIMIT]:
-            # Find potential bridge characters/locations
-            bridge_candidates = await kg_queries.find_potential_bridges(element)
-
-            if bridge_candidates:
-                # Create contextual relationship with the most connected bridge candidate
-                await kg_queries.create_contextual_relationship(
-                    element, bridge_candidates[0], "CONTEXTUALLY_RELATED"
-                )
-                logger.info(
-                    f"Connected orphaned bootstrap element '{element.get('name')}' "
-                    f"to '{bridge_candidates[0].get('name')}' to establish narrative presence."
-                )
 
     async def extract_and_merge_knowledge(
         self,
@@ -1293,12 +1239,13 @@ class KnowledgeAgent:
     async def _check_recent_kg_activity(self) -> bool:
         """Check if there has been recent KG activity that would warrant full maintenance."""
         try:
-            # Check if there are any entities modified in the last 2 chapters
-            result = await neo4j_manager.execute_cypher_get_one(
-                "MATCH (n) WHERE n.last_updated_ts > timestamp() - 86400000 RETURN count(n) as recent_count",
+            # Check if there are any entities modified in the last 24 hours
+            # Use actual timestamp properties that exist: created_ts, updated_ts
+            results = await neo4j_manager.execute_read_query(
+                "MATCH (n) WHERE n.created_ts > timestamp() - 86400000 OR n.updated_ts > timestamp() - 86400000 RETURN count(n) as recent_count",
                 {},
             )
-            recent_count = result.get("recent_count", 0) if result else 0
+            recent_count = results[0].get("recent_count", 0) if results else 0
             return (
                 recent_count > 5
             )  # Only run full cycle if significant recent activity
@@ -1374,9 +1321,6 @@ class KnowledgeAgent:
         if removed:
             logger.info("KG Healer: Deduplicated %d relationships.", removed)
 
-        # 6. Bootstrap Connectivity Healing (only for early chapters)
-        if chapter_number is not None:
-            await self._heal_bootstrap_connectivity(chapter_number)
 
         logger.info("KG Healer/Enricher: Maintenance cycle complete.")
 
@@ -1568,7 +1512,7 @@ class KnowledgeAgent:
 
             # Call LLM to generate enrichment
             enrichment_text, _ = await llm_service.async_call_llm(
-                model_name=config.KNOWLEDGE_UPDATE_MODEL,
+                model_name=config.SMALL_MODEL,
                 prompt=prompt,
                 temperature=config.Temperatures.KG_EXTRACTION,
                 auto_clean_response=True,
@@ -1703,7 +1647,7 @@ class KnowledgeAgent:
             {"character_name": char_name, "chapter_context": context_chapters},
         )
         enrichment_text, _ = await llm_service.async_call_llm(
-            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            model_name=config.SMALL_MODEL,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             auto_clean_response=True,
@@ -1744,7 +1688,7 @@ class KnowledgeAgent:
             {"element": element_info, "chapter_context": context_chapters},
         )
         enrichment_text, _ = await llm_service.async_call_llm(
-            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            model_name=config.SMALL_MODEL,
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             auto_clean_response=True,
@@ -1840,7 +1784,7 @@ class KnowledgeAgent:
 
         # Use cached similarity threshold to catch character name variations
         candidate_pairs = await kg_queries.find_candidate_duplicate_entities(
-            similarity_threshold=0.65
+            similarity_threshold=0.4
         )
 
         if not candidate_pairs:
@@ -1915,7 +1859,7 @@ class KnowledgeAgent:
         )
 
         llm_response, _ = await llm_service.async_call_llm(
-            model_name=config.KNOWLEDGE_UPDATE_MODEL,
+            model_name=config.SMALL_MODEL,
             prompt=prompt,
             temperature=0.1,
             auto_clean_response=True,
