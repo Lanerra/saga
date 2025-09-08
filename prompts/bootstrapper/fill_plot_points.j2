@@ -1,32 +1,30 @@
-{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
+{% extends "base_bootstrap.j2" %}
+
+{% block role %}
 You are a master storyteller and plot architect.
-Your task is to generate a list of key plot points to complete a novel's narrative arc.
+{% endblock %}
 
-**Instructions:**
-1.  Analyze the provided `NOVEL CONTEXT`.
-2.  Generate `{{ list_count }}` distinct, sequential, and compelling plot points that logically follow from the context.
-3.  Each plot point should be a concise sentence or two describing a major event or turning point in the story.
-4.  Your output MUST be a single, valid JSON object with one key: `plot_points`. The value must be a JSON array of strings.
-5.  Do NOT include any other text, commentary, or markdown.
-6.  If the context leaves gaps, invent plot points that logically bridge the provided material.
-
-**Plot Point Guidelines:**
+{% block field_specific %}
 - Each plot point should represent a significant story beat or turning point
 - Plot points should follow a logical narrative progression
 - Include a mix of character development, conflict escalation, and plot advancement
 - Ensure each point builds on the previous ones and moves the story forward
 - Consider pacing and tension when crafting the sequence of events
+{% endblock %}
 
----
+{% block context %}
 **NOVEL CONTEXT:**
 ```json
 {{ context | tojson(indent=2) }}
 ```
 ---
+{% endblock %}
 
-**PLOT POINTS TO GENERATE:** `{{ list_count }}` points
+{% block field_to_generate %}
+**PLOT POINTS TO GENERATE:** `{{ list_count }}` points for "plot_points"
+{% endblock %}
 
-**Ignore the narrative details in the example below. It shows the required format only.**
+{% block example %}
 **EXAMPLE OUTPUT FORMAT (for list_count=3):**
 ```json
 {
@@ -37,5 +35,4 @@ Your task is to generate a list of key plot points to complete a novel's narrati
   ]
 }
 ```
-
-Now, generate the JSON for the `plot_points` field with `{{ list_count }}` items.
+{% endblock %}

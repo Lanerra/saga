@@ -34,42 +34,23 @@ You are an expert novelist and storyteller, acting as a "showrunner" to plan out
 {{ future_plot_context_str if future_plot_context_str else "No future plot points available." }}
 --- END FUTURE CONTEXT ---
 
-**Instructions:**
-1. **Create a Narrative Arc:** Your plan should have a clear beginning, middle, and end for the chapter, fully exploring and resolving the Main Plot Point.
-2. **Scene Variety is CRITICAL:** Plan a sequence of {{ target_scenes_min }} to {{ target_scenes_max }} scenes. You **MUST** vary the `scene_type` and `pacing` throughout the chapter to create compelling narrative rhythm.
-3. **Align with Context:** Ensure all scenes are consistent with the Hybrid Context and Previous Chapter Context.
-4. **Output JSON Only:** Your entire output must be a single, valid JSON array of scene objects. Do not include any text or explanations outside of the JSON array. Ensure all strings are properly quoted and escaped. Ensure all arrays and objects are properly closed. Double-check that your JSON is valid before submitting.
+**Instructions (Concise):**
+- Create a narrative arc with beginning, middle, end; fully resolve the main plot point.
+- Plan {{ target_scenes_min }} to {{ target_scenes_max }} varied scenes; MUST vary scene_type and pacing for rhythm.
+- Ensure consistency with hybrid and previous contexts.
+- Output ONLY valid JSON array of scene objects; no extra text.
 
-**Required Fields for Each Scene:**
-- `scene_number` (int): Sequential number for the scene
-- `summary` (str): A concise summary of the scene's events
-- `characters_involved` (list[str]): Characters present in the scene
-- `key_dialogue_points` (list[str]): Critical lines of dialogue or internal thoughts
-- `setting_details` (str): The specific location and atmosphere
-- `scene_focus_elements` (list[str]): Key themes, objects, or actions to emphasize
-- `contribution` (str): How this scene advances the chapter's plot point
-- `scene_type` (str): Choose from: `ACTION`, `DIALOGUE`, `INTROSPECTION`, `REVELATION`, `ATMOSPHERE_BUILDING`, `TRANSITION`
-- `pacing` (str): Choose from: `SLOW`, `MEDIUM`, `FAST`, `URGENT`
-- `character_arc_focus` (str | null): Main character's internal journey or change
-- `relationship_development` (str | null): How character relationships change or are revealed
-
-**Format Example (ignore narrative details - format only):**
-```json
-[
-  {
-    "scene_number": 1,
-    "summary": "Protagonist discovers hidden letter in library",
-    "characters_involved": ["Alex", "Elena"],
-    "key_dialogue_points": ["'This changes everything,' Alex whispered."],
-    "setting_details": "Rainy evening in the library",
-    "scene_focus_elements": ["mystery", "clue"],
-    "contribution": "Reveals antagonist's plan",
-    "scene_type": "REVELATION",
-    "pacing": "SLOW",
-    "character_arc_focus": "Alex's suspicion grows",
-    "relationship_development": "Tension between Alex and Elena"
-  }
-]
-```
+**Required Fields (Bullets):**
+- scene_number (int): Sequential number.
+- summary (str): Concise events summary.
+- characters_involved (list[str]): Present characters.
+- key_dialogue_points (list[str]): Critical dialogue/thoughts.
+- setting_details (str): Location and atmosphere.
+- scene_focus_elements (list[str]): Key themes/objects/actions.
+- contribution (str): Plot advancement.
+- scene_type (str): ACTION, DIALOGUE, INTROSPECTION, REVELATION, ATMOSPHERE_BUILDING, TRANSITION.
+- pacing (str): SLOW, MEDIUM, FAST, URGENT.
+- character_arc_focus (str|null): Internal journey/change.
+- relationship_development (str|null): Relationship changes/reveals.
 
 --- BEGIN SCENE PLAN FOR CHAPTER {{ chapter_number }} ---

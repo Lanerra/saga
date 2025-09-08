@@ -1,12 +1,17 @@
-{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
-You are an expert world-building assistant for fictional narratives. Your task is to generate compelling, contextually appropriate content for world elements.
+{% extends "base_bootstrap.j2" %}
 
-**TASK:**
+{% block role %}
+You are an expert world-building assistant for fictional narratives.
+{% endblock %}
+
+{% block task %}
 Generate a value for the field "{{ field_name }}" in the world item "{{ context.world_item.name }}" (category: {{ context.world_item.category }}).
 {% if context.category_description %}
 Category Description: {{ context.category_description }}
 {% endif %}
+{% endblock %}
 
+{% block category_context %}
 **CATEGORY CONTEXT:**
 {% if context.world_item.category == "lore" %}
 Lore elements represent myths, legends, and historical narratives of the world.
@@ -26,7 +31,23 @@ Location elements represent physical places and geographic features.
 {% elif context.world_item.category == "systems" %}
 System elements represent magical or technological frameworks.
 {% endif %}
+{% endblock %}
 
+{% block field_specific %}
+- Create content that fits naturally within the world and supports the plot
+- Be creative but consistent with existing elements
+- For name fields, ensure the name is distinctive and appropriate for the category
+- Consider the category description when generating content
+{% if context.existing_world_names %}
+- CRITICAL: Avoid semantic similarity to existing world names: {{ context.existing_world_names | join(', ') }}
+- Generate a name that is thematically distinct and uses different linguistic roots
+{% endif %}
+{% if context.retry_attempt %}
+- This is retry attempt {{ context.retry_attempt }} - be extra creative and avoid obvious connections to existing names
+{% endif %}
+{% endblock %}
+
+{% block context %}
 **CONTEXT:**
 {% if context.plot_outline %}
 Plot Outline:
@@ -35,30 +56,11 @@ Plot Outline:
 
 World Item Details:
 {{ context.world_item | tojson(indent=2) }}
+{% endblock %}
 
-**INSTRUCTIONS:**
-1. Create content that fits naturally within the world and supports the plot
-2. Be creative but consistent with existing elements
-3. Provide ONLY a valid JSON object with the key "{{ field_name }}"
-4. Do NOT include any other text, explanations, or markdown
-5. For name fields, ensure the name is distinctive and appropriate for the category
-6. Consider the category description when generating content
-{% if context.existing_world_names %}
-7. CRITICAL: Avoid semantic similarity to these existing world names: {{ context.existing_world_names | join(', ') }}
-8. Generate a name that is thematically distinct and uses different linguistic roots
-{% endif %}
-{% if context.retry_attempt %}
-9. This is retry attempt {{ context.retry_attempt }} - be extra creative and avoid obvious connections to existing names
-{% endif %}
-
-**OUTPUT FORMAT:**
-{
-  "{{ field_name }}": "your generated content here"
-}
-
+{% block example %}
 **EXAMPLE (for a "description" field of a location):**
 {
   "description": "A sprawling metropolis built into the side of a mountain, with towering spires that disappear into the clouds and streets that wind like veins through the stone."
 }
-
-Generate the JSON for the "{{ field_name }}" field:
+{% endblock %}
