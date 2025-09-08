@@ -63,77 +63,46 @@ class ZeroCopyContextGenerator:
             semantic_task, kg_facts_task
         )
 
-        # Build hybrid context with minimal string operations
-        context_parts = []
-
-        # Add plot point focus section - THIS IS THE CRITICAL FIX
+        # Build hybrid context with optimized string operations using buffer
+        context_buffer = []
+        
+        # Pre-calculate common strings to avoid repeated formatting
+        chapter_header = f"--- PLOT POINT FOR CHAPTER {current_chapter_number} (PRIMARY FOCUS) ---"
         plot_point_focus = ZeroCopyContextGenerator._get_plot_point_for_chapter(
             plot_outline, current_chapter_number
         )
+        
+        # Add plot point focus section - Optimized string building
+        context_buffer.append(chapter_header)
         if plot_point_focus and plot_point_focus.strip():
-            # Add enhanced guidance for narrative focus
-            focus_directive = ZeroCopyContextGenerator._get_narrative_focus_directive(
-                plot_point_focus, current_chapter_number
-            )
-            context_parts.extend(
-                [
-                    f"--- PLOT POINT FOR CHAPTER {current_chapter_number} (PRIMARY FOCUS) ---",
-                    f"**Chapter {current_chapter_number} Plot Point:** {plot_point_focus}",
-                    "",
-                    f"**Narrative Focus Directive:** {focus_directive}",
-                    "--- END PLOT POINT ---",
-                ]
-            )
+            # Build focus section efficiently
+            context_buffer.extend([
+                f"**Chapter {current_chapter_number} Plot Point:** {plot_point_focus}",
+                "",
+                f"**Narrative Focus Directive:** {ZeroCopyContextGenerator._get_narrative_focus_directive(plot_point_focus, current_chapter_number)}",
+                "--- END PLOT POINT ---"
+            ])
         else:
-            context_parts.extend(
-                [
-                    f"--- PLOT POINT FOR CHAPTER {current_chapter_number} (PRIMARY FOCUS) ---",
-                    f"No specific plot point found for chapter {current_chapter_number}. Follow general narrative progression.",
-                    "--- END PLOT POINT ---",
-                ]
-            )
+            context_buffer.extend([
+                f"No specific plot point found for chapter {current_chapter_number}. Follow general narrative progression.",
+                "--- END PLOT POINT ---"
+            ])
 
-        # Add semantic context section
-        if semantic_context_str and semantic_context_str.strip():
-            context_parts.extend(
-                [
-                    "",
-                    "--- SEMANTIC CONTEXT FROM PAST CHAPTERS (FOR NARRATIVE FLOW & TONE) ---",
-                    semantic_context_str,
-                    "--- END SEMANTIC CONTEXT ---",
-                ]
-            )
-        else:
-            context_parts.extend(
-                [
-                    "",
-                    "--- SEMANTIC CONTEXT FROM PAST CHAPTERS (FOR NARRATIVE FLOW & TONE) ---",
-                    "No relevant semantic context could be retrieved.",
-                    "--- END SEMANTIC CONTEXT ---",
-                ]
-            )
+        # Add semantic context section - Single append operations
+        context_buffer.extend([
+            "",
+            "--- SEMANTIC CONTEXT FROM PAST CHAPTERS (FOR NARRATIVE FLOW & TONE) ---",
+            semantic_context_str if semantic_context_str and semantic_context_str.strip() 
+            else "No relevant semantic context could be retrieved.",
+            "--- END SEMANTIC CONTEXT ---",
+            "",
+            "--- KEY RELIABLE KG FACTS (FOR ESTABLISHED CANON & CONTINUITY) ---",
+            kg_facts_str if kg_facts_str and kg_facts_str.strip()
+            else "No reliable KG facts could be retrieved for this context.",
+            "--- END KEY RELIABLE KG FACTS ---"
+        ])
 
-        # Add KG facts section
-        if kg_facts_str and kg_facts_str.strip():
-            context_parts.extend(
-                [
-                    "",
-                    "--- KEY RELIABLE KG FACTS (FOR ESTABLISHED CANON & CONTINUITY) ---",
-                    kg_facts_str,
-                    "--- END KEY RELIABLE KG FACTS ---",
-                ]
-            )
-        else:
-            context_parts.extend(
-                [
-                    "",
-                    "--- KEY RELIABLE KG FACTS (FOR ESTABLISHED CANON & CONTINUITY) ---",
-                    "No reliable KG facts could be retrieved for this context.",
-                    "--- END KEY RELIABLE KG FACTS ---",
-                ]
-            )
-
-        return "\n".join(context_parts)
+        return "\n".join(context_buffer)
 
     @staticmethod
     def _get_plot_point_for_chapter(
@@ -377,10 +346,18 @@ class ZeroCopyContextGenerator:
     ) -> str:
         """
         Build context string from chapter data with token limit enforcement.
-        Optimized for minimal string operations.
+        Optimized for minimal string operations using pre-built templates.
         """
         context_parts = []
         total_tokens = 0
+        
+        # Pre-compile content type lookup for performance
+        content_type_map = {
+            (True, True): "Provisional Summary",
+            (True, False): "Summary",
+            (False, True): "Provisional Text Snippet",
+            (False, False): "Text Snippet"
+        }
 
         for chap_data in chapters:
             if total_tokens >= max_tokens:
@@ -394,23 +371,17 @@ class ZeroCopyContextGenerator:
             if not content:
                 continue
 
-            # Format content type
-            content_type = (
-                "Provisional Summary"
-                if chap_data.get("summary") and is_provisional
-                else "Summary"
-                if chap_data.get("summary")
-                else "Provisional Text Snippet"
-                if is_provisional
-                else "Text Snippet"
-            )
-
+            # Optimized content type lookup
+            has_summary = bool(chap_data.get("summary"))
+            content_type = content_type_map[(has_summary, is_provisional)]
             score_str = f"{score:.3f}" if isinstance(score, float) else str(score)
 
-            # Build formatted content
+            # Pre-build components to minimize string operations
             prefix = f"[Semantic Context from Chapter {chap_num} (Similarity: {score_str}, Type: {content_type})]:\n"
             suffix = "\n---\n"
-            full_content = f"{prefix}{content}{suffix}"
+            
+            # Build full content efficiently - single concatenation
+            full_content = prefix + content + suffix
 
             # Check token limit
             content_tokens = count_tokens(full_content, config.NARRATIVE_MODEL)
