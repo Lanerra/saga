@@ -1,31 +1,14 @@
-{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
-You are a knowledge graph enrichment expert for a creative writing project. You have been given a world element that has been identified as "thin" in the knowledge graph, meaning it is missing a core description.
+{% extends "knowledge_agent/base_enrichment.j2" %}
 
-Your task is to analyze the provided chapter context where this element appears and write a concise, canonical description for it.
+{% block element_type %}a world element{% endblock %}
 
+{% block element_details %}
 **World Element to Enrich:**
 - Name: {{ element.name }}
 - Category: {{ element.category }}
 - ID: {{ element.id }}
+{% endblock %}
 
-**Chapter Context (Relevant scenes where this element appeared or was mentioned):**
----
-{% if chapter_context %}
-{% for chapter in chapter_context %}
-**From Chapter {{ chapter.chapter_number }}:**
-Summary: {{ chapter.summary | default('N/A') }}
-Relevant Text Snippet:
-{{ chapter.text | truncate(1500) | default('N/A') }}
----
-{% endfor %}
-{% else %}
-No specific chapter context was found for this element. Base your description on its name and category.
-{% endif %}
+{% block instruction_element_type %}world element{% endblock %}
 
-**Instructions:**
-1. Based on the context, deduce the element's purpose, appearance, or key attributes.
-2. Write a single, concise, in-universe description for this world element.
-3. Your response MUST be a single, valid JSON object with ONE key: "description". Do NOT include any other text, commentary, or markdown.
-
-**Example Response (IGNORE CONTEXT, FORMAT ONLY):**
-{"description": "A mysterious, floating artifact that hums with a low energy, sought by the protagonist for its map-like properties."}
+{% block example_response %}{"description": "A mysterious, floating artifact that hums with a low energy, sought by the protagonist for its map-like properties."}{% endblock %}

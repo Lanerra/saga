@@ -9,6 +9,7 @@ import asyncio
 import copy
 import logging
 import re
+from functools import lru_cache
 from typing import Any
 
 import config
@@ -17,6 +18,70 @@ from data_access import character_queries, kg_queries, world_queries
 from models import CharacterProfile, SceneDetail, WorldItem
 
 logger = logging.getLogger(__name__)
+
+# Context cache for expensive operations within a single chapter generation
+_context_cache = {}
+
+def clear_context_cache() -> None:
+    """Clear the context cache. Should be called at the start of each chapter generation."""
+    global _context_cache
+    _context_cache.clear()
+
+async def _cached_character_info(char_name: str, chapter_limit: int | None) -> dict[str, Any] | None:
+    """Cache character database queries to avoid redundant lookups."""
+    cache_key = f"char_info_{char_name}_{chapter_limit}"
+    if cache_key not in _context_cache:
+        result = await character_queries.get_character_info_for_snippet_from_db(
+            char_name, chapter_limit
+        )
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_world_elements() -> list[WorldItem]:
+    """Cache world elements to avoid redundant database queries."""
+    cache_key = "world_elements"
+    if cache_key not in _context_cache:
+        result = await world_queries.get_all_world_items()
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
+    """Cache individual world item lookups."""
+    cache_key = f"world_item_{item_id}"
+    if cache_key not in _context_cache:
+        result = await world_queries.get_world_item_by_id(item_id)
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_character_profiles_plain_text(
+    character_profiles: list[CharacterProfile], current_chapter: int | None = None
+) -> str:
+    """Cache formatted character profiles to avoid reprocessing."""
+    # Create cache key from character names and chapter
+    char_names = sorted([cp.name for cp in character_profiles])
+    cache_key = f"char_profiles_{'-'.join(char_names)}_{current_chapter}"
+    
+    if cache_key not in _context_cache:
+        result = await get_filtered_character_profiles_for_prompt_plain_text(
+            character_profiles, current_chapter
+        )
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
+
+async def _cached_world_data_plain_text(
+    world_data: list[WorldItem], current_chapter: int | None = None
+) -> str:
+    """Cache formatted world data to avoid reprocessing."""
+    # Create cache key from world item IDs and chapter
+    world_ids = sorted([wi.id for wi in world_data if wi.id])
+    cache_key = f"world_data_{'-'.join(world_ids)}_{current_chapter}"
+    
+    if cache_key not in _context_cache:
+        result = await get_filtered_world_data_for_prompt_plain_text(
+            world_data, current_chapter
+        )
+        _context_cache[cache_key] = result
+    return _context_cache[cache_key]
 
 
 def _format_dict_for_plain_text_prompt(
@@ -269,7 +334,7 @@ async def _get_world_data_dict_with_notes(
 
         for item_id in item_id_list:
             try:
-                item_obj = await world_queries.get_world_item_by_id(item_id)
+                item_obj = await _cached_world_item_by_id(item_id)
             except Exception as exc:
                 logger.error(
                     "Error fetching world item '%s' from Neo4j: %s",
@@ -481,11 +546,9 @@ async def get_character_state_snippet_for_prompt(
         if char_name in characters_to_include:
             char_profile = characters_to_include[char_name]
 
-            # Get character data from Neo4j (using existing logic)
-            neo4j_char_data = (
-                await character_queries.get_character_info_for_snippet_from_db(
-                    char_name, current_chapter_num_for_filtering
-                )
+            # Get character data from Neo4j (using cached query)
+            neo4j_char_data = await _cached_character_info(
+                char_name, current_chapter_num_for_filtering
             )
 
             profile_lines = []

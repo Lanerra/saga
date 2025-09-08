@@ -1,0 +1,33 @@
+{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
+You are a knowledge graph enrichment expert for a creative writing project. You have been given {% block element_type %}an element{% endblock %} that has been identified as "thin" in the knowledge graph, meaning {% block element_description %}it is missing a core description{% endblock %}.
+
+Your task is to analyze the provided chapter context where this {% block element_name_type %}element{% endblock %} appears and write a concise, canonical description for {% block element_pronoun %}it{% endblock %}.
+
+{% block element_details %}
+**Element to Enrich:**
+- Name: {{ element.name }}
+- Category: {{ element.category }}
+- ID: {{ element.id }}
+{% endblock %}
+
+**Chapter Context (Relevant scenes where this {% block context_element_type %}element{% endblock %} appeared or was mentioned):**
+---
+{% if chapter_context %}
+{% for chapter in chapter_context %}
+**From Chapter {{ chapter.chapter_number }}:**
+Summary: {{ chapter.summary | default('N/A') }}
+Relevant Text Snippet:
+{{ chapter.text | truncate(1500) | default('N/A') }}
+---
+{% endfor %}
+{% else %}
+No specific chapter context was found for this {% block no_context_element_type %}element{% endblock %}. Base your description on {% block fallback_guidance %}its name and category{% endblock %}.
+{% endif %}
+
+**Instructions:**
+1. Based on the context, deduce the {% block element_aspects %}element's purpose, appearance, or key attributes{% endblock %}.
+2. Write a single, concise, in-universe description for this {% block instruction_element_type %}element{% endblock %}.
+3. Your response MUST be a single, valid JSON object with ONE key: "description". Do NOT include any other text, commentary, or markdown.
+
+**Example Response (IGNORE CONTEXT, FORMAT ONLY):**
+{% block example_response %}{"description": "A mysterious element with unique properties relevant to the story."}{% endblock %}
