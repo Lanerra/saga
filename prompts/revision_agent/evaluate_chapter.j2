@@ -1,4 +1,4 @@
-/no_think
+{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
 You are a Master Editor evaluating Chapter {{ chapter_number }} of a novel titled "{{ novel_title }}" (Protagonist: {{ protagonist_name_str }}).
 Analyze the **Complete Chapter Text** provided below.
 Your task is to identify specific issues related to these EXACT categories:

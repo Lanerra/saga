@@ -408,17 +408,6 @@ root_logger.setLevel(settings.LOG_LEVEL_STR)
 
 REVISION_EVALUATION_THRESHOLD = 0.85
 
-# Bootstrap Integration Settings (Phase 1: Knowledge Graph Integration Strategy)
-BOOTSTRAP_INTEGRATION_ENABLED: bool = False
-BOOTSTRAP_INTEGRATION_CHAPTERS: int = 0
-MAX_BOOTSTRAP_ELEMENTS_PER_CONTEXT: int = 0  # Limit to prevent prompt bloat
-BOOTSTRAP_HEALING_LIMIT: int = 0
-
-# Context Selection Settings (Phase 1.1: Balanced Context Selection)
-EARLY_CHAPTER_BALANCED_SELECTION: bool = False  # Use balanced char selection
-PROTAGONIST_PRIORITY_START_CHAPTER: int = (
-    3  # When to start protagonist-priority selection
-)
 
 # Duplicate Prevention Settings
 ENABLE_DUPLICATE_PREVENTION: bool = True  # Enable proactive duplicate prevention

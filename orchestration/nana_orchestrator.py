@@ -959,14 +959,6 @@ class NANA_Orchestrator:
             novel_chapter_number, "final_summary", result.get("summary")
         )
 
-        # Bootstrap connectivity healing for early chapters
-        if (
-            config.BOOTSTRAP_INTEGRATION_ENABLED
-            and novel_chapter_number <= config.BOOTSTRAP_INTEGRATION_CHAPTERS
-        ):
-            await self.knowledge_agent.heal_and_enrich_kg(
-                chapter_number=novel_chapter_number
-            )
 
         # Save chapter data to Neo4j database
         try:
