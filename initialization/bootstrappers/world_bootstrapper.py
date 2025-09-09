@@ -139,6 +139,8 @@ async def _bootstrap_world_names(
     plot_outline: dict[str, Any],
 ) -> dict[str, int] | None:
     """Bootstrap names for world items that need them."""
+    theme = plot_outline.get("theme", "")
+    genre = plot_outline.get("genre", "")
     usage_data: dict[str, int] = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
@@ -200,11 +202,11 @@ async def _bootstrap_world_names(
                 "world_item": item_obj.to_dict(),
                 "plot_outline": plot_outline,
                 "target_category": category,
-                "category_description": f"Bootstrap a name for a {category} element in the world.",
+                "category_description": f"Bootstrap a unique, theme-aligned name for a {category} element in the world. The theme is '{theme}' in the {genre} genre. Ensure the name is original and does not match any existing_world_names provided.",
                 "existing_world_names": list(existing_names),
             }
             
-            max_retries = 3
+            max_retries = 5
             generated_name = None
             cumulative_usage = None
             
@@ -220,7 +222,23 @@ async def _bootstrap_world_names(
                     for key, val in temp_usage.items():
                         cumulative_usage[key] = cumulative_usage.get(key, 0) + val
                 
-                if (
+                failure_reason = None
+                if not temp_name:
+                    failure_reason = "empty"
+                elif not isinstance(temp_name, str):
+                    failure_reason = "invalid_type"
+                elif not temp_name.strip():
+                    failure_reason = "whitespace_only"
+                elif utils._is_fill_in(temp_name):
+                    failure_reason = "fill_in_placeholder"
+                elif temp_name == config.FILL_IN:
+                    failure_reason = "config_fill_in"
+                elif temp_name in existing_names:
+                    failure_reason = "global_duplicate"
+                elif temp_name in existing_category_names:
+                    failure_reason = "category_duplicate"
+                
+                if not failure_reason and (
                     temp_name
                     and isinstance(temp_name, str)
                     and temp_name.strip()
@@ -232,16 +250,24 @@ async def _bootstrap_world_names(
                     generated_name = temp_name
                     break
                 else:
+                    logger.debug(
+                        f"Name generation attempt {attempt + 1} for '{category}/{item_name}' "
+                        f"failed due to '{failure_reason}': '{temp_name}'. Retrying."
+                    )
                     if attempt < max_retries - 1:
-                        logger.debug(
-                            f"Name generation attempt {attempt + 1} for '{category}/{item_name}' "
-                            f"resulted in duplicate or invalid name '{temp_name}'. Retrying."
-                        )
                         # Update context for retry
                         context_data["retry_attempt"] = attempt + 1
                         context_data["diversity_instruction"] = (
                             "Generate a unique name that does not match any of the existing names listed."
                         )
+            
+            if generated_name is None:
+                # Fallback to unique suffix after max retries
+                fallback_name = f"{item_name}_unique_{len(generated_names) + 1}"
+                logger.warning(
+                    f"Max retries exceeded for '{category}/{item_name}'. Using fallback name '{fallback_name}'."
+                )
+                generated_name = fallback_name
             
             return category, item_name, item_obj, generated_name, cumulative_usage
     
@@ -329,12 +355,12 @@ async def _bootstrap_world_names(
             "world_item": item_obj.to_dict(),
             "plot_outline": plot_outline,
             "target_category": category,
-            "category_description": f"Bootstrap a name for a {category} element in the world.",
+            "category_description": f"Bootstrap a unique, theme-aligned name for a {category} element in the world. The theme is '{theme}' in the {genre} genre. Ensure the name is original and does not match any existing_world_names provided.",
             "existing_world_names": existing_names_list,
             "fallback_generation": True,
         }
         
-        max_retries = 3
+        max_retries = 5
         generated_name = None
         name_usage = None
         
@@ -344,7 +370,23 @@ async def _bootstrap_world_names(
             )
             name_usage = temp_usage
             
-            if (
+            failure_reason = None
+            if not temp_name:
+                failure_reason = "empty"
+            elif not isinstance(temp_name, str):
+                failure_reason = "invalid_type"
+            elif not temp_name.strip():
+                failure_reason = "whitespace_only"
+            elif utils._is_fill_in(temp_name):
+                failure_reason = "fill_in_placeholder"
+            elif temp_name == config.FILL_IN:
+                failure_reason = "config_fill_in"
+            elif temp_name in generated_names:
+                failure_reason = "global_duplicate"
+            elif temp_name in world_building.get(category, {}):
+                failure_reason = "category_duplicate"
+            
+            if not failure_reason and (
                 temp_name
                 and isinstance(temp_name, str)
                 and temp_name.strip()
@@ -357,18 +399,26 @@ async def _bootstrap_world_names(
                 generated_names[temp_name] = category
                 break
             else:
+                logger.debug(
+                    f"Sequential name generation attempt {attempt + 1} for '{category}/{item_name}' "
+                    f"failed due to '{failure_reason}': '{temp_name}'. Retrying."
+                )
                 if attempt < max_retries - 1:
                     context_data["existing_world_names"] = list(generated_names.keys())
                     context_data["retry_attempt"] = attempt + 1
         
         _accumulate_usage(name_usage)
         
-        if generated_name:
-            final_assignments[f"{category}:{item_name}"] = (item_obj, generated_name)
-        else:
+        if generated_name is None:
+            # Fallback to unique suffix after max retries
+            fallback_name = f"{item_name}_unique_{len(generated_names) + 1}"
             logger.warning(
-                f"Failed to generate name for '{category}/{item_name}' after parallel and sequential attempts."
+                f"Max retries exceeded in sequential fallback for '{category}/{item_name}'. Using fallback name '{fallback_name}'."
             )
+            generated_name = fallback_name
+        
+        final_assignments[f"{category}:{item_name}"] = (item_obj, generated_name)
+        generated_names[generated_name] = category
     
     # Update world items with final name assignments
     for item_key, (item_obj, generated_name) in final_assignments.items():
