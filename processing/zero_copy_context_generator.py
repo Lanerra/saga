@@ -346,7 +346,7 @@ class ZeroCopyContextGenerator:
     ) -> str:
         """
         Build context string from chapter data with token limit enforcement.
-        Optimized for minimal string operations using pre-built templates.
+        Enhanced to provide narrative continuation information.
         """
         context_parts = []
         total_tokens = 0
@@ -364,11 +364,15 @@ class ZeroCopyContextGenerator:
                 break
 
             chap_num = chap_data.get("chapter_number")
-            content = (chap_data.get("summary") or chap_data.get("text", "")).strip()
             is_provisional = chap_data.get("is_provisional", False)
             score = chap_data.get("score", "N/A")
 
-            if not content:
+            # Enhanced context building - prioritize narrative continuation
+            enhanced_content = ZeroCopyContextGenerator._extract_narrative_continuation(
+                chap_data, chap_num
+            )
+            
+            if not enhanced_content:
                 continue
 
             # Optimized content type lookup
@@ -381,7 +385,7 @@ class ZeroCopyContextGenerator:
             suffix = "\n---\n"
             
             # Build full content efficiently - single concatenation
-            full_content = prefix + content + suffix
+            full_content = prefix + enhanced_content + suffix
 
             # Check token limit
             content_tokens = count_tokens(full_content, config.NARRATIVE_MODEL)
@@ -416,6 +420,129 @@ class ZeroCopyContextGenerator:
             f"Built semantic context: {final_tokens} tokens from {len(context_parts)} chapters."
         )
         return final_context
+
+    @staticmethod
+    def _extract_narrative_continuation(chap_data: dict[str, Any], chap_num: int) -> str:
+        """
+        Extract narrative continuation information from chapter data.
+        Prioritizes concrete narrative endpoints over thematic summaries.
+        """
+        summary = chap_data.get("summary", "").strip()
+        text = chap_data.get("text", "").strip()
+        
+        # If we have both summary and text, create enhanced context
+        if summary and text:
+            # Extract the final paragraphs from the chapter text for narrative continuation
+            final_section = ZeroCopyContextGenerator._extract_chapter_ending(text)
+            
+            # Create enhanced context that includes both thematic summary and concrete continuation
+            enhanced_parts = [
+                f"**Thematic Summary of Chapter {chap_num}:**\n{summary}",
+            ]
+            
+            if final_section:
+                enhanced_parts.append(f"**Chapter {chap_num} Ending (Narrative Continuation Context):**\n{final_section}")
+            
+            # Add next chapter guidance if this is the immediate previous chapter
+            next_chapter_guidance = ZeroCopyContextGenerator._generate_next_chapter_guidance(
+                text, summary, chap_num
+            )
+            if next_chapter_guidance:
+                enhanced_parts.append(f"**Guidance for Chapter {chap_num + 1}:**\n{next_chapter_guidance}")
+            
+            return "\n\n".join(enhanced_parts)
+        
+        # Fallback to existing behavior if we only have summary or text
+        return summary or text
+
+    @staticmethod 
+    def _extract_chapter_ending(text: str, max_chars: int = 800) -> str:
+        """
+        Extract the ending portion of a chapter for narrative continuation.
+        Focuses on final paragraphs that contain concrete narrative state.
+        """
+        if not text:
+            return ""
+        
+        # Split into paragraphs and get the last few meaningful ones
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        
+        if not paragraphs:
+            return ""
+        
+        # Take final 2-3 paragraphs up to character limit
+        ending_parts = []
+        char_count = 0
+        
+        for paragraph in reversed(paragraphs[-5:]):  # Look at last 5 paragraphs
+            if char_count + len(paragraph) + 4 <= max_chars:  # +4 for spacing
+                ending_parts.append(paragraph)
+                char_count += len(paragraph) + 4
+            else:
+                break
+                
+        if not ending_parts:
+            # If none fit, truncate the last paragraph
+            last_para = paragraphs[-1]
+            ending_parts = [last_para[:max_chars - 3] + "..."]
+        
+        return "\n\n".join(reversed(ending_parts))
+    
+    @staticmethod
+    def _generate_next_chapter_guidance(text: str, summary: str, chap_num: int) -> str:
+        """
+        Generate guidance for the next chapter based on current chapter's ending.
+        Extracts concrete narrative states like character locations, plot developments.
+        """
+        guidance_parts = []
+        
+        # Extract character locations and states from the ending
+        ending_section = text[-1500:] if text else ""  # Last ~1500 chars
+        
+        # Look for location indicators
+        location_indicators = [
+            "stood at", "stood in", "stood before", "stood near",
+            "sat in", "sat at", "sat before", "sat near",
+            "walked to", "walked toward", "walked into",
+            "entered", "arrived at", "reached", "found himself",
+            "found herself", "remained in", "stayed in"
+        ]
+        
+        character_locations = []
+        for indicator in location_indicators:
+            if indicator in ending_section.lower():
+                # Extract sentence containing location
+                sentences = ending_section.split('.')
+                for sentence in sentences:
+                    if indicator in sentence.lower():
+                        character_locations.append(sentence.strip())
+                        break
+        
+        if character_locations:
+            guidance_parts.append(f"Character Positions: {character_locations[-1]}")
+        
+        # Look for unresolved conflicts or pending actions
+        conflict_indicators = [
+            "but", "however", "yet", "still", "then", "suddenly",
+            "before he could", "before she could", "interrupted by",
+            "heard", "saw", "felt", "sensed", "realized"
+        ]
+        
+        pending_actions = []
+        sentences = ending_section.split('.')
+        for sentence in sentences[-3:]:  # Last 3 sentences
+            for indicator in conflict_indicators:
+                if indicator in sentence.lower():
+                    pending_actions.append(sentence.strip())
+                    break
+        
+        if pending_actions:
+            guidance_parts.append(f"Unresolved Elements: {pending_actions[-1]}")
+        
+        # Add plot progression note
+        guidance_parts.append(f"Chapter {chap_num + 1} should continue from this point, advancing the plot to the next stage rather than repeating previous discoveries.")
+        
+        return " | ".join(guidance_parts) if guidance_parts else ""
 
     @staticmethod
     async def _fallback_sequential_context(current_chapter_number: int) -> str:

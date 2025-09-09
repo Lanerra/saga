@@ -58,40 +58,57 @@ class NarrativeAgent:
         return self._token_cache[cache_key]
 
     async def _build_previous_chapter_context(self, chapter_number: int) -> str:
-        """Build context summary from previous chapter data."""
+        """Build enhanced context from previous chapter data with narrative continuation."""
         if chapter_number <= 1:
             return ""
 
-        context_summary_parts: list[str] = []
         prev_chap_data = await chapter_queries.get_chapter_data_from_db(
             chapter_number - 1
         )
 
-        if prev_chap_data:
-            prev_summary = prev_chap_data.get("summary")
+        if not prev_chap_data:
+            return ""
+
+        # Import the enhanced context extraction method
+        from processing.zero_copy_context_generator import ZeroCopyContextGenerator
+        
+        # Use enhanced context generation for narrative continuation
+        enhanced_context = ZeroCopyContextGenerator._extract_narrative_continuation(
+            prev_chap_data, chapter_number - 1
+        )
+        
+        if enhanced_context:
             prev_is_provisional = prev_chap_data.get("is_provisional", False)
+            provisional_prefix = "[PROVISIONAL] " if prev_is_provisional else ""
+            
+            return f"{provisional_prefix}**Previous Chapter Context for Narrative Continuation:**\n{enhanced_context}\n\n"
+        
+        # Fallback to original behavior if enhanced context fails
+        context_summary_parts: list[str] = []
+        prev_summary = prev_chap_data.get("summary")
+        prev_is_provisional = prev_chap_data.get("is_provisional", False)
 
-            summary_prefix = (
-                "[Provisional Summary from Prev Ch] "
-                if prev_is_provisional and prev_summary
-                else "[Summary from Prev Ch] "
+        summary_prefix = (
+            "[Provisional Summary from Prev Ch] "
+            if prev_is_provisional and prev_summary
+            else "[Summary from Prev Ch] "
+        )
+
+        if prev_summary:
+            context_summary_parts.append(
+                f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:config.settings.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS].strip()}...\n"
             )
-
-            if prev_summary:
+        else:
+            prev_text = prev_chap_data.get("text", "")
+            text_prefix = (
+                "[Provisional Text Snippet from Prev Ch] "
+                if prev_is_provisional and prev_text
+                else "[Text Snippet from Prev Ch] "
+            )
+            if prev_text:
                 context_summary_parts.append(
-                    f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:config.settings.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS].strip()}...\n"
+                    f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-config.settings.NARRATIVE_CONTEXT_TEXT_TAIL_CHARS:].strip()}\n"
                 )
-            else:
-                prev_text = prev_chap_data.get("text", "")
-                text_prefix = (
-                    "[Provisional Text Snippet from Prev Ch] "
-                    if prev_is_provisional and prev_text
-                    else "[Text Snippet from Prev Ch] "
-                )
-                if prev_text:
-                    context_summary_parts.append(
-                        f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-config.settings.NARRATIVE_CONTEXT_TEXT_TAIL_CHARS:].strip()}\n"
-                    )
 
         return "".join(context_summary_parts)
 
