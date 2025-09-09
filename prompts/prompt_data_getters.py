@@ -551,13 +551,14 @@ async def get_character_state_snippet_for_prompt(
                 char_name, current_chapter_num_for_filtering
             )
 
-            char_dict: dict[str, Any] = {}
+            profile_lines = []
             if char_profile.description:
-                char_dict["description"] = char_profile.description
+                profile_lines.append(f"Description: {char_profile.description}")
             if char_profile.traits:
-                char_dict["traits"] = ", ".join(char_profile.traits[:3])
+                traits_str = ", ".join(char_profile.traits[:3])  # Limit to 3 traits
+                profile_lines.append(f"Traits: {traits_str}")
             if char_profile.status and char_profile.status != "Unknown":
-                char_dict["status"] = char_profile.status
+                profile_lines.append(f"Status: {char_profile.status}")
 
             # Add additional data from updates field
             if char_profile.updates:
@@ -565,36 +566,42 @@ async def get_character_state_snippet_for_prompt(
                     "personality" in char_profile.updates
                     and char_profile.updates["personality"]
                 ):
-                    char_dict["personality"] = char_profile.updates["personality"]
+                    profile_lines.append(
+                        f"Personality: {char_profile.updates['personality']}"
+                    )
                 if (
                     "background" in char_profile.updates
                     and char_profile.updates["background"]
                 ):
-                    char_dict["background"] = char_profile.updates["background"]
+                    profile_lines.append(
+                        f"Background: {char_profile.updates['background']}"
+                    )
 
             # Add Neo4j data if available
             if neo4j_char_data:
                 summary = neo4j_char_data.get("summary", "").strip()
                 if summary:
-                    char_dict["current_state"] = summary
+                    profile_lines.append(f"Current State: {summary}")
 
                 # Check for personality and background in Neo4j data if not already added
-                personality = neo4j_char_data.get("personality", "").strip()
-                if personality and "personality" not in char_dict:
-                    char_dict["personality"] = personality
+                if not any("Personality:" in line for line in profile_lines):
+                    personality = neo4j_char_data.get("personality", "").strip()
+                    if personality:
+                        profile_lines.append(f"Personality: {personality}")
 
-                background = neo4j_char_data.get("background", "").strip()
-                if background and "background" not in char_dict:
-                    char_dict["background"] = background
+                if not any("Background:" in line for line in profile_lines):
+                    background = neo4j_char_data.get("background", "").strip()
+                    if background:
+                        profile_lines.append(f"Background: {background}")
 
                 key_relationships = neo4j_char_data.get("key_relationships", [])
                 if key_relationships:
-                    char_dict["relationships"] = ", ".join(key_relationships[:3])
+                    relationships_str = ", ".join(key_relationships[:3])  # Limit to 3
+                    profile_lines.append(f"Key Relationships: {relationships_str}")
 
-            if char_dict:
-                formatted_profile_lines = _format_dict_for_plain_text_prompt(char_dict, indent_level=0)
+            if profile_lines:
                 text_output_lines_list.append(f"**{char_name}:**")
-                for line in formatted_profile_lines:
+                for line in profile_lines:
                     text_output_lines_list.append(f"  - {line}")
                 text_output_lines_list.append("")
 

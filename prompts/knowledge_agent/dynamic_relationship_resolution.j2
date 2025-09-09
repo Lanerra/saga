@@ -10,7 +10,10 @@ Current Type: {{ type }}
 Subject: {{ subject_desc }}
 Object: {{ object_desc }}
 
-**Preferred Canonical Types (loaded dynamically from KG constraints):**
-{{ preferred_types | tojson(indent=2) }}
+**Preferred Canonical Types:**
+Character: LOVES, HATES, FEARS, TRUSTS, FRIEND_OF, ENEMY_OF, WORKS_FOR, MARRIED_TO, PARENT_OF
+Location: LOCATED_IN, CONTAINS, ADJACENT_TO, TRAVELS_TO, ORIGINATES_FROM  
+Object: OWNS, POSSESSES, CREATED_BY, BELONGS_TO, USED_BY
+Abstract: SYMBOLIZES, INFLUENCES, DEPENDS_ON, CAUSES, PREVENTS
 
 Respond with ONLY the canonical predicate (e.g., "LOCATED_IN"):
