@@ -30,6 +30,8 @@ ENHANCED_NODE_LABELS = {
     "Entity",  # Base label - all nodes inherit this
     "NovelInfo",  # Novel metadata
     "Chapter",  # Chapter entities
+    # === LEGACY TYPES FOR BACKWARD COMPATIBILITY ===
+    "WorldElement",  # Legacy generic type - being phased out
     # === PHYSICAL ENTITIES ===
     # Living Beings
     "Character",  # Main story characters (active participants)
@@ -275,10 +277,10 @@ class NodeClassification:
     """Enhanced node classifications for relationship constraints."""
 
     # Living entities capable of action and thought
-    SENTIENT = {"Character", "Person", "Deity", "Spirit"}
+    SENTIENT = {"Character", "Person", "Deity", "Spirit", "Creature"}
 
     # Entities with consciousness and self-awareness
-    CONSCIOUS = {"Character", "Person", "Deity"}
+    CONSCIOUS = {"Character", "Person", "Deity", "Creature", "Spirit"}
 
     # Physical objects and entities
     PHYSICAL_PRESENCE = {
@@ -304,6 +306,13 @@ class NodeClassification:
         "Material",
         "Food",
         "Currency",
+        # Container types that have physical presence
+        "Library",
+        "Archive",
+        "Treasury",
+        "Collection",
+        # Legacy type for backward compatibility
+        "WorldElement",
     }
 
     # Entities that can be located in space
@@ -317,6 +326,8 @@ class NodeClassification:
         "Item",
         "Relic",
         "Structure",
+        # Legacy type for backward compatibility
+        "WorldElement",
     }
 
     # Entities that can be owned
@@ -332,6 +343,8 @@ class NodeClassification:
         "Currency",
         "Structure",
         "Territory",  # Can own buildings and land
+        # Legacy type for backward compatibility
+        "WorldElement",
     }
 
     # Entities capable of social relationships
@@ -439,6 +452,10 @@ class NodeClassification:
         "Document",
     }
 
+    # Legacy classifications for backward compatibility
+    INANIMATE = PHYSICAL_PRESENCE - SENTIENT  # Non-living physical entities
+    SPATIAL = CONTAINERS | {"Location", "Region", "Territory"}  # Spatial entities
+
 
 def get_node_type_priority(node_type: str) -> int:
     """Get priority weight for node type selection (higher = more specific)."""
@@ -457,126 +474,8 @@ def get_node_type_priority(node_type: str) -> int:
     return find_weight(NODE_TYPE_HIERARCHY, node_type)
 
 
-def infer_node_type_from_category(category: str) -> str:
-    """Infer specific node type from WorldElement category."""
-    category_mapping = {
-        # Direct mappings
-        "locations": "Location",
-        "factions": "Faction",
-        "systems": "System",
-        "lore": "Lore",
-        "history": "Lore",
-        "society": "Culture",
-        "magic": "Magic",
-        "technology": "Technology",
-        "religion": "Religion",
-        "organizations": "Organization",
-        "characters": "Character",
-        "people": "Person",
-        "objects": "Object",
-        "items": "Item",
-        "artifacts": "Artifact",
-        "documents": "Document",
-        "events": "Event",
-        "traditions": "Tradition",
-        "languages": "Language",
-        "creatures": "Creature",
-        "deities": "Deity",
-        "spirits": "Spirit",
-        "concepts": "Concept",
-        "laws": "Law",
-        "skills": "Skill",
-        "traits": "Trait",
-        "resources": "Resource",
-        "materials": "Material",
-        "currency": "Currency",
-        "trade": "Trade",
-        "food": "Food",
-        "structures": "Structure",
-        "regions": "Region",
-        "territories": "Territory",
-        "landmarks": "Landmark",
-        "paths": "Path",
-        "settlements": "Settlement",
-        "guilds": "Guild",
-        "houses": "House",
-        "orders": "Order",
-        "councils": "Council",
-        "roles": "Role",
-        "ranks": "Rank",
-    }
-
-    # Clean and normalize category
-    clean_category = category.lower().strip()
-
-    # Direct lookup
-    if clean_category in category_mapping:
-        return category_mapping[clean_category]
-
-    # Partial matching for plurals and variations
-    for cat_key, node_type in category_mapping.items():
-        if clean_category in cat_key or cat_key in clean_category:
-            return node_type
-
-    # Fallback to WorldElement for unknown categories
-    return "WorldElement"
 
 
-def infer_node_type_from_name(name: str, context: str = "") -> str:
-    """
-    Infer node type from entity name and context using genre-agnostic linguistic patterns.
-
-    Uses structural and grammatical analysis rather than domain-specific keywords.
-    """
-    name_lower = name.lower()
-    context_lower = context.lower()
-    words = name.split()
-
-    # Order matters: Most specific to least specific
-
-    # === SYSTEM RECOGNITION (Most specific patterns) ===
-    if _is_system_by_structure(name, words, context_lower):
-        return "System"
-
-    # === EVENT RECOGNITION (Very specific patterns) ===
-    if _is_event_by_structure(name, words, context_lower):
-        return "Event"
-
-    # === ORGANIZATION RECOGNITION (Specific suffixes) ===
-    if _is_organization_by_structure(name, words, context_lower):
-        return "Organization"
-
-    # === OBJECT/ARTIFACT RECOGNITION (Specific patterns) ===
-    object_type = _classify_object_by_structure(name, words, context_lower)
-    if object_type:
-        return object_type
-
-    # === MEMORY RECOGNITION (Specific patterns) ===
-    if _is_memory_by_structure(name, words, context_lower):
-        return "Memory"
-
-    # === ENERGY/POWER RECOGNITION (Specific patterns) ===
-    if _is_energy_by_structure(name, words, context_lower):
-        return "Energy"
-
-    # === ABSTRACT CONCEPT RECOGNITION (Suffix-based) ===
-    if _is_concept_by_structure(name, words, context_lower):
-        return "Concept"
-
-    # === LOCATION RECOGNITION (Geographic patterns) - MOVED BEFORE CHARACTER ===
-    if _is_location_by_structure(name, words, context_lower):
-        return "Location"
-
-    # === CHARACTER/PERSON RECOGNITION (More conservative) ===
-    if _is_character_by_structure(name, words, context_lower):
-        return "Character"
-
-    # Strip articles and re-evaluate
-    if name_lower.startswith(("the ", "a ", "an ")):
-        return infer_node_type_from_name(name[name.find(" ") + 1 :], context)
-
-    # Final fallback
-    return "Entity"
 
 
 # === GENRE-AGNOSTIC STRUCTURAL CLASSIFICATION HELPERS ===
@@ -734,22 +633,27 @@ def _is_character_by_structure(name: str, words: list[str], context: str) -> boo
     if any(title in name for title in title_patterns):
         return True
 
-    # Two-word proper noun pattern (First Last) - but exclude organizations and compound objects
+    # Two-word proper noun pattern (First Last) - but exclude organizations, locations, and events
     if len(words) == 2 and all(word.isalpha() and word[0].isupper() for word in words):
-        # Exclude if it looks like an organization or location
+        # Exclude if it looks like an organization, location, or event
         org_indicators = ["Corp", "Inc", "LLC", "Ltd", "Group", "Company", "Co"]
         location_indicators = [
             # Traditional geographic
-            "River", "Lake", "Bay", "Park", "Street", "Avenue", "City", "Town",
+            "River", "Lake", "Bay", "Park", "Street", "Avenue", "City", "Town", "Falls",
             # Fantasy/Sci-fi locations
-            "Nexus", "Spire", "Tower", "Archive", "Sanctuary", "Temple", 
+            "Nexus", "Spire", "Tower", "Archive", "Sanctuary", "Temple",
             "Chamber", "Hall", "Laboratory", "Lab", "Complex", "Facility",
             "Vault", "Observatory", "Academy", "Institute", "Citadel",
             "Fortress", "Keep", "Outpost", "Hub", "Node", "Core",
             # Additional structure words
             "Center", "Centre", "Station", "Plaza", "Square"
         ]
-        if not any(ind in name for ind in org_indicators + location_indicators):
+        event_indicators = [
+            # Event-like words
+            "Battle", "War", "Revolution", "Murder", "Wedding", "Haunting",
+            "Event", "Incident", "Occurrence", "Happening", "Episode"
+        ]
+        if not any(ind in name for ind in org_indicators + location_indicators + event_indicators):
             return True
 
     # Context clues for characters
@@ -834,7 +738,7 @@ def _classify_object_by_structure(
     name_lower = name.lower()
 
     # Object words - SPECIFIC DETECTION
-    object_words = ["diary", "letters", "device", "blaster", "gun", "sword", "evidence"]
+    object_words = ["diary", "letters", "device", "blaster", "gun", "sword", "blade", "evidence"]
     if any(word in name_lower for word in object_words):
         # Check if context suggests special significance
         special_contexts = [
@@ -896,9 +800,12 @@ def _is_memory_by_structure(name: str, words: list[str], context: str) -> bool:
     """Identify memories using linguistic patterns."""
     name_lower = name.lower()
 
-    # Direct memory indicators
+    # Direct memory indicators (but exclude technical objects with "memory")
     memory_words = ["memory", "recollection", "remembrance", "flashback"]
     if any(mem in name_lower for mem in memory_words):
+        # Special exclusion for technical objects like "Memory Core"
+        if "core" in name_lower or "device" in name_lower or "unit" in name_lower:
+            return False
         return True
 
     # Possessive memory patterns: [Name]'s [memory-related]
@@ -927,6 +834,7 @@ def _is_concept_by_structure(name: str, words: list[str], context: str) -> bool:
     abstract_suffixes = (
         "ism",
         "ity",
+        "acy",  # Added for "democracy"
         "ness",
         "ment",
         "tion",
@@ -1136,31 +1044,3 @@ def validate_node_type(node_type: str) -> bool:
     return node_type in ENHANCED_NODE_LABELS
 
 
-def suggest_better_node_type(
-    current_type: str, name: str, category: str = "", context: str = ""
-) -> str:
-    """Suggest a better node type based on available information."""
-    # Priority order for type inference
-    suggestions = []
-
-    # Try category-based inference first (most reliable)
-    if category:
-        category_suggestion = infer_node_type_from_category(category)
-        if category_suggestion != "WorldElement":
-            suggestions.append((category_suggestion, 10))
-
-    # Try name-based inference
-    name_suggestion = infer_node_type_from_name(name, context)
-    if name_suggestion != "Entity":
-        suggestions.append((name_suggestion, 8))
-
-    # If we have suggestions, return the highest priority one
-    if suggestions:
-        return max(suggestions, key=lambda x: x[1])[0]
-
-    # If current type is valid, keep it
-    if validate_node_type(current_type):
-        return current_type
-
-    # Final fallback
-    return "Entity"

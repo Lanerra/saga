@@ -24,6 +24,17 @@ WORLD_CATEGORY_MAP_NORMALIZED_TO_INTERNAL: dict[str, str] = {
     "factions": "factions",
 }
 
+# Backward compatibility for old tests - these are referenced in xfail tests
+WORLD_DETAIL_LIST_INTERNAL_KEYS = [
+    "description", "goals", "rules", "key_elements", "traits", "features",
+    "atmosphere", "history", "structure", "population", "notable_figures"
+]
+
+async def generate_world_building_logic(world_building, plot_outline):
+    """Legacy function stub for backward compatibility with xfail tests."""
+    # This function is no longer used - replaced by bootstrap_world
+    # Only kept for test import compatibility
+    raise NotImplementedError("This function has been replaced by bootstrap_world")
 
 # Enhanced world building targets
 ENHANCED_WORLD_TARGETS = {

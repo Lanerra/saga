@@ -130,10 +130,16 @@ class ValidationServiceProvider:
         try:
             # Import here to avoid circular dependencies
             if self._type_inference_service is None:
-                from core.type_inference_service import TypeInferenceService
+                # Use IntelligentTypeInference as the new default (ML-inspired system)
+                from core.intelligent_type_inference import IntelligentTypeInference
+                from core.schema_introspector import SchemaIntrospector
 
-                self._type_inference_service = TypeInferenceService()
-                logger.info("Initialized default type inference service")
+                # Create schema introspector dependency
+                schema_introspector = SchemaIntrospector()
+                
+                # Initialize the ML-inspired type inference system
+                self._type_inference_service = IntelligentTypeInference(schema_introspector)
+                logger.info("Initialized default ML-inspired type inference service")
 
             if self._validation_service is None:
                 # Import and initialize the refactored validator
@@ -144,6 +150,11 @@ class ValidationServiceProvider:
 
         except ImportError as e:
             logger.error(f"Failed to initialize default services: {e}")
+            # Re-raise the error since we no longer have fallback options
+            raise RuntimeError(
+                f"Unable to initialize required services: {e}. "
+                "Ensure IntelligentTypeInference and RelationshipConstraintValidator are properly configured."
+            ) from e
 
     @contextmanager
     def validation_context(self, **context_data):
