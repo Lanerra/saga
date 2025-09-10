@@ -8,6 +8,7 @@ import structlog
 import config
 import utils
 from models import WorldItem
+from processing.state_tracker import StateTracker
 
 from .common import bootstrap_field
 
@@ -137,6 +138,7 @@ async def _bootstrap_world_overview(
 async def _bootstrap_world_names(
     world_building: dict[str, Any],
     plot_outline: dict[str, Any],
+    state_tracker: StateTracker,
 ) -> dict[str, int] | None:
     """Bootstrap names for world items that need them."""
     usage_data: dict[str, int] = {
@@ -229,6 +231,14 @@ async def _bootstrap_world_names(
                     and temp_name not in existing_names
                     and temp_name not in existing_category_names
                 ):
+                    # Check StateTracker for conflicts
+                    existing_metadata = await state_tracker.check(temp_name)
+                    if existing_metadata:
+                        logger.debug(
+                            f"StateTracker conflict for name '{temp_name}' - already reserved as {existing_metadata['type']}"
+                        )
+                        continue
+                        
                     generated_name = temp_name
                     break
                 else:
@@ -353,6 +363,17 @@ async def _bootstrap_world_names(
                 and temp_name not in generated_names
                 and temp_name not in world_building.get(category, {})
             ):
+                # Check StateTracker for conflicts  
+                existing_metadata = await state_tracker.check(temp_name)
+                if existing_metadata:
+                    logger.debug(
+                        f"StateTracker conflict for fallback name '{temp_name}' - already reserved as {existing_metadata['type']}"
+                    )
+                    if attempt < max_retries - 1:
+                        context_data["existing_world_names"] = list(generated_names.keys())
+                        context_data["retry_attempt"] = attempt + 1
+                    continue
+                    
                 generated_name = temp_name
                 generated_names[temp_name] = category
                 break
@@ -364,6 +385,14 @@ async def _bootstrap_world_names(
         _accumulate_usage(name_usage)
         
         if generated_name:
+            # Reserve the name in StateTracker
+            description = item_obj.description or f"{category} element"
+            reservation_success = await state_tracker.reserve(generated_name, "world_item", description)
+            if not reservation_success:
+                logger.warning(
+                    f"Failed to reserve name '{generated_name}' for world item {category}:{item_name}"
+                )
+            
             final_assignments[f"{category}:{item_name}"] = (item_obj, generated_name)
         else:
             logger.warning(
@@ -555,6 +584,7 @@ async def _bootstrap_world_properties(
 async def bootstrap_world(
     world_building: dict[str, Any],
     plot_outline: dict[str, Any],
+    state_tracker: StateTracker | None = None,
 ) -> tuple[dict[str, Any], dict[str, int] | None]:
     """Fill missing world-building information via LLM."""
     overall_usage_data: dict[str, int] = {
@@ -562,6 +592,10 @@ async def bootstrap_world(
         "completion_tokens": 0,
         "total_tokens": 0,
     }
+    
+    # Initialize StateTracker if not provided
+    if state_tracker is None:
+        state_tracker = StateTracker()
 
     def _accumulate_usage(item_usage: dict[str, int] | None) -> None:
         if item_usage:
@@ -573,7 +607,7 @@ async def bootstrap_world(
     _accumulate_usage(overview_usage)
 
     # Stage 1: Bootstrap names for items
-    names_usage = await _bootstrap_world_names(world_building, plot_outline)
+    names_usage = await _bootstrap_world_names(world_building, plot_outline, state_tracker)
     _accumulate_usage(names_usage)
 
     # Stage 2: Bootstrap properties for items

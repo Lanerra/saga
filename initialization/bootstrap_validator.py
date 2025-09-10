@@ -6,7 +6,7 @@ import structlog
 
 # Types available for type checking only
 if TYPE_CHECKING:
-    pass  # Remove unused imports to avoid pylance warnings
+    from processing.state_tracker import StateTracker
 
 logger = structlog.get_logger(__name__)
 
@@ -39,7 +39,8 @@ class BootstrapValidationResult:
 async def validate_bootstrap_results(
     plot_outline: dict[str, Any],
     character_profiles: dict[str, Any],
-    world_building: dict[str, dict[str, Any]]
+    world_building: dict[str, dict[str, Any]],
+    state_tracker: "StateTracker | None" = None,
 ) -> BootstrapValidationResult:
     """Validate that bootstrap process created complete, valid data.
     
@@ -47,6 +48,7 @@ async def validate_bootstrap_results(
         plot_outline: The bootstrapped plot outline
         character_profiles: The bootstrapped character profiles
         world_building: The bootstrapped world building elements
+        state_tracker: Optional StateTracker for checking duplicates and conflicts
         
     Returns:
         BootstrapValidationResult with validation status and details
@@ -59,10 +61,10 @@ async def validate_bootstrap_results(
     await _validate_plot_outline(plot_outline, result)
     
     # Validate character profiles
-    await _validate_character_profiles(character_profiles, result)
+    await _validate_character_profiles(character_profiles, result, state_tracker)
     
     # Validate world building elements
-    await _validate_world_building(world_building, result)
+    await _validate_world_building(world_building, result, state_tracker)
     
     # Validate cross-references and consistency
     await _validate_consistency(plot_outline, character_profiles, world_building, result)
@@ -133,7 +135,11 @@ async def _validate_plot_outline(plot_outline: dict[str, Any], result: Bootstrap
     result.add_detail("plot_outline_fields", list(plot_outline.keys()))
 
 
-async def _validate_character_profiles(character_profiles: dict[str, Any], result: BootstrapValidationResult) -> None:
+async def _validate_character_profiles(
+    character_profiles: dict[str, Any], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
     """Validate character profiles structure and content."""
     
     if not character_profiles:
@@ -195,6 +201,21 @@ async def _validate_character_profiles(character_profiles: dict[str, Any], resul
         for trait in traits:
             if _is_fill_in_placeholder(trait):
                 result.add_warning(f"Character '{name}' has placeholder trait: '{trait}'")
+        
+        # StateTracker validation - check for type/description conflicts
+        if state_tracker:
+            metadata = await state_tracker.check(name)
+            if metadata:
+                if metadata["type"] != "character":
+                    result.add_error(f"Type conflict for '{name}': StateTracker shows type '{metadata['type']}' but validating as character")
+                
+                # Check for description similarity conflicts  
+                similar_name = await state_tracker.has_similar_description(description, "character")
+                if similar_name and similar_name != name:
+                    result.add_warning(f"Character '{name}' has description similar to '{similar_name}'")
+            else:
+                # Character not found in StateTracker - this could indicate it wasn't properly reserved
+                result.add_warning(f"Character '{name}' not found in StateTracker - may indicate incomplete reservation process")
     
     # Validate story structure requirements
     if not protagonist_found:
@@ -210,7 +231,11 @@ async def _validate_character_profiles(character_profiles: dict[str, Any], resul
     ])
 
 
-async def _validate_world_building(world_building: dict[str, dict[str, Any]], result: BootstrapValidationResult) -> None:
+async def _validate_world_building(
+    world_building: dict[str, dict[str, Any]], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
     """Validate world building elements structure and content."""
     
     if not world_building:
@@ -262,6 +287,21 @@ async def _validate_world_building(world_building: dict[str, dict[str, Any]], re
             # Check for placeholder content in description
             if _is_fill_in_placeholder(item_description):
                 result.add_warning(f"World item '{item_name_val}' has placeholder description")
+            
+            # StateTracker validation - check for type/description conflicts
+            if state_tracker:
+                metadata = await state_tracker.check(item_name_val)
+                if metadata:
+                    if metadata["type"] != "world_item":
+                        result.add_error(f"Type conflict for '{item_name_val}': StateTracker shows type '{metadata['type']}' but validating as world_item")
+                    
+                    # Check for description similarity conflicts  
+                    similar_name = await state_tracker.has_similar_description(item_description, "world_item")
+                    if similar_name and similar_name != item_name_val:
+                        result.add_warning(f"World item '{item_name_val}' has description similar to '{similar_name}'")
+                else:
+                    # World item not found in StateTracker - this could indicate it wasn't properly reserved
+                    result.add_warning(f"World item '{item_name_val}' not found in StateTracker - may indicate incomplete reservation process")
             
             category_item_count += 1
         

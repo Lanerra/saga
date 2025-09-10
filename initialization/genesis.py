@@ -7,6 +7,7 @@ import config
 from agents.knowledge_agent import KnowledgeAgent
 from data_access import plot_queries
 from models import CharacterProfile, WorldItem
+from processing.state_tracker import StateTracker
 
 from .bootstrappers.character_bootstrapper import (
     bootstrap_characters,
@@ -42,9 +43,13 @@ async def run_genesis_phase() -> (
         character_profiles = create_default_characters(plot_outline["protagonist_name"])
         world_building = create_default_world()
 
+    # Create shared StateTracker instance for the bootstrap process
+    state_tracker = StateTracker()
+    logger.info("Created StateTracker instance for bootstrap coordination")
+    
     plot_outline, _ = await bootstrap_plot_outline(plot_outline)
-    character_profiles, _ = await bootstrap_characters(character_profiles, plot_outline)
-    world_building, _ = await bootstrap_world(world_building, plot_outline)
+    character_profiles, _ = await bootstrap_characters(character_profiles, plot_outline, state_tracker)
+    world_building, _ = await bootstrap_world(world_building, plot_outline, state_tracker)
 
     await plot_queries.save_plot_outline_to_db(plot_outline)
     logger.info("Persisted bootstrapped plot outline to Neo4j.")
@@ -74,7 +79,7 @@ async def run_genesis_phase() -> (
     # Validate bootstrap results before proceeding
     from .bootstrap_validator import validate_bootstrap_results
     validation_result = await validate_bootstrap_results(
-        plot_outline, character_profiles, world_items_for_kg
+        plot_outline, character_profiles, world_items_for_kg, state_tracker
     )
     
     if not validation_result.is_valid:
@@ -88,6 +93,18 @@ async def run_genesis_phase() -> (
         logger.warning(f"Bootstrap completed with {warning_count} warnings")
     else:
         logger.info("Bootstrap validation passed with no warnings")
+    
+    # Log StateTracker statistics for debugging
+    all_tracked_entities = await state_tracker.get_all()
+    if all_tracked_entities:
+        char_count = len(await state_tracker.get_entities_by_type("character"))
+        world_count = len(await state_tracker.get_entities_by_type("world_item"))
+        logger.info(
+            f"StateTracker final statistics: {len(all_tracked_entities)} total entities "
+            f"({char_count} characters, {world_count} world items) tracked during bootstrap"
+        )
+    else:
+        logger.warning("StateTracker is empty - no entities were tracked during bootstrap")
 
     # Refresh dynamic schema patterns after bootstrap completion
     await _refresh_dynamic_schema_after_bootstrap()

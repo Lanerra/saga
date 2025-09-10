@@ -420,3 +420,7 @@ DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = (
 DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
     True  # Enable world item duplicate prevention
 )
+
+# State Tracker Configuration
+STATE_TRACKER_ENABLED: bool = True  # Enable StateTracker for bootstrap generation
+STATE_TRACKER_SIMILARITY_THRESHOLD: float = 0.85  # Threshold for description similarity checks

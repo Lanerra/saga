@@ -8,6 +8,7 @@ import structlog
 import config
 import utils
 from models import CharacterProfile
+from processing.state_tracker import StateTracker
 
 from .common import bootstrap_field
 
@@ -45,6 +46,7 @@ def create_default_characters(protagonist_name: str) -> dict[str, CharacterProfi
 async def bootstrap_characters(
     character_profiles: dict[str, CharacterProfile],
     plot_outline: dict[str, Any],
+    state_tracker: StateTracker | None = None,
 ) -> tuple[dict[str, CharacterProfile], dict[str, int] | None]:
     """Fill missing character profile data via LLM."""
     tasks: dict[tuple[str, str], Coroutine] = {}
@@ -53,6 +55,10 @@ async def bootstrap_characters(
         "completion_tokens": 0,
         "total_tokens": 0,
     }
+    
+    # Initialize StateTracker if not provided
+    if state_tracker is None:
+        state_tracker = StateTracker()
 
     for name, profile in character_profiles.items():
         context = {"profile": profile.to_dict(), "plot_outline": plot_outline}
@@ -124,10 +130,37 @@ async def bootstrap_characters(
         if value:
             if field == "name" and value != name:
                 # Character name was changed from placeholder
+                # Check for conflicts before renaming
+                existing_metadata = await state_tracker.check(value)
+                if existing_metadata:
+                    logger.warning(
+                        "Character name conflict detected",
+                        old_name=name,
+                        new_name=value,
+                        existing_type=existing_metadata["type"]
+                    )
+                    # Skip rename if name already reserved
+                    continue
+                
                 name_changes[name] = value
                 character_profiles[name].name = value
+                
+                # Reserve the new name
+                description = character_profiles[name].description or "Character"
+                await state_tracker.reserve(value, "character", description)
+                
             elif field == "description":
                 character_profiles[name].description = value
+                
+                # Check for similar descriptions
+                similar_name = await state_tracker.has_similar_description(value, "character")
+                if similar_name:
+                    logger.warning(
+                        "Similar character description found",
+                        current_name=name,
+                        similar_to=similar_name
+                    )
+                
             elif field == "traits":
                 character_profiles[name].traits = value  # type: ignore
             elif field == "status":

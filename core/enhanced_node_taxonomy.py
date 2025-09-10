@@ -563,11 +563,11 @@ def infer_node_type_from_name(name: str, context: str = "") -> str:
     if _is_concept_by_structure(name, words, context_lower):
         return "Concept"
 
-    # === LOCATION RECOGNITION (Geographic patterns) ===
+    # === LOCATION RECOGNITION (Geographic patterns) - MOVED BEFORE CHARACTER ===
     if _is_location_by_structure(name, words, context_lower):
         return "Location"
 
-    # === CHARACTER/PERSON RECOGNITION (Last resort for proper nouns) ===
+    # === CHARACTER/PERSON RECOGNITION (More conservative) ===
     if _is_character_by_structure(name, words, context_lower):
         return "Character"
 
@@ -637,16 +637,52 @@ def _is_location_by_structure(name: str, words: list[str], context: str) -> bool
             "Hospital",
             "Park",
             "Center",
+            "Centre",
             "Square",
             "Plaza",
             "Mall",
             "Station",
+            # Fantasy/Sci-fi location suffixes
+            "Nexus",
+            "Spire",
+            "Tower",
+            "Keep",
+            "Fortress",
+            "Citadel", 
+            "Archive",
+            "Sanctuary",
+            "Temple",
+            "Chamber",
+            "Hall",
+            "Chambers",
+            "Halls",
+            "Laboratory",
+            "Lab",
+            "Complex",
+            "Facility",
+            "Installation",
+            "Outpost",
+            "Hub",
+            "Node",
+            "Core",
+            "Vault",
+            "Observatory",
+            "Academy",
+            "Institute",
         }
         if words[1] in geographic_suffixes:
             return True
 
-    # Specific location words in compound names
-    location_words = ["park", "hospital", "scene", "center", "station", "square"]
+    # Specific location words in compound names (expanded for fantasy/sci-fi)
+    location_words = [
+        # Original
+        "park", "hospital", "scene", "center", "station", "square",
+        # Fantasy/Sci-fi additions
+        "archive", "nexus", "spire", "tower", "sanctuary", "temple", 
+        "chamber", "hall", "laboratory", "lab", "complex", "facility",
+        "vault", "observatory", "academy", "institute", "citadel",
+        "fortress", "keep", "outpost", "hub", "node", "core"
+    ]
     if any(word in name_lower for word in location_words):
         return True
 
@@ -703,14 +739,15 @@ def _is_character_by_structure(name: str, words: list[str], context: str) -> boo
         # Exclude if it looks like an organization or location
         org_indicators = ["Corp", "Inc", "LLC", "Ltd", "Group", "Company", "Co"]
         location_indicators = [
-            "River",
-            "Lake",
-            "Bay",
-            "Park",
-            "Street",
-            "Avenue",
-            "City",
-            "Town",
+            # Traditional geographic
+            "River", "Lake", "Bay", "Park", "Street", "Avenue", "City", "Town",
+            # Fantasy/Sci-fi locations
+            "Nexus", "Spire", "Tower", "Archive", "Sanctuary", "Temple", 
+            "Chamber", "Hall", "Laboratory", "Lab", "Complex", "Facility",
+            "Vault", "Observatory", "Academy", "Institute", "Citadel",
+            "Fortress", "Keep", "Outpost", "Hub", "Node", "Core",
+            # Additional structure words
+            "Center", "Centre", "Station", "Plaza", "Square"
         ]
         if not any(ind in name for ind in org_indicators + location_indicators):
             return True
