@@ -203,10 +203,11 @@ async def _bootstrap_world_names(
     async def generate_name_for_item(
         category: str, item_name: str, item_obj: WorldItem
     ) -> tuple[str, str, WorldItem, str | None, dict[str, int] | None]:
-        """Generate a name for a single item with retry logic."""
+        """Generate a name for a single item with retry logic using live StateTracker context."""
         async with semaphore:
-            # Get snapshot of existing names at time of generation
-            existing_names = set(generated_names.keys())
+            # Get live context from StateTracker instead of stale snapshots
+            tracked_entities = await state_tracker.get_all()
+            existing_names = set(tracked_entities.keys()).union(set(generated_names.keys()))
             existing_category_names = set(world_building.get(category, {}).keys())
             
             context_data = {
@@ -344,14 +345,15 @@ async def _bootstrap_world_names(
             logger.error(f"Could not find original item object for {category}:{item_name}")
             continue
         
-        # Sequential retry with current generated_names context
-        existing_names_list = list(generated_names.keys())
+        # Sequential retry with live StateTracker context
+        tracked_entities = await state_tracker.get_all()
+        existing_names_list = set(tracked_entities.keys()).union(set(generated_names.keys()))
         context_data = {
             "world_item": item_obj.to_dict(),
             "plot_outline": plot_outline,
             "target_category": category,
             "category_description": f"Bootstrap a name for a {category} element in the world.",
-            "existing_world_names": existing_names_list,
+            "existing_world_names": list(existing_names_list),
             "fallback_generation": True,
         }
         
@@ -381,10 +383,12 @@ async def _bootstrap_world_names(
                         f"StateTracker conflict for fallback name '{temp_name}' - already reserved as {existing_metadata['type']}"
                     )
                     if attempt < max_retries - 1:
-                        context_data["existing_world_names"] = list(generated_names.keys())
+                        # Update with live StateTracker context for retry
+                        tracked_entities = await state_tracker.get_all()
+                        context_data["existing_world_names"] = set(tracked_entities.keys()).union(set(generated_names.keys()))
                         context_data["retry_attempt"] = attempt + 1
                     continue
-                    
+                
                 generated_name = temp_name
                 generated_names[temp_name] = category
                 break

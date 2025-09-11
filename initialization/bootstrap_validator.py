@@ -150,6 +150,9 @@ async def _validate_character_profiles(
     if len(character_profiles) < 2:
         result.add_warning(f"Only {len(character_profiles)} character(s) found. Stories typically need at least 2-3 characters.")
     
+    # NEW: Check for duplicate names across all character profiles
+    await _validate_character_uniqueness(character_profiles, result, state_tracker)
+    
     protagonist_found = False
     antagonist_found = False
     
@@ -231,6 +234,52 @@ async def _validate_character_profiles(
     ])
 
 
+async def _validate_character_uniqueness(
+    character_profiles: dict[str, Any], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
+    """Check for duplicate names across all character profiles and validate against StateTracker."""
+    if not character_profiles:
+        return
+    
+    # Check for duplicate names in the profile set itself
+    name_counts = {}
+    for name in character_profiles.keys():
+        if name:  # Skip empty names
+            name_counts[name] = name_counts.get(name, 0) + 1
+    
+    duplicate_names = [name for name, count in name_counts.items() if count > 1]
+    for name in duplicate_names:
+        result.add_error(f"Duplicate character name found: '{name}' appears {name_counts[name]} times")
+    
+    # Cross-check with StateTracker for consistency and additional validation
+    if state_tracker:
+        tracked_entities = await state_tracker.get_entities_by_type("character")
+        tracked_names = set(tracked_entities.keys())
+        profile_names = set(character_profiles.keys())
+        
+        # Check for names in profiles but not tracked
+        untracked_names = profile_names - tracked_names
+        for name in untracked_names:
+            result.add_warning(f"Character '{name}' exists in profiles but not tracked in StateTracker")
+        
+        # Check for tracked names not in profiles (potential inconsistency)
+        extra_tracked = tracked_names - profile_names
+        for name in extra_tracked:
+            result.add_warning(f"Character '{name}' tracked in StateTracker but not in profiles")
+        
+        # Check for duplicate names in StateTracker that might not be caught by profile validation
+        # This handles edge cases where StateTracker might have conflicts not reflected in profiles
+        tracked_name_counts = {}
+        for name in tracked_names:
+            tracked_name_counts[name] = tracked_name_counts.get(name, 0) + 1
+        
+        tracked_duplicates = [name for name, count in tracked_name_counts.items() if count > 1]
+        for name in tracked_duplicates:
+            result.add_error(f"StateTracker duplicate character name found: '{name}' appears {tracked_name_counts[name]} times")
+
+
 async def _validate_world_building(
     world_building: dict[str, dict[str, Any]], 
     result: BootstrapValidationResult,
@@ -251,6 +300,9 @@ async def _validate_world_building(
     if not world_categories:
         result.add_error("No valid world building categories found")
         return
+    
+    # NEW: Check for duplicate names across all world building categories
+    await _validate_world_uniqueness(world_categories, result, state_tracker)
     
     total_items = 0
     
@@ -325,6 +377,69 @@ async def _validate_world_building(
         result.add_warning("No cultural/religious/governmental elements found. Consider adding some for world depth.")
     
     result.add_detail("world_categories", list(world_categories.keys()))
+
+
+async def _validate_world_uniqueness(
+    world_categories: dict[str, Any], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
+    """Check for duplicate names across all world building categories and validate against StateTracker."""
+    if not world_categories:
+        return
+    
+    # Check for duplicate names across all categories
+    all_item_names = []
+    category_mapping = {}  # Maps item names to their categories
+    
+    for category, items in world_categories.items():
+        if not isinstance(items, dict):
+            continue
+        for item_name, item in items.items():
+            # Handle both object and dict patterns
+            if hasattr(item, 'name'):
+                item_name_val = item.name
+            else:
+                item_name_val = item.get("name", item_name)
+            
+            if item_name_val:
+                all_item_names.append(item_name_val)
+                category_mapping[item_name_val] = category
+    
+    # Check for duplicates in the profile set itself
+    name_counts = {}
+    for name in all_item_names:
+        name_counts[name] = name_counts.get(name, 0) + 1
+    
+    duplicate_names = [name for name, count in name_counts.items() if count > 1]
+    for name in duplicate_names:
+        categories_with_name = [cat for item_name, cat in category_mapping.items() if item_name == name]
+        result.add_error(f"Duplicate world item name found: '{name}' appears in categories {categories_with_name}")
+    
+    # Cross-check with StateTracker for consistency and additional validation
+    if state_tracker:
+        tracked_entities = await state_tracker.get_entities_by_type("world_item")
+        tracked_names = set(tracked_entities.keys())
+        profile_names = set(all_item_names)
+        
+        # Check for names in profiles but not tracked
+        untracked_names = profile_names - tracked_names
+        for name in untracked_names:
+            result.add_warning(f"World item '{name}' exists in profiles but not tracked in StateTracker")
+        
+        # Check for tracked names not in profiles (potential inconsistency)
+        extra_tracked = tracked_names - profile_names
+        for name in extra_tracked:
+            result.add_warning(f"World item '{name}' tracked in StateTracker but not in profiles")
+        
+        # Check for duplicate names in StateTracker that might not be caught by profile validation
+        tracked_name_counts = {}
+        for name in tracked_names:
+            tracked_name_counts[name] = tracked_name_counts.get(name, 0) + 1
+        
+        tracked_duplicates = [name for name, count in tracked_name_counts.items() if count > 1]
+        for name in tracked_duplicates:
+            result.add_error(f"StateTracker duplicate world item name found: '{name}' appears {tracked_name_counts[name]} times")
 
 
 async def _validate_consistency(

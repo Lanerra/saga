@@ -48,7 +48,7 @@ async def bootstrap_characters(
     plot_outline: dict[str, Any],
     state_tracker: StateTracker | None = None,
 ) -> tuple[dict[str, CharacterProfile], dict[str, int] | None]:
-    """Fill missing character profile data via LLM."""
+    """Fill missing character profile data via LLM with proactive shared state management."""
     tasks: dict[tuple[str, str], Coroutine] = {}
     usage_data: dict[str, int] = {
         "prompt_tokens": 0,
@@ -59,6 +59,21 @@ async def bootstrap_characters(
     # Initialize StateTracker if not provided
     if state_tracker is None:
         state_tracker = StateTracker()
+
+    # Pre-reserve all placeholder names to prevent conflicts during parallel generation
+    reserved_names = set()
+    for name, profile in character_profiles.items():
+        if name in [
+            "Antagonist",
+            "SupportingChar1",
+            "SupportingChar2",
+            "SupportingChar3",
+        ]:
+            # Reserve placeholder names upfront with temporary descriptions
+            temp_desc = f"Character placeholder for {name} role"
+            await state_tracker.reserve(name, "character", temp_desc)
+            reserved_names.add(name)
+            logger.debug(f"Reserved placeholder name: {name}")
 
     for name, profile in character_profiles.items():
         context = {"profile": profile.to_dict(), "plot_outline": plot_outline}
