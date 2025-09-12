@@ -14,15 +14,6 @@ from core.enhanced_node_taxonomy import (
     get_all_node_classifications,
     NodeClassification,
     ENHANCED_NODE_LABELS,
-    _is_location_by_structure,
-    _is_character_by_structure,
-    _is_organization_by_structure,
-    _classify_object_by_structure,
-    _is_memory_by_structure,
-    _is_concept_by_structure,
-    _is_event_by_structure,
-    _is_system_by_structure,
-    _is_energy_by_structure,
 )
 
 # Note: The following functions have been removed as part of the migration to unified ML-inspired inference:
@@ -44,6 +35,7 @@ class TestNameBasedInference:
     pass
 
 
+@pytest.mark.skip(reason="Structural classification helpers removed in Phase 1 migration")
 class TestStructuralClassificationHelpers:
     """Test the internal structural classification helper functions."""
 
