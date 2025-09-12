@@ -2188,69 +2188,6 @@ async def consolidate_similar_relationships() -> int:
         return 0
 
 
-async def validate_relationship_types_in_db() -> dict[str, Any]:
-    """Validate all relationship types in the database against the predefined taxonomy."""
-    # Add early return if normalization is disabled
-    if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
-        logger.info(
-            "Relationship normalization disabled - skipping dynamic relationship resolution"
-        )
-        return
-
-    import models.kg_constants
-
-    # Get all relationship types currently in use
-    query = """
-    MATCH ()-[r]->()
-    RETURN DISTINCT type(r) AS rel_type, count(r) AS usage_count
-    ORDER BY usage_count DESC
-    """
-
-    try:
-        results = await neo4j_manager.execute_read_query(query)
-        current_types = {
-            r["rel_type"]: r["usage_count"] for r in results if r.get("rel_type")
-        }
-
-        # Categorize relationship types
-        valid_types = {}
-        invalid_types = {}
-        normalizable_types = {}
-
-        for rel_type, count in current_types.items():
-            if rel_type in models.kg_constants.RELATIONSHIP_TYPES:
-                valid_types[rel_type] = count
-            else:
-                # Check if it can be normalized
-                canonical = normalize_relationship_type(rel_type)
-                if (
-                    canonical in models.kg_constants.RELATIONSHIP_TYPES
-                    and canonical != rel_type
-                ):
-                    normalizable_types[rel_type] = {
-                        "canonical": canonical,
-                        "count": count,
-                    }
-                else:
-                    invalid_types[rel_type] = count
-
-        return {
-            "valid_types": valid_types,
-            "normalizable_types": normalizable_types,
-            "invalid_types": invalid_types,
-            "total_relationships": sum(current_types.values()),
-            "taxonomy_coverage": len(valid_types)
-            / len(models.kg_constants.RELATIONSHIP_TYPES)
-            * 100,
-        }
-
-    except Exception as exc:
-        logger.error(
-            "Failed to validate relationship types in DB: %s", exc, exc_info=True
-        )
-        return {}
-
-
 async def fetch_unresolved_dynamic_relationships(
     limit: int = 50,
 ) -> list[dict[str, Any]]:

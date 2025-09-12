@@ -154,26 +154,6 @@ class TestNodeTypePriority:
         assert unknown_priority == 0
 
 
-@pytest.mark.skip(reason="Function suggest_better_node_type removed in favor of unified ML-inspired inference")
-class TestBetterTypeSuggestion:
-    """Test type improvement suggestions - DISABLED (Function removed)."""
-    pass
-
-
-@pytest.mark.skip(reason="Functions removed - empty input handling now tested in IntelligentTypeInference tests")
-class TestEdgeCases:
-    """Test edge cases and error conditions - DISABLED (Functions removed)."""
-    pass
-
-
-
-
-@pytest.mark.skip(reason="Functions removed - disambiguation now handled by IntelligentTypeInference")
-class TestRegressionCases:
-    """Test specific regression cases and known issues - DISABLED (Functions removed)."""
-    pass
-
-
 @pytest.fixture
 def sample_entity_names():
     """Fixture providing sample entity names for testing."""
@@ -188,9 +168,3 @@ def sample_entity_names():
         "systems": ["Security System", "Data Network", "Magic Framework", "Combat Protocol"],
         "energy": ["Plasma Energy", "Force Field", "Power Wave", "Psychic Force"],
     }
-
-
-@pytest.mark.skip(reason="Functions removed - batch inference now tested in IntelligentTypeInference tests")
-class TestBatchInference:
-    """Test batch inference operations - DISABLED (Functions removed)."""
-    pass

@@ -121,7 +121,6 @@ async def _create_bootstrap_relationships(
     plot_outline: dict[str, Any],
 ) -> None:
     """Create basic relationship network using existing validation infrastructure."""
-    from core.enhanced_constraints import get_enhanced_relationship_suggestions
     from core.relationship_validator import RelationshipConstraintValidator
     from data_access import kg_queries
 
@@ -145,52 +144,38 @@ async def _create_bootstrap_relationships(
 
     # 1. Core conflict relationship: protagonist vs antagonist
     if protagonist and antagonist and protagonist != antagonist:
-        suggestions = get_enhanced_relationship_suggestions("Character", "Character")
-        conflict_rels = [
-            rel
-            for rel, desc, conf in suggestions
-            if any(term in rel.lower() for term in ["rival", "enemy", "opposes"])
-        ]
-        if conflict_rels:
-            rel_type = conflict_rels[0]
+        # Use direct relationship type instead of enhanced suggestions
+        rel_type = "ENEMY_OF"  # Direct conflict relationship
+        validation_result = validator.validate_relationship(
+            "Character", rel_type, "Character"
+        )
+        if validation_result.is_valid:
+            created_relationships.append(
+                (protagonist, validation_result.validated_relationship, antagonist)
+            )
+            logger.info(
+                f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {antagonist}"
+            )
+
+    # 2. Alliance relationships: protagonist with supporting characters
+    if protagonist and supporting_chars:
+        for support_char in supporting_chars[:2]:  # Limit to first 2 supporting chars
+            # Use direct relationship type instead of enhanced suggestions
+            rel_type = "ALLY_OF"  # Direct alliance relationship
             validation_result = validator.validate_relationship(
                 "Character", rel_type, "Character"
             )
             if validation_result.is_valid:
                 created_relationships.append(
-                    (protagonist, validation_result.validated_relationship, antagonist)
+                    (
+                        protagonist,
+                        validation_result.validated_relationship,
+                        support_char,
+                    )
                 )
                 logger.info(
-                    f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {antagonist}"
+                    f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {support_char}"
                 )
-
-    # 2. Alliance relationships: protagonist with supporting characters
-    if protagonist and supporting_chars:
-        for support_char in supporting_chars[:2]:  # Limit to first 2 supporting chars
-            suggestions = get_enhanced_relationship_suggestions(
-                "Character", "Character"
-            )
-            ally_rels = [
-                rel
-                for rel, desc, conf in suggestions
-                if any(term in rel.lower() for term in ["ally", "friend", "trusts"])
-            ]
-            if ally_rels:
-                rel_type = ally_rels[0]
-                validation_result = validator.validate_relationship(
-                    "Character", rel_type, "Character"
-                )
-                if validation_result.is_valid:
-                    created_relationships.append(
-                        (
-                            protagonist,
-                            validation_result.validated_relationship,
-                            support_char,
-                        )
-                    )
-                    logger.info(
-                        f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {support_char}"
-                    )
 
     # 3. Character-to-world relationships: characters reside in/belong to world elements
     for char_name in char_names[:4]:  # Limit to prevent too many relationships
