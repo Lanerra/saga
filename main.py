@@ -10,12 +10,6 @@ from core.schema_introspector import SchemaIntrospector
 from core.intelligent_type_inference import IntelligentTypeInference
 from core.service_registry import register_singleton
 
-schema_introspector = SchemaIntrospector()
-register_singleton("schema_introspector", schema_introspector)
-
-type_inference_service = IntelligentTypeInference(schema_introspector)
-register_singleton("type_inference_service", type_inference_service)
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,13 +18,17 @@ def main() -> None:
     register_database_services()
     from core.schema_introspector import SchemaIntrospector
     from core.intelligent_type_inference import IntelligentTypeInference
-    from core.service_registry import register_singleton
+    from core.service_registry import register_singleton, register_instance
 
+    # Register schema introspector instance
     schema_introspector = SchemaIntrospector()
-    register_singleton("schema_introspector", schema_introspector)
+    register_instance("schema_introspector", schema_introspector)
 
-    type_inference_service = IntelligentTypeInference(schema_introspector)
-    register_singleton("type_inference_service", type_inference_service)
+    # Register type inference service as a factory function
+    def create_type_inference_service():
+        return IntelligentTypeInference(schema_introspector)
+    
+    register_singleton("type_inference_service", create_type_inference_service)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--ingest", default=None, help="Path to text file to ingest")
