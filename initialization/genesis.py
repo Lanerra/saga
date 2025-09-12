@@ -49,6 +49,9 @@ async def run_genesis_phase() -> (
     
     plot_outline, _ = await bootstrap_plot_outline(plot_outline)
     character_profiles, _ = await bootstrap_characters(character_profiles, plot_outline, state_tracker)
+    # Log the final character names for debugging
+    final_char_names = [profile.name for profile in character_profiles.values()]
+    logger.info(f"Final character names after bootstrapping: {final_char_names}")
     world_building, _ = await bootstrap_world(world_building, plot_outline, state_tracker)
 
     await plot_queries.save_plot_outline_to_db(plot_outline)
@@ -126,17 +129,19 @@ async def _create_bootstrap_relationships(
     created_relationships = []
 
     # Get character names and roles
-    char_names = list(character_profiles.keys())
+    # Use actual profile names rather than dictionary keys to ensure we have the correct names
+    char_names = [profile.name for profile in character_profiles.values()]
     protagonist = plot_outline.get("protagonist_name")
     antagonist = None
     supporting_chars = []
 
     for name, profile in character_profiles.items():
         role = profile.updates.get("role", "supporting")
+        char_actual_name = profile.name
         if role == "antagonist":
-            antagonist = name
+            antagonist = char_actual_name
         elif role == "supporting":
-            supporting_chars.append(name)
+            supporting_chars.append(char_actual_name)
 
     # 1. Core conflict relationship: protagonist vs antagonist
     if protagonist and antagonist and protagonist != antagonist:
