@@ -8,7 +8,6 @@ from async_lru import alru_cache
 
 import config
 from core.db_manager import neo4j_manager
-from core.relationship_validator import validate_relationship_types
 from core.schema_validator import validate_node_labels
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
@@ -1960,7 +1959,10 @@ async def get_defined_relationship_types() -> list[str]:
             r["relationshipType"] for r in results if r.get("relationshipType")
         ]
         # Validate relationship types against schema
-        errors = validate_relationship_types(rel_types)
+        errors = []
+        for rel_type in rel_types:
+            if rel_type not in VALID_RELATIONSHIP_TYPES:
+                errors.append(f"Invalid relationship type: {rel_type}")
         if errors:
             logger.warning(f"Invalid relationship types found: {errors}")
         return rel_types
@@ -1971,7 +1973,10 @@ async def get_defined_relationship_types() -> list[str]:
         # Fallback to constants if DB query fails
         rel_types = list(config.RELATIONSHIP_TYPES)
         # Validate relationship types against schema
-        errors = validate_relationship_types(rel_types)
+        errors = []
+        for rel_type in rel_types:
+            if rel_type not in VALID_RELATIONSHIP_TYPES:
+                errors.append(f"Invalid relationship type: {rel_type}")
         if errors:
             logger.warning(f"Invalid relationship types in config: {errors}")
         return rel_types
