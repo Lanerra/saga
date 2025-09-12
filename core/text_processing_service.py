@@ -22,6 +22,7 @@ import structlog
 import tiktoken
 
 import config
+from core.cache_coordinator import get_cached_value, set_cached_value
 
 logger = structlog.get_logger(__name__)
 

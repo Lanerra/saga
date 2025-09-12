@@ -33,6 +33,7 @@ from core.http_client_service import (
 )
 from core.llm_service_interfaces import LLMServiceFactory, initialize_service_locator
 from core.text_processing_service import TextProcessingService
+from core.cache_coordinator import get_cached_value, set_cached_value, register_cache_service
 
 logger = structlog.get_logger(__name__)
 
@@ -164,8 +165,9 @@ class EmbeddingService:
             embedding_client: HTTP client for embedding requests
         """
         self._embedding_client = embedding_client
-        self._embedding_cache: dict[str, np.ndarray] = {}
-        self._cache_max_size = config.EMBEDDING_CACHE_SIZE
+        self._service_name = "llm_embedding"
+        # Register with cache coordinator
+        register_cache_service(self._service_name)
         self._stats = {
             "embeddings_requested": 0,
             "embeddings_successful": 0,
@@ -179,21 +181,9 @@ class EmbeddingService:
         """Compute a hash of the text for caching purposes."""
         return hashlib.md5(text.encode('utf-8')).hexdigest()
 
-    def _cache_embedding(self, text_hash: str, embedding: np.ndarray) -> None:
-        """Cache an embedding with LRU eviction policy."""
-        # If cache is full, remove oldest entry (simple LRU)
-        if len(self._embedding_cache) >= self._cache_max_size:
-            # Remove the first (oldest) item
-            oldest_key = next(iter(self._embedding_cache))
-            del self._embedding_cache[oldest_key]
-            logger.debug(f"Evicted old embedding from cache (hash: {oldest_key[:8]})")
-        
-        self._embedding_cache[text_hash] = embedding
-        logger.debug(f"Cached new embedding (hash: {text_hash[:8]})")
-
     async def get_embedding(self, text: str) -> np.ndarray | None:
         """
-        Get embedding vector for text with LRU caching.
+        Get embedding vector for text with coordinated caching.
 
         Args:
             text: Text to get embedding for
@@ -208,12 +198,13 @@ class EmbeddingService:
             self._stats["embeddings_failed"] += 1
             return None
 
-        # Check cache first
+        # Check coordinated cache first
         text_hash = self._compute_text_hash(text.strip())
-        if text_hash in self._embedding_cache:
+        cached_embedding = get_cached_value(text_hash, self._service_name)
+        if cached_embedding is not None:
             self._stats["cache_hits"] += 1
             logger.debug(f"Cache hit for embedding (hash: {text_hash[:8]})")
-            return self._embedding_cache[text_hash]
+            return cached_embedding
 
         self._stats["cache_misses"] += 1
         
@@ -226,7 +217,7 @@ class EmbeddingService:
             embedding = self._extract_and_validate_embedding(response_data)
             if embedding is not None:
                 # Cache the successful embedding
-                self._cache_embedding(text_hash, embedding)
+                set_cached_value(text_hash, embedding, self._service_name)
                 self._stats["embeddings_successful"] += 1
                 return embedding
             else:
@@ -329,11 +320,17 @@ class EmbeddingService:
     def get_statistics(self) -> dict[str, Any]:
         """Get embedding service statistics."""
         total = self._stats["embeddings_requested"]
+        # Get cache metrics from coordinated cache
+        from core.cache_coordinator import get_cache_metrics
+        cache_metrics = get_cache_metrics(self._service_name)
+        cache_size = 0
+        if cache_metrics and self._service_name in cache_metrics:
+            cache_size = cache_metrics[self._service_name].total_entries
+        
         return {
             **self._stats,
-            "cache_size": len(self._embedding_cache),
-            "cache_max_size": self._cache_max_size,
-            "cache_hit_rate": (self._stats["cache_hits"] / total * 100)
+            "cache_size": cache_size,
+            "cache_hit_rate": (self._stats["cache_hits"] / total * 10)
             if total > 0
             else 0,
             "cache_miss_rate": (self._stats["cache_misses"] / total * 100)
@@ -807,5 +804,3 @@ llm_service = get_llm_service()
 def count_tokens(text: str, model_name: str) -> int:
     """Backward compatibility function for token counting."""
     return llm_service.count_tokens(text, model_name)
-
-

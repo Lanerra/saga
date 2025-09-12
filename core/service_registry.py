@@ -20,6 +20,9 @@ from datetime import datetime
 
 import structlog
 
+from core.cache_coordinator import get_cache_coordinator, register_cache_service
+from core.cache_policies import get_policy
+
 logger = structlog.get_logger(__name__)
 
 T = TypeVar('T')
@@ -135,6 +138,12 @@ class ServiceRegistry:
             "circular_dependency_errors": 0,
             "creation_time_total": 0.0
         }
+        
+        # Initialize cache coordinator
+        self._cache_coordinator = get_cache_coordinator()
+        
+        # Register cache-aware service creation callback
+        self._cache_coordinator.add_service_registration_callback(self._on_service_registered)
         
         logger.info("Service registry initialized")
     
@@ -480,6 +489,19 @@ class ServiceRegistry:
             self._dependency_graph.clear()
             
             logger.info("Service registry disposed")
+    
+    def _on_service_registered(self, service_name: str):
+        """Callback when a service is registered with the cache coordinator."""
+        # Only register with cache coordinator if not already registered
+        # This prevents infinite recursion
+        from core.cache_coordinator import _cache_coordinator
+        # Check if service already has a cache
+        cache_manager = _cache_coordinator._cache_manager
+        if service_name not in cache_manager._caches:
+            policy = get_policy(service_name)
+            register_cache_service(service_name, policy)
+        
+        logger.debug(f"Cache service registered for: {service_name}")
 
 
 # Global service registry instance
