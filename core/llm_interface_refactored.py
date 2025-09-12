@@ -14,9 +14,12 @@ REFACTORED: Complete rewrite as part of Phase 3 architectural improvements.
 Licensed under the Apache License, Version 2.0
 """
 
+import asyncio
+import hashlib
 import os
 import tempfile
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
 import numpy as np
@@ -57,6 +60,94 @@ def secure_temp_file(suffix: str = ".tmp", text: bool = True):
                 )
 
 
+@asynccontextmanager
+async def async_llm_service() -> AsyncGenerator["RefactoredLLMService", None]:
+    """
+    Async context manager for LLM service with guaranteed cleanup.
+    
+    Usage:
+        async with async_llm_service() as service:
+            result = await service.async_get_embedding("text")
+    """
+    service = get_llm_service()
+    try:
+        yield service
+    finally:
+        try:
+            await service.aclose()
+            logger.debug("LLM service closed successfully")
+        except Exception as cleanup_error:
+            logger.error(f"Failed to cleanup LLM service: {cleanup_error}")
+
+
+@asynccontextmanager
+async def async_batch_embedding_session(
+    batch_size: int | None = None
+) -> AsyncGenerator["EmbeddingService", None]:
+    """
+    Async context manager for batch embedding operations with resource cleanup.
+    
+    Args:
+        batch_size: Size of batches to process
+        
+    Usage:
+        async with async_batch_embedding_session(batch_size=8) as embedding_service:
+            embeddings = await embedding_service.get_embeddings_batch(texts)
+    """
+    service = get_llm_service()
+    embedding_service = service._embedding_service
+    
+    # Note: Could store original cache state here for restoration if needed
+    
+    try:
+        yield embedding_service
+    finally:
+        # Log performance metrics
+        stats = embedding_service.get_statistics()
+        logger.info(
+            f"Batch embedding session completed: "
+            f"{stats.get('cache_hit_rate', 0):.1f}% cache hit rate, "
+            f"{stats.get('cache_size', 0)}/{stats.get('cache_max_size', 0)} cache entries"
+        )
+
+
+@asynccontextmanager
+async def async_managed_cache_session(
+    clear_on_exit: bool = False
+) -> AsyncGenerator["EmbeddingService", None]:
+    """
+    Async context manager for cache management during processing sessions.
+    
+    Args:
+        clear_on_exit: Whether to clear cache when exiting context
+        
+    Usage:
+        async with async_managed_cache_session(clear_on_exit=True) as embedding_service:
+            # Perform operations that might benefit from fresh cache state
+            embeddings = await embedding_service.get_embedding("text")
+    """
+    service = get_llm_service()
+    embedding_service = service._embedding_service
+    
+    # Store initial cache state
+    initial_cache_size = len(embedding_service._embedding_cache)
+    
+    try:
+        yield embedding_service
+    finally:
+        final_stats = embedding_service.get_statistics()
+        cache_growth = final_stats.get('cache_size', 0) - initial_cache_size
+        
+        logger.debug(
+            f"Cache session: grew by {cache_growth} entries, "
+            f"final hit rate: {final_stats.get('cache_hit_rate', 0):.1f}%"
+        )
+        
+        if clear_on_exit:
+            embedding_service._embedding_cache.clear()
+            logger.debug("Cache cleared on session exit")
+
+
 class EmbeddingService:
     """
     Service for generating embeddings using the Ollama API.
@@ -73,16 +164,36 @@ class EmbeddingService:
             embedding_client: HTTP client for embedding requests
         """
         self._embedding_client = embedding_client
+        self._embedding_cache: dict[str, np.ndarray] = {}
+        self._cache_max_size = config.EMBEDDING_CACHE_SIZE
         self._stats = {
             "embeddings_requested": 0,
             "embeddings_successful": 0,
             "embeddings_failed": 0,
             "validation_failures": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
         }
+
+    def _compute_text_hash(self, text: str) -> str:
+        """Compute a hash of the text for caching purposes."""
+        return hashlib.md5(text.encode('utf-8')).hexdigest()
+
+    def _cache_embedding(self, text_hash: str, embedding: np.ndarray) -> None:
+        """Cache an embedding with LRU eviction policy."""
+        # If cache is full, remove oldest entry (simple LRU)
+        if len(self._embedding_cache) >= self._cache_max_size:
+            # Remove the first (oldest) item
+            oldest_key = next(iter(self._embedding_cache))
+            del self._embedding_cache[oldest_key]
+            logger.debug(f"Evicted old embedding from cache (hash: {oldest_key[:8]})")
+        
+        self._embedding_cache[text_hash] = embedding
+        logger.debug(f"Cached new embedding (hash: {text_hash[:8]})")
 
     async def get_embedding(self, text: str) -> np.ndarray | None:
         """
-        Get embedding vector for text.
+        Get embedding vector for text with LRU caching.
 
         Args:
             text: Text to get embedding for
@@ -97,6 +208,15 @@ class EmbeddingService:
             self._stats["embeddings_failed"] += 1
             return None
 
+        # Check cache first
+        text_hash = self._compute_text_hash(text.strip())
+        if text_hash in self._embedding_cache:
+            self._stats["cache_hits"] += 1
+            logger.debug(f"Cache hit for embedding (hash: {text_hash[:8]})")
+            return self._embedding_cache[text_hash]
+
+        self._stats["cache_misses"] += 1
+        
         try:
             response_data = await self._embedding_client.get_embedding(
                 text, config.EMBEDDING_MODEL
@@ -105,6 +225,8 @@ class EmbeddingService:
             # Extract and validate embedding
             embedding = self._extract_and_validate_embedding(response_data)
             if embedding is not None:
+                # Cache the successful embedding
+                self._cache_embedding(text_hash, embedding)
                 self._stats["embeddings_successful"] += 1
                 return embedding
             else:
@@ -115,6 +237,37 @@ class EmbeddingService:
             logger.error(f"Failed to get embedding: {e}", exc_info=True)
             self._stats["embeddings_failed"] += 1
             return None
+
+    async def get_embeddings_batch(
+        self, texts: list[str], batch_size: int | None = None
+    ) -> list[np.ndarray | None]:
+        """
+        Get embeddings for multiple texts in batches for better performance.
+        
+        Args:
+            texts: List of texts to get embeddings for
+            batch_size: Size of batches to process (defaults to MAX_CONCURRENT_LLM_CALLS)
+            
+        Returns:
+            List of embedding vectors (same order as input texts)
+        """
+        if not texts:
+            return []
+        
+        batch_size = batch_size or config.MAX_CONCURRENT_LLM_CALLS
+        results = [None] * len(texts)
+        
+        # Process in batches to control concurrency and memory usage
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            batch_tasks = [self.get_embedding(text) for text in batch_texts]
+            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+            
+            for j, result in enumerate(batch_results):
+                if not isinstance(result, Exception):
+                    results[i + j] = result
+        
+        return results
 
     def _extract_and_validate_embedding(
         self, response_data: dict[str, Any]
@@ -135,7 +288,7 @@ class EmbeddingService:
         )
         for key, value in response_data.items():
             if isinstance(value, list) and all(
-                isinstance(item, (float, int)) for item in value
+                isinstance(item, float | int) for item in value
             ):
                 embedding = self._validate_embedding_list(value)
                 if embedding is not None:
@@ -178,6 +331,14 @@ class EmbeddingService:
         total = self._stats["embeddings_requested"]
         return {
             **self._stats,
+            "cache_size": len(self._embedding_cache),
+            "cache_max_size": self._cache_max_size,
+            "cache_hit_rate": (self._stats["cache_hits"] / total * 100)
+            if total > 0
+            else 0,
+            "cache_miss_rate": (self._stats["cache_misses"] / total * 100)
+            if total > 0
+            else 0,
             "success_rate": (self._stats["embeddings_successful"] / total * 100)
             if total > 0
             else 0,
@@ -510,6 +671,16 @@ class RefactoredLLMService:
         REFACTORED: Simple delegation to embedding service.
         """
         return await self._embedding_service.get_embedding(text)
+
+    async def async_get_embeddings_batch(
+        self, texts: list[str], batch_size: int | None = None
+    ) -> list[np.ndarray | None]:
+        """
+        Get embeddings for multiple texts in batches.
+
+        REFACTORED: Simple delegation to embedding service.
+        """
+        return await self._embedding_service.get_embeddings_batch(texts, batch_size)
 
     def clean_model_response(self, text: str) -> str:
         """

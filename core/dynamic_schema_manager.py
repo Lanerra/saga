@@ -5,17 +5,20 @@ Unified dynamic schema management system for SAGA.
 This is the main interface that coordinates schema introspection, intelligent type inference,
 and adaptive constraint validation, replacing static mappings with dynamic, data-driven
 schema understanding.
+
+UPDATED: Now uses unified dependency injection system for better service management,
+testability, and consistent architecture across SAGA.
 """
 
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, Optional
 
 import structlog
 
-from core.adaptive_constraint_system import AdaptiveConstraintSystem
-from core.intelligent_type_inference import IntelligentTypeInference
-from core.schema_introspector import SchemaIntrospector
+# Import the new DI system
+from core.service_registry import resolve, register_singleton
+from core.database_interface import DatabaseInterface
 
 logger = structlog.get_logger(__name__)
 
@@ -26,13 +29,40 @@ class DynamicSchemaManager:
 
     This class coordinates all dynamic schema components and provides a single
     interface for type inference and relationship validation.
+    
+    UPDATED: Now uses service registry for dependency injection instead of
+    creating component instances directly.
     """
 
-    def __init__(self):
-        # Core components
-        self.introspector = SchemaIntrospector()
-        self.type_inference = IntelligentTypeInference(self.introspector)
-        self.constraint_system = AdaptiveConstraintSystem(self.introspector)
+    def __init__(
+        self,
+        database_service: Optional[DatabaseInterface] = None,
+        schema_introspector=None,
+        type_inference_service=None,
+        constraint_system=None
+    ):
+        """
+        Initialize the dynamic schema manager.
+        
+        Args:
+            database_service: Database service instance (injected via DI)
+            schema_introspector: Schema introspection service (injected via DI)
+            type_inference_service: Type inference service (injected via DI)
+            constraint_system: Constraint system service (injected via DI)
+        """
+        # Service dependencies (will be resolved via DI if not provided)
+        self._database_service = database_service
+        self._schema_introspector = schema_introspector
+        self._type_inference_service = type_inference_service
+        self._constraint_system = constraint_system
+        
+        # Track which services were resolved via service registry
+        self._services_from_registry = {
+            "database": False,
+            "introspector": False,
+            "type_inference": False,
+            "constraints": False
+        }
 
         # State tracking
         self.is_initialized = False
@@ -47,9 +77,22 @@ class DynamicSchemaManager:
         self.auto_refresh_enabled = True
         self.max_cache_age_minutes = 60
         self.learning_enabled = True
+        
+        # Service resolution statistics
+        self._service_stats = {
+            "registry_resolutions": 0,
+            "fallback_creations": 0,
+            "initialization_attempts": 0,
+            "successful_initializations": 0
+        }
 
     async def initialize(self, force_refresh: bool = False):
-        """Initialize the dynamic schema system with learning from existing data."""
+        """
+        Initialize the dynamic schema system with learning from existing data.
+        
+        Now resolves service dependencies via service registry first, with fallback
+        to direct instantiation for backward compatibility.
+        """
         async with self._init_lock:
             if self.is_initialized and not force_refresh:
                 return
@@ -61,29 +104,44 @@ class DynamicSchemaManager:
                 return
 
             self.initialization_in_progress = True
+            self._service_stats["initialization_attempts"] += 1
 
             try:
                 logger.info("Initializing dynamic schema system...")
                 start_time = datetime.utcnow()
 
+                # Resolve service dependencies via DI
+                await self._resolve_service_dependencies()
+
                 # Initialize components in parallel for better performance
                 tasks = []
 
-                if self.learning_enabled:
+                if self.learning_enabled and self._type_inference_service and self._constraint_system:
                     # Learn patterns from existing data
-                    tasks.append(self.type_inference.learn_from_existing_data())
-                    tasks.append(self.constraint_system.learn_constraints_from_data())
+                    if hasattr(self._type_inference_service, 'learn_from_existing_data'):
+                        tasks.append(self._type_inference_service.learn_from_existing_data())
+                    if hasattr(self._constraint_system, 'learn_constraints_from_data'):
+                        tasks.append(self._constraint_system.learn_constraints_from_data())
 
                 # Warm up the introspector cache
-                tasks.append(self.introspector.get_active_labels())
-                tasks.append(self.introspector.get_active_relationship_types())
+                if self._schema_introspector:
+                    if hasattr(self._schema_introspector, 'get_active_labels'):
+                        tasks.append(self._schema_introspector.get_active_labels())
+                    if hasattr(self._schema_introspector, 'get_active_relationship_types'):
+                        tasks.append(self._schema_introspector.get_active_relationship_types())
 
                 # Execute all initialization tasks
                 if tasks:
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Log any exceptions from initialization tasks
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            logger.warning(f"Initialization task {i} failed: {result}")
 
                 self.is_initialized = True
                 self.last_full_update = datetime.utcnow()
+                self._service_stats["successful_initializations"] += 1
 
                 init_time = (datetime.utcnow() - start_time).total_seconds()
                 logger.info(f"Dynamic schema system initialized in {init_time:.2f}s")
@@ -98,13 +156,83 @@ class DynamicSchemaManager:
                 self.is_initialized = False
             finally:
                 self.initialization_in_progress = False
+    
+    async def _resolve_service_dependencies(self):
+        """Resolve service dependencies via service registry with fallbacks."""
+        
+        # Resolve database service
+        if self._database_service is None:
+            try:
+                self._database_service = resolve("database_service")
+                self._services_from_registry["database"] = True
+                self._service_stats["registry_resolutions"] += 1
+                logger.debug("Database service resolved via registry")
+            except Exception as e:
+                logger.debug(f"Database service not in registry ({e}), will use fallback if needed")
+        
+        # Resolve schema introspector
+        if self._schema_introspector is None:
+            try:
+                self._schema_introspector = resolve("schema_introspector")
+                self._services_from_registry["introspector"] = True
+                self._service_stats["registry_resolutions"] += 1
+                logger.debug("Schema introspector resolved via registry")
+            except Exception:
+                # Fallback: create instance directly
+                try:
+                    from core.schema_introspector import SchemaIntrospector
+                    self._schema_introspector = SchemaIntrospector()
+                    self._service_stats["fallback_creations"] += 1
+                    logger.debug("Schema introspector created directly (fallback)")
+                except Exception as e:
+                    logger.warning(f"Failed to create schema introspector: {e}")
+        
+        # Resolve type inference service
+        if self._type_inference_service is None:
+            try:
+                self._type_inference_service = resolve("type_inference_service")
+                self._services_from_registry["type_inference"] = True
+                self._service_stats["registry_resolutions"] += 1
+                logger.debug("Type inference service resolved via registry")
+            except Exception:
+                # Fallback: create instance directly
+                try:
+                    from core.intelligent_type_inference import IntelligentTypeInference
+                    self._type_inference_service = IntelligentTypeInference(self._schema_introspector)
+                    self._service_stats["fallback_creations"] += 1
+                    logger.debug("Type inference service created directly (fallback)")
+                except Exception as e:
+                    logger.warning(f"Failed to create type inference service: {e}")
+        
+        # Resolve constraint system
+        if self._constraint_system is None:
+            try:
+                self._constraint_system = resolve("constraint_system")
+                self._services_from_registry["constraints"] = True
+                self._service_stats["registry_resolutions"] += 1
+                logger.debug("Constraint system resolved via registry")
+            except Exception:
+                # Fallback: create instance directly
+                try:
+                    from core.adaptive_constraint_system import AdaptiveConstraintSystem
+                    self._constraint_system = AdaptiveConstraintSystem(self._schema_introspector)
+                    self._service_stats["fallback_creations"] += 1
+                    logger.debug("Constraint system created directly (fallback)")
+                except Exception as e:
+                    logger.warning(f"Failed to create constraint system: {e}")
 
     async def _log_initialization_summary(self):
         """Log a summary of what was learned during initialization."""
         try:
-            # Get summaries from components
-            pattern_summary = self.type_inference.get_pattern_summary()
-            constraint_summary = self.constraint_system.get_constraint_summary()
+            # Get summaries from components (with safety checks)
+            pattern_summary = {}
+            constraint_summary = {}
+            
+            if self._type_inference_service and hasattr(self._type_inference_service, 'get_pattern_summary'):
+                pattern_summary = self._type_inference_service.get_pattern_summary()
+            
+            if self._constraint_system and hasattr(self._constraint_system, 'get_constraint_summary'):
+                constraint_summary = self._constraint_system.get_constraint_summary()
 
             logger.info(
                 f"Type inference: {pattern_summary.get('total_patterns', 0)} patterns learned"
@@ -112,6 +240,10 @@ class DynamicSchemaManager:
             logger.info(
                 f"Constraints: {constraint_summary.get('total_constraints', 0)} relationship constraints learned"
             )
+            
+            # Log service resolution statistics
+            registry_count = sum(1 for used in self._services_from_registry.values() if used)
+            logger.info(f"Services resolved: {registry_count}/4 via registry, {self._service_stats['fallback_creations']} via fallback")
 
         except Exception as e:
             logger.debug(f"Failed to log initialization summary: {e}")
@@ -162,8 +294,8 @@ class DynamicSchemaManager:
             await self.refresh_if_needed()
 
             # Try dynamic inference first
-            if self.learning_enabled and self.is_initialized:
-                inferred_type, confidence = self.type_inference.infer_type(
+            if self.learning_enabled and self.is_initialized and self._type_inference_service:
+                inferred_type, confidence = self._type_inference_service.infer_type(
                     name, category, description
                 )
 
@@ -179,18 +311,20 @@ class DynamicSchemaManager:
                         f"Dynamic inference low confidence: '{name}' -> '{inferred_type}' (confidence: {confidence:.3f})"
                     )
 
-                    # Try enhanced category mapping as secondary option
+                    # Try our own type inference system with category-only inference
                     if category:
                         try:
-                            from core.enhanced_node_taxonomy import (
-                                infer_node_type_from_category,
+                            # Use the unified inference system for category-based inference
+                            category_inferred_type, category_confidence = self._type_inference_service.infer_type(
+                                name="", category=category, description=""
                             )
-
-                            category_type = infer_node_type_from_category(category)
-                            if category_type != "WorldElement":
-                                return category_type
-                        except ImportError:
-                            pass
+                            if category_confidence >= 0.3 and category_inferred_type != "Entity":
+                                logger.debug(
+                                    f"Category fallback inference: '{category}' -> '{category_inferred_type}' (confidence: {category_confidence:.3f})"
+                                )
+                                return category_inferred_type
+                        except Exception as e:
+                            logger.debug(f"Category fallback inference failed: {e}")
 
                     # Return dynamic inference even with medium confidence
                     return inferred_type
@@ -208,28 +342,25 @@ class DynamicSchemaManager:
                 logger.debug(f"Static fallback inference: '{name}' -> '{result}'")
                 return result
             except ImportError:
-                # If static method doesn't exist yet, try enhanced taxonomy
+                # If static method doesn't exist yet, try unified inference system
                 try:
-                    from core.enhanced_node_taxonomy import (
-                        infer_node_type_from_category,
-                        infer_node_type_from_name,
-                    )
-
-                    # Try category first
-                    if category:
-                        category_type = infer_node_type_from_category(category)
-                        if category_type != "WorldElement":
-                            return category_type
-
-                    # Try name-based inference
-                    name_type = infer_node_type_from_name(
-                        name, f"{category} {description}".strip()
-                    )
-                    if name_type != "Entity":
-                        return name_type
-
-                except ImportError:
-                    pass
+                    # Use our own unified inference system as final fallback
+                    if self._type_inference_service:
+                        fallback_type, fallback_confidence = self._type_inference_service.infer_type(
+                            name, category, description
+                        )
+                    else:
+                        fallback_type, fallback_confidence = "Entity", 0.0
+                    
+                    # Accept any non-Entity result from our unified system
+                    if fallback_type != "Entity":
+                        logger.debug(
+                            f"Unified fallback inference: '{name}' -> '{fallback_type}' (confidence: {fallback_confidence:.3f})"
+                        )
+                        return fallback_type
+                        
+                except Exception as e:
+                    logger.debug(f"Unified fallback inference failed: {e}")
             except Exception as e:
                 logger.warning(f"Static fallback inference failed for '{name}': {e}")
 
@@ -251,9 +382,9 @@ class DynamicSchemaManager:
             await self.refresh_if_needed()
 
             # Try adaptive constraint validation first - now always returns True for creative flexibility
-            if self.learning_enabled and self.is_initialized:
+            if self.learning_enabled and self.is_initialized and self._constraint_system:
                 is_valid, confidence, reason = (
-                    self.constraint_system.validate_relationship(
+                    self._constraint_system.validate_relationship(
                         subject_type, relationship_type, object_type
                     )
                 )
@@ -285,8 +416,8 @@ class DynamicSchemaManager:
             await self.ensure_initialized()
             await self.refresh_if_needed()
 
-            if self.learning_enabled and self.is_initialized:
-                suggestions = self.constraint_system.suggest_relationship_types(
+            if self.learning_enabled and self.is_initialized and self._constraint_system:
+                suggestions = self._constraint_system.suggest_relationship_types(
                     subject_type, object_type, limit
                 )
                 if suggestions:
@@ -327,22 +458,19 @@ class DynamicSchemaManager:
         try:
             await self.ensure_initialized()
 
-            # Get component statuses
-            pattern_summary = (
-                self.type_inference.get_pattern_summary() if self.is_initialized else {}
-            )
-            constraint_summary = (
-                self.constraint_system.get_constraint_summary()
-                if self.is_initialized
-                else {}
-            )
-
-            # Get schema summary from introspector
-            schema_summary = (
-                await self.introspector.get_schema_summary()
-                if self.is_initialized
-                else {}
-            )
+            # Get component statuses (with safety checks)
+            pattern_summary = {}
+            constraint_summary = {}
+            schema_summary = {}
+            
+            if self.is_initialized and self._type_inference_service and hasattr(self._type_inference_service, 'get_pattern_summary'):
+                pattern_summary = self._type_inference_service.get_pattern_summary()
+            
+            if self.is_initialized and self._constraint_system and hasattr(self._constraint_system, 'get_constraint_summary'):
+                constraint_summary = self._constraint_system.get_constraint_summary()
+            
+            if self.is_initialized and self._schema_introspector and hasattr(self._schema_introspector, 'get_schema_summary'):
+                schema_summary = await self._schema_introspector.get_schema_summary()
 
             return {
                 "system": {
@@ -354,12 +482,25 @@ class DynamicSchemaManager:
                     if self.last_full_update
                     else None,
                 },
+                "services": {
+                    "from_registry": self._services_from_registry,
+                    "registry_resolutions": self._service_stats["registry_resolutions"],
+                    "fallback_creations": self._service_stats["fallback_creations"],
+                    "available_services": {
+                        "database": self._database_service is not None,
+                        "introspector": self._schema_introspector is not None,
+                        "type_inference": self._type_inference_service is not None,
+                        "constraints": self._constraint_system is not None
+                    }
+                },
                 "type_inference": pattern_summary,
                 "constraints": constraint_summary,
                 "schema": schema_summary,
                 "performance": {
                     "cache_age_minutes": self.max_cache_age_minutes,
                     "initialization_in_progress": self.initialization_in_progress,
+                    "initialization_attempts": self._service_stats["initialization_attempts"],
+                    "successful_initializations": self._service_stats["successful_initializations"],
                 },
             }
 
@@ -375,8 +516,11 @@ class DynamicSchemaManager:
     async def invalidate_all_caches(self):
         """Force invalidation of all caches for fresh data."""
         try:
-            await self.introspector.invalidate_cache()
-            logger.info("All schema caches invalidated")
+            if self._schema_introspector and hasattr(self._schema_introspector, 'invalidate_cache'):
+                await self._schema_introspector.invalidate_cache()
+                logger.info("All schema caches invalidated")
+            else:
+                logger.warning("Schema introspector not available for cache invalidation")
         except Exception as e:
             logger.error(f"Failed to invalidate caches: {e}")
 
@@ -403,7 +547,70 @@ class DynamicSchemaManager:
             f"auto_refresh={self.auto_refresh_enabled}, "
             f"fallback={self.enable_fallback}"
         )
+    
+    def get_service_info(self) -> Dict[str, Any]:
+        """
+        Get service information for monitoring (ServiceInterface compliance).
+        """
+        return {
+            "service_name": "DynamicSchemaManager",
+            "service_type": "schema_management",
+            "is_initialized": self.is_initialized,
+            "services_from_registry": self._services_from_registry,
+            "service_statistics": self._service_stats,
+            "configuration": {
+                "learning_enabled": self.learning_enabled,
+                "auto_refresh_enabled": self.auto_refresh_enabled,
+                "enable_fallback": self.enable_fallback,
+                "max_cache_age_minutes": self.max_cache_age_minutes
+            },
+            "last_update": self.last_full_update.isoformat() if self.last_full_update else None
+        }
+    
+    async def dispose(self):
+        """
+        Dispose of the dynamic schema manager (called by lifecycle manager).
+        """
+        self.is_initialized = False
+        self.initialization_in_progress = False
+        
+        # Don't dispose of injected services - let the service registry handle that
+        # Just clear our references
+        self._database_service = None
+        self._schema_introspector = None
+        self._type_inference_service = None
+        self._constraint_system = None
+        
+        logger.info("Dynamic schema manager disposed")
 
 
-# Global instance for easy access across the application
+# Service registration for dependency injection
+def register_dynamic_schema_manager_service():
+    """Register the dynamic schema manager with the service registry."""
+    register_singleton(
+        name="dynamic_schema_manager",
+        factory=lambda: DynamicSchemaManager(),
+        dependencies=["database_service"],  # Other dependencies are optional
+        interface=DynamicSchemaManager
+    )
+    logger.info("Dynamic schema manager service registered")
+
+
+def get_dynamic_schema_manager() -> DynamicSchemaManager:
+    """
+    Get a dynamic schema manager instance from the service registry.
+    
+    Returns:
+        DynamicSchemaManager instance
+    """
+    try:
+        return resolve("dynamic_schema_manager")
+    except ValueError:
+        # Fallback: create instance directly for backward compatibility
+        logger.debug("Dynamic schema manager not in service registry, creating new instance")
+        return DynamicSchemaManager()
+
+
+# Global instance for easy access across the application (backward compatibility)
+# This will eventually be replaced by service registry usage
 dynamic_schema_manager = DynamicSchemaManager()

@@ -73,13 +73,22 @@ class TextDeduplicator:
         embeddings: list[np.ndarray | None] = [None] * len(segments)
         if self.use_semantic_comparison:
             unique_indices = [i for i in iteration_range if i not in indices_to_remove]
-            tasks = [
-                llm_service.async_get_embedding(segments[i][0]) for i in unique_indices
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for idx, result in zip(unique_indices, results, strict=False):
-                if not isinstance(result, Exception):
-                    embeddings[idx] = result
+            
+            # Batch embedding generation with configurable concurrency
+            batch_size = min(config.MAX_CONCURRENT_LLM_CALLS, len(unique_indices))
+            
+            # Process embeddings in batches to control memory usage and API load
+            for i in range(0, len(unique_indices), batch_size):
+                batch_indices = unique_indices[i:i + batch_size]
+                batch_tasks = [
+                    llm_service.async_get_embedding(segments[idx][0]) 
+                    for idx in batch_indices
+                ]
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                
+                for batch_idx, result in zip(batch_indices, batch_results, strict=False):
+                    if not isinstance(result, Exception):
+                        embeddings[batch_idx] = result
 
             keepers: list[int] = []
             for idx in iteration_range:
@@ -93,7 +102,11 @@ class TextDeduplicator:
                     emb_j = embeddings[kept_idx]
                     if emb_j is None:
                         continue
-                    similarity = utils.numpy_cosine_similarity(embeddings[idx], emb_j)
+                    try:
+                        similarity = utils.numpy_cosine_similarity(embeddings[idx], emb_j)
+                    except ValueError:
+                        logger.warning("Cosine similarity shape mismatch handled: setting to 0.0 for deduplication compatibility.")
+                        similarity = 0.0
                     if similarity > self.similarity_threshold:
                         remove_idx = idx if not self.prefer_newer else kept_idx
                         indices_to_remove.add(remove_idx)
@@ -108,18 +121,27 @@ class TextDeduplicator:
         if not indices_to_remove:
             return original_text, 0
 
+        # Optimize text reconstruction using sorted spans
         spans_to_remove = [segments[i][1:] for i in sorted(indices_to_remove)]
         spans_to_remove.sort(key=lambda x: x[0])
-        new_parts: list[str] = []
+        
+        # Pre-allocate buffer for better performance on large texts
+        text_parts = []
         last_pos = 0
+        
         for start, end in spans_to_remove:
             if start > last_pos:
-                new_parts.append(original_text[last_pos:start])
+                text_parts.append(original_text[last_pos:start])
             last_pos = max(last_pos, end)
+        
         if last_pos < len(original_text):
-            new_parts.append(original_text[last_pos:])
-        dedup_text = "".join(new_parts)
-        dedup_text = re.sub(r"\n\s*\n(\s*\n)+", "\n\n", dedup_text)
-        dedup_text = re.sub(r"\n{3,}", "\n\n", dedup_text).strip()
+            text_parts.append(original_text[last_pos:])
+        
+        # Single join operation instead of multiple string operations
+        dedup_text = "".join(text_parts)
+        
+        # Optimize regex operations - combine patterns
+        dedup_text = re.sub(r"\n\s*\n(?:\s*\n)+", "\n\n", dedup_text).strip()
+        
         removed_count = len(original_text) - len(dedup_text)
         return dedup_text, removed_count

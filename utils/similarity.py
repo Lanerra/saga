@@ -27,11 +27,11 @@ def numpy_cosine_similarity(vec1: np.ndarray | None, vec2: np.ndarray | None) ->
         return 0.0
     if v1.shape != v2.shape:
         logger.warning(
-            "Cosine similarity: shape mismatch %s vs %s. Returning 0.0.",
+            "Vector shape mismatch: %s vs %s",
             v1.shape,
             v2.shape,
         )
-        return 0.0
+        raise ValueError(f"Vector shape mismatch: {v1.shape} vs {v2.shape}")
     if v1.size == 0:
         logger.debug("Cosine similarity: input vector(s) are empty. Returning 0.0.")
         return 0.0

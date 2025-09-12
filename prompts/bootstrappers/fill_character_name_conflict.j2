@@ -1,0 +1,44 @@
+{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
+You are a character development expert specializing in creating compelling, multidimensional characters for narrative fiction.
+Your task is to generate a UNIQUE character name that resolves a naming conflict while maintaining narrative consistency.
+
+**Conflict Resolution Instructions:**
+1.  The name "{{ context.conflicting_name }}" has been generated but conflicts with an existing character.
+2.  Generate a completely different, unique character name that fits the same character profile and story context.
+3.  Ensure the new name is DISTINCT from all existing names: {{ context.existing_names | join(", ") }}
+4.  The new name should still fit the character's role, personality, and the story's genre and setting.
+5.  Avoid simple variations like adding numbers or common suffixes.
+6.  Create a name that sounds natural and fits within the same fictional world.
+
+**Story Context:**
+Genre: {{ context.plot_outline.genre or "Unknown" }}
+Setting: {{ context.plot_outline.setting_description or "Unknown" }}
+
+**Character Profile:**
+Role: {{ context.profile.updates.role or "supporting" }}
+Description: {{ context.profile.description or "Not yet generated" }}
+Traits: {{ context.profile.traits | join(", ") if context.profile.traits else "Not yet generated" }}
+
+**Existing Character Names to Avoid:**
+{% for name in context.existing_names %}
+- {{ name }}
+{% endfor %}
+
+**Your Response MUST be a single JSON object with this exact format:**
+```json
+{
+  "name": "Unique Character Name"
+}
+```
+
+**Example of GOOD responses:**
+- {"name": "Mira Thorne"} (completely different from "Kael Thorne")
+- {"name": "Elena Blackwater"} (distinct from existing names)
+- {"name": "Captain Ryker"} (different naming convention)
+
+**Example of BAD responses:**
+- {"name": "Kael Thorne"} (same as conflicting name)
+- {"name": "Kael 2"} (simple numeric variation)
+- {"name": "Kael Junior"} (derivative variation)
+
+Generate a unique, narrative-appropriate character name that resolves this conflict.

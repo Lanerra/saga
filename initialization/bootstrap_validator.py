@@ -6,7 +6,7 @@ import structlog
 
 # Types available for type checking only
 if TYPE_CHECKING:
-    pass  # Remove unused imports to avoid pylance warnings
+    from processing.state_tracker import StateTracker
 
 logger = structlog.get_logger(__name__)
 
@@ -39,7 +39,8 @@ class BootstrapValidationResult:
 async def validate_bootstrap_results(
     plot_outline: dict[str, Any],
     character_profiles: dict[str, Any],
-    world_building: dict[str, dict[str, Any]]
+    world_building: dict[str, dict[str, Any]],
+    state_tracker: "StateTracker | None" = None,
 ) -> BootstrapValidationResult:
     """Validate that bootstrap process created complete, valid data.
     
@@ -47,6 +48,7 @@ async def validate_bootstrap_results(
         plot_outline: The bootstrapped plot outline
         character_profiles: The bootstrapped character profiles
         world_building: The bootstrapped world building elements
+        state_tracker: Optional StateTracker for checking duplicates and conflicts
         
     Returns:
         BootstrapValidationResult with validation status and details
@@ -59,10 +61,10 @@ async def validate_bootstrap_results(
     await _validate_plot_outline(plot_outline, result)
     
     # Validate character profiles
-    await _validate_character_profiles(character_profiles, result)
+    await _validate_character_profiles(character_profiles, result, state_tracker)
     
     # Validate world building elements
-    await _validate_world_building(world_building, result)
+    await _validate_world_building(world_building, result, state_tracker)
     
     # Validate cross-references and consistency
     await _validate_consistency(plot_outline, character_profiles, world_building, result)
@@ -133,7 +135,11 @@ async def _validate_plot_outline(plot_outline: dict[str, Any], result: Bootstrap
     result.add_detail("plot_outline_fields", list(plot_outline.keys()))
 
 
-async def _validate_character_profiles(character_profiles: dict[str, Any], result: BootstrapValidationResult) -> None:
+async def _validate_character_profiles(
+    character_profiles: dict[str, Any], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
     """Validate character profiles structure and content."""
     
     if not character_profiles:
@@ -143,6 +149,9 @@ async def _validate_character_profiles(character_profiles: dict[str, Any], resul
     # Check minimum number of characters
     if len(character_profiles) < 2:
         result.add_warning(f"Only {len(character_profiles)} character(s) found. Stories typically need at least 2-3 characters.")
+    
+    # NEW: Check for duplicate names across all character profiles
+    await _validate_character_uniqueness(character_profiles, result, state_tracker)
     
     protagonist_found = False
     antagonist_found = False
@@ -195,6 +204,21 @@ async def _validate_character_profiles(character_profiles: dict[str, Any], resul
         for trait in traits:
             if _is_fill_in_placeholder(trait):
                 result.add_warning(f"Character '{name}' has placeholder trait: '{trait}'")
+        
+        # StateTracker validation - check for type/description conflicts
+        if state_tracker:
+            metadata = await state_tracker.check(name)
+            if metadata:
+                if metadata["type"] != "character":
+                    result.add_error(f"Type conflict for '{name}': StateTracker shows type '{metadata['type']}' but validating as character")
+                
+                # Check for description similarity conflicts  
+                similar_name = await state_tracker.has_similar_description(description, "character")
+                if similar_name and similar_name != name:
+                    result.add_warning(f"Character '{name}' has description similar to '{similar_name}'")
+            else:
+                # Character not found in StateTracker - this could indicate it wasn't properly reserved
+                result.add_warning(f"Character '{name}' not found in StateTracker - may indicate incomplete reservation process")
     
     # Validate story structure requirements
     if not protagonist_found:
@@ -210,7 +234,57 @@ async def _validate_character_profiles(character_profiles: dict[str, Any], resul
     ])
 
 
-async def _validate_world_building(world_building: dict[str, dict[str, Any]], result: BootstrapValidationResult) -> None:
+async def _validate_character_uniqueness(
+    character_profiles: dict[str, Any], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
+    """Check for duplicate names across all character profiles and validate against StateTracker."""
+    if not character_profiles:
+        return
+    
+    # Check for duplicate names in the profile set itself
+    name_counts = {}
+    for name in character_profiles.keys():
+        if name:  # Skip empty names
+            name_counts[name] = name_counts.get(name, 0) + 1
+    
+    duplicate_names = [name for name, count in name_counts.items() if count > 1]
+    for name in duplicate_names:
+        result.add_error(f"Duplicate character name found: '{name}' appears {name_counts[name]} times")
+    
+    # Cross-check with StateTracker for consistency and additional validation
+    if state_tracker:
+        tracked_entities = await state_tracker.get_entities_by_type("character")
+        tracked_names = set(tracked_entities.keys())
+        profile_names = set(character_profiles.keys())
+        
+        # Check for names in profiles but not tracked
+        untracked_names = profile_names - tracked_names
+        for name in untracked_names:
+            result.add_warning(f"Character '{name}' exists in profiles but not tracked in StateTracker")
+        
+        # Check for tracked names not in profiles (potential inconsistency)
+        extra_tracked = tracked_names - profile_names
+        for name in extra_tracked:
+            result.add_warning(f"Character '{name}' tracked in StateTracker but not in profiles")
+        
+        # Check for duplicate names in StateTracker that might not be caught by profile validation
+        # This handles edge cases where StateTracker might have conflicts not reflected in profiles
+        tracked_name_counts = {}
+        for name in tracked_names:
+            tracked_name_counts[name] = tracked_name_counts.get(name, 0) + 1
+        
+        tracked_duplicates = [name for name, count in tracked_name_counts.items() if count > 1]
+        for name in tracked_duplicates:
+            result.add_error(f"StateTracker duplicate character name found: '{name}' appears {tracked_name_counts[name]} times")
+
+
+async def _validate_world_building(
+    world_building: dict[str, dict[str, Any]], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
     """Validate world building elements structure and content."""
     
     if not world_building:
@@ -226,6 +300,9 @@ async def _validate_world_building(world_building: dict[str, dict[str, Any]], re
     if not world_categories:
         result.add_error("No valid world building categories found")
         return
+    
+    # NEW: Check for duplicate names across all world building categories
+    await _validate_world_uniqueness(world_categories, result, state_tracker)
     
     total_items = 0
     
@@ -263,6 +340,21 @@ async def _validate_world_building(world_building: dict[str, dict[str, Any]], re
             if _is_fill_in_placeholder(item_description):
                 result.add_warning(f"World item '{item_name_val}' has placeholder description")
             
+            # StateTracker validation - check for type/description conflicts
+            if state_tracker:
+                metadata = await state_tracker.check(item_name_val)
+                if metadata:
+                    if metadata["type"] != "world_item":
+                        result.add_error(f"Type conflict for '{item_name_val}': StateTracker shows type '{metadata['type']}' but validating as world_item")
+                    
+                    # Check for description similarity conflicts  
+                    similar_name = await state_tracker.has_similar_description(item_description, "world_item")
+                    if similar_name and similar_name != item_name_val:
+                        result.add_warning(f"World item '{item_name_val}' has description similar to '{similar_name}'")
+                else:
+                    # World item not found in StateTracker - this could indicate it wasn't properly reserved
+                    result.add_warning(f"World item '{item_name_val}' not found in StateTracker - may indicate incomplete reservation process")
+            
             category_item_count += 1
         
         total_items += category_item_count
@@ -285,6 +377,69 @@ async def _validate_world_building(world_building: dict[str, dict[str, Any]], re
         result.add_warning("No cultural/religious/governmental elements found. Consider adding some for world depth.")
     
     result.add_detail("world_categories", list(world_categories.keys()))
+
+
+async def _validate_world_uniqueness(
+    world_categories: dict[str, Any], 
+    result: BootstrapValidationResult,
+    state_tracker: "StateTracker | None" = None
+) -> None:
+    """Check for duplicate names across all world building categories and validate against StateTracker."""
+    if not world_categories:
+        return
+    
+    # Check for duplicate names across all categories
+    all_item_names = []
+    category_mapping = {}  # Maps item names to their categories
+    
+    for category, items in world_categories.items():
+        if not isinstance(items, dict):
+            continue
+        for item_name, item in items.items():
+            # Handle both object and dict patterns
+            if hasattr(item, 'name'):
+                item_name_val = item.name
+            else:
+                item_name_val = item.get("name", item_name)
+            
+            if item_name_val:
+                all_item_names.append(item_name_val)
+                category_mapping[item_name_val] = category
+    
+    # Check for duplicates in the profile set itself
+    name_counts = {}
+    for name in all_item_names:
+        name_counts[name] = name_counts.get(name, 0) + 1
+    
+    duplicate_names = [name for name, count in name_counts.items() if count > 1]
+    for name in duplicate_names:
+        categories_with_name = [cat for item_name, cat in category_mapping.items() if item_name == name]
+        result.add_error(f"Duplicate world item name found: '{name}' appears in categories {categories_with_name}")
+    
+    # Cross-check with StateTracker for consistency and additional validation
+    if state_tracker:
+        tracked_entities = await state_tracker.get_entities_by_type("world_item")
+        tracked_names = set(tracked_entities.keys())
+        profile_names = set(all_item_names)
+        
+        # Check for names in profiles but not tracked
+        untracked_names = profile_names - tracked_names
+        for name in untracked_names:
+            result.add_warning(f"World item '{name}' exists in profiles but not tracked in StateTracker")
+        
+        # Check for tracked names not in profiles (potential inconsistency)
+        extra_tracked = tracked_names - profile_names
+        for name in extra_tracked:
+            result.add_warning(f"World item '{name}' tracked in StateTracker but not in profiles")
+        
+        # Check for duplicate names in StateTracker that might not be caught by profile validation
+        tracked_name_counts = {}
+        for name in tracked_names:
+            tracked_name_counts[name] = tracked_name_counts.get(name, 0) + 1
+        
+        tracked_duplicates = [name for name, count in tracked_name_counts.items() if count > 1]
+        for name in tracked_duplicates:
+            result.add_error(f"StateTracker duplicate world item name found: '{name}' appears {tracked_name_counts[name]} times")
 
 
 async def _validate_consistency(

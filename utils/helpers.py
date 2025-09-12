@@ -11,6 +11,10 @@ def flatten_dict(
 ) -> dict[str, Any]:
     """
     Flatten a nested dictionary by concatenating nested keys with a separator.
+    Handles nested dictionaries recursively. For lists containing only primitive
+    values (non-dict, non-list, non-None), flattens into indexed keys like "key[0]".
+    Skips None values and empty lists. Raises ValueError for lists with complex
+    (dict or list) items to prevent structure loss.
 
     Args:
         d: Dictionary to flatten
@@ -20,9 +24,23 @@ def flatten_dict(
     Returns:
         Flattened dictionary with primitive values only
 
-    Example:
+    Examples:
         >>> flatten_dict({'a': {'b': {'c': 1}}, 'd': 2})
         {'a.b.c': 1, 'd': 2}
+
+        >>> flatten_dict({'key': [1, 2, None, 3]})
+        {'key[0]': 1, 'key[1]': 2, 'key[3]': 3}
+
+        >>> flatten_dict({'key': []})
+        {}
+
+        >>> flatten_dict({'key': [1, {'nested': 2}]})
+        Traceback (most recent call last):
+          ...
+        ValueError: Cannot flatten complex list at key 'key'
+
+    Raises:
+        ValueError: If a list contains non-primitive items (dict or list).
     """
     items = []
     for k, v in d.items():
@@ -31,8 +49,13 @@ def flatten_dict(
             # Recursively flatten nested dictionaries
             items.extend(flatten_dict(v, new_key, sep=sep).items())
         elif isinstance(v, list):
-            # Convert lists to strings to ensure they're primitive
-            items.append((new_key, str(v)))
+            # Check if list is primitive (no dict or list items)
+            if any(isinstance(item, (dict, list)) for item in v):
+                raise ValueError(f"Cannot flatten complex list at key '{new_key}'")
+            # Flatten primitive lists with indexed keys, skipping Nones
+            for i, item in enumerate(v):
+                if item is not None:
+                    items.append((f"{new_key}[{i}]", item))
         elif v is not None:
             # Keep primitive values as-is
             items.append((new_key, v))
@@ -40,20 +63,6 @@ def flatten_dict(
     return dict(items)
 
 
-def is_primitive_type(value: Any) -> bool:
-    """
-    Check if a value is a primitive type that Neo4j can store as a property.
-
-    Args:
-        value: Value to check
-
-    Returns:
-        True if value is a primitive type, False otherwise
-    """
-    if value is None:
-        return True
-    primitive_types = (str, int, float, bool)
-    return isinstance(value, primitive_types)
 
 
 def _is_fill_in(value: Any) -> bool:
