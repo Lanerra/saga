@@ -1,5 +1,5 @@
-# config.py
-"""Configuration settings for the Saga Novel Generation system.
+"""
+Configuration settings for the Saga Novel Generation system.
 Uses Pydantic BaseSettings for automatic environment variable loading.
 """
 
@@ -51,9 +51,7 @@ async def _load_list_from_json_async(
         return default_if_missing
     except Exception:
         logger.error(
-            "Unexpected error loading file. Using default.",
-            file_path=file_path,
-            exc_info=True,
+            "Unexpected error loading file.", file_path=file_path, exc_info=True
         )
         return default_if_missing
 
@@ -71,8 +69,8 @@ class SagaSettings(BaseSettings):
     # Reranker model needs to be loaded in Ollama and support the /api/rerank endpoint.
     # E.g., bge-reranker-base, mxbai-rerank-large-v1, etc.
     RERANKER_MODEL: str = "mxbai-rerank-large-v1:latest"
-    EXPECTED_EMBEDDING_DIM: int = 768
-    EMBEDDING_DTYPE: str = "float32"
+    EXPECTED_EMBEDDING_DIM: int = 1024
+    EMBEDDING_DTYPE: str = "float16"
 
     # Neo4j Connection Settings
     NEO4J_URI: str = "bolt://localhost:7687"
@@ -114,9 +112,9 @@ class SagaSettings(BaseSettings):
     ENABLE_LLM_NO_THINK_DIRECTIVE: bool = True
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
+
     # Concurrency and Rate Limiting
     MAX_CONCURRENT_LLM_CALLS: int = 4
-
     LLM_TOP_P: float = 0.8
 
     # LLM Frequency and Presence Penalties
@@ -140,13 +138,13 @@ class SagaSettings(BaseSettings):
     PRESENCE_PENALTY_CONSISTENCY_CHECK: float = 1.0
 
     # Output and File Paths
-    BASE_OUTPUT_DIR: str = "novel_output"
+    BASE_OUTPUT_DIR: str = "output"
     PLOT_OUTLINE_FILE: str = "plot_outline.json"
     CHARACTER_PROFILES_FILE: str = "character_profiles.json"
     WORLD_BUILDER_FILE: str = "world_building.json"
-    CHAPTERS_DIR: str = "chapters"
-    CHAPTER_LOGS_DIR: str = "chapter_logs"
-    DEBUG_OUTPUTS_DIR: str = "debug_outputs"
+    CHAPTERS_DIR: str = "output/chapters"
+    CHAPTER_LOGS_DIR: str = "output/chapter_logs"
+    DEBUG_OUTPUTS_DIR: str = "output/debug_outputs"
 
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
@@ -157,7 +155,6 @@ class SagaSettings(BaseSettings):
     CHAPTERS_PER_RUN: int = 4
     KG_HEALING_INTERVAL: int = 2
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 20
-    # Concurrency limiting for chapter processing to prevent resource exhaustion
     MAX_CONCURRENT_CHAPTERS: int = 4
 
     # Caching
@@ -218,24 +215,14 @@ class SagaSettings(BaseSettings):
 
     # Relationship Constraint Configuration
     ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
-    RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = (
-        0.3  # Lower threshold to accept more corrections
-    )
-    RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = (
-        False  # If True, rejects invalid relationships; if False, uses fallbacks
-    )
+    RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = 0.3
+    RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = False
     RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS: bool = True
-    RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = (
-        False  # Allow automatic corrections of relationship types
-    )
-    DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING: bool = (
-        True  # If True, preserves original relationship types without fallbacks
-    )
+    RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = False
+    DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING: bool = True
 
     # Enhanced Node Type Configuration
-    ENABLE_ENHANCED_NODE_TYPES: bool = (
-        True  # Use enhanced specific node types instead of generic ones
-    )
+    ENABLE_ENHANCED_NODE_TYPES: bool = True
 
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
@@ -257,9 +244,13 @@ class SagaSettings(BaseSettings):
 
     MAIN_NOVEL_INFO_NODE_ID: str = "main_novel_info"
 
-    DISABLE_RELATIONSHIP_NORMALIZATION: bool = (
-        True  # Toggle relationship normalization for testing
-    )
+    # Identifier for the root World Container node in the Neo4j graph.
+    # This constant is used throughout the codebase for bootstrapping and
+    # querying world‑level structures.  It was previously defined in the
+    # legacy ``config.py`` file; adding it here restores compatibility.
+    MAIN_WORLD_CONTAINER_NODE_ID: str = "world_container"
+
+    DISABLE_RELATIONSHIP_NORMALIZATION: bool = True
 
     # Bootstrap Enhancement Configuration
     BOOTSTRAP_CREATE_RELATIONSHIPS: bool = True
@@ -275,35 +266,25 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
     # Dynamic Schema System Configuration
-    ENABLE_DYNAMIC_SCHEMA: bool = True  # Master switch for dynamic schema system
-    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True  # Auto-refresh schema data when stale
-    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2  # Cache time-to-live for schema data
-    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True  # Enable learning from existing data
-    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = (
-        False  # Fall back to static methods on failure
-    )
+    ENABLE_DYNAMIC_SCHEMA: bool = True
+    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True
+    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2
+    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True
+    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = False
 
     # Type Inference Configuration
-    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = (
-        0.6  # Min confidence for dynamic inference
-    )
-    DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = (
-        3  # Min frequency for patterns to be retained
-    )
+    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.6
+    DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = 3
 
     # Constraint System Configuration
-    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = (
-        0.6  # Min confidence for constraint validation
-    )
-    DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3  # Min samples to learn a constraint
+    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.6
+    DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3
 
     # Schema Discovery Configuration
-    SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = (
-        2  # Cache TTL for introspection queries
-    )
+    SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = 2
 
     @model_validator(mode="after")
-    def set_dynamic_model_defaults(self) -> SagaSettings:
+    def set_dynamic_model_defaults(self) -> "SagaSettings":
         return self
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env")
@@ -360,23 +341,16 @@ os.makedirs(CHAPTERS_DIR, exist_ok=True)
 os.makedirs(CHAPTER_LOGS_DIR, exist_ok=True)
 os.makedirs(DEBUG_OUTPUTS_DIR, exist_ok=True)
 
-# Configure structlog to integrate with standard logging and output human-readable messages
+# Configure structlog to integrate with standard logging and output human‑readable messages
 structlog.configure(
     processors=[
-        # Add logger name and level
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
-        # Handle positional arguments properly
         structlog.stdlib.PositionalArgumentsFormatter(),
-        # Process timestamps
         structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M"),
-        # Handle stack info
         structlog.processors.StackInfoRenderer(),
-        # Handle exceptions
         structlog.processors.format_exc_info,
-        # Unicode decoder processor
         structlog.processors.UnicodeDecoder(),
-        # Wrap for standard logging formatter
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],
     context_class=dict,
@@ -385,7 +359,7 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
-# Simple human-readable formatter for structlog
+# Simple human‑readable formatter for structlog
 formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
         structlog.stdlib.add_log_level,
