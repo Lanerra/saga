@@ -265,11 +265,11 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
-    # Dynamic Schema System Configuration
-    ENABLE_DYNAMIC_SCHEMA: bool = True
-    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = True
+    # Dynamic Schema System Configuration (Disabled for single-user deployment)
+    ENABLE_DYNAMIC_SCHEMA: bool = False
+    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = False
     DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2
-    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = True
+    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = False
     DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = False
 
     # Type Inference Configuration

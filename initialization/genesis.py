@@ -109,9 +109,6 @@ async def run_genesis_phase() -> (
     else:
         logger.warning("StateTracker is empty - no entities were tracked during bootstrap")
 
-    # Refresh dynamic schema patterns after bootstrap completion
-    await _refresh_dynamic_schema_after_bootstrap()
-
     return plot_outline, character_profiles, world_items_for_kg
 
 
@@ -269,45 +266,4 @@ async def _create_bootstrap_relationships(
     )
 
 
-async def _refresh_dynamic_schema_after_bootstrap() -> None:
-    """Refresh dynamic schema patterns after bootstrap phase completion."""
-    try:
-        # Only refresh if dynamic schema is enabled
-        if not getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
-            return
-
-        logger.info("Refreshing dynamic schema patterns after bootstrap completion...")
-
-        # Import here to avoid circular dependencies
-        from core.dynamic_schema_manager import dynamic_schema_manager
-
-        # Initialize/refresh the dynamic schema system with all the new bootstrap data
-        await dynamic_schema_manager.initialize(force_refresh=True)
-
-        # Get status for logging
-        status = await dynamic_schema_manager.get_system_status()
-        type_patterns = status.get("type_inference", {}).get("total_patterns", 0)
-        constraints = status.get("constraints", {}).get("total_constraints", 0)
-        schema_info = status.get("schema", {})
-        total_nodes = schema_info.get("total_nodes", 0)
-
-        logger.info(
-            f"Dynamic schema patterns learned from bootstrap data: "
-            f"{type_patterns} type patterns from {total_nodes} nodes, "
-            f"{constraints} relationship constraints"
-        )
-
-        # This ensures novel-specific patterns are available from chapter 1 onwards
-        logger.info(
-            "Dynamic schema system ready for chapter generation with bootstrap patterns"
-        )
-
-    except Exception as e:
-        # Don't fail bootstrap if schema refresh fails
-        from .error_handling import handle_bootstrap_error, ErrorSeverity
-        handle_bootstrap_error(
-            e,
-            "Dynamic schema refresh after bootstrap",
-            ErrorSeverity.WARNING,
-            {"phase": "post_bootstrap_schema_refresh"}
-        )
+# Dynamic schema refresh function removed - not needed for single-user deployment

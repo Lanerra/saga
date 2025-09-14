@@ -544,53 +544,15 @@ def _infer_specific_node_type(
     name: str, category: str = "", fallback_type: str = "Entity"
 ) -> str:
     """
-    Dynamic node type inference with static fallback.
+    Node type inference using static rules.
 
-    Uses the new dynamic schema system when available, falls back to static inference.
-    This is the main interface used throughout the codebase.
+    Simplified implementation for single-user deployment that directly uses
+    static inference without dynamic schema overhead.
     """
     if not name or not name.strip():
         return fallback_type if fallback_type != "WorldElement" else "Entity"
 
-    # Check if dynamic schema is enabled via configuration
-    try:
-        if getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
-            # Import here to avoid circular dependencies and startup issues
-            # Use async context to call the dynamic system
-            import asyncio
-
-            from core.dynamic_schema_manager import dynamic_schema_manager
-
-            try:
-                # Try to get the current event loop
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're already in an async context, create a task
-                    # Note: This is a temporary bridge solution for the mixed sync/async codebase
-                    future = asyncio.ensure_future(
-                        dynamic_schema_manager.infer_node_type(name, category, "")
-                    )
-                    # For now, we can't wait in a sync context, so fall back
-                    raise RuntimeError("Cannot call async from sync context")
-                else:
-                    # No event loop running, we can run until complete
-                    result = loop.run_until_complete(
-                        dynamic_schema_manager.infer_node_type(name, category, "")
-                    )
-                    return result
-            except (RuntimeError, asyncio.InvalidStateError):
-                # Can't run async from sync context - this is expected in current codebase
-                # We'll fall back to static inference
-                pass
-            except Exception as e:
-                logger.warning(f"Dynamic schema inference failed for '{name}': {e}")
-
-    except (ImportError, AttributeError) as e:
-        logger.debug(f"Dynamic schema system not available: {e}")
-    except Exception as e:
-        logger.warning(f"Failed to use dynamic schema system: {e}")
-
-    # Fallback to static inference
+    # Direct static inference - no dynamic fallback needed
     return _infer_specific_node_type_static(name, category, fallback_type)
 
 

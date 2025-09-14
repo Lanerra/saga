@@ -10,12 +10,25 @@ and consistent service management across SAGA.
 """
 
 from typing import Any, Optional, Dict
+from abc import ABC, abstractmethod
 
 import structlog
 
-from core.validation_service_provider import TypeInferenceServiceInterface
-
 logger = structlog.get_logger(__name__)
+
+
+class TypeInferenceServiceInterface(ABC):
+    """Interface for type inference services."""
+    
+    @abstractmethod
+    def infer_subject_type(self, subject_info: dict) -> str:
+        """Infer the type of a subject entity."""
+        pass
+    
+    @abstractmethod
+    def infer_object_type(self, object_info: dict, is_literal: bool = False) -> str:
+        """Infer the type of an object entity."""
+        pass
 
 
 class TripleProcessor:
@@ -26,28 +39,24 @@ class TripleProcessor:
     information from triple dictionaries, separating this concern from the
     core validation logic.
     
-    UPDATED: Now uses unified service registry for dependency injection
-    instead of the previous mixed approach.
+    Simplified for single-user deployment without dependency injection overhead.
     """
 
-    def __init__(self, type_inference_service: Optional[TypeInferenceServiceInterface] = None):
+    def __init__(self, type_inference_service: TypeInferenceServiceInterface = None):
         """
         Initialize the triple processor.
-
+        
         Args:
-            type_inference_service: Service for inferring entity types.
-                                  If None, will use service registry for dependency injection.
+            type_inference_service: Optional type inference service to use
         """
-        self._type_inference_service = type_inference_service
-        self._service_registry_used = False
         self._processing_stats = {
             "total_triples_processed": 0,
             "successful_extractions": 0,
             "extraction_errors": 0,
             "type_inferences": 0,
-            "service_registry_resolutions": 0,
-            "fallback_resolutions": 0,
         }
+        self._type_inference_service = type_inference_service
+        self._service_registry_used = False
 
     def process_triple(self, triple_dict: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -189,14 +198,15 @@ class TripleProcessor:
         """
         Get type inference service.
         
-        Uses the injected service or falls back to the validation service provider.
+        Simplified for single-user deployment without dependency injection overhead.
         """
-        if self._type_inference_service is None:
-            # Use validation service provider for backward compatibility
-            from core.validation_service_provider import get_type_inference_service
-            self._type_inference_service = get_type_inference_service()
-            self._processing_stats["fallback_resolutions"] += 1
-            logger.debug("Type inference service resolved via validation service provider")
+        # Direct instantiation - no dependency injection needed for static deployment
+        if not hasattr(self, '_type_inference_service') or self._type_inference_service is None:
+            from core.intelligent_type_inference import IntelligentTypeInference
+            from core.schema_introspector import SchemaIntrospector
+            schema_introspector = SchemaIntrospector()
+            self._type_inference_service = IntelligentTypeInference(schema_introspector)
+            logger.debug("Type inference service created directly for static deployment")
 
         return self._type_inference_service
 
