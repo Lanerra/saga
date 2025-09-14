@@ -998,9 +998,6 @@ class NANA_Orchestrator:
             novel_chapter_number, final_text_to_process, final_raw_llm_output
         )
 
-        # Refresh dynamic schema patterns after chapter completion
-        await self._refresh_dynamic_schema_patterns(novel_chapter_number)
-
         self.chapter_count = max(self.chapter_count, novel_chapter_number)
 
         return final_text_to_process
