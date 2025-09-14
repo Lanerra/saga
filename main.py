@@ -3,33 +3,15 @@ import argparse
 import asyncio
 import logging
 
-from core.database_interface import register_database_services
 from core.db_manager import neo4j_manager
 from orchestration.nana_orchestrator import NANA_Orchestrator, setup_logging_nana
-from core.schema_introspector import SchemaIntrospector
-from core.intelligent_type_inference import IntelligentTypeInference
-from core.service_registry import register_singleton
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
     setup_logging_nana()
-    register_database_services()
-    from core.schema_introspector import SchemaIntrospector
-    from core.intelligent_type_inference import IntelligentTypeInference
-    from core.service_registry import register_singleton, register_instance
-
-    # Register schema introspector instance
-    schema_introspector = SchemaIntrospector()
-    register_instance("schema_introspector", schema_introspector)
-
-    # Register type inference service as a factory function
-    def create_type_inference_service():
-        return IntelligentTypeInference(schema_introspector)
     
-    register_singleton("type_inference_service", create_type_inference_service)
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--ingest", default=None, help="Path to text file to ingest")
     args = parser.parse_args()

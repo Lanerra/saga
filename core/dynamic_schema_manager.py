@@ -16,8 +16,6 @@ from typing import Any, Dict, Optional
 
 import structlog
 
-# Import the new DI system
-from core.service_registry import resolve, register_singleton
 from core.database_interface import DatabaseInterface
 
 logger = structlog.get_logger(__name__)
@@ -158,68 +156,44 @@ class DynamicSchemaManager:
                 self.initialization_in_progress = False
     
     async def _resolve_service_dependencies(self):
-        """Resolve service dependencies via service registry with fallbacks."""
+        """Resolve service dependencies with direct instantiation."""
         
-        # Resolve database service
+        # Resolve database service - use direct instantiation
         if self._database_service is None:
-            try:
-                self._database_service = resolve("database_service")
-                self._services_from_registry["database"] = True
-                self._service_stats["registry_resolutions"] += 1
-                logger.debug("Database service resolved via registry")
-            except Exception as e:
-                logger.debug(f"Database service not in registry ({e}), will use fallback if needed")
+            from core.database_interface import DatabaseServiceFactory
+            self._database_service = DatabaseServiceFactory.create_neo4j_service()
+            self._service_stats["fallback_creations"] += 1
+            logger.debug("Database service created directly")
         
-        # Resolve schema introspector
+        # Resolve schema introspector - use direct instantiation
         if self._schema_introspector is None:
             try:
-                self._schema_introspector = resolve("schema_introspector")
-                self._services_from_registry["introspector"] = True
-                self._service_stats["registry_resolutions"] += 1
-                logger.debug("Schema introspector resolved via registry")
-            except Exception:
-                # Fallback: create instance directly
-                try:
-                    from core.schema_introspector import SchemaIntrospector
-                    self._schema_introspector = SchemaIntrospector()
-                    self._service_stats["fallback_creations"] += 1
-                    logger.debug("Schema introspector created directly (fallback)")
-                except Exception as e:
-                    logger.warning(f"Failed to create schema introspector: {e}")
+                from core.schema_introspector import SchemaIntrospector
+                self._schema_introspector = SchemaIntrospector()
+                self._service_stats["fallback_creations"] += 1
+                logger.debug("Schema introspector created directly")
+            except Exception as e:
+                logger.warning(f"Failed to create schema introspector: {e}")
         
-        # Resolve type inference service
+        # Resolve type inference service - use direct instantiation
         if self._type_inference_service is None:
             try:
-                self._type_inference_service = resolve("type_inference_service")
-                self._services_from_registry["type_inference"] = True
-                self._service_stats["registry_resolutions"] += 1
-                logger.debug("Type inference service resolved via registry")
-            except Exception:
-                # Fallback: create instance directly
-                try:
-                    from core.intelligent_type_inference import IntelligentTypeInference
-                    self._type_inference_service = IntelligentTypeInference(self._schema_introspector)
-                    self._service_stats["fallback_creations"] += 1
-                    logger.debug("Type inference service created directly (fallback)")
-                except Exception as e:
-                    logger.warning(f"Failed to create type inference service: {e}")
+                from core.intelligent_type_inference import IntelligentTypeInference
+                self._type_inference_service = IntelligentTypeInference(self._schema_introspector)
+                self._service_stats["fallback_creations"] += 1
+                logger.debug("Type inference service created directly")
+            except Exception as e:
+                logger.warning(f"Failed to create type inference service: {e}")
         
-        # Resolve constraint system
+        # Resolve constraint system - use direct instantiation
         if self._constraint_system is None:
             try:
-                self._constraint_system = resolve("constraint_system")
-                self._services_from_registry["constraints"] = True
-                self._service_stats["registry_resolutions"] += 1
-                logger.debug("Constraint system resolved via registry")
-            except Exception:
-                # Fallback: create instance directly
-                try:
-                    from core.adaptive_constraint_system import AdaptiveConstraintSystem
-                    self._constraint_system = AdaptiveConstraintSystem(self._schema_introspector)
-                    self._service_stats["fallback_creations"] += 1
-                    logger.debug("Constraint system created directly (fallback)")
-                except Exception as e:
-                    logger.warning(f"Failed to create constraint system: {e}")
+                from core.adaptive_constraint_system import AdaptiveConstraintSystem
+                self._constraint_system = AdaptiveConstraintSystem(self._schema_introspector)
+                self._service_stats["fallback_creations"] += 1
+                logger.debug("Constraint system created directly")
+            except Exception as e:
+                logger.warning(f"Failed to create constraint system: {e}")
 
     async def _log_initialization_summary(self):
         """Log a summary of what was learned during initialization."""
@@ -584,31 +558,6 @@ class DynamicSchemaManager:
         logger.info("Dynamic schema manager disposed")
 
 
-# Service registration for dependency injection
-def register_dynamic_schema_manager_service():
-    """Register the dynamic schema manager with the service registry."""
-    register_singleton(
-        name="dynamic_schema_manager",
-        factory=lambda: DynamicSchemaManager(),
-        dependencies=["database_service"],  # Other dependencies are optional
-        interface=DynamicSchemaManager
-    )
-    logger.info("Dynamic schema manager service registered")
-
-
-def get_dynamic_schema_manager() -> DynamicSchemaManager:
-    """
-    Get a dynamic schema manager instance from the service registry.
-    
-    Returns:
-        DynamicSchemaManager instance
-    """
-    try:
-        return resolve("dynamic_schema_manager")
-    except ValueError:
-        # Fallback: create instance directly for backward compatibility
-        logger.debug("Dynamic schema manager not in service registry, creating new instance")
-        return DynamicSchemaManager()
 
 
 # Global instance for easy access across the application (backward compatibility)
