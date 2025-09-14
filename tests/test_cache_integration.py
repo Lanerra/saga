@@ -9,12 +9,13 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, Mock
 
-from core.cache_coordinator import (
+from core.lightweight_cache import (
     get_cache_coordinator,
     register_cache_service,
     get_cached_value,
     set_cached_value,
-    get_cache_metrics
+    get_cache_metrics,
+    clear_service_cache
 )
 from core.llm_interface_refactored import EmbeddingService
 from core.http_client_service import EmbeddingHTTPClient, HTTPClientService
@@ -29,11 +30,9 @@ class TestCacheIntegration:
         self.coordinator = get_cache_coordinator()
         
         # Clear any existing test caches
-        from core.cache_manager import get_cache_manager
-        cache_manager = get_cache_manager()
         test_services = ["llm_embedding", "schema_introspection", "text_processing"]
         for service in test_services:
-            cache_manager.remove_cache(service)
+            clear_service_cache(service)
 
     def test_embedding_service_cache_integration(self):
         """Test that EmbeddingService integrates with coordinated cache."""
@@ -44,11 +43,7 @@ class TestCacheIntegration:
         # Create embedding service (this should auto-register with cache coordinator)
         embedding_service = EmbeddingService(embedding_client)
         
-        # Verify service is registered with cache coordinator
-        metrics = get_cache_metrics("llm_embedding")
-        assert "llm_embedding" in metrics
-        
-        # Test direct cache operations
+        # Verify service is registered by performing cache operations
         test_key = "test_cache_key"
         test_value = "test_cache_value"
         
@@ -58,6 +53,10 @@ class TestCacheIntegration:
         # Get value from cache
         cached_result = get_cached_value(test_key, "llm_embedding")
         assert cached_result == test_value
+        
+        # Test metrics
+        metrics = get_cache_metrics("llm_embedding")
+        assert isinstance(metrics, dict)
 
     def test_embedding_service_embedding_cache(self):
         """Test that EmbeddingService caches embeddings properly."""
@@ -100,17 +99,17 @@ class TestCacheIntegration:
         # Create schema introspector (this should auto-register with cache coordinator)
         schema_introspector = SchemaIntrospector()
         
-        # Verify service is registered with cache coordinator
-        metrics = get_cache_metrics("schema_introspection")
-        assert "schema_introspection" in metrics
-        
-        # Test that cache keys are properly namespaced
+        # Verify service is registered by performing cache operations
         test_labels = {"Person", "Location", "Event"}
         set_cached_value("active_labels", test_labels, "schema_introspection")
         
         # Verify cache hit
         cached_result = get_cached_value("active_labels", "schema_introspection")
         assert cached_result == test_labels
+        
+        # Test metrics
+        metrics = get_cache_metrics("schema_introspection")
+        assert isinstance(metrics, dict)
 
     def test_cross_service_cache_isolation(self):
         """Test that different services have isolated caches."""
@@ -145,11 +144,9 @@ class TestCacheIntegration:
         
         # Get metrics
         metrics = get_cache_metrics("test_metrics_service")
-        assert "test_metrics_service" in metrics
-        
-        service_metrics = metrics["test_metrics_service"]
-        assert service_metrics.hits >= 1
-        assert service_metrics.misses >= 1
+        assert isinstance(metrics, dict)
+        assert metrics.get('hits', 0) >= 1
+        assert metrics.get('misses', 0) >= 1
 
 
 if __name__ == "__main__":

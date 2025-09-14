@@ -33,7 +33,7 @@ from core.http_client_service import (
 )
 from core.llm_service_interfaces import LLMServiceFactory, initialize_service_locator
 from core.text_processing_service import TextProcessingService
-from core.cache_coordinator import get_cached_value, set_cached_value, register_cache_service
+from core.lightweight_cache import get_cached_value, set_cached_value, register_cache_service
 
 logger = structlog.get_logger(__name__)
 
@@ -321,7 +321,7 @@ class EmbeddingService:
         """Get embedding service statistics."""
         total = self._stats["embeddings_requested"]
         # Get cache metrics from coordinated cache
-        from core.cache_coordinator import get_cache_metrics
+        from core.lightweight_cache import get_cache_metrics
         cache_metrics = get_cache_metrics(self._service_name)
         cache_size = 0
         if cache_metrics and self._service_name in cache_metrics:

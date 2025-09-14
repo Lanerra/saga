@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from core.db_manager import neo4j_manager
-from core.cache_coordinator import get_cached_value, set_cached_value, register_cache_service, invalidate_cache_key
+from core.lightweight_cache import get_cached_value, set_cached_value, register_cache_service, invalidate_cache_key
 
 logger = logging.getLogger(__name__)
 
