@@ -24,10 +24,14 @@ logger = logging.getLogger(__name__)
 class SchemaIntrospector:
     """Dynamic schema discovery using Neo4j built-in introspection procedures."""
 
+    _cache_service_registered = False
+
     def __init__(self):
         self._service_name = "schema_introspection"
-        # Register with cache coordinator
-        register_cache_service(self._service_name)
+        # Register with cache coordinator only once
+        if not SchemaIntrospector._cache_service_registered:
+            register_cache_service(self._service_name)
+            SchemaIntrospector._cache_service_registered = True
         self.cache_ttl = 300  # 5 minutes cache
         self.last_schema_update = None
 
