@@ -35,84 +35,6 @@ except Exception:  # pragma: no cover
 logger = structlog.get_logger(__name__)
 
 
-def validate_relationship_types(rel_types: list[str]) -> list[str]:
-    """
-    DEPRECATED: This function is deprecated and should not be used in new code.
-
-    Validate relationship types against the predefined narrative taxonomy.
-
-    MIGRATION: Use the new validation service provider with proper dependency injection:
-        from core.validation_service_provider import get_validation_service
-        validation_service = get_validation_service()
-        # Use validation_service methods instead
-
-    Returns a list of validation errors. Empty list means valid.
-    """
-    errors = []
-
-    if not isinstance(rel_types, list):
-        errors.append("Relationship types must be a list")
-        return errors
-
-    for rel_type in rel_types:
-        if not isinstance(rel_type, str) or not rel_type.strip():
-            errors.append("Relationship types must be non-empty strings")
-            continue
-
-        # Basic format validation
-        if not rel_type.isupper():
-            errors.append(f"Relationship type '{rel_type}' should be uppercase")
-
-        # Check against predefined taxonomy
-        if rel_type not in models.kg_constants.RELATIONSHIP_TYPES:
-            # Check if it can be normalized to a valid type
-            from data_access.kg_queries import normalize_relationship_type
-
-            normalized = normalize_relationship_type(rel_type)
-
-            if normalized in models.kg_constants.RELATIONSHIP_TYPES:
-                # It's normalizable - suggest normalization rather than error
-                logger.info(
-                    f"Relationship type '{rel_type}' can be normalized to '{normalized}'"
-                )
-            else:
-                errors.append(
-                    f"Relationship type '{rel_type}' is not in the predefined narrative taxonomy"
-                )
-
-    return errors
-
-
-def suggest_relationship_normalization(rel_types: list[str]) -> dict[str, str]:
-    """
-    DEPRECATED: This function is deprecated and should not be used in new code.
-
-    Suggest normalizations for relationship types that don't match the predefined taxonomy.
-
-    MIGRATION: Use the new validation service provider with proper dependency injection:
-        from core.validation_service_provider import get_validation_service
-        validation_service = get_validation_service()
-        # Use validation_service.suggest_alternatives() instead
-
-    Returns a dict mapping original -> suggested canonical form.
-    """
-    suggestions = {}
-
-    for rel_type in rel_types:
-        if isinstance(rel_type, str) and rel_type.strip():
-            if rel_type not in models.kg_constants.RELATIONSHIP_TYPES:
-                from data_access.kg_queries import normalize_relationship_type
-
-                normalized = normalize_relationship_type(rel_type)
-                if (
-                    normalized in models.kg_constants.RELATIONSHIP_TYPES
-                    and normalized != rel_type
-                ):
-                    suggestions[rel_type] = normalized
-
-    return suggestions
-
-
 class ValidationResult:
     """Result of relationship validation with detailed feedback."""
 
@@ -467,93 +389,64 @@ def validate_relationship_constraint(
     context: dict[str, Any] | None = None,
 ) -> ValidationResult:
     """
-    Convenience function for relationship validation using dependency injection.
+    Convenience function for relationship validation using direct instantiation.
 
-    REFACTORED: Now uses validation service provider instead of global singleton.
+    Simplified for single-user deployment without dependency injection overhead.
     This is the main entry point that should be used throughout the codebase.
     """
-    try:
-        from core.validation_service_provider import get_validation_service
-
-        validation_service = get_validation_service()
-        return validation_service.validate_relationship(
-            subject_type, predicate, object_type, context
-        )
-    except Exception as e:
-        logger.error(f"Failed to get validation service, using fallback: {e}")
-        # Fallback to direct instantiation for backward compatibility
-        fallback_validator = RelationshipConstraintValidator()
-        return fallback_validator.validate_relationship(
-            subject_type, predicate, object_type, context
-        )
+    # Direct instantiation - no dependency injection needed for static deployment
+    validator = RelationshipConstraintValidator()
+    return validator.validate_relationship(
+        subject_type, predicate, object_type, context
+    )
 
 
 def validate_triple_constraint(triple_dict: dict[str, Any]) -> ValidationResult:
     """
-    Convenience function for triple validation using dependency injection.
+    Convenience function for triple validation using direct instantiation.
 
-    REFACTORED: Now uses validation service provider instead of global singleton.
+    Simplified for single-user deployment without dependency injection overhead.
     Validates a complete triple extracted from text.
     """
-    try:
-        from core.validation_service_provider import get_validation_service
-
-        validation_service = get_validation_service()
-        return validation_service.validate_triple(triple_dict)
-    except Exception as e:
-        logger.error(f"Failed to get validation service, using fallback: {e}")
-        # Fallback to direct instantiation for backward compatibility
-        fallback_validator = RelationshipConstraintValidator()
-        return fallback_validator.validate_triple(triple_dict)
+    # Direct instantiation - no dependency injection needed for static deployment
+    validator = RelationshipConstraintValidator()
+    return validator.validate_triple(triple_dict)
 
 
 def validate_batch_constraints(triples: list[dict[str, Any]]) -> list[ValidationResult]:
     """
-    Convenience function for batch validation using dependency injection.
+    Convenience function for batch validation using direct instantiation.
 
-    REFACTORED: Now uses validation service provider instead of global singleton.
+    Simplified for single-user deployment without dependency injection overhead.
     Efficiently validates multiple triples at once.
     """
-    try:
-        from core.validation_service_provider import get_validation_service
-
-        validation_service = get_validation_service()
-        return validation_service.validate_batch(triples)
-    except Exception as e:
-        logger.error(f"Failed to get validation service, using fallback: {e}")
-        # Fallback to direct instantiation for backward compatibility
-        fallback_validator = RelationshipConstraintValidator()
-        return fallback_validator.validate_batch(triples)
+    # Direct instantiation - no dependency injection needed for static deployment
+    validator = RelationshipConstraintValidator()
+    return validator.validate_batch(triples)
 
 
 def get_relationship_alternatives(
     subject_type: str, object_type: str
 ) -> list[tuple[str, str]]:
-    """Get suggested alternative relationships for a node type pair."""
-    try:
-        from core.validation_service_provider import get_validation_service
+    """
+    Get suggested alternative relationships for a node type pair.
 
-        validation_service = get_validation_service()
-        return validation_service.suggest_alternatives(subject_type, object_type)
-    except Exception as e:
-        logger.error(f"Failed to get validation service, using fallback: {e}")
-        # Fallback to direct instantiation for backward compatibility
-        fallback_validator = RelationshipConstraintValidator()
-        return fallback_validator.suggest_alternatives(subject_type, object_type)
+    Simplified for single-user deployment without dependency injection overhead.
+    """
+    # Direct instantiation - no dependency injection needed for static deployment
+    validator = RelationshipConstraintValidator()
+    return validator.suggest_alternatives(subject_type, object_type)
 
 
 def get_validation_stats() -> dict[str, Any]:
-    """Get current validation statistics."""
-    try:
-        from core.validation_service_provider import get_validation_service
+    """
+    Get current validation statistics.
 
-        validation_service = get_validation_service()
-        return validation_service.get_validation_statistics()
-    except Exception as e:
-        logger.error(f"Failed to get validation service, using fallback: {e}")
-        # Fallback to direct instantiation for backward compatibility
-        fallback_validator = RelationshipConstraintValidator()
-        return fallback_validator.get_validation_statistics()
+    Simplified for single-user deployment without dependency injection overhead.
+    """
+    # Direct instantiation - no dependency injection needed for static deployment
+    validator = RelationshipConstraintValidator()
+    return validator.get_validation_statistics()
 
 
 # Integration helper functions for existing codebase

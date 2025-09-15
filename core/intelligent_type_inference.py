@@ -354,35 +354,35 @@ class IntelligentTypeInference:
     def infer_subject_type(self, subject_info: dict) -> str:
         """
         Adapter method for TypeInferenceServiceInterface compatibility.
-        
+
         Returns only the inferred type string, discarding confidence.
         This maintains backward compatibility while using ML-inspired inference.
-        
+
         Args:
             subject_info: Dictionary containing subject information with keys:
                 - name: Entity name
                 - type: Current/proposed type (may be None or invalid)
                 - category: Optional category information
-                
+
         Returns:
             Inferred valid node type as string
         """
         if not subject_info:
             logger.warning("Empty subject_info provided to infer_subject_type")
             return "Entity"
-            
+
         # Check if a valid type is already provided
         original_type = subject_info.get("type")
         if original_type and self._is_valid_type(original_type):
             return original_type
-            
+
         name = subject_info.get("name", "")
         category = subject_info.get("category", "")
         description = subject_info.get("description", "")
-        
+
         # Use the ML-inspired inference, but only return the type
         inferred_type, confidence = self.infer_type(name, category, description)
-        
+
         # If ML inference has low confidence or returns Entity, try legacy fallback
         if confidence < 0.3 or inferred_type == "Entity":
             fallback_type = self._legacy_type_inference_fallback(subject_info)
@@ -391,49 +391,49 @@ class IntelligentTypeInference:
                     f"Using legacy fallback for '{name}': {fallback_type} (ML confidence: {confidence:.3f})"
                 )
                 return fallback_type
-        
+
         # Log confidence for debugging purposes
         if confidence > 0:
             logger.debug(
                 f"Subject type inference for '{name}': {inferred_type} (confidence: {confidence:.3f})"
             )
-        
+
         return inferred_type
 
     def infer_object_type(self, object_info: dict, is_literal: bool = False) -> str:
         """
         Adapter method for TypeInferenceServiceInterface compatibility.
-        
+
         Returns only the inferred type string, discarding confidence.
         This maintains backward compatibility while using ML-inspired inference.
-        
+
         Args:
             object_info: Dictionary containing object information
             is_literal: Whether this is a literal value (becomes ValueNode)
-            
+
         Returns:
             Inferred valid node type as string
         """
         # Handle literal objects - these are always ValueNode
         if is_literal:
             return "ValueNode"
-            
+
         if not object_info:
             logger.warning("Empty object_info provided to infer_object_type")
             return "Entity"
-            
+
         # Check if a valid type is already provided
         original_type = object_info.get("type")
         if original_type and self._is_valid_type(original_type):
             return original_type
-            
+
         name = object_info.get("name", "")
         category = object_info.get("category", "")
         description = object_info.get("description", "")
-        
+
         # Use the ML-inspired inference, but only return the type
         inferred_type, confidence = self.infer_type(name, category, description)
-        
+
         # If ML inference has low confidence or returns Entity, try legacy fallback
         if confidence < 0.3 or inferred_type == "Entity":
             fallback_type = self._legacy_type_inference_fallback(object_info)
@@ -442,32 +442,41 @@ class IntelligentTypeInference:
                     f"Using legacy fallback for '{name}': {fallback_type} (ML confidence: {confidence:.3f})"
                 )
                 return fallback_type
-        
+
         # Log confidence for debugging purposes
         if confidence > 0:
             logger.debug(
                 f"Object type inference for '{name}': {inferred_type} (confidence: {confidence:.3f})"
             )
-        
+
         return inferred_type
 
     def _is_valid_type(self, type_name: str) -> bool:
         """Check if a type name is valid according to kg_constants."""
         try:
             import models.kg_constants
+
             return type_name in models.kg_constants.NODE_LABELS
         except ImportError:
             # If kg_constants not available, assume common types are valid
             common_types = {
-                "Character", "Location", "Object", "Event", "Concept",
-                "Entity", "ValueNode", "Creature", "Structure", "Region"
+                "Character",
+                "Location",
+                "Object",
+                "Event",
+                "Concept",
+                "Entity",
+                "ValueNode",
+                "Creature",
+                "Structure",
+                "Region",
             }
             return type_name in common_types
 
     def _legacy_type_inference_fallback(self, entity_info: dict) -> str:
         """
         Fallback to legacy-style type inference when ML system has low confidence.
-        
+
         This provides basic type inference similar to the original TypeInferenceService
         to maintain backward compatibility during the transition period.
         """
@@ -526,13 +535,13 @@ class IntelligentTypeInference:
                     "trade": "Trade",
                     "food": "Food",
                 }
-                
+
                 clean_category = category.strip()
-                
+
                 # Direct lookup
                 if clean_category in category_mapping:
                     return category_mapping[clean_category]
-                    
+
                 # Partial matching for plurals and variations
                 for cat_key, node_type in category_mapping.items():
                     if clean_category in cat_key or cat_key in clean_category:
@@ -541,19 +550,55 @@ class IntelligentTypeInference:
             # Enhanced name-based pattern inference using classifications
             if entity_name:
                 # Character patterns
-                if any(title in entity_name for title in ["dr.", "doctor", "captain", "commander", "sir", "lady", "lord"]):
+                if any(
+                    title in entity_name
+                    for title in [
+                        "dr.",
+                        "doctor",
+                        "captain",
+                        "commander",
+                        "sir",
+                        "lady",
+                        "lord",
+                    ]
+                ):
                     return "Character"
-                    
+
                 # Location patterns
-                if any(suffix in entity_name for suffix in ["city", "town", "village", "castle", "tower", "forest", "mountain"]):
+                if any(
+                    suffix in entity_name
+                    for suffix in [
+                        "city",
+                        "town",
+                        "village",
+                        "castle",
+                        "tower",
+                        "forest",
+                        "mountain",
+                    ]
+                ):
                     return "Location"
-                    
+
                 # Creature patterns
-                if any(creature in entity_name for creature in ["dragon", "orc", "goblin", "wolf", "bear", "beast"]):
+                if any(
+                    creature in entity_name
+                    for creature in ["dragon", "orc", "goblin", "wolf", "bear", "beast"]
+                ):
                     return "Creature"
-                    
+
                 # Object patterns
-                if any(obj in entity_name for obj in ["sword", "shield", "bow", "staff", "ring", "crown", "artifact"]):
+                if any(
+                    obj in entity_name
+                    for obj in [
+                        "sword",
+                        "shield",
+                        "bow",
+                        "staff",
+                        "ring",
+                        "crown",
+                        "artifact",
+                    ]
+                ):
                     return "Object"
 
         except ImportError:
@@ -564,7 +609,7 @@ class IntelligentTypeInference:
         # Final fallback - basic pattern matching
         entity_name = entity_info.get("name", "").lower()
         category = entity_info.get("category", "").lower()
-        
+
         # Category-based patterns (high priority)
         if category:
             if "creature" in category or "beast" in category or "monster" in category:
@@ -577,20 +622,32 @@ class IntelligentTypeInference:
                 return "Location"  # Structures are typically locations in most schemas
             elif "weapon" in category or "tool" in category or "item" in category:
                 return "Object"
-        
+
         # Name-based patterns
         if entity_name:
             # Character names (common fantasy/story names)
-            if any(name in entity_name for name in ["alice", "bob", "charlie", "diana", "eve", "frank"]):
+            if any(
+                name in entity_name
+                for name in ["alice", "bob", "charlie", "diana", "eve", "frank"]
+            ):
                 return "Character"
             # Creature names
-            elif any(word in entity_name for word in ["dragon", "orc", "goblin", "troll", "wolf", "bear"]):
+            elif any(
+                word in entity_name
+                for word in ["dragon", "orc", "goblin", "troll", "wolf", "bear"]
+            ):
                 return "Creature"
             # Location names
-            elif any(word in entity_name for word in ["castle", "tower", "city", "town", "village", "forest"]):
+            elif any(
+                word in entity_name
+                for word in ["castle", "tower", "city", "town", "village", "forest"]
+            ):
                 return "Location"
             # Objects
-            elif any(word in entity_name for word in ["sword", "shield", "bow", "staff", "ring", "crown"]):
+            elif any(
+                word in entity_name
+                for word in ["sword", "shield", "bow", "staff", "ring", "crown"]
+            ):
                 return "Object"
             # General patterns
             elif any(word in entity_name for word in ["character", "person", "human"]):

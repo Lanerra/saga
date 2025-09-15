@@ -71,18 +71,18 @@ class NarrativeAgent:
 
         # Import the enhanced context extraction method
         from processing.zero_copy_context_generator import ZeroCopyContextGenerator
-        
+
         # Use enhanced context generation for narrative continuation
         enhanced_context = ZeroCopyContextGenerator._extract_narrative_continuation(
             prev_chap_data, chapter_number - 1
         )
-        
+
         if enhanced_context:
             prev_is_provisional = prev_chap_data.get("is_provisional", False)
             provisional_prefix = "[PROVISIONAL] " if prev_is_provisional else ""
-            
+
             return f"{provisional_prefix}**Previous Chapter Context for Narrative Continuation:**\n{enhanced_context}\n\n"
-        
+
         # Fallback to original behavior if enhanced context fails
         context_summary_parts: list[str] = []
         prev_summary = prev_chap_data.get("summary")

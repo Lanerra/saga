@@ -8,7 +8,6 @@ from async_lru import alru_cache
 
 import config
 from core.db_manager import neo4j_manager
-from core.relationship_validator import validate_relationship_types
 from core.schema_validator import validate_node_labels
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
@@ -545,53 +544,15 @@ def _infer_specific_node_type(
     name: str, category: str = "", fallback_type: str = "Entity"
 ) -> str:
     """
-    Dynamic node type inference with static fallback.
+    Node type inference using static rules.
 
-    Uses the new dynamic schema system when available, falls back to static inference.
-    This is the main interface used throughout the codebase.
+    Simplified implementation for single-user deployment that directly uses
+    static inference without dynamic schema overhead.
     """
     if not name or not name.strip():
         return fallback_type if fallback_type != "WorldElement" else "Entity"
 
-    # Check if dynamic schema is enabled via configuration
-    try:
-        if getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
-            # Import here to avoid circular dependencies and startup issues
-            # Use async context to call the dynamic system
-            import asyncio
-
-            from core.dynamic_schema_manager import dynamic_schema_manager
-
-            try:
-                # Try to get the current event loop
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're already in an async context, create a task
-                    # Note: This is a temporary bridge solution for the mixed sync/async codebase
-                    future = asyncio.ensure_future(
-                        dynamic_schema_manager.infer_node_type(name, category, "")
-                    )
-                    # For now, we can't wait in a sync context, so fall back
-                    raise RuntimeError("Cannot call async from sync context")
-                else:
-                    # No event loop running, we can run until complete
-                    result = loop.run_until_complete(
-                        dynamic_schema_manager.infer_node_type(name, category, "")
-                    )
-                    return result
-            except (RuntimeError, asyncio.InvalidStateError):
-                # Can't run async from sync context - this is expected in current codebase
-                # We'll fall back to static inference
-                pass
-            except Exception as e:
-                logger.warning(f"Dynamic schema inference failed for '{name}': {e}")
-
-    except (ImportError, AttributeError) as e:
-        logger.debug(f"Dynamic schema system not available: {e}")
-    except Exception as e:
-        logger.warning(f"Failed to use dynamic schema system: {e}")
-
-    # Fallback to static inference
+    # Direct static inference - no dynamic fallback needed
     return _infer_specific_node_type_static(name, category, fallback_type)
 
 
@@ -1280,7 +1241,9 @@ async def add_kg_triples_batch_to_db(
                     object_name, object_category, object_type
                 )
                 if upgraded_object_type != object_type:
-                    upgrade_key = f"object:{object_name}:{object_type}->{upgraded_object_type}"
+                    upgrade_key = (
+                        f"object:{object_name}:{object_type}->{upgraded_object_type}"
+                    )
                     if upgrade_key not in _upgrade_logged:
                         logger.info(
                             f"Type inference upgraded object {object_type} -> {upgraded_object_type} for '{object_name}'"
@@ -1740,7 +1703,9 @@ async def get_entity_context_for_resolution(
             return results[0]
         else:
             # Debug: Check if entity exists with any labels
-            debug_query = "MATCH (e {id: $entity_id}) RETURN e.name AS name, labels(e) AS labels"
+            debug_query = (
+                "MATCH (e {id: $entity_id}) RETURN e.name AS name, labels(e) AS labels"
+            )
             debug_results = await neo4j_manager.execute_read_query(debug_query, params)
             if debug_results:
                 logger.debug(
@@ -1960,7 +1925,10 @@ async def get_defined_relationship_types() -> list[str]:
             r["relationshipType"] for r in results if r.get("relationshipType")
         ]
         # Validate relationship types against schema
-        errors = validate_relationship_types(rel_types)
+        errors = []
+        for rel_type in rel_types:
+            if rel_type not in VALID_RELATIONSHIP_TYPES:
+                errors.append(f"Invalid relationship type: {rel_type}")
         if errors:
             logger.warning(f"Invalid relationship types found: {errors}")
         return rel_types
@@ -1971,7 +1939,10 @@ async def get_defined_relationship_types() -> list[str]:
         # Fallback to constants if DB query fails
         rel_types = list(config.RELATIONSHIP_TYPES)
         # Validate relationship types against schema
-        errors = validate_relationship_types(rel_types)
+        errors = []
+        for rel_type in rel_types:
+            if rel_type not in VALID_RELATIONSHIP_TYPES:
+                errors.append(f"Invalid relationship type: {rel_type}")
         if errors:
             logger.warning(f"Invalid relationship types in config: {errors}")
         return rel_types
@@ -2181,69 +2152,6 @@ async def consolidate_similar_relationships() -> int:
             "Failed to consolidate similar relationships: %s", exc, exc_info=True
         )
         return 0
-
-
-async def validate_relationship_types_in_db() -> dict[str, Any]:
-    """Validate all relationship types in the database against the predefined taxonomy."""
-    # Add early return if normalization is disabled
-    if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
-        logger.info(
-            "Relationship normalization disabled - skipping dynamic relationship resolution"
-        )
-        return
-
-    import models.kg_constants
-
-    # Get all relationship types currently in use
-    query = """
-    MATCH ()-[r]->()
-    RETURN DISTINCT type(r) AS rel_type, count(r) AS usage_count
-    ORDER BY usage_count DESC
-    """
-
-    try:
-        results = await neo4j_manager.execute_read_query(query)
-        current_types = {
-            r["rel_type"]: r["usage_count"] for r in results if r.get("rel_type")
-        }
-
-        # Categorize relationship types
-        valid_types = {}
-        invalid_types = {}
-        normalizable_types = {}
-
-        for rel_type, count in current_types.items():
-            if rel_type in models.kg_constants.RELATIONSHIP_TYPES:
-                valid_types[rel_type] = count
-            else:
-                # Check if it can be normalized
-                canonical = normalize_relationship_type(rel_type)
-                if (
-                    canonical in models.kg_constants.RELATIONSHIP_TYPES
-                    and canonical != rel_type
-                ):
-                    normalizable_types[rel_type] = {
-                        "canonical": canonical,
-                        "count": count,
-                    }
-                else:
-                    invalid_types[rel_type] = count
-
-        return {
-            "valid_types": valid_types,
-            "normalizable_types": normalizable_types,
-            "invalid_types": invalid_types,
-            "total_relationships": sum(current_types.values()),
-            "taxonomy_coverage": len(valid_types)
-            / len(models.kg_constants.RELATIONSHIP_TYPES)
-            * 100,
-        }
-
-    except Exception as exc:
-        logger.error(
-            "Failed to validate relationship types in DB: %s", exc, exc_info=True
-        )
-        return {}
 
 
 async def fetch_unresolved_dynamic_relationships(

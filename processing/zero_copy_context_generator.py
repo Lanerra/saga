@@ -65,42 +65,52 @@ class ZeroCopyContextGenerator:
 
         # Build hybrid context with optimized string operations using buffer
         context_buffer = []
-        
+
         # Pre-calculate common strings to avoid repeated formatting
-        chapter_header = f"--- PLOT POINT FOR CHAPTER {current_chapter_number} (PRIMARY FOCUS) ---"
+        chapter_header = (
+            f"--- PLOT POINT FOR CHAPTER {current_chapter_number} (PRIMARY FOCUS) ---"
+        )
         plot_point_focus = ZeroCopyContextGenerator._get_plot_point_for_chapter(
             plot_outline, current_chapter_number
         )
-        
+
         # Add plot point focus section - Optimized string building
         context_buffer.append(chapter_header)
         if plot_point_focus and plot_point_focus.strip():
             # Build focus section efficiently
-            context_buffer.extend([
-                f"**Chapter {current_chapter_number} Plot Point:** {plot_point_focus}",
-                "",
-                f"**Narrative Focus Directive:** {ZeroCopyContextGenerator._get_narrative_focus_directive(plot_point_focus, current_chapter_number)}",
-                "--- END PLOT POINT ---"
-            ])
+            context_buffer.extend(
+                [
+                    f"**Chapter {current_chapter_number} Plot Point:** {plot_point_focus}",
+                    "",
+                    f"**Narrative Focus Directive:** {ZeroCopyContextGenerator._get_narrative_focus_directive(plot_point_focus, current_chapter_number)}",
+                    "--- END PLOT POINT ---",
+                ]
+            )
         else:
-            context_buffer.extend([
-                f"No specific plot point found for chapter {current_chapter_number}. Follow general narrative progression.",
-                "--- END PLOT POINT ---"
-            ])
+            context_buffer.extend(
+                [
+                    f"No specific plot point found for chapter {current_chapter_number}. Follow general narrative progression.",
+                    "--- END PLOT POINT ---",
+                ]
+            )
 
         # Add semantic context section - Single append operations
-        context_buffer.extend([
-            "",
-            "--- SEMANTIC CONTEXT FROM PAST CHAPTERS (FOR NARRATIVE FLOW & TONE) ---",
-            semantic_context_str if semantic_context_str and semantic_context_str.strip() 
-            else "No relevant semantic context could be retrieved.",
-            "--- END SEMANTIC CONTEXT ---",
-            "",
-            "--- KEY RELIABLE KG FACTS (FOR ESTABLISHED CANON & CONTINUITY) ---",
-            kg_facts_str if kg_facts_str and kg_facts_str.strip()
-            else "No reliable KG facts could be retrieved for this context.",
-            "--- END KEY RELIABLE KG FACTS ---"
-        ])
+        context_buffer.extend(
+            [
+                "",
+                "--- SEMANTIC CONTEXT FROM PAST CHAPTERS (FOR NARRATIVE FLOW & TONE) ---",
+                semantic_context_str
+                if semantic_context_str and semantic_context_str.strip()
+                else "No relevant semantic context could be retrieved.",
+                "--- END SEMANTIC CONTEXT ---",
+                "",
+                "--- KEY RELIABLE KG FACTS (FOR ESTABLISHED CANON & CONTINUITY) ---",
+                kg_facts_str
+                if kg_facts_str and kg_facts_str.strip()
+                else "No reliable KG facts could be retrieved for this context.",
+                "--- END KEY RELIABLE KG FACTS ---",
+            ]
+        )
 
         return "\n".join(context_buffer)
 
@@ -350,13 +360,13 @@ class ZeroCopyContextGenerator:
         """
         context_parts = []
         total_tokens = 0
-        
+
         # Pre-compile content type lookup for performance
         content_type_map = {
             (True, True): "Provisional Summary",
             (True, False): "Summary",
             (False, True): "Provisional Text Snippet",
-            (False, False): "Text Snippet"
+            (False, False): "Text Snippet",
         }
 
         for chap_data in chapters:
@@ -371,7 +381,7 @@ class ZeroCopyContextGenerator:
             enhanced_content = ZeroCopyContextGenerator._extract_narrative_continuation(
                 chap_data, chap_num
             )
-            
+
             if not enhanced_content:
                 continue
 
@@ -383,7 +393,7 @@ class ZeroCopyContextGenerator:
             # Pre-build components to minimize string operations
             prefix = f"[Semantic Context from Chapter {chap_num} (Similarity: {score_str}, Type: {content_type})]:\n"
             suffix = "\n---\n"
-            
+
             # Build full content efficiently - single concatenation
             full_content = prefix + enhanced_content + suffix
 
@@ -422,40 +432,48 @@ class ZeroCopyContextGenerator:
         return final_context
 
     @staticmethod
-    def _extract_narrative_continuation(chap_data: dict[str, Any], chap_num: int) -> str:
+    def _extract_narrative_continuation(
+        chap_data: dict[str, Any], chap_num: int
+    ) -> str:
         """
         Extract narrative continuation information from chapter data.
         Prioritizes concrete narrative endpoints over thematic summaries.
         """
         summary = chap_data.get("summary", "").strip()
         text = chap_data.get("text", "").strip()
-        
+
         # If we have both summary and text, create enhanced context
         if summary and text:
             # Extract the final paragraphs from the chapter text for narrative continuation
             final_section = ZeroCopyContextGenerator._extract_chapter_ending(text)
-            
+
             # Create enhanced context that includes both thematic summary and concrete continuation
             enhanced_parts = [
                 f"**Thematic Summary of Chapter {chap_num}:**\n{summary}",
             ]
-            
+
             if final_section:
-                enhanced_parts.append(f"**Chapter {chap_num} Ending (Narrative Continuation Context):**\n{final_section}")
-            
+                enhanced_parts.append(
+                    f"**Chapter {chap_num} Ending (Narrative Continuation Context):**\n{final_section}"
+                )
+
             # Add next chapter guidance if this is the immediate previous chapter
-            next_chapter_guidance = ZeroCopyContextGenerator._generate_next_chapter_guidance(
-                text, summary, chap_num
+            next_chapter_guidance = (
+                ZeroCopyContextGenerator._generate_next_chapter_guidance(
+                    text, summary, chap_num
+                )
             )
             if next_chapter_guidance:
-                enhanced_parts.append(f"**Guidance for Chapter {chap_num + 1}:**\n{next_chapter_guidance}")
-            
+                enhanced_parts.append(
+                    f"**Guidance for Chapter {chap_num + 1}:**\n{next_chapter_guidance}"
+                )
+
             return "\n\n".join(enhanced_parts)
-        
+
         # Fallback to existing behavior if we only have summary or text
         return summary or text
 
-    @staticmethod 
+    @staticmethod
     def _extract_chapter_ending(text: str, max_chars: int = 800) -> str:
         """
         Extract the ending portion of a chapter for narrative continuation.
@@ -463,31 +481,31 @@ class ZeroCopyContextGenerator:
         """
         if not text:
             return ""
-        
+
         # Split into paragraphs and get the last few meaningful ones
-        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-        
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
         if not paragraphs:
             return ""
-        
+
         # Take final 2-3 paragraphs up to character limit
         ending_parts = []
         char_count = 0
-        
+
         for paragraph in reversed(paragraphs[-5:]):  # Look at last 5 paragraphs
             if char_count + len(paragraph) + 4 <= max_chars:  # +4 for spacing
                 ending_parts.append(paragraph)
                 char_count += len(paragraph) + 4
             else:
                 break
-                
+
         if not ending_parts:
             # If none fit, truncate the last paragraph
             last_para = paragraphs[-1]
-            ending_parts = [last_para[:max_chars - 3] + "..."]
-        
+            ending_parts = [last_para[: max_chars - 3] + "..."]
+
         return "\n\n".join(reversed(ending_parts))
-    
+
     @staticmethod
     def _generate_next_chapter_guidance(text: str, summary: str, chap_num: int) -> str:
         """
@@ -495,53 +513,79 @@ class ZeroCopyContextGenerator:
         Extracts concrete narrative states like character locations, plot developments.
         """
         guidance_parts = []
-        
+
         # Extract character locations and states from the ending
         ending_section = text[-1500:] if text else ""  # Last ~1500 chars
-        
+
         # Look for location indicators
         location_indicators = [
-            "stood at", "stood in", "stood before", "stood near",
-            "sat in", "sat at", "sat before", "sat near",
-            "walked to", "walked toward", "walked into",
-            "entered", "arrived at", "reached", "found himself",
-            "found herself", "remained in", "stayed in"
+            "stood at",
+            "stood in",
+            "stood before",
+            "stood near",
+            "sat in",
+            "sat at",
+            "sat before",
+            "sat near",
+            "walked to",
+            "walked toward",
+            "walked into",
+            "entered",
+            "arrived at",
+            "reached",
+            "found himself",
+            "found herself",
+            "remained in",
+            "stayed in",
         ]
-        
+
         character_locations = []
         for indicator in location_indicators:
             if indicator in ending_section.lower():
                 # Extract sentence containing location
-                sentences = ending_section.split('.')
+                sentences = ending_section.split(".")
                 for sentence in sentences:
                     if indicator in sentence.lower():
                         character_locations.append(sentence.strip())
                         break
-        
+
         if character_locations:
             guidance_parts.append(f"Character Positions: {character_locations[-1]}")
-        
+
         # Look for unresolved conflicts or pending actions
         conflict_indicators = [
-            "but", "however", "yet", "still", "then", "suddenly",
-            "before he could", "before she could", "interrupted by",
-            "heard", "saw", "felt", "sensed", "realized"
+            "but",
+            "however",
+            "yet",
+            "still",
+            "then",
+            "suddenly",
+            "before he could",
+            "before she could",
+            "interrupted by",
+            "heard",
+            "saw",
+            "felt",
+            "sensed",
+            "realized",
         ]
-        
+
         pending_actions = []
-        sentences = ending_section.split('.')
+        sentences = ending_section.split(".")
         for sentence in sentences[-3:]:  # Last 3 sentences
             for indicator in conflict_indicators:
                 if indicator in sentence.lower():
                     pending_actions.append(sentence.strip())
                     break
-        
+
         if pending_actions:
             guidance_parts.append(f"Unresolved Elements: {pending_actions[-1]}")
-        
+
         # Add plot progression note
-        guidance_parts.append(f"Chapter {chap_num + 1} should continue from this point, advancing the plot to the next stage rather than repeating previous discoveries.")
-        
+        guidance_parts.append(
+            f"Chapter {chap_num + 1} should continue from this point, advancing the plot to the next stage rather than repeating previous discoveries."
+        )
+
         return " | ".join(guidance_parts) if guidance_parts else ""
 
     @staticmethod
@@ -601,23 +645,24 @@ async def generate_hybrid_chapter_context_native(
     """
     Backward compatibility wrapper for the legacy interface.
     Extracts plot_outline from agent_or_props and delegates to ZeroCopyContextGenerator.
-    
+
     Args:
         agent_or_props: NANA_Orchestrator instance or novel_props dictionary
         current_chapter_number: Current chapter being processed
         chapter_plan: Optional scene details for KG facts
-    
+
     Returns:
         Formatted hybrid context string
     """
     import warnings
+
     warnings.warn(
         "generate_hybrid_chapter_context_native with agent_or_props is deprecated. "
         "Use ZeroCopyContextGenerator.generate_hybrid_context_native with plot_outline directly.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
-    
+
     if current_chapter_number <= 0:
         return ""
 

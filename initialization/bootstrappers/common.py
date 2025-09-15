@@ -34,12 +34,13 @@ async def bootstrap_field(
     )
 
     if not response_text.strip():
-        from ..error_handling import handle_bootstrap_error, ErrorSeverity
+        from ..error_handling import ErrorSeverity, handle_bootstrap_error
+
         handle_bootstrap_error(
             ValueError("Empty LLM response"),
             f"LLM bootstrap field generation: {field_name}",
             ErrorSeverity.WARNING,
-            {"field_name": field_name, "is_list": is_list}
+            {"field_name": field_name, "is_list": is_list},
         )
         return ([] if is_list else ""), usage_data
 
@@ -65,20 +66,26 @@ async def bootstrap_field(
             elif isinstance(value, str):
                 return value.strip(), usage_data
 
-            from ..error_handling import handle_bootstrap_error, ErrorSeverity
+            from ..error_handling import ErrorSeverity, handle_bootstrap_error
+
             handle_bootstrap_error(
                 TypeError(f"Unexpected type {type(value)} for field {field_name}"),
                 f"LLM field type validation: {field_name}",
                 ErrorSeverity.WARNING,
-                {"field_name": field_name, "expected_type": "list" if is_list else "str", "actual_type": type(value).__name__}
+                {
+                    "field_name": field_name,
+                    "expected_type": "list" if is_list else "str",
+                    "actual_type": type(value).__name__,
+                },
             )
         else:
-            from ..error_handling import handle_bootstrap_error, ErrorSeverity
+            from ..error_handling import ErrorSeverity, handle_bootstrap_error
+
             handle_bootstrap_error(
                 ValueError("LLM response was not a JSON object"),
                 f"LLM JSON parsing: {field_name}",
                 ErrorSeverity.WARNING,
-                {"field_name": field_name, "response_text": response_text[:100]}
+                {"field_name": field_name, "response_text": response_text[:100]},
             )
     except json.JSONDecodeError:
         if is_list:

@@ -85,7 +85,7 @@ def _validate_revision_inputs(
 ) -> tuple[bool, tuple[str, str, list[tuple[int, int]]] | None]:
     """
     Validate inputs for chapter revision process.
-    
+
     Returns:
         tuple: (is_valid, early_return_value_or_None)
     """
@@ -102,7 +102,7 @@ def _prepare_problems_for_revision(
 ) -> tuple[list[ProblemDetail], str, bool]:
     """
     Process and prepare problems from evaluation result.
-    
+
     Returns:
         tuple: (problems_to_fix, revision_reason_str, should_continue)
     """
@@ -110,7 +110,7 @@ def _prepare_problems_for_revision(
     problems_to_fix = _deduplicate_problems(
         _consolidate_overlapping_problems(problems_to_fix)
     )
-    
+
     if not problems_to_fix and evaluation_result.get("needs_revision"):
         logger.warning(
             f"Revision for ch {chapter_number} explicitly requested, but no specific problems were itemized. This might lead to a full rewrite attempt if general reasons exist."
@@ -130,7 +130,7 @@ def _prepare_problems_for_revision(
     logger.info(
         f"Attempting revision for chapter {chapter_number}. Reason(s):\n- {revision_reason_str}"
     )
-    
+
     return problems_to_fix, revision_reason_str, True
 
 
@@ -145,28 +145,30 @@ async def _attempt_patch_based_revision(
 ) -> tuple[str | None, list[tuple[int, int]]]:
     """
     Attempt patch-based revision of the chapter.
-    
+
     Returns:
         tuple: (patched_text_or_None, updated_spans)
     """
     if not config.ENABLE_PATCH_BASED_REVISION:
         return None, already_patched_spans
-        
+
     logger.info(
         f"Attempting patch-based revision for Ch {chapter_number} with {len(problems_to_fix)} problem(s)."
     )
-    
+
     sentence_embeddings = await _get_sentence_embeddings(original_text)
     if config.AGENT_ENABLE_PATCH_VALIDATION:
         validator: RevisionAgent | Any = RevisionAgent(config)
     else:
+
         class _BypassValidator:
             async def validate_patch(
                 self, *_args: Any, **_kwargs: Any
             ) -> tuple[bool, None]:
                 return True, None
+
         validator = _BypassValidator()
-        
+
     patch_instructions = await _generate_patch_instructions_logic(
         plot_outline,
         original_text,
@@ -176,7 +178,7 @@ async def _attempt_patch_based_revision(
         chapter_plan,
         validator,
     )
-    
+
     if patch_instructions:
         patched_text, updated_spans = await _apply_patches_to_text(
             original_text,
@@ -206,13 +208,13 @@ async def _evaluate_patched_text(
 ) -> bool:
     """
     Evaluate whether patched text is good enough to use as final result.
-    
+
     Returns:
         bool: True if patched text should be used as final result
     """
     if patched_text is None:
         return False
-        
+
     evaluator = RevisionAgent(config)
     world_ids = {
         cat: [item.id for item in items.values() if isinstance(item, WorldItem)]
@@ -246,14 +248,14 @@ async def _perform_full_rewrite(
 ) -> tuple[str, str]:
     """
     Perform a full chapter rewrite using LLM.
-    
+
     Returns:
         tuple: (final_revised_text, raw_llm_output)
     """
     logger.info(
         f"Proceeding with full chapter rewrite for Ch {chapter_number} as patching was ineffective or disabled."
     )
-    
+
     # Prepare original snippet
     max_original_snippet_tokens = config.MAX_CONTEXT_TOKENS
     original_snippet = truncate_text_by_tokens(
@@ -262,12 +264,12 @@ async def _perform_full_rewrite(
         max_original_snippet_tokens,
         truncation_marker="\n... (original draft snippet truncated for brevity in rewrite prompt)",
     )
-    
+
     # Prepare plan focus section
     plan_focus_section_parts: list[str] = []
     plot_point_focus, _ = _get_plot_point_info(plot_outline, chapter_number)
     max_plan_tokens_for_full_rewrite = config.MAX_CONTEXT_TOKENS // 2
-    
+
     if config.ENABLE_AGENTIC_PLANNING and chapter_plan:
         formatted_plan_fr = _get_formatted_scene_plan_from_agent_or_fallback(
             chapter_plan,
@@ -284,7 +286,7 @@ async def _perform_full_rewrite(
             f"**Original Chapter Focus (Target):**\n{plot_point_focus or 'Not specified.'}\n"
         )
     plan_focus_section_str = "".join(plan_focus_section_parts)
-    
+
     # Prepare length expansion instructions
     length_issue_explicit_instruction_parts: list[str] = []
     needs_expansion_from_problems = any(
@@ -310,7 +312,7 @@ async def _perform_full_rewrite(
     length_issue_explicit_instruction_str = "".join(
         length_issue_explicit_instruction_parts
     )
-    
+
     # Prepare problem descriptions
     all_problem_descriptions_parts: list[str] = []
     if problems_to_fix:
@@ -328,7 +330,7 @@ async def _perform_full_rewrite(
             )
         all_problem_descriptions_parts.append("---\n")
     all_problem_descriptions_str = "".join(all_problem_descriptions_parts)
-    
+
     # Prepare deduplication note
     deduplication_note = ""
     if is_from_flawed_source:
@@ -337,16 +339,20 @@ async def _perform_full_rewrite(
             "prior to evaluation, or other flaws were present. Ensure your rewrite is cohesive "
             "and addresses any resulting narrative gaps or inconsistencies.)**\n"
         )
-    
+
     # Render prompt
-    protagonist_name = plot_outline.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME)
+    protagonist_name = plot_outline.get(
+        "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
+    )
     prompt_full_rewrite = render_prompt(
         "revision_agent/full_chapter_rewrite.j2",
         {
             "config": config,
             "chapter_number": chapter_number,
             "protagonist_name": protagonist_name,
-            "revision_reason": llm_service.clean_model_response(revision_reason_str).strip(),
+            "revision_reason": llm_service.clean_model_response(
+                revision_reason_str
+            ).strip(),
             "all_problem_descriptions": all_problem_descriptions_str,
             "deduplication_note": deduplication_note,
             "length_issue_explicit_instruction": length_issue_explicit_instruction_str,
@@ -357,12 +363,12 @@ async def _perform_full_rewrite(
             "min_acceptable_draft_length": config.MIN_ACCEPTABLE_DRAFT_LENGTH,
         },
     )
-    
+
     # Call LLM
     logger.info(
         f"Calling LLM ({config.MEDIUM_MODEL}) for Ch {chapter_number} full rewrite. Min length: {config.MIN_ACCEPTABLE_DRAFT_LENGTH} chars."
     )
-    
+
     raw_revised_llm_output, _ = await llm_service.async_call_llm(
         model_name=config.MEDIUM_MODEL,
         prompt=prompt_full_rewrite,
@@ -374,13 +380,13 @@ async def _perform_full_rewrite(
         presence_penalty=config.PRESENCE_PENALTY_REVISION,
         auto_clean_response=False,
     )
-    
+
     final_revised_text = llm_service.clean_model_response(raw_revised_llm_output)
-    
+
     logger.info(
         f"Full rewrite for Ch {chapter_number} generated text of length {len(final_revised_text)}."
     )
-    
+
     return final_revised_text, raw_revised_llm_output
 
 
@@ -389,7 +395,7 @@ def _validate_final_result(
 ) -> tuple[bool, tuple[str, str, list[tuple[int, int]]] | None]:
     """
     Validate the final revision result.
-    
+
     Returns:
         tuple: (is_valid, early_return_value_or_None)
     """
@@ -398,16 +404,16 @@ def _validate_final_result(
             f"Revision process for ch {chapter_number} resulted in no usable content."
         )
         return False, None
-    
+
     if len(final_revised_text) < config.MIN_ACCEPTABLE_DRAFT_LENGTH:
         logger.warning(
             f"Final revised draft for ch {chapter_number} is short ({len(final_revised_text)} chars). Min target: {config.MIN_ACCEPTABLE_DRAFT_LENGTH}."
         )
-    
+
     logger.info(
         f"Revision process for ch {chapter_number} produced a candidate text (Length: {len(final_revised_text)} chars)."
     )
-    
+
     return True, None
 
 
@@ -433,8 +439,6 @@ def _get_plot_point_info(
         plot_point = plot_points[plot_point_index]
         return str(plot_point) if plot_point is not None else None, plot_point_index
     return None, -1
-
-
 
 
 _sentence_embedding_cache: dict[str, list[tuple[int, int, Any]]] = {}
@@ -912,8 +916,15 @@ async def _generate_patch_instructions_logic(
 
     tasks = [
         _process_patch_group(
-            idx, gp, gm, plot_outline, original_text, chapter_number,
-            hybrid_context_for_revision, chapter_plan, validator
+            idx,
+            gp,
+            gm,
+            plot_outline,
+            original_text,
+            chapter_number,
+            hybrid_context_for_revision,
+            chapter_plan,
+            validator,
         )
         for idx, (gp, gm) in enumerate(groups_to_process, start=1)
     ]
@@ -1016,14 +1027,13 @@ async def _apply_patches_to_text(
                 llm_service.async_get_embedding(original_segment),
                 llm_service.async_get_embedding(replacement_text),
             )
-            if (
-                orig_emb is not None
-                and repl_emb is not None
-            ):
+            if orig_emb is not None and repl_emb is not None:
                 try:
                     similarity = utils.numpy_cosine_similarity(orig_emb, repl_emb)
                 except ValueError:
-                    logger.warning("Cosine similarity shape mismatch handled: setting to 0.0 for patch similarity check.")
+                    logger.warning(
+                        "Cosine similarity shape mismatch handled: setting to 0.0 for patch similarity check."
+                    )
                     similarity = 0.0
                 if similarity >= config.REVISION_SIMILARITY_ACCEPTANCE:
                     logger.info(
@@ -1112,7 +1122,7 @@ async def revise_chapter_draft_logic(
 ) -> tuple[str, str, list[tuple[int, int]]] | None:
     """
     Orchestrates the chapter revision process with patch-based and full rewrite options.
-    
+
     This function has been refactored into smaller, focused sub-functions for better
     maintainability and reduced complexity.
     """
@@ -1125,8 +1135,8 @@ async def revise_chapter_draft_logic(
         return early_return
 
     # Phase 2: Prepare problems for revision
-    problems_to_fix, revision_reason_str, should_continue = _prepare_problems_for_revision(
-        evaluation_result, chapter_number
+    problems_to_fix, revision_reason_str, should_continue = (
+        _prepare_problems_for_revision(evaluation_result, chapter_number)
     )
     if not should_continue:
         return (original_text, "No revision performed.", [])

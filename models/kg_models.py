@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
 from models.db_extraction_utils import Neo4jExtractor
+from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
 from models.validation_utils import validate_world_item_fields
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ class CharacterProfile(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: "neo4j.Record") -> CharacterProfile:
+    def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
         """Construct directly from Neo4j record - no dict conversion."""
         node = record["c"]  # Assuming 'c' is the character node alias
 
@@ -74,7 +74,7 @@ class CharacterProfile(BaseModel):
         )
 
     @classmethod
-    def from_db_node(cls, node: "neo4j.Node") -> CharacterProfile:
+    def from_db_node(cls, node: neo4j.Node) -> CharacterProfile:
         """Construct directly from Neo4j node - no dict conversion."""
         return cls(
             name=node.get("name", ""),
@@ -135,7 +135,9 @@ class WorldItem(BaseModel):
         )
 
         # Extract and validate created_chapter using shared utility
-        created_chapter = Neo4jExtractor.safe_int_extract(data.get(KG_NODE_CREATED_CHAPTER, 0))
+        created_chapter = Neo4jExtractor.safe_int_extract(
+            data.get(KG_NODE_CREATED_CHAPTER, 0)
+        )
 
         # Extract and validate is_provisional
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
@@ -189,7 +191,7 @@ class WorldItem(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: "neo4j.Record") -> WorldItem:
+    def from_db_record(cls, record: neo4j.Record) -> WorldItem:
         """Construct directly from Neo4j record - no dict conversion."""
         # Try both 'w' and 'we' node aliases for compatibility
         node = record.get("w") or record.get("we")
@@ -211,9 +213,11 @@ class WorldItem(BaseModel):
             "chapter_last_updated",
             "last_updated",
         }
-        
+
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(
+            node, core_fields
+        )
 
         return cls(
             id=Neo4jExtractor.safe_string_extract(node.get("id", "")),
@@ -224,13 +228,15 @@ class WorldItem(BaseModel):
             rules=Neo4jExtractor.safe_list_extract(node.get("rules", [])),
             key_elements=Neo4jExtractor.safe_list_extract(node.get("key_elements", [])),
             traits=Neo4jExtractor.safe_list_extract(node.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(node.get("created_chapter", 0)),
+            created_chapter=Neo4jExtractor.safe_int_extract(
+                node.get("created_chapter", 0)
+            ),
             is_provisional=bool(node.get("is_provisional", False)),
             additional_properties=additional_props,
         )
 
     @classmethod
-    def from_db_node(cls, node: "neo4j.Node") -> WorldItem:
+    def from_db_node(cls, node: neo4j.Node) -> WorldItem:
         """Construct directly from Neo4j node - no dict conversion."""
 
         # Define core fields that shouldn't go into additional_properties
@@ -248,9 +254,11 @@ class WorldItem(BaseModel):
             "chapter_last_updated",
             "last_updated",
         }
-        
+
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(
+            node, core_fields
+        )
 
         return cls(
             id=Neo4jExtractor.safe_string_extract(node.get("id", "")),
@@ -261,7 +269,9 @@ class WorldItem(BaseModel):
             rules=Neo4jExtractor.safe_list_extract(node.get("rules", [])),
             key_elements=Neo4jExtractor.safe_list_extract(node.get("key_elements", [])),
             traits=Neo4jExtractor.safe_list_extract(node.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(node.get("created_chapter", 0)),
+            created_chapter=Neo4jExtractor.safe_int_extract(
+                node.get("created_chapter", 0)
+            ),
             is_provisional=bool(node.get("is_provisional", False)),
             additional_properties=additional_props,
         )

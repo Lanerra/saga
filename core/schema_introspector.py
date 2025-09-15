@@ -10,9 +10,13 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from async_lru import alru_cache
-
 from core.db_manager import neo4j_manager
+from core.lightweight_cache import (
+    get_cached_value,
+    invalidate_cache_key,
+    register_cache_service,
+    set_cached_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,18 +25,27 @@ class SchemaIntrospector:
     """Dynamic schema discovery using Neo4j built-in introspection procedures."""
 
     def __init__(self):
+        self._service_name = "schema_introspection"
+        # Register with cache coordinator
+        register_cache_service(self._service_name)
         self.cache_ttl = 300  # 5 minutes cache
         self.last_schema_update = None
 
-    @alru_cache(maxsize=1, ttl=300)
     async def get_active_labels(self) -> set[str]:
         """Get all labels currently used in the database."""
+        cache_key = "active_labels"
+        cached_result = get_cached_value(cache_key, self._service_name)
+        if cached_result is not None:
+            return cached_result
+
         try:
             results = await neo4j_manager.execute_read_query(
                 "CALL db.labels() YIELD label RETURN label"
             )
             labels = {r["label"] for r in results if r.get("label")}
             logger.debug(f"Found {len(labels)} active labels in database")
+            # Cache with TTL
+            set_cached_value(cache_key, labels, self._service_name, ttl=300)
             return labels
         except Exception as e:
             logger.error(f"Failed to get database labels: {e}")
@@ -41,9 +54,13 @@ class SchemaIntrospector:
 
             return NODE_LABELS.copy()
 
-    @alru_cache(maxsize=1, ttl=300)
     async def get_active_relationship_types(self) -> set[str]:
         """Get all relationship types currently used in the database."""
+        cache_key = "active_relationship_types"
+        cached_result = get_cached_value(cache_key, self._service_name)
+        if cached_result is not None:
+            return cached_result
+
         try:
             results = await neo4j_manager.execute_read_query(
                 "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType"
@@ -54,6 +71,8 @@ class SchemaIntrospector:
             logger.debug(
                 f"Found {len(rel_types)} active relationship types in database"
             )
+            # Cache with TTL
+            set_cached_value(cache_key, rel_types, self._service_name, ttl=300)
             return rel_types
         except Exception as e:
             logger.error(f"Failed to get relationship types: {e}")
@@ -62,9 +81,13 @@ class SchemaIntrospector:
 
             return RELATIONSHIP_TYPES.copy()
 
-    @alru_cache(maxsize=1, ttl=600)  # Longer cache for expensive operation
     async def get_label_frequencies(self) -> dict[str, int]:
         """Get frequency count for each label in the database."""
+        cache_key = "label_frequencies"
+        cached_result = get_cached_value(cache_key, self._service_name)
+        if cached_result is not None:
+            return cached_result
+
         try:
             labels = await self.get_active_labels()
             frequencies = {}
@@ -84,15 +107,21 @@ class SchemaIntrospector:
                     frequencies[label] = 0
 
             logger.info(f"Retrieved frequencies for {len(frequencies)} labels")
+            # Cache with longer TTL for expensive operation
+            set_cached_value(cache_key, frequencies, self._service_name, ttl=600)
             return frequencies
 
         except Exception as e:
             logger.error(f"Failed to get label frequencies: {e}")
             return {}
 
-    @alru_cache(maxsize=1, ttl=600)
     async def get_relationship_patterns(self) -> list[dict[str, Any]]:
         """Discover relationship patterns between node types."""
+        cache_key = "relationship_patterns"
+        cached_result = get_cached_value(cache_key, self._service_name)
+        if cached_result is not None:
+            return cached_result
+
         query = """
         MATCH (a)-[r]->(b)
         WHERE size(labels(a)) > 0 AND size(labels(b)) > 0
@@ -109,16 +138,22 @@ class SchemaIntrospector:
             results = await neo4j_manager.execute_read_query(query)
             patterns = [dict(r) for r in results]
             logger.info(f"Discovered {len(patterns)} relationship patterns")
+            # Cache with TTL
+            set_cached_value(cache_key, patterns, self._service_name, ttl=600)
             return patterns
         except Exception as e:
             logger.error(f"Failed to get relationship patterns: {e}")
             return []
 
-    @alru_cache(maxsize=1, ttl=900)  # 15 minutes for expensive sampling
     async def sample_node_properties(
         self, sample_size: int = 1000
     ) -> dict[str, dict[str, Any]]:
         """Sample node properties to understand data patterns."""
+        cache_key = f"sample_node_properties_{sample_size}"
+        cached_result = get_cached_value(cache_key, self._service_name)
+        if cached_result is not None:
+            return cached_result
+
         query = f"""
         MATCH (n)
         WHERE n.name IS NOT NULL AND size(labels(n)) > 0
@@ -154,6 +189,8 @@ class SchemaIntrospector:
             logger.info(
                 f"Sampled {len(results)} nodes across {len(samples_by_label)} labels"
             )
+            # Cache with longer TTL for expensive operation
+            set_cached_value(cache_key, samples_by_label, self._service_name, ttl=900)
             return samples_by_label
 
         except Exception as e:
@@ -162,6 +199,11 @@ class SchemaIntrospector:
 
     async def get_schema_summary(self) -> dict[str, Any]:
         """Get comprehensive schema summary."""
+        cache_key = "schema_summary"
+        cached_result = get_cached_value(cache_key, self._service_name)
+        if cached_result is not None:
+            return cached_result
+
         try:
             labels = await self.get_active_labels()
             relationships = await self.get_active_relationship_types()
@@ -185,7 +227,7 @@ class SchemaIntrospector:
                 relationship_counts.items(), key=lambda x: x[1], reverse=True
             )[:10]
 
-            return {
+            result = {
                 "total_labels": len(labels),
                 "total_relationship_types": len(relationships),
                 "total_nodes": total_nodes,
@@ -195,18 +237,28 @@ class SchemaIntrospector:
                 "last_updated": datetime.utcnow().isoformat(),
             }
 
+            # Cache the summary
+            set_cached_value(cache_key, result, self._service_name, ttl=300)
+            return result
+
         except Exception as e:
             logger.error(f"Failed to generate schema summary: {e}")
-            return {"error": str(e), "last_updated": datetime.utcnow().isoformat()}
+            error_result = {
+                "error": str(e),
+                "last_updated": datetime.utcnow().isoformat(),
+            }
+            # Cache the error result briefly
+            set_cached_value(cache_key, error_result, self._service_name, ttl=60)
+            return error_result
 
     async def invalidate_cache(self):
         """Force cache invalidation for fresh schema discovery."""
-        # Clear all cached methods
-        self.get_active_labels.cache_clear()
-        self.get_active_relationship_types.cache_clear()
-        self.get_label_frequencies.cache_clear()
-        self.get_relationship_patterns.cache_clear()
-        self.sample_node_properties.cache_clear()
+        # Invalidate all cache keys for this service
+        invalidate_cache_key("active_labels", self._service_name)
+        invalidate_cache_key("active_relationship_types", self._service_name)
+        invalidate_cache_key("label_frequencies", self._service_name)
+        invalidate_cache_key("relationship_patterns", self._service_name)
+        invalidate_cache_key("schema_summary", self._service_name)
         logger.info("Schema introspector cache invalidated")
 
     async def is_schema_fresh(self, max_age_minutes: int = 60) -> bool:

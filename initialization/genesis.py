@@ -46,13 +46,17 @@ async def run_genesis_phase() -> (
     # Create shared StateTracker instance for the bootstrap process
     state_tracker = StateTracker()
     logger.info("Created StateTracker instance for bootstrap coordination")
-    
+
     plot_outline, _ = await bootstrap_plot_outline(plot_outline)
-    character_profiles, _ = await bootstrap_characters(character_profiles, plot_outline, state_tracker)
+    character_profiles, _ = await bootstrap_characters(
+        character_profiles, plot_outline, state_tracker
+    )
     # Log the final character names for debugging
     final_char_names = [profile.name for profile in character_profiles.values()]
     logger.info(f"Final character names after bootstrapping: {final_char_names}")
-    world_building, _ = await bootstrap_world(world_building, plot_outline, state_tracker)
+    world_building, _ = await bootstrap_world(
+        world_building, plot_outline, state_tracker
+    )
 
     await plot_queries.save_plot_outline_to_db(plot_outline)
     logger.info("Persisted bootstrapped plot outline to Neo4j.")
@@ -81,22 +85,23 @@ async def run_genesis_phase() -> (
 
     # Validate bootstrap results before proceeding
     from .bootstrap_validator import validate_bootstrap_results
+
     validation_result = await validate_bootstrap_results(
         plot_outline, character_profiles, world_items_for_kg, state_tracker
     )
-    
+
     if not validation_result.is_valid:
         error_summary = "; ".join(validation_result.errors[:3])  # Show first 3 errors
         if len(validation_result.errors) > 3:
             error_summary += f" (and {len(validation_result.errors) - 3} more)"
         raise RuntimeError(f"Bootstrap validation failed: {error_summary}")
-    
+
     if validation_result.warnings:
         warning_count = len(validation_result.warnings)
         logger.warning(f"Bootstrap completed with {warning_count} warnings")
     else:
         logger.info("Bootstrap validation passed with no warnings")
-    
+
     # Log StateTracker statistics for debugging
     all_tracked_entities = await state_tracker.get_all()
     if all_tracked_entities:
@@ -107,10 +112,9 @@ async def run_genesis_phase() -> (
             f"({char_count} characters, {world_count} world items) tracked during bootstrap"
         )
     else:
-        logger.warning("StateTracker is empty - no entities were tracked during bootstrap")
-
-    # Refresh dynamic schema patterns after bootstrap completion
-    await _refresh_dynamic_schema_after_bootstrap()
+        logger.warning(
+            "StateTracker is empty - no entities were tracked during bootstrap"
+        )
 
     return plot_outline, character_profiles, world_items_for_kg
 
@@ -121,7 +125,6 @@ async def _create_bootstrap_relationships(
     plot_outline: dict[str, Any],
 ) -> None:
     """Create basic relationship network using existing validation infrastructure."""
-    from core.enhanced_constraints import get_enhanced_relationship_suggestions
     from core.relationship_validator import RelationshipConstraintValidator
     from data_access import kg_queries
 
@@ -145,52 +148,38 @@ async def _create_bootstrap_relationships(
 
     # 1. Core conflict relationship: protagonist vs antagonist
     if protagonist and antagonist and protagonist != antagonist:
-        suggestions = get_enhanced_relationship_suggestions("Character", "Character")
-        conflict_rels = [
-            rel
-            for rel, desc, conf in suggestions
-            if any(term in rel.lower() for term in ["rival", "enemy", "opposes"])
-        ]
-        if conflict_rels:
-            rel_type = conflict_rels[0]
+        # Use direct relationship type instead of enhanced suggestions
+        rel_type = "ENEMY_OF"  # Direct conflict relationship
+        validation_result = validator.validate_relationship(
+            "Character", rel_type, "Character"
+        )
+        if validation_result.is_valid:
+            created_relationships.append(
+                (protagonist, validation_result.validated_relationship, antagonist)
+            )
+            logger.info(
+                f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {antagonist}"
+            )
+
+    # 2. Alliance relationships: protagonist with supporting characters
+    if protagonist and supporting_chars:
+        for support_char in supporting_chars[:2]:  # Limit to first 2 supporting chars
+            # Use direct relationship type instead of enhanced suggestions
+            rel_type = "ALLY_OF"  # Direct alliance relationship
             validation_result = validator.validate_relationship(
                 "Character", rel_type, "Character"
             )
             if validation_result.is_valid:
                 created_relationships.append(
-                    (protagonist, validation_result.validated_relationship, antagonist)
+                    (
+                        protagonist,
+                        validation_result.validated_relationship,
+                        support_char,
+                    )
                 )
                 logger.info(
-                    f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {antagonist}"
+                    f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {support_char}"
                 )
-
-    # 2. Alliance relationships: protagonist with supporting characters
-    if protagonist and supporting_chars:
-        for support_char in supporting_chars[:2]:  # Limit to first 2 supporting chars
-            suggestions = get_enhanced_relationship_suggestions(
-                "Character", "Character"
-            )
-            ally_rels = [
-                rel
-                for rel, desc, conf in suggestions
-                if any(term in rel.lower() for term in ["ally", "friend", "trusts"])
-            ]
-            if ally_rels:
-                rel_type = ally_rels[0]
-                validation_result = validator.validate_relationship(
-                    "Character", rel_type, "Character"
-                )
-                if validation_result.is_valid:
-                    created_relationships.append(
-                        (
-                            protagonist,
-                            validation_result.validated_relationship,
-                            support_char,
-                        )
-                    )
-                    logger.info(
-                        f"Bootstrap relationship: {protagonist} {validation_result.validated_relationship} {support_char}"
-                    )
 
     # 3. Character-to-world relationships: characters reside in/belong to world elements
     for char_name in char_names[:4]:  # Limit to prevent too many relationships
@@ -271,12 +260,13 @@ async def _create_bootstrap_relationships(
             )
             relationships_created += 1
         except Exception as e:
-            from .error_handling import handle_bootstrap_error, ErrorSeverity
+            from .error_handling import ErrorSeverity, handle_bootstrap_error
+
             handle_bootstrap_error(
                 e,
                 f"Bootstrap relationship creation: {subj} {rel} {obj}",
                 ErrorSeverity.WARNING,
-                {"subject": subj, "relationship": rel, "object": obj}
+                {"subject": subj, "relationship": rel, "object": obj},
             )
 
     logger.info(
@@ -284,45 +274,4 @@ async def _create_bootstrap_relationships(
     )
 
 
-async def _refresh_dynamic_schema_after_bootstrap() -> None:
-    """Refresh dynamic schema patterns after bootstrap phase completion."""
-    try:
-        # Only refresh if dynamic schema is enabled
-        if not getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
-            return
-
-        logger.info("Refreshing dynamic schema patterns after bootstrap completion...")
-
-        # Import here to avoid circular dependencies
-        from core.dynamic_schema_manager import dynamic_schema_manager
-
-        # Initialize/refresh the dynamic schema system with all the new bootstrap data
-        await dynamic_schema_manager.initialize(force_refresh=True)
-
-        # Get status for logging
-        status = await dynamic_schema_manager.get_system_status()
-        type_patterns = status.get("type_inference", {}).get("total_patterns", 0)
-        constraints = status.get("constraints", {}).get("total_constraints", 0)
-        schema_info = status.get("schema", {})
-        total_nodes = schema_info.get("total_nodes", 0)
-
-        logger.info(
-            f"Dynamic schema patterns learned from bootstrap data: "
-            f"{type_patterns} type patterns from {total_nodes} nodes, "
-            f"{constraints} relationship constraints"
-        )
-
-        # This ensures novel-specific patterns are available from chapter 1 onwards
-        logger.info(
-            "Dynamic schema system ready for chapter generation with bootstrap patterns"
-        )
-
-    except Exception as e:
-        # Don't fail bootstrap if schema refresh fails
-        from .error_handling import handle_bootstrap_error, ErrorSeverity
-        handle_bootstrap_error(
-            e,
-            "Dynamic schema refresh after bootstrap",
-            ErrorSeverity.WARNING,
-            {"phase": "post_bootstrap_schema_refresh"}
-        )
+# Dynamic schema refresh function removed - not needed for single-user deployment

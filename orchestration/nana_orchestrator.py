@@ -40,9 +40,11 @@ from models import (
 )
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
-from processing.zero_copy_context_generator import generate_hybrid_chapter_context_native
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
+from processing.zero_copy_context_generator import (
+    generate_hybrid_chapter_context_native,
+)
 from ui.rich_display import RichDisplayManager
 from utils.ingestion_utils import split_text_into_chapters
 
@@ -959,7 +961,6 @@ class NANA_Orchestrator:
             novel_chapter_number, "final_summary", result.get("summary")
         )
 
-
         # Save chapter data to Neo4j database
         try:
             await chapter_queries.save_chapter_data_to_db(
@@ -997,9 +998,6 @@ class NANA_Orchestrator:
         await self._save_chapter_text_and_log(
             novel_chapter_number, final_text_to_process, final_raw_llm_output
         )
-
-        # Refresh dynamic schema patterns after chapter completion
-        await self._refresh_dynamic_schema_patterns(novel_chapter_number)
 
         self.chapter_count = max(self.chapter_count, novel_chapter_number)
 
@@ -1461,38 +1459,7 @@ class NANA_Orchestrator:
         await neo4j_manager.close()
         logger.info("SAGA: Ingestion process completed.")
 
-    async def _refresh_dynamic_schema_patterns(self, chapter_number: int) -> None:
-        """Refresh dynamic schema patterns after chapter completion."""
-        try:
-            # Only refresh if dynamic schema is enabled
-            if not getattr(config.settings, "ENABLE_DYNAMIC_SCHEMA", True):
-                return
-
-            logger.info(
-                f"Refreshing dynamic schema patterns after chapter {chapter_number} completion..."
-            )
-
-            # Import here to avoid circular dependencies
-            from core.dynamic_schema_manager import dynamic_schema_manager
-
-            # Trigger pattern refresh - this will re-learn from all entities including new ones
-            await dynamic_schema_manager.initialize(force_refresh=True)
-
-            # Get status for logging
-            status = await dynamic_schema_manager.get_system_status()
-            type_patterns = status.get("type_inference", {}).get("total_patterns", 0)
-            constraints = status.get("constraints", {}).get("total_constraints", 0)
-
-            logger.info(
-                f"Dynamic schema refresh complete after chapter {chapter_number}: "
-                f"{type_patterns} type patterns, {constraints} relationship constraints"
-            )
-
-        except Exception as e:
-            # Don't fail chapter completion if schema refresh fails
-            logger.warning(
-                f"Failed to refresh dynamic schema patterns after chapter {chapter_number}: {e}"
-            )
+    # Dynamic schema refresh function removed - not needed for single-user deployment
 
 
 def setup_logging_nana():

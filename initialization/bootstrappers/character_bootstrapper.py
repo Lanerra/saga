@@ -55,7 +55,7 @@ async def bootstrap_characters(
         "completion_tokens": 0,
         "total_tokens": 0,
     }
-    
+
     # Initialize StateTracker if not provided
     if state_tracker is None:
         state_tracker = StateTracker()
@@ -74,11 +74,16 @@ async def bootstrap_characters(
             await state_tracker.reserve(name, "character", temp_desc)
             reserved_names.add(name)
             logger.debug(f"Reserved placeholder name: {name}")
-    
+
     # Also reserve the actual protagonist name if it exists and is not a placeholder
     protagonist_name = plot_outline.get("protagonist_name", "")
-    if protagonist_name and protagonist_name not in ["Antagonist", "SupportingChar1", "SupportingChar2", "SupportingChar3"]:
-        temp_desc = f"Main protagonist character"
+    if protagonist_name and protagonist_name not in [
+        "Antagonist",
+        "SupportingChar1",
+        "SupportingChar2",
+        "SupportingChar3",
+    ]:
+        temp_desc = "Main protagonist character"
         await state_tracker.reserve(protagonist_name, "character", temp_desc)
         logger.debug(f"Reserved protagonist name: {protagonist_name}")
 
@@ -160,47 +165,57 @@ async def bootstrap_characters(
                         "Character name conflict detected",
                         old_name=name,
                         new_name=value,
-                        existing_type=existing_metadata["type"]
+                        existing_type=existing_metadata["type"],
                     )
                     # Generate a unique narrative-appropriate name to avoid conflicts
                     conflict_context = {
                         "profile": profile.to_dict(),
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
-                        "existing_names": [p.name for p in character_profiles.values()]
+                        "existing_names": [p.name for p in character_profiles.values()],
                     }
                     # Make additional LLM call to generate unique name using conflict resolution template
                     try:
                         unique_name_result, _ = await bootstrap_field(
-                            "name", 
-                            conflict_context, 
-                            "bootstrapper/fill_character_name_conflict.j2"
+                            "name",
+                            conflict_context,
+                            "bootstrapper/fill_character_name_conflict.j2",
                         )
                         if unique_name_result and unique_name_result != value:
                             # Check if this new name also conflicts
-                            while await state_tracker.check(unique_name_result) or unique_name_result in [p.name for p in character_profiles.values()]:
+                            while await state_tracker.check(
+                                unique_name_result
+                            ) or unique_name_result in [
+                                p.name for p in character_profiles.values()
+                            ]:
                                 # If it still conflicts, try once more with explicit uniqueness request
-                                conflict_context["previous_conflict"] = unique_name_result
+                                conflict_context["previous_conflict"] = (
+                                    unique_name_result
+                                )
                                 unique_name_result, _ = await bootstrap_field(
                                     "name",
                                     conflict_context,
-                                    "bootstrapper/fill_character_field.j2"
+                                    "bootstrapper/fill_character_field.j2",
                                 )
                                 break  # Avoid infinite loop
-                            
+
                             value = unique_name_result
                             logger.info(
                                 "Generated unique narrative name to resolve conflict",
                                 old_name=name,
                                 conflicting_name=value,
-                                unique_name=value
+                                unique_name=value,
                             )
                         else:
                             # Fallback to numbered approach if LLM fails
                             base_name = value
                             counter = 1
                             unique_name = f"{base_name} {counter}"
-                            while await state_tracker.check(unique_name) or unique_name in [p.name for p in character_profiles.values()]:
+                            while await state_tracker.check(
+                                unique_name
+                            ) or unique_name in [
+                                p.name for p in character_profiles.values()
+                            ]:
                                 counter += 1
                                 unique_name = f"{base_name} {counter}"
                             value = unique_name
@@ -208,7 +223,7 @@ async def bootstrap_characters(
                                 "Falling back to numbered name to resolve conflict",
                                 old_name=name,
                                 conflicting_name=value,
-                                unique_name=unique_name
+                                unique_name=unique_name,
                             )
                     except Exception as e:
                         # Fallback to numbered approach if LLM call fails
@@ -216,7 +231,9 @@ async def bootstrap_characters(
                         base_name = value
                         counter = 1
                         unique_name = f"{base_name} {counter}"
-                        while await state_tracker.check(unique_name) or unique_name in [p.name for p in character_profiles.values()]:
+                        while await state_tracker.check(unique_name) or unique_name in [
+                            p.name for p in character_profiles.values()
+                        ]:
                             counter += 1
                             unique_name = f"{base_name} {counter}"
                         value = unique_name
@@ -224,9 +241,9 @@ async def bootstrap_characters(
                             "Falling back to numbered name due to LLM error",
                             old_name=name,
                             conflicting_name=value,
-                            unique_name=unique_name
+                            unique_name=unique_name,
                         )
-                
+
                 # Even if no conflict, ensure we have a valid name change
                 # This handles cases where LLM might return the same name or invalid response
                 if value == name:
@@ -234,140 +251,163 @@ async def bootstrap_characters(
                     logger.info(
                         "LLM returned same name, generating unique narrative name",
                         old_name=name,
-                        same_name=value
+                        same_name=value,
                     )
                     conflict_context = {
                         "profile": profile.to_dict(),
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
-                        "issue": "LLM returned identical name"
+                        "issue": "LLM returned identical name",
                     }
                     try:
                         unique_name_result, _ = await bootstrap_field(
                             "name",
                             conflict_context,
-                            "bootstrapper/fill_character_name_conflict.j2"
+                            "bootstrapper/fill_character_name_conflict.j2",
                         )
                         if unique_name_result and unique_name_result != name:
                             value = unique_name_result
                             logger.info(
                                 "Generated unique narrative name for unchanged placeholder",
                                 old_name=name,
-                                new_name=value
+                                new_name=value,
                             )
                         else:
                             # Fallback to numbered approach
                             base_name = name
                             counter = 1
                             unique_name = f"{base_name} {counter}"
-                            while await state_tracker.check(unique_name) or unique_name in [p.name for p in character_profiles.values()]:
+                            while await state_tracker.check(
+                                unique_name
+                            ) or unique_name in [
+                                p.name for p in character_profiles.values()
+                            ]:
                                 counter += 1
                                 unique_name = f"{base_name} {counter}"
                             value = unique_name
                             logger.info(
                                 "Falling back to numbered name for unchanged placeholder",
                                 old_name=name,
-                                new_name=unique_name
+                                new_name=unique_name,
                             )
                     except Exception as e:
-                        logger.warning(f"Failed to generate unique name for unchanged placeholder: {e}")
+                        logger.warning(
+                            f"Failed to generate unique name for unchanged placeholder: {e}"
+                        )
                         base_name = name
                         counter = 1
                         unique_name = f"{base_name} {counter}"
-                        while await state_tracker.check(unique_name) or unique_name in [p.name for p in character_profiles.values()]:
+                        while await state_tracker.check(unique_name) or unique_name in [
+                            p.name for p in character_profiles.values()
+                        ]:
                             counter += 1
                             unique_name = f"{base_name} {counter}"
                         value = unique_name
                         logger.info(
                             "Falling back to numbered name due to error for unchanged placeholder",
                             old_name=name,
-                            new_name=unique_name
+                            new_name=unique_name,
                         )
-                
+
                 name_changes[name] = value
                 character_profiles[name].name = value
                 logger.info(f"Character name updated: {name} -> {value}")
-                
+
                 # Reserve the new name
                 description = character_profiles[name].description or "Character"
                 await state_tracker.reserve(value, "character", description)
-                
+
             elif field == "name" and value == name:
                 # LLM returned the same name, but we still need to ensure it's unique
                 logger.debug(f"Character name unchanged by LLM: {name}")
                 # Check if this name conflicts with any reserved names
                 existing_metadata = await state_tracker.check(value)
-                if existing_metadata and name in ["Antagonist", "SupportingChar1", "SupportingChar2", "SupportingChar3"]:
+                if existing_metadata and name in [
+                    "Antagonist",
+                    "SupportingChar1",
+                    "SupportingChar2",
+                    "SupportingChar3",
+                ]:
                     # This is a placeholder that conflicts with an existing name
                     logger.info(
                         "Placeholder conflicts with existing name, generating unique narrative name",
                         placeholder_name=name,
-                        conflicting_with=value
+                        conflicting_with=value,
                     )
                     conflict_context = {
                         "profile": profile.to_dict(),
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
-                        "issue": "Placeholder conflicts with existing name"
+                        "issue": "Placeholder conflicts with existing name",
                     }
                     try:
                         unique_name_result, _ = await bootstrap_field(
                             "name",
                             conflict_context,
-                            "bootstrapper/fill_character_name_conflict.j2"
+                            "bootstrapper/fill_character_name_conflict.j2",
                         )
                         if unique_name_result and unique_name_result != name:
                             value = unique_name_result
                             logger.info(
                                 "Generated unique narrative name for conflicting placeholder",
                                 old_name=name,
-                                new_name=value
+                                new_name=value,
                             )
                         else:
                             # Fallback to numbered approach
                             base_name = name
                             counter = 1
                             unique_name = f"{base_name} {counter}"
-                            while await state_tracker.check(unique_name) or unique_name in [p.name for p in character_profiles.values()]:
+                            while await state_tracker.check(
+                                unique_name
+                            ) or unique_name in [
+                                p.name for p in character_profiles.values()
+                            ]:
                                 counter += 1
                                 unique_name = f"{base_name} {counter}"
                             value = unique_name
                             logger.info(
                                 "Falling back to numbered name for conflicting placeholder",
                                 old_name=name,
-                                new_name=unique_name
+                                new_name=unique_name,
                             )
                     except Exception as e:
-                        logger.warning(f"Failed to generate unique name for conflicting placeholder: {e}")
+                        logger.warning(
+                            f"Failed to generate unique name for conflicting placeholder: {e}"
+                        )
                         base_name = name
                         counter = 1
                         unique_name = f"{base_name} {counter}"
-                        while await state_tracker.check(unique_name) or unique_name in [p.name for p in character_profiles.values()]:
+                        while await state_tracker.check(unique_name) or unique_name in [
+                            p.name for p in character_profiles.values()
+                        ]:
                             counter += 1
                             unique_name = f"{base_name} {counter}"
                         value = unique_name
                         logger.info(
                             "Falling back to numbered name due to error for conflicting placeholder",
                             old_name=name,
-                            new_name=unique_name
+                            new_name=unique_name,
                         )
                     name_changes[name] = value
                     character_profiles[name].name = value
-                
+
             elif field == "description":
                 character_profiles[name].description = value
-                
+
                 # Check for similar descriptions
-                similar_name = await state_tracker.has_similar_description(value, "character")
+                similar_name = await state_tracker.has_similar_description(
+                    value, "character"
+                )
                 if similar_name:
                     logger.warning(
                         "Similar character description found",
                         current_name=name,
-                        similar_to=similar_name
+                        similar_to=similar_name,
                     )
-                
+
             elif field == "traits":
                 character_profiles[name].traits = value  # type: ignore
             elif field == "status":

@@ -9,15 +9,26 @@ UPDATED: Now uses unified dependency injection system for better testability
 and consistent service management across SAGA.
 """
 
-from typing import Any, Optional, Dict
+from abc import ABC, abstractmethod
+from typing import Any
 
 import structlog
 
-# Import the new DI system
-from core.service_registry import resolve, register_singleton
-from core.validation_service_provider import TypeInferenceServiceInterface
-
 logger = structlog.get_logger(__name__)
+
+
+class TypeInferenceServiceInterface(ABC):
+    """Interface for type inference services."""
+
+    @abstractmethod
+    def infer_subject_type(self, subject_info: dict) -> str:
+        """Infer the type of a subject entity."""
+        pass
+
+    @abstractmethod
+    def infer_object_type(self, object_info: dict, is_literal: bool = False) -> str:
+        """Infer the type of an object entity."""
+        pass
 
 
 class TripleProcessor:
@@ -27,29 +38,25 @@ class TripleProcessor:
     This class handles the complex logic of extracting and preparing entity
     information from triple dictionaries, separating this concern from the
     core validation logic.
-    
-    UPDATED: Now uses unified service registry for dependency injection
-    instead of the previous mixed approach.
+
+    Simplified for single-user deployment without dependency injection overhead.
     """
 
-    def __init__(self, type_inference_service: Optional[TypeInferenceServiceInterface] = None):
+    def __init__(self, type_inference_service: TypeInferenceServiceInterface = None):
         """
         Initialize the triple processor.
 
         Args:
-            type_inference_service: Service for inferring entity types.
-                                  If None, will use service registry for dependency injection.
+            type_inference_service: Optional type inference service to use
         """
-        self._type_inference_service = type_inference_service
-        self._service_registry_used = False
         self._processing_stats = {
             "total_triples_processed": 0,
             "successful_extractions": 0,
             "extraction_errors": 0,
             "type_inferences": 0,
-            "service_registry_resolutions": 0,
-            "fallback_resolutions": 0,
         }
+        self._type_inference_service = type_inference_service
+        self._service_registry_used = False
 
     def process_triple(self, triple_dict: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -189,37 +196,23 @@ class TripleProcessor:
 
     def _get_type_inference_service(self) -> TypeInferenceServiceInterface:
         """
-        Get type inference service via unified dependency injection.
-        
-        Uses the new service registry first, with fallback to the existing
-        validation service provider for backward compatibility.
-        """
-        if self._type_inference_service is None:
-            # Try unified service registry first
-            try:
-                self._type_inference_service = resolve("type_inference_service")
-                self._service_registry_used = True
-                self._processing_stats["service_registry_resolutions"] += 1
-                logger.debug("Type inference service resolved via service registry")
-                
-            except (ValueError, Exception) as registry_error:
-                # Fallback to existing validation service provider for backward compatibility
-                logger.debug(f"Service registry resolution failed ({registry_error}), using fallback")
-                try:
-                    from core.validation_service_provider import get_type_inference_service
+        Get type inference service.
 
-                    self._type_inference_service = get_type_inference_service()
-                    self._processing_stats["fallback_resolutions"] += 1
-                    logger.debug("Type inference service resolved via validation service provider")
-                    
-                except Exception as fallback_error:
-                    logger.error(f"Both service registry and fallback failed: registry={registry_error}, fallback={fallback_error}")
-                    raise RuntimeError(
-                        f"Unable to initialize type inference service. "
-                        f"Service registry error: {registry_error}. "
-                        f"Fallback error: {fallback_error}. "
-                        "Ensure type inference service is properly registered or configured."
-                    ) from fallback_error
+        Simplified for single-user deployment without dependency injection overhead.
+        """
+        # Direct instantiation - no dependency injection needed for static deployment
+        if (
+            not hasattr(self, "_type_inference_service")
+            or self._type_inference_service is None
+        ):
+            from core.intelligent_type_inference import IntelligentTypeInference
+            from core.schema_introspector import SchemaIntrospector
+
+            schema_introspector = SchemaIntrospector()
+            self._type_inference_service = IntelligentTypeInference(schema_introspector)
+            logger.debug(
+                "Type inference service created directly for static deployment"
+            )
 
         return self._type_inference_service
 
@@ -271,38 +264,44 @@ class TripleProcessor:
             "service_registry_resolutions": 0,
             "fallback_resolutions": 0,
         }
-    
-    def get_service_info(self) -> Dict[str, Any]:
+
+    def get_service_info(self) -> dict[str, Any]:
         """
         Get service information for monitoring (ServiceInterface compliance).
         """
         return {
             "service_name": "TripleProcessor",
             "service_type": "triple_processing",
-            "dependency_injection_method": "service_registry" if self._service_registry_used else "validation_provider",
-            "type_inference_service_available": self._type_inference_service is not None,
+            "dependency_injection_method": "service_registry"
+            if self._service_registry_used
+            else "validation_provider",
+            "type_inference_service_available": self._type_inference_service
+            is not None,
             "type_inference_service_type": type(self._type_inference_service).__name__
-                if self._type_inference_service else None,
+            if self._type_inference_service
+            else None,
             "processing_statistics": self._processing_stats,
             "supports_batch_processing": True,
-            "supports_statistics_reset": True
+            "supports_statistics_reset": True,
         }
-    
-    def set_type_inference_service(self, service: TypeInferenceServiceInterface) -> None:
+
+    def set_type_inference_service(
+        self, service: TypeInferenceServiceInterface
+    ) -> None:
         """
         Set the type inference service explicitly (useful for testing).
-        
+
         Args:
             service: Type inference service instance to use
         """
         self._type_inference_service = service
         self._service_registry_used = False
         logger.debug(f"Type inference service set explicitly: {type(service).__name__}")
-    
+
     def dispose(self) -> None:
         """
         Dispose of the triple processor and clean up resources.
-        
+
         Called by service lifecycle manager during shutdown.
         """
         self._type_inference_service = None
@@ -310,48 +309,23 @@ class TripleProcessor:
         logger.debug("Triple processor disposed")
 
 
-# Service registration for dependency injection
-def register_triple_processor_service():
-    """Register the triple processor with the service registry."""
-    register_singleton(
-        name="triple_processor",
-        factory=lambda: TripleProcessor(),
-        dependencies=["type_inference_service"],
-        interface=TripleProcessor
-    )
-    logger.info("Triple processor service registered")
-
-
-def get_triple_processor() -> TripleProcessor:
-    """
-    Get a triple processor instance from the service registry.
-    
-    Returns:
-        TripleProcessor instance
-    """
-    try:
-        return resolve("triple_processor")
-    except ValueError:
-        # Fallback: create instance directly for backward compatibility
-        logger.debug("Triple processor not in service registry, creating new instance")
-        return TripleProcessor()
-
-
 # Factory function for enhanced triple processor creation
 def create_triple_processor_with_service(
-    type_inference_service: TypeInferenceServiceInterface
+    type_inference_service: TypeInferenceServiceInterface,
 ) -> TripleProcessor:
     """
     Create a triple processor with a specific type inference service.
-    
+
     Useful for testing and specialized configurations.
-    
+
     Args:
         type_inference_service: Type inference service to use
-        
+
     Returns:
         Configured TripleProcessor instance
     """
     processor = TripleProcessor(type_inference_service)
-    logger.debug(f"Created triple processor with service: {type(type_inference_service).__name__}")
+    logger.debug(
+        f"Created triple processor with service: {type(type_inference_service).__name__}"
+    )
     return processor
