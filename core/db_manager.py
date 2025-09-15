@@ -2,12 +2,12 @@
 # core_db/base_db_manager.py
 from typing import Any
 
+import asyncio
 import numpy as np
 import structlog
 from neo4j import (  # type: ignore
-    AsyncDriver,
-    AsyncGraphDatabase,
-    AsyncManagedTransaction,
+    GraphDatabase,
+    ManagedTransaction,
 )
 from neo4j.exceptions import ServiceUnavailable  # type: ignore
 
@@ -36,31 +36,26 @@ class Neo4jManagerSingleton:
             return
 
         self.logger = structlog.get_logger(__name__)
-        self.driver: AsyncDriver | None = None
+        self.driver: GraphDatabase.driver | None = None  # type: ignore
         self._initialized_flag = True
         self.logger.info(
             "Neo4jManagerSingleton initialized. Call connect() to establish connection."
         )
 
     async def connect(self):
+        """Establish a synchronous Neo4j driver and verify connectivity."""
+        # Close any existing driver first (mirrors previous async behavior)
         if self.driver:
-            self.logger.info(
-                "Existing driver instance found. Attempting to close it before creating a new connection."
-            )
-            try:
-                await self.driver.close()
-            except Exception as close_error:
-                self.logger.warning(
-                    f"Error closing existing driver (it might have been already closed or invalid): {close_error}"
-                )
-            finally:
-                self.driver = None
+            await self.close()
 
         try:
-            self.driver = AsyncGraphDatabase.driver(
+            # Synchronous driver creation
+            sync_driver = GraphDatabase.driver(
                 config.NEO4J_URI, auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
             )
-            await self.driver.verify_connectivity()
+            # Verify connectivity in a thread to keep the async signature
+            await asyncio.to_thread(sync_driver.verify_connectivity)
+            self.driver = sync_driver
             self.logger.info(f"Successfully connected to Neo4j at {config.NEO4J_URI}")
         except ServiceUnavailable as e:
             self.logger.critical(
@@ -86,9 +81,10 @@ class Neo4jManagerSingleton:
             raise handle_database_error("connection", e, uri=config.NEO4J_URI)
 
     async def close(self):
+        """Close the synchronous driver."""
         if self.driver:
             try:
-                await self.driver.close()
+                await asyncio.to_thread(self.driver.close)
                 self.logger.info("Neo4j driver closed.")
             except Exception as e:
                 self.logger.error(
@@ -112,47 +108,53 @@ class Neo4jManagerSingleton:
                 },
             )
 
-    async def _execute_query_tx(
+    # -------------------------------------------------------------------------
+    # Synchronous helper implementations (run in thread)
+    # -------------------------------------------------------------------------
+
+    def _sync_execute_query_tx(
         self,
-        tx: AsyncManagedTransaction,
+        tx: ManagedTransaction,
         query: str,
         parameters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         self.logger.debug(f"Executing Cypher query: {query} with params: {parameters}")
-        result_cursor = await tx.run(query, parameters)
-        return await result_cursor.data()
+        result_cursor = tx.run(query, parameters)
+        return list(result_cursor)
 
-    async def execute_read_query(
+    def _sync_execute_read_query(
         self, query: str, parameters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        await self._ensure_connected()
-        async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            return await session.execute_read(self._execute_query_tx, query, parameters)
-
-    async def execute_write_query(
-        self, query: str, parameters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
-        await self._ensure_connected()
-        async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            return await session.execute_write(
-                self._execute_query_tx, query, parameters
+        self._ensure_connected_sync()
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+            return session.read_transaction(
+                self._sync_execute_query_tx, query, parameters
             )
 
-    async def execute_cypher_batch(
+    def _sync_execute_write_query(
+        self, query: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        self._ensure_connected_sync()
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+            return session.write_transaction(
+                self._sync_execute_query_tx, query, parameters
+            )
+
+    def _sync_execute_cypher_batch(
         self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
     ):
         if not cypher_statements_with_params:
             self.logger.info("execute_cypher_batch: No statements to execute.")
             return
 
-        await self._ensure_connected()
-        async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            tx = await session.begin_transaction()
+        self._ensure_connected_sync()
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+            tx = session.begin_transaction()
             try:
                 for query, params in cypher_statements_with_params:
                     self.logger.debug(f"Batch Cypher: {query} with params {params}")
-                    await tx.run(query, params)  # type: ignore
-                await tx.commit()  # type: ignore
+                    tx.run(query, params)
+                tx.commit()
                 self.logger.info(
                     f"Successfully executed batch of {len(cypher_statements_with_params)} Cypher statements."
                 )
@@ -163,9 +165,8 @@ class Neo4jManagerSingleton:
                     error=str(e),
                     exc_info=True,
                 )
-                # Use the same clean rollback pattern as _execute_schema_batch
-                if tx and not tx.closed():  # type: ignore
-                    await tx.rollback()  # type: ignore
+                if not tx.closed():
+                    tx.rollback()
                 raise DatabaseTransactionError(
                     "Batch Cypher execution failed",
                     details={
@@ -174,6 +175,41 @@ class Neo4jManagerSingleton:
                         "operation": "batch_execution",
                     },
                 )
+
+    def _ensure_connected_sync(self):
+        """Synchronous counterpart of _ensure_connected for thread helpers."""
+        if self.driver is None:
+            # This should only be called from within a thread where we
+            # cannot await. Raise a clear error to surface the mis‑use.
+            raise DatabaseConnectionError(
+                "Neo4j driver not initialized (synchronous helper called without connection)",
+                details={},
+            )
+        # No further action needed – driver is already connected.
+
+    # -------------------------------------------------------------------------
+    # Public async API – thin wrappers around the sync helpers
+    # -------------------------------------------------------------------------
+
+    async def execute_read_query(
+        self, query: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        await self._ensure_connected()
+        return await asyncio.to_thread(self._sync_execute_read_query, query, parameters)
+
+    async def execute_write_query(
+        self, query: str, parameters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        await self._ensure_connected()
+        return await asyncio.to_thread(self._sync_execute_write_query, query, parameters)
+
+    async def execute_cypher_batch(
+        self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
+    ):
+        await self._ensure_connected()
+        return await asyncio.to_thread(
+            self._sync_execute_cypher_batch, cypher_statements_with_params
+        )
 
     async def create_db_schema(self) -> None:
         """Create and verify Neo4j indexes and constraints in separate phases to avoid transaction conflicts.
@@ -184,19 +220,16 @@ class Neo4jManagerSingleton:
         self.logger.info(
             "Creating/verifying Neo4j schema elements (phased execution)..."
         )
-
-        # Phase 1: Schema-only operations (constraints and indexes)
+        # Phase 1
         await self._create_constraints_and_indexes()
-
-        # Phase 2: Data operations (type placeholders)
+        # Phase 2
         await self._create_type_placeholders()
-
         self.logger.info(
             "Neo4j schema (indexes, constraints, labels, relationship types, vector index) verification process complete."
         )
 
     async def _create_constraints_and_indexes(self) -> None:
-        """Create constraints, indexes, and vector index in schema-only transactions."""
+        """Create constraints, indexes, and vector index in schema‑only transactions."""
         self.logger.info("Phase 1: Creating constraints and indexes...")
 
         core_constraints_queries = [
@@ -225,18 +258,17 @@ class Neo4jManagerSingleton:
             "CREATE INDEX chapter_is_provisional IF NOT EXISTS FOR (c:`Chapter`) ON (c.is_provisional)",
         ]
 
-        vector_index_query = f"""
-        CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS
-        FOR (c:Chapter) ON (c.embedding_vector)
-        OPTIONS {{indexConfig: {{
-            `vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS},
-            `vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'
-        }}}}
-        """
-
-        schema_only_queries = (
-            core_constraints_queries + index_queries + [vector_index_query]
+        # Vector index creation – use standard string formatting to avoid backticks
+        vector_index_query = (
+            f"CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS "
+            f"FOR (c:Chapter) ON (c.embedding_vector) "
+            f"OPTIONS {{indexConfig: {{"
+            f"'vector.dimensions': {config.NEO4J_VECTOR_DIMENSIONS}, "
+            f"'vector.similarity_function': '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'"
+            f"}}}}"
         )
+
+        schema_only_queries = core_constraints_queries + index_queries + [vector_index_query]
 
         try:
             await self._execute_schema_batch(schema_only_queries)
@@ -254,14 +286,8 @@ class Neo4jManagerSingleton:
         """Create relationship type and node label placeholders in separate data transactions."""
         self.logger.info("Phase 2: Creating type placeholders...")
 
-        # Ensure schema tokens exist to avoid Neo4j warnings when
-        # matching on types that have not been used yet. Creating
-        # and immediately deleting a dummy node/relationship is sufficient.
-        # Note: Since RELATIONSHIP_TYPES and NODE_LABELS are constants from our codebase,
-        # injection risk is minimal, but we use this approach for security best practice.
         relationship_type_queries = []
         for rel_type in RELATIONSHIP_TYPES:
-            # Use string formatting safely with validated constants
             query = (
                 f"CREATE (a:__RelTypePlaceholder)-[:{rel_type}]->"
                 f"(b:__RelTypePlaceholder) WITH a,b DETACH DELETE a,b"
@@ -270,7 +296,6 @@ class Neo4jManagerSingleton:
 
         node_label_queries = []
         for label in NODE_LABELS:
-            # Use backticks to handle labels with special characters safely
             query = f"CREATE (a:`{label}`) WITH a DELETE a"
             node_label_queries.append(query)
 
@@ -302,17 +327,17 @@ class Neo4jManagerSingleton:
 
     async def _execute_schema_batch(self, queries: list[str]) -> None:
         """Execute schema operations in isolation (no data writes)."""
-        await self._ensure_connected()
-        async with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            tx = await session.begin_transaction()
+        self._ensure_connected_sync()
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+            tx = session.begin_transaction()
             try:
                 for query in queries:
                     self.logger.debug(f"Schema operation: {query[:100]}...")
-                    await tx.run(query)
-                await tx.commit()
+                    tx.run(query)
+                tx.commit()
             except Exception:
-                if tx and not tx.closed():  # type: ignore
-                    await tx.rollback()  # type: ignore
+                if not tx.closed():
+                    tx.rollback()
                 raise
 
     async def _execute_schema_individually(self, queries: list[str]) -> None:
@@ -327,6 +352,10 @@ class Neo4jManagerSingleton:
                 self.logger.warning(
                     f"Fallback: Failed to apply schema operation '{query_text[:100]}...': {individual_e}"
                 )
+
+    # -------------------------------------------------------------------------
+    # Helper methods for embeddings – unchanged
+    # -------------------------------------------------------------------------
 
     def embedding_to_list(self, embedding: np.ndarray | None) -> list[float] | None:
         if embedding is None:

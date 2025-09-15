@@ -312,7 +312,7 @@ class Neo4jDatabaseService:
             # Check 2: Connection test
             if self._neo4j_manager.driver:
                 try:
-                    await self._neo4j_manager.driver.verify_connectivity()
+                    await asyncio.to_thread(self._neo4j_manager.driver.verify_connectivity)
                     health_info["checks"]["connectivity"] = True
                 except Exception as e:
                     health_info["checks"]["connectivity"] = False
@@ -361,7 +361,7 @@ class Neo4jDatabaseService:
             if not self._neo4j_manager.driver:
                 return False
             
-            await self._neo4j_manager.driver.verify_connectivity()
+            await asyncio.to_thread(self._neo4j_manager.driver.verify_connectivity)
             return True
         except Exception as e:
             logger.debug(f"Connectivity verification failed: {e}")
