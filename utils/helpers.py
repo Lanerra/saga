@@ -63,8 +63,6 @@ def flatten_dict(
     return dict(items)
 
 
-
-
 def _is_fill_in(value: Any) -> bool:
     """Return True if ``value`` is the fill-in placeholder."""
     return isinstance(value, str) and value.strip() == config.FILL_IN

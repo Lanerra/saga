@@ -9,7 +9,7 @@ from ..enhanced_node_taxonomy import NodeClassification
 
 class NodeClassifications:
     """Enhanced classification of node types into semantic categories.
-    
+
     This class now serves as a compatibility layer that imports all
     classifications from the unified enhanced_node_taxonomy system.
     """
@@ -44,12 +44,12 @@ class NodeClassifications:
     def PHYSICAL_PRESENCE_FILTERED(self):
         """PHYSICAL_PRESENCE without legacy WorldElement references."""
         return self._filter_legacy_types(self.PHYSICAL_PRESENCE)
-    
+
     @property
     def LOCATABLE_FILTERED(self):
         """LOCATABLE without legacy WorldElement references."""
         return self._filter_legacy_types(self.LOCATABLE)
-    
+
     @property
     def OWNABLE_FILTERED(self):
         """OWNABLE without legacy WorldElement references."""

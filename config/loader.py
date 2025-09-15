@@ -21,11 +21,13 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+
 # The settings module contains the ``SagaSettings`` class and the ``settings``
 # singleton instance.  Import it lazily inside the function so that reloading
 # works correctly when the function is called multiple times.
 def _import_settings_module():
     import config.settings as _settings_mod
+
     return _settings_mod
 
 
@@ -47,7 +49,9 @@ def reload_settings() -> bool:
         # 3️⃣ Update the ``config`` package globals.
         #    ``config.__init__`` imports ``settings`` as a name, so we need to
         #    replace that reference with the newly created instance.
-        from config import __init__ as config_pkg  # pylint: disable=import-outside-toplevel
+        from config import (
+            __init__ as config_pkg,  # pylint: disable=import-outside-toplevel
+        )
 
         # Replace the ``settings`` object.
         config_pkg.settings = settings_mod.settings
@@ -58,7 +62,7 @@ def reload_settings() -> bool:
             setattr(config_pkg, field_name, getattr(settings_mod.settings, field_name))
 
         return True
-    except Exception as exc:  # pragma: no cover – defensive fallback
+    except Exception:  # pragma: no cover – defensive fallback
         # In a real system you would log this; for now we simply return False.
         return False
 
@@ -68,6 +72,7 @@ def reload_settings() -> bool:
 # This is a convenience for developers and can be disabled in production
 # by not importing this module.
 # -------------------------------------------------------------------------
+
 
 def _handle_sighup(signum: int, frame: Any) -> None:  # pragma: no cover
     """Signal handler that invokes ``reload_settings``."""

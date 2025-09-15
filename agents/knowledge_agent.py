@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from async_lru import alru_cache  # type: ignore
 
@@ -693,7 +693,6 @@ class KnowledgeAgent:
             },
         )
 
-
         try:
             text, usage = await llm_service.async_call_llm(
                 model_name=self.model_name,
@@ -710,8 +709,6 @@ class KnowledgeAgent:
         except Exception as e:
             logger.error(f"LLM call for KG extraction failed: {e}", exc_info=True)
             return "", None
-
-
 
     async def extract_and_merge_knowledge(
         self,
@@ -1283,90 +1280,89 @@ class KnowledgeAgent:
             logger.error(f"Error during full maintenance cycle: {e}", exc_info=True)
 
     def prioritize_candidates_with_state_tracker(
-        self, 
-        candidates: list[dict[str, Any]], 
-        state_tracker: "StateTracker"
+        self, candidates: list[dict[str, Any]], state_tracker: "StateTracker"
     ) -> list[dict[str, Any]]:
         """Prioritize entity candidates using StateTracker metadata for enhanced healing logic.
-        
+
         This method implements the StateTracker enhancement described in the documentation
         to prioritize recent entities with metadata matches during healing processes.
-        
+
         Args:
             candidates: List of candidate entities to prioritize
             state_tracker: StateTracker instance with entity metadata
-            
+
         Returns:
             List of candidates sorted by priority (most recent/relevant first)
         """
         if not config.STATE_TRACKER_ENABLED or not candidates:
             return candidates
-            
+
         try:
             # Get all tracked entities from StateTracker
             tracked_entities = asyncio.create_task(state_tracker.get_all())
             # Since this method needs to be sync for compatibility, we'll implement
             # async version separately and call it from async contexts
-            logger.debug("StateTracker prioritization requested but requires async context")
+            logger.debug(
+                "StateTracker prioritization requested but requires async context"
+            )
             return candidates
-            
+
         except Exception as e:
             logger.warning(f"Error during StateTracker candidate prioritization: {e}")
             return candidates
-    
+
     async def prioritize_candidates_with_state_tracker_async(
-        self, 
-        candidates: list[dict[str, Any]], 
-        state_tracker: "StateTracker"
+        self, candidates: list[dict[str, Any]], state_tracker: "StateTracker"
     ) -> list[dict[str, Any]]:
         """Async version of candidate prioritization using StateTracker metadata.
-        
+
         Prioritizes candidates based on:
         1. Recent creation timestamp in StateTracker
-        2. Metadata quality and completeness  
+        2. Metadata quality and completeness
         3. Type matching between candidate and tracked entity
-        
+
         Args:
             candidates: List of candidate entities to prioritize
             state_tracker: StateTracker instance with entity metadata
-            
+
         Returns:
             List of candidates sorted by priority (most recent/relevant first)
         """
         if not config.STATE_TRACKER_ENABLED or not candidates:
             return candidates
-            
+
         try:
             # Get all tracked entities from StateTracker
             tracked_entities = await state_tracker.get_all()
-            
+
             if not tracked_entities:
                 logger.debug("No tracked entities found in StateTracker")
                 return candidates
-            
+
             # Create priority scores for candidates
             candidate_scores = []
-            
+
             for candidate in candidates:
                 candidate_name = candidate.get("name", "")
                 candidate_id = candidate.get("id", "")
-                
+
                 # Base score
                 score = 0.0
-                
+
                 # Check if candidate is tracked in StateTracker
                 metadata = tracked_entities.get(candidate_name)
                 if metadata:
                     # Bonus for being tracked
                     score += 1.0
-                    
+
                     # Bonus for recent timestamp (parse ISO format)
                     try:
                         from datetime import datetime
+
                         entity_time = datetime.fromisoformat(metadata["timestamp"])
                         now = datetime.now()
                         hours_ago = (now - entity_time).total_seconds() / 3600
-                        
+
                         # More recent = higher score (max bonus of 2.0 for entities < 1 hour old)
                         if hours_ago < 1:
                             score += 2.0
@@ -1379,44 +1375,53 @@ class KnowledgeAgent:
                     except (ValueError, KeyError):
                         # Invalid timestamp, give small bonus anyway
                         score += 0.5
-                    
+
                     # Bonus for metadata quality (description length)
                     description_length = len(metadata.get("description", ""))
                     if description_length > 100:
                         score += 1.0
                     elif description_length > 50:
                         score += 0.5
-                    
+
                     # Type matching bonus
                     candidate_type = candidate.get("type", "").lower()
                     tracked_type = metadata.get("type", "").lower()
-                    
+
                     if candidate_type == "character" and tracked_type == "character":
                         score += 0.5
-                    elif candidate_type in ["worldelement", "location", "organization"] and tracked_type == "world_item":
+                    elif (
+                        candidate_type in ["worldelement", "location", "organization"]
+                        and tracked_type == "world_item"
+                    ):
                         score += 0.5
-                
+
                 # Check for similar descriptions in StateTracker
                 candidate_desc = candidate.get("description", "")
                 if candidate_desc:
-                    similar_name = await state_tracker.has_similar_description(candidate_desc)
+                    similar_name = await state_tracker.has_similar_description(
+                        candidate_desc
+                    )
                     if similar_name and similar_name != candidate_name:
                         # Slight penalty for similar descriptions (possible duplicates)
                         score -= 0.3
-                
+
                 candidate_scores.append((score, candidate))
-            
+
             # Sort by score descending (highest priority first)
-            sorted_candidates = sorted(candidate_scores, key=lambda x: x[0], reverse=True)
-            prioritized_candidates = [candidate for score, candidate in sorted_candidates]
-            
+            sorted_candidates = sorted(
+                candidate_scores, key=lambda x: x[0], reverse=True
+            )
+            prioritized_candidates = [
+                candidate for score, candidate in sorted_candidates
+            ]
+
             logger.debug(
                 f"StateTracker prioritization: processed {len(candidates)} candidates, "
                 f"top candidate score: {sorted_candidates[0][0] if sorted_candidates else 0}"
             )
-            
+
             return prioritized_candidates
-            
+
         except Exception as e:
             logger.warning(f"Error during StateTracker candidate prioritization: {e}")
             return candidates
@@ -1463,7 +1468,6 @@ class KnowledgeAgent:
         removed = await kg_queries.deduplicate_relationships()
         if removed:
             logger.info("KG Healer: Deduplicated %d relationships.", removed)
-
 
         logger.info("KG Healer/Enricher: Maintenance cycle complete.")
 
@@ -1939,14 +1943,17 @@ class KnowledgeAgent:
         )
 
         # Enhance candidates with StateTracker metadata if available
-        from processing.state_tracker import StateTracker
         # Try to get StateTracker instance from the current context
         # This is a simplified approach - in practice, StateTracker would be passed in
         try:
             # Prioritize candidates using StateTracker if available
-            prioritized_pairs = await self._prioritize_candidate_pairs_with_state_tracker(candidate_pairs)
+            prioritized_pairs = (
+                await self._prioritize_candidate_pairs_with_state_tracker(
+                    candidate_pairs
+                )
+            )
             candidate_pairs = prioritized_pairs
-            logger.info(f"Prioritized candidate pairs using StateTracker metadata")
+            logger.info("Prioritized candidate pairs using StateTracker metadata")
         except Exception as e:
             logger.debug(f"StateTracker prioritization not available: {e}")
 

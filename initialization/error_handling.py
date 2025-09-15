@@ -1,8 +1,9 @@
 # initialization/error_handling.py
 """Standardized error handling for bootstrap operations."""
 
-from typing import Any, Optional
 from enum import Enum
+from typing import Any
+
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -10,15 +11,21 @@ logger = structlog.get_logger(__name__)
 
 class ErrorSeverity(Enum):
     """Severity levels for bootstrap errors."""
-    WARNING = "warning"      # Non-blocking issue that allows continuation
-    ERROR = "error"          # Blocking issue that prevents specific operation but allows overall continuation
-    CRITICAL = "critical"    # Fatal error that should stop the entire bootstrap process
+
+    WARNING = "warning"  # Non-blocking issue that allows continuation
+    ERROR = "error"  # Blocking issue that prevents specific operation but allows overall continuation
+    CRITICAL = "critical"  # Fatal error that should stop the entire bootstrap process
 
 
 class BootstrapError(Exception):
     """Base exception for bootstrap operations."""
-    
-    def __init__(self, message: str, severity: ErrorSeverity = ErrorSeverity.ERROR, context: dict[str, Any] | None = None):
+
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.ERROR,
+        context: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.severity = severity
@@ -27,16 +34,19 @@ class BootstrapError(Exception):
 
 class ValidationError(BootstrapError):
     """Raised when validation fails."""
+
     pass
 
 
 class GenerationError(BootstrapError):
     """Raised when content generation fails."""
+
     pass
 
 
 class DataLoadError(BootstrapError):
     """Raised when data loading fails."""
+
     pass
 
 
@@ -45,34 +55,38 @@ def handle_bootstrap_error(
     operation: str,
     severity: ErrorSeverity = ErrorSeverity.ERROR,
     context: dict[str, Any] | None = None,
-    reraise: bool = False
+    reraise: bool = False,
 ) -> bool:
     """Standardized error handling for bootstrap operations.
-    
+
     Args:
         error: The exception that occurred
         operation: Description of the operation that failed
         severity: How severe the error is
         context: Additional context for debugging
         reraise: Whether to re-raise the error after logging
-    
+
     Returns:
         True if operation should continue, False if it should be aborted
     """
     context = context or {}
     error_msg = f"{operation} failed: {error}"
-    
+
     # Log based on severity
     if severity == ErrorSeverity.WARNING:
         logger.warning(error_msg, error_type=type(error).__name__, context=context)
         return True  # Continue operation
     elif severity == ErrorSeverity.ERROR:
-        logger.error(error_msg, error_type=type(error).__name__, context=context, exc_info=True)
+        logger.error(
+            error_msg, error_type=type(error).__name__, context=context, exc_info=True
+        )
         if reraise:
             raise
         return False  # Abort this specific operation but continue overall
     elif severity == ErrorSeverity.CRITICAL:
-        logger.critical(error_msg, error_type=type(error).__name__, context=context, exc_info=True)
+        logger.critical(
+            error_msg, error_type=type(error).__name__, context=context, exc_info=True
+        )
         if reraise:
             raise
         return False  # Abort entire process
@@ -85,10 +99,10 @@ def safe_bootstrap_operation(
     default_return=None,
     error_severity: ErrorSeverity = ErrorSeverity.ERROR,
     context: dict[str, Any] | None = None,
-    **kwargs
+    **kwargs,
 ) -> tuple[Any, bool]:
     """Safely execute a bootstrap operation with standardized error handling.
-    
+
     Args:
         operation_name: Human-readable name for the operation
         operation_func: The function to execute
@@ -97,7 +111,7 @@ def safe_bootstrap_operation(
         error_severity: How to handle errors
         context: Additional context for error reporting
         **kwargs: Keyword arguments to pass to operation_func
-        
+
     Returns:
         Tuple of (result, success_flag)
     """
@@ -118,7 +132,7 @@ async def safe_async_bootstrap_operation(
     default_return=None,
     error_severity: ErrorSeverity = ErrorSeverity.ERROR,
     context: dict[str, Any] | None = None,
-    **kwargs
+    **kwargs,
 ) -> tuple[Any, bool]:
     """Async version of safe_bootstrap_operation."""
     try:
@@ -133,10 +147,10 @@ async def safe_async_bootstrap_operation(
 
 def validate_bootstrap_preconditions(checks: dict[str, Any]) -> None:
     """Validate preconditions before starting bootstrap operations.
-    
+
     Args:
         checks: Dictionary of check_name -> check_result pairs
-        
+
     Raises:
         ValidationError: If any critical precondition fails
     """
@@ -144,20 +158,17 @@ def validate_bootstrap_preconditions(checks: dict[str, Any]) -> None:
     for check_name, check_result in checks.items():
         if not check_result:
             failed_checks.append(check_name)
-    
+
     if failed_checks:
         raise ValidationError(
             f"Bootstrap preconditions failed: {', '.join(failed_checks)}",
             ErrorSeverity.CRITICAL,
-            {"failed_checks": failed_checks}
+            {"failed_checks": failed_checks},
         )
 
 
 def create_error_recovery_context(
-    operation: str,
-    attempt_number: int,
-    max_attempts: int,
-    error: Exception
+    operation: str, attempt_number: int, max_attempts: int, error: Exception
 ) -> dict[str, Any]:
     """Create context for error recovery operations."""
     return {
@@ -165,5 +176,5 @@ def create_error_recovery_context(
         "attempt": attempt_number,
         "max_attempts": max_attempts,
         "error_type": type(error).__name__,
-        "error_message": str(error)
+        "error_message": str(error),
     }

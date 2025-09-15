@@ -8,10 +8,7 @@ These tests verify:
 
 from __future__ import annotations
 
-import os
 import importlib
-
-import pytest
 
 # Import the config package (the public API lives in ``config.__init__``)
 import config

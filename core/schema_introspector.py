@@ -11,7 +11,12 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from core.db_manager import neo4j_manager
-from core.lightweight_cache import get_cached_value, set_cached_value, register_cache_service, invalidate_cache_key
+from core.lightweight_cache import (
+    get_cached_value,
+    invalidate_cache_key,
+    register_cache_service,
+    set_cached_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +37,7 @@ class SchemaIntrospector:
         cached_result = get_cached_value(cache_key, self._service_name)
         if cached_result is not None:
             return cached_result
-            
+
         try:
             results = await neo4j_manager.execute_read_query(
                 "CALL db.labels() YIELD label RETURN label"
@@ -55,7 +60,7 @@ class SchemaIntrospector:
         cached_result = get_cached_value(cache_key, self._service_name)
         if cached_result is not None:
             return cached_result
-            
+
         try:
             results = await neo4j_manager.execute_read_query(
                 "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType"
@@ -82,7 +87,7 @@ class SchemaIntrospector:
         cached_result = get_cached_value(cache_key, self._service_name)
         if cached_result is not None:
             return cached_result
-            
+
         try:
             labels = await self.get_active_labels()
             frequencies = {}
@@ -116,7 +121,7 @@ class SchemaIntrospector:
         cached_result = get_cached_value(cache_key, self._service_name)
         if cached_result is not None:
             return cached_result
-            
+
         query = """
         MATCH (a)-[r]->(b)
         WHERE size(labels(a)) > 0 AND size(labels(b)) > 0
@@ -148,7 +153,7 @@ class SchemaIntrospector:
         cached_result = get_cached_value(cache_key, self._service_name)
         if cached_result is not None:
             return cached_result
-            
+
         query = f"""
         MATCH (n)
         WHERE n.name IS NOT NULL AND size(labels(n)) > 0
@@ -198,7 +203,7 @@ class SchemaIntrospector:
         cached_result = get_cached_value(cache_key, self._service_name)
         if cached_result is not None:
             return cached_result
-            
+
         try:
             labels = await self.get_active_labels()
             relationships = await self.get_active_relationship_types()
@@ -231,14 +236,17 @@ class SchemaIntrospector:
                 "relationship_patterns": len(patterns),
                 "last_updated": datetime.utcnow().isoformat(),
             }
-            
+
             # Cache the summary
             set_cached_value(cache_key, result, self._service_name, ttl=300)
             return result
 
         except Exception as e:
             logger.error(f"Failed to generate schema summary: {e}")
-            error_result = {"error": str(e), "last_updated": datetime.utcnow().isoformat()}
+            error_result = {
+                "error": str(e),
+                "last_updated": datetime.utcnow().isoformat(),
+            }
             # Cache the error result briefly
             set_cached_value(cache_key, error_result, self._service_name, ttl=60)
             return error_result

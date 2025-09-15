@@ -40,9 +40,11 @@ from models import (
 )
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
-from processing.zero_copy_context_generator import generate_hybrid_chapter_context_native
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
+from processing.zero_copy_context_generator import (
+    generate_hybrid_chapter_context_native,
+)
 from ui.rich_display import RichDisplayManager
 from utils.ingestion_utils import split_text_into_chapters
 
@@ -958,7 +960,6 @@ class NANA_Orchestrator:
         await self._save_debug_output(
             novel_chapter_number, "final_summary", result.get("summary")
         )
-
 
         # Save chapter data to Neo4j database
         try:

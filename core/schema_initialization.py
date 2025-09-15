@@ -21,7 +21,7 @@ async def initialize_static_schema_system() -> bool:
         True if initialization was successful, False otherwise
     """
     logger.info("Initializing static schema system...")
-    
+
     # Static schema is always available and doesn't need complex initialization
     logger.info("Static schema system initialized successfully")
     return True
@@ -69,7 +69,5 @@ async def startup_schema_integration() -> bool:
         return True
 
     except Exception as e:
-        logger.error(
-            f"Error in static schema startup integration: {e}", exc_info=True
-        )
+        logger.error(f"Error in static schema startup integration: {e}", exc_info=True)
         return False

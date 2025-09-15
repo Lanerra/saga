@@ -1,8 +1,8 @@
 # core/db_manager.py
 # core_db/base_db_manager.py
+import asyncio
 from typing import Any
 
-import asyncio
 import numpy as np
 import structlog
 from neo4j import (  # type: ignore
@@ -201,7 +201,9 @@ class Neo4jManagerSingleton:
         self, query: str, parameters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         await self._ensure_connected()
-        return await asyncio.to_thread(self._sync_execute_write_query, query, parameters)
+        return await asyncio.to_thread(
+            self._sync_execute_write_query, query, parameters
+        )
 
     async def execute_cypher_batch(
         self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
@@ -268,7 +270,9 @@ class Neo4jManagerSingleton:
             f"}}}}"
         )
 
-        schema_only_queries = core_constraints_queries + index_queries + [vector_index_query]
+        schema_only_queries = (
+            core_constraints_queries + index_queries + [vector_index_query]
+        )
 
         try:
             await self._execute_schema_batch(schema_only_queries)

@@ -62,8 +62,7 @@ class Neo4jExtractor:
 
     @staticmethod
     def extract_core_fields_from_node(
-        node: neo4j.Node | dict[str, Any], 
-        core_fields: set[str]
+        node: neo4j.Node | dict[str, Any], core_fields: set[str]
     ) -> dict[str, Any]:
         """Extract additional properties that aren't core fields."""
         return {k: v for k, v in dict(node).items() if k not in core_fields}

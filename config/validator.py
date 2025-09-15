@@ -22,13 +22,11 @@ The report layout:
 
 from __future__ import annotations
 
-from typing import List, Dict
-
-from .settings import SagaSettings, settings as current_settings
+from .settings import settings as current_settings
 
 
 def _add_issue(
-    issues: Dict[str, List[Dict[str, str]]],
+    issues: dict[str, list[dict[str, str]]],
     severity: str,
     field: str,
     message: str,
@@ -37,19 +35,21 @@ def _add_issue(
     issues.setdefault(severity, []).append({"field": field, "message": message})
 
 
-def validate_all() -> Dict:
+def validate_all() -> dict:
     """
     Validate the current configuration state.
 
     Returns a health‑report dict with overall status and detailed issue lists.
     """
-    issues: Dict[str, List[Dict[str, str]]] = {"errors": [], "warnings": [], "info": []}
+    issues: dict[str, list[dict[str, str]]] = {"errors": [], "warnings": [], "info": []}
 
     # 1️⃣ Pydantic field validation – already performed when the settings instance
     #    was created.  If the instance exists, we assume fields are of the correct type.
     #    However, we still guard against a completely missing instance.
     if current_settings is None:
-        _add_issue(issues, "errors", "settings", "Configuration object not initialized.")
+        _add_issue(
+            issues, "errors", "settings", "Configuration object not initialized."
+        )
         return {
             "overall_health": "error",
             "issues": issues,
@@ -70,7 +70,10 @@ def validate_all() -> Dict:
         )
 
     # Embedding dimension consistency
-    if current_settings.NEO4J_VECTOR_DIMENSIONS != current_settings.EXPECTED_EMBEDDING_DIM:
+    if (
+        current_settings.NEO4J_VECTOR_DIMENSIONS
+        != current_settings.EXPECTED_EMBEDDING_DIM
+    ):
         _add_issue(
             issues,
             "warnings",
@@ -92,7 +95,9 @@ def validate_all() -> Dict:
     for name, min_val, max_val in cache_fields:
         value = getattr(current_settings, name)
         if value < min_val:
-            _add_issue(issues, "errors", name, f"{name} must be >= {min_val}; got {value}.")
+            _add_issue(
+                issues, "errors", name, f"{name} must be >= {min_val}; got {value}."
+            )
         elif value > max_val:
             _add_issue(
                 issues,

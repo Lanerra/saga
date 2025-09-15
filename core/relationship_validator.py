@@ -35,8 +35,6 @@ except Exception:  # pragma: no cover
 logger = structlog.get_logger(__name__)
 
 
-
-
 class ValidationResult:
     """Result of relationship validation with detailed feedback."""
 

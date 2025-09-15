@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     setup_logging_nana()
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--ingest", default=None, help="Path to text file to ingest")
     args = parser.parse_args()

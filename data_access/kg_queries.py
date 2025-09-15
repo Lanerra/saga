@@ -1241,7 +1241,9 @@ async def add_kg_triples_batch_to_db(
                     object_name, object_category, object_type
                 )
                 if upgraded_object_type != object_type:
-                    upgrade_key = f"object:{object_name}:{object_type}->{upgraded_object_type}"
+                    upgrade_key = (
+                        f"object:{object_name}:{object_type}->{upgraded_object_type}"
+                    )
                     if upgrade_key not in _upgrade_logged:
                         logger.info(
                             f"Type inference upgraded object {object_type} -> {upgraded_object_type} for '{object_name}'"
@@ -1701,7 +1703,9 @@ async def get_entity_context_for_resolution(
             return results[0]
         else:
             # Debug: Check if entity exists with any labels
-            debug_query = "MATCH (e {id: $entity_id}) RETURN e.name AS name, labels(e) AS labels"
+            debug_query = (
+                "MATCH (e {id: $entity_id}) RETURN e.name AS name, labels(e) AS labels"
+            )
             debug_results = await neo4j_manager.execute_read_query(debug_query, params)
             if debug_results:
                 logger.debug(

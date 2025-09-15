@@ -32,7 +32,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .settings import SagaSettings, settings as current_settings
+from .settings import SagaSettings
+from .settings import settings as current_settings
 
 
 def _format_default(value: Any) -> str:
@@ -47,7 +48,9 @@ def _format_default(value: Any) -> str:
     return repr(value)
 
 
-def generate_docs(output_path: str | os.PathLike = "docs/generated_configuration_schema.md") -> None:
+def generate_docs(
+    output_path: str | os.PathLike = "docs/generated_configuration_schema.md",
+) -> None:
     """
     Generate a Markdown file documenting all configuration fields.
 
@@ -80,7 +83,11 @@ def generate_docs(output_path: str | os.PathLike = "docs/generated_configuration
         default_val = getattr(current_settings, field_name, None)
         default_str = _format_default(default_val)
 
-        description = field_info.description.replace("\n", " ").strip() if field_info.description else ""
+        description = (
+            field_info.description.replace("\n", " ").strip()
+            if field_info.description
+            else ""
+        )
 
         description = description.replace("|", "\\|")
 

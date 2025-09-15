@@ -284,7 +284,7 @@ class SagaSettings(BaseSettings):
     SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = 2
 
     @model_validator(mode="after")
-    def set_dynamic_model_defaults(self) -> "SagaSettings":
+    def set_dynamic_model_defaults(self) -> SagaSettings:
         return self
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env")
@@ -397,4 +397,6 @@ DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
 
 # State Tracker Configuration
 STATE_TRACKER_ENABLED: bool = True  # Enable StateTracker for bootstrap generation
-STATE_TRACKER_SIMILARITY_THRESHOLD: float = 0.85  # Threshold for description similarity checks
+STATE_TRACKER_SIMILARITY_THRESHOLD: float = (
+    0.85  # Threshold for description similarity checks
+)

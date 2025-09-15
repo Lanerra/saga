@@ -11,7 +11,6 @@ import asyncio
 import logging
 import sys
 
-import config
 from core.schema_initialization import (
     setup_static_schema_logging,
     startup_schema_integration,

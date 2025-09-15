@@ -1,13 +1,10 @@
 # utils/text_processing.py
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import spacy
 from rapidfuzz.fuzz import partial_ratio_alignment
-
-import config
-from utils import _is_fill_in
 
 logger = logging.getLogger(__name__)
 

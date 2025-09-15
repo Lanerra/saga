@@ -7,8 +7,8 @@ from .agent_models import (
     ProblemDetail,
     SceneDetail,
 )
-from .kg_models import CharacterProfile, WorldItem
 from .db_extraction_utils import Neo4jExtractor
+from .kg_models import CharacterProfile, WorldItem
 from .user_input_models import (
     CharacterGroupModel,
     KeyLocationModel,
