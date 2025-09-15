@@ -36,8 +36,12 @@ def _get_sync_cache(service_name: str, maxsize: int = 128):
     return _service_caches[service_name]()
 
 
-def _get_async_cache(service_name: str, maxsize: int = 128):
-    """Get or create an async LRU cache for a service."""
+async def _get_async_cache(service_name: str, maxsize: int = 128):
+    """Get or create an async LRU cache for a service.
+
+    Callers must ``await`` this helper to ensure the cache is initialized and to
+    obtain the mutable mapping used for storage.
+    """
     if service_name not in _service_async_caches:
         from async_lru import alru_cache
 
@@ -47,8 +51,12 @@ def _get_async_cache(service_name: str, maxsize: int = 128):
 
         _service_async_caches[service_name] = _cache
         # Initialize the cache
-        asyncio.run(_cache())
-    return _service_async_caches[service_name]()
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            await _cache()
+        else:
+            asyncio.run(_cache())
+    return await _service_async_caches[service_name]()
 
 
 def get_cached_value(key: str, service_name: str) -> Any | None:
