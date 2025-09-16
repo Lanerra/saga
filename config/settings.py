@@ -1,3 +1,4 @@
+# config/settings.py
 """
 Configuration settings for the Saga Novel Generation system.
 Uses Pydantic BaseSettings for automatic environment variable loading.

@@ -1,3 +1,4 @@
+# utils/schema_manager_cli.py
 #!/usr/bin/env python3
 # utils/schema_manager_cli.py
 """

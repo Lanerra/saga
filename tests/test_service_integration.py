@@ -1,3 +1,4 @@
+# tests/test_service_integration.py
 #!/usr/bin/env python3
 """
 Integration test to verify that services work with the new lightweight cache.

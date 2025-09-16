@@ -1,3 +1,4 @@
+# core/relationship_constraints/__init__.py
 """Relationship constraint system with consolidated constraint definitions."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# core/relationship_constraints/constraints.py
 """Unified relationship constraint definitions."""
 
 from __future__ import annotations

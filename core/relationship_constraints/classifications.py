@@ -1,3 +1,4 @@
+# core/relationship_constraints/classifications.py
 """Node classifications for relationship constraint system.
 
 This module now imports from the unified enhanced_node_taxonomy system

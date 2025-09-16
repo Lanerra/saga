@@ -1,3 +1,4 @@
+# core/database_interface.py
 """Minimal Neo4j database wrapper."""
 
 from typing import Any

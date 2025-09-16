@@ -1,3 +1,4 @@
+# config/validator.py
 """
 Configuration validation utilities for the SAGA system.
 

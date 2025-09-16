@@ -1,3 +1,4 @@
+# utils/json_utils.py
 """JSON sanitization and safe loading utilities for agent outputs.
 
 Designed for single‑process CLI usage. Avoids heavy dependencies and
