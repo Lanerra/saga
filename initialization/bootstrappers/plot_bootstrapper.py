@@ -102,11 +102,10 @@ async def bootstrap_plot_outline(
     if not tasks:
         return plot_outline, None
 
-    results = await asyncio.gather(*tasks.values())
+    # Process each field sequentially to avoid parallel similar-sounding outputs
     task_keys = list(tasks.keys())
-
-    for i, (value, usage) in enumerate(results):
-        field = task_keys[i]
+    for field in task_keys:
+        value, usage = await tasks[field]
         if usage:
             for k, v in usage.items():
                 if isinstance(v, dict):

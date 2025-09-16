@@ -206,8 +206,8 @@ async def _bootstrap_world_names(
     new_items_to_add_stage1: dict[str, dict[str, WorldItem]] = {}
     items_to_remove_stage1: dict[str, list[str]] = {}
 
-    # Use parallel processing for better performance
-    semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_LLM_CALLS)
+    # Process strictly sequentially to avoid similar-sounding duplicates
+    semaphore = asyncio.Semaphore(1)
     name_generation_tasks = []
 
     async def generate_name_for_item(
@@ -279,17 +279,17 @@ async def _bootstrap_world_names(
 
             return category, item_name, item_obj, generated_name, cumulative_usage
 
-    # Create all name generation tasks
-    for category, item_name, item_obj in items_needing_names:
-        task = generate_name_for_item(category, item_name, item_obj)
-        name_generation_tasks.append(task)
-
+    # Execute name generation strictly sequentially
     logger.info(
-        f"Starting parallel name generation for {len(name_generation_tasks)} items..."
+        f"Starting sequential name generation for {len(items_needing_names)} items..."
     )
-
-    # Execute all name generation tasks in parallel
-    name_results = await asyncio.gather(*name_generation_tasks, return_exceptions=True)
+    name_results = []
+    for category, item_name, item_obj in items_needing_names:
+        try:
+            result = await generate_name_for_item(category, item_name, item_obj)
+            name_results.append(result)
+        except Exception as e:
+            name_results.append(e)
 
     # Process results and check for duplicates
     successful_generations = []
@@ -301,7 +301,7 @@ async def _bootstrap_world_names(
 
             handle_bootstrap_error(
                 result,
-                "Parallel name generation task",
+                "Sequential name generation task",
                 ErrorSeverity.ERROR,
                 {"task_type": "name_generation"},
             )
@@ -337,8 +337,8 @@ async def _bootstrap_world_names(
             # Conflict resolution: first item keeps name, others get retried
             logger.warning(
                 f"Name conflict detected for '{generated_name}' among {len(conflicting_items)} items. "
-                "Resolving with sequential fallback."
-            )
+            "Resolving with sequential fallback."
+        )
 
             # First item gets the name
             category, item_name, item_obj = conflicting_items[0]
@@ -476,7 +476,7 @@ async def _bootstrap_world_names(
         items_to_remove_stage1.setdefault(category, []).append(item_name)
 
     logger.info(
-        f"Parallel name generation complete. Successfully generated {len(final_assignments)} names "
+        f"Sequential name generation complete. Successfully generated {len(final_assignments)} names "
         f"out of {len(items_needing_names)} requested."
     )
 
@@ -569,19 +569,14 @@ async def _bootstrap_world_properties(
 
     if property_bootstrap_tasks:
         logger.info(
-            "Bootstrapping properties for %d world items.",
+            "Bootstrapping properties sequentially for %d world items.",
             len(property_bootstrap_tasks),
         )
-        property_results = await asyncio.gather(
-            *property_bootstrap_tasks.values(), return_exceptions=True
-        )
-        logger.info("Property bootstrapping phase complete.")
-
-        # Process property results
-        for (category, item_name, prop_name), result in zip(
-            property_bootstrap_tasks.keys(), property_results, strict=False
-        ):
-            if isinstance(result, Exception):
+        # Process property results sequentially to avoid parallel LLM calls
+        for (category, item_name, prop_name), coro in property_bootstrap_tasks.items():
+            try:
+                prop_value, prop_usage = await coro
+            except Exception as result:
                 from ..error_handling import ErrorSeverity, handle_bootstrap_error
 
                 handle_bootstrap_error(
@@ -595,8 +590,6 @@ async def _bootstrap_world_properties(
                     },
                 )
                 continue
-
-            prop_value, prop_usage = result
             _accumulate_usage(prop_usage)
 
             target_item = world_building[category][item_name]

@@ -49,6 +49,7 @@ async def bootstrap_characters(
     state_tracker: StateTracker | None = None,
 ) -> tuple[dict[str, CharacterProfile], dict[str, int] | None]:
     """Fill missing character profile data via LLM with proactive shared state management."""
+    # Sequential processing replaces parallel task batching
     tasks: dict[tuple[str, str], Coroutine] = {}
     usage_data: dict[str, int] = {
         "prompt_tokens": 0,
@@ -139,14 +140,12 @@ async def bootstrap_characters(
     if not tasks:
         return character_profiles, None
 
-    results = await asyncio.gather(*tasks.values())
-    task_keys = list(tasks.keys())
-
     # Track name changes for profile key updates
     name_changes = {}
 
-    for i, (value, usage) in enumerate(results):
-        name, field = task_keys[i]
+    # Process each character field sequentially to reduce similar-sounding outputs
+    for (name, field), coro in tasks.items():
+        value, usage = await coro
         if usage:
             for k, v in usage.items():
                 if isinstance(v, dict):
