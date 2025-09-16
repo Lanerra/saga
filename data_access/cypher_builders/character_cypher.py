@@ -2,10 +2,10 @@
 from typing import Any
 
 import structlog
-from data_access.kg_queries import validate_relationship_type
 
 import config
 import utils
+from data_access.kg_queries import validate_relationship_type
 from models import CharacterProfile
 from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 
@@ -114,9 +114,7 @@ def generate_character_node_cypher(
         dev_event_summary = profile.updates[dev_event_key]
         if isinstance(dev_event_summary, str) and dev_event_summary.strip():
             stable_hash = hashlib.sha1(
-                f"{profile.name}|{chapter_number_for_delta}|{dev_event_summary}".encode(
-                    "utf-8"
-                )
+                f"{profile.name}|{chapter_number_for_delta}|{dev_event_summary}".encode()
             ).hexdigest()[:16]
             dev_event_id = (
                 f"dev_{utils._normalize_for_id(profile.name)}_ch{chapter_number_for_delta}_"
@@ -219,4 +217,6 @@ def generate_character_node_cypher(
                 )
 
     return statements
+
+
 import hashlib

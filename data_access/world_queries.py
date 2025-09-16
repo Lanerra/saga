@@ -1,6 +1,6 @@
 # data_access/world_queries.py
-import logging
 import hashlib
+import logging
 from typing import Any
 
 from async_lru import alru_cache  # type: ignore
@@ -141,6 +141,15 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
 
     # 1. Synchronize WorldContainer (_overview_)
     overview_details = world_data.get("_overview_", {})
+    if not overview_details:
+        logger.warning(
+            "World data missing required '_overview_' container; creating placeholder."
+        )
+        overview_details = {
+            "description": "",
+            "name": "_overview_",
+            "category": "_overview_",
+        }
     if isinstance(overview_details, dict):
         # Validate the overview item
         overview_item = WorldItem.from_dict(
@@ -462,9 +471,11 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
 
                         elab_summary = value_val.strip()
                         stable_hash = hashlib.sha1(
-                            f"{we_id_str}|{chap_num_val}|{elab_summary}".encode("utf-8")
+                            f"{we_id_str}|{chap_num_val}|{elab_summary}".encode()
                         ).hexdigest()[:16]
-                        elab_event_id = f"elab_{we_id_str}_ch{chap_num_val}_{stable_hash}"
+                        elab_event_id = (
+                            f"elab_{we_id_str}_ch{chap_num_val}_{stable_hash}"
+                        )
 
                         elab_is_provisional = False
                         sq_key_for_elab_chap = f"source_quality_chapter_{chap_num_val}"

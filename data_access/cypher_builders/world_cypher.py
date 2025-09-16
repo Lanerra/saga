@@ -1,6 +1,6 @@
 # data_access/cypher_builders/world_cypher.py
-import json
 import hashlib
+import json
 import logging
 from typing import Any
 
@@ -164,11 +164,9 @@ def generate_world_element_node_cypher(
         elab_summary = item.additional_properties[elab_event_key]
         if isinstance(elab_summary, str) and elab_summary.strip():
             stable_hash = hashlib.sha1(
-                f"{item.id}|{chapter_number_for_delta}|{elab_summary}".encode("utf-8")
+                f"{item.id}|{chapter_number_for_delta}|{elab_summary}".encode()
             ).hexdigest()[:16]
-            elab_event_id = (
-                f"elab_{item.id}_ch{chapter_number_for_delta}_{stable_hash}"
-            )
+            elab_event_id = f"elab_{item.id}_ch{chapter_number_for_delta}_{stable_hash}"
             elab_props = {
                 "id": elab_event_id,
                 "summary": elab_summary,

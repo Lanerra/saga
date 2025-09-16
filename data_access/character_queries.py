@@ -1,6 +1,6 @@
 # data_access/character_queries.py
-from typing import Any
 import hashlib
+from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore
@@ -232,7 +232,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
 
                     dev_event_summary = value_str.strip()
                     stable_hash = hashlib.sha1(
-                        f"{char_name}|{chap_num_int}|{dev_event_summary}".encode("utf-8")
+                        f"{char_name}|{chap_num_int}|{dev_event_summary}".encode()
                     ).hexdigest()[:16]
                     dev_event_id = f"dev_{utils._normalize_for_id(char_name)}_ch{chap_num_int}_{stable_hash}"
 

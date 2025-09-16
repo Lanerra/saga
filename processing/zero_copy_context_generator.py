@@ -506,7 +506,6 @@ class ZeroCopyContextGenerator:
 
         return "\n\n".join(reversed(ending_parts))
 
-
     @staticmethod
     def _generate_next_chapter_guidance(text: str, summary: str, chap_num: int) -> str:
         """
@@ -635,6 +634,7 @@ class ZeroCopyContextGenerator:
             f"Built fallback semantic context: {count_tokens(final_context, config.NARRATIVE_MODEL)} tokens."
         )
         return final_context
+
 
 # Public helper for narrative continuation extraction to avoid private calls from agents
 def extract_narrative_continuation_context(

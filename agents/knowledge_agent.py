@@ -513,6 +513,10 @@ class KnowledgeAgent:
         logger.info(
             f"Loaded {len(self.node_labels)} node labels and {len(self.relationship_types)} relationship types from DB."
         )
+        if not self.relationship_types:
+            logger.info(
+                "No relationship types reported by DB; relationships likely use a generic type with semantic 'type' property."
+            )
 
     def parse_character_updates(
         self, text: str, chapter_number: int
@@ -1958,6 +1962,17 @@ class KnowledgeAgent:
             context_tasks = []
             for pair in batch:
                 id1, id2 = pair.get("id1"), pair.get("id2")
+                # Pre-check: skip pairs with placeholder-like IDs or missing names
+                if not id1 or not id2:
+                    logger.debug(f"Skipping candidate pair with missing IDs: {pair}")
+                    continue
+                if str(id1).lower().startswith("entity_") or str(
+                    id2
+                ).lower().startswith("entity_"):
+                    logger.debug(
+                        f"Skipping candidate pair with ephemeral IDs: {id1}, {id2}"
+                    )
+                    continue
                 if id1 and id2:
                     context_tasks.append(
                         (
