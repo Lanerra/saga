@@ -1,4 +1,5 @@
 # data_access/world_queries.py
+import hashlib
 import logging
 from typing import Any
 
@@ -52,6 +53,8 @@ async def sync_world_items(
     chapter_number: int,
     full_sync: bool = False,
 ) -> bool:
+    # DEPRECATION: Legacy dict-based variant. Prefer the native model version below
+    # which accepts list[WorldItem] and uses the NativeCypherBuilder.
     """Persist world element data to Neo4j."""
     # Validate all world items before syncing
     for cat, items in world_items.items():
@@ -111,6 +114,11 @@ async def sync_world_items(
             count,
             chapter_number,
         )
+        # Invalidate caches that may be stale after a bulk sync
+        try:
+            get_world_item_by_id.cache_clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         return True
     except Exception as exc:  # pragma: no cover - log and return failure
         logger.error(
@@ -133,6 +141,15 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
 
     # 1. Synchronize WorldContainer (_overview_)
     overview_details = world_data.get("_overview_", {})
+    if not overview_details:
+        logger.warning(
+            "World data missing required '_overview_' container; creating placeholder."
+        )
+        overview_details = {
+            "description": "",
+            "name": "_overview_",
+            "category": "_overview_",
+        }
     if isinstance(overview_details, dict):
         # Validate the overview item
         overview_item = WorldItem.from_dict(
@@ -453,8 +470,11 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                             continue
 
                         elab_summary = value_val.strip()
+                        stable_hash = hashlib.sha1(
+                            f"{we_id_str}|{chap_num_val}|{elab_summary}".encode()
+                        ).hexdigest()[:16]
                         elab_event_id = (
-                            f"elab_{we_id_str}_ch{chap_num_val}_{hash(elab_summary)}"
+                            f"elab_{we_id_str}_ch{chap_num_val}_{stable_hash}"
                         )
 
                         elab_is_provisional = False
@@ -487,12 +507,14 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                             f"Could not parse chapter for world elab key: {key_str} for item {item_name_str}"
                         )
 
-    # 5. Cleanup orphaned ValueNodes (those not connected to any WorldElement after reconciliation)
+    # 5. Cleanup orphaned ValueNodes (restricted to known world list properties)
     statements.append(
         (
             """
         MATCH (v:ValueNode:Entity)
-        WHERE NOT EXISTS((:WorldElement:Entity)-[]->(v)) AND NOT EXISTS((:Entity)-->(v))
+        WHERE v.type IN ['goals','rules','key_elements','traits']
+          AND NOT EXISTS((:WorldElement:Entity)-[]->(v))
+          AND NOT EXISTS((:Entity)-->(v))
         DETACH DELETE v
         """,
             {},

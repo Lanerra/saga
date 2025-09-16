@@ -1,9 +1,8 @@
-"""Relationship constraint system with plugin-based categories."""
+# core/relationship_constraints/__init__.py
+"""Relationship constraint system with consolidated constraint definitions."""
 
 from __future__ import annotations
 
-import importlib
-import pkgutil
 from typing import Any
 
 import structlog
@@ -11,30 +10,11 @@ import structlog
 from models.kg_constants import NODE_LABELS
 
 from .classifications import NodeClassifications
+from .constraints import RELATIONSHIP_CONSTRAINTS as _RELATIONSHIP_CONSTRAINTS
 
 logger = structlog.get_logger(__name__)
 
-# Global registry populated from plugins
-RELATIONSHIP_CONSTRAINTS: dict[str, dict[str, Any]] = {}
-
-
-def _load_plugins() -> None:
-    """Load all relationship constraint plugins."""
-    package = f"{__name__}.plugins"
-    try:
-        pkg = importlib.import_module(package)
-    except ModuleNotFoundError:
-        logger.error(f"Plugin package {package} not found")
-        return
-
-    for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
-        module = importlib.import_module(f"{package}.{module_name}")
-        constraints = getattr(module, "RELATIONSHIP_CONSTRAINTS", {})
-        RELATIONSHIP_CONSTRAINTS.update(constraints)
-        logger.debug(f"Loaded {len(constraints)} constraints from {module_name}")
-
-
-_load_plugins()
+RELATIONSHIP_CONSTRAINTS: dict[str, dict[str, Any]] = _RELATIONSHIP_CONSTRAINTS
 
 
 SEMANTIC_COMPATIBILITY_RULES = {

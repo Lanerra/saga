@@ -54,6 +54,9 @@ async def run_genesis_phase() -> (
     # Log the final character names for debugging
     final_char_names = [profile.name for profile in character_profiles.values()]
     logger.info(f"Final character names after bootstrapping: {final_char_names}")
+
+    # Protagonist sync policy: keep plot and character protagonist aligned
+    _sync_protagonist_name(plot_outline, character_profiles)
     world_building, _ = await bootstrap_world(
         world_building, plot_outline, state_tracker
     )
@@ -117,6 +120,56 @@ async def run_genesis_phase() -> (
         )
 
     return plot_outline, character_profiles, world_items_for_kg
+
+
+def _sync_protagonist_name(
+    plot_outline: dict[str, Any], character_profiles: dict[str, CharacterProfile]
+) -> None:
+    """Ensure plot protagonist name matches the protagonist CharacterProfile.
+
+    Policy:
+    - If a single character has role 'protagonist' and its name differs from
+      plot_outline['protagonist_name'], rename the character key and profile.name
+      to match the plot name when it is safe (no conflicting existing key).
+    - If renaming would conflict (key already exists), prefer the character’s
+      generated name and update plot_outline['protagonist_name'] instead.
+    - If no explicit protagonist role is found, do nothing.
+    """
+    plot_name = plot_outline.get("protagonist_name")
+    if not plot_name:
+        return
+
+    # Find protagonist profile
+    protagonist_key = None
+    for key, profile in character_profiles.items():
+        if profile.updates.get("role") == "protagonist":
+            protagonist_key = key
+            break
+
+    if protagonist_key is None:
+        return
+
+    protagonist_profile = character_profiles[protagonist_key]
+    char_name = protagonist_profile.name
+
+    if char_name == plot_name and protagonist_key == plot_name:
+        # Already aligned in both key and internal name
+        return
+
+    # Try to align by preferring plot name, if it doesn't introduce conflicts
+    if plot_name not in character_profiles:
+        # Safe to rekey and rename profile
+        protagonist_profile.name = plot_name
+        character_profiles[plot_name] = character_profiles.pop(protagonist_key)
+        logger.info(
+            f"Protagonist sync: renamed character '{protagonist_key}' -> '{plot_name}'"
+        )
+    else:
+        # Conflict: keep character's generated name and update plot instead
+        plot_outline["protagonist_name"] = char_name
+        logger.info(
+            f"Protagonist sync: updated plot protagonist_name to '{char_name}' to avoid key conflict"
+        )
 
 
 async def _create_bootstrap_relationships(

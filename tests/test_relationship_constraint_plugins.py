@@ -1,32 +1,19 @@
-import importlib
-import pkgutil
-
+# tests/test_relationship_constraint_plugins.py
 import core.relationship_constraints as rc
+from core.relationship_constraints.constraints import CATEGORY_CONSTRAINTS
 
 
-def test_plugin_category_loading():
-    """Each relationship constraint plugin should be loaded and registered."""
-    import core.relationship_constraints.plugins as plugins_pkg
-
-    for _, name, _ in pkgutil.iter_modules(plugins_pkg.__path__):
-        module = importlib.import_module(
-            f"core.relationship_constraints.plugins.{name}"
-        )
-        constraints = getattr(module, "RELATIONSHIP_CONSTRAINTS", {})
+def test_constraint_category_loading():
+    """Each constraint category should be loaded and registered."""
+    for name, constraints in CATEGORY_CONSTRAINTS.items():
         assert constraints, f"{name} provides no constraints"
         first_rel = next(iter(constraints.keys()))
         assert first_rel in rc.RELATIONSHIP_CONSTRAINTS
 
 
-def test_plugin_example_valid():
-    """A simple validation check for each plugin's first relationship."""
-    import core.relationship_constraints.plugins as plugins_pkg
-
-    for _, name, _ in pkgutil.iter_modules(plugins_pkg.__path__):
-        module = importlib.import_module(
-            f"core.relationship_constraints.plugins.{name}"
-        )
-        constraints = getattr(module, "RELATIONSHIP_CONSTRAINTS", {})
+def test_constraint_example_valid():
+    """A simple validation check for each category's first relationship."""
+    for name, constraints in CATEGORY_CONSTRAINTS.items():
         if not constraints:
             continue
         rel, detail = next(iter(constraints.items()))

@@ -1,4 +1,4 @@
-# utils/parsing_utils.py
+# processing/parsing_utils.py
 import logging
 from typing import Any
 
@@ -79,6 +79,9 @@ ENTITY_BLACKLIST_PATTERNS = [
     "return is possible",
     "awakening",
     "recognition",
+    # Pipeline/internal artifact terms to suppress
+    "relationships",
+    "relationship_updates",
     # Physical descriptions
     "height",
     "weight",
@@ -141,6 +144,10 @@ def _should_filter_entity(entity_name: str, entity_type: str = None) -> bool:
         "dark",
     }
     if name_lower in descriptive_words:
+        return True
+
+    # Filter ephemeral/internal placeholder ids like 'entity_4097e8ba'
+    if name_lower.startswith("entity_"):
         return True
 
     return False
@@ -263,6 +270,18 @@ def parse_rdf_triples_with_rdflib(
             if _should_filter_entity(object_name, object_entity_payload.get("type")):
                 logger_func.info(
                     f"Line {line_num + 1}: Filtered out problematic object entity: '{object_name}'"
+                )
+                continue
+
+        # Drop triples with empty/null literal objects
+        if is_literal_object:
+            if (
+                object_literal_payload is None
+                or not str(object_literal_payload).strip()
+                or str(object_literal_payload).strip().lower() in {"none", "null"}
+            ):
+                logger_func.info(
+                    f"Line {line_num + 1}: Filtered out triple with null/empty literal object"
                 )
                 continue
 

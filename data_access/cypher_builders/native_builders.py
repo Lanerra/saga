@@ -176,8 +176,8 @@ class NativeCypherBuilder:
         MATCH (c:Character:Entity)
         WHERE {where_clause}
         
-        // Optionally collect relationships
-        OPTIONAL MATCH (c)-[r:RELATIONSHIP]->(other:Entity)
+        // Optionally collect relationships (match any type; use r.type property for semantics)
+        OPTIONAL MATCH (c)-[r]->(other:Entity)
         
         RETURN c, 
                collect({{

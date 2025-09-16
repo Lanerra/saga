@@ -1,3 +1,4 @@
+# config/settings.py
 """
 Configuration settings for the Saga Novel Generation system.
 Uses Pydantic BaseSettings for automatic environment variable loading.
@@ -82,7 +83,7 @@ class SagaSettings(BaseSettings):
     NEO4J_VECTOR_INDEX_NAME: str = "chapterEmbeddings"
     NEO4J_VECTOR_NODE_LABEL: str = "Chapter"
     NEO4J_VECTOR_PROPERTY_NAME: str = "embedding_vector"
-    NEO4J_VECTOR_DIMENSIONS: int = 768
+    NEO4J_VECTOR_DIMENSIONS: int = 1024
     NEO4J_VECTOR_SIMILARITY_FUNCTION: str = "cosine"
 
     # Base Model Definitions
@@ -152,10 +153,10 @@ class SagaSettings(BaseSettings):
     MAX_CONTEXT_TOKENS: int = 40960
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 3
-    CHAPTERS_PER_RUN: int = 4
+    CHAPTERS_PER_RUN: int = 2
     KG_HEALING_INTERVAL: int = 2
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 20
-    MAX_CONCURRENT_CHAPTERS: int = 4
+    MAX_CONCURRENT_CHAPTERS: int = 1
 
     # Caching
     EMBEDDING_CACHE_SIZE: int = 128

@@ -206,9 +206,8 @@ class TripleProcessor:
             or self._type_inference_service is None
         ):
             from core.intelligent_type_inference import IntelligentTypeInference
-            from core.schema_introspector import SchemaIntrospector
+            from core.schema_introspector import schema_introspector
 
-            schema_introspector = SchemaIntrospector()
             self._type_inference_service = IntelligentTypeInference(schema_introspector)
             logger.debug(
                 "Type inference service created directly for static deployment"

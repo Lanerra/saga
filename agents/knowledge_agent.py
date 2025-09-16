@@ -25,10 +25,10 @@ from data_access import (
 
 # Import native versions for performance optimization
 from data_access.character_queries import (
-    sync_characters,
+    sync_characters as persist_characters_native,
 )
 from data_access.world_queries import (
-    sync_world_items,
+    sync_world_items as persist_world_items_native,
 )
 from models.kg_models import CharacterProfile, WorldItem
 from processing.parsing_utils import (
@@ -440,34 +440,21 @@ def merge_world_item_updates(
             item = world[category][name]
             item_props = item.to_dict()
             for key, val in data.items():
-                if key in {provisional_key, "modification_proposal"} or (
-                    key.startswith(
-                        (
-                            "updated_in_chapter_",
-                            "added_in_chapter_",
-                            "source_quality_chapter_",
-                        )
+                # Skip meta/provenance keys (handled elsewhere)
+                if key in {provisional_key, "modification_proposal"} or key.startswith(
+                    (
+                        "updated_in_chapter_",
+                        "added_in_chapter_",
+                        "source_quality_chapter_",
                     )
                 ):
+                    # Also capture elaboration entries as additional properties
                     if (
                         key.startswith("elaboration_in_chapter_")
                         and isinstance(val, str)
                         and val.strip()
                     ):
-                        # Handle structured fields
-                        if key == "description":
-                            item.description = val
-                        elif key == "goals":
-                            item.goals = val if isinstance(val, list) else [val]
-                        elif key == "rules":
-                            item.rules = val if isinstance(val, list) else [val]
-                        elif key == "key_elements":
-                            item.key_elements = val if isinstance(val, list) else [val]
-                        elif key == "traits":
-                            item.traits = val if isinstance(val, list) else [val]
-                        else:
-                            # Handle additional properties
-                            item.additional_properties[key] = val
+                        item.additional_properties[key] = val
                     continue
                 cur_val = item_props.get(key)
                 if isinstance(val, list):
@@ -526,6 +513,10 @@ class KnowledgeAgent:
         logger.info(
             f"Loaded {len(self.node_labels)} node labels and {len(self.relationship_types)} relationship types from DB."
         )
+        if not self.relationship_types:
+            logger.info(
+                "No relationship types reported by DB; relationships likely use a generic type with semantic 'type' property."
+            )
 
     def parse_character_updates(
         self, text: str, chapter_number: int
@@ -586,7 +577,7 @@ class KnowledgeAgent:
             profiles_list = profiles_to_persist
 
         # Use native model version for better performance
-        await sync_characters(profiles_list, chapter_number_for_delta)
+        await persist_characters_native(profiles_list, chapter_number_for_delta)
 
     async def persist_world(
         self,
@@ -627,7 +618,7 @@ class KnowledgeAgent:
         else:
             world_items_list = world_items_to_persist
 
-        await sync_world_items(world_items_list, chapter_number_for_delta)
+        await persist_world_items_native(world_items_list, chapter_number_for_delta)
 
     async def add_plot_point(self, description: str, prev_plot_point_id: str) -> str:
         """Persist a new plot point and link it in sequence."""
@@ -771,10 +762,13 @@ class KnowledgeAgent:
             # Process KG triples for relationships (CRITICAL: This was missing!)
             parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
 
-            # Log each parsed triple
+            # Log aggregates at info; detailed triples at debug to reduce log noise
+            logger.info(
+                f"Parsed {len(parsed_triples_structured)} KG triples for chapter {chapter_number}"
+            )
             for triple in parsed_triples_structured:
                 object_value = triple.get("object_entity", triple.get("object_literal"))
-                logger.info(
+                logger.debug(
                     f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}"
                 )
 
@@ -1968,6 +1962,17 @@ class KnowledgeAgent:
             context_tasks = []
             for pair in batch:
                 id1, id2 = pair.get("id1"), pair.get("id2")
+                # Pre-check: skip pairs with placeholder-like IDs or missing names
+                if not id1 or not id2:
+                    logger.debug(f"Skipping candidate pair with missing IDs: {pair}")
+                    continue
+                if str(id1).lower().startswith("entity_") or str(
+                    id2
+                ).lower().startswith("entity_"):
+                    logger.debug(
+                        f"Skipping candidate pair with ephemeral IDs: {id1}, {id2}"
+                    )
+                    continue
                 if id1 and id2:
                     context_tasks.append(
                         (

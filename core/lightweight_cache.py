@@ -36,8 +36,12 @@ def _get_sync_cache(service_name: str, maxsize: int = 128):
     return _service_caches[service_name]()
 
 
-def _get_async_cache(service_name: str, maxsize: int = 128):
-    """Get or create an async LRU cache for a service."""
+async def _get_async_cache(service_name: str, maxsize: int = 128):
+    """Get or create an async LRU cache for a service.
+
+    Callers must ``await`` this helper to ensure the cache is initialized and to
+    obtain the mutable mapping used for storage.
+    """
     if service_name not in _service_async_caches:
         from async_lru import alru_cache
 
@@ -47,8 +51,12 @@ def _get_async_cache(service_name: str, maxsize: int = 128):
 
         _service_async_caches[service_name] = _cache
         # Initialize the cache
-        asyncio.run(_cache())
-    return _service_async_caches[service_name]()
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            await _cache()
+        else:
+            asyncio.run(_cache())
+    return await _service_async_caches[service_name]()
 
 
 def get_cached_value(key: str, service_name: str) -> Any | None:
@@ -129,6 +137,24 @@ def get_cache_metrics(service_name: str | None = None) -> dict[str, Any]:
     if service_name:
         return dict(_cache_stats[service_name])
     return {service: dict(stats) for service, stats in _cache_stats.items()}
+
+
+def get_cache_size(service_name: str) -> int:
+    """
+    Return the number of entries stored for a given service's cache.
+
+    Args:
+        service_name: Name of the service whose cache size to report
+
+    Returns:
+        Integer count of keys currently cached for the service
+    """
+    try:
+        cache = _get_sync_cache(service_name)
+        return len(cache)
+    except Exception as e:
+        logger.error(f"Error getting cache size: {e}")
+        return 0
 
 
 def register_cache_service(service_name: str) -> None:

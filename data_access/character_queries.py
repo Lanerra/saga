@@ -1,4 +1,5 @@
 # data_access/character_queries.py
+import hashlib
 from typing import Any
 
 import structlog
@@ -37,6 +38,8 @@ async def sync_characters(
     chapter_number: int,
     full_sync: bool = False,
 ) -> bool:
+    # DEPRECATION: This dict-based signature is maintained for backward compatibility.
+    # Prefer the native model version in this module (accepts list[CharacterProfile]).
     """Persist character data to Neo4j."""
     # Validate all profiles before syncing
     for name, profile in profiles.items():
@@ -62,6 +65,15 @@ async def sync_characters(
         )
         for profile in profiles.values():
             CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(profile.name)] = profile.name
+        # Invalidate caches related to characters
+        try:
+            get_character_profile_by_name.cache_clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            get_all_character_names.cache_clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         return True
     except Exception as exc:  # pragma: no cover - log and return failure
         logger.error(
@@ -219,7 +231,10 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                         continue
 
                     dev_event_summary = value_str.strip()
-                    dev_event_id = f"dev_{utils._normalize_for_id(char_name)}_ch{chap_num_int}_{hash(dev_event_summary)}"
+                    stable_hash = hashlib.sha1(
+                        f"{char_name}|{chap_num_int}|{dev_event_summary}".encode()
+                    ).hexdigest()[:16]
+                    dev_event_id = f"dev_{utils._normalize_for_id(char_name)}_ch{chap_num_int}_{stable_hash}"
 
                     dev_event_props = {
                         "id": dev_event_id,
@@ -258,7 +273,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
             (
                 """
             MATCH (c1:Character:Entity {name: $char_name_val})-[r]->(c2:Entity)
-            WHERE r.source_profile_managed = TRUE AND NOT c2.name IN $target_chars_list
+            WHERE coalesce(r.source_profile_managed, false) = true AND NOT c2.name IN $target_chars_list
             DELETE r
             """,
                 {
@@ -391,7 +406,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
 
     rels_query = """
         MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
-        WHERE r.source_profile_managed = TRUE
+        WHERE coalesce(r.source_profile_managed, false) = true
         RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
     """
     rel_results = await neo4j_manager.execute_read_query(
@@ -455,6 +470,7 @@ async def get_all_character_names() -> list[str]:
 
 
 async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
+    # DEPRECATION: Legacy dict-based fetcher. Prefer get_character_profiles() (native models).
     logger.info("Loading decomposed character profiles from Neo4j...")
     profiles_data: dict[str, CharacterProfile] = {}
 
@@ -494,7 +510,7 @@ async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
 
         rels_query = """
         MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
-        WHERE r.source_profile_managed = TRUE
+        WHERE coalesce(r.source_profile_managed, false) = true
         RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
         """
         rel_results = await neo4j_manager.execute_read_query(
@@ -806,7 +822,7 @@ async def get_characters_for_chapter_context_native(
         ORDER BY last_appearance DESC
         LIMIT $limit
         
-        OPTIONAL MATCH (c)-[r:RELATIONSHIP]->(other:Entity)
+        OPTIONAL MATCH (c)-[r]->(other:Entity)
         RETURN c, 
                collect({
                    target_name: other.name,

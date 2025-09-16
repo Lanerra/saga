@@ -7,8 +7,6 @@ import os
 import time  # For Rich display updates
 from typing import Any
 
-from async_lru import alru_cache
-
 import config
 import utils
 from agents.knowledge_agent import KnowledgeAgent
@@ -359,7 +357,7 @@ class NANA_Orchestrator:
                     else "normalized string"
                 )
                 logger.info(
-                    f"De-duplication for Chapter {chapter_number} removed {chars_removed} characters using {method} matching."
+                    f"De-duplication for Chapter {chapter_number} removed {chars_removed} text characters using {method} matching."
                 )
             else:
                 logger.info(
@@ -1100,9 +1098,6 @@ class NANA_Orchestrator:
             )
         return final_text_result
 
-    @alru_cache(
-        maxsize=config.MAX_CONCURRENT_CHAPTERS
-    )  # Enforces concurrent tasks limit per agent
     async def run_chapter_generation_process(
         self, novel_chapter_number: int
     ) -> str | None:
@@ -1303,7 +1298,7 @@ class NANA_Orchestrator:
                     )
 
                 logger.info(
-                    f"\n--- SAGA: Attempting Novel Chapter {current_novel_chapter_number} (attempt {attempts_this_run + 1}/{config.CHAPTERS_PER_RUN}) ---"
+                    f"\n--- SAGA: Attempting Novel Chapter {current_novel_chapter_number} of {config.CHAPTERS_PER_RUN} ---"
                 )
                 self._update_rich_display(
                     chapter_num=current_novel_chapter_number,

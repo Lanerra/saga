@@ -72,6 +72,11 @@ async def validate_bootstrap_results(
         plot_outline, character_profiles, world_building, result
     )
 
+    # Reconcile StateTracker with profiles/world (optional pass)
+    await _reconcile_state_with_profiles(
+        character_profiles, world_building, state_tracker, result
+    )
+
     # Add summary details
     result.add_detail("total_characters", len(character_profiles))
     result.add_detail("total_world_categories", len(world_building))
@@ -86,6 +91,106 @@ async def validate_bootstrap_results(
         logger.error(f"Bootstrap validation failed with {len(result.errors)} errors")
 
     return result
+
+
+async def _reconcile_state_with_profiles(
+    character_profiles: dict[str, Any],
+    world_building: dict[str, dict[str, Any]],
+    state_tracker: "StateTracker | None",
+    result: BootstrapValidationResult,
+) -> None:
+    """Ensure StateTracker and bootstrapped profiles are in sync; emit actionable warnings.
+
+    - Adds warnings for items in profiles but missing from tracker and vice versa.
+    - Optionally, could auto-create missing reservations in future (kept to warnings here).
+    """
+    try:
+        if not state_tracker:
+            return
+
+        tracked = await state_tracker.get_all()
+        tracked_names = set(tracked.keys()) if tracked else set()
+
+        # Characters: auto-create missing reservations
+        for name, profile in character_profiles.items():
+            if name in tracked_names:
+                continue
+            # Derive description (supports dict or object form)
+            try:
+                description = (
+                    profile.description
+                    if hasattr(profile, "description")
+                    else profile.get("description", "")
+                )
+            except Exception:
+                description = ""
+            reserved = await state_tracker.reserve(
+                name, "character", str(description or "")
+            )
+            if reserved:
+                logger.info(
+                    f"Bootstrap reconciliation: auto-created StateTracker entry for character '{name}'"
+                )
+            else:
+                result.add_warning(
+                    f"Bootstrap reconciliation: failed to reserve character '{name}' in StateTracker"
+                )
+
+        # World items: auto-create missing reservations (iterate all categories)
+        world_names_seen: set[str] = set()
+        for cat, items in world_building.items():
+            if not isinstance(items, dict):
+                continue
+            for item_name, item in items.items():
+                world_names_seen.add(item_name)
+                if item_name in tracked_names:
+                    continue
+                try:
+                    description = (
+                        item.description
+                        if hasattr(item, "description")
+                        else (
+                            item.get("description", "")
+                            if isinstance(item, dict)
+                            else ""
+                        )
+                    )
+                except Exception:
+                    description = ""
+                reserved = await state_tracker.reserve(
+                    item_name, "world_item", str(description or "")
+                )
+                if reserved:
+                    logger.info(
+                        f"Bootstrap reconciliation: auto-created StateTracker entry for world item '{item_name}'"
+                    )
+                else:
+                    result.add_warning(
+                        f"Bootstrap reconciliation: failed to reserve world item '{item_name}' in StateTracker"
+                    )
+
+        # Ensure _overview_ is tracked if present in profiles
+        if "_overview_" not in tracked_names:
+            reserved = await state_tracker.reserve("_overview_", "world_item", "")
+            if reserved:
+                logger.info(
+                    "Bootstrap reconciliation: auto-created StateTracker entry for '_overview_'"
+                )
+            else:
+                result.add_warning(
+                    "Bootstrap reconciliation: failed to reserve '_overview_' in StateTracker"
+                )
+
+        # Tracked not in profiles (still warn so user can decide cleanup)
+        profile_all_names = (
+            set(character_profiles.keys()) | world_names_seen | {"_overview_"}
+        )
+        for name in sorted(tracked_names - profile_all_names):
+            result.add_warning(
+                f"Bootstrap reconciliation: '{name}' tracked in StateTracker but not present in profiles"
+            )
+    except Exception as exc:
+        result.add_warning(f"Bootstrap reconciliation encountered an error: {exc}")
 
 
 async def _validate_plot_outline(
@@ -138,7 +243,8 @@ async def _validate_plot_outline(
         )
 
     # Check for optional but recommended fields (only warn if completely missing)
-    recommended_fields = ["themes", "tone"]  # Reduced list to avoid too many warnings
+    # Align naming with plot bootstrapper: use 'theme' (singular) rather than 'themes' to avoid spurious warnings
+    recommended_fields = ["theme", "tone"]
     missing_recommended = [
         field for field in recommended_fields if field not in plot_outline
     ]

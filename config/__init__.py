@@ -1,3 +1,4 @@
+# config/__init__.py
 """
 Config package – central configuration for SAGA.
 

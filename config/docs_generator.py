@@ -1,3 +1,4 @@
+# config/docs_generator.py
 """
 Automatic configuration documentation generator for SAGA.
 

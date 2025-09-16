@@ -1,3 +1,4 @@
+# tests/test_configuration.py
 """
 Tests for the new configuration package.
 

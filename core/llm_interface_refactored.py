@@ -2,14 +2,8 @@
 """
 Refactored LLM interface with separated concerns.
 
-This module provides the new LLM service architecture using dependency injection
+This module provides the new LLM service architecture using direct instantiation
 and separated concerns for HTTP communication and text processing.
-
-REFACTORED: Complete rewrite as part of Phase 3 architectural improvements.
-- Separated HTTP client and text processing concerns
-- Proper abstraction layers with protocols
-- Dependency injection for better testability
-- Clean service composition
 
 Licensed under the Apache License, Version 2.0
 """
@@ -36,7 +30,6 @@ from core.lightweight_cache import (
     register_cache_service,
     set_cached_value,
 )
-from core.llm_service_interfaces import LLMServiceFactory, initialize_service_locator
 from core.text_processing_service import TextProcessingService
 
 logger = structlog.get_logger(__name__)
@@ -66,91 +59,76 @@ def secure_temp_file(suffix: str = ".tmp", text: bool = True):
 
 
 @asynccontextmanager
-async def async_llm_service() -> AsyncGenerator["RefactoredLLMService", None]:
-    """
-    Async context manager for LLM service with guaranteed cleanup.
-
-    Usage:
-        async with async_llm_service() as service:
-            result = await service.async_get_embedding("text")
-    """
-    service = get_llm_service()
-    try:
-        yield service
-    finally:
-        try:
-            await service.aclose()
-            logger.debug("LLM service closed successfully")
-        except Exception as cleanup_error:
-            logger.error(f"Failed to cleanup LLM service: {cleanup_error}")
-
-
-@asynccontextmanager
-async def async_batch_embedding_session(
+async def async_llm_context(
     batch_size: int | None = None,
-) -> AsyncGenerator["EmbeddingService", None]:
+    clear_cache_on_exit: bool = False,
+) -> AsyncGenerator[tuple["RefactoredLLMService", "EmbeddingService"], None]:
     """
-    Async context manager for batch embedding operations with resource cleanup.
+    Unified async context manager for LLM operations with guaranteed cleanup.
+
+    This single context manager replaces the previous nested context managers:
+    - async_llm_service
+    - async_batch_embedding_session
+    - async_managed_cache_session
 
     Args:
-        batch_size: Size of batches to process
+        batch_size: Size of batches to process (for embedding operations)
+        clear_cache_on_exit: Whether to clear cache when exiting context
 
     Usage:
-        async with async_batch_embedding_session(batch_size=8) as embedding_service:
-            embeddings = await embedding_service.get_embeddings_batch(texts)
+        async with async_llm_context(batch_size=8, clear_cache_on_exit=True) as (llm_service, embedding_service):
+            # Use both services
+            result = await llm_service.async_call_llm(model_name, prompt)
+            embeddings = await embedding_service.get_embeddings_batch(texts, batch_size)
     """
-    service = get_llm_service()
-    embedding_service = service._embedding_service
+    # Direct instantiation instead of service locator
+    http_client = HTTPClientService()
+    embedding_client = EmbeddingHTTPClient(http_client)
+    completion_client = CompletionHTTPClient(http_client)
+    text_processor = TextProcessingService()
 
-    # Note: Could store original cache state here for restoration if needed
+    embedding_service = EmbeddingService(embedding_client)
+    completion_service = CompletionService(completion_client, text_processor)
+    llm_service = RefactoredLLMService(
+        completion_service, embedding_service, text_processor
+    )
+
+    initial_cache_size = (
+        len(embedding_service._embedding_cache)
+        if hasattr(embedding_service, "_embedding_cache")
+        else 0
+    )
 
     try:
-        yield embedding_service
+        yield llm_service, embedding_service
     finally:
+        # Cleanup
+        try:
+            await http_client.aclose()
+            logger.debug("HTTP client closed successfully")
+        except Exception as cleanup_error:
+            logger.error(f"Failed to cleanup HTTP client: {cleanup_error}")
+
+        # Handle cache management
+        if clear_cache_on_exit:
+            try:
+                embedding_service._embedding_cache.clear()
+                logger.debug("Cache cleared on session exit")
+            except Exception as cache_error:
+                logger.error(f"Failed to clear cache: {cache_error}")
+
         # Log performance metrics
-        stats = embedding_service.get_statistics()
-        logger.info(
-            f"Batch embedding session completed: "
-            f"{stats.get('cache_hit_rate', 0):.1f}% cache hit rate, "
-            f"{stats.get('cache_size', 0)}/{stats.get('cache_max_size', 0)} cache entries"
-        )
-
-
-@asynccontextmanager
-async def async_managed_cache_session(
-    clear_on_exit: bool = False,
-) -> AsyncGenerator["EmbeddingService", None]:
-    """
-    Async context manager for cache management during processing sessions.
-
-    Args:
-        clear_on_exit: Whether to clear cache when exiting context
-
-    Usage:
-        async with async_managed_cache_session(clear_on_exit=True) as embedding_service:
-            # Perform operations that might benefit from fresh cache state
-            embeddings = await embedding_service.get_embedding("text")
-    """
-    service = get_llm_service()
-    embedding_service = service._embedding_service
-
-    # Store initial cache state
-    initial_cache_size = len(embedding_service._embedding_cache)
-
-    try:
-        yield embedding_service
-    finally:
-        final_stats = embedding_service.get_statistics()
-        cache_growth = final_stats.get("cache_size", 0) - initial_cache_size
-
-        logger.debug(
-            f"Cache session: grew by {cache_growth} entries, "
-            f"final hit rate: {final_stats.get('cache_hit_rate', 0):.1f}%"
-        )
-
-        if clear_on_exit:
-            embedding_service._embedding_cache.clear()
-            logger.debug("Cache cleared on session exit")
+        try:
+            stats = embedding_service.get_statistics()
+            cache_growth = stats.get("cache_size", 0) - initial_cache_size
+            logger.debug(
+                f"LLM session completed: "
+                f"{stats.get('cache_hit_rate', 0):.1f}% cache hit rate, "
+                f"grew by {cache_growth} entries, "
+                f"{stats.get('cache_size', 0)}/{stats.get('cache_max_size', 0)} cache entries"
+            )
+        except Exception as stats_error:
+            logger.error(f"Failed to log session statistics: {stats_error}")
 
 
 class EmbeddingService:
@@ -324,18 +302,15 @@ class EmbeddingService:
     def get_statistics(self) -> dict[str, Any]:
         """Get embedding service statistics."""
         total = self._stats["embeddings_requested"]
-        # Get cache metrics from coordinated cache
-        from core.lightweight_cache import get_cache_metrics
+        # Get cache size from lightweight cache service
+        from core.lightweight_cache import get_cache_size
 
-        cache_metrics = get_cache_metrics(self._service_name)
-        cache_size = 0
-        if cache_metrics and self._service_name in cache_metrics:
-            cache_size = cache_metrics[self._service_name].total_entries
+        cache_size = get_cache_size(self._service_name)
 
         return {
             **self._stats,
             "cache_size": cache_size,
-            "cache_hit_rate": (self._stats["cache_hits"] / total * 10)
+            "cache_hit_rate": (self._stats["cache_hits"] / total * 100)
             if total > 0
             else 0,
             "cache_miss_rate": (self._stats["cache_misses"] / total * 100)
@@ -603,7 +578,7 @@ class RefactoredLLMService:
     """
     Main LLM service with separated concerns architecture.
 
-    REFACTORED: Complete rewrite using dependency injection and separated services.
+    REFACTORED: Complete rewrite using direct instantiation and separated services.
     - HTTP communication handled by HTTPClientService
     - Text processing handled by TextProcessingService
     - Clear separation of concerns
@@ -716,11 +691,6 @@ class RefactoredLLMService:
             text, model_name, max_tokens, truncation_marker
         )
 
-    async def aclose(self) -> None:
-        """Close service and cleanup resources."""
-        # The HTTP client will be closed by the service locator
-        logger.debug("RefactoredLLMService closed")
-
     def get_combined_statistics(self) -> dict[str, Any]:
         """Get combined statistics from all services."""
         return {
@@ -730,79 +700,25 @@ class RefactoredLLMService:
         }
 
 
-class DefaultLLMServiceFactory(LLMServiceFactory):
+# Direct instantiation functions for simplified API
+def create_llm_service() -> RefactoredLLMService:
     """
-    Default factory implementation for LLM services.
+    Create and return a new LLM service instance with direct instantiation.
 
-    Creates concrete implementations of all services with proper dependencies.
+    This replaces the service locator pattern with direct dependency injection.
     """
+    http_client = HTTPClientService()
+    embedding_client = EmbeddingHTTPClient(http_client)
+    completion_client = CompletionHTTPClient(http_client)
+    text_processor = TextProcessingService()
 
-    def create_http_client(self, timeout: float | None = None) -> HTTPClientService:
-        """Create HTTP client service instance."""
-        effective_timeout = timeout if timeout is not None else config.HTTPX_TIMEOUT
-        return HTTPClientService(effective_timeout)
-
-    def create_tokenizer(self) -> TextProcessingService:
-        """Create tokenizer service instance."""
-        return TextProcessingService()
-
-    def create_response_cleaner(self) -> TextProcessingService:
-        """Create response cleaner service instance."""
-        return TextProcessingService()
-
-    def create_stream_processor(self, response_cleaner) -> TextProcessingService:
-        """Create stream processor service instance."""
-        return TextProcessingService()
-
-    def create_embedding_service(
-        self, http_client: HTTPClientService
-    ) -> EmbeddingService:
-        """Create embedding service instance."""
-        embedding_client = EmbeddingHTTPClient(http_client)
-        return EmbeddingService(embedding_client)
-
-    def create_completion_service(
-        self,
-        http_client: HTTPClientService,
-        tokenizer,
-        response_cleaner,
-        stream_processor,
-    ) -> CompletionService:
-        """Create completion service instance."""
-        completion_client = CompletionHTTPClient(http_client)
-        text_processor = TextProcessingService()  # Creates all text processing services
-        return CompletionService(completion_client, text_processor)
-
-    def create_llm_service(
-        self,
-        completion_service: CompletionService,
-        embedding_service: EmbeddingService,
-        tokenizer,
-        response_cleaner,
-    ) -> RefactoredLLMService:
-        """Create unified LLM service instance."""
-        text_processor = TextProcessingService()
-        return RefactoredLLMService(
-            completion_service, embedding_service, text_processor
-        )
+    embedding_service = EmbeddingService(embedding_client)
+    completion_service = CompletionService(completion_client, text_processor)
+    return RefactoredLLMService(completion_service, embedding_service, text_processor)
 
 
-# Initialize the service locator with default factory
-_factory = DefaultLLMServiceFactory()
-_service_locator = initialize_service_locator(_factory)
-
-
-def get_llm_service() -> RefactoredLLMService:
-    """
-    Get the main LLM service instance.
-
-    REFACTORED: Uses service locator instead of global singleton.
-    """
-    return _service_locator.get_llm_service()
-
-
-# Create module-level instance for backward compatibility
-llm_service = get_llm_service()
+# Module-level instance for backward compatibility (created with direct instantiation)
+llm_service = create_llm_service()
 
 
 # Backward compatibility functions

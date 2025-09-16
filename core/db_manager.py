@@ -260,20 +260,9 @@ class Neo4jManagerSingleton:
             "CREATE INDEX chapter_is_provisional IF NOT EXISTS FOR (c:`Chapter`) ON (c.is_provisional)",
         ]
 
-        # Vector index creation – use standard string formatting to avoid backticks
-        vector_index_query = (
-            f"CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS "
-            f"FOR (c:Chapter) ON (c.embedding_vector) "
-            f"OPTIONS {{indexConfig: {{"
-            f"'vector.dimensions': {config.NEO4J_VECTOR_DIMENSIONS}, "
-            f"'vector.similarity_function': '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'"
-            f"}}}}"
-        )
-
-        schema_only_queries = (
-            core_constraints_queries + index_queries + [vector_index_query]
-        )
-
+        # Vector index creation – backticks required for map keys with dot
+        # First, execute constraints and regular indexes in a batch.
+        schema_only_queries = core_constraints_queries + index_queries
         try:
             await self._execute_schema_batch(schema_only_queries)
             self.logger.info(
@@ -285,6 +274,24 @@ class Neo4jManagerSingleton:
                 exc_info=True,
             )
             await self._execute_schema_individually(schema_only_queries)
+
+        # Then, create the vector index separately with defensive handling.
+        vector_index_query = (
+            f"CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS "
+            f"FOR (c:Chapter) ON (c.embedding_vector) "
+            f"OPTIONS {{indexConfig: {{"
+            f"`vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS}, "
+            f"`vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'"
+            f"}}}}"
+        )
+        try:
+            await self.execute_write_query(vector_index_query)
+            self.logger.info("Vector index created successfully.")
+        except Exception as e:
+            self.logger.warning(
+                "Vector index creation failed (may be unsupported by current Neo4j version). "
+                f"Error: {e}"
+            )
 
     async def _create_type_placeholders(self) -> None:
         """Create relationship type and node label placeholders in separate data transactions."""

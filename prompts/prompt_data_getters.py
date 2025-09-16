@@ -1,4 +1,4 @@
-# prompt_data_getters.py
+# prompts/prompt_data_getters.py
 """
 Helper functions to prepare specific data snippets for LLM prompts in the SAGA system.
 These functions typically filter or format parts of the agent's state,
