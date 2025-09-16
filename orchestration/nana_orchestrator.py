@@ -16,9 +16,7 @@ from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
 from data_access import (
     chapter_queries,
-    character_queries,
     plot_queries,
-    world_queries,
 )
 
 # Import native versions for performance optimization
@@ -386,18 +384,12 @@ class NANA_Orchestrator:
         dict[str, int] | None,
         dict[str, int] | None,
     ]:
+        # Sequential by design for single-user determinism; no parallel tasks here.
         self._update_rich_display(
-            step=f"Ch {novel_chapter_number} - Evaluation Cycle {attempt} (Parallel)"
+            step=f"Ch {novel_chapter_number} - Evaluation Cycle {attempt}"
         )
 
-        tasks_to_run = []
-        task_names = []
-
-        character_names = await character_queries.get_all_character_names()
-        world_item_ids_by_category = (
-            await world_queries.get_all_world_item_ids_by_category()
-        )
-
+        revision_result = None
         if (
             config.ENABLE_COMPREHENSIVE_EVALUATION
             or config.ENABLE_WORLD_CONTINUITY_CHECK
@@ -408,22 +400,11 @@ class NANA_Orchestrator:
                 "chapter_number": novel_chapter_number,
                 "previous_chapters_context": hybrid_context_for_draft,
             }
-            tasks_to_run.append(
-                self.revision_agent.validate_revision(
-                    current_text,
-                    "",  # Previous chapter text (not available in this context)
-                    world_state,
-                )
+            revision_result, _ = await self.revision_agent.validate_revision(
+                current_text,
+                "",  # Previous chapter text (not available in this context)
+                world_state,
             )
-            task_names.append("revision")
-
-        results = await asyncio.gather(*tasks_to_run)
-
-        revision_result = None
-
-        result_idx = 0
-        if "revision" in task_names:
-            revision_result, _ = results[result_idx]
 
         # Create evaluation result object from revision result
         eval_result_obj = {
@@ -1458,6 +1439,7 @@ class NANA_Orchestrator:
 
 
 def setup_logging_nana():
+    # Keep logging simple for single-user unless advanced mode is desired.
     logging.basicConfig(
         level=config.LOG_LEVEL_STR,
         format=config.LOG_FORMAT,
@@ -1468,7 +1450,14 @@ def setup_logging_nana():
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    if config.LOG_FILE:
+    # Simple logging mode: console only, no rotation or Rich coupling
+    if getattr(config, "SIMPLE_LOGGING_MODE", False):
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(config.LOG_LEVEL_STR)
+        stream_handler.setFormatter(config.formatter)
+        root_logger.addHandler(stream_handler)
+        root_logger.info("Simple logging mode enabled: console only.")
+    elif config.LOG_FILE:
         try:
             log_path = os.path.join(
                 config.settings.BASE_OUTPUT_DIR, config.settings.LOG_FILE
@@ -1497,7 +1486,11 @@ def setup_logging_nana():
                 exc_info=True,
             )
 
-    if RICH_AVAILABLE and config.ENABLE_RICH_PROGRESS:
+    if (
+        not getattr(config, "SIMPLE_LOGGING_MODE", False)
+        and RICH_AVAILABLE
+        and config.ENABLE_RICH_PROGRESS
+    ):
         existing_console = None
         if root_logger.handlers:
             for h_idx, h in enumerate(root_logger.handlers):
