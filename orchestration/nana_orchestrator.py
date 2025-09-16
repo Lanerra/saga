@@ -357,7 +357,7 @@ class NANA_Orchestrator:
                     else "normalized string"
                 )
                 logger.info(
-                    f"De-duplication for Chapter {chapter_number} removed {chars_removed} characters using {method} matching."
+                    f"De-duplication for Chapter {chapter_number} removed {chars_removed} text characters using {method} matching."
                 )
             else:
                 logger.info(
@@ -1298,7 +1298,7 @@ class NANA_Orchestrator:
                     )
 
                 logger.info(
-                    f"\n--- SAGA: Attempting Novel Chapter {current_novel_chapter_number} (attempt {attempts_this_run + 1}/{config.CHAPTERS_PER_RUN}) ---"
+                    f"\n--- SAGA: Attempting Novel Chapter {current_novel_chapter_number} of {config.CHAPTERS_PER_RUN} ---"
                 )
                 self._update_rich_display(
                     chapter_num=current_novel_chapter_number,

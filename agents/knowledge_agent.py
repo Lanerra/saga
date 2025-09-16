@@ -758,10 +758,13 @@ class KnowledgeAgent:
             # Process KG triples for relationships (CRITICAL: This was missing!)
             parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
 
-            # Log each parsed triple
+            # Log aggregates at info; detailed triples at debug to reduce log noise
+            logger.info(
+                f"Parsed {len(parsed_triples_structured)} KG triples for chapter {chapter_number}"
+            )
             for triple in parsed_triples_structured:
                 object_value = triple.get("object_entity", triple.get("object_literal"))
-                logger.info(
+                logger.debug(
                     f"Parsed: {triple['subject']} | {triple['predicate']} | {object_value}"
                 )
 

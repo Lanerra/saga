@@ -273,7 +273,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
             (
                 """
             MATCH (c1:Character:Entity {name: $char_name_val})-[r]->(c2:Entity)
-            WHERE r.source_profile_managed = TRUE AND NOT c2.name IN $target_chars_list
+            WHERE coalesce(r.source_profile_managed, false) = true AND NOT c2.name IN $target_chars_list
             DELETE r
             """,
                 {
@@ -406,7 +406,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
 
     rels_query = """
         MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
-        WHERE r.source_profile_managed = TRUE
+        WHERE coalesce(r.source_profile_managed, false) = true
         RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
     """
     rel_results = await neo4j_manager.execute_read_query(
@@ -510,7 +510,7 @@ async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
 
         rels_query = """
         MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
-        WHERE r.source_profile_managed = TRUE
+        WHERE coalesce(r.source_profile_managed, false) = true
         RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
         """
         rel_results = await neo4j_manager.execute_read_query(
@@ -822,7 +822,7 @@ async def get_characters_for_chapter_context_native(
         ORDER BY last_appearance DESC
         LIMIT $limit
         
-        OPTIONAL MATCH (c)-[r:RELATIONSHIP]->(other:Entity)
+        OPTIONAL MATCH (c)-[r]->(other:Entity)
         RETURN c, 
                collect({
                    target_name: other.name,

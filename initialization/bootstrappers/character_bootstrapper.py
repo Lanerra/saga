@@ -61,7 +61,6 @@ async def bootstrap_characters(
         state_tracker = StateTracker()
 
     # Pre-reserve all placeholder names to prevent conflicts during parallel generation
-    reserved_names = set()
     for name, profile in character_profiles.items():
         if name in [
             "Antagonist",
@@ -72,7 +71,6 @@ async def bootstrap_characters(
             # Reserve placeholder names upfront with temporary descriptions
             temp_desc = f"Character placeholder for {name} role"
             await state_tracker.reserve(name, "character", temp_desc)
-            reserved_names.add(name)
             logger.debug(f"Reserved placeholder name: {name}")
 
     # Also reserve the actual protagonist name if it exists and is not a placeholder
@@ -169,7 +167,7 @@ async def bootstrap_characters(
                     )
                     # Generate a unique narrative-appropriate name to avoid conflicts
                     conflict_context = {
-                        "profile": profile.to_dict(),
+                        "profile": character_profiles[name].to_dict(),
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
@@ -254,7 +252,7 @@ async def bootstrap_characters(
                         same_name=value,
                     )
                     conflict_context = {
-                        "profile": profile.to_dict(),
+                        "profile": character_profiles[name].to_dict(),
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
@@ -336,7 +334,7 @@ async def bootstrap_characters(
                         conflicting_with=value,
                     )
                     conflict_context = {
-                        "profile": profile.to_dict(),
+                        "profile": character_profiles[name].to_dict(),
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],

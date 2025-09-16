@@ -138,7 +138,8 @@ async def _validate_plot_outline(
         )
 
     # Check for optional but recommended fields (only warn if completely missing)
-    recommended_fields = ["themes", "tone"]  # Reduced list to avoid too many warnings
+    # Align naming with plot bootstrapper: use 'theme' (singular) rather than 'themes' to avoid spurious warnings
+    recommended_fields = ["theme", "tone"]
     missing_recommended = [
         field for field in recommended_fields if field not in plot_outline
     ]

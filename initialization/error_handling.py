@@ -32,22 +32,12 @@ class BootstrapError(Exception):
         self.context = context or {}
 
 
-class ValidationError(BootstrapError):
-    """Raised when validation fails."""
-
-    pass
-
-
-class GenerationError(BootstrapError):
-    """Raised when content generation fails."""
-
-    pass
-
-
-class DataLoadError(BootstrapError):
-    """Raised when data loading fails."""
-
-    pass
+"""
+Note: Additional specialized exception types and helper wrappers previously lived
+here but were unused in the current single-user pipeline and have been removed
+to reduce indirection. Keep this module lean: use handle_bootstrap_error for
+uniform logging and flow control.
+"""
 
 
 def handle_bootstrap_error(
@@ -90,91 +80,3 @@ def handle_bootstrap_error(
         if reraise:
             raise
         return False  # Abort entire process
-
-
-def safe_bootstrap_operation(
-    operation_name: str,
-    operation_func,
-    *args,
-    default_return=None,
-    error_severity: ErrorSeverity = ErrorSeverity.ERROR,
-    context: dict[str, Any] | None = None,
-    **kwargs,
-) -> tuple[Any, bool]:
-    """Safely execute a bootstrap operation with standardized error handling.
-
-    Args:
-        operation_name: Human-readable name for the operation
-        operation_func: The function to execute
-        *args: Arguments to pass to operation_func
-        default_return: Value to return if operation fails
-        error_severity: How to handle errors
-        context: Additional context for error reporting
-        **kwargs: Keyword arguments to pass to operation_func
-
-    Returns:
-        Tuple of (result, success_flag)
-    """
-    try:
-        result = operation_func(*args, **kwargs)
-        return result, True
-    except Exception as e:
-        should_continue = handle_bootstrap_error(
-            e, operation_name, error_severity, context
-        )
-        return default_return, should_continue
-
-
-async def safe_async_bootstrap_operation(
-    operation_name: str,
-    operation_func,
-    *args,
-    default_return=None,
-    error_severity: ErrorSeverity = ErrorSeverity.ERROR,
-    context: dict[str, Any] | None = None,
-    **kwargs,
-) -> tuple[Any, bool]:
-    """Async version of safe_bootstrap_operation."""
-    try:
-        result = await operation_func(*args, **kwargs)
-        return result, True
-    except Exception as e:
-        should_continue = handle_bootstrap_error(
-            e, operation_name, error_severity, context
-        )
-        return default_return, should_continue
-
-
-def validate_bootstrap_preconditions(checks: dict[str, Any]) -> None:
-    """Validate preconditions before starting bootstrap operations.
-
-    Args:
-        checks: Dictionary of check_name -> check_result pairs
-
-    Raises:
-        ValidationError: If any critical precondition fails
-    """
-    failed_checks = []
-    for check_name, check_result in checks.items():
-        if not check_result:
-            failed_checks.append(check_name)
-
-    if failed_checks:
-        raise ValidationError(
-            f"Bootstrap preconditions failed: {', '.join(failed_checks)}",
-            ErrorSeverity.CRITICAL,
-            {"failed_checks": failed_checks},
-        )
-
-
-def create_error_recovery_context(
-    operation: str, attempt_number: int, max_attempts: int, error: Exception
-) -> dict[str, Any]:
-    """Create context for error recovery operations."""
-    return {
-        "operation": operation,
-        "attempt": attempt_number,
-        "max_attempts": max_attempts,
-        "error_type": type(error).__name__,
-        "error_message": str(error),
-    }
