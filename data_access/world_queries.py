@@ -53,6 +53,8 @@ async def sync_world_items(
     chapter_number: int,
     full_sync: bool = False,
 ) -> bool:
+    # DEPRECATION: Legacy dict-based variant. Prefer the native model version below
+    # which accepts list[WorldItem] and uses the NativeCypherBuilder.
     """Persist world element data to Neo4j."""
     # Validate all world items before syncing
     for cat, items in world_items.items():
@@ -494,12 +496,14 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                             f"Could not parse chapter for world elab key: {key_str} for item {item_name_str}"
                         )
 
-    # 5. Cleanup orphaned ValueNodes (those not connected to any WorldElement after reconciliation)
+    # 5. Cleanup orphaned ValueNodes (restricted to known world list properties)
     statements.append(
         (
             """
         MATCH (v:ValueNode:Entity)
-        WHERE NOT EXISTS((:WorldElement:Entity)-[]->(v)) AND NOT EXISTS((:Entity)-->(v))
+        WHERE v.type IN ['goals','rules','key_elements','traits']
+          AND NOT EXISTS((:WorldElement:Entity)-[]->(v))
+          AND NOT EXISTS((:Entity)-->(v))
         DETACH DELETE v
         """,
             {},

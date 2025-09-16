@@ -507,16 +507,6 @@ class ZeroCopyContextGenerator:
         return "\n\n".join(reversed(ending_parts))
 
 
-# Public helper for narrative continuation extraction to avoid private calls from agents
-def extract_narrative_continuation_context(
-    chap_data: dict[str, Any], chap_num: int
-) -> str:
-    """Public wrapper that delegates to the internal extraction logic.
-
-    Exposes a stable function for agents to use without importing private methods.
-    """
-    return ZeroCopyContextGenerator._extract_narrative_continuation(chap_data, chap_num)
-
     @staticmethod
     def _generate_next_chapter_guidance(text: str, summary: str, chap_num: int) -> str:
         """
@@ -645,6 +635,16 @@ def extract_narrative_continuation_context(
             f"Built fallback semantic context: {count_tokens(final_context, config.NARRATIVE_MODEL)} tokens."
         )
         return final_context
+
+# Public helper for narrative continuation extraction to avoid private calls from agents
+def extract_narrative_continuation_context(
+    chap_data: dict[str, Any], chap_num: int
+) -> str:
+    """Public wrapper that delegates to the internal extraction logic.
+
+    Exposes a stable function for agents to use without importing private methods.
+    """
+    return ZeroCopyContextGenerator._extract_narrative_continuation(chap_data, chap_num)
 
 
 # Backward compatibility wrapper for legacy agent_or_props interface

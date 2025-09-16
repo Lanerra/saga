@@ -2,6 +2,7 @@
 from typing import Any
 
 import structlog
+from data_access.kg_queries import validate_relationship_type
 
 import config
 import utils
@@ -170,6 +171,9 @@ def generate_character_node_cypher(
                         if isinstance(v_rel, (str, int, float, bool)):
                             rel_cypher_props[k_rel] = v_rel
                     rel_cypher_props.pop("type", None)
+
+                # Normalize/validate relationship type before using it in Cypher
+                rel_type_str = validate_relationship_type(rel_type_str)
 
                 rel_cypher_props[KG_REL_CHAPTER_ADDED] = chapter_number_for_delta
                 rel_cypher_props[KG_IS_PROVISIONAL] = basic_props.get(

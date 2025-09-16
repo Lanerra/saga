@@ -38,6 +38,8 @@ async def sync_characters(
     chapter_number: int,
     full_sync: bool = False,
 ) -> bool:
+    # DEPRECATION: This dict-based signature is maintained for backward compatibility.
+    # Prefer the native model version in this module (accepts list[CharacterProfile]).
     """Persist character data to Neo4j."""
     # Validate all profiles before syncing
     for name, profile in profiles.items():
@@ -468,6 +470,7 @@ async def get_all_character_names() -> list[str]:
 
 
 async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
+    # DEPRECATION: Legacy dict-based fetcher. Prefer get_character_profiles() (native models).
     logger.info("Loading decomposed character profiles from Neo4j...")
     profiles_data: dict[str, CharacterProfile] = {}
 
