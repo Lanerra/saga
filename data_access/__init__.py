@@ -26,6 +26,11 @@ from .kg_queries import (
     normalize_existing_relationship_types,
     query_kg_from_db,
 )
+from .kg_queries import (
+    fetch_unresolved_dynamic_relationships,
+    update_dynamic_relationship_type,
+    get_shortest_path_length_between_entities,
+)
 from .plot_queries import (
     append_plot_point,
     get_last_plot_point_id,

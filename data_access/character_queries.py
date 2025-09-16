@@ -1,5 +1,6 @@
 # data_access/character_queries.py
 from typing import Any
+import hashlib
 
 import structlog
 from async_lru import alru_cache  # type: ignore
@@ -62,6 +63,15 @@ async def sync_characters(
         )
         for profile in profiles.values():
             CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(profile.name)] = profile.name
+        # Invalidate caches related to characters
+        try:
+            get_character_profile_by_name.cache_clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            get_all_character_names.cache_clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         return True
     except Exception as exc:  # pragma: no cover - log and return failure
         logger.error(
@@ -219,7 +229,10 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                         continue
 
                     dev_event_summary = value_str.strip()
-                    dev_event_id = f"dev_{utils._normalize_for_id(char_name)}_ch{chap_num_int}_{hash(dev_event_summary)}"
+                    stable_hash = hashlib.sha1(
+                        f"{char_name}|{chap_num_int}|{dev_event_summary}".encode("utf-8")
+                    ).hexdigest()[:16]
+                    dev_event_id = f"dev_{utils._normalize_for_id(char_name)}_ch{chap_num_int}_{stable_hash}"
 
                     dev_event_props = {
                         "id": dev_event_id,

@@ -112,9 +112,14 @@ def generate_character_node_cypher(
     if isinstance(profile.updates, dict) and dev_event_key in profile.updates:
         dev_event_summary = profile.updates[dev_event_key]
         if isinstance(dev_event_summary, str) and dev_event_summary.strip():
+            stable_hash = hashlib.sha1(
+                f"{profile.name}|{chapter_number_for_delta}|{dev_event_summary}".encode(
+                    "utf-8"
+                )
+            ).hexdigest()[:16]
             dev_event_id = (
                 f"dev_{utils._normalize_for_id(profile.name)}_ch{chapter_number_for_delta}_"
-                f"{hash(dev_event_summary)}"
+                f"{stable_hash}"
             )
             dev_event_props = {
                 "id": dev_event_id,
@@ -210,3 +215,4 @@ def generate_character_node_cypher(
                 )
 
     return statements
+import hashlib

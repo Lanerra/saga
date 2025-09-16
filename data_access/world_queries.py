@@ -1,5 +1,6 @@
 # data_access/world_queries.py
 import logging
+import hashlib
 from typing import Any
 
 from async_lru import alru_cache  # type: ignore
@@ -111,6 +112,11 @@ async def sync_world_items(
             count,
             chapter_number,
         )
+        # Invalidate caches that may be stale after a bulk sync
+        try:
+            get_world_item_by_id.cache_clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
         return True
     except Exception as exc:  # pragma: no cover - log and return failure
         logger.error(
@@ -453,9 +459,10 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                             continue
 
                         elab_summary = value_val.strip()
-                        elab_event_id = (
-                            f"elab_{we_id_str}_ch{chap_num_val}_{hash(elab_summary)}"
-                        )
+                        stable_hash = hashlib.sha1(
+                            f"{we_id_str}|{chap_num_val}|{elab_summary}".encode("utf-8")
+                        ).hexdigest()[:16]
+                        elab_event_id = f"elab_{we_id_str}_ch{chap_num_val}_{stable_hash}"
 
                         elab_is_provisional = False
                         sq_key_for_elab_chap = f"source_quality_chapter_{chap_num_val}"
