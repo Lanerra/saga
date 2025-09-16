@@ -139,6 +139,24 @@ def get_cache_metrics(service_name: str | None = None) -> dict[str, Any]:
     return {service: dict(stats) for service, stats in _cache_stats.items()}
 
 
+def get_cache_size(service_name: str) -> int:
+    """
+    Return the number of entries stored for a given service's cache.
+
+    Args:
+        service_name: Name of the service whose cache size to report
+
+    Returns:
+        Integer count of keys currently cached for the service
+    """
+    try:
+        cache = _get_sync_cache(service_name)
+        return len(cache)
+    except Exception as e:
+        logger.error(f"Error getting cache size: {e}")
+        return 0
+
+
 def register_cache_service(service_name: str) -> None:
     """
     Register a cache service (simple initialization with LRU).

@@ -295,13 +295,10 @@ class EmbeddingService:
     def get_statistics(self) -> dict[str, Any]:
         """Get embedding service statistics."""
         total = self._stats["embeddings_requested"]
-        # Get cache metrics from coordinated cache
-        from core.lightweight_cache import get_cache_metrics
+        # Get cache size from lightweight cache service
+        from core.lightweight_cache import get_cache_size
 
-        cache_metrics = get_cache_metrics(self._service_name)
-        cache_size = 0
-        if cache_metrics and self._service_name in cache_metrics:
-            cache_size = cache_metrics[self._service_name].total_entries
+        cache_size = get_cache_size(self._service_name)
 
         return {
             **self._stats,
