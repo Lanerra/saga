@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 async def load_chapter_count_from_db() -> int:
-    query = f"MATCH (c:{"Chapter"}) RETURN count(c) AS chapter_count"
+    query = "MATCH (c:Chapter) RETURN count(c) AS chapter_count"
     try:
         result = await neo4j_manager.execute_read_query(query)
         count = result[0]["chapter_count"] if result and result[0] else 0

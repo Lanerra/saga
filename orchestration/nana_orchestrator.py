@@ -7,7 +7,7 @@ import os
 import time  # For Rich display updates
 from typing import Any
 
-from async_lru import alru_cache
+ 
 
 import config
 import utils
@@ -1100,9 +1100,6 @@ class NANA_Orchestrator:
             )
         return final_text_result
 
-    @alru_cache(
-        maxsize=config.MAX_CONCURRENT_CHAPTERS
-    )  # Enforces concurrent tasks limit per agent
     async def run_chapter_generation_process(
         self, novel_chapter_number: int
     ) -> str | None:
