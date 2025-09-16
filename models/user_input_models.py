@@ -32,10 +32,10 @@ class ProtagonistModel(BaseModel):
 
     name: str
     description: str | None = None
-    traits: list[str] = []
+    traits: list[str] = Field(default_factory=list)
     motivation: str | None = None
     role: str | None = None
-    relationships: dict[str, RelationshipModel] = {}
+    relationships: dict[str, RelationshipModel] = Field(default_factory=dict)
 
 
 class CharacterGroupModel(BaseModel):
@@ -43,7 +43,7 @@ class CharacterGroupModel(BaseModel):
 
     protagonist: ProtagonistModel | None = None
     antagonist: ProtagonistModel | None = None
-    supporting_characters: list[ProtagonistModel] = []
+    supporting_characters: list[ProtagonistModel] = Field(default_factory=list)
 
 
 class KeyLocationModel(BaseModel):
@@ -58,14 +58,14 @@ class SettingModel(BaseModel):
     """Setting information for the story world."""
 
     primary_setting_overview: str | None = None
-    key_locations: list[KeyLocationModel] = []
+    key_locations: list[KeyLocationModel] = Field(default_factory=list)
 
 
 class PlotElementsModel(BaseModel):
     """Major plot elements provided by the user."""
 
     inciting_incident: str | None = None
-    plot_points: list[str] = []
+    plot_points: list[str] = Field(default_factory=list)
     central_conflict: str | None = None
     stakes: str | None = None
 

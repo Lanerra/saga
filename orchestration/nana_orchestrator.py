@@ -1470,11 +1470,13 @@ def setup_logging_nana():
 
     if config.LOG_FILE:
         try:
-            log_dir = os.path.dirname(config.LOG_FILE)
-            if log_dir:
-                os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(
+                config.settings.BASE_OUTPUT_DIR, config.settings.LOG_FILE
+            )
+            # Ensure the parent directory exists, not the file path itself
+            os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
             file_handler = logging.handlers.RotatingFileHandler(
-                config.LOG_FILE,
+                log_path,
                 maxBytes=10 * 1024 * 1024,
                 backupCount=5,
                 mode="a",
@@ -1484,14 +1486,14 @@ def setup_logging_nana():
             # Use the structlog formatter for human-readable output
             file_handler.setFormatter(config.formatter)
             root_logger.addHandler(file_handler)
-            root_logger.info(f"File logging enabled. Log file: {config.LOG_FILE}")
+            root_logger.info(f"File logging enabled. Log file: {log_path}")
         except Exception as e:
             console_handler_fallback = logging.StreamHandler()
             # Use the structlog formatter for human-readable output
             console_handler_fallback.setFormatter(config.formatter)
             root_logger.addHandler(console_handler_fallback)
             root_logger.error(
-                f"Failed to configure file logging to {config.LOG_FILE}: {e}. Logging to console instead.",
+                f"Failed to configure file logging: {e}. Logging to console instead.",
                 exc_info=True,
             )
 
@@ -1502,6 +1504,13 @@ def setup_logging_nana():
                 if hasattr(h, "console") and not isinstance(h, logging.FileHandler):
                     existing_console = h.console  # type: ignore
                     break
+
+        # Ensure Rich logging uses the same Console as the Live display
+        if existing_console is None:
+            try:
+                existing_console = RichDisplayManager.get_shared_console()
+            except Exception:
+                existing_console = None
 
         rich_handler = RichHandler(
             level=config.LOG_LEVEL_STR,

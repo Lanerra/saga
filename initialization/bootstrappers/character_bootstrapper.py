@@ -61,6 +61,7 @@ async def bootstrap_characters(
         state_tracker = StateTracker()
 
     # Pre-reserve all placeholder names to prevent conflicts during parallel generation
+    placeholder_reservations = {}
     for name, profile in character_profiles.items():
         if name in [
             "Antagonist",
@@ -71,6 +72,7 @@ async def bootstrap_characters(
             # Reserve placeholder names upfront with temporary descriptions
             temp_desc = f"Character placeholder for {name} role"
             await state_tracker.reserve(name, "character", temp_desc)
+            placeholder_reservations[name] = True
             logger.debug(f"Reserved placeholder name: {name}")
 
     # Also reserve the actual protagonist name if it exists and is not a placeholder

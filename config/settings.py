@@ -143,9 +143,9 @@ class SagaSettings(BaseSettings):
     PLOT_OUTLINE_FILE: str = "plot_outline.json"
     CHARACTER_PROFILES_FILE: str = "character_profiles.json"
     WORLD_BUILDER_FILE: str = "world_building.json"
-    CHAPTERS_DIR: str = "output/chapters"
-    CHAPTER_LOGS_DIR: str = "output/chapter_logs"
-    DEBUG_OUTPUTS_DIR: str = "output/debug_outputs"
+    CHAPTERS_DIR: str = "chapters"
+    CHAPTER_LOGS_DIR: str = "chapter_logs"
+    DEBUG_OUTPUTS_DIR: str = "debug_outputs"
 
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 

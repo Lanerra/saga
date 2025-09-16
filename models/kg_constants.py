@@ -431,16 +431,16 @@ RELATIONSHIP_NORMALIZATIONS = {
     "produces": "EMITS",
     "hires": "EMPLOYS",
     "takes_on": "EMPLOYS",
-    "manages": "CONTROLS",
+    # 'manages' canonicalized above to LEADS
     "operates": "CONTROLS",
-    "commands": "CONTROLS",
+    # 'commands' canonicalized above to LEADS
     "needs": "REQUIRES",
     "depends_on": "REQUIRES",
     "substituted_by": "REPLACED_BY",
     "succeeded_by": "REPLACED_BY",
     "connected_to": "LINKED_TO",
     "joined_to": "LINKED_TO",
-    "related_to": "ASSOCIATED_WITH",
+    # 'related_to' canonicalized above to FAMILY_OF
     "affiliated_with": "ASSOCIATED_WITH",
     # Information relationship normalizations
     "documents": "RECORDS",
