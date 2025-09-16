@@ -44,7 +44,7 @@ def secure_temp_file(suffix: str = ".tmp", text: bool = True):
     temp_path = None
     try:
         temp_fd, temp_path = tempfile.mkstemp(suffix=suffix, text=text)
-        os.close(temp_fd) # Close the file descriptor immediately
+        os.close(temp_fd)  # Close the file descriptor immediately
         yield temp_path
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -67,7 +67,7 @@ async def async_llm_context(
 
     This single context manager replaces the previous nested context managers:
     - async_llm_service
-    - async_batch_embedding_session  
+    - async_batch_embedding_session
     - async_managed_cache_session
 
     Args:
@@ -85,13 +85,19 @@ async def async_llm_context(
     embedding_client = EmbeddingHTTPClient(http_client)
     completion_client = CompletionHTTPClient(http_client)
     text_processor = TextProcessingService()
-    
+
     embedding_service = EmbeddingService(embedding_client)
     completion_service = CompletionService(completion_client, text_processor)
-    llm_service = RefactoredLLMService(completion_service, embedding_service, text_processor)
-    
-    initial_cache_size = len(embedding_service._embedding_cache) if hasattr(embedding_service, '_embedding_cache') else 0
-    
+    llm_service = RefactoredLLMService(
+        completion_service, embedding_service, text_processor
+    )
+
+    initial_cache_size = (
+        len(embedding_service._embedding_cache)
+        if hasattr(embedding_service, "_embedding_cache")
+        else 0
+    )
+
     try:
         yield llm_service, embedding_service
     finally:
@@ -101,7 +107,7 @@ async def async_llm_context(
             logger.debug("HTTP client closed successfully")
         except Exception as cleanup_error:
             logger.error(f"Failed to cleanup HTTP client: {cleanup_error}")
-        
+
         # Handle cache management
         if clear_cache_on_exit:
             try:
@@ -109,7 +115,7 @@ async def async_llm_context(
                 logger.debug("Cache cleared on session exit")
             except Exception as cache_error:
                 logger.error(f"Failed to clear cache: {cache_error}")
-        
+
         # Log performance metrics
         try:
             stats = embedding_service.get_statistics()
@@ -697,14 +703,14 @@ class RefactoredLLMService:
 def create_llm_service() -> RefactoredLLMService:
     """
     Create and return a new LLM service instance with direct instantiation.
-    
+
     This replaces the service locator pattern with direct dependency injection.
     """
     http_client = HTTPClientService()
     embedding_client = EmbeddingHTTPClient(http_client)
     completion_client = CompletionHTTPClient(http_client)
     text_processor = TextProcessingService()
-    
+
     embedding_service = EmbeddingService(embedding_client)
     completion_service = CompletionService(completion_client, text_processor)
     return RefactoredLLMService(completion_service, embedding_service, text_processor)

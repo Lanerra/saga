@@ -6,7 +6,6 @@ from models.kg_constants import NODE_LABELS
 
 from .classifications import NodeClassifications
 
-
 ABSTRACT_TRAIT_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "HAS_TRAIT": {
         "valid_subject_types": NodeClassifications.SENTIENT

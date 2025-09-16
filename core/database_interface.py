@@ -19,7 +19,9 @@ class Neo4jDatabase:
             manager = neo4j_manager
 
         self._manager = manager
-        logger.debug("Neo4jDatabase wrapper initialised", manager=type(self._manager).__name__)
+        logger.debug(
+            "Neo4jDatabase wrapper initialised", manager=type(self._manager).__name__
+        )
 
     async def connect(self) -> None:
         """Establish a connection to Neo4j."""

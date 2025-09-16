@@ -6,7 +6,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 import config
 from core.db_manager import Neo4jManagerSingleton
@@ -17,6 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 neo4j_manager_instance = Neo4jManagerSingleton()
+
 
 async def reset_neo4j_database_async(uri, user, password, confirm=False):
     if not confirm:
@@ -91,7 +91,9 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
                             "MATCH (n) DETACH DELETE n RETURN count(n) as deleted_nodes_total"
                         )
                         single_result = await result.single()
-                        nodes_deleted_total = single_result.get("deleted_nodes_total", 0)
+                        nodes_deleted_total = single_result.get(
+                            "deleted_nodes_total", 0
+                        )
                         logger.info(f"  Total {nodes_deleted_total} nodes deleted.")
                     async with neo4j_manager_instance.driver.session(
                         database=config.NEO4J_DATABASE
@@ -132,14 +134,18 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
         ) as session:  # type: ignore
             constraints_result = await session.run("SHOW CONSTRAINTS YIELD name")
             constraints_to_drop = [
-                record["name"] for record in await constraints_result.data() if record["name"]
+                record["name"]
+                for record in await constraints_result.data()
+                if record["name"]
             ]
             if not constraints_to_drop:
                 logger.info("   No user‑defined constraints found to drop.")
             else:
                 for constraint_name in constraints_to_drop:
                     try:
-                        logger.info(f"   Attempting to drop constraint: {constraint_name}")
+                        logger.info(
+                            f"   Attempting to drop constraint: {constraint_name}"
+                        )
                         tx = await session.begin_transaction()
                         await tx.run(f"DROP CONSTRAINT {constraint_name} IF EXISTS")
                         await tx.commit()
@@ -219,7 +225,9 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
         logger.info(
             f"✅ Database data, all user‑defined constraints, and relevant user‑defined indexes reset/dropped in {elapsed_time:.2f} seconds."
         )
-        logger.info("   The SAGA system will attempt to recreate its necessary schema on the next run.")
+        logger.info(
+            "   The SAGA system will attempt to recreate its necessary schema on the next run."
+        )
 
         return True
 
@@ -237,6 +245,7 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
             original_user,
             original_pass,
         )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

@@ -1,23 +1,21 @@
 # agents/narrative_agent.py
-import json  # Added for JSON parsing
-import re  # Added for regex operations
+import json
+import re
 from typing import Any
 
 import structlog
 
 import config
-from config import NARRATIVE_MODEL
 from core.llm_interface_refactored import count_tokens, llm_service
 from core.text_processing_service import truncate_text_by_tokens
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
-from processing.zero_copy_context_generator import (
-    generate_hybrid_chapter_context_native,  # Native Phase 2 context generation (deprecated wrapper)
-)
+from processing.zero_copy_context_generator import ZeroCopyContextGenerator
 from prompts.prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
 )
 from prompts.prompt_renderer import render_prompt
+from utils.json_utils import extract_json_from_text, safe_json_loads, truncate_for_log
 
 logger = structlog.get_logger()
 
@@ -47,7 +45,7 @@ class NarrativeAgent:
     def __init__(self, config: dict):
         self.logger = structlog.get_logger()
         self.config = config
-        self.model = NARRATIVE_MODEL
+        self.model = config.NARRATIVE_MODEL
         self._token_cache: dict[tuple[str, str], int] = {}
 
     def _cached_count_tokens(self, text: str, model: str) -> int:
@@ -69,11 +67,12 @@ class NarrativeAgent:
         if not prev_chap_data:
             return ""
 
-        # Import the enhanced context extraction method
-        from processing.zero_copy_context_generator import ZeroCopyContextGenerator
+        # Use public helper for narrative continuation extraction
+        from processing.zero_copy_context_generator import (
+            extract_narrative_continuation_context,
+        )
 
-        # Use enhanced context generation for narrative continuation
-        enhanced_context = ZeroCopyContextGenerator._extract_narrative_continuation(
+        enhanced_context = extract_narrative_continuation_context(
             prev_chap_data, chapter_number - 1
         )
 
@@ -96,7 +95,7 @@ class NarrativeAgent:
 
         if prev_summary:
             context_summary_parts.append(
-                f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:config.settings.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS].strip()}...\n"
+                f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:config.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS].strip()}...\n"
             )
         else:
             prev_text = prev_chap_data.get("text", "")
@@ -107,7 +106,7 @@ class NarrativeAgent:
             )
             if prev_text:
                 context_summary_parts.append(
-                    f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-config.settings.NARRATIVE_CONTEXT_TEXT_TAIL_CHARS:].strip()}\n"
+                    f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-config.NARRATIVE_CONTEXT_TEXT_TAIL_CHARS:].strip()}\n"
                 )
 
         return "".join(context_summary_parts)
@@ -132,29 +131,10 @@ class NarrativeAgent:
             parsed_data = json.loads(cleaned_json_text)
         except json.JSONDecodeError as e:
             logger.error(
-                f"Failed to decode JSON scene plan for Ch {chapter_number}: {e}. Text: {cleaned_json_text[:500]}..."
+                f"Failed to decode JSON scene plan for Ch {chapter_number}: {e}. Text: {truncate_for_log(cleaned_json_text)}"
             )
-
-            # Try multiple extraction strategies
-            extracted_json = self._extract_json_from_malformed_text(cleaned_json_text)
-            if extracted_json:
-                try:
-                    parsed_data = json.loads(extracted_json)
-                    logger.info(
-                        f"Successfully parsed extracted JSON for Ch {chapter_number}"
-                    )
-                except json.JSONDecodeError as extract_error:
-                    logger.error(
-                        f"Failed to parse extracted JSON for Ch {chapter_number}: {extract_error}"
-                    )
-                    # Save malformed JSON for debugging if enabled
-                    if config.settings.NARRATIVE_JSON_DEBUG_SAVE:
-                        self._save_malformed_json_for_debugging(
-                            cleaned_json_text, chapter_number
-                        )
-                    return None
-            else:
-                # Save malformed JSON for debugging if enabled
+            parsed_data = safe_json_loads(cleaned_json_text, expected=list)
+            if parsed_data is None:
                 if config.settings.NARRATIVE_JSON_DEBUG_SAVE:
                     self._save_malformed_json_for_debugging(
                         cleaned_json_text, chapter_number
@@ -239,7 +219,7 @@ class NarrativeAgent:
             return text or ""
 
         # First, try to extract JSON structure from the text
-        extracted = self._extract_json_from_malformed_text(text)
+        extracted = extract_json_from_text(text)
         if extracted:
             return extracted
 
@@ -261,69 +241,7 @@ class NarrativeAgent:
 
         return text.strip()
 
-    def _extract_json_from_malformed_text(self, text: str) -> str | None:
-        """
-        Extract JSON array or object from malformed text using efficient strategies.
-        """
-        if not text:
-            return None
-
-        strategies = [
-            # Strategy 1: Extract complete JSON array
-            (r"\[\s*\{.*\}\s*\]", 0),
-            # Strategy 2: Extract from code blocks
-            (r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", 1),
-        ]
-
-        for pattern, group_index in strategies:
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                potential_json = match.group(group_index)
-                try:
-                    json.loads(potential_json)
-                    return potential_json
-                except json.JSONDecodeError:
-                    continue
-
-        # Strategy 3: Extract from the middle of text
-        # Look for patterns that might indicate JSON start
-        json_start_patterns = [r"\[\s*\{", r"\{[^{]*\{"]
-        for pattern in json_start_patterns:
-            start_match = re.search(pattern, text)
-            if start_match:
-                start_pos = start_match.start()
-                # Try to find matching closing brackets
-                bracket_count = 0
-                in_string = False
-                escape_next = False
-
-                for i, char in enumerate(text[start_pos:], start_pos):
-                    if escape_next:
-                        escape_next = False
-                        continue
-
-                    if char == "\\":
-                        escape_next = True
-                        continue
-
-                    if char == '"' and not escape_next:
-                        in_string = not in_string
-                        continue
-
-                    if not in_string:
-                        if char in ["[", "{"]:
-                            bracket_count += 1
-                        elif char in ["]", "}"]:
-                            bracket_count -= 1
-                            if bracket_count == 0:
-                                potential_json = text[start_pos : i + 1]
-                                try:
-                                    json.loads(potential_json)
-                                    return potential_json
-                                except json.JSONDecodeError:
-                                    break
-
-        return None
+    # JSON extraction moved to utils/json_utils.py for reuse
 
     def _save_malformed_json_for_debugging(
         self, malformed_json: str, chapter_number: int
@@ -737,7 +655,6 @@ class NarrativeAgent:
 
         # Check for common coherence issues
         # Look for repetitive patterns that might indicate poor quality
-        import re
 
         sentences = re.split(r"[.!?]+", draft_text)
         sentence_count = len([s.strip() for s in sentences if s.strip()])
@@ -831,15 +748,10 @@ class NarrativeAgent:
             )
 
         # Generate a hybrid context based on prior chapters and KG facts.
-        # Use a dictionary with plot outline info as the agent_or_props for context generation.
         try:
-            context_props: dict[str, Any] = {
-                "plot_outline": plot_outline,
-                "plot_outline_full": plot_outline,
-            }
             hybrid_context_for_draft: str = (
-                await generate_hybrid_chapter_context_native(
-                    context_props,
+                await ZeroCopyContextGenerator.generate_hybrid_context_native(
+                    plot_outline,
                     chapter_number,
                     scenes,
                 )

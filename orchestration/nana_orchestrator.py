@@ -7,8 +7,6 @@ import os
 import time  # For Rich display updates
 from typing import Any
 
- 
-
 import config
 import utils
 from agents.knowledge_agent import KnowledgeAgent

@@ -25,10 +25,10 @@ from data_access import (
 
 # Import native versions for performance optimization
 from data_access.character_queries import (
-    sync_characters,
+    sync_characters as persist_characters_native,
 )
 from data_access.world_queries import (
-    sync_world_items,
+    sync_world_items as persist_world_items_native,
 )
 from models.kg_models import CharacterProfile, WorldItem
 from processing.parsing_utils import (
@@ -440,34 +440,21 @@ def merge_world_item_updates(
             item = world[category][name]
             item_props = item.to_dict()
             for key, val in data.items():
-                if key in {provisional_key, "modification_proposal"} or (
-                    key.startswith(
-                        (
-                            "updated_in_chapter_",
-                            "added_in_chapter_",
-                            "source_quality_chapter_",
-                        )
+                # Skip meta/provenance keys (handled elsewhere)
+                if key in {provisional_key, "modification_proposal"} or key.startswith(
+                    (
+                        "updated_in_chapter_",
+                        "added_in_chapter_",
+                        "source_quality_chapter_",
                     )
                 ):
+                    # Also capture elaboration entries as additional properties
                     if (
                         key.startswith("elaboration_in_chapter_")
                         and isinstance(val, str)
                         and val.strip()
                     ):
-                        # Handle structured fields
-                        if key == "description":
-                            item.description = val
-                        elif key == "goals":
-                            item.goals = val if isinstance(val, list) else [val]
-                        elif key == "rules":
-                            item.rules = val if isinstance(val, list) else [val]
-                        elif key == "key_elements":
-                            item.key_elements = val if isinstance(val, list) else [val]
-                        elif key == "traits":
-                            item.traits = val if isinstance(val, list) else [val]
-                        else:
-                            # Handle additional properties
-                            item.additional_properties[key] = val
+                        item.additional_properties[key] = val
                     continue
                 cur_val = item_props.get(key)
                 if isinstance(val, list):
@@ -586,7 +573,7 @@ class KnowledgeAgent:
             profiles_list = profiles_to_persist
 
         # Use native model version for better performance
-        await sync_characters(profiles_list, chapter_number_for_delta)
+        await persist_characters_native(profiles_list, chapter_number_for_delta)
 
     async def persist_world(
         self,
@@ -627,7 +614,7 @@ class KnowledgeAgent:
         else:
             world_items_list = world_items_to_persist
 
-        await sync_world_items(world_items_list, chapter_number_for_delta)
+        await persist_world_items_native(world_items_list, chapter_number_for_delta)
 
     async def add_plot_point(self, description: str, prev_plot_point_id: str) -> str:
         """Persist a new plot point and link it in sequence."""
