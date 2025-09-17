@@ -88,7 +88,9 @@ async def bootstrap_characters(
         logger.debug(f"Reserved protagonist name: {protagonist_name}")
 
     for name, profile in character_profiles.items():
-        context = {"profile": profile.to_dict(), "plot_outline": plot_outline}
+        profile_dict = profile.to_dict()
+        profile_dict['name'] = profile.name  # Include name in profile dict for template access
+        context = {"profile": profile_dict, "plot_outline": plot_outline}
         role = profile.updates.get("role", "supporting")
 
         # Bootstrap character name if it's a placeholder
@@ -166,8 +168,10 @@ async def bootstrap_characters(
                         existing_type=existing_metadata["type"],
                     )
                     # Generate a unique narrative-appropriate name to avoid conflicts
+                    profile_dict = character_profiles[name].to_dict()
+                    profile_dict['name'] = character_profiles[name].name
                     conflict_context = {
-                        "profile": character_profiles[name].to_dict(),
+                        "profile": profile_dict,
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
@@ -251,8 +255,10 @@ async def bootstrap_characters(
                         old_name=name,
                         same_name=value,
                     )
+                    profile_dict = character_profiles[name].to_dict()
+                    profile_dict['name'] = character_profiles[name].name
                     conflict_context = {
-                        "profile": character_profiles[name].to_dict(),
+                        "profile": profile_dict,
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
@@ -333,8 +339,10 @@ async def bootstrap_characters(
                         placeholder_name=name,
                         conflicting_with=value,
                     )
+                    profile_dict = character_profiles[name].to_dict()
+                    profile_dict['name'] = character_profiles[name].name
                     conflict_context = {
-                        "profile": character_profiles[name].to_dict(),
+                        "profile": profile_dict,
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],

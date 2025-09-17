@@ -41,15 +41,6 @@ async def _cached_character_info(
     return _context_cache[cache_key]
 
 
-async def _cached_world_elements() -> list[WorldItem]:
-    """Cache world elements to avoid redundant database queries."""
-    cache_key = "world_elements"
-    if cache_key not in _context_cache:
-        result = await world_queries.get_all_world_items()
-        _context_cache[cache_key] = result
-    return _context_cache[cache_key]
-
-
 async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
     """Cache individual world item lookups."""
     cache_key = f"world_item_{item_id}"
@@ -59,36 +50,7 @@ async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
     return _context_cache[cache_key]
 
 
-async def _cached_character_profiles_plain_text(
-    character_profiles: list[CharacterProfile], current_chapter: int | None = None
-) -> str:
-    """Cache formatted character profiles to avoid reprocessing."""
-    # Create cache key from character names and chapter
-    char_names = sorted([cp.name for cp in character_profiles])
-    cache_key = f"char_profiles_{'-'.join(char_names)}_{current_chapter}"
-
-    if cache_key not in _context_cache:
-        result = await get_filtered_character_profiles_for_prompt_plain_text(
-            character_profiles, current_chapter
-        )
-        _context_cache[cache_key] = result
-    return _context_cache[cache_key]
-
-
-async def _cached_world_data_plain_text(
-    world_data: list[WorldItem], current_chapter: int | None = None
-) -> str:
-    """Cache formatted world data to avoid reprocessing."""
-    # Create cache key from world item IDs and chapter
-    world_ids = sorted([wi.id for wi in world_data if wi.id])
-    cache_key = f"world_data_{'-'.join(world_ids)}_{current_chapter}"
-
-    if cache_key not in _context_cache:
-        result = await get_filtered_world_data_for_prompt_plain_text(
-            world_data, current_chapter
-        )
-        _context_cache[cache_key] = result
-    return _context_cache[cache_key]
+    # Note: cache key uses item_id to avoid repeated lookups per chapter run
 
 
 def _format_dict_for_plain_text_prompt(
@@ -271,7 +233,7 @@ async def _get_character_profiles_dict_with_notes(
             continue
 
         if not profile_obj:
-            logger.warning(f"Character '{char_name}' not found in Neo4j.")
+            logger.warning("Character '%s' not found in Neo4j.", char_name)
             continue
 
         profile_dict = profile_obj.to_dict()
@@ -667,17 +629,29 @@ async def _apply_protagonist_proximity_filtering(
         return characters_of_interest
 
     pruned: set[str] = set()
-    for c in characters_of_interest:
-        if c == protagonist_name:
-            pruned.add(c)
-            continue
-        path_len = await kg_queries.get_shortest_path_length_between_entities(
-            protagonist_name, c
-        )
-        if path_len is not None and path_len <= 3:
-            pruned.add(c)
+    # Small N expected, but parallelize when > 2 to reduce latency.
+    others = [c for c in characters_of_interest if c != protagonist_name]
+    if not others:
+        return {protagonist_name}
+    if len(others) <= 2:
+        for c in others:
+            path_len = await kg_queries.get_shortest_path_length_between_entities(
+                protagonist_name, c
+            )
+            if path_len is not None and path_len <= 3:
+                pruned.add(c)
+    else:
+        tasks = [
+            kg_queries.get_shortest_path_length_between_entities(protagonist_name, c)
+            for c in others
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for c, path_len in zip(others, results):
+            if not isinstance(path_len, Exception) and path_len is not None and path_len <= 3:
+                pruned.add(c)
+    pruned.add(protagonist_name)
 
-    logger.debug(f"After protagonist-proximity filtering: {pruned}")
+    logger.debug("After protagonist-proximity filtering: %s", pruned)
     return pruned
 
 
@@ -789,7 +763,9 @@ async def _gather_character_facts(
                 facts_list.append(fact_text)
                 facts_for_this_char += 1
         elif isinstance(status_result, Exception):
-            logger.warning(f"KG Query for {char_name}'s status failed: {status_result}")
+            logger.warning(
+                "KG Query for %s's status failed: %s", char_name, status_result
+            )
 
         # Process location
         if (
