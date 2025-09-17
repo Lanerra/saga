@@ -7,7 +7,6 @@ Context data for prompts is now formatted as plain text.
 
 import asyncio
 import hashlib
-import logging
 from typing import Any
 
 import config
@@ -25,8 +24,9 @@ from models import (
 )
 from prompts.prompt_renderer import render_prompt
 
-logger = logging.getLogger(__name__)
-utils.load_spacy_model_if_needed()  # Ensure spaCy model is loaded when this module is imported
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 async def _process_patch_group(
@@ -445,7 +445,7 @@ _sentence_embedding_cache: dict[str, list[tuple[int, int, Any]]] = {}
 
 
 async def _get_sentence_embeddings(
-    text: str, cache: dict[str, list[tuple[int, int, Any]]] | None | None = None
+    text: str, cache: dict[str, list[tuple[int, int, Any]]] | None = None
 ) -> list[tuple[int, int, Any]]:
     """Return a list of (start, end, embedding) for each sentence."""
     if cache is None:
@@ -453,6 +453,13 @@ async def _get_sentence_embeddings(
     text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if text_hash in cache:
         return cache[text_hash]
+
+    # Lazy-load spaCy only if needed by downstream text segmentation utilities
+    try:
+        utils.load_spacy_model_if_needed()
+    except Exception:
+        # Do not fail hard; allow utils.get_text_segments to use any fallback
+        pass
 
     segments = utils.get_text_segments(text, "sentence")
     if not segments:
@@ -912,7 +919,7 @@ async def _generate_patch_instructions_logic(
             f"Processing only the first {len(groups_to_process)} groups."
         )
     if not groups_to_process:
-        return [], None
+        return []
 
     tasks = [
         _process_patch_group(
@@ -943,8 +950,8 @@ async def _generate_patch_instructions_logic(
 async def _apply_patches_to_text(
     original_text: str,
     patch_instructions: list[PatchInstruction],
-    already_patched_spans: list[tuple[int, int]] | None | None = None,
-    sentence_embeddings: list[tuple[int, int, Any]] | None | None = None,
+    already_patched_spans: list[tuple[int, int]] | None = None,
+    sentence_embeddings: list[tuple[int, int, Any]] | None = None,
 ) -> tuple[str, list[tuple[int, int]]]:
     """
     Applies patch instructions to the original text and returns the new text and a
@@ -1118,7 +1125,7 @@ async def revise_chapter_draft_logic(
     hybrid_context_for_revision: str,
     chapter_plan: list[SceneDetail] | None,
     is_from_flawed_source: bool = False,
-    already_patched_spans: list[tuple[int, int]] | None | None = None,
+    already_patched_spans: list[tuple[int, int]] | None = None,
 ) -> tuple[str, str, list[tuple[int, int]]] | None:
     """
     Orchestrates the chapter revision process with patch-based and full rewrite options.

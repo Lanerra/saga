@@ -5,16 +5,17 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import re
 
 import numpy as np
+
+import structlog
 
 import config
 import utils
 from core.llm_interface_refactored import llm_service
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TextDeduplicator:
@@ -151,5 +152,5 @@ class TextDeduplicator:
         # Optimize regex operations - combine patterns
         dedup_text = re.sub(r"\n\s*\n(?:\s*\n)+", "\n\n", dedup_text).strip()
 
-        removed_count = len(original_text) - len(dedup_text)
-        return dedup_text, removed_count
+        removed_char_count = len(original_text) - len(dedup_text)
+        return dedup_text, removed_char_count

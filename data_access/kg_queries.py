@@ -1618,7 +1618,7 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
 
 
 async def find_candidate_duplicate_entities(
-    similarity_threshold: float = 0.85, limit: int = 50
+    similarity_threshold: float = 0.45, limit: int = 50
 ) -> list[dict[str, Any]]:
     """
     Finds pairs of entities with similar names using native Neo4j string similarity.

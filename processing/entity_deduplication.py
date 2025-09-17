@@ -55,7 +55,7 @@ async def check_entity_similarity(
             MATCH (c:Character:Entity)
             WHERE c.name = $name OR 
                   toLower(c.name) = toLower($name) OR
-                  apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) > 0.85
+                  apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) > 0.45
             RETURN c.name as existing_name, 
                    labels(c) as existing_labels,
                    c.description as existing_description,
@@ -69,7 +69,7 @@ async def check_entity_similarity(
             MATCH (w:WorldElement:Entity)
             WHERE (w.name = $name OR 
                    toLower(w.name) = toLower($name) OR
-                   apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > 0.85)
+                   apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > 0.45)
                   AND ($category = '' OR w.category = $category)
             RETURN w.id as existing_id,
                    w.name as existing_name, 

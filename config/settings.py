@@ -211,7 +211,7 @@ class SagaSettings(BaseSettings):
 
     # De-duplication Configuration
     DEDUPLICATION_USE_SEMANTIC: bool = False
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.85
+    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # Relationship Constraint Configuration
@@ -233,6 +233,8 @@ class SagaSettings(BaseSettings):
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     LOG_FILE: str | None = "saga_run.log"
     ENABLE_RICH_PROGRESS: bool = True
+    # Minimal logging mode for single-user setups: console only, no rotation/Rich
+    SIMPLE_LOGGING_MODE: bool = False
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
@@ -399,5 +401,5 @@ DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
 # State Tracker Configuration
 STATE_TRACKER_ENABLED: bool = True  # Enable StateTracker for bootstrap generation
 STATE_TRACKER_SIMILARITY_THRESHOLD: float = (
-    0.85  # Threshold for description similarity checks
+    0.75  # Threshold for description similarity checks
 )

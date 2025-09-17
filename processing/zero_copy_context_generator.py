@@ -10,6 +10,8 @@ from typing import Any
 
 import numpy as np
 
+import structlog
+
 import config
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import count_tokens, llm_service
@@ -17,7 +19,7 @@ from core.text_processing_service import truncate_text_by_tokens
 from models import SceneDetail
 from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ZeroCopyContextGenerator:
