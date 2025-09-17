@@ -20,6 +20,13 @@ async def bootstrap_field(
 ) -> tuple[Any, dict[str, int] | None]:
     """Call LLM to fill a single field or list of fields."""
     logger.info(f"Bootstrapping field: '{field_name}'...")
+    # Provide safe defaults expected by some templates to avoid StrictUndefined errors
+    if prompt_template_path.endswith("bootstrapper/fill_world_item_field.j2"):
+        context_data = dict(context_data)  # do not mutate caller data
+        context_data.setdefault("existing_world_names", [])
+        context_data.setdefault("retry_attempt", 0)
+        context_data.setdefault("diversity_instruction", "")
+
     prompt = render_prompt(
         prompt_template_path,
         {"context": context_data, "field_name": field_name, "list_count": list_count},
