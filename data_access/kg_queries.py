@@ -1,5 +1,6 @@
 # data_access/kg_queries.py
 import difflib
+import hashlib
 import logging
 import re
 from typing import Any
@@ -1207,13 +1208,21 @@ async def add_kg_triples_batch_to_db(
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
 
+            # Create a stable relationship id to avoid flattening history across chapters
+            rel_id_source = (
+                f"{predicate_clean}|{subject_name.strip().lower()}|"
+                f"{str(object_literal_val).strip()}|{chapter_number}"
+            )
+            rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
+            params["rel_id_param"] = rel_id
+
             query = f"""
             {subject_merge}
                 ON CREATE SET {subject_create_sets}
             MERGE (o:Entity:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
                 ON CREATE SET o.created_ts = timestamp()
 
-            MERGE (s)-[r:`{predicate_clean}`]->(o)
+            MERGE (s)-[r:`{predicate_clean}` {{id: $rel_id_param}}]->(o)
                 ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
                 ON MATCH SET r += $rel_props_param, r.updated_ts = timestamp()
             """
@@ -1275,13 +1284,21 @@ async def add_kg_triples_batch_to_db(
                 label_clauses = [f"o:`{label}`" for label in object_additional_labels]
                 object_create_sets += ", " + ", ".join(label_clauses)
 
+            # Create a stable relationship id to avoid flattening history across chapters
+            rel_id_source = (
+                f"{predicate_clean}|{subject_name.strip().lower()}|"
+                f"{object_name.strip().lower()}|{chapter_number}"
+            )
+            rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
+            params["rel_id_param"] = rel_id
+
             query = f"""
             {subject_merge}
                 ON CREATE SET {subject_create_sets}
             {object_merge}
                 ON CREATE SET {object_create_sets}
 
-            MERGE (s)-[r:`{predicate_clean}`]->(o)
+            MERGE (s)-[r:`{predicate_clean}` {{id: $rel_id_param}}]->(o)
                 ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
                 ON MATCH SET r += $rel_props_param, r.updated_ts = timestamp()
             """

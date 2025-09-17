@@ -424,15 +424,13 @@ class CompletionService:
             logger.error(f"Primary model '{model_name}' failed: {e}")
 
             # Try fallback if enabled
-            if allow_fallback and config.FALLBACK_GENERATION_MODEL:
-                logger.info(
-                    f"Attempting fallback with '{config.FALLBACK_GENERATION_MODEL}'"
-                )
+            if allow_fallback and config.MEDIUM_MODEL:
+                logger.info(f"Attempting fallback with '{config.MEDIUM_MODEL}'")
                 self._stats["fallback_used"] += 1
 
                 try:
                     response_data = await self._completion_client.get_completion(
-                        config.FALLBACK_GENERATION_MODEL,
+                        config.MEDIUM_MODEL,
                         messages,
                         effective_temperature,
                         effective_max_tokens,
@@ -508,6 +506,9 @@ class CompletionService:
                     if chunk_data.get("choices"):
                         delta = chunk_data["choices"][0].get("delta", {})
                         content_piece = delta.get("content")
+                        # Some providers stream 'reasoning_content' instead of 'content'
+                        if not content_piece:
+                            content_piece = delta.get("reasoning_content")
 
                         if content_piece:
                             accumulated_content += content_piece
@@ -544,10 +545,47 @@ class CompletionService:
 
     def _extract_completion_content(self, response_data: dict[str, Any]) -> str:
         """Extract completion content from API response."""
-        if response_data.get("choices") and len(response_data["choices"]) > 0:
-            message = response_data["choices"][0].get("message")
-            if message and message.get("content"):
-                return message["content"]
+        # Prefer the standard OpenAI schema first
+        try:
+            if response_data.get("choices") and len(response_data["choices"]) > 0:
+                choice0 = response_data["choices"][0]
+                message = choice0.get("message") or {}
+
+                # 1) Standard content
+                content = message.get("content")
+                if isinstance(content, str) and content.strip():
+                    return content
+
+                # 2) Some providers (e.g., Qwen reasoning models) expose 'reasoning_content'
+                reasoning_content = message.get("reasoning_content")
+                if isinstance(reasoning_content, str) and reasoning_content.strip():
+                    logger.warning(
+                        "LLM response missing 'content'; using 'reasoning_content' fallback"
+                    )
+                    return reasoning_content
+
+                # 3) Occasionally providers place content directly under the choice
+                direct_choice_content = choice0.get("content")
+                if (
+                    isinstance(direct_choice_content, str)
+                    and direct_choice_content.strip()
+                ):
+                    logger.warning(
+                        "LLM response missing message.content; using choice['content'] fallback"
+                    )
+                    return direct_choice_content
+
+                # 4) Last resorts: top-level convenience fields sometimes appear
+                for key in ("output_text", "text", "response", "content"):
+                    top = response_data.get(key)
+                    if isinstance(top, str) and top.strip():
+                        logger.warning(
+                            f"LLM response using top-level '{key}' fallback for content"
+                        )
+                        return top
+
+        except Exception as e:
+            logger.error(f"Completion content extraction failed: {e}", exc_info=True)
 
         logger.error(
             f"Invalid response structure - missing choices/content: {response_data}"

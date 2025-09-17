@@ -46,15 +46,30 @@ async def generate_world_building_logic(world_building, plot_outline):
     raise NotImplementedError("This function has been replaced by bootstrap_world")
 
 
-# Enhanced world building targets
+# Default: one seed element per category (empty name placeholder)
 ENHANCED_WORLD_TARGETS = {
-    "locations": 4,  # vs current ~1
-    "society": 3,  # vs current ~1
-    "factions": 3,  # vs current ~1
-    "history": 2,  # vs current ~1
-    "lore": 2,  # vs current ~1
-    "systems": 2,  # vs current ~1
+    "locations": 1,
+    "society": 1,
+    "factions": 1,
+    "history": 1,
+    "lore": 1,
+    "systems": 1,
 }
+
+
+def _world_item_context(item: WorldItem) -> dict[str, Any]:
+    """Build a context dict for prompts that always includes name and category.
+
+    WorldItem.to_dict() intentionally omits core identifiers like name/category
+    for storage concerns. Prompt templates, however, expect them. This helper
+    merges those identifiers back in for safe Jinja rendering.
+    """
+    data = item.to_dict()
+    # Ensure required identifiers are present for templates
+    data["name"] = item.name
+    data["category"] = item.category
+    data["id"] = item.id
+    return data
 
 
 def create_default_world() -> dict[str, dict[str, WorldItem]]:
@@ -75,18 +90,18 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
         "source": "bootstrap_fallback",  # type: ignore
     }
 
-    # Create multiple elements per category using enhanced targets
+    # Create seed elements per category using targets (default 1 each)
     for cat_key, target_count in ENHANCED_WORLD_TARGETS.items():
         world_data[cat_key] = {}
 
-        # Create multiple placeholder elements per category
+        # Create placeholder elements per category with empty name as key
         for i in range(target_count):
-            element_name = f"{cat_key}_element_{i+1}"  # Will be filled by LLM
+            element_key = ""  # empty-name placeholder; name will be filled by LLM
 
-            # Prepare for enhanced node typing (will be used during persistence)
-            world_data[cat_key][element_name] = WorldItem.from_dict(
+            # Build seed item; allow empty name
+            world_data[cat_key][element_key] = WorldItem.from_dict(
                 cat_key,
-                element_name,
+                "",
                 {
                     "description": "",  # To be filled by LLM
                     "source": "bootstrap_placeholder",
@@ -124,7 +139,7 @@ async def _bootstrap_world_overview(
             desc_value, desc_usage = await bootstrap_field(
                 "description",
                 {
-                    "world_item": overview_item_obj.to_dict(),
+                    "world_item": _world_item_context(overview_item_obj),
                     "plot_outline": plot_outline,
                     "target_category": "_overview_",
                     "category_description": "Bootstrap a description for the world overview.",
@@ -180,11 +195,7 @@ async def _bootstrap_world_names(
         for item_name, item_obj in items_dict.items():
             # Check if the item name is missing, empty, or a placeholder pattern
             if isinstance(item_obj, WorldItem) and (
-                not item_obj.name
-                or not item_obj.name.strip()
-                or item_name.endswith(
-                    ("_element_1", "_element_2", "_element_3", "_element_4")
-                )
+                not item_obj.name or not item_obj.name.strip() or not item_name.strip()
             ):
                 logger.info(
                     "Identified item for name bootstrapping in category '%s': Current name '%s'",
@@ -215,7 +226,7 @@ async def _bootstrap_world_names(
         existing_category_names = set(world_building.get(category, {}).keys())
 
         context_data = {
-            "world_item": item_obj.to_dict(),
+            "world_item": _world_item_context(item_obj),
             "plot_outline": plot_outline,
             "target_category": category,
             "category_description": f"Bootstrap a name for a {category} element in the world.",
@@ -370,7 +381,7 @@ async def _bootstrap_world_names(
             set(generated_names.keys())
         )
         context_data = {
-            "world_item": item_obj.to_dict(),
+            "world_item": _world_item_context(item_obj),
             "plot_outline": plot_outline,
             "target_category": category,
             "category_description": f"Bootstrap a name for a {category} element in the world.",
@@ -559,7 +570,7 @@ async def _bootstrap_world_properties(
                 property_bootstrap_tasks[task_key] = bootstrap_field(
                     "description",
                     {
-                        "world_item": item_obj.to_dict(),
+                        "world_item": _world_item_context(item_obj),
                         "plot_outline": plot_outline,
                         "target_category": category,
                         "category_description": f"Bootstrap a description for a {category} element named '{item_name}' in the world.",
