@@ -1,10 +1,13 @@
 # utils/text_processing.py
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import spacy
-from rapidfuzz.fuzz import partial_ratio_alignment
+# Optional imports. We keep them out of module import path to avoid hard deps.
+try:  # pragma: no cover - optional dependency
+    from rapidfuzz.fuzz import partial_ratio_alignment  # type: ignore
+except Exception:  # pragma: no cover - if rapidfuzz missing
+    partial_ratio_alignment = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -43,20 +46,19 @@ def validate_world_item_fields(
     ):
         name = "unnamed_element"
 
-    # Validate ID
+    # Validate ID: ensure deterministic, human-readable if possible
     if not item_id or not isinstance(item_id, str) or not item_id.strip():
-        norm_cat = _normalize_for_id(category)
-        norm_name = _normalize_for_id(name)
-        # Ensure we have valid normalized IDs
-        if not norm_cat:
-            norm_cat = "other"
-        if not norm_name:
-            norm_name = "unnamed"
-        item_id = (
-            f"{norm_cat}_{norm_name}"
-            if norm_cat and norm_name
-            else f"element_{hash(category + name)}"
-        )
+        import hashlib
+
+        norm_cat = _normalize_for_id(category) or "other"
+        norm_name = _normalize_for_id(name) or "unnamed"
+        base = f"{norm_cat}_{norm_name}"
+        # If either part is too short or generic, append a short stable hash for uniqueness
+        if norm_name in {"", "unnamed"} or norm_cat in {"", "other"}:
+            suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:8]
+            item_id = f"{base}_{suffix}"
+        else:
+            item_id = base
 
     return category, name, item_id
 
@@ -74,31 +76,55 @@ class SpaCyModelManager:
     """Lazily loads and stores the spaCy model used across the project."""
 
     def __init__(self) -> None:
-        self._nlp: spacy.language.Language | None = None
+        self._nlp: Any | None = None
 
     @property
-    def nlp(self) -> spacy.language.Language | None:
+    def nlp(self) -> Any | None:
         return self._nlp
 
     def load(self) -> None:
-        """Load the spaCy model if it hasn't been loaded yet."""
+        """Load the spaCy model if it hasn't been loaded yet.
+
+        The import is performed lazily to avoid hard dependency and heavy
+        startup costs in single-user CLI mode. Defaults to a small model,
+        overridable by config (settings.SPACY_MODEL) or env.
+        """
         if self._nlp is not None:
             return
-        try:
-            self._nlp = spacy.load("en_core_web_trf")
-            logger.info("spaCy model 'en_core_web_trf' loaded successfully.")
-        except OSError:
+        try:  # import spacy lazily
+            import spacy  # type: ignore
+        except Exception:
             logger.error(
-                "spaCy model 'en_core_web_trf' not found. "
-                "Please run: python -m spacy download en_core_web_trf. "
-                "spaCy dependent features will be disabled."
+                "spaCy library not installed. Install with: pip install spacy. "
+                "spaCy-dependent features will be disabled."
             )
             self._nlp = None
-        except ImportError:
+            return
+
+        # Choose model: prefer config setting, default to lightweight model
+        model_name = None
+        try:
+            import config  # local import to avoid cycles
+
+            model_name = getattr(config.settings, "SPACY_MODEL", None)
+        except Exception:
+            model_name = None
+        if not model_name:
+            model_name = "en_core_web_sm"
+
+        try:
+            self._nlp = spacy.load(model_name)  # type: ignore[name-defined]
+            logger.info("spaCy model '%s' loaded.", model_name)
+        except OSError:
             logger.error(
-                "spaCy library not installed. Please install it: pip install spacy. "
-                "spaCy dependent features will be disabled."
+                "spaCy model '%s' not found. Install with: python -m spacy download %s. "
+                "spaCy-dependent features will be disabled.",
+                model_name,
+                model_name,
             )
+            self._nlp = None
+        except Exception as e:
+            logger.error("Failed to load spaCy model '%s': %s", model_name, e)
             self._nlp = None
 
 
@@ -137,15 +163,8 @@ async def find_quote_and_sentence_offsets_with_spacy(
 ) -> tuple[int, int, int, int] | None:
     """Locate quote and sentence offsets within ``doc_text``."""
     load_spacy_model_if_needed()
-    if (
-        spacy_manager.nlp is None
-        or not quote_text_from_llm.strip()
-        or not doc_text.strip()
-    ):
-        if spacy_manager.nlp is None:
-            logger.debug("find_quote_offsets: spaCy model not loaded.")
-        else:
-            logger.debug("find_quote_offsets: Empty quote_text or doc_text.")
+    if not quote_text_from_llm.strip() or not doc_text.strip():
+        logger.debug("find_quote_offsets: Empty quote_text or doc_text.")
         return None
 
     if "N/A - General Issue" in quote_text_from_llm:
@@ -161,9 +180,8 @@ async def find_quote_and_sentence_offsets_with_spacy(
         )
         return None
 
-    spacy_doc = spacy_manager.nlp(doc_text) if spacy_manager.nlp else None
-    if spacy_doc is None:
-        return None
+    # Prepare sentence segments regardless of spaCy availability
+    sentences = get_text_segments(doc_text, segment_level="sentence")
 
     current_pos = 0
     while current_pos < len(doc_text):
@@ -175,81 +193,78 @@ async def find_quote_and_sentence_offsets_with_spacy(
 
         match_end = match_start + len(cleaned_llm_quote_for_direct_search)
         found_sentence_span = None
-        for sent in spacy_doc.sents:
-            if (
-                sent.start_char <= match_start < sent.end_char
-                and sent.start_char < match_end <= sent.end_char
-            ):
-                found_sentence_span = sent
+        for sent_text, s_start, s_end in sentences:
+            if s_start <= match_start < s_end and s_start < match_end <= s_end:
+                found_sentence_span = (s_start, s_end)
                 break
 
         if found_sentence_span:
-            logger.info(
+            logger.debug(
                 "Direct Substring Match: Found LLM quote (approx) '%s...' at %d-%d in sentence %d-%d",
                 cleaned_llm_quote_for_direct_search[:30],
                 match_start,
                 match_end,
-                found_sentence_span.start_char,
-                found_sentence_span.end_char,
+                found_sentence_span[0],
+                found_sentence_span[1],
             )
             return (
                 match_start,
                 match_end,
-                found_sentence_span.start_char,
-                found_sentence_span.end_char,
+                found_sentence_span[0],
+                found_sentence_span[1],
             )
 
         current_pos = match_end
 
-    alignment = partial_ratio_alignment(cleaned_llm_quote_for_direct_search, doc_text)
-    if alignment.score >= 85.0:
-        match_start = alignment.dest_start
-        match_end = alignment.dest_end
-        for sent in spacy_doc.sents:
-            if (
-                sent.start_char <= match_start < sent.end_char
-                and sent.start_char < match_end <= sent.end_char
-            ):
-                logger.info(
-                    "Fuzzy Match: Found LLM quote (approx) '%s...' at %d-%d in sentence %d-%d (Score: %.2f)",
-                    cleaned_llm_quote_for_direct_search[:30],
-                    match_start,
-                    match_end,
-                    sent.start_char,
-                    sent.end_char,
-                    alignment.score,
-                )
-                return (
-                    match_start,
-                    match_end,
-                    sent.start_char,
-                    sent.end_char,
-                )
+    if partial_ratio_alignment is not None:
+        alignment = partial_ratio_alignment(
+            cleaned_llm_quote_for_direct_search, doc_text
+        )
+        if getattr(alignment, "score", 0.0) >= 85.0:
+            match_start = alignment.dest_start
+            match_end = alignment.dest_end
+            for _sent_text, s_start, s_end in sentences:
+                if s_start <= match_start < s_end and s_start < match_end <= s_end:
+                    logger.debug(
+                        "Fuzzy Match: Found LLM quote (approx) '%s...' at %d-%d in sentence %d-%d (Score: %.2f)",
+                        cleaned_llm_quote_for_direct_search[:30],
+                        match_start,
+                        match_end,
+                        s_start,
+                        s_end,
+                        alignment.score,
+                    )
+                    return (
+                        match_start,
+                        match_end,
+                        s_start,
+                        s_end,
+                    )
 
     # Token similarity fallback before expensive semantic search
-    best_sent = None
+    best_span = None
     best_sim = 0.0
-    for sent in spacy_doc.sents:
-        sim = _token_similarity(cleaned_llm_quote_for_direct_search, sent.text)
+    for sent_text, s_start, s_end in sentences:
+        sim = _token_similarity(cleaned_llm_quote_for_direct_search, sent_text)
         if sim > best_sim:
             best_sim = sim
-            best_sent = sent
-    if best_sent and best_sim >= 0.45:
-        logger.info(
+            best_span = (s_start, s_end)
+    if best_span and best_sim >= 0.45:
+        logger.debug(
             "Token Similarity Match: '%s...' most similar to sentence %d-%d (%.2f)",
             cleaned_llm_quote_for_direct_search[:30],
-            best_sent.start_char,
-            best_sent.end_char,
+            best_span[0],
+            best_span[1],
             best_sim,
         )
         return (
-            best_sent.start_char,
-            best_sent.end_char,
-            best_sent.start_char,
-            best_sent.end_char,
+            best_span[0],
+            best_span[1],
+            best_span[0],
+            best_span[1],
         )
 
-    logger.warning(
+    logger.debug(
         "Direct substring match failed for LLM quote '%s...'. Falling back to semantic sentence search.",
         quote_text_from_llm[:50],
     )
@@ -264,7 +279,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
 
     if semantic_sentence_match:
         s_start, s_end, similarity = semantic_sentence_match
-        logger.info(
+        logger.debug(
             "Semantic Match: Found sentence for LLM quote '%s...' from %d-%d (Similarity: %.2f). Using whole sentence as target.",
             quote_text_from_llm[:30],
             s_start,
@@ -273,7 +288,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
         )
         return s_start, s_end, s_start, s_end
 
-    logger.warning(
+    logger.info(
         "Could not confidently locate quote TEXT from LLM: '%s...' in document using direct or semantic search.",
         quote_text_from_llm[:50],
     )

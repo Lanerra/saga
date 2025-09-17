@@ -54,7 +54,13 @@ class CharacterProfile(BaseModel):
 
         # Extract relationships if available
         relationships = {}
-        rels = record.get("relationships") if hasattr(record, "get") else record.get("relationships") if isinstance(record, dict) else None
+        rels = (
+            record.get("relationships")
+            if hasattr(record, "get")
+            else record.get("relationships")
+            if isinstance(record, dict)
+            else None
+        )
         if rels:
             for rel in rels:
                 if rel and rel.get("target_name"):
@@ -218,19 +224,27 @@ class WorldItem(BaseModel):
         }
 
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(
+            node, core_fields
+        )
 
         node_dict = dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
             name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(node_dict.get("description", "")),
+            description=Neo4jExtractor.safe_string_extract(
+                node_dict.get("description", "")
+            ),
             goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
             rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(node_dict.get("key_elements", [])),
+            key_elements=Neo4jExtractor.safe_list_extract(
+                node_dict.get("key_elements", [])
+            ),
             traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
+            created_chapter=Neo4jExtractor.safe_int_extract(
+                node_dict.get("created_chapter", 0)
+            ),
             is_provisional=bool(node_dict.get("is_provisional", False)),
             additional_properties=additional_props,
         )
@@ -256,19 +270,27 @@ class WorldItem(BaseModel):
         }
 
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(
+            node, core_fields
+        )
 
         node_dict = dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
             name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(node_dict.get("description", "")),
+            description=Neo4jExtractor.safe_string_extract(
+                node_dict.get("description", "")
+            ),
             goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
             rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(node_dict.get("key_elements", [])),
+            key_elements=Neo4jExtractor.safe_list_extract(
+                node_dict.get("key_elements", [])
+            ),
             traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
+            created_chapter=Neo4jExtractor.safe_int_extract(
+                node_dict.get("created_chapter", 0)
+            ),
             is_provisional=bool(node_dict.get("is_provisional", False)),
             additional_properties=additional_props,
         )

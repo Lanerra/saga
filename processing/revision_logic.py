@@ -9,6 +9,8 @@ import asyncio
 import hashlib
 from typing import Any
 
+import structlog
+
 import config
 import utils  # For numpy_cosine_similarity, find_semantically_closest_segment, AND find_quote_and_sentence_offsets_with_spacy, format_scene_plan_for_prompt
 from agents.revision_agent import RevisionAgent
@@ -23,8 +25,6 @@ from models import (
     WorldItem,
 )
 from prompts.prompt_renderer import render_prompt
-
-import structlog
 
 logger = structlog.get_logger(__name__)
 

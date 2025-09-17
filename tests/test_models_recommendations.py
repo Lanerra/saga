@@ -1,16 +1,14 @@
-import types
-
 import pytest
 
-from models.kg_constants import RELATIONSHIP_NORMALIZATIONS
 from models.db_extraction_utils import Neo4jExtractor
+from models.kg_constants import RELATIONSHIP_NORMALIZATIONS
+from models.kg_models import CharacterProfile, WorldItem
 from models.user_input_models import (
     CharacterGroupModel,
     PlotElementsModel,
     ProtagonistModel,
     SettingModel,
 )
-from models.kg_models import CharacterProfile, WorldItem
 
 
 def test_relationship_normalizations_conflicts_resolved():
@@ -94,8 +92,12 @@ def test_characterprofile_from_db_record_robust_record_access():
 
     rec = FakeRecord(
         c=FakeNode(name="Alice", traits=["brave"], status="Unknown"),
-        relationships=[{"target_name": "Bob", "type": "FRIEND_OF", "description": "pals"}],
+        relationships=[
+            {"target_name": "Bob", "type": "FRIEND_OF", "description": "pals"}
+        ],
     )
     cp = CharacterProfile.from_db_record(rec)
-    assert cp.name == "Alice" and cp.relationships.get("Bob", {}).get("type") == "FRIEND_OF"
-
+    assert (
+        cp.name == "Alice"
+        and cp.relationships.get("Bob", {}).get("type") == "FRIEND_OF"
+    )

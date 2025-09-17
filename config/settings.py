@@ -66,10 +66,7 @@ class SagaSettings(BaseSettings):
     OPENAI_API_BASE: str = "http://127.0.0.1:8080/v1"
     OPENAI_API_KEY: str = "nope"
 
-    EMBEDDING_MODEL: str = "nomic-embed-text:latest"
-    # Reranker model needs to be loaded in Ollama and support the /api/rerank endpoint.
-    # E.g., bge-reranker-base, mxbai-rerank-large-v1, etc.
-    RERANKER_MODEL: str = "mxbai-rerank-large-v1:latest"
+    EMBEDDING_MODEL: str = "mxbai-embed-large:latest"
     EXPECTED_EMBEDDING_DIM: int = 1024
     EMBEDDING_DTYPE: str = "float16"
 
@@ -236,6 +233,11 @@ class SagaSettings(BaseSettings):
     ENABLE_RICH_PROGRESS: bool = True
     # Minimal logging mode for single-user setups: console only, no rotation/Rich
     SIMPLE_LOGGING_MODE: bool = False
+
+    # NLP / spaCy configuration
+    SPACY_MODEL: str | None = (
+        None  # default None => utils.text_processing uses en_core_web_sm
+    )
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"

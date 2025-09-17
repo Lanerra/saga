@@ -89,7 +89,9 @@ async def bootstrap_characters(
 
     for name, profile in character_profiles.items():
         profile_dict = profile.to_dict()
-        profile_dict['name'] = profile.name  # Include name in profile dict for template access
+        profile_dict["name"] = (
+            profile.name
+        )  # Include name in profile dict for template access
         context = {"profile": profile_dict, "plot_outline": plot_outline}
         role = profile.updates.get("role", "supporting")
 
@@ -169,7 +171,7 @@ async def bootstrap_characters(
                     )
                     # Generate a unique narrative-appropriate name to avoid conflicts
                     profile_dict = character_profiles[name].to_dict()
-                    profile_dict['name'] = character_profiles[name].name
+                    profile_dict["name"] = character_profiles[name].name
                     conflict_context = {
                         "profile": profile_dict,
                         "plot_outline": plot_outline,
@@ -256,7 +258,7 @@ async def bootstrap_characters(
                         same_name=value,
                     )
                     profile_dict = character_profiles[name].to_dict()
-                    profile_dict['name'] = character_profiles[name].name
+                    profile_dict["name"] = character_profiles[name].name
                     conflict_context = {
                         "profile": profile_dict,
                         "plot_outline": plot_outline,
@@ -340,7 +342,7 @@ async def bootstrap_characters(
                         conflicting_with=value,
                     )
                     profile_dict = character_profiles[name].to_dict()
-                    profile_dict['name'] = character_profiles[name].name
+                    profile_dict["name"] = character_profiles[name].name
                     conflict_context = {
                         "profile": profile_dict,
                         "plot_outline": plot_outline,

@@ -45,12 +45,17 @@ async def command_health():
     return True
 
 
-async def command_initialize(force=False):
+async def command_initialize(force: bool = False):
     """Initialize the static schema system."""
     print(f"Initializing Static Schema System {'(forced)' if force else ''}")
     print("=" * 40)
 
     try:
+        # Force has no special meaning for a static system; log and proceed
+        if force:
+            logging.info(
+                "Force flag provided; proceeding with no-op force for static schema."
+            )
         success = await startup_schema_integration()
 
         if success:

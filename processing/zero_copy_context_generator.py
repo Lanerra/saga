@@ -5,11 +5,9 @@ Uses single comprehensive Neo4j queries and direct field access.
 """
 
 import asyncio
-import logging
 from typing import Any
 
 import numpy as np
-
 import structlog
 
 import config

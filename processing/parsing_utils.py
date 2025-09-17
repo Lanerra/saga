@@ -1,10 +1,10 @@
 # processing/parsing_utils.py
 from __future__ import annotations
+
 from typing import Any
 
 # from rdflib import Graph, URIRef, Literal, BNode # No longer needed for triples
 # from rdflib.namespace import RDF, RDFS # No longer needed for triples
-
 import structlog
 
 logger = structlog.get_logger(__name__)

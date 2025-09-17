@@ -3,16 +3,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import re
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
-import numpy as np
-
-import config
-from core.llm_interface_refactored import count_tokens, llm_service
-from processing.text_deduplicator import TextDeduplicator
+from core.llm_interface_refactored import count_tokens
 
 from .helpers import _is_fill_in
 from .similarity import find_semantically_closest_segment, numpy_cosine_similarity
@@ -43,8 +37,8 @@ def format_scene_plan_for_prompt(
     if not chapter_plan:
         return "No detailed scene plan available."
 
-    plan_lines = ["**Detailed Scene Plan (MUST BE FOLLOWED CLOSELY):**"]
-    current_plan_parts = [plan_lines[0]]
+    header = "**Detailed Scene Plan (MUST BE FOLLOWED CLOSELY):**"
+    current_plan_parts = [header]
 
     for scene_idx, scene in enumerate(chapter_plan):
         scene_lines = [

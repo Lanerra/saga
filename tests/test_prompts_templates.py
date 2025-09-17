@@ -1,6 +1,5 @@
 import pytest
-
-from jinja2 import Environment, DictLoader, StrictUndefined
+from jinja2 import DictLoader, Environment, StrictUndefined
 
 import prompts.prompt_renderer as pr
 

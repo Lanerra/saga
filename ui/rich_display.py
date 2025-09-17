@@ -9,7 +9,7 @@ import config
 from core.llm_interface_refactored import llm_service
 
 try:
-    from rich.console import Group, Console
+    from rich.console import Console, Group
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text

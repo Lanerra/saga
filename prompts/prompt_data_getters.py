@@ -49,7 +49,6 @@ async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
         _context_cache[cache_key] = result
     return _context_cache[cache_key]
 
-
     # Note: cache key uses item_id to avoid repeated lookups per chapter run
 
 
@@ -646,8 +645,12 @@ async def _apply_protagonist_proximity_filtering(
             for c in others
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        for c, path_len in zip(others, results):
-            if not isinstance(path_len, Exception) and path_len is not None and path_len <= 3:
+        for c, path_len in zip(others, results, strict=False):
+            if (
+                not isinstance(path_len, Exception)
+                and path_len is not None
+                and path_len <= 3
+            ):
                 pruned.add(c)
     pruned.add(protagonist_name)
 

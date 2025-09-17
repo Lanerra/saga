@@ -27,11 +27,11 @@ def numpy_cosine_similarity(vec1: np.ndarray | None, vec2: np.ndarray | None) ->
         return 0.0
     if v1.shape != v2.shape:
         logger.warning(
-            "Vector shape mismatch: %s vs %s",
+            "Cosine similarity skipped due to vector shape mismatch: %s vs %s",
             v1.shape,
             v2.shape,
         )
-        raise ValueError(f"Vector shape mismatch: {v1.shape} vs {v2.shape}")
+        return 0.0
     if v1.size == 0:
         logger.debug("Cosine similarity: input vector(s) are empty. Returning 0.0.")
         return 0.0
@@ -78,12 +78,27 @@ async def find_semantically_closest_segment(
     highest_similarity = -2.0
 
     segment_texts = [s[0] for s in segments_with_indices]
-    segment_embeddings_tasks = [
-        llm_service.async_get_embedding(seg_text) for seg_text in segment_texts
+    # Bound concurrency for local hardware friendliness
+    max_concurrent = 4
+    try:
+        import config
+
+        max_concurrent = max(
+            1, int(getattr(config.settings, "MAX_CONCURRENT_LLM_CALLS", 4))
+        )
+    except Exception:
+        pass
+
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def _embed_with_limit(text: str):
+        async with semaphore:
+            return await llm_service.async_get_embedding(text)
+
+    tasks = [
+        asyncio.create_task(_embed_with_limit(seg_text)) for seg_text in segment_texts
     ]
-    segment_embeddings_results = await asyncio.gather(
-        *segment_embeddings_tasks, return_exceptions=True
-    )
+    segment_embeddings_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, seg_embedding_or_exc in enumerate(segment_embeddings_results):
         if isinstance(seg_embedding_or_exc, Exception) or seg_embedding_or_exc is None:
@@ -112,7 +127,7 @@ async def find_semantically_closest_segment(
         return None
 
     if best_match_info:
-        logger.info(
+        logger.debug(
             "Best semantic match for query '%s...' has similarity %.2f at span %d-%d.",
             query_text[:60].replace(chr(10), " "),
             best_match_info[2],
@@ -120,7 +135,7 @@ async def find_semantically_closest_segment(
             best_match_info[1],
         )
     else:
-        logger.info(
+        logger.debug(
             "No suitable semantic match found (above threshold %.2f) for query '%s...'. Highest sim was %.2f.",
             min_similarity_threshold,
             query_text[:60].replace(chr(10), " "),
