@@ -66,10 +66,7 @@ class SagaSettings(BaseSettings):
     OPENAI_API_BASE: str = "http://127.0.0.1:8080/v1"
     OPENAI_API_KEY: str = "nope"
 
-    EMBEDDING_MODEL: str = "nomic-embed-text:latest"
-    # Reranker model needs to be loaded in Ollama and support the /api/rerank endpoint.
-    # E.g., bge-reranker-base, mxbai-rerank-large-v1, etc.
-    RERANKER_MODEL: str = "mxbai-rerank-large-v1:latest"
+    EMBEDDING_MODEL: str = "mxbai-embed-large:latest"
     EXPECTED_EMBEDDING_DIM: int = 1024
     EMBEDDING_DTYPE: str = "float16"
 
@@ -143,9 +140,9 @@ class SagaSettings(BaseSettings):
     PLOT_OUTLINE_FILE: str = "plot_outline.json"
     CHARACTER_PROFILES_FILE: str = "character_profiles.json"
     WORLD_BUILDER_FILE: str = "world_building.json"
-    CHAPTERS_DIR: str = "output/chapters"
-    CHAPTER_LOGS_DIR: str = "output/chapter_logs"
-    DEBUG_OUTPUTS_DIR: str = "output/debug_outputs"
+    CHAPTERS_DIR: str = "chapters"
+    CHAPTER_LOGS_DIR: str = "chapter_logs"
+    DEBUG_OUTPUTS_DIR: str = "debug_outputs"
 
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
@@ -176,6 +173,7 @@ class SagaSettings(BaseSettings):
     PLANNING_CONTEXT_MAX_CHARS_PER_PROFILE_DESC: int = 80
     PLANNING_CONTEXT_MAX_RECENT_DEV_PER_PROFILE: int = 120
     PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET: int = 5
+    PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY: int = 3
     PLANNING_CONTEXT_MAX_LOCATIONS_IN_SNIPPET: int = 3
     PLANNING_CONTEXT_MAX_FACTIONS_IN_SNIPPET: int = 2
     PLANNING_CONTEXT_MAX_SYSTEMS_IN_SNIPPET: int = 2
@@ -211,7 +209,7 @@ class SagaSettings(BaseSettings):
 
     # De-duplication Configuration
     DEDUPLICATION_USE_SEMANTIC: bool = False
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.85
+    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # Relationship Constraint Configuration
@@ -233,6 +231,13 @@ class SagaSettings(BaseSettings):
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     LOG_FILE: str | None = "saga_run.log"
     ENABLE_RICH_PROGRESS: bool = True
+    # Minimal logging mode for single-user setups: console only, no rotation/Rich
+    SIMPLE_LOGGING_MODE: bool = False
+
+    # NLP / spaCy configuration
+    SPACY_MODEL: str | None = (
+        None  # default None => utils.text_processing uses en_core_web_sm
+    )
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
@@ -399,5 +404,5 @@ DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
 # State Tracker Configuration
 STATE_TRACKER_ENABLED: bool = True  # Enable StateTracker for bootstrap generation
 STATE_TRACKER_SIMILARITY_THRESHOLD: float = (
-    0.85  # Threshold for description similarity checks
+    0.75  # Threshold for description similarity checks
 )

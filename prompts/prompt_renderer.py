@@ -4,12 +4,18 @@
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 import config
 
 PROMPTS_PATH = Path(__file__).parent
-_env = Environment(loader=FileSystemLoader(PROMPTS_PATH), autoescape=False)
+_env = Environment(
+    loader=FileSystemLoader(PROMPTS_PATH),
+    autoescape=False,
+    undefined=StrictUndefined,
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
 
 def render_prompt(template_name: str, context: dict[str, Any]) -> str:

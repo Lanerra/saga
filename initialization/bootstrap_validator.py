@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+import config
+
 # Types available for type checking only
 if TYPE_CHECKING:
     from processing.state_tracker import StateTracker
@@ -182,10 +184,24 @@ async def _reconcile_state_with_profiles(
                 )
 
         # Tracked not in profiles (still warn so user can decide cleanup)
+        # Filter out known placeholder names that are expected to be replaced
         profile_all_names = (
             set(character_profiles.keys()) | world_names_seen | {"_overview_"}
         )
-        for name in sorted(tracked_names - profile_all_names):
+        placeholder_names = {
+            "Antagonist",
+            "SupportingChar1",
+            "SupportingChar2",
+            "SupportingChar3",
+        }
+        names_to_check = tracked_names - profile_all_names
+
+        # Remove placeholder names from warnings since they're expected to be replaced
+        names_to_check = {
+            name for name in names_to_check if name not in placeholder_names
+        }
+
+        for name in sorted(names_to_check):
             result.add_warning(
                 f"Bootstrap reconciliation: '{name}' tracked in StateTracker but not present in profiles"
             )
@@ -725,6 +741,12 @@ def _is_fill_in_placeholder(value: Any) -> bool:
         return False
 
     value_lower = value.lower().strip()
+
+    # If it's the exact FILL_IN value, it's a placeholder
+    if value_lower == config.FILL_IN.lower().strip():
+        return True
+
+    # Check for other common placeholder patterns
     placeholders = [
         "[fill in",
         "fill in",

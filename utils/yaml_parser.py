@@ -27,7 +27,11 @@ def normalize_keys_recursive(data: Any) -> Any:
         return data
 
 
-def load_yaml_file(filepath: str, normalize_keys: bool = True) -> dict[str, Any] | None:
+def load_yaml_file(
+    filepath: str,
+    normalize_keys: bool = True,
+    return_none_on_empty: bool = False,
+) -> dict[str, Any] | None:
     """
     Loads and parses a YAML file.
 
@@ -38,6 +42,7 @@ def load_yaml_file(filepath: str, normalize_keys: bool = True) -> dict[str, Any]
 
     Returns:
         A dictionary representing the YAML content, or None if an error occurs.
+        If the file is empty and `return_none_on_empty` is True, returns None instead of {}.
     """
     if not filepath.endswith((".yaml", ".yml")):
         logger.error(f"File specified is not a YAML file: {filepath}")
@@ -55,7 +60,7 @@ def load_yaml_file(filepath: str, normalize_keys: bool = True) -> dict[str, Any]
             # However, for consistency with previous parser, usually a Dict is expected.
             # Let's assume for now we want a dictionary, makes `normalize_keys` simpler.
             if content is None:  # Empty file
-                return {}
+                return None if return_none_on_empty else {}
             if not isinstance(content, dict):  # If not None and not dict, log error.
                 logger.error(
                     f"YAML file {filepath} must have a dictionary as its root element for this application."

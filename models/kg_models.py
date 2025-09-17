@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from models.db_extraction_utils import Neo4jExtractor
 from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
-from models.validation_utils import validate_world_item_fields
+from utils.text_processing import validate_world_item_fields
 
 if TYPE_CHECKING:
     import neo4j
@@ -54,19 +54,27 @@ class CharacterProfile(BaseModel):
 
         # Extract relationships if available
         relationships = {}
-        if "relationships" in record and record["relationships"]:
-            for rel in record["relationships"]:
+        rels = (
+            record.get("relationships")
+            if hasattr(record, "get")
+            else record.get("relationships")
+            if isinstance(record, dict)
+            else None
+        )
+        if rels:
+            for rel in rels:
                 if rel and rel.get("target_name"):
                     relationships[rel["target_name"]] = {
                         "type": rel.get("type", "KNOWS"),
                         "description": rel.get("description", ""),
                     }
 
+        node_dict = dict(node)
         return cls(
-            name=node.get("name", ""),
-            description=node.get("description", ""),
-            traits=node.get("traits", []),
-            status=node.get("status", "Unknown"),
+            name=node_dict.get("name", ""),
+            description=node_dict.get("description", ""),
+            traits=node_dict.get("traits", []),
+            status=node_dict.get("status", "Unknown"),
             relationships=relationships,
             created_chapter=node.get("created_chapter", 0),
             is_provisional=node.get("is_provisional", False),
@@ -76,11 +84,12 @@ class CharacterProfile(BaseModel):
     @classmethod
     def from_db_node(cls, node: neo4j.Node) -> CharacterProfile:
         """Construct directly from Neo4j node - no dict conversion."""
+        node_dict = dict(node)
         return cls(
-            name=node.get("name", ""),
-            description=node.get("description", ""),
-            traits=node.get("traits", []),
-            status=node.get("status", "Unknown"),
+            name=node_dict.get("name", ""),
+            description=node_dict.get("description", ""),
+            traits=node_dict.get("traits", []),
+            status=node_dict.get("status", "Unknown"),
             relationships={},  # Relationships handled separately
             created_chapter=node.get("created_chapter", 0),
             is_provisional=node.get("is_provisional", False),
@@ -219,19 +228,24 @@ class WorldItem(BaseModel):
             node, core_fields
         )
 
+        node_dict = dict(node)
         return cls(
-            id=Neo4jExtractor.safe_string_extract(node.get("id", "")),
-            category=Neo4jExtractor.safe_string_extract(node.get("category", "")),
-            name=Neo4jExtractor.safe_string_extract(node.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(node.get("description", "")),
-            goals=Neo4jExtractor.safe_list_extract(node.get("goals", [])),
-            rules=Neo4jExtractor.safe_list_extract(node.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(node.get("key_elements", [])),
-            traits=Neo4jExtractor.safe_list_extract(node.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(
-                node.get("created_chapter", 0)
+            id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
+            category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
+            name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
+            description=Neo4jExtractor.safe_string_extract(
+                node_dict.get("description", "")
             ),
-            is_provisional=bool(node.get("is_provisional", False)),
+            goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
+            rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
+            key_elements=Neo4jExtractor.safe_list_extract(
+                node_dict.get("key_elements", [])
+            ),
+            traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
+            created_chapter=Neo4jExtractor.safe_int_extract(
+                node_dict.get("created_chapter", 0)
+            ),
+            is_provisional=bool(node_dict.get("is_provisional", False)),
             additional_properties=additional_props,
         )
 
@@ -260,19 +274,24 @@ class WorldItem(BaseModel):
             node, core_fields
         )
 
+        node_dict = dict(node)
         return cls(
-            id=Neo4jExtractor.safe_string_extract(node.get("id", "")),
-            category=Neo4jExtractor.safe_string_extract(node.get("category", "")),
-            name=Neo4jExtractor.safe_string_extract(node.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(node.get("description", "")),
-            goals=Neo4jExtractor.safe_list_extract(node.get("goals", [])),
-            rules=Neo4jExtractor.safe_list_extract(node.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(node.get("key_elements", [])),
-            traits=Neo4jExtractor.safe_list_extract(node.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(
-                node.get("created_chapter", 0)
+            id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
+            category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
+            name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
+            description=Neo4jExtractor.safe_string_extract(
+                node_dict.get("description", "")
             ),
-            is_provisional=bool(node.get("is_provisional", False)),
+            goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
+            rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
+            key_elements=Neo4jExtractor.safe_list_extract(
+                node_dict.get("key_elements", [])
+            ),
+            traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
+            created_chapter=Neo4jExtractor.safe_int_extract(
+                node_dict.get("created_chapter", 0)
+            ),
+            is_provisional=bool(node_dict.get("is_provisional", False)),
             additional_properties=additional_props,
         )
 

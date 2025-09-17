@@ -34,25 +34,19 @@ class Neo4jExtractor:
                 .replace('"', "")
             )
             num_str = cleaned_value.split(",")[0].strip()
-            return int(num_str) if num_str else 0
-        return int(value) if value is not None else 0
+            if not num_str:
+                return 0
+            try:
+                return int(num_str)
+            except (ValueError, TypeError):
+                return 0
+        try:
+            return int(value) if value is not None else 0
+        except (ValueError, TypeError):
+            return 0
 
     @staticmethod
-    def safe_timestamp_extract(value: Any) -> int:
-        """Safely extract timestamp from potentially array or comma-separated value."""
-        if isinstance(value, list):
-            return int(value[0]) if value and value[0] else 0
-        elif isinstance(value, str):
-            # Handle comma-separated values by taking first part
-            cleaned_value = (
-                value.replace("[", "")
-                .replace("]", "")
-                .replace("'", "")
-                .replace('"', "")
-            )
-            timestamp_str = cleaned_value.split(",")[0].strip()
-            return int(timestamp_str) if timestamp_str else 0
-        return int(value) if value is not None else 0
+    # safe_timestamp_extract removed as unused per audit
 
     @staticmethod
     def safe_list_extract(value: Any) -> list[str]:

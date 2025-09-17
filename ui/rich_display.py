@@ -9,7 +9,7 @@ import config
 from core.llm_interface_refactored import llm_service
 
 try:
-    from rich.console import Group
+    from rich.console import Console, Group
     from rich.live import Live
     from rich.panel import Panel
     from rich.text import Text
@@ -44,6 +44,16 @@ except Exception:  # pragma: no cover - fallback when Rich isn't installed
 class RichDisplayManager:
     """Handles Rich-based display updates."""
 
+    # Shared Console singleton to coordinate Live + logging output
+    _shared_console: Console | None = None
+
+    @classmethod
+    def get_shared_console(cls) -> Console:
+        if cls._shared_console is None:
+            # Create a single Console instance for the whole app
+            cls._shared_console = Console()
+        return cls._shared_console
+
     def __init__(self) -> None:
         self.live: Live | None = None
         self.group: Group | None = None
@@ -64,6 +74,8 @@ class RichDisplayManager:
                 self.status_text_requests_per_minute,
                 self.status_text_elapsed_time,
             )
+            # Use a single shared Console so Live and Rich logging share output
+            console = self.get_shared_console()
             self.live = Live(
                 Panel(
                     self.group,
@@ -73,8 +85,10 @@ class RichDisplayManager:
                 ),
                 refresh_per_second=4,
                 transient=False,
-                redirect_stdout=False,
-                redirect_stderr=False,
+                # Capture any stray prints/stdout so the banner stays anchored
+                redirect_stdout=True,
+                redirect_stderr=True,
+                console=console,
             )
 
     def start(self) -> None:
@@ -133,3 +147,8 @@ class RichDisplayManager:
         self.status_text_elapsed_time.plain = (
             f"Elapsed Time: {time.strftime('%H:%M:%S', time.gmtime(elapsed_seconds))}"
         )
+        # Force a refresh to keep the live panel anchored and updated
+        try:
+            self.live.refresh()
+        except Exception:
+            pass

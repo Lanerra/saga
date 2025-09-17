@@ -1,8 +1,9 @@
 # processing/state_tracker.py
 """StateTracker for managing entity metadata during bootstrap generation.
 
-This component tracks entity names, types, descriptions, and timestamps to detect
-and prevent conflicts during parallel bootstrap generation processes.
+Tracks entity names, types, descriptions, and timestamps to detect and prevent
+conflicts during generation. While the pipeline is sequential for SAGA, this
+remains async for simplicity and future-proofing.
 """
 
 from __future__ import annotations

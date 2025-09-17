@@ -1,15 +1,17 @@
 # processing/parsing_utils.py
-import logging
+from __future__ import annotations
+
 from typing import Any
 
 # from rdflib import Graph, URIRef, Literal, BNode # No longer needed for triples
 # from rdflib.namespace import RDF, RDFS # No longer needed for triples
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ParseError(Exception):
-    """Custom exception for parsing errors."""
+    """Custom exception for parsing errors (unused)."""
 
 
 # --- New RDF Triple Parsing using rdflib ---
@@ -153,9 +155,8 @@ def _should_filter_entity(entity_name: str, entity_type: str = None) -> bool:
     return False
 
 
-def parse_rdf_triples_with_rdflib(
+def parse_llm_triples(
     text_block: str,
-    rdf_format: str = "turtle",
 ) -> list[dict[str, Any]]:
     """
     Custom parser for LLM-generated plain text triples.
@@ -164,7 +165,7 @@ def parse_rdf_triples_with_rdflib(
 
     Includes filtering to prevent creation of problematic entities.
     """
-    logger_func = logging.getLogger(__name__)
+    logger_func = logger
     triples_list: list[dict[str, Any]] = []
     if not text_block or not text_block.strip():
         return triples_list
@@ -296,3 +297,10 @@ def parse_rdf_triples_with_rdflib(
         )
 
     return triples_list
+
+
+# Backward-compat wrapper for tests and legacy callers
+def parse_rdf_triples_with_rdflib(
+    text_block: str, rdf_format: str = "turtle"
+) -> list[dict[str, Any]]:
+    return parse_llm_triples(text_block)

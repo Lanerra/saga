@@ -29,7 +29,10 @@ def extract_json_from_text(text: str) -> str | None:
 
 
 def safe_json_loads(
-    text: str, *, expected: type | tuple[type, ...] | None = None
+    text: str,
+    *,
+    expected: type | tuple[type, ...] | None = None,
+    strict_extract: bool = False,
 ) -> Any | None:
     """Safely json.loads text after extraction; optionally validate type.
 
@@ -38,7 +41,26 @@ def safe_json_loads(
     if not isinstance(text, str) or not text.strip():
         return None
 
-    candidate = extract_json_from_text(text) or text
+    candidate = text
+    if strict_extract:
+        # Balanced braces scan to find the first JSON object/array
+        start_chars = ["{", "["]
+        end_chars = {"{": "}", "[": "]"}
+        start_pos = min(
+            [i for i in (text.find("{"), text.find("[")) if i != -1] or [len(text)]
+        )
+        if start_pos < len(text):
+            stack = []
+            for j, ch in enumerate(text[start_pos:], start=start_pos):
+                if ch in start_chars:
+                    stack.append(ch)
+                elif stack and ch == end_chars[stack[-1]]:
+                    stack.pop()
+                    if not stack:  # closed the outermost
+                        candidate = text[start_pos : j + 1]
+                        break
+    else:
+        candidate = extract_json_from_text(text) or text
     try:
         obj = json.loads(candidate)
     except json.JSONDecodeError:

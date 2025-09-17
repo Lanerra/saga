@@ -1,5 +1,4 @@
 # initialization/bootstrappers/character_bootstrapper.py
-import asyncio
 from collections.abc import Coroutine
 from typing import Any
 
@@ -49,6 +48,7 @@ async def bootstrap_characters(
     state_tracker: StateTracker | None = None,
 ) -> tuple[dict[str, CharacterProfile], dict[str, int] | None]:
     """Fill missing character profile data via LLM with proactive shared state management."""
+    # Sequential processing replaces parallel task batching
     tasks: dict[tuple[str, str], Coroutine] = {}
     usage_data: dict[str, int] = {
         "prompt_tokens": 0,
@@ -61,6 +61,7 @@ async def bootstrap_characters(
         state_tracker = StateTracker()
 
     # Pre-reserve all placeholder names to prevent conflicts during parallel generation
+    placeholder_reservations = {}
     for name, profile in character_profiles.items():
         if name in [
             "Antagonist",
@@ -71,6 +72,7 @@ async def bootstrap_characters(
             # Reserve placeholder names upfront with temporary descriptions
             temp_desc = f"Character placeholder for {name} role"
             await state_tracker.reserve(name, "character", temp_desc)
+            placeholder_reservations[name] = True
             logger.debug(f"Reserved placeholder name: {name}")
 
     # Also reserve the actual protagonist name if it exists and is not a placeholder
@@ -86,7 +88,11 @@ async def bootstrap_characters(
         logger.debug(f"Reserved protagonist name: {protagonist_name}")
 
     for name, profile in character_profiles.items():
-        context = {"profile": profile.to_dict(), "plot_outline": plot_outline}
+        profile_dict = profile.to_dict()
+        profile_dict["name"] = (
+            profile.name
+        )  # Include name in profile dict for template access
+        context = {"profile": profile_dict, "plot_outline": plot_outline}
         role = profile.updates.get("role", "supporting")
 
         # Bootstrap character name if it's a placeholder
@@ -137,14 +143,12 @@ async def bootstrap_characters(
     if not tasks:
         return character_profiles, None
 
-    results = await asyncio.gather(*tasks.values())
-    task_keys = list(tasks.keys())
-
     # Track name changes for profile key updates
     name_changes = {}
 
-    for i, (value, usage) in enumerate(results):
-        name, field = task_keys[i]
+    # Process each character field sequentially to reduce similar-sounding outputs
+    for (name, field), coro in tasks.items():
+        value, usage = await coro
         if usage:
             for k, v in usage.items():
                 if isinstance(v, dict):
@@ -166,8 +170,10 @@ async def bootstrap_characters(
                         existing_type=existing_metadata["type"],
                     )
                     # Generate a unique narrative-appropriate name to avoid conflicts
+                    profile_dict = character_profiles[name].to_dict()
+                    profile_dict["name"] = character_profiles[name].name
                     conflict_context = {
-                        "profile": character_profiles[name].to_dict(),
+                        "profile": profile_dict,
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
@@ -251,8 +257,10 @@ async def bootstrap_characters(
                         old_name=name,
                         same_name=value,
                     )
+                    profile_dict = character_profiles[name].to_dict()
+                    profile_dict["name"] = character_profiles[name].name
                     conflict_context = {
-                        "profile": character_profiles[name].to_dict(),
+                        "profile": profile_dict,
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
@@ -333,8 +341,10 @@ async def bootstrap_characters(
                         placeholder_name=name,
                         conflicting_with=value,
                     )
+                    profile_dict = character_profiles[name].to_dict()
+                    profile_dict["name"] = character_profiles[name].name
                     conflict_context = {
-                        "profile": character_profiles[name].to_dict(),
+                        "profile": profile_dict,
                         "plot_outline": plot_outline,
                         "conflicting_name": value,
                         "existing_names": [p.name for p in character_profiles.values()],
