@@ -251,8 +251,10 @@ class NarrativeAgent:
         """
         try:
             import os
+            import config
 
-            debug_dir = os.path.join("novel_output", "debug_outputs")
+            # Use configured debug outputs directory under BASE_OUTPUT_DIR
+            debug_dir = config.DEBUG_OUTPUTS_DIR
             os.makedirs(debug_dir, exist_ok=True)
 
             filename = f"chapter_{chapter_number:04d}_malformed_scene_plan.json"

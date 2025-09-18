@@ -22,6 +22,7 @@ class BootstrapValidationResult:
         self.errors: list[str] = []
         self.warnings: list[str] = []
         self.validation_details: dict[str, Any] = {}
+        self.suppress_logging: bool = False
 
     def add_error(self, message: str) -> None:
         """Add a validation error."""
@@ -31,8 +32,12 @@ class BootstrapValidationResult:
 
     def add_warning(self, message: str) -> None:
         """Add a validation warning."""
+        # De-duplicate within the same validation result
+        if message in self.warnings:
+            return
         self.warnings.append(message)
-        logger.warning(f"Bootstrap validation warning: {message}")
+        if not self.suppress_logging:
+            logger.warning(f"Bootstrap validation warning: {message}")
 
     def add_detail(self, key: str, value: Any) -> None:
         """Add validation detail."""
@@ -92,6 +97,48 @@ async def validate_bootstrap_results(
     else:
         logger.error(f"Bootstrap validation failed with {len(result.errors)} errors")
 
+    return result
+
+
+# Lightweight wrappers to run focused validations at phase boundaries
+async def quick_validate_world(
+    plot_outline: dict[str, Any],
+    world_building: dict[str, dict[str, Any]],
+    state_tracker: "StateTracker | None" = None,
+) -> BootstrapValidationResult:
+    result = BootstrapValidationResult()
+    await _validate_world_building(world_building, result, state_tracker)
+    # Ensure duplicate location names are caught explicitly
+    try:
+        locations = world_building.get("locations", {})
+        if isinstance(locations, dict):
+            seen: set[str] = set()
+            for loc_name in locations.keys():
+                if loc_name in seen:
+                    result.add_error(f"Duplicate world location name: '{loc_name}'")
+                seen.add(loc_name)
+    except Exception:
+        pass
+    return result
+
+
+async def quick_validate_characters(
+    character_profiles: dict[str, Any],
+    state_tracker: "StateTracker | None" = None,
+) -> BootstrapValidationResult:
+    result = BootstrapValidationResult()
+    await _validate_character_profiles(character_profiles, result, state_tracker)
+    return result
+
+
+async def quick_validate_plot(
+    plot_outline: dict[str, Any],
+    character_profiles: dict[str, Any],
+    world_building: dict[str, dict[str, Any]],
+) -> BootstrapValidationResult:
+    result = BootstrapValidationResult()
+    await _validate_plot_outline(plot_outline, result)
+    await _validate_consistency(plot_outline, character_profiles, world_building, result)
     return result
 
 
@@ -172,16 +219,19 @@ async def _reconcile_state_with_profiles(
                     )
 
         # Ensure _overview_ is tracked if present in profiles
+        # Ensure '_overview_' tracked using a fresh check to avoid stale snapshot races
         if "_overview_" not in tracked_names:
-            reserved = await state_tracker.reserve("_overview_", "world_item", "")
-            if reserved:
-                logger.info(
-                    "Bootstrap reconciliation: auto-created StateTracker entry for '_overview_'"
-                )
-            else:
-                result.add_warning(
-                    "Bootstrap reconciliation: failed to reserve '_overview_' in StateTracker"
-                )
+            existing = await state_tracker.check("_overview_")
+            if not existing:
+                reserved = await state_tracker.reserve("_overview_", "world_item", "")
+                if reserved:
+                    logger.info(
+                        "Bootstrap reconciliation: auto-created StateTracker entry for '_overview_'"
+                    )
+                else:
+                    result.add_warning(
+                        "Bootstrap reconciliation: failed to reserve '_overview_' in StateTracker"
+                    )
 
         # Tracked not in profiles (still warn so user can decide cleanup)
         # Filter out known placeholder names that are expected to be replaced
@@ -194,6 +244,9 @@ async def _reconcile_state_with_profiles(
             "SupportingChar2",
             "SupportingChar3",
         }
+        # Refresh tracked names after any reservations above to reduce false warnings
+        refreshed = await state_tracker.get_all()
+        tracked_names = set(refreshed.keys()) if refreshed else set()
         names_to_check = tracked_names - profile_all_names
 
         # Remove placeholder names from warnings since they're expected to be replaced
