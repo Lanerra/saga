@@ -1817,7 +1817,9 @@ async def backfill_missing_entity_ids(max_updates: int = 1000) -> int:
         RETURN c.name AS name, coalesce(c.created_chapter, 0) AS created_chapter
         LIMIT $limit
         """
-        rows = await neo4j_manager.execute_read_query(fetch_query, {"limit": max_updates})
+        rows = await neo4j_manager.execute_read_query(
+            fetch_query, {"limit": max_updates}
+        )
         if not rows:
             return 0
 
@@ -1829,10 +1831,12 @@ async def backfill_missing_entity_ids(max_updates: int = 1000) -> int:
             created_chapter = int(r.get("created_chapter", 0) or 0)
             if not name:
                 continue
-            items.append({
-                "name": name,
-                "id": generate_entity_id(name, "character", created_chapter),
-            })
+            items.append(
+                {
+                    "name": name,
+                    "id": generate_entity_id(name, "character", created_chapter),
+                }
+            )
 
         if not items:
             return 0
@@ -1849,6 +1853,7 @@ async def backfill_missing_entity_ids(max_updates: int = 1000) -> int:
     except Exception as e:
         logger.error(f"Error backfilling missing entity IDs: {e}", exc_info=True)
         return 0
+
 
 async def get_entity_context_for_resolution(
     entity_id: str,

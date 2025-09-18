@@ -6,8 +6,8 @@ Eliminates the intermediate dict serialization layer for performance optimizatio
 
 from typing import TYPE_CHECKING, Any
 
-from utils.helpers import flatten_dict
 from processing.entity_deduplication import generate_entity_id
+from utils.helpers import flatten_dict
 
 if TYPE_CHECKING:
     from models.kg_models import CharacterProfile, WorldItem
