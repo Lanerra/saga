@@ -1208,6 +1208,18 @@ async def add_kg_triples_batch_to_db(
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
 
+            # Assign stable IDs for Characters when missing (literal object branch)
+            if subject_type == "Character":
+                try:
+                    from processing.entity_deduplication import generate_entity_id
+
+                    params["subject_id_param"] = generate_entity_id(
+                        subject_name, "character", int(chapter_number)
+                    )
+                    subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
+                except Exception:
+                    pass
+
             # Create a stable relationship id to avoid flattening history across chapters
             rel_id_source = (
                 f"{predicate_clean}|{subject_name.strip().lower()}|"
@@ -1279,10 +1291,34 @@ async def add_kg_triples_batch_to_db(
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
 
+            # Assign stable IDs for Characters when missing (subject)
+            if subject_type == "Character":
+                try:
+                    from processing.entity_deduplication import generate_entity_id
+
+                    params["subject_id_param"] = generate_entity_id(
+                        subject_name, "character", int(chapter_number)
+                    )
+                    subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
+                except Exception:
+                    pass
+
             object_create_sets = f"o.created_ts = timestamp(), o.type = '{object_type}'"
             if object_additional_labels:
                 label_clauses = [f"o:`{label}`" for label in object_additional_labels]
                 object_create_sets += ", " + ", ".join(label_clauses)
+
+            # Assign stable IDs for Characters when missing (object)
+            if object_type == "Character":
+                try:
+                    from processing.entity_deduplication import generate_entity_id
+
+                    params["object_id_param"] = generate_entity_id(
+                        object_name, "character", int(chapter_number)
+                    )
+                    object_create_sets += ", o.id = coalesce(o.id, $object_id_param)"
+                except Exception:
+                    pass
 
             # Create a stable relationship id to avoid flattening history across chapters
             rel_id_source = (
@@ -1635,50 +1671,131 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
 
 
 async def find_candidate_duplicate_entities(
-    similarity_threshold: float = 0.45, limit: int = 50
+    similarity_threshold: float = 0.45,
+    limit: int = 50,
+    *,
+    desc_threshold: float = 0.30,
+    per_label_limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Finds pairs of entities with similar names using native Neo4j string similarity.
+    Find candidate duplicate entity pairs with tighter prefilters.
+
+    Improvements vs. previous approach:
+    - Restricts comparisons to like-with-like labels (Character↔Character, WorldElement↔WorldElement).
+    - Normalizes names, gates by first-character and token overlap to prune pairs.
+    - Optionally incorporates lightweight description token-overlap as a secondary check.
+    - Keeps API compatible with existing caller ("similarity_threshold" and "limit").
     """
+    # Use a per-label limit when provided; default to overall limit otherwise
+    label_limit = per_label_limit or limit
+
+    # The query runs two label-specific searches and unions results
+    # Description similarity is a simple Jaccard-overlap on tokenized, cleaned text
     query = """
-    MATCH (e1), (e2)
+    // ---------- Character pairs ----------
+    MATCH (e1:Character:Entity)
+    WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
+    WITH e1
+    MATCH (e2:Character:Entity)
     WHERE elementId(e1) < elementId(e2)
-      AND e1.name IS NOT NULL AND e2.name IS NOT NULL
-      AND e1.id IS NOT NULL AND e2.id IS NOT NULL
-      AND NOT e1:ValueNode AND NOT e2:ValueNode
-    // Handle potential StringArray by converting to string if needed
+      AND e2.name IS NOT NULL AND e2.id IS NOT NULL
     WITH e1, e2,
-         CASE 
-             WHEN e1.name IS NOT NULL AND (e1.name + []) = e1.name THEN toString(e1.name[0])
-             ELSE toString(e1.name)
-         END AS name1_string,
-         CASE 
-             WHEN e2.name IS NOT NULL AND (e2.name + []) = e2.name THEN toString(e2.name[0])
-             ELSE toString(e2.name)
-         END AS name2_string
-    WITH e1, e2,
-         toLower(name1_string) AS name1_lower,
-         toLower(name2_string) AS name2_lower,
-         size(name1_string) AS len1,
-         size(name2_string) AS len2
-    // Calculate character overlap similarity
-    WITH e1, e2, name1_lower, name2_lower, len1, len2,
-         [c IN split(name1_lower, '') WHERE c IN split(name2_lower, '')] AS common_chars
-    WITH e1, e2, name1_lower, name2_lower, len1, len2, common_chars,
-         CASE WHEN len1 > len2 THEN len1 ELSE len2 END AS max_len,
-         size(common_chars) AS overlap_count
-    WITH e1, e2, max_len,
-         toFloat(overlap_count) / toFloat(max_len) AS similarity
-    WHERE max_len > 0 AND similarity >= $threshold
-    
-    RETURN
-      e1.id AS id1, e1.name AS name1, labels(e1) AS labels1,
-      e2.id AS id2, e2.name AS name2, labels(e2) AS labels2,
-      similarity
+         toLower(toString(e1.name)) AS n1,
+         toLower(toString(e2.name)) AS n2,
+         coalesce(toLower(toString(e1.description)), '') AS d1,
+         coalesce(toLower(toString(e2.description)), '') AS d2,
+         e1.category AS cat1,
+         e2.category AS cat2
+    WITH e1, e2, n1, n2, d1, d2,
+         apoc.text.levenshteinSimilarity(n1, n2) AS name_sim,
+         abs(size(n1) - size(n2)) AS len_diff,
+         substring(n1, 0, 1) AS c1,
+         substring(n2, 0, 1) AS c2,
+         [w IN split(apoc.text.replace(n1, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS n1_tokens,
+         [w IN split(apoc.text.replace(n2, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS n2_tokens,
+         [w IN split(apoc.text.replace(d1, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS d1_tokens,
+         [w IN split(apoc.text.replace(d2, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS d2_tokens,
+         cat1, cat2
+    WITH e1, e2, name_sim, len_diff,
+         size([x IN n1_tokens WHERE x IN n2_tokens]) AS name_overlap,
+         size([x IN d1_tokens WHERE x IN d2_tokens]) AS desc_overlap,
+         CASE WHEN size(d1_tokens) >= size(d2_tokens) THEN size(d1_tokens) ELSE size(d2_tokens) END AS d_denom,
+         c1, c2,
+         cat1, cat2
+    WITH e1, e2, name_sim, len_diff, name_overlap,
+         CASE WHEN d_denom = 0 THEN 0.0 ELSE toFloat(desc_overlap) / toFloat(d_denom) END AS desc_sim,
+         c1, c2,
+         cat1, cat2
+    WHERE len_diff <= 10
+      AND c1 = c2
+      AND name_overlap >= 1
+      AND (cat1 IS NULL OR cat2 IS NULL OR cat1 = cat2)
+      AND (
+            name_sim >= $name_threshold
+         OR (name_sim >= ($name_threshold * 0.8) AND desc_sim >= $desc_threshold)
+      )
+    RETURN e1.id AS id1, e1.name AS name1, labels(e1) AS labels1,
+           e2.id AS id2, e2.name AS name2, labels(e2) AS labels2,
+           name_sim AS similarity
     ORDER BY similarity DESC
-    LIMIT $limit
+    LIMIT $label_limit
+
+    UNION
+
+    // ---------- WorldElement pairs ----------
+    MATCH (e1:WorldElement:Entity)
+    WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
+    WITH e1
+    MATCH (e2:WorldElement:Entity)
+    WHERE elementId(e1) < elementId(e2)
+      AND e2.name IS NOT NULL AND e2.id IS NOT NULL
+    WITH e1, e2,
+         toLower(toString(e1.name)) AS n1,
+         toLower(toString(e2.name)) AS n2,
+         coalesce(toLower(toString(e1.description)), '') AS d1,
+         coalesce(toLower(toString(e2.description)), '') AS d2,
+         e1.category AS cat1,
+         e2.category AS cat2
+    WITH e1, e2, n1, n2, d1, d2,
+         apoc.text.levenshteinSimilarity(n1, n2) AS name_sim,
+         abs(size(n1) - size(n2)) AS len_diff,
+         substring(n1, 0, 1) AS c1,
+         substring(n2, 0, 1) AS c2,
+         [w IN split(apoc.text.replace(n1, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS n1_tokens,
+         [w IN split(apoc.text.replace(n2, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS n2_tokens,
+         [w IN split(apoc.text.replace(d1, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS d1_tokens,
+         [w IN split(apoc.text.replace(d2, '[^a-z0-9 ]', ''), ' ') WHERE size(w) > 2] AS d2_tokens,
+         cat1, cat2
+    WITH e1, e2, name_sim, len_diff,
+         size([x IN n1_tokens WHERE x IN n2_tokens]) AS name_overlap,
+         size([x IN d1_tokens WHERE x IN d2_tokens]) AS desc_overlap,
+         CASE WHEN size(d1_tokens) >= size(d2_tokens) THEN size(d1_tokens) ELSE size(d2_tokens) END AS d_denom,
+         c1, c2,
+         cat1, cat2
+    WITH e1, e2, name_sim, len_diff, name_overlap,
+         CASE WHEN d_denom = 0 THEN 0.0 ELSE toFloat(desc_overlap) / toFloat(d_denom) END AS desc_sim,
+         c1, c2,
+         cat1, cat2
+    WHERE len_diff <= 10
+      AND c1 = c2
+      AND name_overlap >= 1
+      AND (cat1 IS NULL OR cat2 IS NULL OR cat1 = cat2)
+      AND (
+            name_sim >= $name_threshold
+         OR (name_sim >= ($name_threshold * 0.8) AND desc_sim >= $desc_threshold)
+      )
+    RETURN e1.id AS id1, e1.name AS name1, labels(e1) AS labels1,
+           e2.id AS id2, e2.name AS name2, labels(e2) AS labels2,
+           name_sim AS similarity
+    ORDER BY similarity DESC
+    LIMIT $label_limit
     """
-    params = {"threshold": similarity_threshold, "limit": limit}
+
+    params = {
+        "name_threshold": similarity_threshold,
+        "desc_threshold": desc_threshold,
+        "label_limit": label_limit,
+    }
     try:
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
@@ -1687,6 +1804,52 @@ async def find_candidate_duplicate_entities(
         return []
 
 
+async def backfill_missing_entity_ids(max_updates: int = 1000) -> int:
+    """Assign stable deterministic IDs to Character nodes missing `id`.
+
+    Returns the number of nodes updated.
+    """
+    try:
+        # Fetch candidate characters without IDs (limit to avoid huge batches)
+        fetch_query = """
+        MATCH (c:Character:Entity)
+        WHERE c.id IS NULL OR c.id = ''
+        RETURN c.name AS name, coalesce(c.created_chapter, 0) AS created_chapter
+        LIMIT $limit
+        """
+        rows = await neo4j_manager.execute_read_query(fetch_query, {"limit": max_updates})
+        if not rows:
+            return 0
+
+        from processing.entity_deduplication import generate_entity_id
+
+        items = []
+        for r in rows:
+            name = r.get("name")
+            created_chapter = int(r.get("created_chapter", 0) or 0)
+            if not name:
+                continue
+            items.append({
+                "name": name,
+                "id": generate_entity_id(name, "character", created_chapter),
+            })
+
+        if not items:
+            return 0
+
+        update_query = """
+        UNWIND $items AS item
+        MATCH (c:Character:Entity {name: item.name})
+        WHERE c.id IS NULL OR c.id = ''
+        SET c.id = item.id
+        RETURN count(c) AS updated
+        """
+        result = await neo4j_manager.execute_write_query(update_query, {"items": items})
+        return int((result or [{}])[0].get("updated", 0))
+    except Exception as e:
+        logger.error(f"Error backfilling missing entity IDs: {e}", exc_info=True)
+        return 0
+
 async def get_entity_context_for_resolution(
     entity_id: str,
 ) -> dict[str, Any] | None:
@@ -1694,7 +1857,8 @@ async def get_entity_context_for_resolution(
     Gathers comprehensive context for an entity to help an LLM decide on a merge.
     """
     query = """
-    MATCH (e {id: $entity_id})
+    MATCH (e)
+    WHERE e.id = $entity_id OR e.name = $entity_id
     OPTIONAL MATCH (e)-[r]-(o)
     WHERE o.id IS NOT NULL
     WITH e,
@@ -1721,7 +1885,8 @@ async def get_entity_context_for_resolution(
         else:
             # Debug: Check if entity exists with any labels
             debug_query = (
-                "MATCH (e {id: $entity_id}) RETURN e.name AS name, labels(e) AS labels"
+                "MATCH (e) WHERE e.id = $entity_id OR e.name = $entity_id "
+                "RETURN e.name AS name, labels(e) AS labels"
             )
             debug_results = await neo4j_manager.execute_read_query(debug_query, params)
             if debug_results:

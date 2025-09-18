@@ -1901,6 +1901,16 @@ class KnowledgeAgent:
         """
         logger.info("KG Healer: Running entity resolution...")
 
+        # Ensure Character nodes have stable IDs before matching by id
+        try:
+            updated = await kg_queries.backfill_missing_entity_ids()
+            if updated:
+                logger.info(
+                    f"KG Healer: Backfilled stable IDs for {updated} characters before dedup."
+                )
+        except Exception as e:
+            logger.debug(f"ID backfill skipped due to error: {e}")
+
         # Prefer incremental processing for better performance
         if new_entities:
             logger.info(
@@ -1965,13 +1975,8 @@ class KnowledgeAgent:
                 if not id1 or not id2:
                     logger.debug(f"Skipping candidate pair with missing IDs: {pair}")
                     continue
-                if str(id1).lower().startswith("entity_") or str(
-                    id2
-                ).lower().startswith("entity_"):
-                    logger.debug(
-                        f"Skipping candidate pair with ephemeral IDs: {id1}, {id2}"
-                    )
-                    continue
+                # Previously we skipped IDs starting with 'entity_' assuming ephemeral.
+                # Characters now receive stable deterministic IDs with this prefix; do not skip.
                 if id1 and id2:
                     context_tasks.append(
                         (

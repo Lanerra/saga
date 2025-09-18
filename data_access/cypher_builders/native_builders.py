@@ -7,6 +7,7 @@ Eliminates the intermediate dict serialization layer for performance optimizatio
 from typing import TYPE_CHECKING, Any
 
 from utils.helpers import flatten_dict
+from processing.entity_deduplication import generate_entity_id
 
 if TYPE_CHECKING:
     from models.kg_models import CharacterProfile, WorldItem
@@ -34,6 +35,7 @@ class NativeCypherBuilder:
         SET c.description = $description,
             c.traits = $traits,
             c.status = $status,
+            c.id = CASE WHEN c.id IS NULL OR c.id = '' THEN $id ELSE c.id END,
             c.created_chapter = CASE 
                 WHEN c.created_chapter IS NULL THEN $created_chapter 
                 ELSE c.created_chapter 
@@ -79,6 +81,12 @@ class NativeCypherBuilder:
             "description": char.description,
             "traits": char.traits,  # Direct field access - no dict conversion
             "status": char.status,
+            # Stable deterministic ID for characters (assigned once)
+            "id": generate_entity_id(
+                char.name,
+                "character",
+                int(char.created_chapter or chapter_number),
+            ),
             "created_chapter": char.created_chapter or chapter_number,
             "is_provisional": char.is_provisional,
             "chapter_number": chapter_number,
