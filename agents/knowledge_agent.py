@@ -1236,7 +1236,7 @@ class KnowledgeAgent:
             # Check if there are any entities modified in the last 24 hours
             # Use actual timestamp properties that exist: created_ts, updated_ts
             results = await neo4j_manager.execute_read_query(
-                "MATCH (n) WHERE n.created_ts > timestamp() - 86400000 OR n.updated_ts > timestamp() - 86400000 RETURN count(n) as recent_count",
+                "MATCH (n) WHERE coalesce(n.created_ts, 0) > timestamp() - 86400000 OR coalesce(n.updated_ts, 0) > timestamp() - 86400000 RETURN count(n) as recent_count",
                 {},
             )
             recent_count = results[0].get("recent_count", 0) if results else 0

@@ -1202,7 +1202,7 @@ async def add_kg_triples_batch_to_db(
 
             # Combine ON CREATE SET clauses for subject
             subject_create_sets = (
-                f"s.created_ts = timestamp(), s.type = '{subject_type}'"
+                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}'"
             )
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
@@ -1232,7 +1232,7 @@ async def add_kg_triples_batch_to_db(
             {subject_merge}
                 ON CREATE SET {subject_create_sets}
             MERGE (o:Entity:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
-                ON CREATE SET o.created_ts = timestamp()
+                ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
 
             MERGE (s)-[r:`{predicate_clean}` {{id: $rel_id_param}}]->(o)
                 ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
@@ -1285,7 +1285,7 @@ async def add_kg_triples_batch_to_db(
 
             # Combine ON CREATE SET clauses for both nodes
             subject_create_sets = (
-                f"s.created_ts = timestamp(), s.type = '{subject_type}'"
+                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}'"
             )
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
@@ -1303,7 +1303,7 @@ async def add_kg_triples_batch_to_db(
                 except Exception:
                     pass
 
-            object_create_sets = f"o.created_ts = timestamp(), o.type = '{object_type}'"
+            object_create_sets = f"o.created_ts = timestamp(), o.updated_ts = timestamp(), o.type = '{object_type}'"
             if object_additional_labels:
                 label_clauses = [f"o:`{label}`" for label in object_additional_labels]
                 object_create_sets += ", " + ", ".join(label_clauses)
@@ -1409,11 +1409,11 @@ async def query_kg_from_db(
         )
         parameters["object_param"] = obj_val_stripped
     if chapter_limit is not None:
-        conditions.append(f"r.{KG_REL_CHAPTER_ADDED} <= $chapter_limit_param")
+        conditions.append(f"coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) <= $chapter_limit_param")
         parameters["chapter_limit_param"] = chapter_limit
     if not include_provisional:
         conditions.append(
-            f"(r.{KG_IS_PROVISIONAL} = FALSE OR r.{KG_IS_PROVISIONAL} IS NULL)"
+            f"coalesce(r.{KG_IS_PROVISIONAL}, FALSE) = FALSE"
         )
 
     where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
@@ -1422,12 +1422,12 @@ async def query_kg_from_db(
     RETURN s.name AS subject,
            type(r) AS predicate,
            CASE WHEN o:ValueNode THEN o.value ELSE o.name END AS object,
-           CASE WHEN o:ValueNode THEN 'Literal' ELSE labels(o)[0] END AS object_type, // Primary label or 'Literal'
-           r.{KG_REL_CHAPTER_ADDED} AS {KG_REL_CHAPTER_ADDED},
-           r.confidence AS confidence,
-           r.{KG_IS_PROVISIONAL} AS {KG_IS_PROVISIONAL}
+           CASE WHEN o:ValueNode THEN 'Literal' ELSE labels(o)[0] END AS object_type,
+           coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) AS {KG_REL_CHAPTER_ADDED},
+           coalesce(r.confidence, 0.0) AS confidence,
+           coalesce(r.{KG_IS_PROVISIONAL}, FALSE) AS {KG_IS_PROVISIONAL}
     """
-    order_clause = f" ORDER BY r.{KG_REL_CHAPTER_ADDED} DESC, r.confidence DESC"
+    order_clause = f" ORDER BY coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) DESC, coalesce(r.confidence, 0.0) DESC"
     limit_clause_str = (
         f" LIMIT {int(limit_results)}"
         if limit_results is not None and limit_results > 0
@@ -1482,7 +1482,7 @@ async def get_most_recent_value_from_db(
     parameters["subject_param"] = subject.strip()
 
     if chapter_limit is not None:
-        conditions.append(f"r.{KG_REL_CHAPTER_ADDED} <= $chapter_limit_param")
+        conditions.append(f"coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) <= $chapter_limit_param")
         parameters["chapter_limit_param"] = chapter_limit
     if not include_provisional:
         conditions.append(
@@ -1494,11 +1494,11 @@ async def get_most_recent_value_from_db(
     return_clause = f"""
     RETURN
            CASE WHEN o:ValueNode THEN o.value ELSE o.name END AS object,
-           r.{KG_REL_CHAPTER_ADDED} AS {KG_REL_CHAPTER_ADDED},
-           r.confidence AS confidence,
-           r.{KG_IS_PROVISIONAL} AS {KG_IS_PROVISIONAL}
+           coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) AS {KG_REL_CHAPTER_ADDED},
+           coalesce(r.confidence, 0.0) AS confidence,
+           coalesce(r.{KG_IS_PROVISIONAL}, FALSE) AS {KG_IS_PROVISIONAL}
     """
-    order_clause = f" ORDER BY r.{KG_REL_CHAPTER_ADDED} DESC, r.confidence DESC"
+    order_clause = f" ORDER BY coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) DESC, coalesce(r.confidence, 0.0) DESC"
     limit_clause_str = " LIMIT 1"
 
     full_query = (
