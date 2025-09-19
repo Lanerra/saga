@@ -17,7 +17,7 @@ from prompts.prompt_data_getters import (
     get_filtered_world_data_for_prompt_plain_text,
     get_reliable_kg_facts_for_drafting_prompt,
 )
-from prompts.prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt, get_system_prompt
 
 logger = structlog.get_logger()
 
@@ -181,6 +181,7 @@ class RevisionAgent:
             allow_fallback=True,
             stream_to_disk=False,
             auto_clean_response=True,
+            system_prompt=get_system_prompt("revision_agent"),
         )
 
         continuity_problems = await self._parse_llm_continuity_output(
@@ -495,6 +496,7 @@ class RevisionAgent:
             frequency_penalty=self.config.FREQUENCY_PENALTY_EVALUATION,
             presence_penalty=self.config.PRESENCE_PENALTY_EVALUATION,
             auto_clean_response=True,
+            system_prompt=get_system_prompt("revision_agent"),
         )
 
         no_issues_keywords = [

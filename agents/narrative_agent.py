@@ -14,7 +14,7 @@ from processing.zero_copy_context_generator import ZeroCopyContextGenerator
 from prompts.prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
 )
-from prompts.prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt, get_system_prompt
 from utils.json_utils import extract_json_from_text, safe_json_loads, truncate_for_log
 
 logger = structlog.get_logger()
@@ -378,6 +378,7 @@ class NarrativeAgent:
             frequency_penalty=self.config.FREQUENCY_PENALTY_PLANNING,
             presence_penalty=self.config.PRESENCE_PENALTY_PLANNING,
             auto_clean_response=True,
+            system_prompt=get_system_prompt("narrative_agent"),
         )
 
         parsed_scenes_list_of_dicts = self._parse_llm_scene_plan_output(
@@ -503,6 +504,7 @@ class NarrativeAgent:
                 frequency_penalty=self.config.FREQUENCY_PENALTY_DRAFTING,
                 presence_penalty=self.config.PRESENCE_PENALTY_DRAFTING,
                 auto_clean_response=True,
+                system_prompt=get_system_prompt("narrative_agent"),
             )
 
             if not scene_prose or not scene_prose.strip():
@@ -598,6 +600,7 @@ class NarrativeAgent:
                 frequency_penalty=self.config.FREQUENCY_PENALTY_DRAFTING,
                 presence_penalty=self.config.PRESENCE_PENALTY_DRAFTING,
                 auto_clean_response=True,
+                system_prompt=get_system_prompt("narrative_agent"),
             )
             # Mirror return structure of `_draft_chapter`
             return chapter_text, chapter_text, usage_data
@@ -632,6 +635,7 @@ class NarrativeAgent:
             frequency_penalty=self.config.FREQUENCY_PENALTY_PLANNING,
             presence_penalty=self.config.PRESENCE_PENALTY_PLANNING,
             auto_clean_response=True,
+            system_prompt=get_system_prompt("narrative_agent"),
         )
         try:
             parsed = json.loads(cleaned)

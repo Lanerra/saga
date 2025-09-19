@@ -20,10 +20,10 @@ You are an expert novelist tasked with {% block task_description %}writing narra
 
 **Instructions:**
 {% block instructions %}
-1. Write the narrative prose. Do not include headings or meta-commentary.
+1. Write the narrative prose. Do not include headings, labels, or meta-commentary.
 2. Ensure the prose aligns with the Hybrid Context.
 3. Aim for at least {{ min_length }} characters of text.
-4. Output ONLY the narrative text.
+4. Output ONLY the narrative text. No explanations, JSON, or markdown fences.
 {% endblock %}
 
 {% block output_header %}{% endblock %}
