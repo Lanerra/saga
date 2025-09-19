@@ -1011,7 +1011,10 @@ def _get_cypher_labels(entity_type: str | None) -> str:
 
 
 def _get_constraint_safe_merge(
-    labels_cypher: str, name_param: str, create_ts_var: str = "s"
+    labels_cypher: str,
+    name_param: str,
+    create_ts_var: str = "s",
+    id_param: str | None = None,
 ) -> tuple[str, list[str]]:
     """Generate constraint-safe MERGE queries that handle multiple labels correctly.
 
@@ -1029,7 +1032,15 @@ def _get_constraint_safe_merge(
 
     # Find the first constraint-sensitive label to use in MERGE
     primary_label = None
-    additional_labels = []
+    additional_labels: list[str] = []
+
+    # If we have a stable id to merge on, prefer the Entity label
+    # to align with the unique constraint on Entity.id
+    if id_param:
+        primary_label = "Entity"
+        additional_labels = [l for l in labels if l != "Entity"]
+        merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"
+        return merge_query, additional_labels
 
     for label in labels:
         if label in constraint_labels:
@@ -1195,20 +1206,8 @@ async def add_kg_triples_batch_to_db(
                 "Literal"  # Generic type for these literal ValueNodes
             )
 
-            # Generate constraint-safe MERGE for subject
-            subject_merge, subject_additional_labels = _get_constraint_safe_merge(
-                subject_labels_cypher, "subject_name_param", "s"
-            )
-
-            # Combine ON CREATE SET clauses for subject
-            subject_create_sets = (
-                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}'"
-            )
-            if subject_additional_labels:
-                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
-                subject_create_sets += ", " + ", ".join(label_clauses)
-
-            # Assign stable IDs for Characters when missing (literal object branch)
+            # Generate stable id for Characters if possible
+            subject_id_param_key = None
             if subject_type == "Character":
                 try:
                     from processing.entity_deduplication import generate_entity_id
@@ -1216,9 +1215,25 @@ async def add_kg_triples_batch_to_db(
                     params["subject_id_param"] = generate_entity_id(
                         subject_name, "character", int(chapter_number)
                     )
-                    subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
+                    subject_id_param_key = "subject_id_param"
                 except Exception:
-                    pass
+                    subject_id_param_key = None
+
+            # Generate constraint-safe MERGE for subject (prefer id when available)
+            subject_merge, subject_additional_labels = _get_constraint_safe_merge(
+                subject_labels_cypher, "subject_name_param", "s", subject_id_param_key
+            )
+
+            # Combine ON CREATE SET clauses for subject
+            subject_create_sets = (
+                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
+            )
+            if subject_additional_labels:
+                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
+                subject_create_sets += ", " + ", ".join(label_clauses)
+            # If we generated a stable id for Character, set it on create
+            if subject_id_param_key:
+                subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
 
             # Create a stable relationship id to avoid flattening history across chapters
             rel_id_source = (
@@ -1228,9 +1243,18 @@ async def add_kg_triples_batch_to_db(
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
+            # Ensure any additional labels are applied even if node existed
+            subject_label_set_clause = (
+                "SET "
+                + ", ".join([f"s:`{label}`" for label in subject_additional_labels])
+                if subject_additional_labels
+                else ""
+            )
+
             query = f"""
             {subject_merge}
                 ON CREATE SET {subject_create_sets}
+            {subject_label_set_clause}
             MERGE (o:Entity:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
                 ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
 
@@ -1275,23 +1299,8 @@ async def add_kg_triples_batch_to_db(
             object_labels_cypher = _get_cypher_labels(object_type)
             params["object_name_param"] = object_name
 
-            # Generate constraint-safe MERGE for both subject and object
-            subject_merge, subject_additional_labels = _get_constraint_safe_merge(
-                subject_labels_cypher, "subject_name_param", "s"
-            )
-            object_merge, object_additional_labels = _get_constraint_safe_merge(
-                object_labels_cypher, "object_name_param", "o"
-            )
-
-            # Combine ON CREATE SET clauses for both nodes
-            subject_create_sets = (
-                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}'"
-            )
-            if subject_additional_labels:
-                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
-                subject_create_sets += ", " + ", ".join(label_clauses)
-
-            # Assign stable IDs for Characters when missing (subject)
+            # Prefer stable ids for Characters when available
+            subject_id_param_key = None
             if subject_type == "Character":
                 try:
                     from processing.entity_deduplication import generate_entity_id
@@ -1299,16 +1308,11 @@ async def add_kg_triples_batch_to_db(
                     params["subject_id_param"] = generate_entity_id(
                         subject_name, "character", int(chapter_number)
                     )
-                    subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
+                    subject_id_param_key = "subject_id_param"
                 except Exception:
-                    pass
+                    subject_id_param_key = None
 
-            object_create_sets = f"o.created_ts = timestamp(), o.updated_ts = timestamp(), o.type = '{object_type}'"
-            if object_additional_labels:
-                label_clauses = [f"o:`{label}`" for label in object_additional_labels]
-                object_create_sets += ", " + ", ".join(label_clauses)
-
-            # Assign stable IDs for Characters when missing (object)
+            object_id_param_key = None
             if object_type == "Character":
                 try:
                     from processing.entity_deduplication import generate_entity_id
@@ -1316,9 +1320,38 @@ async def add_kg_triples_batch_to_db(
                     params["object_id_param"] = generate_entity_id(
                         object_name, "character", int(chapter_number)
                     )
-                    object_create_sets += ", o.id = coalesce(o.id, $object_id_param)"
+                    object_id_param_key = "object_id_param"
                 except Exception:
-                    pass
+                    object_id_param_key = None
+
+            # Generate constraint-safe MERGE for both subject and object
+            subject_merge, subject_additional_labels = _get_constraint_safe_merge(
+                subject_labels_cypher, "subject_name_param", "s", subject_id_param_key
+            )
+            object_merge, object_additional_labels = _get_constraint_safe_merge(
+                object_labels_cypher, "object_name_param", "o", object_id_param_key
+            )
+
+            # Combine ON CREATE SET clauses for both nodes
+            subject_create_sets = (
+                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
+            )
+            if subject_additional_labels:
+                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
+                subject_create_sets += ", " + ", ".join(label_clauses)
+
+            # If we generated a stable id for Character subject, set it
+            if subject_id_param_key:
+                subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
+
+            object_create_sets = f"o.created_ts = timestamp(), o.updated_ts = timestamp(), o.type = '{object_type}', o.name = $object_name_param"
+            if object_additional_labels:
+                label_clauses = [f"o:`{label}`" for label in object_additional_labels]
+                object_create_sets += ", " + ", ".join(label_clauses)
+
+            # If we generated a stable id for Character object, set it
+            if object_id_param_key:
+                object_create_sets += ", o.id = coalesce(o.id, $object_id_param)"
 
             # Create a stable relationship id to avoid flattening history across chapters
             rel_id_source = (
@@ -1328,11 +1361,27 @@ async def add_kg_triples_batch_to_db(
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
+            # Ensure any additional labels are applied even if nodes existed
+            subject_label_set_clause = (
+                "SET "
+                + ", ".join([f"s:`{label}`" for label in subject_additional_labels])
+                if subject_additional_labels
+                else ""
+            )
+            object_label_set_clause = (
+                "SET "
+                + ", ".join([f"o:`{label}`" for label in object_additional_labels])
+                if object_additional_labels
+                else ""
+            )
+
             query = f"""
             {subject_merge}
                 ON CREATE SET {subject_create_sets}
+            {subject_label_set_clause}
             {object_merge}
                 ON CREATE SET {object_create_sets}
+            {object_label_set_clause}
 
             MERGE (s)-[r:`{predicate_clean}` {{id: $rel_id_param}}]->(o)
                 ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()

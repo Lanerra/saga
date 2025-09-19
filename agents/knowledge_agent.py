@@ -34,7 +34,7 @@ from models.kg_models import CharacterProfile, WorldItem
 from processing.parsing_utils import (
     parse_rdf_triples_with_rdflib,
 )
-from prompts.prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt, get_system_prompt
 
 # Types available for type checking only
 if TYPE_CHECKING:
@@ -65,6 +65,7 @@ async def _llm_summarize_full_chapter_text(
         frequency_penalty=config.FREQUENCY_PENALTY_SUMMARY,
         presence_penalty=config.PRESENCE_PENALTY_SUMMARY,
         auto_clean_response=True,
+        system_prompt=get_system_prompt("knowledge_agent"),
     )
     summary_text = summary.strip()
     if summary_text:
@@ -694,6 +695,7 @@ class KnowledgeAgent:
                 frequency_penalty=config.FREQUENCY_PENALTY_KG_EXTRACTION,
                 presence_penalty=config.PRESENCE_PENALTY_KG_EXTRACTION,
                 auto_clean_response=True,
+                system_prompt=get_system_prompt("knowledge_agent"),
             )
             return text, usage
         except Exception as e:
@@ -1656,6 +1658,7 @@ class KnowledgeAgent:
                 prompt=prompt,
                 temperature=config.Temperatures.KG_EXTRACTION,
                 auto_clean_response=True,
+                system_prompt=get_system_prompt("knowledge_agent"),
             )
 
             if enrichment_text:
@@ -1791,6 +1794,7 @@ class KnowledgeAgent:
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             auto_clean_response=True,
+            system_prompt=get_system_prompt("knowledge_agent"),
         )
         if enrichment_text:
             try:
@@ -2034,6 +2038,7 @@ class KnowledgeAgent:
             prompt=prompt,
             temperature=0.1,
             auto_clean_response=True,
+            system_prompt=get_system_prompt("knowledge_agent"),
         )
 
         try:
@@ -2170,6 +2175,7 @@ class KnowledgeAgent:
                 temperature=config.Temperatures.KG_EXTRACTION,
                 max_tokens=10,
                 auto_clean_response=True,
+                system_prompt=get_system_prompt("knowledge_agent"),
             )
             new_type = kg_queries.normalize_relationship_type(new_type_raw)
             # The normalize_relationship_type already validates and returns a valid type

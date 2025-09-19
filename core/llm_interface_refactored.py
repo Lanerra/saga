@@ -368,6 +368,8 @@ class CompletionService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
+        *,
+        system_prompt: str | None = None,
         **kwargs,
     ) -> tuple[str, dict[str, int] | None]:
         """
@@ -399,7 +401,11 @@ class CompletionService:
             max_tokens if max_tokens is not None else config.MAX_GENERATION_TOKENS
         )
 
-        messages = [{"role": "user", "content": prompt}]
+        # Build messages with optional system prompt
+        messages = (
+            ([{"role": "system", "content": system_prompt}] if system_prompt else [])
+            + [{"role": "user", "content": prompt}]
+        )
 
         # Try primary model
         try:
@@ -461,6 +467,8 @@ class CompletionService:
         temperature: float | None = None,
         max_tokens: int | None = None,
         auto_clean_response: bool = True,
+        *,
+        system_prompt: str | None = None,
         **kwargs,
     ) -> tuple[str, dict[str, int] | None]:
         """
@@ -486,7 +494,11 @@ class CompletionService:
             max_tokens if max_tokens is not None else config.MAX_GENERATION_TOKENS
         )
 
-        messages = [{"role": "user", "content": prompt}]
+        # Build messages with optional system prompt
+        messages = (
+            ([{"role": "system", "content": system_prompt}] if system_prompt else [])
+            + [{"role": "user", "content": prompt}]
+        )
 
         try:
             with secure_temp_file(suffix=".llmstream.txt", text=True) as temp_file_path:
@@ -652,6 +664,8 @@ class RefactoredLLMService:
         allow_fallback: bool = False,
         stream_to_disk: bool = False,
         auto_clean_response: bool = True,
+        *,
+        system_prompt: str | None = None,
         **kwargs,
     ) -> tuple[str, dict[str, int] | None]:
         """
@@ -666,6 +680,7 @@ class RefactoredLLMService:
                 temperature,
                 max_tokens,
                 auto_clean_response,
+                system_prompt=system_prompt,
                 **kwargs,
             )
         else:
@@ -676,6 +691,7 @@ class RefactoredLLMService:
                 max_tokens,
                 allow_fallback,
                 auto_clean_response,
+                system_prompt=system_prompt,
                 **kwargs,
             )
 

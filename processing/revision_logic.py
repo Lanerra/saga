@@ -24,7 +24,7 @@ from models import (
     SceneDetail,
     WorldItem,
 )
-from prompts.prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt, get_system_prompt
 
 logger = structlog.get_logger(__name__)
 
@@ -379,6 +379,7 @@ async def _perform_full_rewrite(
         frequency_penalty=config.FREQUENCY_PENALTY_REVISION,
         presence_penalty=config.PRESENCE_PENALTY_REVISION,
         auto_clean_response=False,
+        system_prompt=get_system_prompt("revision_agent"),
     )
 
     final_revised_text = llm_service.clean_model_response(raw_revised_llm_output)
@@ -647,6 +648,7 @@ async def _generate_single_patch_instruction_llm(
         frequency_penalty=config.FREQUENCY_PENALTY_PATCH,
         presence_penalty=config.PRESENCE_PENALTY_PATCH,
         auto_clean_response=True,
+        system_prompt=get_system_prompt("revision_agent"),
     )
 
     # MODIFICATION: No longer check if the cleaned text is empty here, as an empty string is now a valid "deletion" instruction.

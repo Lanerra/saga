@@ -6,7 +6,7 @@ import structlog
 
 import config
 from core.llm_interface_refactored import llm_service
-from prompts.prompt_renderer import render_prompt
+from prompts.prompt_renderer import render_prompt, get_system_prompt
 
 logger = structlog.get_logger(__name__)
 
@@ -38,6 +38,7 @@ async def bootstrap_field(
         temperature=config.Temperatures.INITIAL_SETUP,
         stream_to_disk=False,
         auto_clean_response=True,
+        system_prompt=get_system_prompt("bootstrapper"),
     )
 
     if not response_text.strip():
