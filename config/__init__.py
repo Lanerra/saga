@@ -32,23 +32,25 @@ def reload():
     reload_settings()
 
 
-# Expose every setting as a module‑level constant for legacy code.
-# Pydantic v2 stores field definitions in `model_fields`.
+# Expose configuration values for legacy imports.
+#
+# 1) Publish all Pydantic model fields (e.g. BASE_OUTPUT_DIR, CHAPTERS_DIR as
+#    raw field values).
+# 2) Then, override with any UPPERCASE constants defined at module scope in
+#    config.settings (these include the fully-joined output paths like
+#    CHAPTERS_DIR, CHAPTER_LOGS_DIR, DEBUG_OUTPUTS_DIR). This ensures modules
+#    importing `config.CHAPTERS_DIR` get the resolved path under BASE_OUTPUT_DIR
+#    rather than the raw field value "chapters".
 import importlib
 
-# Expose every setting as a module‑level constant for legacy code.
-# Pydantic v2 stores field definitions in `model_fields`.
+# Step 1: export raw fields
 for _field_name in settings.model_fields:
     globals()[_field_name] = getattr(settings, _field_name)
 
-# Export additional uppercase constants defined directly in the settings module
-# (e.g., REVISION_EVALUATION_THRESHOLD, REVISION_COHERENCE_THRESHOLD, etc.).
-# These are not part of the Pydantic model fields but are still required by
-# legacy imports throughout the codebase.
+# Step 2: override with settings module UPPERCASE constants (joined paths, etc.)
 _settings_mod = importlib.import_module(".settings", __package__)
-
 for _name in dir(_settings_mod):
-    if _name.isupper() and not hasattr(settings, _name):
+    if _name.isupper():
         globals()[_name] = getattr(_settings_mod, _name)
 
 # Export legacy compatibility objects (Models, Temperatures) if they exist

@@ -89,6 +89,30 @@ class StateTracker:
                 del self._entities[name]
                 logger.debug("Entity name released", name=name)
 
+    async def rename(self, old_name: str, new_name: str) -> bool:
+        """Atomically rename a tracked entity key from old_name to new_name.
+
+        Preserves metadata and updates the embedded "name" field and timestamp.
+
+        Returns True on success, False if old_name is not tracked or new_name
+        already exists.
+        """
+        if not config.STATE_TRACKER_ENABLED:
+            return True
+
+        async with self._lock:
+            if old_name not in self._entities:
+                return False
+            if new_name in self._entities and new_name != old_name:
+                # Do not overwrite existing entries
+                return False
+            metadata = self._entities.pop(old_name)
+            metadata["name"] = new_name
+            metadata["timestamp"] = datetime.now().isoformat()
+            self._entities[new_name] = metadata
+            logger.debug("Entity name renamed", old_name=old_name, new_name=new_name)
+            return True
+
     async def get_all(self) -> dict[str, dict[str, Any]]:
         """Return all tracked entities.
 

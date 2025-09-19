@@ -117,6 +117,7 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
 async def _bootstrap_world_overview(
     world_building: dict[str, Any],
     plot_outline: dict[str, Any],
+    state_tracker: StateTracker | None = None,
 ) -> dict[str, int] | None:
     """Bootstrap the world overview description."""
     usage_data: dict[str, int] = {
@@ -166,6 +167,20 @@ async def _bootstrap_world_overview(
                     overview_item_obj.additional_properties["source"] = (
                         "descr_bootstrapped"
                     )
+
+    # Ensure '_overview_' is tracked in StateTracker to avoid reconciliation warnings
+    if state_tracker is not None:
+        try:
+            existing = await state_tracker.check("_overview_")
+            if not existing:
+                await state_tracker.reserve(
+                    "_overview_",
+                    "world_item",
+                    str(getattr(overview_item_obj, "description", "")) if 'overview_item_obj' in locals() else "",
+                )
+        except Exception:
+            # Non-fatal; validator reconciliation will attempt to repair
+            pass
 
     return usage_data if usage_data["total_tokens"] > 0 else None
 
@@ -482,6 +497,14 @@ async def _bootstrap_world_names(
         else:
             item_obj.additional_properties["source"] = "name_bootstrapped"
 
+        # Reserve the new name in StateTracker for ALL successful generations
+        try:
+            description = item_obj.description or f"{category} element"
+            await state_tracker.reserve(generated_name, "world_item", description)
+        except Exception:
+            # Non-fatal: validation will emit a warning if untracked
+            pass
+
         # Add to the new items list for world_building dictionary update
         new_items_to_add_stage1.setdefault(category, {})[generated_name] = item_obj
         items_to_remove_stage1.setdefault(category, []).append(item_name)
@@ -657,7 +680,7 @@ async def bootstrap_world(
                 overall_usage_data[key] = overall_usage_data.get(key, 0) + val
 
     # Stage 0: Bootstrap world overview
-    overview_usage = await _bootstrap_world_overview(world_building, plot_outline)
+    overview_usage = await _bootstrap_world_overview(world_building, plot_outline, state_tracker)
     _accumulate_usage(overview_usage)
 
     # Stage 1: Bootstrap names for items

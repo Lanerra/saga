@@ -18,7 +18,11 @@ Your task is to generate a single, compelling value for a specific field in a ch
 ---
 **NOVEL CONTEXT:**
 ```json
-{{ context.plot_outline | tojson(indent=2) }}
+{%- set combined_context = {
+  'plot_outline': context.plot_outline,
+  'world': context.world if context.world is defined else None
+} -%}
+{{ combined_context | tojson(indent=2) }}
 ```
 ---
 **CHARACTER PROFILE:**

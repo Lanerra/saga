@@ -326,20 +326,21 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                     == "provisional_from_unrevised_draft"
                 )
 
+                # Build Cypher with concrete relationship type; types can't be parameterized
+                query_rel_merge = f"""
+            MATCH (s:Character:Entity {{name: $subject_param}})
+            MERGE (o:Entity {{name: $object_param}})
+                ON CREATE SET o.description = 'Auto-created via relationship from ' + $subject_param, o.created_ts = timestamp(), o.updated_ts = timestamp()
+            MERGE (s)-[r:`{rel_type_str}`]->(o)
+            ON CREATE SET r = $props_param, r.created_ts = timestamp(), r.updated_ts = timestamp()
+            ON MATCH SET  r += $props_param, r.updated_ts = timestamp()
+            """
                 statements.append(
                     (
-                        """
-                    MATCH (s:Character:Entity {name: $subject_param})
-                    MERGE (o:Entity {name: $object_param})
-                        ON CREATE SET o.description = 'Auto-created via relationship from ' + $subject_param, o.created_ts = timestamp()
-                    MERGE (s)-[r:`$predicate_param`]->(o)
-                    ON CREATE SET r = $props_param, r.created_ts = timestamp()
-                    ON MATCH SET  r += $props_param, r.updated_ts = timestamp()
-                    """,
+                        query_rel_merge,
                         {
                             "subject_param": char_name,
                             "object_param": target_char_name,
-                            "predicate_param": rel_type_str,
                             "chapter_added_val": chapter_added_val,
                             "props_param": rel_cypher_props,
                         },
@@ -417,17 +418,19 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
         for rel_rec in rel_results:
             target_name = rel_rec.get("target_name")
             rel_props_full = rel_rec.get("rel_props", {})
-            rel_props_cleaned = {
-                k: v
-                for k, v in rel_props_full.items()
-                if k
-                not in [
-                    "created_ts",
-                    "updated_ts",
-                    "source_profile_managed",
-                    "chapter_added",
-                ]
-            }
+            rel_props_cleaned = {}
+            if isinstance(rel_props_full, dict):
+                rel_props_cleaned = {
+                    k: v
+                    for k, v in rel_props_full.items()
+                    if k
+                    not in [
+                        "created_ts",
+                        "updated_ts",
+                        "source_profile_managed",
+                        "chapter_added",
+                    ]
+                }
             if "type" in rel_props_full:
                 rel_props_cleaned["type"] = rel_props_full["type"]
             if "chapter_added" in rel_props_full:
@@ -516,7 +519,7 @@ async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
         rel_results = await neo4j_manager.execute_read_query(
             rels_query, {"char_name": char_name}
         )
-        relationships = {}
+        relationships: dict[str, Any] = {}
         if rel_results:
             for rel_rec in rel_results:
                 target_name = rel_rec.get("target_name")
@@ -536,7 +539,6 @@ async def get_character_profiles_from_db() -> dict[str, CharacterProfile]:
                     rel_props_cleaned["type"] = rel_props_full["type"]
                 if "chapter_added" in rel_props_full:
                     rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
-
                 if target_name:
                     relationships[target_name] = rel_props_cleaned
         profile["relationships"] = relationships
@@ -603,11 +605,11 @@ async def get_character_info_for_snippet_from_db(
             c.is_provisional = TRUE OR
             EXISTS {
                 MATCH (c)-[r]-(:Entity)
-                WHERE r.is_provisional = TRUE AND r.chapter_added <= $chapter_limit_param
+                WHERE coalesce(r.is_provisional, FALSE) = TRUE AND coalesce(r.chapter_added, -1) <= $chapter_limit_param
             } OR
             EXISTS {
                 MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
-                WHERE dev.is_provisional = TRUE AND dev.chapter_updated <= $chapter_limit_param
+                WHERE coalesce(dev.is_provisional, FALSE) = TRUE AND coalesce(dev.chapter_updated, -1) <= $chapter_limit_param
             }
         ) AS is_provisional_flag
     }

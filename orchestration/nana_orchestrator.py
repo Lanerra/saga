@@ -27,6 +27,7 @@ from data_access.world_queries import (
     get_world_building,
 )
 from initialization.genesis import run_genesis_phase
+from initialization.bootstrap_pipeline import run_bootstrap_pipeline
 from models import (
     CharacterProfile,
     EvaluationResult,
@@ -186,11 +187,21 @@ class NANA_Orchestrator:
     async def perform_initial_setup(self):
         self._update_rich_display(step="Performing Initial Setup")
         logger.info("SAGA performing initial setup...")
-        (
-            self.plot_outline,
-            character_profiles,
-            world_building,
-        ) = await run_genesis_phase()
+        # Optionally run the super-charged bootstrap as a higher setting
+        if getattr(config, "BOOTSTRAP_ENABLED_DEFAULT", False):
+            logger.info("Using higher-setting bootstrap prelude before genesis.")
+            phase = "all"
+            level = getattr(config, "BOOTSTRAP_HIGHER_SETTING", "enhanced")
+            plot_outline, character_profiles, world_building, _ = await run_bootstrap_pipeline(
+                phase=phase, level=level, dry_run=False, kg_heal=getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True)
+            )
+            self.plot_outline = plot_outline
+        else:
+            (
+                self.plot_outline,
+                character_profiles,
+                world_building,
+            ) = await run_genesis_phase()
 
         plot_source = self.plot_outline.get("source", "unknown")
         logger.info(

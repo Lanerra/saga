@@ -71,7 +71,8 @@ def load_yaml_file(
             return normalize_keys_recursive(content)  # type: ignore
         return content
     except FileNotFoundError:
-        logger.warning(f"YAML file '{filepath}' not found.")
+        # Demote to info to reduce noise in default runs where user YAML is optional
+        logger.info(f"YAML file '{filepath}' not found (optional).")
         return None
     except yaml.YAMLError as e:
         logger.error(f"Error parsing YAML file {filepath}: {e}", exc_info=True)

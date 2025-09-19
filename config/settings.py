@@ -265,6 +265,13 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 4
     BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 8
     BOOTSTRAP_USE_VALIDATION: bool = True
+    # Super-charged bootstrap toggles
+    BOOTSTRAP_ENABLED_DEFAULT: bool = False
+    BOOTSTRAP_HIGHER_SETTING: str = "enhanced"  # basic|enhanced|max
+    BOOTSTRAP_VALIDATE_EACH_PHASE: bool = True
+    BOOTSTRAP_PUSH_TO_KG_EACH_PHASE: bool = True
+    BOOTSTRAP_RUN_KG_HEAL: bool = True
+    BOOTSTRAP_FAIL_FAST: bool = True
 
     # Enhanced character bootstrap settings
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6

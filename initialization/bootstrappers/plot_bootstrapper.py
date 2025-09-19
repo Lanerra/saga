@@ -37,6 +37,8 @@ def create_default_plot(default_protagonist_name: str) -> dict[str, Any]:
 
 async def bootstrap_plot_outline(
     plot_outline: dict[str, Any],
+    character_profiles: dict[str, Any] | None = None,
+    world_building: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, int] | None]:
     """Fill missing plot fields via LLM."""
     tasks: dict[str, Coroutine] = {}
@@ -90,9 +92,48 @@ async def bootstrap_plot_outline(
     )
 
     if needed_plot_points > 0:
+        # Provide richer interplay-aware context without changing prompts
+        pp_context: dict[str, Any] = {
+            "plot_outline": plot_outline,
+        }
+        if isinstance(character_profiles, dict) and character_profiles:
+            # Convert CharacterProfile objects to plain dicts for JSON context
+            try:
+                pp_context["characters"] = {
+                    name: (
+                        profile.to_dict() if hasattr(profile, "to_dict") else dict(profile)
+                    )
+                    for name, profile in character_profiles.items()
+                }
+            except Exception:
+                pp_context["characters"] = {
+                    name: str(profile) for name, profile in character_profiles.items()
+                }
+        if isinstance(world_building, dict) and world_building:
+            # World items may be objects or dicts; coerce to serializable
+            try:
+                serial_world: dict[str, Any] = {}
+                for cat, items in world_building.items():
+                    if not isinstance(items, dict):
+                        continue
+                    serial_world[cat] = {}
+                    for item_name, item in items.items():
+                        if hasattr(item, "to_dict"):
+                            serial_world[cat][item_name] = item.to_dict()
+                        elif isinstance(item, dict):
+                            serial_world[cat][item_name] = item
+                        else:
+                            serial_world[cat][item_name] = str(item)
+                pp_context["world"] = serial_world
+            except Exception:
+                pp_context["world"] = {
+                    k: list(v.keys()) if isinstance(v, dict) else str(v)
+                    for k, v in world_building.items()
+                }
+
         tasks["plot_points"] = bootstrap_field(
             "plot_points",
-            plot_outline,
+            pp_context,
             "bootstrapper/fill_plot_points.j2",
             is_list=True,
             list_count=needed_plot_points,
@@ -125,6 +166,30 @@ async def bootstrap_plot_outline(
             ]
         elif value:
             plot_outline[field] = value
+
+    # Robust post-processing: ensure critical fields are non-empty even if LLM failed
+    # Title fallback
+    if not plot_outline.get("title") or utils._is_fill_in(plot_outline.get("title")):
+        fallback_title = (
+            config.DEFAULT_PLOT_OUTLINE_TITLE
+            if getattr(config, "DEFAULT_PLOT_OUTLINE_TITLE", "").strip()
+            else "Untitled Narrative"
+        )
+        plot_outline["title"] = fallback_title
+
+    # Summary fallback (minimal but non-empty)
+    if not plot_outline.get("summary") or utils._is_fill_in(plot_outline.get("summary")):
+        protagonist = plot_outline.get("protagonist_name") or config.DEFAULT_PROTAGONIST_NAME
+        setting = plot_outline.get("setting") or config.CONFIGURED_SETTING_DESCRIPTION
+        logline = plot_outline.get("logline")
+        if logline and isinstance(logline, str) and logline.strip():
+            summary_fallback = logline.strip()
+        else:
+            summary_fallback = (
+                f"{protagonist} faces rising stakes in {setting}. "
+                f"A journey begins that will test conviction and change their world."
+            )
+        plot_outline["summary"] = summary_fallback
 
     if usage_data["total_tokens"] > 0:
         plot_outline["is_default"] = False

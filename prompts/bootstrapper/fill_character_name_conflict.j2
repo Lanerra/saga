@@ -12,7 +12,7 @@ Your task is to generate a UNIQUE character name that resolves a naming conflict
 
 **Story Context:**
 Genre: {{ context.plot_outline.genre or "Unknown" }}
-Setting: {{ context.plot_outline.setting_description or "Unknown" }}
+Setting: {{ context.plot_outline.setting or context.plot_outline.setting_description or "Unknown" }}
 
 **Character Profile:**
 Role: {{ context.profile.updates.role or "supporting" }}

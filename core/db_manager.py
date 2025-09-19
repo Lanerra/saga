@@ -37,6 +37,9 @@ class Neo4jManagerSingleton:
 
         self.logger = structlog.get_logger(__name__)
         self.driver: GraphDatabase.driver | None = None  # type: ignore
+        # Cache of property keys discovered via CALL db.propertyKeys()
+        self._property_keys_cache: set[str] | None = None
+        self._property_keys_cache_ts: float | None = None
         self._initialized_flag = True
         self.logger.info(
             "Neo4jManagerSingleton initialized. Call connect() to establish connection."
@@ -213,6 +216,64 @@ class Neo4jManagerSingleton:
             self._sync_execute_cypher_batch, cypher_statements_with_params
         )
 
+    # -------------------------------------------------------------------------
+    # Schema/property key discovery helpers
+    # -------------------------------------------------------------------------
+
+    async def refresh_property_keys_cache(self) -> set[str]:
+        """Fetch and cache all known property keys in the database.
+
+        Uses CALL db.propertyKeys(), available in Neo4j 4+/5+.
+        """
+        await self._ensure_connected()
+        try:
+            results = await asyncio.to_thread(
+                self._sync_execute_read_query, "CALL db.propertyKeys()", None
+            )
+            keys: set[str] = set()
+            for rec in results:
+                val = (
+                    rec.get("propertyKey")
+                    or rec.get("propertyName")
+                    or rec.get("property")
+                )
+                if isinstance(val, str):
+                    keys.add(val)
+            self._property_keys_cache = keys
+            try:
+                import time
+
+                self._property_keys_cache_ts = time.monotonic()
+            except Exception:
+                self._property_keys_cache_ts = None
+            return keys
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to load property keys via db.propertyKeys(): {e}",
+                exc_info=True,
+            )
+            self._property_keys_cache = set()
+            self._property_keys_cache_ts = None
+            return self._property_keys_cache
+
+    async def has_property_key(self, key: str, max_age_seconds: int = 300) -> bool:
+        """Return True if the database currently has the given property key.
+
+        A cached window avoids spamming the DB with procedure calls.
+        """
+        try:
+            import time
+
+            if (
+                self._property_keys_cache is None
+                or self._property_keys_cache_ts is None
+                or (time.monotonic() - self._property_keys_cache_ts) > max_age_seconds
+            ):
+                await self.refresh_property_keys_cache()
+        except Exception:
+            await self.refresh_property_keys_cache()
+        return bool(self._property_keys_cache and key in self._property_keys_cache)
+
     async def create_db_schema(self) -> None:
         """Create and verify Neo4j indexes and constraints in separate phases to avoid transaction conflicts.
 
@@ -310,7 +371,21 @@ class Neo4jManagerSingleton:
             query = f"CREATE (a:`{label}`) WITH a DELETE a"
             node_label_queries.append(query)
 
-        data_operations = relationship_type_queries + node_label_queries
+        # Property-key warmup: create ephemeral nodes/rels with commonly used properties
+        property_warmup_queries = [
+            # Warm up node timestamp keys
+            "CREATE (e:__PropWarmup:Entity {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
+            # Warm up typical relationship properties used across queries
+            (
+                "CREATE (a:__PropWarmupA:Entity)-[r:__WARMUP_REL {chapter_added: 0, "
+                "confidence: 1.0, is_provisional: false, source_profile_managed: true}]->(b:__PropWarmupB:Entity) "
+                "WITH a,r,b DELETE r, a, b"
+            ),
+        ]
+
+        data_operations = (
+            relationship_type_queries + node_label_queries + property_warmup_queries
+        )
         data_ops_with_params: list[tuple[str, dict[str, Any]]] = [
             (query, {}) for query in data_operations
         ]
