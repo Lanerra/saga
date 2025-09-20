@@ -583,6 +583,7 @@ async def _bootstrap_world_properties(
                 not item_name or not item_name.strip()
             ):
                 continue
+
             # Check for properties that need bootstrapping
             # For structured fields like description, goals, rules, key_elements, traits
             if not item_obj.description:
@@ -600,6 +601,35 @@ async def _bootstrap_world_properties(
                     },
                     "bootstrapper/fill_world_item_field.j2",
                 )
+
+            # Add minimal list-valued properties (goals, rules, key_elements) with 1-2 items each
+            # Only bootstrap if the lists are empty to avoid overwriting user-provided data
+            list_properties_to_bootstrap = [
+                ("goals", "goals", "1-2 key goals or objectives"),
+                ("rules", "rules", "1-2 important rules or principles"),
+                ("key_elements", "key_elements", "1-2 distinctive features or characteristics"),
+            ]
+
+            for prop_name, prop_field, prop_description in list_properties_to_bootstrap:
+                current_value = getattr(item_obj, prop_name, None)
+                if not current_value or len(current_value) == 0:
+                    logger.info(
+                        f"Identified property '{prop_name}' for bootstrapping in item '{category}/{item_name}'."
+                    )
+                    task_key = (category, item_name, prop_name)
+                    property_bootstrap_tasks[task_key] = bootstrap_field(
+                        prop_name,
+                        {
+                            "world_item": _world_item_context(item_obj),
+                            "plot_outline": plot_outline,
+                            "target_category": category,
+                            "category_description": f"Bootstrap {prop_description} for a {category} element named '{item_name}' in the world.",
+                            "list_count": "1-2",  # Minimal count to respect token and hardware constraints
+                        },
+                        "bootstrapper/fill_world_item_field.j2",
+                        is_list=True,  # This is a list property
+                        list_count=2,  # Request 2 items for list properties
+                    )
 
     if property_bootstrap_tasks:
         logger.info(
@@ -629,31 +659,93 @@ async def _bootstrap_world_properties(
             target_item = world_building[category][item_name]
             prop_name_filled = prop_name
 
-            if (
-                prop_value
-                and isinstance(prop_value, str)
-                and not utils._is_fill_in(prop_value)
-            ):
-                # Set the property
-                setattr(target_item, prop_name_filled, prop_value)
-                current_source = target_item.additional_properties.get("source", "")
-                if isinstance(current_source, str):
-                    target_item.additional_properties["source"] = (
-                        f"{current_source}_prop_{prop_name_filled}_bootstrapped"
-                        if current_source
-                        else f"prop_{prop_name_filled}_bootstrapped"
-                    )
+            # Handle list properties (goals, rules, key_elements) differently from string properties
+            if prop_name in ["goals", "rules", "key_elements"]:
+                # For list properties, expect either a list or a string that can be converted to a list
+                if prop_value and not utils._is_fill_in(str(prop_value)):
+                    if isinstance(prop_value, list):
+                        # Already a list, use as-is
+                        list_value = prop_value
+                    elif isinstance(prop_value, str):
+                        # Convert string to list by splitting on common delimiters
+                        if "," in prop_value:
+                            list_value = [item.strip() for item in prop_value.split(",") if item.strip()]
+                        elif ";" in prop_value:
+                            list_value = [item.strip() for item in prop_value.split(";") if item.strip()]
+                        elif "|" in prop_value:
+                            list_value = [item.strip() for item in prop_value.split("|") if item.strip()]
+                        else:
+                            # Treat as single item
+                            list_value = [prop_value.strip()]
+                    else:
+                        # Convert other types to string and treat as single item
+                        list_value = [str(prop_value).strip()]
+
+                    # Filter out empty items but be more lenient with FILL_IN markers
+                    # Only remove items that are entirely FILL_IN markers or empty
+                    filtered_list_value = []
+                    for item in list_value:
+                        item_str = str(item).strip()
+                        if item_str and item_str != config.FILL_IN:
+                            # Remove FILL_IN markers from within the text but keep the rest
+                            cleaned_item = item_str.replace(config.FILL_IN, "").strip()
+                            if cleaned_item:  # Only add if there's content left after cleaning
+                                filtered_list_value.append(cleaned_item)
+
+                    if filtered_list_value:  # Only set if we have meaningful items after cleaning
+                        setattr(target_item, prop_name_filled, filtered_list_value)
+                        current_source = target_item.additional_properties.get("source", "")
+                        if isinstance(current_source, str):
+                            target_item.additional_properties["source"] = (
+                                f"{current_source}_prop_{prop_name_filled}_bootstrapped"
+                                if current_source
+                                else f"prop_{prop_name_filled}_bootstrapped"
+                            )
+                        else:
+                            target_item.additional_properties["source"] = (
+                                f"prop_{prop_name_filled}_bootstrapped"
+                            )
+                    else:
+                        logger.warning(
+                            "Property bootstrapping for '%s' in '%s/%s' resulted in empty list after filtering.",
+                            prop_name_filled,
+                            category,
+                            item_name,
+                        )
                 else:
-                    target_item.additional_properties["source"] = (
-                        f"prop_{prop_name_filled}_bootstrapped"
+                    logger.warning(
+                        "Property bootstrapping for '%s' in '%s/%s' resulted in empty or FILL_IN value.",
+                        prop_name_filled,
+                        category,
+                        item_name,
                     )
             else:
-                logger.warning(
-                    "Property bootstrapping for '%s' in '%s/%s' resulted in empty or FILL_IN value.",
-                    prop_name_filled,
-                    category,
-                    item_name,
-                )
+                # Handle string properties (description)
+                if (
+                    prop_value
+                    and isinstance(prop_value, str)
+                    and not utils._is_fill_in(prop_value)
+                ):
+                    # Set the property
+                    setattr(target_item, prop_name_filled, prop_value)
+                    current_source = target_item.additional_properties.get("source", "")
+                    if isinstance(current_source, str):
+                        target_item.additional_properties["source"] = (
+                            f"{current_source}_prop_{prop_name_filled}_bootstrapped"
+                            if current_source
+                            else f"prop_{prop_name_filled}_bootstrapped"
+                        )
+                    else:
+                        target_item.additional_properties["source"] = (
+                            f"prop_{prop_name_filled}_bootstrapped"
+                        )
+                else:
+                    logger.warning(
+                        "Property bootstrapping for '%s' in '%s/%s' resulted in empty or FILL_IN value.",
+                        prop_name_filled,
+                        category,
+                        item_name,
+                    )
 
     return usage_data if usage_data["total_tokens"] > 0 else None
 

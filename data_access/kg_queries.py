@@ -2550,6 +2550,52 @@ async def create_relationship_with_properties(
     )
 
 
+async def create_typed_relationship_with_properties(
+    subject_name: str,
+    subject_type: str,
+    relationship_type: str,
+    object_name: str,
+    object_type: str,
+    properties: dict[str, Any] | None = None,
+) -> None:
+    """Create a relationship with explicit subject/object types and optional properties.
+
+    This variant allows callers (e.g., bootstrap) to pass known node types to reduce
+    inference overhead during constraint validation while preserving the existing
+    batch processing path and semantics.
+    """
+    if not properties:
+        properties = {}
+
+    default_props = {
+        "source": "bootstrap",
+        "confidence": 0.8,
+        "chapter_added": 0,
+    }
+    default_props.update(properties)
+
+    triple_data = {
+        "subject": {"name": subject_name.strip(), "type": subject_type.strip()},
+        "predicate": relationship_type.upper().strip(),
+        "object_entity": {"name": object_name.strip(), "type": object_type.strip()},
+        "is_literal_object": False,
+        "subject_type": subject_type.strip(),
+        "object_type": object_type.strip(),
+        "properties": default_props,
+    }
+
+    await add_kg_triples_batch_to_db(
+        [triple_data],
+        chapter_number=default_props.get("chapter_added", 0),
+        is_from_flawed_draft=False,
+    )
+
+    logger.debug(
+        f"Created TYPED relationship: ({subject_type}) {subject_name} {relationship_type} ({object_type}) {object_name} "
+        f"with properties: {default_props}"
+    )
+
+
 async def create_normalized_relationship(
     subject_name: str,
     raw_relationship_type: str,

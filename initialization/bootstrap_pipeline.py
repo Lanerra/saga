@@ -20,6 +20,11 @@ from initialization.bootstrap_validator import (
     quick_validate_world,
     quick_validate_characters,
 )
+from initialization.bootstrap_validator import (
+    bootstrap_validation_pipeline,
+    validate_bootstrap_result,
+    create_bootstrap_validation_report
+)
 from initialization.bootstrappers.character_bootstrapper import (
     bootstrap_characters,
     create_default_characters,
@@ -245,5 +250,46 @@ async def run_bootstrap_pipeline(
             plot_outline, character_profiles, world_building, dry_run=dry_run, kg_heal=kg_heal
         )
         warnings.extend([w for w in plot_val.warnings if w not in warnings])
+
+    # Validate final bootstrap result using the new validation pipeline
+    if phase == "all" and getattr(config, "BOOTSTRAP_USE_VALIDATION", True):
+        try:
+            # Create bootstrap result dictionary for validation
+            bootstrap_result = {
+                "plot_outline": plot_outline,
+                "character_profiles": character_profiles,
+                "world_building": world_building,
+                "bootstrap_source": f"bootstrap_pipeline_{level}"
+            }
+
+            # Validate bootstrap result
+            corrected_result, was_corrected, validation_errors = await validate_bootstrap_result(
+                bootstrap_result, auto_correct=False  # Don't auto-correct in pipeline
+            )
+
+            # Update results if corrections were applied
+            if was_corrected:
+                plot_outline = corrected_result.get("plot_outline", plot_outline)
+                character_profiles = corrected_result.get("character_profiles", character_profiles)
+                world_building = corrected_result.get("world_building", world_building)
+                warnings.append(f"Bootstrap validation applied corrections for {len(validation_errors)} issues")
+
+            # Add validation warnings
+            if validation_errors:
+                validation_warnings = [f"Validation: {error.message}" for error in validation_errors]
+                warnings.extend(validation_warnings)
+
+                # Create validation report for debugging
+                validation_report = create_bootstrap_validation_report(validation_errors)
+                logger.info(
+                    "Bootstrap validation completed",
+                    validation_passed=len(validation_errors) == 0,
+                    error_count=len(validation_errors),
+                    report_summary=validation_report.get("summary")
+                )
+
+        except Exception as e:
+            logger.error("Bootstrap validation failed", error=str(e))
+            warnings.append(f"Validation pipeline error: {str(e)}")
 
     return plot_outline, character_profiles, world_building, warnings

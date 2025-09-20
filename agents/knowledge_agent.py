@@ -1242,9 +1242,31 @@ class KnowledgeAgent:
                 {},
             )
             recent_count = results[0].get("recent_count", 0) if results else 0
-            return (
-                recent_count > 5
-            )  # Only run full cycle if significant recent activity
+
+            # Also check for bootstrap-created entities that might need maintenance
+            # These entities might not have recent timestamps but could be thin/incomplete
+            bootstrap_results = await neo4j_manager.execute_read_query(
+                "MATCH (n) WHERE n.source CONTAINS 'bootstrap' OR n.source CONTAINS 'placeholder' RETURN count(n) as bootstrap_count",
+                {},
+            )
+            bootstrap_count = bootstrap_results[0].get("bootstrap_count", 0) if bootstrap_results else 0
+
+            # Check for thin entities that need enrichment
+            thin_entities_results = await neo4j_manager.execute_read_query(
+                "MATCH (c:Character) WHERE c.description IS NULL OR c.description = '' RETURN count(c) as thin_count " +
+                "UNION ALL " +
+                "MATCH (we:WorldElement) WHERE we.description IS NULL OR we.description = '' RETURN count(we) as thin_count",
+                {},
+            )
+            thin_count = sum(result.get("thin_chars", 0) + result.get("thin_elements", 0) for result in thin_entities_results) if thin_entities_results else 0
+
+            # Run full maintenance if we have recent activity, bootstrap entities, or thin entities
+            total_activity = recent_count + bootstrap_count + thin_count
+            logger.debug(
+                f"KG activity check: recent={recent_count}, bootstrap={bootstrap_count}, thin={thin_count}, total={total_activity}"
+            )
+
+            return total_activity > 5  # Only run full cycle if significant activity detected
         except Exception as e:
             logger.warning(
                 f"Could not check recent KG activity: {e}. Assuming activity exists."

@@ -1109,16 +1109,12 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
     Returns:
         List of WorldItem models from bootstrap phase, sorted by category then name
     """
+    # More efficient query that filters out elements without meaningful descriptions earlier
     query = """
     MATCH (we:WorldElement)
     WHERE (we.source CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
       AND we.description IS NOT NULL
-      AND (
-        // Handle array descriptions
-        (size(we.description) > 0 AND trim(COALESCE(toString(we.description[0]), '')) <> '') OR
-        // Handle string descriptions
-        (NOT (toString(we.description) STARTS WITH '[') AND trim(toString(we.description)) <> '')
-      )
+      AND trim(toString(we.description)) <> ''
       AND NOT (toString(we.description) CONTAINS $fill_in_marker)
     RETURN we
     ORDER BY we.category ASC, we.name ASC
@@ -1140,7 +1136,9 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
             # Convert Neo4j node to WorldItem
             try:
                 world_item = WorldItem.from_db_node(we_node)
-                bootstrap_elements.append(world_item)
+                # Additional validation: ensure the description is meaningful after conversion
+                if world_item.description and world_item.description.strip() and config.FILL_IN not in world_item.description:
+                    bootstrap_elements.append(world_item)
 
             except Exception as e:
                 logger.warning(
@@ -1156,5 +1154,9 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
         return bootstrap_elements
 
     except Exception as e:
-        logger.error(f"Failed to retrieve bootstrap world elements: {e}")
+        logger.error(
+            f"Failed to retrieve bootstrap world elements: {e}. "
+            f"Error type: {type(e).__name__}. "
+            f"Check Neo4j connection and query syntax."
+        )
         return []

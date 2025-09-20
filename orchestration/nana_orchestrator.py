@@ -28,6 +28,16 @@ from data_access.world_queries import (
 )
 from initialization.genesis import run_genesis_phase
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
+from initialization.bootstrap_validator import (
+    bootstrap_validation_pipeline,
+    validate_bootstrap_result,
+    create_bootstrap_validation_report
+)
+from core.runtime_config_validator import (
+    runtime_config_validator,
+    validate_runtime_configuration,
+    check_bootstrap_drift
+)
 from models import (
     CharacterProfile,
     EvaluationResult,
@@ -183,6 +193,10 @@ class NANA_Orchestrator:
         self._update_novel_props_cache()
         logger.info("SAGA Orchestrator async_init_orchestrator complete.")
         self._update_rich_display(step="Orchestrator Initialized")
+
+        # Validate runtime configuration against bootstrap content
+        if getattr(config, "ENABLE_RUNTIME_CONFIG_VALIDATION", True):
+            await self._validate_runtime_configuration()
 
     async def perform_initial_setup(self):
         self._update_rich_display(step="Performing Initial Setup")
@@ -1445,6 +1459,75 @@ class NANA_Orchestrator:
         await self.display.stop()
         await neo4j_manager.close()
         logger.info("SAGA: Ingestion process completed.")
+
+    async def _validate_runtime_configuration(self) -> None:
+        """
+        Validate runtime configuration against bootstrap content.
+
+        This method ensures that the current runtime configuration is consistent
+        with the bootstrap-generated content to prevent narrative inconsistencies.
+        """
+        self._update_rich_display(step="Validating Runtime Configuration")
+
+        try:
+            # Get current content from database/runtime
+            characters = await get_character_profiles()
+            world_items = await get_world_building()
+
+            # Convert to dict format for validation
+            character_profiles_dict = {char.name: char for char in characters}
+            world_building_dict = {}
+            for item in world_items:
+                if item.category not in world_building_dict:
+                    world_building_dict[item.category] = {}
+                world_building_dict[item.category][item.name] = item
+
+            # Validate runtime configuration
+            is_valid, validation_errors = validate_runtime_configuration(
+                self.plot_outline, character_profiles_dict, world_building_dict
+            )
+
+            if not is_valid:
+                logger.warning(
+                    f"Runtime configuration validation failed with {len(validation_errors)} errors: {[str(error) for error in validation_errors]}"
+                )
+
+                # Log specific validation errors
+                for error in validation_errors:
+                    logger.warning(
+                        f"Configuration validation error - Field: {error.field}, Message: {error.message}, Bootstrap: {error.bootstrap_value}, Runtime: {error.runtime_value}"
+                    )
+
+                # Create validation report
+                validation_report = {
+                    "validation_timestamp": None,
+                    "total_errors": len(validation_errors),
+                    "is_valid": False,
+                    "errors": [
+                        {
+                            "field": error.field,
+                            "message": error.message,
+                            "bootstrap_value": str(error.bootstrap_value),
+                            "runtime_value": str(error.runtime_value)
+                        }
+                        for error in validation_errors
+                    ],
+                    "summary": f"Runtime validation failed with {len(validation_errors)} error(s)"
+                }
+
+                await self._save_debug_output(
+                    0, "runtime_config_validation_report", validation_report
+                )
+
+            else:
+                logger.info("Runtime configuration validation passed")
+
+        except Exception as e:
+            logger.error(
+                "Runtime configuration validation failed with exception",
+                error=str(e),
+                exc_info=True
+            )
 
     # Dynamic schema refresh function removed - not needed for single-user deployment
 

@@ -300,11 +300,17 @@ async def _create_bootstrap_relationships(
     relationships_created = 0
     for subj, rel, obj in created_relationships:
         try:
-            # Use existing KG infrastructure to create the relationship
-            await kg_queries.create_relationship_with_properties(
+            # Use typed helper to reduce validator inference work
+            subj_type = "Character"
+            obj_type = (
+                "Character" if rel in ["ALLY_OF", "ENEMY_OF"] else ("Faction" if rel == "MEMBER_OF" else ("Location" if rel == "LOCATED_IN" else "Entity"))
+            )
+            await kg_queries.create_typed_relationship_with_properties(
                 subject_name=subj,
+                subject_type=subj_type,
                 relationship_type=rel,
                 object_name=obj,
+                object_type=obj_type,
                 properties={
                     "source": "bootstrap",
                     "confidence": 0.8,
