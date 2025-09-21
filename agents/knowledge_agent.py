@@ -31,9 +31,7 @@ from data_access.world_queries import (
     sync_world_items as persist_world_items_native,
 )
 from models.kg_models import CharacterProfile, WorldItem
-from processing.parsing_utils import (
-    parse_rdf_triples_with_rdflib,
-)
+from processing.parsing_utils import parse_llm_triples
 from prompts.prompt_renderer import render_prompt, get_system_prompt
 
 # Types available for type checking only
@@ -761,7 +759,7 @@ class KnowledgeAgent:
             )
 
             # Process KG triples for relationships (CRITICAL: This was missing!)
-            parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
+            parsed_triples_structured = parse_llm_triples(kg_triples_text)
 
             # Log aggregates at info; detailed triples at debug to reduce log noise
             logger.info(

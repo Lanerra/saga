@@ -14,7 +14,7 @@ import structlog
 import config
 import utils  # For numpy_cosine_similarity, find_semantically_closest_segment, AND find_quote_and_sentence_offsets_with_spacy, format_scene_plan_for_prompt
 from agents.revision_agent import RevisionAgent
-from core.llm_interface_refactored import count_tokens, llm_service
+from core.llm_interface_refactored import llm_service
 from core.text_processing_service import truncate_text_by_tokens
 from models import (
     CharacterProfile,

@@ -771,11 +771,5 @@ def create_llm_service() -> RefactoredLLMService:
     return RefactoredLLMService(completion_service, embedding_service, text_processor)
 
 
-# Module-level instance for backward compatibility (created with direct instantiation)
+# Module-level service instance
 llm_service = create_llm_service()
-
-
-# Backward compatibility functions
-def count_tokens(text: str, model_name: str) -> int:
-    """Backward compatibility function for token counting."""
-    return llm_service.count_tokens(text, model_name)

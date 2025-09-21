@@ -3,7 +3,7 @@ import logging
 import sys
 import unittest
 
-from processing.parsing_utils import parse_rdf_triples_with_rdflib
+from processing.parsing_utils import parse_llm_triples
 
 
 class TestRdfTripleParsing(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestRdfTripleParsing(unittest.TestCase):
 
         expected_triples_count = 9
 
-        parsed_triples = parse_rdf_triples_with_rdflib(triple_input)
+        parsed_triples = parse_llm_triples(triple_input)
 
         self.assertEqual(len(parsed_triples), expected_triples_count)
 
@@ -79,14 +79,12 @@ class TestRdfTripleParsing(unittest.TestCase):
             self.assertEqual(lila_type_triple["object_literal"], "Character")
 
     def test_empty_input(self):
-        parsed_triples = parse_rdf_triples_with_rdflib("", rdf_format="turtle")
+        parsed_triples = parse_llm_triples("")
         self.assertEqual(len(parsed_triples), 0)
 
     def test_invalid_turtle(self):
         invalid_turtle = r"char:Jax prop:hasAlias 'J.X.'"
-        parsed_triples = parse_rdf_triples_with_rdflib(
-            invalid_turtle, rdf_format="turtle"
-        )
+        parsed_triples = parse_llm_triples(invalid_turtle)
         self.assertEqual(len(parsed_triples), 0)
 
 

@@ -48,9 +48,7 @@ from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
-from processing.zero_copy_context_generator import (
-    generate_hybrid_chapter_context_native,
-)
+from processing.zero_copy_context_generator import ZeroCopyContextGenerator
 from ui.rich_display import RichDisplayManager
 from utils.ingestion_utils import split_text_into_chapters
 
@@ -596,8 +594,8 @@ class NANA_Orchestrator:
                     f"SAGA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
                 )
 
-        hybrid_context_for_draft = await generate_hybrid_chapter_context_native(
-            self, novel_chapter_number, chapter_plan
+        hybrid_context_for_draft = await ZeroCopyContextGenerator.generate_hybrid_context_native(
+            self.plot_outline, novel_chapter_number, chapter_plan
         )
 
         if config.ENABLE_AGENTIC_PLANNING and chapter_plan is None:

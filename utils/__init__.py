@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from core.llm_interface_refactored import count_tokens
+from core.llm_interface_refactored import llm_service
 
 from .helpers import _is_fill_in
 from .similarity import find_semantically_closest_segment, numpy_cosine_similarity
@@ -61,7 +61,7 @@ def format_scene_plan_for_prompt(
         scene_segment = "\n".join(scene_lines)
         prospective_plan = "\n".join(current_plan_parts + [scene_segment])
 
-        if count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
+        if llm_service.count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
             current_plan_parts.append(
                 "... (plan truncated in prompt due to token limit)"
             )

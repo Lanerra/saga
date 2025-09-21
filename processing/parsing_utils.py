@@ -299,8 +299,7 @@ def parse_llm_triples(
     return triples_list
 
 
-# Backward-compat wrapper for tests and legacy callers
-def parse_rdf_triples_with_rdflib(
-    text_block: str, rdf_format: str = "turtle"
-) -> list[dict[str, Any]]:
-    return parse_llm_triples(text_block)
+"""
+Note: The former parse_rdf_triples_with_rdflib wrapper has been removed.
+Callers should use parse_llm_triples directly.
+"""

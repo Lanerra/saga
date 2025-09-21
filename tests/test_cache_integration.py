@@ -14,7 +14,6 @@ import pytest
 from core.http_client_service import EmbeddingHTTPClient, HTTPClientService
 from core.lightweight_cache import (
     clear_service_cache,
-    get_cache_coordinator,
     get_cache_metrics,
     get_cached_value,
     register_cache_service,
@@ -29,7 +28,8 @@ class TestCacheIntegration:
 
     def setup_method(self):
         """Set up test environment."""
-        self.coordinator = get_cache_coordinator()
+        # Coordinator removed; keep behavior-local caches only
+        self.coordinator = None
 
         # Clear any existing test caches
         test_services = ["llm_embedding", "schema_introspection", "text_processing"]
