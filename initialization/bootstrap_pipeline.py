@@ -188,6 +188,50 @@ async def run_plot_phase(
     if not dry_run and getattr(config, "BOOTSTRAP_PUSH_TO_KG_EACH_PHASE", True):
         await plot_queries.save_plot_outline_to_db(plot_outline)
 
+        # Precompute and persist a Chapter 1 KG hint bundle for fast reuse
+        try:
+            protagonist_name = plot_outline.get("protagonist_name") or (
+                next((cp.name for cp in character_profiles.values() if cp.updates.get("role") == "protagonist"), None)
+                if character_profiles else None
+            )
+
+            # Fetch a compact set of bootstrap world elements
+            world_snippet = ""
+            try:
+                from data_access.world_queries import get_bootstrap_world_elements
+                from prompts.prompt_data_getters import get_world_state_snippet_for_prompt
+
+                bootstrap_world_items = await get_bootstrap_world_elements()
+                if bootstrap_world_items:
+                    world_snippet = await get_world_state_snippet_for_prompt(
+                        bootstrap_world_items,
+                        current_chapter_num_for_filtering=config.KG_PREPOPULATION_CHAPTER_NUM,
+                    ) or ""
+            except Exception:
+                world_snippet = ""
+
+            # Assemble bundle text (protagonist-centric + a few world facts)
+            lines: list[str] = []
+            title = plot_outline.get("title") or config.DEFAULT_PLOT_OUTLINE_TITLE
+            lines.append(f"Title: {title}")
+            if protagonist_name:
+                lines.append(f"Protagonist: {protagonist_name}")
+            if character_profiles and isinstance(character_profiles, dict):
+                # Try to find antagonist and a couple allies by simple heuristics
+                antagonist = next((cp.name for cp in character_profiles.values() if cp.updates.get("role") == "antagonist"), None)
+                if antagonist:
+                    lines.append(f"Antagonist: {antagonist}")
+            if world_snippet and world_snippet.strip():
+                lines.append("")
+                lines.append("World At A Glance:")
+                lines.append(world_snippet.strip())
+
+            hint_bundle = "\n".join(lines).strip()
+            if hint_bundle:
+                await plot_queries.set_first_chapter_kg_hint(hint_bundle)
+        except Exception as e:
+            logger.warning("Failed to precompute Chapter 1 KG bundle", error=str(e))
+
     return plot_outline, validation
 
 

@@ -26,7 +26,6 @@ from data_access.character_queries import (
 from data_access.world_queries import (
     get_world_building,
 )
-from initialization.genesis import run_genesis_phase
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
 from initialization.bootstrap_validator import (
     bootstrap_validation_pipeline,
@@ -201,21 +200,14 @@ class NANA_Orchestrator:
     async def perform_initial_setup(self):
         self._update_rich_display(step="Performing Initial Setup")
         logger.info("SAGA performing initial setup...")
-        # Optionally run the super-charged bootstrap as a higher setting
-        if getattr(config, "BOOTSTRAP_ENABLED_DEFAULT", False):
-            logger.info("Using higher-setting bootstrap prelude before genesis.")
-            phase = "all"
-            level = getattr(config, "BOOTSTRAP_HIGHER_SETTING", "enhanced")
-            plot_outline, character_profiles, world_building, _ = await run_bootstrap_pipeline(
-                phase=phase, level=level, dry_run=False, kg_heal=getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True)
-            )
-            self.plot_outline = plot_outline
-        else:
-            (
-                self.plot_outline,
-                character_profiles,
-                world_building,
-            ) = await run_genesis_phase()
+        # SAGA standardized on the phased bootstrap pipeline (world -> characters -> plot)
+        # Genesis path has been retired per bootstrap-exam recommendation #5.
+        phase = "all"
+        level = getattr(config, "BOOTSTRAP_HIGHER_SETTING", "enhanced")
+        plot_outline, character_profiles, world_building, _ = await run_bootstrap_pipeline(
+            phase=phase, level=level, dry_run=False, kg_heal=getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True)
+        )
+        self.plot_outline = plot_outline
 
         plot_source = self.plot_outline.get("source", "unknown")
         logger.info(
@@ -225,7 +217,7 @@ class NANA_Orchestrator:
         )
         world_source = world_building.get("source", "unknown")
         logger.info(f"   World Building initialized/loaded (source: {world_source}).")
-        self._update_rich_display(step="Genesis State Bootstrapped")
+        self._update_rich_display(step="Bootstrap State Bootstrapped")
 
         self._update_novel_props_cache()
         logger.info("   Initial plot, character, and world data saved to Neo4j.")
@@ -1187,7 +1179,7 @@ class NANA_Orchestrator:
                     return
                 self._update_novel_props_cache()
 
-            # KG pre-population handled within run_genesis_phase
+            # KG pre-population is performed during bootstrap pipeline execution
 
             logger.info("\n--- SAGA: Starting Novel Writing Process ---")
 

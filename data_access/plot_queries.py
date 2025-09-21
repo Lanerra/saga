@@ -24,6 +24,54 @@ async def ensure_novel_info() -> None:
         logger.info(f"Created NovelInfo node with id '{novel_id}'")
 
 
+async def set_first_chapter_kg_hint(hint_text: str) -> bool:
+    """Persist a precomputed Chapter 1 KG hint snippet onto NovelInfo.
+
+    Stores under property `first_chapter_kg_hint` for fast retrieval during
+    Chapter 1 prompt construction.
+    """
+    novel_id = config.MAIN_NOVEL_INFO_NODE_ID
+    try:
+        await neo4j_manager.execute_write_query(
+            """
+            MERGE (ni:Entity {id: $id_val})
+            ON CREATE SET ni:NovelInfo, ni.created_ts = timestamp()
+            ON MATCH SET  ni:NovelInfo
+            SET ni.first_chapter_kg_hint = $hint,
+                ni.updated_ts = timestamp()
+            """,
+            {"id_val": novel_id, "hint": str(hint_text or "").strip()},
+        )
+        return True
+    except Exception as e:
+        logger.error(
+            f"Failed to set first_chapter_kg_hint on NovelInfo '{novel_id}': {e}",
+            exc_info=True,
+        )
+        return False
+
+
+async def get_first_chapter_kg_hint() -> str | None:
+    """Fetch the precomputed Chapter 1 KG hint from NovelInfo if present."""
+    novel_id = config.MAIN_NOVEL_INFO_NODE_ID
+    try:
+        result = await neo4j_manager.execute_read_query(
+            "MATCH (ni:NovelInfo:Entity {id: $id}) RETURN ni.first_chapter_kg_hint AS hint",
+            {"id": novel_id},
+        )
+        if result and result[0] and result[0].get("hint"):
+            hint_val = result[0]["hint"]
+            if isinstance(hint_val, str) and hint_val.strip():
+                return hint_val
+        return None
+    except Exception as e:
+        logger.error(
+            f"Failed to read first_chapter_kg_hint from NovelInfo '{novel_id}': {e}",
+            exc_info=True,
+        )
+        return None
+
+
 async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     logger.info("Synchronizing plot outline to Neo4j (non-destructive)...")
     if not plot_data:

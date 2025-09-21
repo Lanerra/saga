@@ -112,30 +112,42 @@ class ZeroCopyContextGenerator:
             ]
         )
 
-        # Chapter 1: Add a compact World-At-A-Glance block from bootstrap world elements
+        # Chapter 1: Prefer precomputed KG bundle; fallback to on-the-fly world snippet
         if current_chapter_number == 1:
             try:
-                from data_access.world_queries import get_bootstrap_world_elements
-                from prompts.prompt_data_getters import get_world_state_snippet_for_prompt
-
-                bootstrap_world_items = await get_bootstrap_world_elements()
-                if bootstrap_world_items:
-                    world_snippet = await get_world_state_snippet_for_prompt(
-                        bootstrap_world_items,
-                        current_chapter_num_for_filtering=config.KG_PREPOPULATION_CHAPTER_NUM,
+                from data_access.plot_queries import get_first_chapter_kg_hint
+                precomputed = await get_first_chapter_kg_hint()
+                if precomputed and precomputed.strip():
+                    context_buffer.extend(
+                        [
+                            "",
+                            "--- FIRST-CHAPTER KG BUNDLE ---",
+                            precomputed.strip(),
+                            "--- END FIRST-CHAPTER KG BUNDLE ---",
+                        ]
                     )
-                    if world_snippet and world_snippet.strip():
-                        context_buffer.extend(
-                            [
-                                "",
-                                "--- WORLD AT A GLANCE (BOOTSTRAP ELEMENTS) ---",
-                                world_snippet,
-                                "--- END WORLD AT A GLANCE ---",
-                            ]
+                else:
+                    from data_access.world_queries import get_bootstrap_world_elements
+                    from prompts.prompt_data_getters import get_world_state_snippet_for_prompt
+
+                    bootstrap_world_items = await get_bootstrap_world_elements()
+                    if bootstrap_world_items:
+                        world_snippet = await get_world_state_snippet_for_prompt(
+                            bootstrap_world_items,
+                            current_chapter_num_for_filtering=config.KG_PREPOPULATION_CHAPTER_NUM,
                         )
+                        if world_snippet and world_snippet.strip():
+                            context_buffer.extend(
+                                [
+                                    "",
+                                    "--- WORLD AT A GLANCE (BOOTSTRAP ELEMENTS) ---",
+                                    world_snippet.strip(),
+                                    "--- END WORLD AT A GLANCE ---",
+                                ]
+                            )
             except Exception as e:
                 logger.warning(
-                    f"Failed to include World-At-A-Glance in Chapter 1 context: {e}"
+                    f"Failed to include first-chapter KG bundle: {e}"
                 )
 
         return "\n".join(context_buffer)
