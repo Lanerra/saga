@@ -196,9 +196,18 @@ def parse_llm_triples(
             )
 
         subject_details = _get_entity_type_and_name_from_text(subject_text)
-        predicate_str = (
-            predicate_text.strip().upper().replace(" ", "_")
-        )  # Normalize predicate
+        pred_norm = predicate_text.strip().upper().replace(" ", "_")
+        try:
+            import config  # local import to avoid cycles
+
+            if pred_norm == "STATUS_IS" and not getattr(
+                config, "ENABLE_STATUS_IS_ALIAS", True
+            ):
+                pred_norm = "HAS_STATUS"
+        except Exception:
+            pass
+
+        predicate_str = pred_norm  # Normalize predicate
 
         if not subject_details.get("name") or not predicate_str:
             logger_func.warning(

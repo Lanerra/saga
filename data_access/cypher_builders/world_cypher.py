@@ -81,8 +81,27 @@ def generate_world_element_node_cypher(
                         item.id,
                     )
 
-    statements.append(
-        (
+    if not getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True):
+        logger.warning(
+            "WorldElement legacy label is disabled; creating item '%s' as generic 'Object'.",
+            item.id,
+        )
+        merge_node = (
+            """
+            MERGE (we:Entity {id: $id})
+            ON CREATE SET
+                we:Object,
+                we += $props,
+                we.created_ts = timestamp()
+            ON MATCH SET
+                we:Object,
+                we += $props,
+                we.updated_ts = timestamp()
+            """,
+            {"id": item.id, "props": node_props},
+        )
+    else:
+        merge_node = (
             """
             MERGE (we:Entity {id: $id})
             ON CREATE SET
@@ -96,18 +115,33 @@ def generate_world_element_node_cypher(
             """,
             {"id": item.id, "props": node_props},
         )
-    )
 
     statements.append(
-        (
-            """
-            MATCH (wc:WorldContainer:Entity {id: $wc_id})
-            MATCH (we:WorldElement:Entity {id: $we_id})
-            MERGE (wc)-[:CONTAINS_ELEMENT]->(we)
-            """,
-            {"wc_id": config.MAIN_WORLD_CONTAINER_NODE_ID, "we_id": item.id},
-        )
+        merge_node
     )
+
+    if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True):
+        statements.append(
+            (
+                """
+                MATCH (wc:WorldContainer:Entity {id: $wc_id})
+                MATCH (we:WorldElement:Entity {id: $we_id})
+                MERGE (wc)-[:CONTAINS_ELEMENT]->(we)
+                """,
+                {"wc_id": config.MAIN_WORLD_CONTAINER_NODE_ID, "we_id": item.id},
+            )
+        )
+    else:
+        statements.append(
+            (
+                """
+                MATCH (wc:WorldContainer:Entity {id: $wc_id})
+                MATCH (we:Object:Entity {id: $we_id})
+                MERGE (wc)-[:CONTAINS_ELEMENT]->(we)
+                """,
+                {"wc_id": config.MAIN_WORLD_CONTAINER_NODE_ID, "we_id": item.id},
+            )
+        )
 
     list_properties_to_relate = {
         "goals": "HAS_GOAL",
@@ -133,12 +167,11 @@ def generate_world_element_node_cypher(
                 if isinstance(value_str_unstripped, str):
                     value_str = value_str_unstripped.strip()
                     if value_str:
+                        node_label = "WorldElement" if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True) else "Object"
                         statements.append(
                             (
                                 f"""
-                                MATCH (
-                                    we:WorldElement:Entity {{id: $we_id}}
-                                )
+                                MATCH (we:{node_label}:Entity {{id: $we_id}})
                                 MERGE (
                                     v:Entity:ValueNode {{
                                         value: $value_str,
@@ -173,11 +206,12 @@ def generate_world_element_node_cypher(
                 "chapter_updated": chapter_number_for_delta,
                 KG_IS_PROVISIONAL: node_props.get(KG_IS_PROVISIONAL, False),
             }
+            node_label = "WorldElement" if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True) else "Object"
             statements.append(
                 (
-                    """
-                    MATCH (we:WorldElement:Entity {id: $we_id})
-                    MERGE (elab:Entity {id: $elab_event_id})
+                    f"""
+                    MATCH (we:{node_label}:Entity {{id: $we_id}})
+                    MERGE (elab:Entity {{id: $elab_event_id}})
                         ON CREATE SET
                             elab:WorldElaborationEvent,
                             elab = $props,

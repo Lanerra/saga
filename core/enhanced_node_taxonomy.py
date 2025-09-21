@@ -312,7 +312,7 @@ class NodeClassification:
         "Treasury",
         "Collection",
         # Legacy type for backward compatibility
-        "WorldElement",
+        *( ["WorldElement"] if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True) else [] ),
     }
 
     # Entities that can be located in space
@@ -327,7 +327,7 @@ class NodeClassification:
         "Relic",
         "Structure",
         # Legacy type for backward compatibility
-        "WorldElement",
+        *( ["WorldElement"] if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True) else [] ),
     }
 
     # Entities that can be owned
@@ -344,7 +344,7 @@ class NodeClassification:
         "Structure",
         "Territory",  # Can own buildings and land
         # Legacy type for backward compatibility
-        "WorldElement",
+        *( ["WorldElement"] if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True) else [] ),
     }
 
     # Entities capable of social relationships
