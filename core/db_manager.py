@@ -300,7 +300,8 @@ class Neo4jManagerSingleton:
             "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
             "CREATE CONSTRAINT chapter_number_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.number IS UNIQUE",
             "CREATE CONSTRAINT character_name_unique IF NOT EXISTS FOR (char:Character) REQUIRE char.name IS UNIQUE",
-            "CREATE CONSTRAINT worldElement_id_unique IF NOT EXISTS FOR (we:WorldElement) REQUIRE we.id IS UNIQUE",
+            # WorldElement unique id constraint is legacy; only create when enabled
+            # WorldElement legacy constraint removed
             "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
             "CREATE CONSTRAINT trait_name_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.name IS UNIQUE",
             "CREATE CONSTRAINT plotPoint_id_unique IF NOT EXISTS FOR (pp:PlotPoint) REQUIRE pp.id IS UNIQUE",
@@ -316,14 +317,16 @@ class Neo4jManagerSingleton:
             "CREATE INDEX plotPoint_sequence IF NOT EXISTS FOR (pp:PlotPoint) ON (pp.sequence)",
             "CREATE INDEX developmentEvent_chapter_updated IF NOT EXISTS FOR (d:DevelopmentEvent) ON (d.chapter_updated)",
             "CREATE INDEX worldElaborationEvent_chapter_updated IF NOT EXISTS FOR (we:WorldElaborationEvent) ON (we.chapter_updated)",
-            "CREATE INDEX worldElement_category IF NOT EXISTS FOR (we:WorldElement) ON (we.category)",
-            "CREATE INDEX worldElement_name_property_idx IF NOT EXISTS FOR (we:WorldElement) ON (we.name)",
+            # WorldElement legacy indexes removed
             "CREATE INDEX chapter_is_provisional IF NOT EXISTS FOR (c:`Chapter`) ON (c.is_provisional)",
         ]
 
         # Vector index creation – backticks required for map keys with dot
         # First, execute constraints and regular indexes in a batch.
-        schema_only_queries = core_constraints_queries + index_queries
+        # Filter out None (when legacy disabled)
+        schema_only_queries = [
+            q for q in (core_constraints_queries + index_queries) if q
+        ]
         try:
             await self._execute_schema_batch(schema_only_queries)
             self.logger.info(
@@ -375,10 +378,12 @@ class Neo4jManagerSingleton:
         property_warmup_queries = [
             # Warm up node timestamp keys
             "CREATE (e:__PropWarmup:Entity {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
-            # Warm up typical relationship properties used across queries
+            # Warm up common node properties that may be referenced before they exist anywhere
+            "CREATE (e:__PropWarmupNodeProps:Entity {description: '', source: '', is_provisional: false, category: ''}) WITH e DELETE e",
+            # Warm up typical relationship properties used across queries (ensure keys are registered)
             (
                 "CREATE (a:__PropWarmupA:Entity)-[r:__WARMUP_REL {chapter_added: 0, "
-                "confidence: 1.0, is_provisional: false, source_profile_managed: true}]->(b:__PropWarmupB:Entity) "
+                "confidence: 1.0, is_provisional: false, source_profile_managed: true, type: '', description: ''}]->(b:__PropWarmupB:Entity) "
                 "WITH a,r,b DELETE r, a, b"
             ),
         ]

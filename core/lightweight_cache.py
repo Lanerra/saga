@@ -269,22 +269,4 @@ def clear_service_cache(service_name: str) -> None:
         logger.error(f"Error clearing service cache: {e}")
 
 
-# Backward compatibility functions that match the old API
-def get_cache_coordinator():
-    """Get cache coordinator (returns None for lightweight implementation)."""
-    return None
-
-
-def initialize_cache_coordinator():
-    """Initialize cache coordinator (no-op for lightweight implementation)."""
-    pass
-
-
-def broadcast_cache_invalidation(event):
-    """Broadcast cache invalidation (no-op for lightweight implementation)."""
-    pass
-
-
-def subscribe_to_cache_events(service_name: str, callback):
-    """Subscribe to cache events (no-op for lightweight implementation)."""
-    pass
+## Note: legacy cache coordinator API removed. Use service-scoped helpers above.

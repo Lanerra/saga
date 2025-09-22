@@ -123,8 +123,9 @@ class KnowledgeGraphService:
         """
         try:
             query = """
-            MATCH (w:WorldElement:Entity)
-            WHERE w.is_deleted IS NULL OR w.is_deleted = FALSE
+            MATCH (w:Entity)
+            WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
+              AND (w.is_deleted IS NULL OR w.is_deleted = FALSE)
             RETURN w
             ORDER BY w.category, w.name
             """
@@ -171,7 +172,7 @@ class KnowledgeGraphService:
             WITH collect({type: 'character', node: c}) as character_nodes
             
             // Get world items referenced in recent chapters  
-            MATCH (w:WorldElement:Entity)-[:REFERENCED_IN]->(ch:Chapter)
+            MATCH (w:Entity)-[:REFERENCED_IN]->(ch:Chapter)
             WHERE ch.number < $chapter_number
             WITH character_nodes, w, max(ch.number) as last_reference
             ORDER BY last_reference DESC

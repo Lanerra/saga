@@ -172,7 +172,9 @@ async def bootstrap_characters(
             logger.debug(f"Reserved placeholder name: {name}")
 
     # Also reserve the actual protagonist name if it exists and is not a placeholder
-    protagonist_name = plot_outline.get("protagonist_name", "") or config.DEFAULT_PROTAGONIST_NAME
+    protagonist_name = (
+        plot_outline.get("protagonist_name", "") or config.DEFAULT_PROTAGONIST_NAME
+    )
     if protagonist_name and protagonist_name not in [
         "Antagonist",
         "SupportingChar1",
@@ -204,7 +206,9 @@ async def bootstrap_characters(
 
     for name, profile in character_profiles.items():
         profile_dict = profile.to_dict()
-        profile_dict["name"] = profile.name  # Include name in profile dict for template access
+        profile_dict["name"] = (
+            profile.name
+        )  # Include name in profile dict for template access
         context = {"profile": profile_dict, "plot_outline": plot_outline}
         if serial_world is not None:
             context["world"] = serial_world
@@ -297,7 +301,9 @@ async def bootstrap_characters(
                         conflict_context["world"] = serial_world
                     # Make additional LLM call to generate unique name using conflict resolution template
                     unique_name_result = await _try_generate_unique_name(
-                        conflict_context, state_tracker, [p.name for p in character_profiles.values()]
+                        conflict_context,
+                        state_tracker,
+                        [p.name for p in character_profiles.values()],
                     )
                     if unique_name_result:
                         value = unique_name_result
@@ -309,7 +315,9 @@ async def bootstrap_characters(
                     else:
                         # Try deterministic, human-like variants before giving up
                         for variant in _morph_name_variants(value):
-                            if not await state_tracker.check(variant) and variant not in [
+                            if not await state_tracker.check(
+                                variant
+                            ) and variant not in [
                                 p.name for p in character_profiles.values()
                             ]:
                                 value = variant
@@ -341,7 +349,9 @@ async def bootstrap_characters(
                     if serial_world is not None:
                         conflict_context["world"] = serial_world
                     unique_name_result = await _try_generate_unique_name(
-                        conflict_context, state_tracker, [p.name for p in character_profiles.values()]
+                        conflict_context,
+                        state_tracker,
+                        [p.name for p in character_profiles.values()],
                     )
                     if unique_name_result and unique_name_result != name:
                         value = unique_name_result
@@ -352,7 +362,9 @@ async def bootstrap_characters(
                         )
                     else:
                         for variant in _morph_name_variants(name):
-                            if not await state_tracker.check(variant) and variant not in [
+                            if not await state_tracker.check(
+                                variant
+                            ) and variant not in [
                                 p.name for p in character_profiles.values()
                             ]:
                                 value = variant
@@ -372,7 +384,9 @@ async def bootstrap_characters(
                     renamed = await state_tracker.rename(name, value)
                     if not renamed:
                         # If rename wasn't possible (e.g., placeholder wasn't reserved), reserve the new name
-                        description = character_profiles[name].description or "Character"
+                        description = (
+                            character_profiles[name].description or "Character"
+                        )
                         await state_tracker.reserve(value, "character", description)
                 except Exception:
                     # Non-fatal: validator reconciliation will attempt to repair
@@ -407,7 +421,9 @@ async def bootstrap_characters(
                     if serial_world is not None:
                         conflict_context["world"] = serial_world
                     unique_name_result = await _try_generate_unique_name(
-                        conflict_context, state_tracker, [p.name for p in character_profiles.values()]
+                        conflict_context,
+                        state_tracker,
+                        [p.name for p in character_profiles.values()],
                     )
                     if unique_name_result and unique_name_result != name:
                         value = unique_name_result
@@ -418,7 +434,9 @@ async def bootstrap_characters(
                         )
                     else:
                         for variant in _morph_name_variants(name):
-                            if not await state_tracker.check(variant) and variant not in [
+                            if not await state_tracker.check(
+                                variant
+                            ) and variant not in [
                                 p.name for p in character_profiles.values()
                             ]:
                                 value = variant

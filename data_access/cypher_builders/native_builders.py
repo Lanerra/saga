@@ -113,8 +113,74 @@ class NativeCypherBuilder:
         # all values are primitive types that Neo4j can store
         flattened_additional_props = flatten_dict(item.additional_properties)
 
-        cypher = """
-        MERGE (w:WorldElement:Entity {id: $id})
+        def _classify_label(category: str, name: str) -> str:
+            c = (category or "").strip().lower()
+            mapping = {
+                # Locations & structures
+                "location": "Location",
+                "place": "Location",
+                "region": "Region",
+                "territory": "Territory",
+                "landmark": "Landmark",
+                "path": "Path",
+                "road": "Path",
+                "room": "Room",
+                "settlement": "Settlement",
+                "city": "Settlement",
+                "town": "Settlement",
+                "village": "Settlement",
+                # Organizations
+                "faction": "Faction",
+                "organization": "Organization",
+                "guild": "Guild",
+                "house": "House",
+                "order": "Order",
+                "council": "Council",
+                # Objects & items
+                "object": "Object",
+                "item": "Item",
+                "artifact": "Artifact",
+                "relic": "Relic",
+                "document": "Document",
+                "book": "Document",
+                "scroll": "Document",
+                "letter": "Document",
+                # Systems
+                "system": "System",
+                "magic": "Magic",
+                "technology": "Technology",
+                "religion": "Religion",
+                "culture": "Culture",
+                "education": "Education",
+                "government": "Government",
+                "economy": "Economy",
+                # Resources
+                "resource": "Resource",
+                "material": "Material",
+                "food": "Food",
+                "currency": "Currency",
+                # Information
+                "lore": "Lore",
+                "knowledge": "Knowledge",
+                "secret": "Secret",
+                "rumor": "Rumor",
+                "news": "News",
+                "message": "Message",
+                "signal": "Signal",
+                "record": "Record",
+            }
+            return mapping.get(c, "Object")
+
+        primary_label = _classify_label(item.category, item.name)
+        # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
+        # Previous implementation used a comma which caused a syntax error before RETURN.
+        labels_clause = f":{primary_label}"
+        # WorldElement legacy label removed – only use specific type + Entity
+        # Keep Entity label to ensure compatibility with queries expecting :Entity
+        labels_clause += ":Entity"
+
+        cypher = f"""
+        MERGE (w:Entity {{id: $id}})
         SET w.name = $name,
             w.category = $category,
             w.description = $description,
@@ -130,6 +196,7 @@ class NativeCypherBuilder:
             w.chapter_last_updated = $chapter_number,
             w.last_updated = timestamp(),
             w += $additional_props
+        SET w{labels_clause}
         
         RETURN w.id as updated_world_item
         """
@@ -190,8 +257,8 @@ class NativeCypherBuilder:
         RETURN c, 
                collect({{
                    target_name: other.name,
-                   type: r.type,
-                   description: r.description
+                   type: coalesce(r.type, ''),
+                   description: coalesce(r.description, '')
                }}) as relationships
         ORDER BY c.name
         """
@@ -228,8 +295,9 @@ class NativeCypherBuilder:
         where_clause = " AND ".join(where_clauses)
 
         cypher = f"""
-        MATCH (w:WorldElement:Entity)
-        WHERE {where_clause}
+        MATCH (w:Entity)
+        WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
+          AND {where_clause}
         RETURN w
         ORDER BY w.category, w.name
         """

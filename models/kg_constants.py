@@ -120,8 +120,8 @@ NODE_LABELS = {
     "Archive",  # Storage of documents/information
     "Treasury",  # Storage of valuable resources
     "Library",  # Collection of documents/knowledge
-    # === LEGACY SUPPORT ===
-    "WorldElement",  # Legacy type - being phased out
+    # === LEGACY SUPPORT (gated at runtime) ===
+    # "WorldElement",  # Legacy type - being phased out
 }
 
 

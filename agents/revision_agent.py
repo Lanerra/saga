@@ -17,7 +17,7 @@ from prompts.prompt_data_getters import (
     get_filtered_world_data_for_prompt_plain_text,
     get_reliable_kg_facts_for_drafting_prompt,
 )
-from prompts.prompt_renderer import render_prompt, get_system_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger()
 

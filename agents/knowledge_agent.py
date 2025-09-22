@@ -31,10 +31,8 @@ from data_access.world_queries import (
     sync_world_items as persist_world_items_native,
 )
 from models.kg_models import CharacterProfile, WorldItem
-from processing.parsing_utils import (
-    parse_rdf_triples_with_rdflib,
-)
-from prompts.prompt_renderer import render_prompt, get_system_prompt
+from processing.parsing_utils import parse_llm_triples
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 # Types available for type checking only
 if TYPE_CHECKING:
@@ -761,7 +759,7 @@ class KnowledgeAgent:
             )
 
             # Process KG triples for relationships (CRITICAL: This was missing!)
-            parsed_triples_structured = parse_rdf_triples_with_rdflib(kg_triples_text)
+            parsed_triples_structured = parse_llm_triples(kg_triples_text)
 
             # Log aggregates at info; detailed triples at debug to reduce log noise
             logger.info(
@@ -1242,9 +1240,41 @@ class KnowledgeAgent:
                 {},
             )
             recent_count = results[0].get("recent_count", 0) if results else 0
+
+            # Also check for bootstrap-created entities that might need maintenance
+            # These entities might not have recent timestamps but could be thin/incomplete
+            bootstrap_results = await neo4j_manager.execute_read_query(
+                "MATCH (n) WHERE toString(n.source) CONTAINS 'bootstrap' OR toString(n.source) CONTAINS 'placeholder' RETURN count(n) as bootstrap_count",
+                {},
+            )
+            bootstrap_count = (
+                bootstrap_results[0].get("bootstrap_count", 0)
+                if bootstrap_results
+                else 0
+            )
+
+            # Check for thin entities that need enrichment
+            thin_entities_results = await neo4j_manager.execute_read_query(
+                "MATCH (c:Character) WHERE toString(c.description) = '' RETURN count(c) as thin_count "
+                + "UNION ALL "
+                + "MATCH (we:Entity) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic) AND toString(we.description) = '' RETURN count(we) as thin_count",
+                {},
+            )
+            thin_count = (
+                sum(result.get("thin_count", 0) for result in thin_entities_results)
+                if thin_entities_results
+                else 0
+            )
+
+            # Run full maintenance if we have recent activity, bootstrap entities, or thin entities
+            total_activity = recent_count + bootstrap_count + thin_count
+            logger.debug(
+                f"KG activity check: recent={recent_count}, bootstrap={bootstrap_count}, thin={thin_count}, total={total_activity}"
+            )
+
             return (
-                recent_count > 5
-            )  # Only run full cycle if significant recent activity
+                total_activity > 5
+            )  # Only run full cycle if significant activity detected
         except Exception as e:
             logger.warning(
                 f"Could not check recent KG activity: {e}. Assuming activity exists."
@@ -1441,7 +1471,15 @@ class KnowledgeAgent:
         # Use the existing enrichment logic for different entity types
         if entity.get("type") == "Character":
             await self._enrich_character_by_name(entity_name)
-        elif entity.get("type") in ["WorldElement", "Location", "Organization"]:
+        elif entity.get("type") in [
+            "Location",
+            "Organization",
+            "Object",
+            "Artifact",
+            "Document",
+            "Item",
+            "Relic",
+        ]:
             await self._enrich_world_element_by_id(entity_id)
 
         # 4. Resolve dynamic relationship types using LLM guidance (always run)
@@ -1555,12 +1593,12 @@ class KnowledgeAgent:
             # For world elements, check if they have a description
             if entity_id:
                 query = """
-                MATCH (we:WorldElement {id: $entity_id})
+                MATCH (we:Entity {id: $entity_id})
                 RETURN we.description AS description
                 """
             else:
                 query = """
-                MATCH (we:WorldElement {name: $entity_name})
+                MATCH (we:Entity {name: $entity_name})
                 RETURN we.description AS description
                 """
         else:
@@ -1619,7 +1657,7 @@ class KnowledgeAgent:
                 if entity_id:
                     # Try to get more detailed information about the world element
                     query = """
-                    MATCH (we:WorldElement {id: $entity_id})
+                    MATCH (we:Entity {id: $entity_id})
                     RETURN we.category AS category
                     """
                     try:
@@ -1680,7 +1718,7 @@ class KnowledgeAgent:
                             )
                         elif entity_type.lower() == "worldelement" and entity_id:
                             update_query = """
-                            MATCH (we:WorldElement {id: $id})
+                            MATCH (we:Entity {id: $id})
                             SET we.description = $desc, we.enriched_ts = timestamp()
                             """
                             await neo4j_manager.execute_write_query(
@@ -1688,7 +1726,7 @@ class KnowledgeAgent:
                             )
                         elif entity_type.lower() == "worldelement":
                             update_query = """
-                            MATCH (we:WorldElement {name: $name})
+                            MATCH (we:Entity {name: $name})
                             SET we.description = $desc, we.enriched_ts = timestamp()
                             """
                             await neo4j_manager.execute_write_query(
@@ -1822,7 +1860,7 @@ class KnowledgeAgent:
             return None
 
         logger.info(
-            f"KG Healer: Found thin world element '{element_info.get('name')}' (id: {element_id}) for enrichment."
+            f"KG Healer: Found thin world item '{element_info.get('name')}' (id: {element_id}) for enrichment."
         )
         context_chapters = await kg_queries.get_chapter_context_for_entity(
             entity_id=element_id
@@ -1843,10 +1881,10 @@ class KnowledgeAgent:
                 new_description = data.get("description")
                 if new_description and isinstance(new_description, str):
                     logger.info(
-                        f"KG Healer: Generated new description for world element id '{element_id}'."
+                        f"KG Healer: Generated new description for world item id '{element_id}'."
                     )
                     return (
-                        "MATCH (we:WorldElement {id: $id}) SET we.description = $desc",
+                        "MATCH (we:Entity {id: $id}) SET we.description = $desc",
                         {"id": element_id, "desc": new_description},
                     )
             except json.JSONDecodeError:

@@ -66,11 +66,12 @@ async def check_entity_similarity(
             params = {"name": name}
         else:
             similarity_query = """
-            MATCH (w:WorldElement:Entity)
-            WHERE (w.name = $name OR 
+            MATCH (w:Entity)
+            WHERE (w:WorldElement OR w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
+              AND (w.name = $name OR 
                    toLower(w.name) = toLower($name) OR
                    apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > 0.45)
-                  AND ($category = '' OR w.category = $category)
+              AND ($category = '' OR w.category = $category)
             RETURN w.id as existing_id,
                    w.name as existing_name, 
                    w.category as existing_category,

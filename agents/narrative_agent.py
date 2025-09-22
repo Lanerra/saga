@@ -6,7 +6,7 @@ from typing import Any
 import structlog
 
 import config
-from core.llm_interface_refactored import count_tokens, llm_service
+from core.llm_interface_refactored import llm_service
 from core.text_processing_service import truncate_text_by_tokens
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
@@ -14,7 +14,7 @@ from processing.zero_copy_context_generator import ZeroCopyContextGenerator
 from prompts.prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
 )
-from prompts.prompt_renderer import render_prompt, get_system_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.json_utils import extract_json_from_text, safe_json_loads, truncate_for_log
 
 logger = structlog.get_logger()
@@ -52,7 +52,7 @@ class NarrativeAgent:
         """Cache token counting to avoid redundant calculations."""
         cache_key = (text, model)
         if cache_key not in self._token_cache:
-            self._token_cache[cache_key] = count_tokens(text, model)
+            self._token_cache[cache_key] = llm_service.count_tokens(text, model)
         return self._token_cache[cache_key]
 
     async def _build_previous_chapter_context(self, chapter_number: int) -> str:
@@ -251,6 +251,7 @@ class NarrativeAgent:
         """
         try:
             import os
+
             import config
 
             # Use configured debug outputs directory under BASE_OUTPUT_DIR

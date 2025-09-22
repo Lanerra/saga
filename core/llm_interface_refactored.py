@@ -403,9 +403,8 @@ class CompletionService:
 
         # Build messages with optional system prompt
         messages = (
-            ([{"role": "system", "content": system_prompt}] if system_prompt else [])
-            + [{"role": "user", "content": prompt}]
-        )
+            [{"role": "system", "content": system_prompt}] if system_prompt else []
+        ) + [{"role": "user", "content": prompt}]
 
         # Try primary model
         try:
@@ -496,9 +495,8 @@ class CompletionService:
 
         # Build messages with optional system prompt
         messages = (
-            ([{"role": "system", "content": system_prompt}] if system_prompt else [])
-            + [{"role": "user", "content": prompt}]
-        )
+            [{"role": "system", "content": system_prompt}] if system_prompt else []
+        ) + [{"role": "user", "content": prompt}]
 
         try:
             with secure_temp_file(suffix=".llmstream.txt", text=True) as temp_file_path:
@@ -771,11 +769,5 @@ def create_llm_service() -> RefactoredLLMService:
     return RefactoredLLMService(completion_service, embedding_service, text_processor)
 
 
-# Module-level instance for backward compatibility (created with direct instantiation)
+# Module-level service instance
 llm_service = create_llm_service()
-
-
-# Backward compatibility functions
-def count_tokens(text: str, model_name: str) -> int:
-    """Backward compatibility function for token counting."""
-    return llm_service.count_tokens(text, model_name)

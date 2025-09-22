@@ -14,6 +14,9 @@ from agents.narrative_agent import NarrativeAgent
 from agents.revision_agent import RevisionAgent
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
+from core.runtime_config_validator import (
+    validate_runtime_configuration,
+)
 from data_access import (
     chapter_queries,
     plot_queries,
@@ -26,7 +29,6 @@ from data_access.character_queries import (
 from data_access.world_queries import (
     get_world_building,
 )
-from initialization.genesis import run_genesis_phase
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
 from models import (
     CharacterProfile,
@@ -39,9 +41,7 @@ from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
-from processing.zero_copy_context_generator import (
-    generate_hybrid_chapter_context_native,
-)
+from processing.zero_copy_context_generator import ZeroCopyContextGenerator
 from ui.rich_display import RichDisplayManager
 from utils.ingestion_utils import split_text_into_chapters
 
@@ -184,24 +184,29 @@ class NANA_Orchestrator:
         logger.info("SAGA Orchestrator async_init_orchestrator complete.")
         self._update_rich_display(step="Orchestrator Initialized")
 
+        # Validate runtime configuration against bootstrap content
+        if getattr(config, "ENABLE_RUNTIME_CONFIG_VALIDATION", True):
+            await self._validate_runtime_configuration()
+
     async def perform_initial_setup(self):
         self._update_rich_display(step="Performing Initial Setup")
         logger.info("SAGA performing initial setup...")
-        # Optionally run the super-charged bootstrap as a higher setting
-        if getattr(config, "BOOTSTRAP_ENABLED_DEFAULT", False):
-            logger.info("Using higher-setting bootstrap prelude before genesis.")
-            phase = "all"
-            level = getattr(config, "BOOTSTRAP_HIGHER_SETTING", "enhanced")
-            plot_outline, character_profiles, world_building, _ = await run_bootstrap_pipeline(
-                phase=phase, level=level, dry_run=False, kg_heal=getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True)
-            )
-            self.plot_outline = plot_outline
-        else:
-            (
-                self.plot_outline,
-                character_profiles,
-                world_building,
-            ) = await run_genesis_phase()
+        # SAGA standardized on the phased bootstrap pipeline (world -> characters -> plot)
+        # Genesis path has been retired per bootstrap-exam recommendation #5.
+        phase = "all"
+        level = getattr(config, "BOOTSTRAP_HIGHER_SETTING", "enhanced")
+        (
+            plot_outline,
+            character_profiles,
+            world_building,
+            _,
+        ) = await run_bootstrap_pipeline(
+            phase=phase,
+            level=level,
+            dry_run=False,
+            kg_heal=getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True),
+        )
+        self.plot_outline = plot_outline
 
         plot_source = self.plot_outline.get("source", "unknown")
         logger.info(
@@ -211,7 +216,7 @@ class NANA_Orchestrator:
         )
         world_source = world_building.get("source", "unknown")
         logger.info(f"   World Building initialized/loaded (source: {world_source}).")
-        self._update_rich_display(step="Genesis State Bootstrapped")
+        self._update_rich_display(step="Bootstrap State Bootstrapped")
 
         self._update_novel_props_cache()
         logger.info("   Initial plot, character, and world data saved to Neo4j.")
@@ -590,8 +595,10 @@ class NANA_Orchestrator:
                     f"SAGA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
                 )
 
-        hybrid_context_for_draft = await generate_hybrid_chapter_context_native(
-            self, novel_chapter_number, chapter_plan
+        hybrid_context_for_draft = (
+            await ZeroCopyContextGenerator.generate_hybrid_context_native(
+                self.plot_outline, novel_chapter_number, chapter_plan
+            )
         )
 
         if config.ENABLE_AGENTIC_PLANNING and chapter_plan is None:
@@ -1173,7 +1180,7 @@ class NANA_Orchestrator:
                     return
                 self._update_novel_props_cache()
 
-            # KG pre-population handled within run_genesis_phase
+            # KG pre-population is performed during bootstrap pipeline execution
 
             logger.info("\n--- SAGA: Starting Novel Writing Process ---")
 
@@ -1445,6 +1452,75 @@ class NANA_Orchestrator:
         await self.display.stop()
         await neo4j_manager.close()
         logger.info("SAGA: Ingestion process completed.")
+
+    async def _validate_runtime_configuration(self) -> None:
+        """
+        Validate runtime configuration against bootstrap content.
+
+        This method ensures that the current runtime configuration is consistent
+        with the bootstrap-generated content to prevent narrative inconsistencies.
+        """
+        self._update_rich_display(step="Validating Runtime Configuration")
+
+        try:
+            # Get current content from database/runtime
+            characters = await get_character_profiles()
+            world_items = await get_world_building()
+
+            # Convert to dict format for validation
+            character_profiles_dict = {char.name: char for char in characters}
+            world_building_dict = {}
+            for item in world_items:
+                if item.category not in world_building_dict:
+                    world_building_dict[item.category] = {}
+                world_building_dict[item.category][item.name] = item
+
+            # Validate runtime configuration
+            is_valid, validation_errors = validate_runtime_configuration(
+                self.plot_outline, character_profiles_dict, world_building_dict
+            )
+
+            if not is_valid:
+                logger.warning(
+                    f"Runtime configuration validation failed with {len(validation_errors)} errors: {[str(error) for error in validation_errors]}"
+                )
+
+                # Log specific validation errors
+                for error in validation_errors:
+                    logger.warning(
+                        f"Configuration validation error - Field: {error.field}, Message: {error.message}, Bootstrap: {error.bootstrap_value}, Runtime: {error.runtime_value}"
+                    )
+
+                # Create validation report
+                validation_report = {
+                    "validation_timestamp": None,
+                    "total_errors": len(validation_errors),
+                    "is_valid": False,
+                    "errors": [
+                        {
+                            "field": error.field,
+                            "message": error.message,
+                            "bootstrap_value": str(error.bootstrap_value),
+                            "runtime_value": str(error.runtime_value),
+                        }
+                        for error in validation_errors
+                    ],
+                    "summary": f"Runtime validation failed with {len(validation_errors)} error(s)",
+                }
+
+                await self._save_debug_output(
+                    0, "runtime_config_validation_report", validation_report
+                )
+
+            else:
+                logger.info("Runtime configuration validation passed")
+
+        except Exception as e:
+            logger.error(
+                "Runtime configuration validation failed with exception",
+                error=str(e),
+                exc_info=True,
+            )
 
     # Dynamic schema refresh function removed - not needed for single-user deployment
 

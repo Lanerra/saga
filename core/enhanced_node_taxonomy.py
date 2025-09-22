@@ -31,7 +31,7 @@ ENHANCED_NODE_LABELS = {
     "NovelInfo",  # Novel metadata
     "Chapter",  # Chapter entities
     # === LEGACY TYPES FOR BACKWARD COMPATIBILITY ===
-    "WorldElement",  # Legacy generic type - being phased out
+    # WorldElement legacy generic type removed
     # === PHYSICAL ENTITIES ===
     # Living Beings
     "Character",  # Main story characters (active participants)
@@ -312,7 +312,7 @@ class NodeClassification:
         "Treasury",
         "Collection",
         # Legacy type for backward compatibility
-        "WorldElement",
+        # Legacy WorldElement removed
     }
 
     # Entities that can be located in space
@@ -327,7 +327,7 @@ class NodeClassification:
         "Relic",
         "Structure",
         # Legacy type for backward compatibility
-        "WorldElement",
+        # Legacy WorldElement removed
     }
 
     # Entities that can be owned
@@ -344,7 +344,7 @@ class NodeClassification:
         "Structure",
         "Territory",  # Can own buildings and land
         # Legacy type for backward compatibility
-        "WorldElement",
+        # Legacy WorldElement removed
     }
 
     # Entities capable of social relationships
