@@ -403,9 +403,8 @@ class CompletionService:
 
         # Build messages with optional system prompt
         messages = (
-            ([{"role": "system", "content": system_prompt}] if system_prompt else [])
-            + [{"role": "user", "content": prompt}]
-        )
+            [{"role": "system", "content": system_prompt}] if system_prompt else []
+        ) + [{"role": "user", "content": prompt}]
 
         # Try primary model
         try:
@@ -496,9 +495,8 @@ class CompletionService:
 
         # Build messages with optional system prompt
         messages = (
-            ([{"role": "system", "content": system_prompt}] if system_prompt else [])
-            + [{"role": "user", "content": prompt}]
-        )
+            [{"role": "system", "content": system_prompt}] if system_prompt else []
+        ) + [{"role": "user", "content": prompt}]
 
         try:
             with secure_temp_file(suffix=".llmstream.txt", text=True) as temp_file_path:

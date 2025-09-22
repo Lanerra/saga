@@ -116,6 +116,7 @@ class ZeroCopyContextGenerator:
         if current_chapter_number == 1:
             try:
                 from data_access.plot_queries import get_first_chapter_kg_hint
+
                 precomputed = await get_first_chapter_kg_hint()
                 if precomputed and precomputed.strip():
                     context_buffer.extend(
@@ -128,7 +129,9 @@ class ZeroCopyContextGenerator:
                     )
                 else:
                     from data_access.world_queries import get_bootstrap_world_elements
-                    from prompts.prompt_data_getters import get_world_state_snippet_for_prompt
+                    from prompts.prompt_data_getters import (
+                        get_world_state_snippet_for_prompt,
+                    )
 
                     bootstrap_world_items = await get_bootstrap_world_elements()
                     if bootstrap_world_items:
@@ -146,9 +149,7 @@ class ZeroCopyContextGenerator:
                                 ]
                             )
             except Exception as e:
-                logger.warning(
-                    f"Failed to include first-chapter KG bundle: {e}"
-                )
+                logger.warning(f"Failed to include first-chapter KG bundle: {e}")
 
         return "\n".join(context_buffer)
 
@@ -436,7 +437,9 @@ class ZeroCopyContextGenerator:
             full_content = prefix + enhanced_content + suffix
 
             # Check token limit
-            content_tokens = llm_service.count_tokens(full_content, config.NARRATIVE_MODEL)
+            content_tokens = llm_service.count_tokens(
+                full_content, config.NARRATIVE_MODEL
+            )
 
             if total_tokens + content_tokens <= max_tokens:
                 context_parts.append(full_content)
@@ -653,7 +656,9 @@ class ZeroCopyContextGenerator:
                     ).strip()
                     if content:
                         formatted = f"[Fallback Context from Chapter {chapter_num}]:\n{content}\n---\n"
-                        content_tokens = llm_service.count_tokens(formatted, config.NARRATIVE_MODEL)
+                        content_tokens = llm_service.count_tokens(
+                            formatted, config.NARRATIVE_MODEL
+                        )
 
                         if total_tokens + content_tokens <= max_semantic_tokens:
                             context_parts.append(formatted)

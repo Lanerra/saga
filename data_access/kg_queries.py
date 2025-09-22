@@ -521,17 +521,64 @@ def _infer_specific_node_type_static(
 
     # Use category information if available (expanded mapping)
     if category_lower:
-        if any(term in category_lower for term in ["character", "person", "people", "npc", "hero", "villain"]):
+        if any(
+            term in category_lower
+            for term in ["character", "person", "people", "npc", "hero", "villain"]
+        ):
             return "Character"
-        elif any(term in category_lower for term in ["location", "place", "city", "town", "village", "region", "territory", "landmark", "path", "room", "settlement"]):
+        elif any(
+            term in category_lower
+            for term in [
+                "location",
+                "place",
+                "city",
+                "town",
+                "village",
+                "region",
+                "territory",
+                "landmark",
+                "path",
+                "room",
+                "settlement",
+            ]
+        ):
             return "Location"
-        elif any(term in category_lower for term in ["object", "item", "thing", "artifact", "relic", "weapon", "armor", "tool"]):
+        elif any(
+            term in category_lower
+            for term in [
+                "object",
+                "item",
+                "thing",
+                "artifact",
+                "relic",
+                "weapon",
+                "armor",
+                "tool",
+            ]
+        ):
             return "Object"
         elif any(
             term in category_lower for term in ["organization", "faction", "group"]
         ):
             return "Faction"
-        elif any(term in category_lower for term in ["concept", "idea", "abstract", "law", "tradition", "language", "symbol", "story", "song", "dream", "memory", "emotion", "skill"]):
+        elif any(
+            term in category_lower
+            for term in [
+                "concept",
+                "idea",
+                "abstract",
+                "law",
+                "tradition",
+                "language",
+                "symbol",
+                "story",
+                "song",
+                "dream",
+                "memory",
+                "emotion",
+                "skill",
+            ]
+        ):
             return "Concept"
         elif any(term in category_lower for term in ["event", "happening"]):
             return "Event"
@@ -539,19 +586,31 @@ def _infer_specific_node_type_static(
             return "System"
 
     # Name-based heuristics for common types
-    if name_lower.endswith(" temple") or name_lower.endswith(" hall") or name_lower.endswith(" keep"):
+    if (
+        name_lower.endswith(" temple")
+        or name_lower.endswith(" hall")
+        or name_lower.endswith(" keep")
+    ):
         return "Structure"
-    if name_lower.startswith("the ") and any(term in name_lower for term in [" inn", " tavern", " bar", " guild", " order"]):
+    if name_lower.startswith("the ") and any(
+        term in name_lower for term in [" inn", " tavern", " bar", " guild", " order"]
+    ):
         return "Structure"
     if any(term in name_lower for term in ["district", "ward", "quarter"]):
         return "Region"
-    if any(term in name_lower for term in ["empire", "kingdom", "duchy", "republic", "union"]):
+    if any(
+        term in name_lower
+        for term in ["empire", "kingdom", "duchy", "republic", "union"]
+    ):
         return "Organization"
     if any(term in name_lower for term in ["university", "academy", "school"]):
         return "Education"
     if any(term in name_lower for term in ["church", "temple", "cult"]):
         return "Religion"
-    if any(term in name_lower for term in ["sword", "bow", "axe", "shield", "armor", "ring", "amulet"]):
+    if any(
+        term in name_lower
+        for term in ["sword", "bow", "axe", "shield", "armor", "ring", "amulet"]
+    ):
         return "Artifact"
     if any(term in name_lower for term in ["road", "path", "bridge"]):
         return "Path"
@@ -1244,9 +1303,7 @@ async def add_kg_triples_batch_to_db(
             )
 
             # Combine ON CREATE SET clauses for subject
-            subject_create_sets = (
-                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
-            )
+            subject_create_sets = f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
@@ -1352,9 +1409,7 @@ async def add_kg_triples_batch_to_db(
             )
 
             # Combine ON CREATE SET clauses for both nodes
-            subject_create_sets = (
-                f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
-            )
+            subject_create_sets = f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
             if subject_additional_labels:
                 label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
                 subject_create_sets += ", " + ", ".join(label_clauses)
@@ -1477,12 +1532,12 @@ async def query_kg_from_db(
         )
         parameters["object_param"] = obj_val_stripped
     if chapter_limit is not None:
-        conditions.append(f"coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) <= $chapter_limit_param")
+        conditions.append(
+            f"coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) <= $chapter_limit_param"
+        )
         parameters["chapter_limit_param"] = chapter_limit
     if not include_provisional:
-        conditions.append(
-            f"coalesce(r.{KG_IS_PROVISIONAL}, FALSE) = FALSE"
-        )
+        conditions.append(f"coalesce(r.{KG_IS_PROVISIONAL}, FALSE) = FALSE")
 
     where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -1550,7 +1605,9 @@ async def get_most_recent_value_from_db(
     parameters["subject_param"] = subject.strip()
 
     if chapter_limit is not None:
-        conditions.append(f"coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) <= $chapter_limit_param")
+        conditions.append(
+            f"coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) <= $chapter_limit_param"
+        )
         parameters["chapter_limit_param"] = chapter_limit
     if not include_provisional:
         conditions.append(

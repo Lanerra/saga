@@ -7,16 +7,17 @@ it against runtime configuration values to ensure narrative consistency.
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
-from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from models.kg_models import CharacterProfile, WorldItem
 from models.validation_utils import (
     BootstrapContentValidator,
     ConfigurationValidationError,
+    get_validation_corrections,
     validate_bootstrap_consistency,
-    get_validation_corrections
 )
 
 
@@ -28,7 +29,7 @@ class BootstrapValidationResult:
     whether validation passed and any warnings or errors encountered.
     """
 
-    def __init__(self, is_valid: bool = True, warnings: Optional[List[str]] = None):
+    def __init__(self, is_valid: bool = True, warnings: list[str] | None = None):
         self.is_valid = is_valid
         self.warnings = warnings or []
 
@@ -41,13 +42,14 @@ class BootstrapValidationResult:
         """Add a warning message."""
         self.warnings.append(warning_message)
 
-    def merge(self, other: 'BootstrapValidationResult') -> 'BootstrapValidationResult':
+    def merge(self, other: BootstrapValidationResult) -> BootstrapValidationResult:
         """Merge this result with another validation result."""
         merged = BootstrapValidationResult(
             is_valid=self.is_valid and other.is_valid,
-            warnings=self.warnings + other.warnings
+            warnings=self.warnings + other.warnings,
         )
         return merged
+
 
 logger = structlog.get_logger(__name__)
 
@@ -67,11 +69,11 @@ class BootstrapValidationPipeline:
 
     async def validate_bootstrap_output(
         self,
-        plot_outline: Dict[str, Any],
-        character_profiles: Dict[str, CharacterProfile],
-        world_building: Dict[str, Dict[str, WorldItem]],
-        bootstrap_source: str = "bootstrap"
-    ) -> Tuple[bool, List[ConfigurationValidationError], Optional[Dict[str, Any]]]:
+        plot_outline: dict[str, Any],
+        character_profiles: dict[str, CharacterProfile],
+        world_building: dict[str, dict[str, WorldItem]],
+        bootstrap_source: str = "bootstrap",
+    ) -> tuple[bool, list[ConfigurationValidationError], dict[str, Any] | None]:
         """
         Validate bootstrap output against runtime configuration.
 
@@ -85,8 +87,7 @@ class BootstrapValidationPipeline:
             Tuple of (is_valid, validation_errors, suggested_corrections)
         """
         self.logger.info(
-            "Starting bootstrap validation pipeline",
-            bootstrap_source=bootstrap_source
+            "Starting bootstrap validation pipeline", bootstrap_source=bootstrap_source
         )
 
         # Run validation
@@ -101,15 +102,16 @@ class BootstrapValidationPipeline:
             self.logger.warning(
                 "Bootstrap validation failed, suggesting corrections",
                 error_count=len(validation_errors),
-                corrections=suggested_corrections
+                corrections=suggested_corrections,
             )
 
         return is_valid, validation_errors, suggested_corrections
 
     def extract_bootstrap_content_for_validation(
-        self,
-        bootstrap_result: Dict[str, Any]
-    ) -> Tuple[Dict[str, Any], Dict[str, CharacterProfile], Dict[str, Dict[str, WorldItem]]]:
+        self, bootstrap_result: dict[str, Any]
+    ) -> tuple[
+        dict[str, Any], dict[str, CharacterProfile], dict[str, dict[str, WorldItem]]
+    ]:
         """
         Extract bootstrap content into validation-ready format.
 
@@ -134,10 +136,8 @@ class BootstrapValidationPipeline:
         return plot_outline, character_profiles, world_building
 
     async def validate_and_correct_bootstrap(
-        self,
-        bootstrap_result: Dict[str, Any],
-        auto_correct: bool = False
-    ) -> Tuple[Dict[str, Any], bool, List[ConfigurationValidationError]]:
+        self, bootstrap_result: dict[str, Any], auto_correct: bool = False
+    ) -> tuple[dict[str, Any], bool, list[ConfigurationValidationError]]:
         """
         Validate bootstrap result and optionally apply corrections.
 
@@ -149,8 +149,8 @@ class BootstrapValidationPipeline:
             Tuple of (corrected_bootstrap_result, was_corrected, validation_errors)
         """
         # Extract content for validation
-        plot_outline, character_profiles, world_building = self.extract_bootstrap_content_for_validation(
-            bootstrap_result
+        plot_outline, character_profiles, world_building = (
+            self.extract_bootstrap_content_for_validation(bootstrap_result)
         )
 
         # Validate the content
@@ -166,15 +166,13 @@ class BootstrapValidationPipeline:
             was_corrected = self._apply_corrections(corrected_result, corrections)
             self.logger.info(
                 "Applied automatic corrections to bootstrap result",
-                corrections_applied=was_corrected
+                corrections_applied=was_corrected,
             )
 
         return corrected_result, was_corrected, validation_errors
 
     def _apply_corrections(
-        self,
-        bootstrap_result: Dict[str, Any],
-        corrections: Dict[str, Any]
+        self, bootstrap_result: dict[str, Any], corrections: dict[str, Any]
     ) -> bool:
         """
         Apply suggested corrections to bootstrap result.
@@ -216,9 +214,9 @@ class BootstrapValidationPipeline:
 
     def generate_validation_report(
         self,
-        validation_errors: List[ConfigurationValidationError],
-        corrections: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        validation_errors: list[ConfigurationValidationError],
+        corrections: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Generate a detailed validation report.
 
@@ -238,19 +236,18 @@ class BootstrapValidationPipeline:
                     "field": error.field,
                     "message": error.message,
                     "bootstrap_value": str(error.bootstrap_value),
-                    "runtime_value": str(error.runtime_value)
+                    "runtime_value": str(error.runtime_value),
                 }
                 for error in validation_errors
             ],
             "corrections": corrections,
-            "summary": self._generate_validation_summary(validation_errors)
+            "summary": self._generate_validation_summary(validation_errors),
         }
 
         return report
 
     def _generate_validation_summary(
-        self,
-        validation_errors: List[ConfigurationValidationError]
+        self, validation_errors: list[ConfigurationValidationError]
     ) -> str:
         """
         Generate a human-readable summary of validation results.
@@ -284,9 +281,8 @@ bootstrap_validation_pipeline = BootstrapValidationPipeline()
 
 
 async def validate_bootstrap_result(
-    bootstrap_result: Dict[str, Any],
-    auto_correct: bool = False
-) -> Tuple[Dict[str, Any], bool, List[ConfigurationValidationError]]:
+    bootstrap_result: dict[str, Any], auto_correct: bool = False
+) -> tuple[dict[str, Any], bool, list[ConfigurationValidationError]]:
     """
     Convenience function to validate bootstrap result.
 
@@ -303,9 +299,9 @@ async def validate_bootstrap_result(
 
 
 def create_bootstrap_validation_report(
-    validation_errors: List[ConfigurationValidationError],
-    corrections: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    validation_errors: list[ConfigurationValidationError],
+    corrections: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Create a validation report for bootstrap results.
 
@@ -322,10 +318,10 @@ def create_bootstrap_validation_report(
 
 
 async def validate_bootstrap_results(
-    plot_outline: Dict[str, Any],
-    character_profiles: Dict[str, CharacterProfile],
-    world_building: Dict[str, Dict[str, WorldItem]],
-    state_tracker: Optional[Any] = None
+    plot_outline: dict[str, Any],
+    character_profiles: dict[str, CharacterProfile],
+    world_building: dict[str, dict[str, WorldItem]],
+    state_tracker: Any | None = None,
 ) -> BootstrapValidationResult:
     """
     Validate bootstrap results for consistency and completeness.
@@ -371,16 +367,16 @@ async def validate_bootstrap_results(
     logger.info(
         "Bootstrap validation completed",
         is_valid=validation_result.is_valid,
-        warning_count=len(validation_result.warnings)
+        warning_count=len(validation_result.warnings),
     )
 
     return validation_result
 
 
 async def quick_validate_world(
-    plot_outline: Dict[str, Any],
-    world_building: Dict[str, Dict[str, WorldItem]],
-    state_tracker: Optional[Any] = None
+    plot_outline: dict[str, Any],
+    world_building: dict[str, dict[str, WorldItem]],
+    state_tracker: Any | None = None,
 ) -> BootstrapValidationResult:
     """
     Quick validation focused on world building elements.
@@ -430,15 +426,14 @@ async def quick_validate_world(
     logger.info(
         "Quick world validation completed",
         is_valid=validation_result.is_valid,
-        warning_count=len(validation_result.warnings)
+        warning_count=len(validation_result.warnings),
     )
 
     return validation_result
 
 
 async def quick_validate_characters(
-    character_profiles: Dict[str, CharacterProfile],
-    state_tracker: Optional[Any] = None
+    character_profiles: dict[str, CharacterProfile], state_tracker: Any | None = None
 ) -> BootstrapValidationResult:
     """
     Quick validation focused on character profiles.
@@ -462,7 +457,9 @@ async def quick_validate_characters(
     # Check for protagonist
     expected_protagonist = config.DEFAULT_PROTAGONIST_NAME
     if expected_protagonist not in character_profiles:
-        validation_result.add_error(f"Expected protagonist '{expected_protagonist}' not found")
+        validation_result.add_error(
+            f"Expected protagonist '{expected_protagonist}' not found"
+        )
     else:
         protagonist_profile = character_profiles[expected_protagonist]
         if not protagonist_profile.name:
@@ -484,7 +481,7 @@ async def quick_validate_characters(
     logger.info(
         "Quick character validation completed",
         is_valid=validation_result.is_valid,
-        warning_count=len(validation_result.warnings)
+        warning_count=len(validation_result.warnings),
     )
 
     return validation_result

@@ -324,7 +324,9 @@ class Neo4jManagerSingleton:
         # Vector index creation – backticks required for map keys with dot
         # First, execute constraints and regular indexes in a batch.
         # Filter out None (when legacy disabled)
-        schema_only_queries = [q for q in (core_constraints_queries + index_queries) if q]
+        schema_only_queries = [
+            q for q in (core_constraints_queries + index_queries) if q
+        ]
         try:
             await self._execute_schema_batch(schema_only_queries)
             self.logger.info(

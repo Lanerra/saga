@@ -24,7 +24,7 @@ from models import (
     SceneDetail,
     WorldItem,
 )
-from prompts.prompt_renderer import render_prompt, get_system_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 

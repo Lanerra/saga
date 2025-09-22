@@ -176,7 +176,9 @@ async def _bootstrap_world_overview(
                 await state_tracker.reserve(
                     "_overview_",
                     "world_item",
-                    str(getattr(overview_item_obj, "description", "")) if 'overview_item_obj' in locals() else "",
+                    str(getattr(overview_item_obj, "description", ""))
+                    if "overview_item_obj" in locals()
+                    else "",
                 )
         except Exception:
             # Non-fatal; validator reconciliation will attempt to repair
@@ -607,7 +609,11 @@ async def _bootstrap_world_properties(
             list_properties_to_bootstrap = [
                 ("goals", "goals", "1-2 key goals or objectives"),
                 ("rules", "rules", "1-2 important rules or principles"),
-                ("key_elements", "key_elements", "1-2 distinctive features or characteristics"),
+                (
+                    "key_elements",
+                    "key_elements",
+                    "1-2 distinctive features or characteristics",
+                ),
             ]
 
             for prop_name, prop_field, prop_description in list_properties_to_bootstrap:
@@ -669,11 +675,23 @@ async def _bootstrap_world_properties(
                     elif isinstance(prop_value, str):
                         # Convert string to list by splitting on common delimiters
                         if "," in prop_value:
-                            list_value = [item.strip() for item in prop_value.split(",") if item.strip()]
+                            list_value = [
+                                item.strip()
+                                for item in prop_value.split(",")
+                                if item.strip()
+                            ]
                         elif ";" in prop_value:
-                            list_value = [item.strip() for item in prop_value.split(";") if item.strip()]
+                            list_value = [
+                                item.strip()
+                                for item in prop_value.split(";")
+                                if item.strip()
+                            ]
                         elif "|" in prop_value:
-                            list_value = [item.strip() for item in prop_value.split("|") if item.strip()]
+                            list_value = [
+                                item.strip()
+                                for item in prop_value.split("|")
+                                if item.strip()
+                            ]
                         else:
                             # Treat as single item
                             list_value = [prop_value.strip()]
@@ -689,12 +707,18 @@ async def _bootstrap_world_properties(
                         if item_str and item_str != config.FILL_IN:
                             # Remove FILL_IN markers from within the text but keep the rest
                             cleaned_item = item_str.replace(config.FILL_IN, "").strip()
-                            if cleaned_item:  # Only add if there's content left after cleaning
+                            if (
+                                cleaned_item
+                            ):  # Only add if there's content left after cleaning
                                 filtered_list_value.append(cleaned_item)
 
-                    if filtered_list_value:  # Only set if we have meaningful items after cleaning
+                    if (
+                        filtered_list_value
+                    ):  # Only set if we have meaningful items after cleaning
                         setattr(target_item, prop_name_filled, filtered_list_value)
-                        current_source = target_item.additional_properties.get("source", "")
+                        current_source = target_item.additional_properties.get(
+                            "source", ""
+                        )
                         if isinstance(current_source, str):
                             target_item.additional_properties["source"] = (
                                 f"{current_source}_prop_{prop_name_filled}_bootstrapped"
@@ -772,7 +796,9 @@ async def bootstrap_world(
                 overall_usage_data[key] = overall_usage_data.get(key, 0) + val
 
     # Stage 0: Bootstrap world overview
-    overview_usage = await _bootstrap_world_overview(world_building, plot_outline, state_tracker)
+    overview_usage = await _bootstrap_world_overview(
+        world_building, plot_outline, state_tracker
+    )
     _accumulate_usage(overview_usage)
 
     # Stage 1: Bootstrap names for items

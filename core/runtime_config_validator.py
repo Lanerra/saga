@@ -8,15 +8,15 @@ generation process.
 
 from __future__ import annotations
 
-import structlog
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-import config
+import structlog
+
 from models.kg_models import CharacterProfile, WorldItem
 from models.validation_utils import (
     BootstrapContentValidator,
-    ConfigurationValidationError
+    ConfigurationValidationError,
 )
 
 logger = structlog.get_logger(__name__)
@@ -33,14 +33,14 @@ class RuntimeConfigurationValidator:
     def __init__(self):
         self.logger = structlog.get_logger(__name__)
         self.validator = BootstrapContentValidator()
-        self._validation_history: List[Dict[str, Any]] = []
+        self._validation_history: list[dict[str, Any]] = []
 
     def validate_runtime_config_against_bootstrap(
         self,
-        plot_outline: Dict[str, Any],
-        character_profiles: Dict[str, CharacterProfile],
-        world_building: Dict[str, Dict[str, WorldItem]]
-    ) -> Tuple[bool, List[ConfigurationValidationError]]:
+        plot_outline: dict[str, Any],
+        character_profiles: dict[str, CharacterProfile],
+        world_building: dict[str, dict[str, WorldItem]],
+    ) -> tuple[bool, list[ConfigurationValidationError]]:
         """
         Validate runtime configuration against bootstrap content.
 
@@ -66,17 +66,15 @@ class RuntimeConfigurationValidator:
             {
                 "plot_outline_keys": list(plot_outline.keys()),
                 "character_count": len(character_profiles),
-                "world_categories": list(world_building.keys())
-            }
+                "world_categories": list(world_building.keys()),
+            },
         )
 
         return is_valid, validation_errors
 
     def validate_config_value_changes(
-        self,
-        old_values: Dict[str, Any],
-        new_values: Dict[str, Any]
-    ) -> List[ConfigurationValidationError]:
+        self, old_values: dict[str, Any], new_values: dict[str, Any]
+    ) -> list[ConfigurationValidationError]:
         """
         Validate changes to configuration values for potential impact.
 
@@ -87,14 +85,14 @@ class RuntimeConfigurationValidator:
         Returns:
             List of validation errors for problematic changes
         """
-        errors: List[ConfigurationValidationError] = []
+        errors: list[ConfigurationValidationError] = []
 
         # Check for changes to critical narrative configuration
         critical_fields = [
             "CONFIGURED_GENRE",
             "CONFIGURED_THEME",
             "CONFIGURED_SETTING_DESCRIPTION",
-            "DEFAULT_PROTAGONIST_NAME"
+            "DEFAULT_PROTAGONIST_NAME",
         ]
 
         for field in critical_fields:
@@ -107,17 +105,15 @@ class RuntimeConfigurationValidator:
                         f"Critical configuration field '{field}' changed from '{old_value}' to '{new_value}' during runtime",
                         field.lower(),
                         old_value,
-                        new_value
+                        new_value,
                     )
                 )
 
         return errors
 
     def check_bootstrap_content_drift(
-        self,
-        initial_bootstrap: Dict[str, Any],
-        current_content: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, initial_bootstrap: dict[str, Any], current_content: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Check for drift between initial bootstrap content and current content.
 
@@ -131,7 +127,7 @@ class RuntimeConfigurationValidator:
         drift_report = {
             "drift_detected": False,
             "drift_details": {},
-            "recommendations": []
+            "recommendations": [],
         }
 
         # Extract content for comparison
@@ -139,7 +135,9 @@ class RuntimeConfigurationValidator:
         current_plot = current_content.get("plot_outline", {})
 
         # Check plot outline drift
-        plot_drift = self._compare_dict_content(initial_plot, current_plot, "plot_outline")
+        plot_drift = self._compare_dict_content(
+            initial_plot, current_plot, "plot_outline"
+        )
         if plot_drift["differences_found"]:
             drift_report["drift_detected"] = True
             drift_report["drift_details"]["plot_outline"] = plot_drift
@@ -164,16 +162,15 @@ class RuntimeConfigurationValidator:
 
         # Generate recommendations
         if drift_report["drift_detected"]:
-            drift_report["recommendations"] = self._generate_drift_recommendations(drift_report)
+            drift_report["recommendations"] = self._generate_drift_recommendations(
+                drift_report
+            )
 
         return drift_report
 
     def _compare_dict_content(
-        self,
-        initial: Dict[str, Any],
-        current: Dict[str, Any],
-        content_type: str
-    ) -> Dict[str, Any]:
+        self, initial: dict[str, Any], current: dict[str, Any], content_type: str
+    ) -> dict[str, Any]:
         """
         Compare two dictionaries for differences.
 
@@ -190,7 +187,7 @@ class RuntimeConfigurationValidator:
             "missing_keys": [],
             "extra_keys": [],
             "changed_values": {},
-            "content_type": content_type
+            "content_type": content_type,
         }
 
         # Check for missing keys
@@ -208,22 +205,20 @@ class RuntimeConfigurationValidator:
             if key in current and initial[key] != current[key]:
                 differences["changed_values"][key] = {
                     "initial": initial[key],
-                    "current": current[key]
+                    "current": current[key],
                 }
 
         differences["differences_found"] = (
-            len(differences["missing_keys"]) > 0 or
-            len(differences["extra_keys"]) > 0 or
-            len(differences["changed_values"]) > 0
+            len(differences["missing_keys"]) > 0
+            or len(differences["extra_keys"]) > 0
+            or len(differences["changed_values"]) > 0
         )
 
         return differences
 
     def _compare_character_profiles(
-        self,
-        initial: Dict[str, CharacterProfile],
-        current: Dict[str, CharacterProfile]
-    ) -> Dict[str, Any]:
+        self, initial: dict[str, CharacterProfile], current: dict[str, CharacterProfile]
+    ) -> dict[str, Any]:
         """
         Compare character profiles for differences.
 
@@ -239,7 +234,7 @@ class RuntimeConfigurationValidator:
             "missing_characters": [],
             "extra_characters": [],
             "changed_characters": {},
-            "content_type": "character_profiles"
+            "content_type": "character_profiles",
         }
 
         initial_names = set(initial.keys())
@@ -256,26 +251,28 @@ class RuntimeConfigurationValidator:
             initial_profile = initial[name]
             current_profile = current[name]
 
-            if isinstance(initial_profile, CharacterProfile) and isinstance(current_profile, CharacterProfile):
+            if isinstance(initial_profile, CharacterProfile) and isinstance(
+                current_profile, CharacterProfile
+            ):
                 if initial_profile.to_dict() != current_profile.to_dict():
                     differences["changed_characters"][name] = {
                         "initial": initial_profile.to_dict(),
-                        "current": current_profile.to_dict()
+                        "current": current_profile.to_dict(),
                     }
 
         differences["differences_found"] = (
-            len(differences["missing_characters"]) > 0 or
-            len(differences["extra_characters"]) > 0 or
-            len(differences["changed_characters"]) > 0
+            len(differences["missing_characters"]) > 0
+            or len(differences["extra_characters"]) > 0
+            or len(differences["changed_characters"]) > 0
         )
 
         return differences
 
     def _compare_world_building(
         self,
-        initial: Dict[str, Dict[str, WorldItem]],
-        current: Dict[str, Dict[str, WorldItem]]
-    ) -> Dict[str, Any]:
+        initial: dict[str, dict[str, WorldItem]],
+        current: dict[str, dict[str, WorldItem]],
+    ) -> dict[str, Any]:
         """
         Compare world building content for differences.
 
@@ -291,14 +288,16 @@ class RuntimeConfigurationValidator:
             "missing_categories": [],
             "extra_categories": [],
             "changed_items": {},
-            "content_type": "world_building"
+            "content_type": "world_building",
         }
 
         initial_categories = set(initial.keys())
         current_categories = set(current.keys())
 
         # Check for missing categories
-        differences["missing_categories"] = list(initial_categories - current_categories)
+        differences["missing_categories"] = list(
+            initial_categories - current_categories
+        )
 
         # Check for extra categories
         differences["extra_categories"] = list(current_categories - initial_categories)
@@ -316,40 +315,53 @@ class RuntimeConfigurationValidator:
             if missing_items:
                 if category not in differences["changed_items"]:
                     differences["changed_items"][category] = {}
-                differences["changed_items"][category]["missing_items"] = list(missing_items)
+                differences["changed_items"][category]["missing_items"] = list(
+                    missing_items
+                )
 
             # Check for extra items
             extra_items = current_item_names - initial_item_names
             if extra_items:
                 if category not in differences["changed_items"]:
                     differences["changed_items"][category] = {}
-                differences["changed_items"][category]["extra_items"] = list(extra_items)
+                differences["changed_items"][category]["extra_items"] = list(
+                    extra_items
+                )
 
             # Check for changed items
             for item_name in initial_item_names.intersection(current_item_names):
                 initial_item = initial_items[item_name]
                 current_item = current_items[item_name]
 
-                if isinstance(initial_item, WorldItem) and isinstance(current_item, WorldItem):
+                if isinstance(initial_item, WorldItem) and isinstance(
+                    current_item, WorldItem
+                ):
                     if initial_item.to_dict() != current_item.to_dict():
                         if category not in differences["changed_items"]:
                             differences["changed_items"][category] = {}
-                        if "changed_items" not in differences["changed_items"][category]:
+                        if (
+                            "changed_items"
+                            not in differences["changed_items"][category]
+                        ):
                             differences["changed_items"][category]["changed_items"] = {}
-                        differences["changed_items"][category]["changed_items"][item_name] = {
+                        differences["changed_items"][category]["changed_items"][
+                            item_name
+                        ] = {
                             "initial": initial_item.to_dict(),
-                            "current": current_item.to_dict()
+                            "current": current_item.to_dict(),
                         }
 
         differences["differences_found"] = (
-            len(differences["missing_categories"]) > 0 or
-            len(differences["extra_categories"]) > 0 or
-            len(differences["changed_items"]) > 0
+            len(differences["missing_categories"]) > 0
+            or len(differences["extra_categories"]) > 0
+            or len(differences["changed_items"]) > 0
         )
 
         return differences
 
-    def _generate_drift_recommendations(self, drift_report: Dict[str, Any]) -> List[str]:
+    def _generate_drift_recommendations(
+        self, drift_report: dict[str, Any]
+    ) -> list[str]:
         """
         Generate recommendations for addressing content drift.
 
@@ -385,15 +397,17 @@ class RuntimeConfigurationValidator:
                 )
 
         if not recommendations:
-            recommendations.append("No specific recommendations available for detected drift.")
+            recommendations.append(
+                "No specific recommendations available for detected drift."
+            )
 
         return recommendations
 
     def _record_validation(
         self,
         is_valid: bool,
-        validation_errors: List[ConfigurationValidationError],
-        context: Dict[str, Any]
+        validation_errors: list[ConfigurationValidationError],
+        context: dict[str, Any],
     ) -> None:
         """
         Record validation result in history.
@@ -407,7 +421,7 @@ class RuntimeConfigurationValidator:
             "timestamp": datetime.now().isoformat(),
             "is_valid": is_valid,
             "error_count": len(validation_errors),
-            "context": context
+            "context": context,
         }
 
         self._validation_history.append(validation_record)
@@ -416,7 +430,7 @@ class RuntimeConfigurationValidator:
         if len(self._validation_history) > 10:
             self._validation_history = self._validation_history[-10:]
 
-    def get_validation_history(self) -> List[Dict[str, Any]]:
+    def get_validation_history(self) -> list[dict[str, Any]]:
         """
         Get validation history.
 
@@ -425,7 +439,7 @@ class RuntimeConfigurationValidator:
         """
         return self._validation_history.copy()
 
-    def get_validation_summary(self) -> Dict[str, Any]:
+    def get_validation_summary(self) -> dict[str, Any]:
         """
         Get summary of validation history.
 
@@ -436,14 +450,18 @@ class RuntimeConfigurationValidator:
             return {"total_validations": 0, "success_rate": 0.0}
 
         total_validations = len(self._validation_history)
-        successful_validations = sum(1 for record in self._validation_history if record["is_valid"])
+        successful_validations = sum(
+            1 for record in self._validation_history if record["is_valid"]
+        )
 
         return {
             "total_validations": total_validations,
             "successful_validations": successful_validations,
             "failed_validations": total_validations - successful_validations,
             "success_rate": successful_validations / total_validations,
-            "last_validation": self._validation_history[-1] if self._validation_history else None
+            "last_validation": self._validation_history[-1]
+            if self._validation_history
+            else None,
         }
 
 
@@ -452,10 +470,10 @@ runtime_config_validator = RuntimeConfigurationValidator()
 
 
 def validate_runtime_configuration(
-    plot_outline: Dict[str, Any],
-    character_profiles: Dict[str, CharacterProfile],
-    world_building: Dict[str, Dict[str, WorldItem]]
-) -> Tuple[bool, List[ConfigurationValidationError]]:
+    plot_outline: dict[str, Any],
+    character_profiles: dict[str, CharacterProfile],
+    world_building: dict[str, dict[str, WorldItem]],
+) -> tuple[bool, list[ConfigurationValidationError]]:
     """
     Convenience function to validate runtime configuration.
 
@@ -473,9 +491,8 @@ def validate_runtime_configuration(
 
 
 def check_bootstrap_drift(
-    initial_bootstrap: Dict[str, Any],
-    current_content: Dict[str, Any]
-) -> Dict[str, Any]:
+    initial_bootstrap: dict[str, Any], current_content: dict[str, Any]
+) -> dict[str, Any]:
     """
     Check for drift between bootstrap and current content.
 

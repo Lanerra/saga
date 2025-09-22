@@ -7,7 +7,7 @@ and validators.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Tuple
+from typing import Any, Literal
 
 import structlog
 
@@ -16,14 +16,11 @@ from agents.knowledge_agent import KnowledgeAgent
 from data_access import plot_queries
 from initialization.bootstrap_validator import (
     BootstrapValidationResult,
-    validate_bootstrap_results,
-    quick_validate_world,
+    create_bootstrap_validation_report,
     quick_validate_characters,
-)
-from initialization.bootstrap_validator import (
-    bootstrap_validation_pipeline,
+    quick_validate_world,
     validate_bootstrap_result,
-    create_bootstrap_validation_report
+    validate_bootstrap_results,
 )
 from initialization.bootstrappers.character_bootstrapper import (
     bootstrap_characters,
@@ -37,7 +34,10 @@ from initialization.bootstrappers.world_bootstrapper import (
     bootstrap_world,
     create_default_world,
 )
-from initialization.data_loader import convert_model_to_objects, load_user_supplied_model
+from initialization.data_loader import (
+    convert_model_to_objects,
+    load_user_supplied_model,
+)
 from models import CharacterProfile, WorldItem
 from processing.state_tracker import StateTracker
 
@@ -71,11 +71,13 @@ async def run_world_phase(
     dry_run: bool = False,
     kg_heal: bool = False,
     kg_agent: KnowledgeAgent | None = None,
-) -> Tuple[dict[str, dict[str, WorldItem]], BootstrapValidationResult]:
+) -> tuple[dict[str, dict[str, WorldItem]], BootstrapValidationResult]:
     """Generate world, validate uniqueness, optionally persist and heal."""
     world_building = world_building or create_default_world()
 
-    world_building, _ = await bootstrap_world(world_building, plot_outline, state_tracker)
+    world_building, _ = await bootstrap_world(
+        world_building, plot_outline, state_tracker
+    )
 
     # Phase-local validation: world uniqueness and basic checks only
     # Avoid full cross-component validation to prevent spurious errors
@@ -104,7 +106,9 @@ async def run_world_phase(
 
     if not dry_run and getattr(config, "BOOTSTRAP_PUSH_TO_KG_EACH_PHASE", True):
         kg = kg_agent or KnowledgeAgent()
-        await kg.persist_world(world_building, config.KG_PREPOPULATION_CHAPTER_NUM, full_sync=True)
+        await kg.persist_world(
+            world_building, config.KG_PREPOPULATION_CHAPTER_NUM, full_sync=True
+        )
         if kg_heal and getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True):
             await kg.heal_and_enrich_kg()
 
@@ -120,10 +124,14 @@ async def run_characters_phase(
     kg_heal: bool = False,
     world_building: dict[str, dict[str, WorldItem]] | None = None,
     kg_agent: KnowledgeAgent | None = None,
-) -> Tuple[dict[str, CharacterProfile], BootstrapValidationResult]:
+) -> tuple[dict[str, CharacterProfile], BootstrapValidationResult]:
     """Generate characters, validate duplicates, optionally persist and heal."""
-    protagonist_name = plot_outline.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME)
-    character_profiles = character_profiles or create_default_characters(protagonist_name)
+    protagonist_name = plot_outline.get(
+        "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
+    )
+    character_profiles = character_profiles or create_default_characters(
+        protagonist_name
+    )
 
     character_profiles, _ = await bootstrap_characters(
         character_profiles,
@@ -161,11 +169,14 @@ async def run_plot_phase(
     *,
     dry_run: bool = False,
     kg_heal: bool = False,
-) -> Tuple[dict[str, Any], BootstrapValidationResult]:
+) -> tuple[dict[str, Any], BootstrapValidationResult]:
     """Generate plot outline leveraging world + characters; validate and persist."""
     plot_outline = plot_outline or create_default_plot(
-        character_profiles.get("protagonist", CharacterProfile(name=config.DEFAULT_PROTAGONIST_NAME)).name
-        if character_profiles else config.DEFAULT_PROTAGONIST_NAME
+        character_profiles.get(
+            "protagonist", CharacterProfile(name=config.DEFAULT_PROTAGONIST_NAME)
+        ).name
+        if character_profiles
+        else config.DEFAULT_PROTAGONIST_NAME
     )
 
     # Use enriched context for interplay-aware points
@@ -191,22 +202,35 @@ async def run_plot_phase(
         # Precompute and persist a Chapter 1 KG hint bundle for fast reuse
         try:
             protagonist_name = plot_outline.get("protagonist_name") or (
-                next((cp.name for cp in character_profiles.values() if cp.updates.get("role") == "protagonist"), None)
-                if character_profiles else None
+                next(
+                    (
+                        cp.name
+                        for cp in character_profiles.values()
+                        if cp.updates.get("role") == "protagonist"
+                    ),
+                    None,
+                )
+                if character_profiles
+                else None
             )
 
             # Fetch a compact set of bootstrap world elements
             world_snippet = ""
             try:
                 from data_access.world_queries import get_bootstrap_world_elements
-                from prompts.prompt_data_getters import get_world_state_snippet_for_prompt
+                from prompts.prompt_data_getters import (
+                    get_world_state_snippet_for_prompt,
+                )
 
                 bootstrap_world_items = await get_bootstrap_world_elements()
                 if bootstrap_world_items:
-                    world_snippet = await get_world_state_snippet_for_prompt(
-                        bootstrap_world_items,
-                        current_chapter_num_for_filtering=config.KG_PREPOPULATION_CHAPTER_NUM,
-                    ) or ""
+                    world_snippet = (
+                        await get_world_state_snippet_for_prompt(
+                            bootstrap_world_items,
+                            current_chapter_num_for_filtering=config.KG_PREPOPULATION_CHAPTER_NUM,
+                        )
+                        or ""
+                    )
             except Exception:
                 world_snippet = ""
 
@@ -218,7 +242,14 @@ async def run_plot_phase(
                 lines.append(f"Protagonist: {protagonist_name}")
             if character_profiles and isinstance(character_profiles, dict):
                 # Try to find antagonist and a couple allies by simple heuristics
-                antagonist = next((cp.name for cp in character_profiles.values() if cp.updates.get("role") == "antagonist"), None)
+                antagonist = next(
+                    (
+                        cp.name
+                        for cp in character_profiles.values()
+                        if cp.updates.get("role") == "antagonist"
+                    ),
+                    None,
+                )
                 if antagonist:
                     lines.append(f"Antagonist: {antagonist}")
             if world_snippet and world_snippet.strip():
@@ -241,7 +272,12 @@ async def run_bootstrap_pipeline(
     *,
     dry_run: bool = False,
     kg_heal: bool = False,
-) -> tuple[dict[str, Any], dict[str, CharacterProfile], dict[str, dict[str, WorldItem]], list[str]]:
+) -> tuple[
+    dict[str, Any],
+    dict[str, CharacterProfile],
+    dict[str, dict[str, WorldItem]],
+    list[str],
+]:
     """Top-level pipeline that executes selected phases sequentially.
 
     Returns: (plot_outline, character_profiles, world_building, warnings)
@@ -253,7 +289,9 @@ async def run_bootstrap_pipeline(
     # Load optional user model
     model = load_user_supplied_model()
     if model:
-        plot_outline, character_profiles, world_building = convert_model_to_objects(model)
+        plot_outline, character_profiles, world_building = convert_model_to_objects(
+            model
+        )
     else:
         plot_outline = create_default_plot(config.DEFAULT_PROTAGONIST_NAME)
         character_profiles = create_default_characters(plot_outline["protagonist_name"])
@@ -268,7 +306,12 @@ async def run_bootstrap_pipeline(
 
     if phase in ("world", "all"):
         world_building, world_val = await run_world_phase(
-            plot_outline, world_building, state_tracker, dry_run=dry_run, kg_heal=kg_heal, kg_agent=kg_agent
+            plot_outline,
+            world_building,
+            state_tracker,
+            dry_run=dry_run,
+            kg_heal=kg_heal,
+            kg_agent=kg_agent,
         )
         # Deduplicate warnings across phases
         warnings.extend([w for w in world_val.warnings if w not in warnings])
@@ -291,7 +334,11 @@ async def run_bootstrap_pipeline(
 
     if phase in ("plot", "all"):
         plot_outline, plot_val = await run_plot_phase(
-            plot_outline, character_profiles, world_building, dry_run=dry_run, kg_heal=kg_heal
+            plot_outline,
+            character_profiles,
+            world_building,
+            dry_run=dry_run,
+            kg_heal=kg_heal,
         )
         warnings.extend([w for w in plot_val.warnings if w not in warnings])
 
@@ -303,33 +350,46 @@ async def run_bootstrap_pipeline(
                 "plot_outline": plot_outline,
                 "character_profiles": character_profiles,
                 "world_building": world_building,
-                "bootstrap_source": f"bootstrap_pipeline_{level}"
+                "bootstrap_source": f"bootstrap_pipeline_{level}",
             }
 
             # Validate bootstrap result
-            corrected_result, was_corrected, validation_errors = await validate_bootstrap_result(
-                bootstrap_result, auto_correct=False  # Don't auto-correct in pipeline
+            (
+                corrected_result,
+                was_corrected,
+                validation_errors,
+            ) = await validate_bootstrap_result(
+                bootstrap_result,
+                auto_correct=False,  # Don't auto-correct in pipeline
             )
 
             # Update results if corrections were applied
             if was_corrected:
                 plot_outline = corrected_result.get("plot_outline", plot_outline)
-                character_profiles = corrected_result.get("character_profiles", character_profiles)
+                character_profiles = corrected_result.get(
+                    "character_profiles", character_profiles
+                )
                 world_building = corrected_result.get("world_building", world_building)
-                warnings.append(f"Bootstrap validation applied corrections for {len(validation_errors)} issues")
+                warnings.append(
+                    f"Bootstrap validation applied corrections for {len(validation_errors)} issues"
+                )
 
             # Add validation warnings
             if validation_errors:
-                validation_warnings = [f"Validation: {error.message}" for error in validation_errors]
+                validation_warnings = [
+                    f"Validation: {error.message}" for error in validation_errors
+                ]
                 warnings.extend(validation_warnings)
 
                 # Create validation report for debugging
-                validation_report = create_bootstrap_validation_report(validation_errors)
+                validation_report = create_bootstrap_validation_report(
+                    validation_errors
+                )
                 logger.info(
                     "Bootstrap validation completed",
                     validation_passed=len(validation_errors) == 0,
                     error_count=len(validation_errors),
-                    report_summary=validation_report.get("summary")
+                    report_summary=validation_report.get("summary"),
                 )
 
         except Exception as e:

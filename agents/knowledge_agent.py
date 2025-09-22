@@ -32,7 +32,7 @@ from data_access.world_queries import (
 )
 from models.kg_models import CharacterProfile, WorldItem
 from processing.parsing_utils import parse_llm_triples
-from prompts.prompt_renderer import render_prompt, get_system_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 # Types available for type checking only
 if TYPE_CHECKING:
@@ -1247,7 +1247,11 @@ class KnowledgeAgent:
                 "MATCH (n) WHERE toString(n.source) CONTAINS 'bootstrap' OR toString(n.source) CONTAINS 'placeholder' RETURN count(n) as bootstrap_count",
                 {},
             )
-            bootstrap_count = bootstrap_results[0].get("bootstrap_count", 0) if bootstrap_results else 0
+            bootstrap_count = (
+                bootstrap_results[0].get("bootstrap_count", 0)
+                if bootstrap_results
+                else 0
+            )
 
             # Check for thin entities that need enrichment
             thin_entities_results = await neo4j_manager.execute_read_query(
@@ -1256,7 +1260,11 @@ class KnowledgeAgent:
                 + "MATCH (we:Entity) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic) AND toString(we.description) = '' RETURN count(we) as thin_count",
                 {},
             )
-            thin_count = sum(result.get("thin_count", 0) for result in thin_entities_results) if thin_entities_results else 0
+            thin_count = (
+                sum(result.get("thin_count", 0) for result in thin_entities_results)
+                if thin_entities_results
+                else 0
+            )
 
             # Run full maintenance if we have recent activity, bootstrap entities, or thin entities
             total_activity = recent_count + bootstrap_count + thin_count
@@ -1264,7 +1272,9 @@ class KnowledgeAgent:
                 f"KG activity check: recent={recent_count}, bootstrap={bootstrap_count}, thin={thin_count}, total={total_activity}"
             )
 
-            return total_activity > 5  # Only run full cycle if significant activity detected
+            return (
+                total_activity > 5
+            )  # Only run full cycle if significant activity detected
         except Exception as e:
             logger.warning(
                 f"Could not check recent KG activity: {e}. Assuming activity exists."
@@ -1461,7 +1471,15 @@ class KnowledgeAgent:
         # Use the existing enrichment logic for different entity types
         if entity.get("type") == "Character":
             await self._enrich_character_by_name(entity_name)
-        elif entity.get("type") in ["Location", "Organization", "Object", "Artifact", "Document", "Item", "Relic"]:
+        elif entity.get("type") in [
+            "Location",
+            "Organization",
+            "Object",
+            "Artifact",
+            "Document",
+            "Item",
+            "Relic",
+        ]:
             await self._enrich_world_element_by_id(entity_id)
 
         # 4. Resolve dynamic relationship types using LLM guidance (always run)

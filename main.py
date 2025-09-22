@@ -4,8 +4,8 @@ import asyncio
 import logging
 
 from core.db_manager import neo4j_manager
-from orchestration.nana_orchestrator import NANA_Orchestrator, setup_logging_nana
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
+from orchestration.nana_orchestrator import NANA_Orchestrator, setup_logging_nana
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +79,19 @@ def main() -> None:
             logger.info(
                 "Bootstrap complete. Title: '%s'; Plot points: %d; Characters: %d; World cats: %d",
                 plot_outline.get("title", "(unknown)"),
-                len(plot_outline.get("plot_points", [])
+                len(
+                    plot_outline.get("plot_points", [])
                     if isinstance(plot_outline.get("plot_points"), list)
-                    else []),
+                    else []
+                ),
                 len(character_profiles),
-                len([k for k in world_building.keys() if k not in ("is_default", "source")]),
+                len(
+                    [
+                        k
+                        for k in world_building.keys()
+                        if k not in ("is_default", "source")
+                    ]
+                ),
             )
             if warnings:
                 logger.warning("Bootstrap warnings: %s", "; ".join(warnings))

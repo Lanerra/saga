@@ -14,6 +14,9 @@ from agents.narrative_agent import NarrativeAgent
 from agents.revision_agent import RevisionAgent
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
+from core.runtime_config_validator import (
+    validate_runtime_configuration,
+)
 from data_access import (
     chapter_queries,
     plot_queries,
@@ -27,16 +30,6 @@ from data_access.world_queries import (
     get_world_building,
 )
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
-from initialization.bootstrap_validator import (
-    bootstrap_validation_pipeline,
-    validate_bootstrap_result,
-    create_bootstrap_validation_report
-)
-from core.runtime_config_validator import (
-    runtime_config_validator,
-    validate_runtime_configuration,
-    check_bootstrap_drift
-)
 from models import (
     CharacterProfile,
     EvaluationResult,
@@ -202,8 +195,16 @@ class NANA_Orchestrator:
         # Genesis path has been retired per bootstrap-exam recommendation #5.
         phase = "all"
         level = getattr(config, "BOOTSTRAP_HIGHER_SETTING", "enhanced")
-        plot_outline, character_profiles, world_building, _ = await run_bootstrap_pipeline(
-            phase=phase, level=level, dry_run=False, kg_heal=getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True)
+        (
+            plot_outline,
+            character_profiles,
+            world_building,
+            _,
+        ) = await run_bootstrap_pipeline(
+            phase=phase,
+            level=level,
+            dry_run=False,
+            kg_heal=getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True),
         )
         self.plot_outline = plot_outline
 
@@ -594,8 +595,10 @@ class NANA_Orchestrator:
                     f"SAGA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
                 )
 
-        hybrid_context_for_draft = await ZeroCopyContextGenerator.generate_hybrid_context_native(
-            self.plot_outline, novel_chapter_number, chapter_plan
+        hybrid_context_for_draft = (
+            await ZeroCopyContextGenerator.generate_hybrid_context_native(
+                self.plot_outline, novel_chapter_number, chapter_plan
+            )
         )
 
         if config.ENABLE_AGENTIC_PLANNING and chapter_plan is None:
@@ -1498,11 +1501,11 @@ class NANA_Orchestrator:
                             "field": error.field,
                             "message": error.message,
                             "bootstrap_value": str(error.bootstrap_value),
-                            "runtime_value": str(error.runtime_value)
+                            "runtime_value": str(error.runtime_value),
                         }
                         for error in validation_errors
                     ],
-                    "summary": f"Runtime validation failed with {len(validation_errors)} error(s)"
+                    "summary": f"Runtime validation failed with {len(validation_errors)} error(s)",
                 }
 
                 await self._save_debug_output(
@@ -1516,7 +1519,7 @@ class NANA_Orchestrator:
             logger.error(
                 "Runtime configuration validation failed with exception",
                 error=str(e),
-                exc_info=True
+                exc_info=True,
             )
 
     # Dynamic schema refresh function removed - not needed for single-user deployment

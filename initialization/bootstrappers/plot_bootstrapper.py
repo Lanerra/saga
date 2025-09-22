@@ -101,7 +101,9 @@ async def bootstrap_plot_outline(
             try:
                 pp_context["characters"] = {
                     name: (
-                        profile.to_dict() if hasattr(profile, "to_dict") else dict(profile)
+                        profile.to_dict()
+                        if hasattr(profile, "to_dict")
+                        else dict(profile)
                     )
                     for name, profile in character_profiles.items()
                 }
@@ -178,8 +180,12 @@ async def bootstrap_plot_outline(
         plot_outline["title"] = fallback_title
 
     # Summary fallback (minimal but non-empty)
-    if not plot_outline.get("summary") or utils._is_fill_in(plot_outline.get("summary")):
-        protagonist = plot_outline.get("protagonist_name") or config.DEFAULT_PROTAGONIST_NAME
+    if not plot_outline.get("summary") or utils._is_fill_in(
+        plot_outline.get("summary")
+    ):
+        protagonist = (
+            plot_outline.get("protagonist_name") or config.DEFAULT_PROTAGONIST_NAME
+        )
         setting = plot_outline.get("setting") or config.CONFIGURED_SETTING_DESCRIPTION
         logline = plot_outline.get("logline")
         if logline and isinstance(logline, str) and logline.strip():

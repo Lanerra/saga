@@ -17,6 +17,7 @@ from models.kg_constants import (
 )
 
 from .cypher_builders.native_builders import NativeCypherBuilder
+
 # Legacy world cypher builder removed; native builder is the single path.
 
 logger = logging.getLogger(__name__)
@@ -309,15 +310,15 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                         we_node_props[k] = v
 
             statements.append(
-                    (
-                        """
+                (
+                    """
                     MERGE (we:Entity {id: $id_val})
                     ON CREATE SET we:Object, we = $props, we.created_ts = timestamp()
                     ON MATCH SET  we:Object, we += $props, we.updated_ts = timestamp()
                     """,
-                        {"id_val": we_id_str, "props": we_node_props},
-                    )
+                    {"id_val": we_id_str, "props": we_node_props},
                 )
+            )
             statements.append(
                 (
                     """
@@ -1074,7 +1075,11 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
             try:
                 world_item = WorldItem.from_db_node(we_node)
                 # Additional validation: ensure the description is meaningful after conversion
-                if world_item.description and world_item.description.strip() and config.FILL_IN not in world_item.description:
+                if (
+                    world_item.description
+                    and world_item.description.strip()
+                    and config.FILL_IN not in world_item.description
+                ):
                     bootstrap_elements.append(world_item)
 
             except Exception as e:

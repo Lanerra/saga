@@ -61,7 +61,10 @@ def format_scene_plan_for_prompt(
         scene_segment = "\n".join(scene_lines)
         prospective_plan = "\n".join(current_plan_parts + [scene_segment])
 
-        if llm_service.count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
+        if (
+            llm_service.count_tokens(prospective_plan, model_name_for_tokens)
+            > max_tokens_budget
+        ):
             current_plan_parts.append(
                 "... (plan truncated in prompt due to token limit)"
             )
