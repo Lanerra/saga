@@ -1,138 +1,152 @@
-# SAGA - Semantic And Graph-enhanced Authoring
+# SAGA - Semantic And Graph‑enhanced Authoring
 
-**NOTE**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactoring and overhaul. Things may not work as intended. Ingestion, for certain, doesn't work at the moment.
+**NOTE**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactor and overhaul. Things may not work as intended.
 
-SAGA is a novel-writing system that leverages a knowledge graph and multiple specialized agents to autonomously create and refine stories. It is designed to handle complex narrative structures while maintaining coherence and consistency.
-
-
-## Progress Window
-*(This is a representation of the Rich CLI progress window)*
-
-![SAGA Progress Window](https://github.com/Lanerra/saga/blob/master/SAGA.png)
+SAGA is a local‑first, single‑process Python CLI that uses a Neo4j knowledge graph and a small set of cooperating agents to plan, draft, and revise long‑form fiction while preserving continuity across chapters.
 
 
-## Example Knowledge Graph Visualization (4 Chapters)
+## What SAGA Does
 
-![SAGA KG Visualization](https://github.com/Lanerra/saga/blob/master/SAGA-KG-Ch4.png)
+- Local knowledge graph continuity
+  - Persists entities, relationships, plot points, and chapter metadata in a local Neo4j database.
+  - Maintains coherence via periodic “healing/enrichment” passes and duplicate prevention/merging.
+- Agentic writing pipeline
+  - Plans scenes, drafts prose, and runs patch‑based revisions with automated evaluation gates.
+  - Generates continuation plot points when the outline runs out, based on recent chapter summaries.
+- Multi‑phase bootstrap (optional)
+  - World → Characters → Plot, each with lightweight validation and optional graph healing.
+  - Can run standalone or as an integrated prelude to generation.
+- Semantic context and search
+  - Embeddings stored on chapter nodes with a Neo4j vector index for fast similarity search.
+  - “Zero‑copy” context assembly pulls just the snippets needed for the current chapter.
+- Rich CLI progress
+  - Live panel shows novel title, chapter progress, current step, elapsed time, and request rate.
 
 
-## Features
+## Quick Start
 
-- **Knowledge Graph (KG)**: Stores and manages all entities, relationships, and narrative elements using Neo4j.
-- **Modular Agent Architecture**: Includes agents for narrative drafting, consistency checks, revisions, and knowledge extraction.
-- **LLM Integration**: Utilizes large language models for creative and analytical tasks.
-- **Configurable Generation Parameters**: Fine-tune the novel generation process through configuration settings.
-- **Robust Testing Framework**: Comprehensive test coverage using `pytest` with custom markers for test categorization.
-- **Code Quality**: Enforces PEP8 and bug-free code with `ruff` linter and formatter.
-- **Vector Search**: Uses vector embeddings for enhanced search and similarity detection.
-- **Agentic Planning**: Supports scene planning and chapter drafting through agentic workflows.
+Prereqs
+- Python 3.12
+- Neo4j 5.x running locally (standalone or via `docker-compose`)
+- A local LLM endpoint for completions and embeddings (OpenAI‑compatible HTTP, e.g., local gateway). Configure endpoints in `.env`.
 
-## Installation
+*Note: SAGA also supports connecting to cloud endpoints as well, but is local-first by design.*
 
-To set up and run SAGA, follow these steps:
-
-### 1. Clone the Repository
-
+Setup
 ```bash
-git clone git@github.com:Lanerra/saga
-cd saga
-```
-
-### 2. Set Up a Python Environment
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install Dependencies
-
-```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env   # then edit values as needed
 ```
 
-### 4. Install the Project
-
+Start Neo4j (optional helper)
 ```bash
-pip install -e .
+docker-compose up -d   # uses docker-compose.yml in this repo
 ```
 
-### 5. Set Up Configuration
-
-Copy the `.env.example` file to `.env` and update the configuration values as needed:
-
-```bash
-cp .env.example .env
-```
-
-### 6. Start the System
-
-Run the system using the `main.py` entry point:
-
+Run the generator
 ```bash
 python main.py
 ```
-#### WARNING: Ingestion is currently broken and needs refactoring
-To ingest a novel, use the `--ingest` flag with the path to your text file:
 
+Optional: Run the bootstrap independent of the novel generation cycle (world → characters → plot)
+```bash
+# Full pipeline
+python main.py --bootstrap
+
+# Limit to a phase
+python main.py --bootstrap --bootstrap-phase world     # or characters|plot
+
+# Tuning and safety
+python main.py --bootstrap --bootstrap-level basic     # basic|enhanced|max
+python main.py --bootstrap --bootstrap-dry-run
+python main.py --bootstrap --bootstrap-kg-heal
+python main.py --bootstrap --bootstrap-reset-kg
+```
+
+Optional: Ingest existing text (experimental)
 ```bash
 python main.py --ingest path/to/novel.txt
 ```
 
-If the system is running in Docker, ensure you have the Neo4j database running via `docker-compose`:
 
-```bash
-docker-compose up -d
-```
+## Key Features
 
-## Project Structure
+- Knowledge Graph backbone (Neo4j)
+  - Schema creation with constraints/indexes, including a vector index on chapter embeddings.
+  - Entity merge helpers and enrichment to reduce duplication and fill gaps over time.
+- Agents, not services
+  - NarrativeAgent: scene planning and chapter drafting using KG‑aware context.
+  - RevisionAgent: evaluation + small, targeted patch cycles to improve drafts.
+  - KnowledgeAgent: KG extraction/persistence, healing/enrichment, and outline sync.
+- Continuation planning
+  - When all concrete plot points are used, SAGA plans additional points from prior summaries.
+- Output artifacts
+  - Chapter text files, per‑chapter logs, and debug JSON under `output/`.
+- Local‑first architecture
+  - No web servers or distributed components; single user on a single machine.
 
-```
-saga/
-├── agents/                # Specialized agents for narrative tasks
-├── core/                  # Core components for data management and LLM interaction
-├── data_access/           # Data access layer for Neo4j operations
-├── docs/                  # Documentation (currently empty)
-├── initialization/        # Initialization scripts for data loading and setup
-├── models/                # Pydantic models for validation and data structure
-├── novel_output/          # Output directory for generated novel content
-├── orchestration/         # Orchestrator logic for managing agent workflows
-├── processing/            # Tools for text processing, context generation, and similarity checks
-├── prompts/               # J2 templates for generating prompts for agents
-├── tests/                 # Comprehensive test suite for validation
-├── ui/                    # UI components for display and interaction
-├── utils/                 # Utility functions for ingestion, similarity checks, etc.
-├── .env.example           # Example configuration file
-├── main.py                # Entry point for the system
-├── pyproject.toml         # Project configuration for dependencies and tools
-├── requirements.txt       # Python dependencies for the project
-├── LICENSE                # License information
-└── README.md              # This file
-```
 
-## Usage
+## CLI Overview
 
-### Ingestion Mode
-### WARNING: Ingestion is currently broken and needs refactoring
+`python main.py` — start the chapter generation loop.
 
-Ingest a novel to populate the knowledge graph and start the system's internal modeling process:
+`python main.py --bootstrap [options]` — run the multi‑phase bootstrap and exit.
+- `--bootstrap-phase {world|characters|plot|all}`
+- `--bootstrap-level {basic|enhanced|max}`
+- `--bootstrap-dry-run` (validate only; do not write to Neo4j)
+- `--bootstrap-kg-heal` (heal/enrich after each phase write)
+- `--bootstrap-reset-kg` (wipe Neo4j before bootstrapping; destructive)
 
-```bash
-python main.py --ingest novel.txt
-```
+`python main.py --ingest <file>` — ingest a text file into the KG (experimental).
 
-### Generation Mode
 
-Start the autonomous novel generation loop:
+## Configuration
 
-```bash
-python main.py
-```
+- Edit `.env` or adjust `config/settings.py`. Important keys:
+  - `OPENAI_API_BASE`, `OPENAI_API_KEY` — OpenAI‑compatible completion endpoint (local recommended)
+  - `EMBEDDING_API_BASE`, `EMBEDDING_MODEL`, `EXPECTED_EMBEDDING_DIM` — embedding service and dimensions
+  - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` — local Neo4j connection
+  - `CHAPTERS_PER_RUN`, `CONTEXT_CHAPTER_COUNT`, `TARGET_PLOT_POINTS_INITIAL_GENERATION` — core behavior
+  - Bootstrap toggles: `BOOTSTRAP_*` settings (healing, levels, fail‑fast, etc.)
 
-The system will generate chapters and refine them using the defined agents and workflows.
+Outputs are written under `output/`:
+- `output/chapters/` — final chapter text
+- `output/chapter_logs/` — chapter‑specific logs
+- `output/debug_outputs/` — saved prompts, scene plans, validation reports, etc.
+
+
+## How It Works (High Level)
+
+1) Bootstrap (optional, independent loop)
+- Generate a minimal world, a cast of characters, and a plot outline; validate and persist to the KG.
+
+2) Per‑chapter loop
+- Build KG‑aware context (recent summaries, reliable facts, relevant world/character snippets).
+- Plan scenes, draft prose, evaluate, and apply small patch cycles if needed.
+- Save chapter text, summary, and embedding; periodically heal/enrich the graph.
+
+3) Continuation
+- If the outline runs out of concrete plot points, generate more from recent narrative context.
+
+
+## Screenshots
+
+Progress window (Rich CLI):
+
+![SAGA Progress Window](SAGA.png)
+
+Example KG snapshot (4 chapters):
+
+![SAGA KG Visualization](SAGA-KG-Ch4.png)
+
+
+## Light Dev Notes
+
+- Single user, single machine; no web servers or remote services are introduced by SAGA.
+- Run tests with `pytest`; lint/format with `ruff check .` and `ruff format .`.
+
 
 ## License
 
-SAGA is licensed under the [![Apache-2.0 License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Lanerra/saga)
+Apache-2.0 — see `LICENSE`.
