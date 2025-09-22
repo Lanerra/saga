@@ -1811,10 +1811,10 @@ async def find_candidate_duplicate_entities(
 
     // ---------- Typed Entity pairs (non-Character) ----------
     MATCH (e1:Entity)
-    WHERE (e1:WorldElement OR e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+    WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
     WITH e1 WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
     MATCH (e2:Entity)
-    WHERE (e2:WorldElement OR e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+    WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
       AND elementId(e1) < elementId(e2)
       AND e2.name IS NOT NULL AND e2.id IS NOT NULL
     WITH e1, e2,

@@ -308,29 +308,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                     ):
                         we_node_props[k] = v
 
-            if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True):
-                statements.append(
-                    (
-                        """
-                    MERGE (we:Entity {id: $id_val})
-                    ON CREATE SET we:WorldElement, we = $props, we.created_ts = timestamp()
-                    ON MATCH SET  we:WorldElement, we += $props, we.updated_ts = timestamp()
-                    """,
-                        {"id_val": we_id_str, "props": we_node_props},
-                    )
-                )
-                statements.append(
-                    (
-                        """
-                    MATCH (wc:WorldContainer:Entity {id: $wc_id_val})
-                    MATCH (we:WorldElement:Entity {id: $we_id_val})
-                    MERGE (wc)-[:CONTAINS_ELEMENT]->(we)
-                    """,
-                        {"wc_id_val": wc_id_param, "we_id_val": we_id_str},
-                    )
-                )
-            else:
-                statements.append(
+            statements.append(
                     (
                         """
                     MERGE (we:Entity {id: $id_val})
@@ -340,16 +318,16 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                         {"id_val": we_id_str, "props": we_node_props},
                     )
                 )
-                statements.append(
-                    (
-                        """
-                    MATCH (wc:WorldContainer:Entity {id: $wc_id_val})
-                    MATCH (we:Object:Entity {id: $we_id_val})
-                    MERGE (wc)-[:CONTAINS_ELEMENT]->(we)
-                    """,
-                        {"wc_id_val": wc_id_param, "we_id_val": we_id_str},
-                    )
+            statements.append(
+                (
+                    """
+                MATCH (wc:WorldContainer:Entity {id: $wc_id_val})
+                MATCH (we:Object:Entity {id: $we_id_val})
+                MERGE (wc)-[:CONTAINS_ELEMENT]->(we)
+                """,
+                    {"wc_id_val": wc_id_param, "we_id_val": we_id_str},
                 )
+            )
 
             # Reconcile list properties (goals, rules, key_elements, traits) as ValueNode relationships
             list_prop_map = {
@@ -369,7 +347,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                 statements.append(
                     (
                         f"""
-                    MATCH (we:{'WorldElement' if getattr(config, 'ENABLE_LEGACY_WORLDELEMENT', True) else 'Object'}:Entity {{id: $we_id_val}})-[r:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type}})
+                    MATCH (we:Object:Entity {{id: $we_id_val}})-[r:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type}})
                     WHERE NOT v.value IN $current_values_list
                     DELETE r
                     """,
@@ -385,7 +363,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                     statements.append(
                         (
                             f"""
-                        MATCH (we:{'WorldElement' if getattr(config, 'ENABLE_LEGACY_WORLDELEMENT', True) else 'Object'}:Entity {{id: $we_id_val}})
+                        MATCH (we:Object:Entity {{id: $we_id_val}})
                         UNWIND $current_values_list AS item_value_str
                         MERGE (v:Entity:ValueNode {{value: item_value_str, type: $value_node_type}})
                            ON CREATE SET v.created_ts = timestamp()
@@ -403,7 +381,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
             statements.append(
                 (
                     """
-                MATCH (we:{'WorldElement' if getattr(config, 'ENABLE_LEGACY_WORLDELEMENT', True) else 'Object'}:Entity {id: $we_id_val})-[r:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
+                MATCH (we:Object:Entity {id: $we_id_val})-[r:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
                 DETACH DELETE elab, r
                 """,
                     {"we_id_val": we_id_str},
@@ -451,7 +429,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                         statements.append(
                             (
                                 """
-                            MATCH (we:WorldElement:Entity {id: $we_id_val})
+                            MATCH (we:Entity {id: $we_id_val})
                             CREATE (elab:Entity:WorldElaborationEvent)
                             SET elab = $props, elab.created_ts = timestamp()
                             CREATE (we)-[:ELABORATED_IN_CHAPTER]->(elab)
@@ -470,7 +448,7 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
             """
         MATCH (v:ValueNode:Entity)
         WHERE v.type IN ['goals','rules','key_elements','traits']
-          AND NOT EXISTS((:WorldElement:Entity)-[]->(v))
+          AND NOT EXISTS((:Entity)-[]->(v))
           AND NOT EXISTS((:Entity)-->(v))
         DETACH DELETE v
         """,
@@ -494,9 +472,8 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
     logger.info(f"Loading world item '{item_id}' from Neo4j...")
 
     query = (
-        "MATCH (we:WorldElement:Entity {id: $id})"
-        " WHERE we.is_deleted IS NULL OR we.is_deleted = FALSE"
-        " RETURN we"
+        "MATCH (we:Entity {id: $id}) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)"
+        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) RETURN we"
     )
     results = await neo4j_manager.execute_read_query(query, {"id": item_id})
     if not results or not results[0].get("we"):
@@ -513,15 +490,15 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
     item_name = we_node.get("name")
     we_id = we_node.get("id")
 
-    # Validate and normalize core fields for WorldElement
-    # This ensures that all WorldElements have valid id, category, and name
+    # Validate and normalize core fields for world item
+    # This ensures that all world items have valid id, category, and name
     try:
         category, item_name, we_id = utils.validate_world_item_fields(
             category, item_name, we_id
         )
     except Exception as e:
         logger.error(
-            f"Error validating WorldElement core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
+            f"Error validating world item core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
             exc_info=True,
         )
         return None
@@ -537,7 +514,7 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
 
     if missing_fields:
         logger.warning(
-            f"Corrected WorldElement with missing core fields ({', '.join(missing_fields)}) for id '{item_id}': {we_node}"
+            f"Corrected world item with missing core fields ({', '.join(missing_fields)}) for id '{item_id}': {we_node}"
         )
         # Update the we_node dict with corrected values for subsequent processing
         we_node["category"] = category
@@ -569,18 +546,11 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
         "traits": "HAS_TRAIT_ASPECT",
     }
     for list_prop_key, rel_name_internal in list_prop_map.items():
-        if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True):
-            list_values_query = f"""
-            MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
-            RETURN v.value AS item_value
-            ORDER BY v.value ASC
-            """
-        else:
-            list_values_query = f"""
-            MATCH (:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
-            RETURN v.value AS item_value
-            ORDER BY v.value ASC
-            """
+        list_values_query = f"""
+        MATCH (:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
+        RETURN v.value AS item_value
+        ORDER BY v.value ASC
+        """
         list_val_res = await neo4j_manager.execute_read_query(
             list_values_query,
             {"we_id_param": item_id, "value_node_type_param": list_prop_key},
@@ -593,18 +563,11 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
             ]
         )
 
-    if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True):
-        elab_query = f"""
-        MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
-        RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
-        ORDER BY elab.chapter_updated ASC
-        """
-    else:
-        elab_query = f"""
-        MATCH (:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
-        RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
-        ORDER BY elab.chapter_updated ASC
-        """
+    elab_query = f"""
+    MATCH (:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
+    RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
+    ORDER BY elab.chapter_updated ASC
+    """
     elab_results = await neo4j_manager.execute_read_query(
         elab_query, {"we_id_param": item_id}
     )
@@ -627,18 +590,11 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
 @alru_cache(maxsize=128)
 async def get_all_world_item_ids_by_category() -> dict[str, list[str]]:
     """Return all world item IDs grouped by category."""
-    if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True):
-        query = (
-            "MATCH (we:WorldElement:Entity) "
-            "WHERE we.is_deleted IS NULL OR we.is_deleted = FALSE "
-            "RETURN we.category AS category, we.id AS id"
-        )
-    else:
-        query = (
-            "MATCH (we:Entity) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic) "
-            "AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) "
-            "RETURN we.category AS category, we.id AS id"
-        )
+    query = (
+        "MATCH (we:Entity) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic) "
+        "AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) "
+        "RETURN we.category AS category, we.id AS id"
+    )
     results = await neo4j_manager.execute_read_query(query)
     mapping: dict[str, list[str]] = {}
     for record in results:
@@ -681,8 +637,8 @@ async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
 
     # Load WorldElements and their details
     we_query = (
-        "MATCH (we:WorldElement:Entity)"
-        " WHERE we.is_deleted IS NULL OR we.is_deleted = FALSE"
+        "MATCH (we:Entity) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)"
+        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)"
         " AND we.category IS NOT NULL AND we.name IS NOT NULL"
         " RETURN we"
     )
@@ -712,8 +668,8 @@ async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
         item_name = we_node.get("name")
         we_id = we_node.get("id")
 
-        # Validate and normalize core fields for WorldElement
-        # This ensures that all WorldElements have valid id, category, and name
+        # Validate and normalize core fields for world item
+        # This ensures that all world items have valid id, category, and name
         _original_category, _original_item_name, _original_we_id = (
             category,
             item_name,
@@ -725,7 +681,7 @@ async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
             )
         except Exception as e:
             logger.error(
-                f"Error validating WorldElement core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
+                f"Error validating world item core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
                 exc_info=True,
             )
             continue
@@ -741,7 +697,7 @@ async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
 
         if missing_fields:
             logger.warning(
-                f"Corrected WorldElement with missing core fields ({', '.join(missing_fields)}): {we_node}"
+                f"Corrected world item with missing core fields ({', '.join(missing_fields)}): {we_node}"
             )
             # Update the we_node dict with corrected values for subsequent processing
             we_node["category"] = category
@@ -778,7 +734,7 @@ async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
         }
         for list_prop_key, rel_name_internal in list_prop_map.items():
             list_values_query = f"""
-            MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
+            MATCH (:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
             RETURN v.value AS item_value
             ORDER BY v.value ASC
             """
@@ -795,7 +751,7 @@ async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
             )
 
         elab_query = f"""
-        MATCH (:WorldElement:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
+        MATCH (:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
         RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
         ORDER BY elab.chapter_updated ASC
         """
@@ -832,8 +788,9 @@ async def get_world_elements_for_snippet_from_db(
     category: str, chapter_limit: int, item_limit: int
 ) -> list[dict[str, Any]]:
     query = f"""
-    MATCH (we:WorldElement:Entity {{category: $category_param}})
-    WHERE (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
+    MATCH (we:Entity {{category: $category_param}})
+    WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+      AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
 
     OPTIONAL MATCH (we)-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
     WHERE elab.{KG_NODE_CHAPTER_UPDATED} <= $chapter_limit_param AND elab.{KG_IS_PROVISIONAL} = TRUE
@@ -882,16 +839,15 @@ async def get_world_elements_for_snippet_from_db(
 
 
 async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
-    """Finds world items that are considered 'thin' (e.g., missing description)."""
-    if getattr(config, "ENABLE_LEGACY_WORLDELEMENT", True):
-        query = """
-        MATCH (we:Entity)
-        WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
-          AND toString(we.description) = ''
-          AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
-        RETURN we.id AS id, we.name AS name, we.category as category
-        LIMIT 20
-        """
+    """Find typed world items that are considered 'thin' (e.g., missing description)."""
+    query = """
+    MATCH (we:Entity)
+    WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+      AND toString(we.description) = ''
+      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
+    RETURN we.id AS id, we.name AS name, we.category as category
+    LIMIT 20
+    """
     try:
         results = await neo4j_manager.execute_read_query(query)
         return results if results else []
@@ -998,7 +954,7 @@ async def get_world_items_for_chapter_context_native(
     """
     try:
         query = """
-        MATCH (w:WorldElement:Entity)-[:REFERENCED_IN]->(ch:Chapter)
+        MATCH (w:Entity)-[:REFERENCED_IN]->(ch:Chapter)
         WHERE ch.number < $chapter_number
         WITH w, max(ch.number) as last_reference
         ORDER BY last_reference DESC
@@ -1040,9 +996,8 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
     logger.info(f"Loading world item '{item_id}' from Neo4j...")
 
     query = (
-        "MATCH (we:WorldElement:Entity {id: $id})"
-        " WHERE we.is_deleted IS NULL OR we.is_deleted = FALSE"
-        " RETURN we"
+        "MATCH (we:Entity {id: $id}) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)"
+        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) RETURN we"
     )
     results = await neo4j_manager.execute_read_query(query, {"id": item_id})
     if not results or not results[0].get("we"):
@@ -1092,8 +1047,9 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
     """
     # More efficient query that filters out elements without meaningful descriptions earlier
     query = """
-    MATCH (we:WorldElement)
-    WHERE (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
+    MATCH (we:Entity)
+    WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+      AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
       AND we.description IS NOT NULL
       AND trim(toString(we.description)) <> ''
       AND NOT (toString(we.description) CONTAINS $fill_in_marker)

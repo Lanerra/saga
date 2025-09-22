@@ -377,7 +377,7 @@ class Neo4jManagerSingleton:
             # Warm up node timestamp keys
             "CREATE (e:__PropWarmup:Entity {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
             # Warm up common node properties that may be referenced before they exist anywhere
-            "CREATE (e:__PropWarmupNodeProps:Entity {description: '', source: '', is_provisional: false}) WITH e DELETE e",
+            "CREATE (e:__PropWarmupNodeProps:Entity {description: '', source: '', is_provisional: false, category: ''}) WITH e DELETE e",
             # Warm up typical relationship properties used across queries (ensure keys are registered)
             (
                 "CREATE (a:__PropWarmupA:Entity)-[r:__WARMUP_REL {chapter_added: 0, "
