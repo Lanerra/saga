@@ -1842,7 +1842,7 @@ class KnowledgeAgent:
             return None
 
         logger.info(
-            f"KG Healer: Found thin world element '{element_info.get('name')}' (id: {element_id}) for enrichment."
+            f"KG Healer: Found thin world item '{element_info.get('name')}' (id: {element_id}) for enrichment."
         )
         context_chapters = await kg_queries.get_chapter_context_for_entity(
             entity_id=element_id
@@ -1863,10 +1863,10 @@ class KnowledgeAgent:
                 new_description = data.get("description")
                 if new_description and isinstance(new_description, str):
                     logger.info(
-                        f"KG Healer: Generated new description for world element id '{element_id}'."
+                        f"KG Healer: Generated new description for world item id '{element_id}'."
                     )
                     return (
-                        "MATCH (we:WorldElement {id: $id}) SET we.description = $desc",
+                        "MATCH (we:Entity {id: $id}) SET we.description = $desc",
                         {"id": element_id, "desc": new_description},
                     )
             except json.JSONDecodeError:

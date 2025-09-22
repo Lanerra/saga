@@ -415,6 +415,6 @@ STATE_TRACKER_SIMILARITY_THRESHOLD: float = (
 )
 
 # Legacy Degradation Flags (non-breaking defaults)
-# Legacy WorldElement label removed; keep single typed-entity model
-ENABLE_LEGACY_WORLDELEMENT: bool = False
+# Legacy WorldElement toggle removed; single typed-entity model is standard
+ENABLE_LEGACY_WORLDELEMENT: bool = False  # Deprecated/no-op
 ENABLE_STATUS_IS_ALIAS: bool = True
