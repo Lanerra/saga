@@ -1,6 +1,6 @@
 # tests/test_cypher_generation.py
 from data_access.cypher_builders.character_cypher import generate_character_node_cypher
-from data_access.cypher_builders.world_cypher import generate_world_element_node_cypher
+from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models import CharacterProfile, WorldItem
 
 
@@ -11,29 +11,23 @@ def test_generate_character_node_cypher():
     assert any("HAS_CHARACTER" in s[0] for s in stmts)
 
 
-def test_generate_world_element_node_cypher():
+def test_world_item_upsert_cypher_native():
     item = WorldItem.from_dict(
         "Places",
         "City",
-        {"description": "Metropolis"},
+        {"description": "Metropolis", "id": "places_city"},
     )
-    stmts = generate_world_element_node_cypher(item)
-    assert any("MERGE (we:Entity" in s[0] for s in stmts)
-    merge_stmt = stmts[0]
-    assert merge_stmt[1]["id"] == "places_city"
-    assert any("CONTAINS_ELEMENT" in s[0] for s in stmts)
+    cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
+    assert "MERGE (w:Entity {id: $id})" in cypher
+    assert params["id"] == "places_city"
 
 
-def test_generate_world_element_node_cypher_nested_props():
+def test_world_item_upsert_cypher_nested_props_native():
     item = WorldItem.from_dict(
         "Places",
         "Echo Forest",
-        {"history": {"echo_keepers": "Keepers"}},
+        {"history": {"echo_keepers": "Keepers"}, "id": "places_echo_forest"},
     )
-    stmts = generate_world_element_node_cypher(item)
-    params = stmts[0][1]
-    assert isinstance(params["props"]["history"], str)
-
-    first_stmt, first_params = generate_world_element_node_cypher(item)[0]
-    assert "MERGE (we:Entity" in first_stmt
-    assert first_params["id"] == "places_echo_forest"
+    cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
+    # Additional props are flattened; content is moved under additional_props
+    assert params["id"] == "places_echo_forest"

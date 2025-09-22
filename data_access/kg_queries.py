@@ -28,6 +28,7 @@ VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
 # Lookup table for canonical node labels to ensure consistent casing
 _CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
+_CANONICAL_NODE_LABEL_MAP.pop("worldelement", None)
 
 
 # Preserve original static implementation for fallback
@@ -518,24 +519,42 @@ def _infer_specific_node_type_static(
     ):
         return "Technology"
 
-    # Use category information if available
+    # Use category information if available (expanded mapping)
     if category_lower:
-        if any(term in category_lower for term in ["character", "person", "people"]):
+        if any(term in category_lower for term in ["character", "person", "people", "npc", "hero", "villain"]):
             return "Character"
-        elif any(term in category_lower for term in ["location", "place"]):
+        elif any(term in category_lower for term in ["location", "place", "city", "town", "village", "region", "territory", "landmark", "path", "room", "settlement"]):
             return "Location"
-        elif any(term in category_lower for term in ["object", "item", "thing"]):
+        elif any(term in category_lower for term in ["object", "item", "thing", "artifact", "relic", "weapon", "armor", "tool"]):
             return "Object"
         elif any(
             term in category_lower for term in ["organization", "faction", "group"]
         ):
             return "Faction"
-        elif any(term in category_lower for term in ["concept", "idea", "abstract"]):
+        elif any(term in category_lower for term in ["concept", "idea", "abstract", "law", "tradition", "language", "symbol", "story", "song", "dream", "memory", "emotion", "skill"]):
             return "Concept"
         elif any(term in category_lower for term in ["event", "happening"]):
             return "Event"
         elif any(term in category_lower for term in ["system"]):
             return "System"
+
+    # Name-based heuristics for common types
+    if name_lower.endswith(" temple") or name_lower.endswith(" hall") or name_lower.endswith(" keep"):
+        return "Structure"
+    if name_lower.startswith("the ") and any(term in name_lower for term in [" inn", " tavern", " bar", " guild", " order"]):
+        return "Structure"
+    if any(term in name_lower for term in ["district", "ward", "quarter"]):
+        return "Region"
+    if any(term in name_lower for term in ["empire", "kingdom", "duchy", "republic", "union"]):
+        return "Organization"
+    if any(term in name_lower for term in ["university", "academy", "school"]):
+        return "Education"
+    if any(term in name_lower for term in ["church", "temple", "cult"]):
+        return "Religion"
+    if any(term in name_lower for term in ["sword", "bow", "axe", "shield", "armor", "ring", "amulet"]):
+        return "Artifact"
+    if any(term in name_lower for term in ["road", "path", "bridge"]):
+        return "Path"
 
     # Return fallback if no specific type inferred
     return fallback_type if fallback_type != "WorldElement" else "Object"
@@ -1730,7 +1749,7 @@ async def find_candidate_duplicate_entities(
     Find candidate duplicate entity pairs with tighter prefilters.
 
     Improvements vs. previous approach:
-    - Restricts comparisons to like-with-like labels (Character↔Character, WorldElement↔WorldElement).
+    - Restricts comparisons to like-with-like labels (Character↔Character, Typed Entities↔Typed Entities).
     - Normalizes names, gates by first-character and token overlap to prune pairs.
     - Optionally incorporates lightweight description token-overlap as a secondary check.
     - Keeps API compatible with existing caller ("similarity_threshold" and "limit").
@@ -1743,8 +1762,7 @@ async def find_candidate_duplicate_entities(
     query = """
     // ---------- Character pairs ----------
     MATCH (e1:Character:Entity)
-    WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
-    WITH e1
+    WITH e1 WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
     MATCH (e2:Character:Entity)
     WHERE elementId(e1) < elementId(e2)
       AND e2.name IS NOT NULL AND e2.id IS NOT NULL
@@ -1791,12 +1809,13 @@ async def find_candidate_duplicate_entities(
 
     UNION
 
-    // ---------- WorldElement pairs ----------
-    MATCH (e1:WorldElement:Entity)
-    WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
-    WITH e1
-    MATCH (e2:WorldElement:Entity)
-    WHERE elementId(e1) < elementId(e2)
+    // ---------- Typed Entity pairs (non-Character) ----------
+    MATCH (e1:Entity)
+    WHERE (e1:WorldElement OR e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+    WITH e1 WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
+    MATCH (e2:Entity)
+    WHERE (e2:WorldElement OR e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+      AND elementId(e1) < elementId(e2)
       AND e2.name IS NOT NULL AND e2.id IS NOT NULL
     WITH e1, e2,
          toLower(toString(e1.name)) AS n1,
@@ -2473,8 +2492,9 @@ async def get_shortest_path_length_between_entities(
 async def find_orphaned_bootstrap_elements() -> list[dict[str, Any]]:
     """Find bootstrap elements with no relationships."""
     query = """
-    MATCH (we:WorldElement)
-    WHERE (we.source CONTAINS 'bootstrap' OR we.created_chapter = 0)
+    MATCH (we:Entity)
+    WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+      AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0)
       AND NOT (we)-[]->() AND NOT ()-[]->(we)
     RETURN we.name as name, we.category as category, we.id as id
     LIMIT 10
@@ -2491,7 +2511,7 @@ async def find_potential_bridges(element: dict[str, Any]) -> list[dict[str, Any]
     """Find characters/locations that could bridge to this element."""
     query = """
     MATCH (bridge)
-    WHERE (bridge:Character OR bridge:WorldElement)
+    WHERE (bridge:Character OR bridge:Object OR bridge:Artifact OR bridge:Location OR bridge:Document OR bridge:Item OR bridge:Relic)
       AND bridge.name <> $element_name
       AND ((bridge)-[]->() OR ()-[]->(bridge))  // Has some connections
     RETURN bridge.name as name, bridge.id as id,

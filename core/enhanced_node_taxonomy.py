@@ -8,6 +8,7 @@ meaningful node types.
 """
 
 from enum import Enum
+import config
 
 
 class NodeTypeCategory(Enum):

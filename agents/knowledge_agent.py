@@ -1244,19 +1244,19 @@ class KnowledgeAgent:
             # Also check for bootstrap-created entities that might need maintenance
             # These entities might not have recent timestamps but could be thin/incomplete
             bootstrap_results = await neo4j_manager.execute_read_query(
-                "MATCH (n) WHERE n.source CONTAINS 'bootstrap' OR n.source CONTAINS 'placeholder' RETURN count(n) as bootstrap_count",
+                "MATCH (n) WHERE toString(n.source) CONTAINS 'bootstrap' OR toString(n.source) CONTAINS 'placeholder' RETURN count(n) as bootstrap_count",
                 {},
             )
             bootstrap_count = bootstrap_results[0].get("bootstrap_count", 0) if bootstrap_results else 0
 
             # Check for thin entities that need enrichment
             thin_entities_results = await neo4j_manager.execute_read_query(
-                "MATCH (c:Character) WHERE c.description IS NULL OR c.description = '' RETURN count(c) as thin_count " +
-                "UNION ALL " +
-                "MATCH (we:WorldElement) WHERE we.description IS NULL OR we.description = '' RETURN count(we) as thin_count",
+                "MATCH (c:Character) WHERE toString(c.description) = '' RETURN count(c) as thin_count "
+                + "UNION ALL "
+                + "MATCH (we:Entity) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic) AND toString(we.description) = '' RETURN count(we) as thin_count",
                 {},
             )
-            thin_count = sum(result.get("thin_chars", 0) + result.get("thin_elements", 0) for result in thin_entities_results) if thin_entities_results else 0
+            thin_count = sum(result.get("thin_count", 0) for result in thin_entities_results) if thin_entities_results else 0
 
             # Run full maintenance if we have recent activity, bootstrap entities, or thin entities
             total_activity = recent_count + bootstrap_count + thin_count
@@ -1461,7 +1461,7 @@ class KnowledgeAgent:
         # Use the existing enrichment logic for different entity types
         if entity.get("type") == "Character":
             await self._enrich_character_by_name(entity_name)
-        elif entity.get("type") in ["WorldElement", "Location", "Organization"]:
+        elif entity.get("type") in ["Location", "Organization", "Object", "Artifact", "Document", "Item", "Relic"]:
             await self._enrich_world_element_by_id(entity_id)
 
         # 4. Resolve dynamic relationship types using LLM guidance (always run)
@@ -1575,12 +1575,12 @@ class KnowledgeAgent:
             # For world elements, check if they have a description
             if entity_id:
                 query = """
-                MATCH (we:WorldElement {id: $entity_id})
+                MATCH (we:Entity {id: $entity_id})
                 RETURN we.description AS description
                 """
             else:
                 query = """
-                MATCH (we:WorldElement {name: $entity_name})
+                MATCH (we:Entity {name: $entity_name})
                 RETURN we.description AS description
                 """
         else:
@@ -1639,7 +1639,7 @@ class KnowledgeAgent:
                 if entity_id:
                     # Try to get more detailed information about the world element
                     query = """
-                    MATCH (we:WorldElement {id: $entity_id})
+                    MATCH (we:Entity {id: $entity_id})
                     RETURN we.category AS category
                     """
                     try:
@@ -1700,7 +1700,7 @@ class KnowledgeAgent:
                             )
                         elif entity_type.lower() == "worldelement" and entity_id:
                             update_query = """
-                            MATCH (we:WorldElement {id: $id})
+                            MATCH (we:Entity {id: $id})
                             SET we.description = $desc, we.enriched_ts = timestamp()
                             """
                             await neo4j_manager.execute_write_query(
@@ -1708,7 +1708,7 @@ class KnowledgeAgent:
                             )
                         elif entity_type.lower() == "worldelement":
                             update_query = """
-                            MATCH (we:WorldElement {name: $name})
+                            MATCH (we:Entity {name: $name})
                             SET we.description = $desc, we.enriched_ts = timestamp()
                             """
                             await neo4j_manager.execute_write_query(

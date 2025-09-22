@@ -12,7 +12,6 @@ from .chapter_queries import (
 from .character_queries import (
     get_character_info_for_snippet_from_db,
     get_character_profile_by_name,
-    get_character_profiles_from_db,
     resolve_character_name,
     sync_characters,
 )
@@ -58,7 +57,6 @@ __all__ = [
     "sync_characters",
     "get_character_profile_by_name",
     "resolve_character_name",
-    "get_character_profiles_from_db",
     "get_character_info_for_snippet_from_db",
     "sync_world_full_state_from_object_to_db",
     "sync_world_items",
