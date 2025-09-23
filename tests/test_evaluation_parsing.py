@@ -23,5 +23,5 @@ def test_problem_parser_invalid_returns_meta_error():
 @pytest.mark.asyncio
 async def test_revision_agent_consistency_parser_handles_invalid():
     agent = RevisionAgent(config)
-    problems = await agent._parse_llm_consistency_output("notjson", 1, "text")
+    problems = await agent._parse_llm_continuity_output("notjson", 1, "text")
     assert problems and problems[0]["issue_category"] == "consistency"

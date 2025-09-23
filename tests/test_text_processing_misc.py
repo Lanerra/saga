@@ -1,5 +1,7 @@
 # tests/test_text_processing_misc.py
 from utils import text_processing
+import config as _config
+from utils.helpers import _is_fill_in as _fill_in
 
 
 def test_normalize_for_id():
@@ -18,8 +20,9 @@ def test_normalize_text_for_matching():
 
 
 def test_is_fill_in_and_normalization_helpers():
-    assert not text_processing._is_fill_in("test")
-    assert text_processing._is_fill_in(text_processing.config.FILL_IN)
+    assert not _fill_in("test")
+    # Use config settings directly rather than a nested import
+    assert _fill_in(_config.settings.FILL_IN)
 
 
 def test_get_text_segments_paragraph(monkeypatch):

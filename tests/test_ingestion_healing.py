@@ -23,13 +23,15 @@ async def test_ingestion_triggers_healing(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "orchestration.nana_orchestrator.split_text_into_chapters", lambda _t: chapters
     )
+    # Ingest now handled via knowledge_agent directly
     monkeypatch.setattr(
-        orch.finalize_agent,
-        "ingest_and_finalize_chunk",
+        orch.knowledge_agent,
+        "extract_and_merge_knowledge",
         AsyncMock(return_value={"summary": "s"}),
     )
     heal = AsyncMock()
-    monkeypatch.setattr(orch.kg_maintainer_agent, "heal_and_enrich_kg", heal)
+    # Healing now lives on KnowledgeAgent in the orchestrator
+    monkeypatch.setattr(orch.knowledge_agent, "heal_and_enrich_kg", heal)
     monkeypatch.setattr(
         orch.narrative_agent, "plan_continuation", AsyncMock(return_value=(None, {}))
     )
@@ -39,7 +41,7 @@ async def test_ingestion_triggers_healing(monkeypatch, tmp_path):
     monkeypatch.setattr(neo4j_manager, "connect", AsyncMock())
     monkeypatch.setattr(neo4j_manager, "create_db_schema", AsyncMock())
     monkeypatch.setattr(neo4j_manager, "close", AsyncMock())
-    monkeypatch.setattr(orch.kg_maintainer_agent, "load_schema_from_db", AsyncMock())
+    monkeypatch.setattr(orch.knowledge_agent, "load_schema_from_db", AsyncMock())
     monkeypatch.setattr(plot_queries, "save_plot_outline_to_db", AsyncMock())
     monkeypatch.setattr(
         plot_queries,

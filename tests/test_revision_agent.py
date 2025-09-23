@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
+import config
 from agents.revision_agent import RevisionAgent
 
 

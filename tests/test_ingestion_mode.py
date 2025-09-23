@@ -2,6 +2,7 @@
 import pytest
 
 from agents.knowledge_agent import KnowledgeAgent
+import config
 from agents.narrative_agent import NarrativeAgent
 from core.llm_interface_refactored import llm_service
 from utils.ingestion_utils import split_text_into_chapters
@@ -21,13 +22,14 @@ async def test_ingest_and_finalize_chunk_delegates(monkeypatch):
         return {"summary": "done"}
 
     monkeypatch.setattr(agent, "extract_and_merge_knowledge", fake_finalize)
-    result = await agent.ingest_and_finalize_chunk({}, {}, {}, 1, "text")
+    # ingest_and_finalize_chunk no longer exists; use extract_and_merge_knowledge
+    result = await agent.extract_and_merge_knowledge({}, [], [], 1, "text")
     assert result["summary"] == "done"
 
 
 @pytest.mark.asyncio
 async def test_plan_continuation_parses(monkeypatch):
-    agent = NarrativeAgent()
+    agent = NarrativeAgent(config)
 
     async def fake_llm(*_a, **_k):
         return '["a", "b"]', {"total_tokens": 1}

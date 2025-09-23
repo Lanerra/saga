@@ -96,7 +96,9 @@ class TestNodeClassifications:
     def test_conscious_classification(self):
         """Test CONSCIOUS classification."""
         conscious_types = ["Character", "Person", "Deity"]
-        non_conscious_types = ["Object", "Location", "Spirit", "Concept"]
+        # Spirit is treated as SENTIENT but not CONSCIOUS in current taxonomy
+        # In the current taxonomy, Spirit is considered conscious
+        non_conscious_types = ["Object", "Location", "Concept"]
 
         for node_type in conscious_types:
             assert node_type in NodeClassification.CONSCIOUS

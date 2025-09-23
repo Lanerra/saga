@@ -43,7 +43,7 @@ def test_user_story_to_objects():
     plot, characters, world_items = user_story_to_objects(model)
     assert plot["title"] == "My Tale"
     assert "Hero" in characters
-    assert world_items == []
+    assert world_items == {}
 
 
 def test_user_story_to_objects_nested_characters():
@@ -58,4 +58,4 @@ def test_user_story_to_objects_nested_characters():
     assert plot.get("protagonist_name") == "Saga"
     assert "Saga" in characters
     assert characters["Dr. Larkin"].updates["role"] == "mentor"
-    assert world_items == []
+    assert world_items == {}

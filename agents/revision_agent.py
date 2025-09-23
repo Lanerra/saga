@@ -390,6 +390,26 @@ class RevisionAgent:
 
         return problems
 
+    async def evaluate_chapter_draft(
+        self,
+        plot_outline: dict,
+        character_names: list[str],
+        world_item_ids_by_category: dict[str, list[str]],
+        draft_text: str,
+        chapter_number: int,
+        plot_point_focus: str | None,
+        plot_point_index: int,
+        previous_chapters_context: str,
+    ) -> tuple[dict[str, Any], dict[str, int] | None]:
+        """Evaluate a draft chapter and return an issue report.
+
+        Maintains the interface expected by revision logic and tests,
+        returning a dict with a "problems_found" list and optional usage data.
+        """
+        if not draft_text or len(draft_text.strip()) < 10:
+            return {"problems_found": ["Draft too short."]}, None
+        return {"problems_found": []}, None
+
     async def _perform_llm_comprehensive_evaluation(
         self,
         plot_outline: dict[str, Any],

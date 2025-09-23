@@ -31,6 +31,33 @@ def _normalize_for_id(text: str) -> str:
     return text
 
 
+async def get_context_snippet_for_patch(
+    original_text: str, problem: dict[str, Any], max_chars: int
+) -> str:
+    """Return a context snippet around the problem’s quote or start of text.
+
+    Replaces the old _get_context_window_for_patch_llm shim with a proper helper
+    in utils.text_processing. If the problem contains a quote, take a window
+    centered on that quote; otherwise return the head of the text up to max_chars.
+    """
+    if not isinstance(original_text, str) or not original_text:
+        return ""
+    quote = None
+    if isinstance(problem, dict):
+        quote = problem.get("original_problem_quote_text") or problem.get(
+            "quote_from_original_text"
+        )
+    if isinstance(quote, str) and quote:
+        idx = original_text.find(quote)
+        if idx != -1:
+            left = max_chars // 2
+            start = max(0, idx - left)
+            end = min(len(original_text), idx + len(quote) + (max_chars - (idx - start)))
+            snippet = original_text[start:end]
+            return snippet[:max_chars]
+    return original_text[:max_chars]
+
+
 def validate_world_item_fields(
     category: str, name: str, item_id: str, allow_empty_name: bool = False
 ) -> tuple[str, str, str]:

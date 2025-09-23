@@ -49,24 +49,7 @@ def get_world_item_by_name(
     return None
 
 
-async def sync_world_items(
-    world_items: dict[str, dict[str, WorldItem]] | list[WorldItem],
-    chapter_number: int,
-    full_sync: bool = False,
-) -> bool:
-    """Persist world element data to Neo4j using native models.
-
-    Accepts either a list of WorldItem models or the legacy dict format and normalizes
-    to a list before persisting.
-    """
-    # Convert dict format to list if needed (backward compatibility)
-    if isinstance(world_items, dict):
-        world_items_list = []
-        for category_items in world_items.values():
-            if isinstance(category_items, dict):
-                world_items_list.extend(category_items.values())
-        world_items = world_items_list
-
+## Removed duplicate legacy placeholder for sync_world_items (see native version below)
 
 async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
     logger.info("Synchronizing world building data to Neo4j (non-destructive)...")
