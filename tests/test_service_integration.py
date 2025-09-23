@@ -21,7 +21,8 @@ def test_embedding_service_cache():
     """Test that EmbeddingService works with lightweight cache."""
     print("Testing EmbeddingService cache integration...")
 
-    # Create mock HTTP client
+    # Create dummy embedding service wired to a basic HTTP client
+    # (actual network calls are not exercised in this test)
     mock_http_client = HTTPClientService()
     embedding_client = EmbeddingHTTPClient(mock_http_client)
     embedding_service = EmbeddingService(embedding_client)

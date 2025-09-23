@@ -4,7 +4,7 @@ import asyncio
 import pytest
 
 from agents.knowledge_agent import KnowledgeAgent
-from models import CharacterProfile
+from models import CharacterProfile, WorldItem
 
 
 class DummyLLM:
@@ -20,35 +20,46 @@ llm_service_mock = DummyLLM()
 
 def test_extract_and_merge(monkeypatch):
     agent = KnowledgeAgent()
+
+    # Patch LLM extraction to return controlled JSON and usage
     monkeypatch.setattr(
         agent,
         "_llm_extract_updates",
         lambda props, text, num: llm_service_mock.async_call_llm(),
     )
+
+    # Patch KG persistence to avoid DB access in unit test
+    async def _noop_persist_entities(characters, world_items, chapter_number):
+        return None
+
     monkeypatch.setattr(
-        agent, "persist_profiles", lambda profiles, chapter: asyncio.sleep(0)
+        "agents.knowledge_agent.knowledge_graph_service.persist_entities",
+        _noop_persist_entities,
     )
-    monkeypatch.setattr(agent, "persist_world", lambda world, chapter: asyncio.sleep(0))
+
+    # Patch triple persistence to a no-op
     monkeypatch.setattr(
         "data_access.kg_queries.add_kg_triples_batch_to_db",
-        lambda triples: asyncio.sleep(0),
+        lambda triples, chapter_number, is_from_flawed: asyncio.sleep(0),
     )
 
     plot_outline = {}
-    character_profiles = {"Alice": CharacterProfile(name="Alice", description="Old")}
-    world_building = {}
+    # Updated API: pass lists of models
+    characters = [CharacterProfile(name="Alice", description="Old")]
+    world_items: list[WorldItem] = []
 
     usage = asyncio.run(
         agent.extract_and_merge_knowledge(
             plot_outline,
-            character_profiles,
-            world_building,
+            characters,
+            world_items,
             1,
             "text",
         )
     )
     assert usage == {"total_tokens": 10}
-    assert character_profiles["Alice"].traits == ["brave"]
+    # Traits should be updated in-place for the corresponding character
+    assert any(c.name == "Alice" and c.traits == ["brave"] for c in characters)
 
 
 @pytest.mark.asyncio

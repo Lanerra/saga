@@ -42,9 +42,10 @@ async def test_revision_logic_passes_canonical_world_ids(monkeypatch):
         revision_logic, "_generate_patch_instructions_logic", fake_generate
     )
     monkeypatch.setattr(revision_logic, "_apply_patches_to_text", fake_apply)
+    # Patch the internal call site inside processing.revision_logic that uses
+    # RevisionAgent to evaluate the post-patch text
     monkeypatch.setattr(
-        RevisionAgent,
-        "evaluate_chapter_draft",
+        "processing.revision_logic.RevisionAgent.evaluate_chapter_draft",
         AsyncMock(side_effect=fake_evaluate),
     )
 

@@ -158,14 +158,14 @@ async def test_bootstrap_world_with_empty_elements():
         assert "history" in result_world
         assert "Ancient History" in result_world["history"]
         assert (
-            result_world["history"]["Ancient History"].properties.get("description")
+            result_world["history"]["Ancient History"].additional_properties.get("description")
             == "Events from the ancient past."
         )
 
         assert "factions" in result_world
         assert "Rebel Faction" in result_world["factions"]
         assert (
-            result_world["factions"]["Rebel Faction"].properties.get("description")
+            result_world["factions"]["Rebel Faction"].additional_properties.get("description")
             == "A group opposing the current government."
         )
 
@@ -218,7 +218,7 @@ async def test_bootstrap_world_overview_description():
 
         # Check that the overview description was bootstrapped
         assert (
-            result_world["_overview_"]["_overview_"].properties.get("description")
+            result_world["_overview_"]["_overview_"].additional_properties.get("description")
             == "A detailed overview of the world setting."
         )
 
