@@ -100,13 +100,13 @@ async def test_prepare_prerequisites_uses_plan(orchestrator, monkeypatch):
     )
     monkeypatch.setattr(
         character_queries,
-        "get_character_profiles_from_db",
-        AsyncMock(return_value={}),
+        "get_character_profiles",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
         world_queries,
-        "get_world_building_from_db",
-        AsyncMock(return_value={}),
+        "get_world_building",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
         orchestrator.revision_agent,

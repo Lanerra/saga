@@ -132,7 +132,7 @@ async def test_get_world_item_by_id_fallback(monkeypatch):
 @pytest.mark.asyncio
 async def test_sync_world_items_populates_name_to_id(monkeypatch):
     world_item = WorldItem.from_dict("Places", "City", {"description": "desc"})
-    world_data = {"Places": {"City": world_item}}
+    world_data = [world_item]
 
     # world_queries builds Cypher internally now; no need to patch generator
     monkeypatch.setattr(
@@ -174,9 +174,9 @@ async def test_get_world_building_from_db_populates_name_to_id(monkeypatch):
     )
 
     world_queries.WORLD_NAME_TO_ID.clear()
-    world_data = await world_queries.get_world_building_from_db()
-    assert world_data["places"]["City"].id == "places_city"
-    assert (
-        world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City"))
-        == "places_city"
-    )
+    world_items = await world_queries.get_world_building()
+    # Find item by name
+    city = next((w for w in world_items if w.name == "City"), None)
+    assert city is not None
+    assert city.id == "places_city"
+    assert world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City")) == "places_city"

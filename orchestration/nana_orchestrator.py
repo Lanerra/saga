@@ -644,7 +644,7 @@ class NANA_Orchestrator:
                 draft_text,
                 raw_output,
                 _,  # unused usage data
-            ) = await self.narrative_agent._draft_chapter(
+            ) = await self.narrative_agent.draft_chapter(
                 self.plot_outline,
                 novel_chapter_number,
                 plot_point_focus,

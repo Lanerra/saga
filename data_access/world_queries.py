@@ -589,183 +589,10 @@ async def get_all_world_item_ids_by_category() -> dict[str, list[str]]:
     return mapping
 
 
-async def get_world_building_from_db() -> dict[str, dict[str, WorldItem]]:
-    logger.info("Loading decomposed world building data from Neo4j...")
-    world_data: dict[str, dict[str, WorldItem]] = {}
-    wc_id_param = config.MAIN_WORLD_CONTAINER_NODE_ID
+## NOTE: Legacy get_world_building_from_db() removed. Use get_world_building().
 
-    WORLD_NAME_TO_ID.clear()
-
-    # Load WorldContainer (_overview_)
-    overview_query = "MATCH (wc:WorldContainer:Entity {id: $wc_id_param}) RETURN wc"
-    overview_res_list = await neo4j_manager.execute_read_query(
-        overview_query, {"wc_id_param": wc_id_param}
-    )
-    if overview_res_list and overview_res_list[0] and overview_res_list[0].get("wc"):
-        wc_node = overview_res_list[0]["wc"]
-        overview_data = dict(wc_node)
-        overview_data.pop("created_ts", None)
-        overview_data.pop("updated_ts", None)
-        if overview_data.get(KG_IS_PROVISIONAL):
-            overview_data[
-                f"source_quality_chapter_{config.KG_PREPOPULATION_CHAPTER_NUM}"
-            ] = "provisional_from_unrevised_draft"
-        world_data.setdefault("_overview_", {})["_overview_"] = WorldItem.from_dict(
-            "_overview_",
-            "_overview_",
-            overview_data,
-        )
-        WORLD_NAME_TO_ID[utils._normalize_for_id("_overview_")] = (
-            utils._normalize_for_id("_overview_")
-        )
-
-    # Load WorldElements and their details
-    we_query = (
-        "MATCH (we:Entity) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)"
-        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)"
-        " AND we.category IS NOT NULL AND we.name IS NOT NULL"
-        " RETURN we"
-    )
-    we_results = await neo4j_manager.execute_read_query(we_query)
-
-    if not we_results:
-        logger.info("No WorldElements found in Neo4j.")
-        standard_categories = [
-            "locations",
-            "society",
-            "systems",
-            "lore",
-            "history",
-            "factions",
-        ]
-        for cat_key in standard_categories:
-            world_data.setdefault(cat_key, {})
-        return world_data
-
-    for record in we_results:
-        we_node = record.get("we")
-        if not we_node:
-            continue
-
-        # These are the display/canonical versions from the node
-        category = we_node.get("category")
-        item_name = we_node.get("name")
-        we_id = we_node.get("id")
-
-        # Validate and normalize core fields for world item
-        # This ensures that all world items have valid id, category, and name
-        _original_category, _original_item_name, _original_we_id = (
-            category,
-            item_name,
-            we_id,
-        )
-        try:
-            category, item_name, we_id = utils.validate_world_item_fields(
-                category, item_name, we_id
-            )
-        except Exception as e:
-            logger.error(
-                f"Error validating world item core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
-                exc_info=True,
-            )
-            continue
-
-        # Check if any fields were missing and log a warning if so
-        missing_fields = []
-        if not we_node.get("category"):
-            missing_fields.append("category")
-        if not we_node.get("name"):
-            missing_fields.append("name")
-        if not we_node.get("id"):
-            missing_fields.append("id")
-
-        if missing_fields:
-            logger.warning(
-                f"Corrected world item with missing core fields ({', '.join(missing_fields)}): {we_node}"
-            )
-            # Update the we_node dict with corrected values for subsequent processing
-            we_node["category"] = category
-            we_node["name"] = item_name
-            we_node["id"] = we_id
-
-        world_data.setdefault(category, {})
-
-        item_detail = dict(we_node)
-        item_detail.pop("created_ts", None)
-        item_detail.pop("updated_ts", None)
-
-        created_chapter_num = item_detail.pop(
-            KG_NODE_CREATED_CHAPTER, config.KG_PREPOPULATION_CHAPTER_NUM
-        )
-        item_detail["created_chapter"] = int(
-            created_chapter_num
-        )  # Ensure it's int and under standard key
-        item_detail[f"added_in_chapter_{created_chapter_num}"] = True
-
-        if item_detail.pop(KG_IS_PROVISIONAL, False):
-            item_detail["is_provisional"] = True  # Ensure under standard key
-            item_detail[f"source_quality_chapter_{created_chapter_num}"] = (
-                "provisional_from_unrevised_draft"
-            )
-        else:
-            item_detail["is_provisional"] = False
-
-        list_prop_map = {
-            "goals": "HAS_GOAL",
-            "rules": "HAS_RULE",
-            "key_elements": "HAS_KEY_ELEMENT",
-            "traits": "HAS_TRAIT_ASPECT",
-        }
-        for list_prop_key, rel_name_internal in list_prop_map.items():
-            list_values_query = f"""
-            MATCH (:Entity {{id: $we_id_param}})-[:{rel_name_internal}]->(v:ValueNode:Entity {{type: $value_node_type_param}})
-            RETURN v.value AS item_value
-            ORDER BY v.value ASC
-            """
-            list_val_res = await neo4j_manager.execute_read_query(
-                list_values_query,
-                {"we_id_param": we_id, "value_node_type_param": list_prop_key},
-            )
-            item_detail[list_prop_key] = sorted(
-                [
-                    res_item["item_value"]
-                    for res_item in list_val_res
-                    if res_item and res_item["item_value"] is not None
-                ]
-            )
-
-        elab_query = f"""
-        MATCH (:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
-        RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
-        ORDER BY elab.chapter_updated ASC
-        """
-        elab_results = await neo4j_manager.execute_read_query(
-            elab_query, {"we_id_param": we_id}
-        )
-        if elab_results:
-            for elab_rec in elab_results:
-                chapter_val = elab_rec.get("chapter")
-                summary_val = elab_rec.get("summary")
-                if chapter_val is not None and summary_val is not None:
-                    elab_key = f"elaboration_in_chapter_{chapter_val}"
-                    item_detail[elab_key] = summary_val
-                    if elab_rec.get(KG_IS_PROVISIONAL):
-                        item_detail[f"source_quality_chapter_{chapter_val}"] = (
-                            "provisional_from_unrevised_draft"
-                        )
-
-        item_detail["id"] = we_id  # Add the canonical ID from the DB
-        world_data.setdefault(category, {})[item_name] = WorldItem.from_dict(
-            category,
-            item_name,
-            item_detail,
-        )
-        WORLD_NAME_TO_ID[utils._normalize_for_id(item_name)] = we_id
-
-    logger.info(
-        f"Successfully loaded and recomposed world building data ({len(we_results)} elements) from Neo4j."
-    )
-    return world_data
+## NOTE: The above legacy function remains for backward compatibility of external callers.
+## Prefer using get_world_building() which returns a flat list of WorldItem models.
 
 
 async def get_world_elements_for_snippet_from_db(
@@ -842,18 +669,11 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
 
 # Native model functions for performance optimization
 async def sync_world_items(
-    world_items: dict[str, dict[str, WorldItem]] | list[WorldItem],
+    world_items: list[WorldItem],
     chapter_number: int,
     full_sync: bool = False,
 ) -> bool:
-    """Persist world element data to Neo4j."""
-    # Convert dict format to list if needed (backward compatibility)
-    if isinstance(world_items, dict):
-        world_items_list = []
-        for category_items in world_items.values():
-            if isinstance(category_items, dict):
-                world_items_list.extend(category_items.values())
-        world_items = world_items_list
+    """Persist world element data to Neo4j using native models."""
 
     # Validate all world items before syncing
     for item in world_items:
@@ -914,6 +734,11 @@ async def get_world_building() -> list[WorldItem]:
             if record and record.get("w"):
                 item = WorldItem.from_db_record(record)
                 world_items.append(item)
+
+        # Update name-to-id mapping for compatibility with callers
+        WORLD_NAME_TO_ID.clear()
+        for item in world_items:
+            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
 
         logger.info("Fetched %d world items using native models", len(world_items))
         return world_items
