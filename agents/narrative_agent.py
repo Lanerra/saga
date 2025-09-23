@@ -15,7 +15,7 @@ from prompts.prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
 )
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from utils.json_utils import extract_json_from_text, safe_json_loads, truncate_for_log
+from utils.common import extract_json_from_text, safe_json_loads, truncate_for_log
 
 logger = structlog.get_logger()
 

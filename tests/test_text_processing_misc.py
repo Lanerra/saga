@@ -1,7 +1,7 @@
 # tests/test_text_processing_misc.py
 from utils import text_processing
 import config as _config
-from utils.helpers import _is_fill_in as _fill_in
+from utils.common import _is_fill_in as _fill_in
 
 
 def test_normalize_for_id():

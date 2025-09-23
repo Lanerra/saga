@@ -7,7 +7,7 @@ from pydantic import ValidationError
 import config
 from models import CharacterProfile, WorldItem
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
-from utils.yaml_parser import load_yaml_file
+from utils.common import load_yaml_file
 
 from .error_handling import ErrorSeverity, handle_bootstrap_error
 

@@ -5,7 +5,7 @@ from agents.knowledge_agent import KnowledgeAgent
 import config
 from agents.narrative_agent import NarrativeAgent
 from core.llm_interface_refactored import llm_service
-from utils.ingestion_utils import split_text_into_chapters
+from utils.common import split_text_into_chapters
 
 
 def test_split_text_into_chapters_basic():
