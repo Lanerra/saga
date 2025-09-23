@@ -8,7 +8,15 @@ from typing import TYPE_CHECKING
 
 from core.llm_interface_refactored import llm_service
 
-from .helpers import _is_fill_in
+from .common import (
+    _is_fill_in,
+    extract_json_from_text,
+    load_yaml_file,
+    normalize_keys_recursive,
+    safe_json_loads,
+    split_text_into_chapters,
+    truncate_for_log,
+)
 from .similarity import find_semantically_closest_segment, numpy_cosine_similarity
 from .text_processing import (
     SpaCyModelManager,
@@ -106,6 +114,12 @@ __all__ = [
     "SpaCyModelManager",
     "spacy_manager",
     "_is_fill_in",
+    "extract_json_from_text",
+    "safe_json_loads",
+    "truncate_for_log",
+    "load_yaml_file",
+    "normalize_keys_recursive",
+    "split_text_into_chapters",
     "load_spacy_model_if_needed",
     "_normalize_text_for_matching",
     "get_context_snippet_for_patch",
