@@ -10,7 +10,6 @@ REFACTORED: Extracted from core.llm_interface as part of Phase 3 architectural i
 - Focuses solely on text processing concerns
 - Token counting and text truncation
 - Response cleaning and normalization
-- Streaming content processing
 """
 
 import functools
@@ -445,102 +444,7 @@ class ResponseCleaningService:
         }
 
 
-class StreamProcessingService:
-    """
-    Service for processing streaming content from LLM APIs.
-
-    Handles parsing of streaming responses and accumulation of content.
-    """
-
-    def __init__(self, response_cleaner: ResponseCleaningService):
-        """
-        Initialize stream processing service.
-
-        Args:
-            response_cleaner: Service for cleaning responses
-        """
-        self._response_cleaner = response_cleaner
-        self._stats = {
-            "streams_processed": 0,
-            "chunks_processed": 0,
-            "json_errors": 0,
-            "usage_extracted": 0,
-        }
-
-    def process_streaming_chunks(
-        self, chunks: Generator[dict[str, Any], None, None], auto_clean: bool = True
-    ) -> tuple[str, dict[str, Any] | None]:
-        """
-        Process streaming chunks from LLM API into accumulated content.
-
-        Args:
-            chunks: Generator of parsed JSON chunks
-            auto_clean: Whether to auto-clean the final response
-
-        Returns:
-            Tuple of (accumulated_content, usage_data)
-        """
-        self._stats["streams_processed"] += 1
-        accumulated_content = ""
-        usage_data: dict[str, Any] | None = None
-
-        for chunk_data in chunks:
-            self._stats["chunks_processed"] += 1
-
-            try:
-                if chunk_data.get("choices"):
-                    delta = chunk_data["choices"][0].get("delta", {})
-                    content_piece = delta.get("content")
-                    if content_piece:
-                        accumulated_content += content_piece
-
-                    # Check for finish reason and extract usage
-                    if chunk_data["choices"][0].get("finish_reason") is not None:
-                        potential_usage = chunk_data.get("usage")
-
-                        # Check for Groq-specific usage location
-                        if (
-                            not potential_usage
-                            and chunk_data.get("x_groq")
-                            and chunk_data["x_groq"].get("usage")
-                        ):
-                            potential_usage = chunk_data["x_groq"]["usage"]
-
-                        if potential_usage and isinstance(potential_usage, dict):
-                            usage_data = potential_usage
-                            self._stats["usage_extracted"] += 1
-
-            except Exception as e:
-                logger.warning(f"Error processing streaming chunk: {e}")
-                self._stats["json_errors"] += 1
-
-        # Clean the accumulated content if requested
-        if auto_clean:
-            accumulated_content = self._response_cleaner.clean_response(
-                accumulated_content
-            )
-
-        return accumulated_content, usage_data
-
-    def get_statistics(self) -> dict[str, Any]:
-        """Get stream processing statistics."""
-        total_streams = self._stats["streams_processed"]
-        total_chunks = self._stats["chunks_processed"]
-
-        return {
-            **self._stats,
-            "avg_chunks_per_stream": (total_chunks / total_streams)
-            if total_streams > 0
-            else 0,
-            "chunk_error_rate": (self._stats["json_errors"] / total_chunks * 100)
-            if total_chunks > 0
-            else 0,
-            "usage_extraction_rate": (
-                self._stats["usage_extracted"] / total_streams * 100
-            )
-            if total_streams > 0
-            else 0,
-        }
+# Streaming processing removed; only non-streaming responses are supported.
 
 
 class TextProcessingService:
@@ -548,14 +452,13 @@ class TextProcessingService:
     Main text processing service that coordinates all text-related operations.
 
     This service provides a unified interface for all text processing needs,
-    combining tokenization, cleaning, and streaming functionality.
+    combining tokenization and cleaning functionality.
     """
 
     def __init__(self):
         """Initialize the text processing service with all sub-services."""
         self.tokenizer = TokenizerService()
         self.response_cleaner = ResponseCleaningService()
-        self.stream_processor = StreamProcessingService(self.response_cleaner)
 
         logger.info("TextProcessingService initialized with all sub-services")
 
@@ -564,7 +467,6 @@ class TextProcessingService:
         return {
             "tokenizer": self.tokenizer.get_statistics(),
             "response_cleaner": self.response_cleaner.get_statistics(),
-            "stream_processor": self.stream_processor.get_statistics(),
         }
 
 

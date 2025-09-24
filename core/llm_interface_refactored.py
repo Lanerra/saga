@@ -357,7 +357,6 @@ class CompletionService:
             "completions_successful": 0,
             "completions_failed": 0,
             "fallback_used": 0,
-            "streaming_requests": 0,
         }
 
     async def get_completion(
@@ -459,99 +458,7 @@ class CompletionService:
             self._stats["completions_failed"] += 1
             return "", None
 
-    async def get_streaming_completion(
-        self,
-        model_name: str,
-        prompt: str,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        auto_clean_response: bool = True,
-        *,
-        system_prompt: str | None = None,
-        **kwargs,
-    ) -> tuple[str, dict[str, int] | None]:
-        """
-        Get streaming completion and write to disk for memory efficiency.
-
-        Args:
-            model_name: Model to use for completion
-            prompt: Input prompt
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            auto_clean_response: Whether to clean the response
-            **kwargs: Additional completion parameters
-
-        Returns:
-            Tuple of (response_text, usage_data)
-        """
-        self._stats["streaming_requests"] += 1
-
-        effective_temperature = (
-            temperature if temperature is not None else config.Temperatures.DEFAULT
-        )
-        effective_max_tokens = (
-            max_tokens if max_tokens is not None else config.MAX_GENERATION_TOKENS
-        )
-
-        # Build messages with optional system prompt
-        messages = (
-            [{"role": "system", "content": system_prompt}] if system_prompt else []
-        ) + [{"role": "user", "content": prompt}]
-
-        try:
-            with secure_temp_file(suffix=".llmstream.txt", text=True) as temp_file_path:
-                accumulated_content = ""
-                usage_data = None
-
-                # Process streaming chunks and write to temp file
-                async for (
-                    chunk_data
-                ) in self._completion_client.get_streaming_completion(
-                    model_name,
-                    messages,
-                    effective_temperature,
-                    effective_max_tokens,
-                    **kwargs,
-                ):
-                    if chunk_data.get("choices"):
-                        delta = chunk_data["choices"][0].get("delta", {})
-                        content_piece = delta.get("content")
-                        # Some providers stream 'reasoning_content' instead of 'content'
-                        if not content_piece:
-                            content_piece = delta.get("reasoning_content")
-
-                        if content_piece:
-                            accumulated_content += content_piece
-                            # Write to temp file for large responses
-                            with open(temp_file_path, "a", encoding="utf-8") as tmp_f:
-                                tmp_f.write(content_piece)
-
-                        # Check for completion and extract usage
-                        if chunk_data["choices"][0].get("finish_reason") is not None:
-                            potential_usage = chunk_data.get("usage")
-                            if (
-                                not potential_usage
-                                and chunk_data.get("x_groq")
-                                and chunk_data["x_groq"].get("usage")
-                            ):
-                                potential_usage = chunk_data["x_groq"]["usage"]
-                            if potential_usage:
-                                usage_data = potential_usage
-
-                if auto_clean_response:
-                    accumulated_content = (
-                        self._text_processor.response_cleaner.clean_response(
-                            accumulated_content
-                        )
-                    )
-
-                self._stats["completions_successful"] += 1
-                return accumulated_content, usage_data
-
-        except Exception as e:
-            logger.error(f"Streaming completion failed: {e}", exc_info=True)
-            self._stats["completions_failed"] += 1
-            return "", None
+    # Streaming completion path removed to simplify the API.
 
     def _extract_completion_content(self, response_data: dict[str, Any]) -> str:
         """Extract completion content from API response."""
@@ -671,27 +578,16 @@ class RefactoredLLMService:
 
         REFACTORED: Simplified orchestration, delegating to specialized services.
         """
-        if stream_to_disk:
-            return await self._completion_service.get_streaming_completion(
-                model_name,
-                prompt,
-                temperature,
-                max_tokens,
-                auto_clean_response,
-                system_prompt=system_prompt,
-                **kwargs,
-            )
-        else:
-            return await self._completion_service.get_completion(
-                model_name,
-                prompt,
-                temperature,
-                max_tokens,
-                allow_fallback,
-                auto_clean_response,
-                system_prompt=system_prompt,
-                **kwargs,
-            )
+        return await self._completion_service.get_completion(
+            model_name,
+            prompt,
+            temperature,
+            max_tokens,
+            allow_fallback,
+            auto_clean_response,
+            system_prompt=system_prompt,
+            **kwargs,
+        )
 
     async def async_get_embedding(self, text: str) -> np.ndarray | None:
         """

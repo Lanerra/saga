@@ -16,7 +16,6 @@ REFACTORED: Extracted from core.llm_interface as part of Phase 3 architectural i
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -166,49 +165,7 @@ class HTTPClientService:
             else:
                 raise Exception("HTTP request failed with no specific error")
 
-    @asynccontextmanager
-    async def stream_post(
-        self, url: str, payload: dict[str, Any], headers: dict[str, str] | None = None
-    ) -> AsyncGenerator[httpx.Response, None]:
-        """
-        Make a streaming POST request with context management.
-
-        Args:
-            url: Target URL for the streaming request
-            payload: JSON payload to send
-            headers: Optional HTTP headers
-
-        Yields:
-            Streaming HTTP response object
-
-        Example:
-            async with client.stream_post(url, payload) as stream:
-                async for line in stream.aiter_lines():
-                    process(line)
-        """
-        async with self._semaphore:
-            self._stats["total_requests"] += 1
-            self.request_count += 1
-
-            effective_headers = headers or {}
-
-            try:
-                logger.debug(f"HTTP streaming POST to {url}")
-
-                async with self._client.stream(
-                    "POST", url, json=payload, headers=effective_headers
-                ) as response:
-                    response.raise_for_status()
-                    self._stats["successful_requests"] += 1
-                    logger.debug(
-                        f"HTTP streaming POST successful: {response.status_code}"
-                    )
-                    yield response
-
-            except Exception as e:
-                self._stats["failed_requests"] += 1
-                logger.error(f"HTTP streaming POST failed: {e}", exc_info=True)
-                raise
+    # Streaming support removed to simplify HTTP client and standardize on non-streaming calls.
 
     def get_statistics(self) -> dict[str, Any]:
         """Get HTTP client statistics for monitoring and debugging."""
@@ -324,15 +281,12 @@ class CompletionHTTPClient:
         Returns:
             API response dictionary
         """
-        # Determine the correct token parameter name
-        token_param = self._get_token_param_name()
-
         payload = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "top_p": config.LLM_TOP_P,
-            token_param: max_tokens,
+            "max_tokens": max_tokens,
             "stream": False,
             **kwargs,
         }
@@ -353,71 +307,4 @@ class CompletionHTTPClient:
 
         return response.json()
 
-    async def get_streaming_completion(
-        self,
-        model: str,
-        messages: list[dict[str, str]],
-        temperature: float,
-        max_tokens: int,
-        **kwargs,
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        Get streaming completion from OpenAI-compatible API.
-
-        Args:
-            model: Model to use for completion
-            messages: Conversation messages
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            **kwargs: Additional completion parameters
-
-        Yields:
-            Parsed JSON chunks from the streaming response
-        """
-        # Determine the correct token parameter name
-        token_param = self._get_token_param_name()
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": config.LLM_TOP_P,
-            token_param: max_tokens,
-            "stream": True,
-            **kwargs,
-        }
-
-        headers = {
-            "Authorization": f"Bearer {config.OPENAI_API_KEY}",
-            "Content-Type": "application/json",
-        }
-
-        logger.debug(
-            f"Requesting streaming completion from {config.OPENAI_API_BASE} "
-            f"for model '{model}' with {len(messages)} messages"
-        )
-
-        async with self._http_client.stream_post(
-            f"{config.OPENAI_API_BASE}/chat/completions", payload, headers
-        ) as response:
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data_json_str = line[len("data: ") :].strip()
-                    if data_json_str == "[DONE]":
-                        break
-                    try:
-                        chunk_data = json.loads(data_json_str)
-                        yield chunk_data
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            f"Could not decode JSON from streaming line: {line}"
-                        )
-
-    def _get_token_param_name(self) -> str:
-        """Get the appropriate token parameter name for the configured API."""
-        if (
-            "api.openai.com" in config.OPENAI_API_BASE
-            or "api.anthropic.com" in config.OPENAI_API_BASE
-        ):
-            return "max_completion_tokens"
-        return "max_tokens"
+    # Streaming completion removed; use get_completion() only.
