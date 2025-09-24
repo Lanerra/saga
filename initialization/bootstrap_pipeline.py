@@ -1,3 +1,4 @@
+# initialization/bootstrap_pipeline.py
 """Standalone and integrated bootstrap pipeline orchestrator.
 
 Runs the multi-phase bootstrap (world -> characters -> plot) with per-phase

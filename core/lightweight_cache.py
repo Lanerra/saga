@@ -1,3 +1,4 @@
+# core/lightweight_cache.py
 """
 Ultra-simple per-service in-memory cache.
 
