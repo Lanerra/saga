@@ -1,19 +1,24 @@
 # processing/zero_copy_context_generator.py
 """
-Zero-copy context generation that eliminates serialization overhead.
-Uses single comprehensive Neo4j queries and direct field access.
+Zero-copy context generation (simplified, deterministic).
+
+This module now builds a bounded hybrid context using:
+- Recent chapters (sequential, no vector search)
+- Salient KG facts for the current chapter
+
+All streaming stats, intricate token budgeting, and fallback flows
+have been removed for determinism and maintainability.
 """
+
+from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-import numpy as np
 import structlog
 
 import config
-from core.db_manager import neo4j_manager
-from core.llm_interface_refactored import llm_service
-from core.text_processing_service import truncate_text_by_tokens
+from data_access.chapter_queries import get_chapter_content_batch_native
 from models import SceneDetail
 from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
 
@@ -21,7 +26,7 @@ logger = structlog.get_logger(__name__)
 
 
 class ZeroCopyContextGenerator:
-    """Generate context with minimal data copying and serialization."""
+    """Deterministic, bounded hybrid context builder."""
 
     @staticmethod
     async def generate_hybrid_context_native(
@@ -29,129 +34,80 @@ class ZeroCopyContextGenerator:
         current_chapter_number: int,
         chapter_plan: list[SceneDetail] | None = None,
         semantic_limit: int | None = None,
-        kg_limit: int | None = None,
+        kg_limit: int | None = None,  # kept for signature compatibility
     ) -> str:
         """
-        Generate hybrid context without serialization overhead.
-
-        Args:
-            plot_outline: Plot outline data
-            current_chapter_number: Current chapter being processed
-            chapter_plan: Optional scene details for KG facts
-            semantic_limit: Max chapters for semantic context
-            kg_limit: Max facts for KG context
-
-        Returns:
-            Formatted hybrid context string
+        Build a simple hybrid context consisting of:
+        - Plot point for the target chapter (if available)
+        - Recent chapter summaries/snippets (bounded by count)
+        - Key reliable KG facts
         """
         if current_chapter_number <= 0:
             return ""
 
-        logger.info(
-            f"Generating NATIVE hybrid context for Chapter {current_chapter_number}..."
-        )
+        recent_count = semantic_limit or config.CONTEXT_CHAPTER_COUNT
+        start_ch = max(1, current_chapter_number - recent_count)
+        recent_numbers = [n for n in range(start_ch, current_chapter_number)]
 
-        # Run semantic and KG context generation in parallel
-        semantic_task = ZeroCopyContextGenerator._generate_semantic_context_native(
-            plot_outline, current_chapter_number, semantic_limit
-        )
-        kg_facts_task = get_reliable_kg_facts_for_drafting_prompt(
+        # Fetch recent chapter content and KG facts concurrently
+        chapters_task = get_chapter_content_batch_native(recent_numbers)
+        kg_task = get_reliable_kg_facts_for_drafting_prompt(
             plot_outline, current_chapter_number, chapter_plan
         )
+        chapters_map, kg_facts_str = await asyncio.gather(chapters_task, kg_task)
 
-        semantic_context_str, kg_facts_str = await asyncio.gather(
-            semantic_task, kg_facts_task
-        )
+        # Assemble context
+        parts: list[str] = []
 
-        # Build hybrid context with optimized string operations using buffer
-        context_buffer = []
-
-        # Pre-calculate common strings to avoid repeated formatting
-        chapter_header = (
-            f"--- PLOT POINT FOR CHAPTER {current_chapter_number} (PRIMARY FOCUS) ---"
-        )
-        plot_point_focus = ZeroCopyContextGenerator._get_plot_point_for_chapter(
+        # Plot point (no directive heuristics; keep it minimal and deterministic)
+        plot_point = ZeroCopyContextGenerator._get_plot_point_for_chapter(
             plot_outline, current_chapter_number
         )
-
-        # Add plot point focus section - Optimized string building
-        context_buffer.append(chapter_header)
-        if plot_point_focus and plot_point_focus.strip():
-            # Build focus section efficiently
-            context_buffer.extend(
-                [
-                    f"**Chapter {current_chapter_number} Plot Point:** {plot_point_focus}",
-                    "",
-                    f"**Narrative Focus Directive:** {ZeroCopyContextGenerator._get_narrative_focus_directive(plot_point_focus, current_chapter_number)}",
-                    "--- END PLOT POINT ---",
-                ]
-            )
-        else:
-            context_buffer.extend(
-                [
-                    f"No specific plot point found for chapter {current_chapter_number}. Follow general narrative progression.",
-                    "--- END PLOT POINT ---",
-                ]
-            )
-
-        # Add semantic context section - Single append operations
-        context_buffer.extend(
-            [
-                "",
-                "--- SEMANTIC CONTEXT FROM PAST CHAPTERS (FOR NARRATIVE FLOW & TONE) ---",
-                semantic_context_str
-                if semantic_context_str and semantic_context_str.strip()
-                else "No relevant semantic context could be retrieved.",
-                "--- END SEMANTIC CONTEXT ---",
-                "",
-                "--- KEY RELIABLE KG FACTS (FOR ESTABLISHED CANON & CONTINUITY) ---",
-                kg_facts_str
-                if kg_facts_str and kg_facts_str.strip()
-                else "No reliable KG facts could be retrieved for this context.",
-                "--- END KEY RELIABLE KG FACTS ---",
-            ]
+        parts.append(
+            f"--- PLOT POINT FOR CHAPTER {current_chapter_number} ---"
         )
+        parts.append(
+            f"**Plot Point:** {plot_point}" if (plot_point and plot_point.strip()) else "(None provided)"
+        )
+        parts.append("--- END PLOT POINT ---")
 
-        # Chapter 1: Prefer precomputed KG bundle; fallback to on-the-fly world snippet
-        if current_chapter_number == 1:
-            try:
-                from data_access.plot_queries import get_first_chapter_kg_hint
+        # Recent semantic context (sequential chapters only)
+        parts.append("")
+        parts.append(
+            "--- RECENT CHAPTER CONTEXT (SEQUENTIAL) ---"
+        )
+        if not recent_numbers or not chapters_map:
+            parts.append("No prior chapters available.")
+        else:
+            for n in recent_numbers:
+                data = chapters_map.get(n)
+                if not data:
+                    continue
+                summary = (data.get("summary") or "").strip()
+                text = (data.get("text") or "").strip()
 
-                precomputed = await get_first_chapter_kg_hint()
-                if precomputed and precomputed.strip():
-                    context_buffer.extend(
-                        [
-                            "",
-                            "--- FIRST-CHAPTER KG BUNDLE ---",
-                            precomputed.strip(),
-                            "--- END FIRST-CHAPTER KG BUNDLE ---",
-                        ]
-                    )
+                if summary:
+                    snippet = summary[: config.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS]
+                elif text:
+                    tail = text[-config.NARRATIVE_CONTEXT_TEXT_TAIL_CHARS :]
+                    snippet = f"...{tail}" if tail else ""
                 else:
-                    from data_access.world_queries import get_bootstrap_world_elements
-                    from prompts.prompt_data_getters import (
-                        get_world_state_snippet_for_prompt,
-                    )
+                    snippet = ""
 
-                    bootstrap_world_items = await get_bootstrap_world_elements()
-                    if bootstrap_world_items:
-                        world_snippet = await get_world_state_snippet_for_prompt(
-                            bootstrap_world_items,
-                            current_chapter_num_for_filtering=config.KG_PREPOPULATION_CHAPTER_NUM,
-                        )
-                        if world_snippet and world_snippet.strip():
-                            context_buffer.extend(
-                                [
-                                    "",
-                                    "--- WORLD AT A GLANCE (BOOTSTRAP ELEMENTS) ---",
-                                    world_snippet.strip(),
-                                    "--- END WORLD AT A GLANCE ---",
-                                ]
-                            )
-            except Exception as e:
-                logger.warning(f"Failed to include first-chapter KG bundle: {e}")
+                if snippet:
+                    parts.append(f"[Chapter {n}]:\n{snippet}\n---")
 
-        return "\n".join(context_buffer)
+        parts.append("--- END RECENT CHAPTER CONTEXT ---")
+
+        # KG facts
+        parts.append("")
+        parts.append("--- KEY RELIABLE KG FACTS ---")
+        parts.append(
+            kg_facts_str.strip() if (kg_facts_str and kg_facts_str.strip()) else "No reliable KG facts available."
+        )
+        parts.append("--- END KEY RELIABLE KG FACTS ---")
+
+        return "\n".join(parts)
 
     @staticmethod
     def _get_plot_point_for_chapter(
@@ -184,293 +140,15 @@ class ZeroCopyContextGenerator:
         return None
 
     @staticmethod
-    def _get_narrative_focus_directive(
-        plot_point_text: str, chapter_number: int
-    ) -> str:
-        """
-        Generate a narrative focus directive based on plot point content and chapter progression.
-
-        Args:
-            plot_point_text: The plot point description
-            chapter_number: Current chapter number
-
-        Returns:
-            A directive to guide narrative focus and differentiate from previous chapters
-        """
-        plot_lower = plot_point_text.lower()
-
-        # Early chapters (1-3): Focus on progression from internal to external
-        if chapter_number == 1:
-            if any(
-                word in plot_lower
-                for word in ["discover", "finds", "uncover", "reveal"]
-            ):
-                return "Focus on INTERNAL DISCOVERY and personal revelation. Emphasize quiet moments of realization, the weight of truth, and the protagonist's emotional response to learning something that changes their worldview."
-            else:
-                return "Focus on ATMOSPHERE and CHARACTER ESTABLISHMENT. Build the world and introduce the protagonist's situation through immersive details."
-
-        elif chapter_number == 2:
-            if any(
-                word in plot_lower
-                for word in ["frame", "flee", "escape", "hunt", "chase", "forced"]
-            ):
-                return "Focus on EXTERNAL PRESSURE and ACTION. Emphasize movement, urgency, pursuit, and the protagonist's transition from passive to active. This chapter should feel dynamic and show escalating stakes."
-            elif any(
-                word in plot_lower for word in ["decrypt", "transmission", "uncover"]
-            ):
-                return "Focus on ACTIVE INVESTIGATION with building tension. Show the protagonist taking deliberate action while external forces close in. Balance discovery with mounting pressure."
-            else:
-                return "Focus on ESCALATION and STAKES RAISING. Build on the previous chapter's revelations with increased tension and external conflict."
-
-        elif chapter_number == 3:
-            if any(
-                word in plot_lower
-                for word in ["leader", "reveals", "network", "organization"]
-            ):
-                return "Focus on WORLD EXPANSION and new character dynamics. Introduce broader scope and shift from personal crisis to larger conflict."
-            else:
-                return "Focus on SCOPE EXPANSION. Broaden the conflict beyond the protagonist's personal struggle."
-
-        elif chapter_number == 4:
-            if any(
-                word in plot_lower
-                for word in ["genetic", "valuable", "special", "abilities"]
-            ):
-                return "Focus on PROTAGONIST EMPOWERMENT and personal significance. Show the protagonist's unique value and growing agency."
-            else:
-                return "Focus on PROTAGONIST AGENCY. Show the protagonist taking control of their destiny."
-
-        # Later chapters: Focus on progression and climax building
-        else:
-            if chapter_number <= 8:
-                return "Focus on SKILL DEVELOPMENT and relationship building. Show the protagonist becoming more capable and connected."
-            elif chapter_number <= 12:
-                return "Focus on STRATEGIC ACTION and alliance building. Show coordinated efforts and growing resistance."
-            elif chapter_number <= 16:
-                return "Focus on ESCALATING CONFLICT and high-stakes confrontations. Build toward climax."
-            else:
-                return "Focus on RESOLUTION and CONSEQUENCES. Show the ultimate confrontation and its aftermath."
+    # Note: Previously this module included a complex "narrative focus directive"
+    # heuristic. It has been removed to keep this builder deterministic.
 
     @staticmethod
-    async def _generate_semantic_context_native(
-        plot_outline: dict[str, Any],
-        current_chapter_number: int,
-        semantic_limit: int | None = None,
-    ) -> str:
-        """
-        Generate semantic context using single optimized Neo4j query.
-        Eliminates multiple DB calls and dict conversion overhead.
-        """
-        if current_chapter_number <= 1:
-            return ""
-
-        # Get plot point focus for query
-        plot_points = plot_outline.get("plot_points", [])
-        plot_point_focus = None
-
-        if plot_points and current_chapter_number > 0:
-            idx = current_chapter_number - 1
-            if 0 <= idx < len(plot_points):
-                plot_point_focus = str(plot_points[idx]) if plot_points[idx] else None
-
-        context_query_text = (
-            plot_point_focus
-            if plot_point_focus
-            else f"Narrative context relevant to events leading up to chapter {current_chapter_number}."
-        )
-
-        # Get embedding for similarity search
-        query_embedding_np = await llm_service.async_get_embedding(context_query_text)
-        if query_embedding_np is None:
-            logger.warning(
-                "Failed to generate embedding for semantic context query. Using fallback."
-            )
-            return await ZeroCopyContextGenerator._fallback_sequential_context(
-                current_chapter_number
-            )
-
-        # Single comprehensive Neo4j query for all context data
-        return await ZeroCopyContextGenerator._execute_semantic_context_query(
-            query_embedding_np, current_chapter_number, semantic_limit
-        )
+    # All previous semantic context generation (embedding + vector search + fallbacks)
+    # has been removed. We now use simple sequential recent chapters only.
 
     @staticmethod
-    async def _execute_semantic_context_query(
-        query_embedding: np.ndarray,
-        current_chapter_number: int,
-        semantic_limit: int | None = None,
-    ) -> str:
-        """
-        Execute optimized Neo4j query for semantic context.
-        Returns formatted context directly without intermediate conversions.
-        """
-        query_embedding_list = neo4j_manager.embedding_to_list(query_embedding)
-        if not query_embedding_list:
-            return ""
-
-        limit = semantic_limit or config.CONTEXT_CHAPTER_COUNT
-        max_semantic_tokens = (config.MAX_CONTEXT_TOKENS * 2) // 3
-
-        # Single query to get similar chapters AND immediate previous chapter
-        cypher_query = """
-        // Get similar chapters via vector search
-        CALL db.index.vector.queryNodes($index_name, $limit, $query_vector)
-        YIELD node AS similar_c, score
-        WHERE similar_c.number < $current_chapter
-        
-        WITH collect({
-            chapter_number: similar_c.number,
-            summary: similar_c.summary,
-            text: similar_c.text,
-            is_provisional: COALESCE(similar_c.is_provisional, false),
-            score: score,
-            source: 'similarity'
-        }) AS similar_chapters
-        
-        // Also get immediate previous chapter if not in similarity results
-        OPTIONAL MATCH (prev_c:Chapter) 
-        WHERE prev_c.number = $prev_chapter_num
-        
-        WITH similar_chapters, prev_c,
-             CASE 
-                WHEN prev_c IS NOT NULL AND 
-                     NOT ANY(sc IN similar_chapters WHERE sc.chapter_number = $prev_chapter_num)
-                THEN [{
-                    chapter_number: prev_c.number,
-                    summary: prev_c.summary,
-                    text: prev_c.text,
-                    is_provisional: COALESCE(prev_c.is_provisional, false),
-                    score: 0.999,
-                    source: 'immediate_previous'
-                }]
-                ELSE []
-             END AS prev_chapter_data
-        
-        RETURN similar_chapters + prev_chapter_data AS all_context_chapters
-        """
-
-        try:
-            results = await neo4j_manager.execute_read_query(
-                cypher_query,
-                {
-                    "index_name": config.NEO4J_VECTOR_INDEX_NAME,
-                    "limit": limit + 1,  # Extra for potential duplicates
-                    "query_vector": query_embedding_list,
-                    "current_chapter": current_chapter_number,
-                    "prev_chapter_num": current_chapter_number - 1,
-                },
-            )
-
-            if not results or not results[0]:
-                logger.info(
-                    "No semantic context chapters found via Neo4j vector search."
-                )
-                return ""
-
-            context_chapters = results[0]["all_context_chapters"]
-            if not context_chapters:
-                return ""
-
-            # Sort by score and chapter number (highest score first)
-            sorted_chapters = sorted(
-                context_chapters,
-                key=lambda x: (x.get("score", 0.0), x.get("chapter_number", 0)),
-                reverse=True,
-            )
-
-            # Build context with token tracking
-            return ZeroCopyContextGenerator._build_context_from_chapters(
-                sorted_chapters, max_semantic_tokens
-            )
-
-        except Exception as e:
-            logger.error(f"Error executing semantic context query: {e}", exc_info=True)
-            return await ZeroCopyContextGenerator._fallback_sequential_context(
-                current_chapter_number
-            )
-
-    @staticmethod
-    def _build_context_from_chapters(
-        chapters: list[dict[str, Any]], max_tokens: int
-    ) -> str:
-        """
-        Build context string from chapter data with token limit enforcement.
-        Enhanced to provide narrative continuation information.
-        """
-        context_parts = []
-        total_tokens = 0
-
-        # Pre-compile content type lookup for performance
-        content_type_map = {
-            (True, True): "Provisional Summary",
-            (True, False): "Summary",
-            (False, True): "Provisional Text Snippet",
-            (False, False): "Text Snippet",
-        }
-
-        for chap_data in chapters:
-            if total_tokens >= max_tokens:
-                break
-
-            chap_num = chap_data.get("chapter_number")
-            is_provisional = chap_data.get("is_provisional", False)
-            score = chap_data.get("score", "N/A")
-
-            # Enhanced context building - prioritize narrative continuation
-            enhanced_content = ZeroCopyContextGenerator._extract_narrative_continuation(
-                chap_data, chap_num
-            )
-
-            if not enhanced_content:
-                continue
-
-            # Optimized content type lookup
-            has_summary = bool(chap_data.get("summary"))
-            content_type = content_type_map[(has_summary, is_provisional)]
-            score_str = f"{score:.3f}" if isinstance(score, float) else str(score)
-
-            # Pre-build components to minimize string operations
-            prefix = f"[Semantic Context from Chapter {chap_num} (Similarity: {score_str}, Type: {content_type})]:\n"
-            suffix = "\n---\n"
-
-            # Build full content efficiently - single concatenation
-            full_content = prefix + enhanced_content + suffix
-
-            # Check token limit
-            content_tokens = llm_service.count_tokens(
-                full_content, config.NARRATIVE_MODEL
-            )
-
-            if total_tokens + content_tokens <= max_tokens:
-                context_parts.append(full_content)
-                total_tokens += content_tokens
-            else:
-                # Try to fit truncated version
-                remaining_tokens = max_tokens - total_tokens
-                prefix_suffix_tokens = count_tokens(
-                    prefix + suffix, config.NARRATIVE_MODEL
-                )
-
-                if remaining_tokens > prefix_suffix_tokens + 10:
-                    truncated_content = truncate_text_by_tokens(
-                        full_content, config.NARRATIVE_MODEL, remaining_tokens
-                    )
-                    context_parts.append(truncated_content)
-                    total_tokens += remaining_tokens
-                break
-
-            logger.debug(
-                f"Added semantic context from ch {chap_num} ({content_type}, Sim: {score_str}), "
-                f"{content_tokens} tokens. Total: {total_tokens}."
-            )
-
-        final_context = "\n".join(reversed(context_parts)).strip()
-        final_tokens = llm_service.count_tokens(final_context, config.NARRATIVE_MODEL)
-
-        logger.info(
-            f"Built semantic context: {final_tokens} tokens from {len(context_parts)} chapters."
-        )
-        return final_context
+    # Complex token-budgeted chapter aggregation removed.
 
     @staticmethod
     def _extract_narrative_continuation(
@@ -629,55 +307,7 @@ class ZeroCopyContextGenerator:
 
         return " | ".join(guidance_parts) if guidance_parts else ""
 
-    @staticmethod
-    async def _fallback_sequential_context(current_chapter_number: int) -> str:
-        """Fallback context generation using sequential chapter access."""
-        max_semantic_tokens = (config.MAX_CONTEXT_TOKENS * 2) // 3
-        context_parts = []
-        total_tokens = 0
-
-        fallback_limit = config.CONTEXT_CHAPTER_COUNT
-        start_chapter = max(1, current_chapter_number - fallback_limit)
-
-        for chapter_num in range(start_chapter, current_chapter_number):
-            if total_tokens >= max_semantic_tokens:
-                break
-
-            try:
-                # Simple direct query for fallback
-                query = "MATCH (c:Chapter {number: $chapter_num}) RETURN c.summary AS summary, c.text AS text"
-                results = await neo4j_manager.execute_read_query(
-                    query, {"chapter_num": chapter_num}
-                )
-
-                if results and results[0]:
-                    content = (
-                        results[0].get("summary") or results[0].get("text", "")
-                    ).strip()
-                    if content:
-                        formatted = f"[Fallback Context from Chapter {chapter_num}]:\n{content}\n---\n"
-                        content_tokens = llm_service.count_tokens(
-                            formatted, config.NARRATIVE_MODEL
-                        )
-
-                        if total_tokens + content_tokens <= max_semantic_tokens:
-                            context_parts.append(formatted)
-                            total_tokens += content_tokens
-                        else:
-                            break
-
-            except Exception as e:
-                logger.debug(
-                    f"Error getting fallback context for chapter {chapter_num}: {e}"
-                )
-                continue
-
-        final_context = "\n".join(reversed(context_parts)).strip()
-        logger.info(
-            f"Built fallback semantic context: {count_tokens(final_context, config.NARRATIVE_MODEL)} tokens."
-        )
-        return final_context
-
+    # Legacy fallback path removed; recent-chapters path is now primary.
 
 # Public helper for narrative continuation extraction to avoid private calls from agents
 def extract_narrative_continuation_context(
