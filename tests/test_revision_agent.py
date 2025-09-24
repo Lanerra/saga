@@ -3,21 +3,22 @@ from unittest.mock import patch
 
 import pytest
 
+import config
 from agents.revision_agent import RevisionAgent
 
 
 @pytest.mark.asyncio
 async def test_revision_agent_initialization():
     """Test that RevisionAgent initializes correctly."""
-    agent = RevisionAgent()
-    assert agent.model_name == "Qwen3-14B-Q4"  # Default from config
-    assert agent.threshold == 0.85  # REVISION_EVALUATION_THRESHOLD
+    agent = RevisionAgent(config)
+    assert agent.model_name == config.NARRATIVE_MODEL
+    assert agent.threshold == config.REVISION_EVALUATION_THRESHOLD
 
 
 @pytest.mark.asyncio
 async def test_validate_revision_no_issues():
     """Test validate_revision when no issues are found."""
-    agent = RevisionAgent()
+    agent = RevisionAgent(config)
 
     # Mock world state
     world_state = {
@@ -53,7 +54,7 @@ async def test_validate_revision_no_issues():
 @pytest.mark.asyncio
 async def test_validate_revision_with_issues():
     """Test validate_revision when issues are found."""
-    agent = RevisionAgent()
+    agent = RevisionAgent(config)
 
     # Mock world state
     world_state = {
@@ -104,7 +105,7 @@ async def test_validate_revision_with_issues():
 @pytest.mark.asyncio
 async def test_check_continuity_empty_text():
     """Test _check_continuity with empty chapter text."""
-    agent = RevisionAgent()
+    agent = RevisionAgent(config)
 
     world_state = {"plot_outline": {"title": "Test"}, "chapter_number": 1}
 
@@ -115,7 +116,7 @@ async def test_check_continuity_empty_text():
 @pytest.mark.asyncio
 async def test_evaluate_quality_empty_text():
     """Test _evaluate_quality with empty chapter text."""
-    agent = RevisionAgent()
+    agent = RevisionAgent(config)
 
     world_state = {"plot_outline": {"title": "Test"}, "chapter_number": 1}
 
@@ -127,7 +128,7 @@ async def test_evaluate_quality_empty_text():
 @pytest.mark.asyncio
 async def test_validate_patch_no_problems():
     """Test _validate_patch with no problems."""
-    agent = RevisionAgent()
+    agent = RevisionAgent(config)
 
     problems = []
     result = await agent._validate_patch("Test text", problems)
@@ -137,7 +138,7 @@ async def test_validate_patch_no_problems():
 @pytest.mark.asyncio
 async def test_validate_patch_with_problems():
     """Test _validate_patch with problems (placeholder implementation)."""
-    agent = RevisionAgent()
+    agent = RevisionAgent(config)
 
     problems = [
         {
@@ -157,5 +158,5 @@ async def test_validate_patch_with_problems():
 async def test_revision_agent_with_custom_model():
     """Test RevisionAgent initialization with custom model."""
     custom_model = "custom-model"
-    agent = RevisionAgent(model_name=custom_model)
+    agent = RevisionAgent(config, model_name=custom_model)
     assert agent.model_name == custom_model

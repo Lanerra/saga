@@ -44,7 +44,7 @@ async def _process_patch_group(
     Process a single group of problems and generate a patch instruction.
     Extracted from _generate_patch_instructions_logic for better modularity.
     """
-    context_snippet = await utils._get_context_window_for_patch_llm(
+    context_snippet = await utils.get_context_snippet_for_patch(
         original_text,
         group_problem,
         config.MAX_CHARS_FOR_PATCH_CONTEXT_WINDOW,
@@ -449,7 +449,8 @@ async def _get_sentence_embeddings(
     text: str, cache: dict[str, list[tuple[int, int, Any]]] | None = None
 ) -> list[tuple[int, int, Any]]:
     """Return a list of (start, end, embedding) for each sentence."""
-    if cache is None:
+    using_internal_cache = cache is None
+    if using_internal_cache:
         cache = _sentence_embedding_cache
     text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if text_hash in cache:
@@ -472,7 +473,8 @@ async def _get_sentence_embeddings(
         if isinstance(res, Exception) or res is None:
             continue
         embeddings.append((start, end, res))
-    cache[text_hash] = embeddings
+    if using_internal_cache:
+        cache[text_hash] = embeddings
     return embeddings
 
 
@@ -1128,7 +1130,7 @@ async def revise_chapter_draft_logic(
     chapter_plan: list[SceneDetail] | None,
     is_from_flawed_source: bool = False,
     already_patched_spans: list[tuple[int, int]] | None = None,
-) -> tuple[str, str, list[tuple[int, int]]] | None:
+) -> tuple[tuple[str, str, list[tuple[int, int]]] | None, None]:
     """
     Orchestrates the chapter revision process with patch-based and full rewrite options.
 
@@ -1141,14 +1143,14 @@ async def revise_chapter_draft_logic(
     # Phase 1: Validate inputs
     is_valid, early_return = _validate_revision_inputs(original_text, chapter_number)
     if not is_valid:
-        return early_return
+        return early_return, None
 
     # Phase 2: Prepare problems for revision
     problems_to_fix, revision_reason_str, should_continue = (
         _prepare_problems_for_revision(evaluation_result, chapter_number)
     )
     if not should_continue:
-        return (original_text, "No revision performed.", [])
+        return (original_text, "No revision performed.", []), None
 
     # Phase 3: Attempt patch-based revision
     patched_text, updated_spans = await _attempt_patch_based_revision(
@@ -1200,10 +1202,10 @@ async def revise_chapter_draft_logic(
     # Phase 6: Final validation
     is_valid, early_return = _validate_final_result(final_revised_text, chapter_number)
     if not is_valid:
-        return early_return
+        return early_return, None
 
     return (
         final_revised_text,
         final_raw_llm_output,
         final_spans_for_next_cycle,
-    )
+    ), None

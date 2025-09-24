@@ -43,7 +43,7 @@ from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
 from processing.zero_copy_context_generator import ZeroCopyContextGenerator
 from ui.rich_display import RichDisplayManager
-from utils.ingestion_utils import split_text_into_chapters
+from utils.common import split_text_into_chapters
 
 try:
     from rich.logging import RichHandler
@@ -644,7 +644,7 @@ class NANA_Orchestrator:
                 draft_text,
                 raw_output,
                 _,  # unused usage data
-            ) = await self.narrative_agent._draft_chapter(
+            ) = await self.narrative_agent.draft_chapter(
                 self.plot_outline,
                 novel_chapter_number,
                 plot_point_focus,

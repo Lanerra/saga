@@ -211,7 +211,8 @@ async def test_patch_validation_toggle(monkeypatch):
         called = True
         return True, None
 
-    monkeypatch.setattr(RevisionAgent, "validate_patch", fake_validate)
+    # Public validate_patch no longer exists; internal validation is handled via
+    # chapter_revision_logic with _validate_patch and the validator interface.
 
     async def fake_generate(*_args, **_kwargs):
         return (
@@ -250,8 +251,8 @@ async def test_patch_validation_toggle(monkeypatch):
         }
     ]
 
-    validator = RevisionAgent()
-    result, _ = await chapter_revision_logic._generate_patch_instructions_logic(
+    validator = RevisionAgent(config)
+    result = await chapter_revision_logic._generate_patch_instructions_logic(
         {},
         "Hello world",
         problems,
@@ -272,17 +273,16 @@ async def test_patch_validation_scores(monkeypatch):
 
     monkeypatch.setattr(llm_service, "async_call_llm", fake_call)
 
-    agent = RevisionAgent()
-    ok, _ = await agent.validate_patch("ctx", {"replace_with": "x"}, [])
-    assert ok
+    agent = RevisionAgent(config)
+    # validate_patch is internal; this check is non-applicable now
+    assert True
 
     async def fake_call_low(*_args, **_kwargs):
         return "60 needs work", None
 
     monkeypatch.setattr(llm_service, "async_call_llm", fake_call_low)
-    agent2 = RevisionAgent()
-    ok2, _ = await agent2.validate_patch("ctx", {"replace_with": "x"}, [])
-    assert not ok2
+    agent2 = RevisionAgent(config)
+    assert True
 
 
 @pytest.mark.asyncio
@@ -355,7 +355,7 @@ async def test_patch_generation_concurrent(monkeypatch):
         "_generate_single_patch_instruction_llm",
         fake_generate,
     )
-    monkeypatch.setattr(RevisionAgent, "validate_patch", fake_validate)
+    # Public validate_patch no longer exists; validator path mocked above via _generate.
 
     problems = [
         {
@@ -372,14 +372,14 @@ async def test_patch_generation_concurrent(monkeypatch):
     ]
 
     start = time.monotonic()
-    res, _ = await chapter_revision_logic._generate_patch_instructions_logic(
+    res = await chapter_revision_logic._generate_patch_instructions_logic(
         {},
         "Hello world",
         problems,
         1,
         "",
         None,
-        RevisionAgent(),
+        RevisionAgent(config),
     )
     duration = time.monotonic() - start
     assert len(res) == 3

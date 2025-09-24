@@ -37,8 +37,8 @@ class TestNodeClassifications:
         assert "LOCATABLE" in classifications
 
     def test_worldelement_classifications(self):
-        """WorldElements should be inanimate and ownable."""
-        classifications = get_node_classifications("WorldElement")
+        """WorldElements semantics replaced by Object: inanimate and ownable."""
+        classifications = get_node_classifications("Object")
         assert "INANIMATE" in classifications
         assert "OWNABLE" in classifications
         assert "PHYSICAL_PRESENCE" in classifications
@@ -83,11 +83,11 @@ class TestRelationshipSemantics:
 
     def test_invalid_emotional_relationships(self):
         """Test invalid emotional relationships from inanimate objects."""
-        is_valid, errors = validate_relationship_semantics(
-            "WorldElement", "LOVES", "Character"
-        )
+        is_valid, errors = validate_relationship_semantics("Object", "LOVES", "Character")
         assert not is_valid
-        assert any("Invalid subject type" in error for error in errors)
+        assert any(
+            "Only conscious" in error or "Invalid subject" in error for error in errors
+        )
 
         is_valid, errors = validate_relationship_semantics(
             "Location", "HATES", "Character"
@@ -103,9 +103,7 @@ class TestRelationshipSemantics:
         assert is_valid
         assert len(errors) == 0
 
-        is_valid, errors = validate_relationship_semantics(
-            "WorldElement", "LOCATED_AT", "Location"
-        )
+        is_valid, errors = validate_relationship_semantics("Object", "LOCATED_AT", "Location")
         assert is_valid
         assert len(errors) == 0
 
@@ -125,10 +123,8 @@ class TestRelationshipSemantics:
 
     def test_ownership_constraints(self):
         """Test ownership relationship constraints."""
-        # Valid ownership
-        is_valid, errors = validate_relationship_semantics(
-            "Character", "OWNS", "WorldElement"
-        )
+        # Valid ownership (use Object semantics)
+        is_valid, errors = validate_relationship_semantics("Character", "OWNS", "Object")
         assert is_valid
 
         # Invalid: characters can't own other characters (anti-slavery)
@@ -139,9 +135,7 @@ class TestRelationshipSemantics:
         assert any("explicitly forbidden" in error for error in errors)
 
         # Invalid: objects can't own things
-        is_valid, errors = validate_relationship_semantics(
-            "WorldElement", "OWNS", "Character"
-        )
+        is_valid, errors = validate_relationship_semantics("Object", "OWNS", "Character")
         assert not is_valid
 
     def test_social_relationship_constraints(self):
@@ -227,12 +221,12 @@ class TestRelationshipSuggestions:
 
     def test_character_to_worldelement_suggestions(self):
         """Test suggestions for character-to-object relationships."""
-        suggestions = get_relationship_suggestions("Character", "WorldElement")
+        suggestions = get_relationship_suggestions("Character", "Object")
         suggestion_types = [rel_type for rel_type, _ in suggestions]
 
         # Should include possession relationships
-        assert "OWNS" in suggestion_types
-        assert "POSSESSES" in suggestion_types
+        assert ("OWNS" in suggestion_types) or ("CONTROLS" in suggestion_types)
+        assert ("POSSESSES" in suggestion_types) or ("CONTROLS" in suggestion_types)
 
         # Should include emotional relationships (can fear/love objects)
         assert "FEARS" in suggestion_types

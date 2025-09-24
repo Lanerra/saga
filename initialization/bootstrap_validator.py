@@ -1,3 +1,4 @@
+# initialization/bootstrap_validator.py
 """
 Bootstrap validation pipeline for ensuring consistency between bootstrap-generated content and runtime configuration.
 

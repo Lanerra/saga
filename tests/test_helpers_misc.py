@@ -1,6 +1,6 @@
 # tests/test_helpers_misc.py
 import config
-from utils.helpers import _is_fill_in
+from utils.common import _is_fill_in
 
 
 def test_is_fill_in_helper():

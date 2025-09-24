@@ -2673,21 +2673,6 @@ async def create_typed_relationship_with_properties(
     )
 
 
-async def create_normalized_relationship(
-    subject_name: str,
-    raw_relationship_type: str,
-    object_name: str,
-    properties: dict[str, Any] | None = None,
-) -> None:
-    """Create a relationship after validating/normalizing the relationship type.
-
-    A thin wrapper around create_relationship_with_properties that ensures
-    the relationship type is canonical before creating the relationship.
-    """
-    normalized = validate_relationship_type(raw_relationship_type)
-    await create_relationship_with_properties(
-        subject_name, normalized, object_name, properties
-    )
 
 
 async def create_contextual_relationship(

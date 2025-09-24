@@ -100,22 +100,24 @@ async def test_prepare_prerequisites_uses_plan(orchestrator, monkeypatch):
     )
     monkeypatch.setattr(
         character_queries,
-        "get_character_profiles_from_db",
-        AsyncMock(return_value={}),
+        "get_character_profiles",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
         world_queries,
-        "get_world_building_from_db",
-        AsyncMock(return_value={}),
+        "get_world_building",
+        AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(
         orchestrator.revision_agent,
         "validate_revision",
         AsyncMock(return_value=(True, [])),
     )
+    # The orchestrator uses ZeroCopyContextGenerator internally; patch its method instead
+    # Patch the native hybrid context generator used in orchestrator
     monkeypatch.setattr(
-        "orchestration.nana_orchestrator.generate_hybrid_chapter_context_native",
-        AsyncMock(side_effect=fake_context),
+        "processing.zero_copy_context_generator.ZeroCopyContextGenerator.generate_hybrid_context_native",
+        AsyncMock(side_effect=lambda *_a, **_k: "ctx"),
     )
 
     result = await orchestrator._prepare_chapter_prerequisites(1)

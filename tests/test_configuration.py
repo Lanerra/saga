@@ -36,11 +36,12 @@ def test_reload_applies_environment_changes(monkeypatch):
 
     # Trigger a reload – this uses the ``loader.reload_settings`` function
     config.reload()
-
-    # Reload the module to ensure the new settings instance is used
+    # Ensure settings module is re-imported for deterministic override
     importlib.reload(config)
+    importlib.reload(config.settings)  # type: ignore[attr-defined]
 
-    # Verify that the new value is reflected in the settings object
+    # Verify that the new value is reflected (settings or module-level fallback)
+    # The new config module should reflect the override on settings
     assert config.settings.EMBEDDING_MODEL == "test-model-override"
 
     # Clean up – restore the original value

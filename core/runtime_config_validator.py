@@ -1,3 +1,4 @@
+# core/runtime_config_validator.py
 """
 Runtime configuration validation for ensuring consistency during novel generation.
 

@@ -147,6 +147,7 @@ class SagaSettings(BaseSettings):
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
     # Generation Parameters
+    # Token budgets (defaults are generous; override via FAST_PROFILE for laptops)
     MAX_CONTEXT_TOKENS: int = 40960
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 3
@@ -298,6 +299,17 @@ class SagaSettings(BaseSettings):
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
+        # Optional FAST profile for consumer laptops: lower budgets to avoid timeouts.
+        # Activate with FAST_PROFILE=true (case-insensitive).
+        fast = os.getenv("FAST_PROFILE", "false").lower() in {"1", "true", "yes", "on"}
+        if fast:
+            object.__setattr__(self, "MAX_CONTEXT_TOKENS", min(self.MAX_CONTEXT_TOKENS, 8192))
+            object.__setattr__(self, "MAX_GENERATION_TOKENS", min(self.MAX_GENERATION_TOKENS, 2048))
+            object.__setattr__(self, "MIN_ACCEPTABLE_DRAFT_LENGTH", min(self.MIN_ACCEPTABLE_DRAFT_LENGTH, 3500))
+            # Slightly reduce planning and patch windows to match
+            object.__setattr__(self, "MAX_PLANNING_TOKENS", min(getattr(self, "MAX_PLANNING_TOKENS", 16384), 8192))
+            object.__setattr__(self, "MAX_KG_TRIPLE_TOKENS", min(getattr(self, "MAX_KG_TRIPLE_TOKENS", 8192), 4096))
+            object.__setattr__(self, "MAX_PREPOP_KG_TOKENS", min(getattr(self, "MAX_PREPOP_KG_TOKENS", 16384), 8192))
         return self
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env")
