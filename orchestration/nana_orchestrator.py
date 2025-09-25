@@ -507,7 +507,7 @@ class NANA_Orchestrator:
             step=f"Ch {novel_chapter_number} - Evaluation Cycle {attempt}"
         )
 
-        revision_result = None
+        revision_result: tuple[bool, list[str]] | None = None
         if (
             config.ENABLE_COMPREHENSIVE_EVALUATION
             or config.ENABLE_WORLD_CONTINUITY_CHECK
@@ -518,11 +518,12 @@ class NANA_Orchestrator:
                 "chapter_number": novel_chapter_number,
                 "previous_chapters_context": hybrid_context_for_draft,
             }
-            revision_result, _ = await self.revision_agent.validate_revision(
+            is_valid, issues = await self.revision_agent.validate_revision(
                 current_text,
                 "",  # Previous chapter text (not available in this context)
                 world_state,
             )
+            revision_result = (is_valid, issues)
 
         # Create evaluation result object from revision result
         eval_result_obj = {
