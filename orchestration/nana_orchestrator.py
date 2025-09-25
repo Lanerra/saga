@@ -30,6 +30,9 @@ from data_access.world_queries import (
     get_world_building,
 )
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
+from initialization.bootstrappers.plot_bootstrapper import bootstrap_plot_outline
+from initialization.bootstrap_validator import validate_bootstrap_results
+from initialization.data_loader import convert_model_to_objects, load_user_supplied_model
 from models import (
     CharacterProfile,
     EvaluationResult,
@@ -70,6 +73,7 @@ class NANA_Orchestrator:
         self.plot_outline: dict[str, Any] = {}
         self.chapter_count: int = 0
         self.novel_props_cache: dict[str, Any] = {}
+        self._user_story_prime_attempted: bool = False
 
         self.display = RichDisplayManager()
         self.run_start_time: float = 0.0
@@ -187,6 +191,104 @@ class NANA_Orchestrator:
         # Validate runtime configuration against bootstrap content
         if getattr(config, "ENABLE_RUNTIME_CONFIG_VALIDATION", True):
             await self._validate_runtime_configuration()
+
+    async def _prime_from_user_story_elements(self) -> None:
+        """Load user story file early and persist content if the KG is empty."""
+        if self._user_story_prime_attempted:
+            return
+
+        self._user_story_prime_attempted = True
+
+        model = load_user_supplied_model()
+        if model is None:
+            return
+
+        plot_outline, character_profiles, world_building = convert_model_to_objects(
+            model
+        )
+        plot_outline.setdefault("source", "user_story_elements")
+        world_building.setdefault("source", "user_story_elements")
+
+        validation = await validate_bootstrap_results(
+            plot_outline,
+            character_profiles,
+            world_building,
+        )
+        if not validation.is_valid:
+            logger.warning(
+                "User story elements validation failed; falling back to bootstrap pipeline. Warnings: %s",
+                validation.warnings,
+            )
+            return
+
+        try:
+            await plot_queries.ensure_novel_info()
+            existing_outline = await plot_queries.get_plot_outline_from_db()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.error(
+                "Unable to inspect existing plot outline before priming from user story.",
+                error=str(exc),
+                exc_info=True,
+            )
+            existing_outline = {}
+
+        existing_concrete_points: list[str] = []
+        if isinstance(existing_outline, dict):
+            raw_points = existing_outline.get("plot_points", [])
+            if isinstance(raw_points, list):
+                existing_concrete_points = [
+                    point
+                    for point in raw_points
+                    if isinstance(point, str) and point.strip() and not utils._is_fill_in(point)
+                ]
+
+        if existing_concrete_points:
+            logger.info(
+                "Existing plot outline detected in Neo4j; skipping user story priming (plot points: %d).",
+                len(existing_concrete_points),
+            )
+            self.plot_outline = existing_outline
+            self._update_novel_props_cache()
+            return
+
+        concrete_points = [
+            point
+            for point in plot_outline.get("plot_points", [])
+            if isinstance(point, str) and point.strip() and not utils._is_fill_in(point)
+        ]
+        if len(concrete_points) < config.TARGET_PLOT_POINTS_INITIAL_GENERATION:
+            deficit = config.TARGET_PLOT_POINTS_INITIAL_GENERATION - len(concrete_points)
+            logger.info(
+                "Generating %d supplemental plot point(s) from user story context.",
+                deficit,
+            )
+            plot_outline, _ = await bootstrap_plot_outline(
+                plot_outline,
+                character_profiles,
+                world_building,
+            )
+
+        logger.info(
+            "Priming knowledge graph from user story elements; bootstrap pipeline will be skipped. Title: '%s'; Protagonist: '%s'; Plot points: %d",
+            plot_outline.get("title"),
+            plot_outline.get("protagonist_name"),
+            len(plot_outline.get("plot_points", [])),
+        )
+
+        await plot_queries.save_plot_outline_to_db(plot_outline)
+        await self.knowledge_agent.persist_world(
+            world_building,
+            config.KG_PREPOPULATION_CHAPTER_NUM,
+            full_sync=True,
+        )
+        await self.knowledge_agent.persist_profiles(
+            character_profiles,
+            config.KG_PREPOPULATION_CHAPTER_NUM,
+            full_sync=True,
+        )
+
+        self.plot_outline = plot_outline
+        self._update_novel_props_cache()
 
     async def perform_initial_setup(self):
         self._update_rich_display(step="Performing Initial Setup")
@@ -1150,6 +1252,8 @@ class NANA_Orchestrator:
 
             await self.knowledge_agent.load_schema_from_db()
             logger.info("SAGA: KG schema loaded into knowledge agent.")
+
+            await self._prime_from_user_story_elements()
 
             await self.async_init_orchestrator()
 

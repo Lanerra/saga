@@ -14,6 +14,53 @@ from .error_handling import ErrorSeverity, handle_bootstrap_error
 logger = structlog.get_logger(__name__)
 
 
+def _apply_user_story_config_overrides(model: UserStoryInputModel) -> None:
+    """Update runtime config to align critical fields with user-supplied story."""
+
+    overrides: dict[str, str] = {}
+
+    concept = model.novel_concept
+    if concept:
+        if concept.genre:
+            overrides["CONFIGURED_GENRE"] = concept.genre
+        if concept.theme:
+            overrides["CONFIGURED_THEME"] = concept.theme
+
+    # Prefer explicit protagonist field, fall back to grouped characters
+    protagonist = model.protagonist
+    if not protagonist and model.characters:
+        protagonist = model.characters.protagonist
+    if protagonist and protagonist.name:
+        overrides["DEFAULT_PROTAGONIST_NAME"] = protagonist.name
+
+    setting_description: str | None = None
+    if model.setting and model.setting.primary_setting_overview:
+        setting_description = model.setting.primary_setting_overview
+    if concept and concept.setting:
+        setting_description = concept.setting
+
+    if setting_description:
+        overrides["CONFIGURED_SETTING_DESCRIPTION"] = setting_description
+
+        # Keep concept/setting models consistent with override so downstream validation passes
+        if concept and concept.setting != setting_description:
+            concept.setting = setting_description
+        if model.setting and model.setting.primary_setting_overview != setting_description:
+            model.setting.primary_setting_overview = setting_description
+
+    if not overrides:
+        return
+
+    for key, value in overrides.items():
+        config.set(key, value)
+        setattr(config, key, value)
+
+    logger.info(
+        "Applied user story overrides to runtime configuration.",
+        overrides=overrides,
+    )
+
+
 def load_user_supplied_model() -> UserStoryInputModel | None:
     """Load user story YAML into a validated model."""
     data = load_yaml_file(config.USER_STORY_ELEMENTS_FILE_PATH)
@@ -21,7 +68,14 @@ def load_user_supplied_model() -> UserStoryInputModel | None:
         return None
 
     try:
-        return UserStoryInputModel(**data)
+        model = UserStoryInputModel(**data)
+        _apply_user_story_config_overrides(model)
+        logger.info(
+            "Loaded user story elements from file.",
+            file_path=config.USER_STORY_ELEMENTS_FILE_PATH,
+            novel_title=model.novel_concept.title if model.novel_concept else None,
+        )
+        return model
     except ValidationError as exc:
         # Pydantic validation errors - these are expected and should be handled gracefully
         handle_bootstrap_error(

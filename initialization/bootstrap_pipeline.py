@@ -15,6 +15,7 @@ import structlog
 import config
 from agents.knowledge_agent import KnowledgeAgent
 from data_access import plot_queries
+import utils
 from initialization.bootstrap_validator import (
     BootstrapValidationResult,
     create_bootstrap_validation_report,
@@ -47,6 +48,46 @@ logger = structlog.get_logger(__name__)
 
 BootstrapPhase = Literal["world", "characters", "plot", "all"]
 BootstrapLevel = Literal["basic", "enhanced", "max"]
+
+
+def _has_required_user_story_data(
+    plot_outline: dict[str, Any],
+    character_profiles: dict[str, CharacterProfile],
+    world_building: dict[str, dict[str, WorldItem]],
+) -> bool:
+    """Basic gate to decide if user-supplied story can bypass bootstrap."""
+
+    title = plot_outline.get("title")
+    if not title or utils._is_fill_in(title):
+        return False
+
+    plot_points = plot_outline.get("plot_points", [])
+    has_concrete_plot_point = any(
+        isinstance(point, str) and not utils._is_fill_in(point) and point.strip()
+        for point in plot_points
+    )
+    if not has_concrete_plot_point:
+        return False
+
+    protagonist_name = plot_outline.get("protagonist_name")
+    has_protagonist = False
+    for profile in character_profiles.values():
+        if not isinstance(profile, CharacterProfile):
+            continue
+        if profile.updates.get("role") == "protagonist" or (
+            protagonist_name and profile.name == protagonist_name
+        ):
+            has_protagonist = True
+            break
+    if not has_protagonist:
+        return False
+
+    has_world_category = any(
+        isinstance(items, dict) and items
+        for category, items in world_building.items()
+        if category not in {"source", "is_default"}
+    )
+    return has_world_category
 
 
 def _apply_level_overrides(level: BootstrapLevel) -> None:
@@ -292,6 +333,51 @@ async def run_bootstrap_pipeline(
     if model:
         plot_outline, character_profiles, world_building = convert_model_to_objects(
             model
+        )
+        plot_outline.setdefault("source", "user_story_elements")
+        world_building.setdefault("source", "user_story_elements")
+
+        initial_validation = await validate_bootstrap_results(
+            plot_outline,
+            character_profiles,
+            world_building,
+        )
+        warnings.extend([w for w in initial_validation.warnings if w not in warnings])
+
+        if (
+            phase == "all"
+            and initial_validation.is_valid
+            and _has_required_user_story_data(
+                plot_outline, character_profiles, world_building
+            )
+        ):
+            logger.info(
+                "User story elements file supplies complete bootstrap data; skipping generation phases.",
+                title=plot_outline.get("title"),
+                protagonist=plot_outline.get("protagonist_name"),
+                plot_point_count=len(plot_outline.get("plot_points", [])),
+            )
+            if not dry_run and getattr(config, "BOOTSTRAP_PUSH_TO_KG_EACH_PHASE", True):
+                kg = KnowledgeAgent()
+                await plot_queries.save_plot_outline_to_db(plot_outline)
+                await kg.persist_world(
+                    world_building,
+                    config.KG_PREPOPULATION_CHAPTER_NUM,
+                    full_sync=True,
+                )
+                await kg.persist_profiles(
+                    character_profiles,
+                    config.KG_PREPOPULATION_CHAPTER_NUM,
+                    full_sync=True,
+                )
+                if kg_heal and getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True):
+                    await kg.heal_and_enrich_kg()
+            return plot_outline, character_profiles, world_building, warnings
+
+        logger.info(
+            "User story elements detected but additional bootstrapping required.",
+            validation_passed=initial_validation.is_valid,
+            warning_count=len(initial_validation.warnings),
         )
     else:
         plot_outline = create_default_plot(config.DEFAULT_PROTAGONIST_NAME)
