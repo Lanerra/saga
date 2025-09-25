@@ -1,4 +1,5 @@
 # agents/revision_agent.py
+import re
 from typing import Any
 
 import structlog
@@ -10,7 +11,7 @@ from data_access import chapter_queries, world_queries
 
 # Import native versions for performance optimization
 from data_access.character_queries import get_character_profiles
-from models import ProblemDetail
+from models import PatchInstruction, ProblemDetail
 from processing.problem_parser import parse_problem_list
 from prompts.prompt_data_getters import (
     get_filtered_character_profiles_for_prompt_plain_text,
@@ -100,6 +101,68 @@ class RevisionAgent:
         )
 
         return not needs_revision, issue_descriptions
+
+    async def validate_patch(
+        self,
+        context_snippet: str,
+        patch_instruction: PatchInstruction,
+        problems: list[ProblemDetail],
+    ) -> tuple[bool, dict[str, int] | None]:
+        """Validate a generated patch using the LLM-driven scoring prompt."""
+
+        if not patch_instruction:
+            logger.warning("Patch validation skipped: missing patch instruction.")
+            return False, None
+
+        patch_text = (patch_instruction.get("replace_with") or "").strip()
+        if not patch_text:
+            logger.warning(
+                "Patch validation rejected: replacement text is empty.",
+                issue_category=patch_instruction.get("reason_for_change"),
+            )
+            return False, None
+
+        formatted_issues = self._format_patch_issues(problems)
+        prompt = render_prompt(
+            "revision_agent/validate_patch.j2",
+            {
+                "context_snippet": context_snippet,
+                "patch_text": self._compose_patch_text_for_prompt(patch_instruction),
+                "issues_list": formatted_issues,
+            },
+        )
+
+        try:
+            response_text, usage_data = await llm_service.async_call_llm(
+                model_name=self.model_name,
+                prompt=prompt,
+                temperature=0.0,
+                allow_fallback=True,
+                stream_to_disk=False,
+                auto_clean_response=True,
+                system_prompt=get_system_prompt("revision_agent"),
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.error("Patch validation call failed", error=str(exc))
+            return False, None
+
+        score = self._extract_patch_validation_score(response_text)
+        if score is None:
+            logger.warning(
+                "Patch validation response did not contain a numeric score.",
+                response_preview=response_text[:200],
+            )
+            return False, usage_data
+
+        threshold = getattr(self.config, "PATCH_VALIDATION_THRESHOLD", 70)
+        is_valid = score >= threshold
+        logger.info(
+            "Patch validation completed.",
+            score=score,
+            threshold=threshold,
+            accepted=is_valid,
+        )
+        return is_valid, usage_data
 
     async def _check_continuity(
         self, chapter_text: str, world_state: dict
@@ -345,6 +408,48 @@ class RevisionAgent:
 
         logger.info("Patch validation placeholder - always returning True for now")
         return True
+
+    @staticmethod
+    def _compose_patch_text_for_prompt(patch_instruction: PatchInstruction) -> str:
+        """Combine replacement text with metadata for the validation prompt."""
+
+        replace_with = patch_instruction.get("replace_with", "").strip()
+        reason = (patch_instruction.get("reason_for_change") or "").strip()
+        if reason:
+            return f"{replace_with}\n\nReason provided: {reason}"
+        return replace_with
+
+    @staticmethod
+    def _format_patch_issues(problems: list[ProblemDetail]) -> str:
+        """Format identified problems into a bullet list for LLM validation."""
+
+        if not problems:
+            return "- Issue description unavailable."
+
+        issue_lines: list[str] = []
+        for problem in problems:
+            category = problem.get("issue_category") or "unspecified"
+            description = problem.get("problem_description") or "Unspecified problem."
+            focus = (problem.get("suggested_fix_focus") or "").strip()
+
+            line = f"- [{category}] {description}"
+            if focus:
+                line += f" (Focus: {focus})"
+            issue_lines.append(line)
+        return "\n".join(issue_lines)
+
+    @staticmethod
+    def _extract_patch_validation_score(response_text: str) -> int | None:
+        """Return the first score (0-100) found in the LLM response, if any."""
+
+        match = re.search(r"(\d{1,3})", response_text)
+        if not match:
+            return None
+        try:
+            score = int(match.group(1))
+        except ValueError:
+            return None
+        return max(0, min(score, 100))
 
     async def _parse_llm_continuity_output(
         self, json_text: str, chapter_number: int, original_draft_text: str

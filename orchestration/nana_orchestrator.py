@@ -587,7 +587,7 @@ class NANA_Orchestrator:
                 world_dict[item.category] = {}
             world_dict[item.category][item.name] = item
 
-        revision_tuple_result, _ = await revise_chapter_draft_logic(
+        revision_tuple_result, revision_usage_data = await revise_chapter_draft_logic(
             self.plot_outline,
             characters_dict,
             world_dict,
@@ -607,12 +607,12 @@ class NANA_Orchestrator:
         ):
             new_text, rev_raw_output, new_spans = revision_tuple_result
             patched_spans = new_spans
-            return new_text, rev_raw_output, patched_spans
+            return new_text, rev_raw_output, patched_spans, revision_usage_data
 
         logger.error(
             f"SAGA: Ch {novel_chapter_number} - Revision attempt {attempt} failed to produce usable text."
         )
-        return current_text, None, patched_spans
+        return current_text, None, patched_spans, revision_usage_data
 
     async def _prepare_chapter_prerequisites(
         self, novel_chapter_number: int
