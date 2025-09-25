@@ -1,49 +1,123 @@
 # SAGA Story Elements File (YAML Example)
-# Illustrates both basic and detailed fields.
+# Provide as many sections as you can; missing sections fall back to automatic bootstrap.
 
 novel_concept:
-  title: "Forward Frontier"
-  genre: "hard sci-fi"
-  setting: "a frontier town on the edge of unexplored alien wilderness"
-  logline: "When strange phenomena begin threatening the remote colony of Haven's Edge, xenogeologist Jules Vidant must venture into the alien wilderness to uncover the truth—even if it challenges everything humanity believes about the universe."
-  theme: "the limits of human knowledge"
+  title: "The Clockwork Garden"
+  genre: "gaslamp fantasy"
+  setting: "Verdalia, a living city powered by botanical machines"
+  theme: "balancing organic growth with rigid control"
+
+protagonist:
+  name: "Maris Thorne"
+  description: "A gifted horticultural engineer who coaxes sentient vines to weave machinery that breathes and blooms."
+  traits:
+    - "empathetic"
+    - "meticulous"
+    - "stubborn"
+  motivation: "Restore Verdalia's failing heart-engine before the governor cements martial rule."
+  role: "chief cultivator"
+  relationships:
+    mentor:
+      name: "Professor Elowen"
+      status: "estranged"
+      details: "Former collaborator who vanished after warning Maris that Verdalia's roots were poisoned."
+    sibling:
+      name: "Kerr Thorne"
+      status: "missing"
+      details: "Last seen scouting the undercity for rebellious Rootbound enclaves."
+
+antagonist:
+  name: "Governor Halbrecht"
+  description: "A charismatic autocrat whose clockwork prosthetics never still; he believes order is the only way to preserve Verdalia."
+  traits:
+    - "calculating"
+    - "relentless"
+  motivation: "Replace Verdalia's organic systems with controllable gearwork and silence anyone who resists."
+  role: "antagonist"
+  relationships:
+    enforcer:
+      name: "Captain Brann"
+      status: "loyal"
+      details: "Commands the Steel Bloom guard tasked with watching Maris."
 
 characters:
-  protagonist:
-    name: "Jules Vidant"
-    description: "A 32-year-old xenogeologist with calloused hands and sharp eyes, Jules came to Haven's Edge to study the planet's unique mineral formations. Practical and methodical, they prefer hard data to speculation, but recent discoveries have begun to shake their scientific worldview."
-    traits:
-      - "clever"
-      - "resourceful"
-    motivation: "To understand the alien phenomena threatening the colony while grappling with discoveries that challenge the foundations of human scientific understanding."
-  antagonist:
-    name: "Commander Voss"
-    description: "The colony's military administrator, a decorated veteran with a rigid adherence to protocol and a deep mistrust of anything that can't be controlled or categorized. Voss sees the alien wilderness as a threat to be contained, not understood."
-    traits:
-      - "intimidating"
-      - "crafty"
-    motivation: "To maintain order and security in the colony by suppressing dangerous knowledge and preventing Jules from making discoveries that could destabilize human presence on the planet."
   supporting_characters:
-    - name: "Dr. Larkin"
-      description: "An elderly xenobiologist and Jules's former professor, now the colony's chief science officer. Brilliant but increasingly frail, Larkin harbors secrets about the planet's true nature and serves as both guide and cautionary tale about the price of forbidden knowledge."
-      role: "mentor"
-
-setting:
-  primary_setting_overview: "a frontier town on the edge of unexplored alien wilderness"
-  key_locations:
-    - name: "Haven's Edge Research Station"
-      description: "A cluster of prefabricated structures housing 200 colonists, surrounded by defensive barriers and sensor arrays. The station's sterile corridors and humming machinery stand in stark contrast to the organic mysteries beyond its walls."
-      atmosphere: "Tense and claustrophobic, with an undercurrent of barely contained anxiety about what lies beyond the perimeter."
+    - name: "Ilya Windrow"
+      description: "A skyship pilot who ferries forbidden seedlings above the city patrols."
+      traits:
+        - "daring"
+        - "improvisational"
+      role: "confidant"
+    - name: "Doctor Ren Vale"
+      description: "A pragmatic surgeon experimenting with grafting plant matter to heal clockwork injuries."
+      traits:
+        - "pragmatic"
+        - "secretive"
+      motivation: "Prove hybrid medicine can save Verdalia's citizens before the governor outlaws it."
+      role: "inventor"
 
 plot_elements:
-  inciting_incident: ""
+  inciting_incident: "The heart-engine's central bloom withers overnight, triggering rolling blackouts and panic."
   plot_points:
-    - ""
-  central_conflict: ""
-  stakes: ""
+    - "Maris discovers sabotage sigils etched into the heart-engine's roots."
+    - "Ilya smuggles Maris into the undercity to seek the Rootbound Collective's help."
+    - "Governor Halbrecht stages a public execution to force cooperation, revealing Kerr alive but indoctrinated."
+  central_conflict: "Verdalia must choose between the governor's regimented clockwork future and Maris's fragile, living restoration."
+  stakes: "If the heart-engine dies, Verdalia's animate infrastructure collapses; if the governor succeeds, the city's sentient flora will be culled forever."
+
+setting:
+  primary_setting_overview: "Verdalia thrives on symbiotic networks of vines and gears that power homes, transit, and skyship docks."
+  key_locations:
+    - name: "The Heartward Conservatory"
+      description: "A cathedral of glass and brass where the heart-engine's petals unfurl to illuminate the city."
+      atmosphere: "Reverent hush broken by the drip of sap and the tick of maintenance automata."
+    - name: "Rootbound Undercroft"
+      description: "A subterranean haven where renegade botanists cultivate wild strains banned by the regime."
+      atmosphere: "Dense humidity, bioluminescent moss, and whispers of rebellion."
+
+world_details:
+  factions:
+    Verdalian Council:
+      description: "Scholars and cultivators who once governed Verdalia democratically but now advise Halbrecht in name only."
+      goals:
+        - "Restore civilian oversight of the heart-engine."
+        - "Preserve botanical knowledge the governor suppresses."
+    Rootbound Collective:
+      description: "Decentralized cells of gardeners and engineers seeking to decentralize Verdalia's life-support systems."
+      traits:
+        - "covert"
+        - "communal"
+      rules:
+        - "Never let a root grow unchecked into tyranny."
+  technology:
+    Aether Looms:
+      description: "Biomechanical frames that weave vine-fiber into responsive armor."
+      key_elements:
+        - "Requires a living operator bonded to the loom."
+        - "Overuse drains the operator's vitality."
+    Resonance Keys:
+      description: "Seed-shaped devices that retune Verdalia's infrastructure to specific frequencies."
+      rules:
+        - "Only function when buried in living soil."
+      additional_notes: "Halbrecht hoards the master key in his private vault."
+
+other_key_characters:
+  archivist:
+    name: "Lyra Quell"
+    description: "Keeper of Verdalia's living memory archive who can coax stories from preserved petals."
+    traits:
+      - "observant"
+      - "cautious"
+    role: "historian"
+  double_agent:
+    name: "Captain Brann"
+    description: "Halbrecht's enforcer wrestling with loyalties split between duty and Verdalia's survival."
+    traits:
+      - "conflicted"
+      - "disciplined"
+    motivation: "Find a path where Verdalia endures without betraying his oath."
 
 style_and_tone:
-  narrative_style: "First-person (Jules's perspective)"
-  tone: "Contemplative and mounting dread, with moments of wonder at alien beauty balanced by growing unease about humanity's place in a universe far stranger than imagined."
-  pacing: "Generally fast-paced during action"
- 
+  narrative_style: "Third-person limited following Maris"
+  tone: "Hopeful tension that blends lush wonder with the encroaching grind of authoritarian rule."
+  pacing: "Deliberate investigation punctuated by sudden bursts of action and discovery."

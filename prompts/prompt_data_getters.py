@@ -19,13 +19,49 @@ from models import CharacterProfile, SceneDetail, WorldItem
 logger = logging.getLogger(__name__)
 
 # Context cache for expensive operations within a single chapter generation
-_context_cache = {}
+_context_cache: dict[str, Any] = {}
+# Track which chapter the current cache contents belong to so we can
+# automatically clear the cache once the pipeline advances to a new chapter.
+_current_cache_chapter: int | None = None
 
 
 def clear_context_cache() -> None:
     """Clear the context cache. Should be called at the start of each chapter generation."""
     global _context_cache
+    global _current_cache_chapter
     _context_cache.clear()
+    _current_cache_chapter = None
+
+
+def _ensure_cache_is_scoped_to_chapter(chapter_number: int | None) -> None:
+    """Ensure cache entries never bleed across chapter boundaries."""
+    global _current_cache_chapter
+    if chapter_number is None:
+        return
+    if _current_cache_chapter == chapter_number:
+        return
+    # Moving to a new chapter (or first call) – drop any cached state first.
+    clear_context_cache()
+    _current_cache_chapter = chapter_number
+
+
+def _deterministic_character_order(
+    characters: set[str], protagonist_name: str | None
+) -> list[str]:
+    """Return a reproducible ordering for character-focused facts."""
+
+    protagonist_norm = (
+        utils._normalize_for_id(protagonist_name)
+        if protagonist_name and isinstance(protagonist_name, str)
+        else None
+    )
+
+    def _sort_key(name: str) -> tuple[int, str]:
+        normalized = utils._normalize_for_id(name)
+        is_protagonist = 0 if normalized == protagonist_norm else 1
+        return (is_protagonist, normalized)
+
+    return sorted(characters, key=_sort_key)
 
 
 async def _cached_character_info(
@@ -429,6 +465,8 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     4. Collecting character-specific facts (status, location, relationships)
     5. Assembling the results into a formatted prompt snippet
     """
+    _ensure_cache_is_scoped_to_chapter(chapter_number)
+
     if chapter_number <= 0:
         return "No KG facts applicable for pre-first chapter."
 
@@ -463,6 +501,7 @@ async def get_reliable_kg_facts_for_drafting_prompt(
         facts_for_prompt_list,
         max_facts_per_char,
         max_total_facts,
+        protagonist_name,
     )
 
     # Step 5: Assemble final result
@@ -487,6 +526,7 @@ async def get_character_state_snippet_for_prompt(
     Native version that works directly with list[CharacterProfile].
     Creates a concise plain text string of key character states for prompts.
     """
+    _ensure_cache_is_scoped_to_chapter(current_chapter_num_for_filtering)
     text_output_lines_list: list[str] = []
     char_names_to_process: list[str] = []
 
@@ -708,9 +748,12 @@ async def _gather_character_facts(
     facts_list: list[str],
     max_facts_per_char: int,
     max_total_facts: int,
+    protagonist_name: str | None,
 ) -> None:
     """Gather character-specific facts (status, location, relationships) in parallel."""
-    character_names_list = list(characters_of_interest)[:3]
+    character_names_list = _deterministic_character_order(
+        characters_of_interest, protagonist_name
+    )[:3]
     if not character_names_list:
         return
 
@@ -818,6 +861,7 @@ async def get_world_state_snippet_for_prompt(
     Native version that works directly with list[WorldItem].
     Creates a concise plain text string of key world states for prompts.
     """
+    _ensure_cache_is_scoped_to_chapter(current_chapter_num_for_filtering)
     text_output_lines_list: list[str] = []
 
     # Group world items by category
