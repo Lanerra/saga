@@ -17,7 +17,17 @@ def test_constraint_example_valid():
         if not constraints:
             continue
         rel, detail = next(iter(constraints.items()))
-        subj = next(iter(detail["valid_subject_types"]))
-        obj = next(iter(detail["valid_object_types"]))
+        # Choose the first subject/object types that are valid node labels in the current schema.
+        subj_candidates = [
+            t for t in detail["valid_subject_types"] if t in rc.NODE_LABELS
+        ]
+        obj_candidates = [
+            t for t in detail["valid_object_types"] if t in rc.NODE_LABELS
+        ]
+        if not subj_candidates or not obj_candidates:
+            # Skip categories whose examples rely on legacy/disabled labels
+            continue
+        subj = subj_candidates[0]
+        obj = obj_candidates[0]
         is_valid, errors = rc.validate_relationship_semantics(subj, rel, obj)
         assert is_valid, f"{name}:{rel} invalid for {subj}->{obj}: {errors}"

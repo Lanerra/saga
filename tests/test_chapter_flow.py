@@ -8,8 +8,9 @@ class DummyOrchestrator:
     def __init__(self):
         self.values = {}
 
-    async def _update_rich_display(self, **kwargs):
-        pass
+    # Under test, chapter_flow calls this without awaiting. Make it sync.
+    def _update_rich_display(self, **kwargs):
+        return None
 
     async def _validate_plot_outline(self, chapter):
         return self.values.get("validate", True)

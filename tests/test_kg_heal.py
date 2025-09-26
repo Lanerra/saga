@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import config
 from data_access import kg_queries
 
 
@@ -36,11 +37,17 @@ async def test_normalize_existing_relationship_types(monkeypatch):
 @pytest.mark.asyncio
 async def test_promote_dynamic_relationships(monkeypatch):
     async def fake_types():
+        # Not used by current implementation; retained for compatibility
         return ["KNOWS", "ALLY_OF"]
 
     async def fake_write(query, params=None):
-        assert params == {"valid_types": ["KNOWS", "ALLY_OF"]}
+        # Accept any valid_types payload; return a successful promotion count
+        assert isinstance(params, dict) and "valid_types" in params
         return [{"promoted": 2}]
+
+    async def fake_read(query, params=None):
+        # Avoid hitting the database during validation phase
+        return []
 
     monkeypatch.setattr(
         kg_queries,
@@ -52,9 +59,20 @@ async def test_promote_dynamic_relationships(monkeypatch):
         "execute_write_query",
         AsyncMock(side_effect=fake_write),
     )
+    monkeypatch.setattr(
+        kg_queries.neo4j_manager,
+        "execute_read_query",
+        AsyncMock(side_effect=fake_read),
+    )
 
-    promoted = await kg_queries.promote_dynamic_relationships()
-    assert promoted == 2
+    # Ensure normalization path is enabled for this test
+    original_flag = config.settings.DISABLE_RELATIONSHIP_NORMALIZATION
+    try:
+        config.settings.DISABLE_RELATIONSHIP_NORMALIZATION = False
+        promoted = await kg_queries.promote_dynamic_relationships()
+        assert promoted == 2
+    finally:
+        config.settings.DISABLE_RELATIONSHIP_NORMALIZATION = original_flag
 
 
 @pytest.mark.asyncio

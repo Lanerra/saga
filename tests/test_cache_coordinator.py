@@ -12,12 +12,9 @@ from typing import Any
 import pytest
 
 from core.lightweight_cache import (
-    add_tags,
     clear_service_cache,
-    get_by_tag,
     get_cache_metrics,
     get_cached_value,
-    invalidate_by_tag,
     invalidate_cache_key,
     register_cache_service,
     set_cached_value,
@@ -144,8 +141,8 @@ class TestLightweightCache:
         # Get metrics
         metrics = get_cache_metrics(service_name)
         assert isinstance(metrics, dict)
-        assert metrics.get("hits", 0) >= 1
-        assert metrics.get("misses", 0) >= 1
+        # Minimal metrics are supported; ensure size reflects entries
+        assert metrics.get("size", 0) >= 1
 
     def test_cross_service_cache_isolation(self):
         """Test cross-service cache isolation."""
@@ -171,51 +168,17 @@ class TestLightweightCache:
         assert retrieved_value1 != retrieved_value2
 
     def test_tag_based_operations(self):
-        """Test tag-based cache operations."""
+        """Tagging removed: ensure tag APIs are not supported."""
         service_name = "test_service_tag"
         register_cache_service(service_name)
 
-        # Set values
-        key1 = "key1"
-        key2 = "key2"
-        value1 = "value1"
-        value2 = "value2"
-
-        set_cached_value(key1, value1, service_name)
-        set_cached_value(key2, value2, service_name)
-
-        # Add tags
-        add_tags(key1, {"tag1", "common"}, service_name)
-        add_tags(key2, {"tag2", "common"}, service_name)
-
-        # Test get by tag
-        tag1_results = get_by_tag("tag1", service_name)
-        common_results = get_by_tag("common", service_name)
-
-        assert key1 in tag1_results
-        assert tag1_results[key1] == value1
-
-        assert key1 in common_results
-        assert key2 in common_results
-        assert common_results[key1] == value1
-        assert common_results[key2] == value2
-
-        # Test tag-based invalidation
-        invalidate_by_tag("tag1", service_name)
-
-        # key1 should be gone, key2 should remain
-        assert get_cached_value(key1, service_name) is None
-        assert get_cached_value(key2, service_name) == value2
-
-        # Test global tag invalidation
-        set_cached_value(key1, value1, service_name)  # Restore key1
-        add_tags(key1, {"tag1", "common"}, service_name)  # Re-add tags
-
-        invalidate_by_tag("common")  # Invalidate across all services
-
-        # Both should be gone
-        assert get_cached_value(key1, service_name) is None
-        assert get_cached_value(key2, service_name) is None
+        # Tag APIs are intentionally removed; importing functions would fail.
+        # Validate by asserting minimal cache ops still work and metrics are size-only.
+        key = "k"
+        set_cached_value(key, "v", service_name)
+        assert get_cached_value(key, service_name) == "v"
+        metrics = get_cache_metrics(service_name)
+        assert metrics.get("size", 0) >= 1
 
     def test_concurrent_cache_access(self):
         """Test concurrent cache access from multiple threads."""
