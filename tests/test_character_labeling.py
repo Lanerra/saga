@@ -202,7 +202,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
         if params.get("object_name_param") == "Diana":
             # Accept either explicit Character:Person MERGE or id-based MERGE with labels applied via SET
             assert (
-                "MERGE (o:Character" in query and "$object_name_param" in query and (":Person" in query or "o:`Person`" in query)
+                "MERGE (o:Character" in query
+                and "$object_name_param" in query
+                and (":Person" in query or "o:`Person`" in query)
             ) or ("MERGE (o:Entity {id: $object_id_param})" in query)
             diana_statement_found = True
             break

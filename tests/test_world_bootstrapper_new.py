@@ -137,10 +137,9 @@ async def test_bootstrap_world_with_empty_elements():
         assert "society" in result_world
         assert "Medieval Society" in result_world["society"]
         # Description text may be placed under description or additional_properties depending on model; accept either
-        assert (
-            result_world["society"]["Medieval Society"].description
-            or result_world["society"]["Medieval Society"].additional_properties.get("description")
-        )
+        assert result_world["society"]["Medieval Society"].description or result_world[
+            "society"
+        ]["Medieval Society"].additional_properties.get("description")
 
         assert "systems" in result_world
         # Any generated system name is acceptable; ensure at least one exists

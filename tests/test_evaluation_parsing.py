@@ -1,8 +1,9 @@
 # tests/test_evaluation_parsing.py
 import pytest
+
 import config
-from processing.problem_parser import parse_problem_list
 from agents.revision_agent import RevisionAgent
+from processing.problem_parser import parse_problem_list
 
 
 def test_problem_parser_valid_list():

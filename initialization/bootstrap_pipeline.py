@@ -13,9 +13,9 @@ from typing import Any, Literal
 import structlog
 
 import config
+import utils
 from agents.knowledge_agent import KnowledgeAgent
 from data_access import plot_queries
-import utils
 from initialization.bootstrap_validator import (
     BootstrapValidationResult,
     create_bootstrap_validation_report,

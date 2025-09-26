@@ -52,7 +52,9 @@ async def get_context_snippet_for_patch(
         if idx != -1:
             left = max_chars // 2
             start = max(0, idx - left)
-            end = min(len(original_text), idx + len(quote) + (max_chars - (idx - start)))
+            end = min(
+                len(original_text), idx + len(quote) + (max_chars - (idx - start))
+            )
             snippet = original_text[start:end]
             return snippet[:max_chars]
     return original_text[:max_chars]

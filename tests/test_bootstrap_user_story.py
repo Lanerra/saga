@@ -1,7 +1,6 @@
 # tests/test_bootstrap_user_story.py
-import yaml
-
 import pytest
+import yaml
 
 import config
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
@@ -53,7 +52,9 @@ async def test_run_bootstrap_pipeline_skips_with_user_story(monkeypatch, tmp_pat
     }
 
     async def fail_world(*_args, **_kwargs):
-        raise AssertionError("bootstrap_world should not run when user story is complete")
+        raise AssertionError(
+            "bootstrap_world should not run when user story is complete"
+        )
 
     async def fail_characters(*_args, **_kwargs):
         raise AssertionError(
@@ -61,7 +62,9 @@ async def test_run_bootstrap_pipeline_skips_with_user_story(monkeypatch, tmp_pat
         )
 
     async def fail_plot(*_args, **_kwargs):
-        raise AssertionError("bootstrap_plot_outline should not run when user story is complete")
+        raise AssertionError(
+            "bootstrap_plot_outline should not run when user story is complete"
+        )
 
     monkeypatch.setattr(
         "initialization.bootstrap_pipeline.bootstrap_world",
@@ -104,9 +107,12 @@ async def test_run_bootstrap_pipeline_skips_with_user_story(monkeypatch, tmp_pat
     )
 
     try:
-        plot_outline, character_profiles, world_building, warnings = (
-            await run_bootstrap_pipeline(kg_heal=False)
-        )
+        (
+            plot_outline,
+            character_profiles,
+            world_building,
+            warnings,
+        ) = await run_bootstrap_pipeline(kg_heal=False)
     finally:
         for key, value in original_overrides.items():
             config.set(key, value)

@@ -83,7 +83,9 @@ class TestRelationshipSemantics:
 
     def test_invalid_emotional_relationships(self):
         """Test invalid emotional relationships from inanimate objects."""
-        is_valid, errors = validate_relationship_semantics("Object", "LOVES", "Character")
+        is_valid, errors = validate_relationship_semantics(
+            "Object", "LOVES", "Character"
+        )
         assert not is_valid
         assert any(
             "Only conscious" in error or "Invalid subject" in error for error in errors
@@ -103,7 +105,9 @@ class TestRelationshipSemantics:
         assert is_valid
         assert len(errors) == 0
 
-        is_valid, errors = validate_relationship_semantics("Object", "LOCATED_AT", "Location")
+        is_valid, errors = validate_relationship_semantics(
+            "Object", "LOCATED_AT", "Location"
+        )
         assert is_valid
         assert len(errors) == 0
 
@@ -124,7 +128,9 @@ class TestRelationshipSemantics:
     def test_ownership_constraints(self):
         """Test ownership relationship constraints."""
         # Valid ownership (use Object semantics)
-        is_valid, errors = validate_relationship_semantics("Character", "OWNS", "Object")
+        is_valid, errors = validate_relationship_semantics(
+            "Character", "OWNS", "Object"
+        )
         assert is_valid
 
         # Invalid: characters can't own other characters (anti-slavery)
@@ -135,7 +141,9 @@ class TestRelationshipSemantics:
         assert any("explicitly forbidden" in error for error in errors)
 
         # Invalid: objects can't own things
-        is_valid, errors = validate_relationship_semantics("Object", "OWNS", "Character")
+        is_valid, errors = validate_relationship_semantics(
+            "Object", "OWNS", "Character"
+        )
         assert not is_valid
 
     def test_social_relationship_constraints(self):
@@ -265,9 +273,15 @@ class TestValidationResult:
     def test_should_accept_relationship_logic(self):
         """Test relationship acceptance logic based on confidence."""
         # Creative writing mode: always accept regardless of confidence or validity
-        assert should_accept_relationship(ValidationResult(True, "LOVES", confidence=0.9))
-        assert should_accept_relationship(ValidationResult(True, "LOVES", confidence=0.2))
-        assert should_accept_relationship(ValidationResult(False, "INVALID", confidence=1.0))
+        assert should_accept_relationship(
+            ValidationResult(True, "LOVES", confidence=0.9)
+        )
+        assert should_accept_relationship(
+            ValidationResult(True, "LOVES", confidence=0.2)
+        )
+        assert should_accept_relationship(
+            ValidationResult(False, "INVALID", confidence=1.0)
+        )
 
 
 class TestRelationshipValidator:
@@ -326,7 +340,10 @@ class TestRelationshipValidator:
             if not result.is_valid:
                 assert len(result.errors) > 0
             else:
-                assert result.validated_relationship in ["RELATES_TO", "ASSOCIATED_WITH"]
+                assert result.validated_relationship in [
+                    "RELATES_TO",
+                    "ASSOCIATED_WITH",
+                ]
                 assert result.confidence < 0.5
         finally:
             config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = original_flag
@@ -595,7 +612,9 @@ class TestConfigurationDrivenValidation:
             # Disable auto-correction
             config.settings.RELATIONSHIP_CONSTRAINT_AUTO_CORRECT = False
             # Enable semantic flattening for this test
-            original_flattening = config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING
+            original_flattening = (
+                config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING
+            )
             config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = False
             validator = RelationshipConstraintValidator()
 
@@ -612,7 +631,9 @@ class TestConfigurationDrivenValidation:
         finally:
             # Restore original config
             config.settings.RELATIONSHIP_CONSTRAINT_AUTO_CORRECT = original_auto_correct
-            config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = original_flattening
+            config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = (
+                original_flattening
+            )
 
     def test_strict_mode_rejection(self):
         """Test that strict mode rejects invalid relationships."""
@@ -622,7 +643,9 @@ class TestConfigurationDrivenValidation:
         try:
             # Enable strict mode
             config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = True
-            original_flattening = config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING
+            original_flattening = (
+                config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING
+            )
             config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = False
             validator = RelationshipConstraintValidator()
 
@@ -635,7 +658,9 @@ class TestConfigurationDrivenValidation:
         finally:
             # Restore original config
             config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = original_strict_mode
-            config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = original_flattening
+            config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = (
+                original_flattening
+            )
 
     def test_permissive_mode_fallbacks(self):
         """Test that permissive mode uses fallbacks."""
@@ -645,7 +670,9 @@ class TestConfigurationDrivenValidation:
         try:
             # Disable strict mode (permissive)
             config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = False
-            original_flattening = config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING
+            original_flattening = (
+                config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING
+            )
             config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = False
             validator = RelationshipConstraintValidator()
 
@@ -660,7 +687,9 @@ class TestConfigurationDrivenValidation:
         finally:
             # Restore original config
             config.settings.RELATIONSHIP_CONSTRAINT_STRICT_MODE = original_strict_mode
-            config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = original_flattening
+            config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING = (
+                original_flattening
+            )
 
     def test_confidence_threshold_acceptance(self):
         """Acceptance is unconditional in creative mode."""

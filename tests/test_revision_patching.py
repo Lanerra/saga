@@ -372,6 +372,7 @@ async def test_patch_generation_concurrent(monkeypatch):
     ]
 
     start = time.monotonic()
+
     class _BypassValidator:
         async def validate_patch(self, *_args, **_kwargs):
             return True, None

@@ -3,9 +3,8 @@
 
 from __future__ import annotations
 
-from models.kg_constants import NODE_LABELS
-
 from core.enhanced_node_taxonomy import NodeClassification as NodeClassifications
+from models.kg_constants import NODE_LABELS
 
 ABSTRACT_TRAIT_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "HAS_TRAIT": {

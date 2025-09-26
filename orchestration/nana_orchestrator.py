@@ -30,9 +30,12 @@ from data_access.world_queries import (
     get_world_building,
 )
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
-from initialization.bootstrappers.plot_bootstrapper import bootstrap_plot_outline
 from initialization.bootstrap_validator import validate_bootstrap_results
-from initialization.data_loader import convert_model_to_objects, load_user_supplied_model
+from initialization.bootstrappers.plot_bootstrapper import bootstrap_plot_outline
+from initialization.data_loader import (
+    convert_model_to_objects,
+    load_user_supplied_model,
+)
 from models import (
     CharacterProfile,
     EvaluationResult,
@@ -239,7 +242,9 @@ class NANA_Orchestrator:
                 existing_concrete_points = [
                     point
                     for point in raw_points
-                    if isinstance(point, str) and point.strip() and not utils._is_fill_in(point)
+                    if isinstance(point, str)
+                    and point.strip()
+                    and not utils._is_fill_in(point)
                 ]
 
         if existing_concrete_points:
@@ -257,7 +262,9 @@ class NANA_Orchestrator:
             if isinstance(point, str) and point.strip() and not utils._is_fill_in(point)
         ]
         if len(concrete_points) < config.TARGET_PLOT_POINTS_INITIAL_GENERATION:
-            deficit = config.TARGET_PLOT_POINTS_INITIAL_GENERATION - len(concrete_points)
+            deficit = config.TARGET_PLOT_POINTS_INITIAL_GENERATION - len(
+                concrete_points
+            )
             logger.info(
                 "Generating %d supplemental plot point(s) from user story context.",
                 deficit,

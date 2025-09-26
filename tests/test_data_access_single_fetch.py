@@ -180,4 +180,7 @@ async def test_get_world_building_from_db_populates_name_to_id(monkeypatch):
     city = next((w for w in world_items if w.name == "City"), None)
     assert city is not None
     assert city.id == "places_city"
-    assert world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City")) == "places_city"
+    assert (
+        world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City"))
+        == "places_city"
+    )
