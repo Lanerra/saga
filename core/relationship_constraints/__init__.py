@@ -7,9 +7,9 @@ from typing import Any
 
 import structlog
 
+from core.enhanced_node_taxonomy import NodeClassification as NodeClassifications
 from models.kg_constants import NODE_LABELS
 
-from core.enhanced_node_taxonomy import NodeClassification as NodeClassifications
 from .constraints import RELATIONSHIP_CONSTRAINTS as _RELATIONSHIP_CONSTRAINTS
 
 logger = structlog.get_logger(__name__)

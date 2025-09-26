@@ -45,7 +45,10 @@ def _apply_user_story_config_overrides(model: UserStoryInputModel) -> None:
         # Keep concept/setting models consistent with override so downstream validation passes
         if concept and concept.setting != setting_description:
             concept.setting = setting_description
-        if model.setting and model.setting.primary_setting_overview != setting_description:
+        if (
+            model.setting
+            and model.setting.primary_setting_overview != setting_description
+        ):
             model.setting.primary_setting_overview = setting_description
 
     if not overrides:

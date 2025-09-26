@@ -14,7 +14,6 @@ REFACTORED: Extracted from core.llm_interface as part of Phase 3 architectural i
 
 import functools
 import re
-from collections.abc import Generator
 from typing import Any
 
 import structlog

@@ -23,7 +23,9 @@ def get_cached_value(key: str, service_name: str) -> Any | None:
     return _ensure_service(service_name).get(key)
 
 
-def set_cached_value(key: str, value: Any, service_name: str, ttl: int | None = None) -> None:
+def set_cached_value(
+    key: str, value: Any, service_name: str, ttl: int | None = None
+) -> None:
     """Set cached value (ttl ignored)."""
     _ensure_service(service_name)[key] = value
 
@@ -50,7 +52,9 @@ def register_cache_service(service_name: str) -> None:
     _ensure_service(service_name)
 
 
-def invalidate_by_tag(tag: str, service_name: str | None = None) -> None:  # pragma: no cover
+def invalidate_by_tag(
+    tag: str, service_name: str | None = None
+) -> None:  # pragma: no cover
     """Removed: tag-based invalidation is no longer supported."""
     raise NotImplementedError("Tag-based invalidation removed")
 
@@ -71,4 +75,3 @@ def clear_service_cache(service_name: str) -> None:
 
 
 ## Note: The cache is intentionally minimal. No TTLs, tags, metrics beyond size, or async variants.
-

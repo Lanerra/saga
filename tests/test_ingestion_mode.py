@@ -1,8 +1,8 @@
 # tests/test_ingestion_mode.py
 import pytest
 
-from agents.knowledge_agent import KnowledgeAgent
 import config
+from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from core.llm_interface_refactored import llm_service
 from utils.common import split_text_into_chapters

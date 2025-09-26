@@ -1,6 +1,8 @@
 # SAGA - Semantic And Graph‑enhanced Authoring
 
-**NOTE**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactor and overhaul. Things may not work as intended.
+**WARNING**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactor and overhaul. Things may not work as intended.
+
+**NOTE**: `MAX_REVISION_CYCLES_PER_CHAPTER` currently defaults to `0`, effectively disabling the revision cycle during chapter generation. It is currently broken and imminently going to be refactored.
 
 SAGA is a local‑first, single‑process Python CLI that uses a Neo4j knowledge graph and a small set of cooperating agents to plan, draft, and revise long‑form fiction while preserving continuity across chapters.
 

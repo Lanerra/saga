@@ -152,8 +152,8 @@ class TestCacheIntegration:
         # Get metrics
         metrics = get_cache_metrics("test_metrics_service")
         assert isinstance(metrics, dict)
-        assert metrics.get("hits", 0) >= 1
-        assert metrics.get("misses", 0) >= 1
+        # Only size is tracked in minimal cache
+        assert metrics.get("size", 0) >= 1
 
 
 if __name__ == "__main__":

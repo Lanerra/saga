@@ -30,9 +30,12 @@ from data_access.world_queries import (
     get_world_building,
 )
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
-from initialization.bootstrappers.plot_bootstrapper import bootstrap_plot_outline
 from initialization.bootstrap_validator import validate_bootstrap_results
-from initialization.data_loader import convert_model_to_objects, load_user_supplied_model
+from initialization.bootstrappers.plot_bootstrapper import bootstrap_plot_outline
+from initialization.data_loader import (
+    convert_model_to_objects,
+    load_user_supplied_model,
+)
 from models import (
     CharacterProfile,
     EvaluationResult,
@@ -239,7 +242,9 @@ class NANA_Orchestrator:
                 existing_concrete_points = [
                     point
                     for point in raw_points
-                    if isinstance(point, str) and point.strip() and not utils._is_fill_in(point)
+                    if isinstance(point, str)
+                    and point.strip()
+                    and not utils._is_fill_in(point)
                 ]
 
         if existing_concrete_points:
@@ -257,7 +262,9 @@ class NANA_Orchestrator:
             if isinstance(point, str) and point.strip() and not utils._is_fill_in(point)
         ]
         if len(concrete_points) < config.TARGET_PLOT_POINTS_INITIAL_GENERATION:
-            deficit = config.TARGET_PLOT_POINTS_INITIAL_GENERATION - len(concrete_points)
+            deficit = config.TARGET_PLOT_POINTS_INITIAL_GENERATION - len(
+                concrete_points
+            )
             logger.info(
                 "Generating %d supplemental plot point(s) from user story context.",
                 deficit,
@@ -507,7 +514,7 @@ class NANA_Orchestrator:
             step=f"Ch {novel_chapter_number} - Evaluation Cycle {attempt}"
         )
 
-        revision_result = None
+        revision_result: tuple[bool, list[str]] | None = None
         if (
             config.ENABLE_COMPREHENSIVE_EVALUATION
             or config.ENABLE_WORLD_CONTINUITY_CHECK
@@ -518,11 +525,12 @@ class NANA_Orchestrator:
                 "chapter_number": novel_chapter_number,
                 "previous_chapters_context": hybrid_context_for_draft,
             }
-            revision_result, _ = await self.revision_agent.validate_revision(
+            is_valid, issues = await self.revision_agent.validate_revision(
                 current_text,
                 "",  # Previous chapter text (not available in this context)
                 world_state,
             )
+            revision_result = (is_valid, issues)
 
         # Create evaluation result object from revision result
         eval_result_obj = {
@@ -586,7 +594,7 @@ class NANA_Orchestrator:
                 world_dict[item.category] = {}
             world_dict[item.category][item.name] = item
 
-        revision_tuple_result, _ = await revise_chapter_draft_logic(
+        revision_tuple_result, revision_usage_data = await revise_chapter_draft_logic(
             self.plot_outline,
             characters_dict,
             world_dict,
@@ -606,12 +614,12 @@ class NANA_Orchestrator:
         ):
             new_text, rev_raw_output, new_spans = revision_tuple_result
             patched_spans = new_spans
-            return new_text, rev_raw_output, patched_spans
+            return new_text, rev_raw_output, patched_spans, revision_usage_data
 
         logger.error(
             f"SAGA: Ch {novel_chapter_number} - Revision attempt {attempt} failed to produce usable text."
         )
-        return current_text, None, patched_spans
+        return current_text, None, patched_spans, revision_usage_data
 
     async def _prepare_chapter_prerequisites(
         self, novel_chapter_number: int

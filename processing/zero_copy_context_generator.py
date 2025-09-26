@@ -63,19 +63,17 @@ class ZeroCopyContextGenerator:
         plot_point = ZeroCopyContextGenerator._get_plot_point_for_chapter(
             plot_outline, current_chapter_number
         )
+        parts.append(f"--- PLOT POINT FOR CHAPTER {current_chapter_number} ---")
         parts.append(
-            f"--- PLOT POINT FOR CHAPTER {current_chapter_number} ---"
-        )
-        parts.append(
-            f"**Plot Point:** {plot_point}" if (plot_point and plot_point.strip()) else "(None provided)"
+            f"**Plot Point:** {plot_point}"
+            if (plot_point and plot_point.strip())
+            else "(None provided)"
         )
         parts.append("--- END PLOT POINT ---")
 
         # Recent semantic context (sequential chapters only)
         parts.append("")
-        parts.append(
-            "--- RECENT CHAPTER CONTEXT (SEQUENTIAL) ---"
-        )
+        parts.append("--- RECENT CHAPTER CONTEXT (SEQUENTIAL) ---")
         if not recent_numbers or not chapters_map:
             parts.append("No prior chapters available.")
         else:
@@ -103,7 +101,9 @@ class ZeroCopyContextGenerator:
         parts.append("")
         parts.append("--- KEY RELIABLE KG FACTS ---")
         parts.append(
-            kg_facts_str.strip() if (kg_facts_str and kg_facts_str.strip()) else "No reliable KG facts available."
+            kg_facts_str.strip()
+            if (kg_facts_str and kg_facts_str.strip())
+            else "No reliable KG facts available."
         )
         parts.append("--- END KEY RELIABLE KG FACTS ---")
 
@@ -308,6 +308,7 @@ class ZeroCopyContextGenerator:
         return " | ".join(guidance_parts) if guidance_parts else ""
 
     # Legacy fallback path removed; recent-chapters path is now primary.
+
 
 # Public helper for narrative continuation extraction to avoid private calls from agents
 def extract_narrative_continuation_context(

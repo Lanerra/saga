@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 import processing.revision_logic as revision_logic
-from agents.revision_agent import RevisionAgent
 from models import WorldItem
 
 

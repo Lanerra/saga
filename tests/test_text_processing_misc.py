@@ -1,6 +1,6 @@
 # tests/test_text_processing_misc.py
-from utils import text_processing
 import config as _config
+from utils import text_processing
 from utils.common import _is_fill_in as _fill_in
 
 

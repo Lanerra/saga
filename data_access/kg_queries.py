@@ -2673,8 +2673,6 @@ async def create_typed_relationship_with_properties(
     )
 
 
-
-
 async def create_contextual_relationship(
     element1: dict[str, Any],
     element2: dict[str, Any],

@@ -372,6 +372,15 @@ async def test_patch_generation_concurrent(monkeypatch):
     ]
 
     start = time.monotonic()
+
+    class _BypassValidator:
+        async def validate_patch(self, *_args, **_kwargs):
+            return True, None
+
+    # Disable validation to avoid any remote calls
+    original_validation_flag = config.AGENT_ENABLE_PATCH_VALIDATION
+    config.AGENT_ENABLE_PATCH_VALIDATION = False
+
     res = await chapter_revision_logic._generate_patch_instructions_logic(
         {},
         "Hello world",
@@ -379,14 +388,14 @@ async def test_patch_generation_concurrent(monkeypatch):
         1,
         "",
         None,
-        RevisionAgent(config),
+        _BypassValidator(),
     )
     duration = time.monotonic() - start
     assert len(res) == 3
     assert duration < 0.25
 
-    config.settings.AGENT_ENABLE_PATCH_VALIDATION = True
-    config.AGENT_ENABLE_PATCH_VALIDATION = True
+    # Restore flag
+    config.AGENT_ENABLE_PATCH_VALIDATION = original_validation_flag
 
 
 @pytest.mark.asyncio

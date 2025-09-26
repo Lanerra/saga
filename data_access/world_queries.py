@@ -51,6 +51,7 @@ def get_world_item_by_name(
 
 ## Removed duplicate legacy placeholder for sync_world_items (see native version below)
 
+
 async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
     logger.info("Synchronizing world building data to Neo4j (non-destructive)...")
 
