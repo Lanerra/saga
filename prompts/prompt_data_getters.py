@@ -7,16 +7,17 @@ increasingly by querying Neo4j directly for richer, graph-aware context.
 
 import asyncio
 import copy
-import logging
 import re
 from typing import Any
+
+import structlog
 
 import config
 import utils  # For _is_fill_in
 from data_access import character_queries, kg_queries, world_queries
 from models import CharacterProfile, SceneDetail, WorldItem
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Context cache for expensive operations within a single chapter generation
 _context_cache: dict[str, Any] = {}

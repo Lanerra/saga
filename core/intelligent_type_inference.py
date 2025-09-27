@@ -7,12 +7,13 @@ replacing static keyword matching with adaptive pattern recognition.
 """
 
 import asyncio
-import logging
 import re
 from collections import Counter, defaultdict
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class IntelligentTypeInference:

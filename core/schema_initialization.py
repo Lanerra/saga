@@ -6,11 +6,9 @@ This module provides simplified startup integration for the static schema system
 ensuring proper initialization without dynamic overhead.
 """
 
-import logging
+import structlog
 
-import config
-
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def initialize_static_schema_system() -> bool:
@@ -35,12 +33,10 @@ def setup_static_schema_logging():
     ]
 
     for logger_name in schema_loggers:
-        component_logger = logging.getLogger(logger_name)
-        # Set to INFO level for schema components, or DEBUG if main log level is DEBUG
-        if config.settings.LOG_LEVEL_STR == "DEBUG":
-            component_logger.setLevel(logging.DEBUG)
-        else:
-            component_logger.setLevel(logging.INFO)
+        component_logger = structlog.get_logger(logger_name)
+        # For structlog, we don't set levels directly on loggers
+        # The level filtering is handled by the configuration
+        pass
 
 
 # Convenience function for integration into main.py or other startup scripts

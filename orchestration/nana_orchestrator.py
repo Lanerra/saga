@@ -1,11 +1,12 @@
 # orchestration/nana_orchestrator.py
-# nana_orchestrator.py
 import asyncio
-import logging
+import logging as stdlib_logging
 import logging.handlers
 import os
 import time  # For Rich display updates
 from typing import Any
+
+import structlog
 
 import config
 import utils
@@ -58,12 +59,12 @@ try:
 except Exception:  # pragma: no cover - fallback when Rich is missing
     RICH_AVAILABLE = False
 
-    class RichHandler(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover
-            logging.getLogger(__name__).handle(record)
+    class RichHandler(stdlib_logging.Handler):
+        def emit(self, record: stdlib_logging.LogRecord) -> None:  # pragma: no cover
+            stdlib_logging.getLogger(__name__).handle(record)
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NANA_Orchestrator:
@@ -1639,19 +1640,19 @@ class NANA_Orchestrator:
 
 def setup_logging_nana():
     # Keep logging simple for single-user unless advanced mode is desired.
-    logging.basicConfig(
+    stdlib_logging.basicConfig(
         level=config.LOG_LEVEL_STR,
         format=config.LOG_FORMAT,
         datefmt=config.LOG_DATE_FORMAT,
         handlers=[],
     )
-    root_logger = logging.getLogger()
+    root_logger = stdlib_logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
     # Simple logging mode: console only, no rotation or Rich coupling
     if getattr(config, "SIMPLE_LOGGING_MODE", False):
-        stream_handler = logging.StreamHandler()
+        stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
         stream_handler.setFormatter(config.formatter)
         root_logger.addHandler(stream_handler)
@@ -1663,7 +1664,7 @@ def setup_logging_nana():
             )
             # Ensure the parent directory exists, not the file path itself
             os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
-            file_handler = logging.handlers.RotatingFileHandler(
+            file_handler = stdlib_logging.handlers.RotatingFileHandler(
                 log_path,
                 maxBytes=10 * 1024 * 1024,
                 backupCount=5,
@@ -1676,7 +1677,7 @@ def setup_logging_nana():
             root_logger.addHandler(file_handler)
             root_logger.info(f"File logging enabled. Log file: {log_path}")
         except Exception as e:
-            console_handler_fallback = logging.StreamHandler()
+            console_handler_fallback = stdlib_logging.StreamHandler()
             # Use the structlog formatter for human-readable output
             console_handler_fallback.setFormatter(config.formatter)
             root_logger.addHandler(console_handler_fallback)
@@ -1693,7 +1694,9 @@ def setup_logging_nana():
         existing_console = None
         if root_logger.handlers:
             for h_idx, h in enumerate(root_logger.handlers):
-                if hasattr(h, "console") and not isinstance(h, logging.FileHandler):
+                if hasattr(h, "console") and not isinstance(
+                    h, stdlib_logging.FileHandler
+                ):
                     existing_console = h.console  # type: ignore
                     break
 
@@ -1715,18 +1718,24 @@ def setup_logging_nana():
         )
         root_logger.addHandler(rich_handler)
         root_logger.info("Rich logging handler enabled for console.")
-    elif not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
-        stream_handler = logging.StreamHandler()
+    elif not any(
+        isinstance(h, stdlib_logging.StreamHandler) for h in root_logger.handlers
+    ):
+        stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
         # Use the structlog formatter for human-readable output
         stream_handler.setFormatter(config.formatter)
         root_logger.addHandler(stream_handler)
         root_logger.info("Standard stream logging handler enabled for console.")
 
-    logging.getLogger("neo4j.notifications").setLevel(logging.WARNING)
-    logging.getLogger("neo4j").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    root_logger.info(
-        f"SAGA Logging setup complete. Application Log Level: {logging.getLevelName(config.LOG_LEVEL_STR)}."
+    stdlib_logging.getLogger("neo4j.notifications").setLevel(stdlib_logging.WARNING)
+    stdlib_logging.getLogger("neo4j").setLevel(stdlib_logging.WARNING)
+    stdlib_logging.getLogger("httpx").setLevel(stdlib_logging.WARNING)
+    stdlib_logging.getLogger("httpcore").setLevel(stdlib_logging.WARNING)
+
+    # Log the completion message using structlog to avoid the None logger issue
+    import structlog
+
+    structlog.get_logger().info(
+        f"SAGA Logging setup complete. Application Log Level: {stdlib_logging.getLevelName(config.LOG_LEVEL_STR)}."
     )

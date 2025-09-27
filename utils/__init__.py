@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+import structlog
 
 from core.llm_interface_refactored import llm_service
 
@@ -34,7 +35,7 @@ from .text_processing import (
 if TYPE_CHECKING:  # pragma: no cover - for type hints only
     from models import SceneDetail
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def format_scene_plan_for_prompt(

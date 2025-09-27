@@ -1,11 +1,12 @@
 # data_access/plot_queries.py
-import logging
 from typing import Any
+
+import structlog
 
 import config
 from core.db_manager import neo4j_manager
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def ensure_novel_info() -> None:

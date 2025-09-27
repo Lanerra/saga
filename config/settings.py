@@ -389,12 +389,11 @@ os.makedirs(DEBUG_OUTPUTS_DIR, exist_ok=True)
 # Configure structlog to integrate with standard logging and output human‑readable messages
 structlog.configure(
     processors=[
-        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M"),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M:%S"),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],
@@ -420,6 +419,8 @@ if settings.LOG_FILE:
     handler = stdlib_logging.FileHandler(
         os.path.join(settings.BASE_OUTPUT_DIR, settings.LOG_FILE)
     )
+
+
 handler.setFormatter(formatter)
 root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)

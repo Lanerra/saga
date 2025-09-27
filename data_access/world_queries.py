@@ -1,8 +1,8 @@
 # data_access/world_queries.py
 import hashlib
-import logging
 from typing import Any
 
+import structlog
 from async_lru import alru_cache  # type: ignore
 
 import config
@@ -20,7 +20,7 @@ from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Legacy world cypher builder removed; native builder is the single path.
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Mapping from normalized world item names to canonical IDs
 WORLD_NAME_TO_ID: dict[str, str] = {}

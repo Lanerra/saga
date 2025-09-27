@@ -86,8 +86,8 @@ class RichDisplayManager:
                 refresh_per_second=4,
                 transient=False,
                 # Capture any stray prints/stdout so the banner stays anchored
-                redirect_stdout=True,
-                redirect_stderr=True,
+                redirect_stdout=False,
+                redirect_stderr=False,
                 console=console,
             )
 
