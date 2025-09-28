@@ -9,6 +9,7 @@ from typing import Any
 import structlog
 
 import config
+from config import settings, simple_formatter
 import utils
 from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
@@ -1654,7 +1655,7 @@ def setup_logging_nana():
     if getattr(config, "SIMPLE_LOGGING_MODE", False):
         stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
-        stream_handler.setFormatter(config.formatter)
+        stream_handler.setFormatter(simple_formatter)
         root_logger.addHandler(stream_handler)
         root_logger.info("Simple logging mode enabled: console only.")
     elif config.LOG_FILE:
@@ -1673,13 +1674,13 @@ def setup_logging_nana():
             )
             file_handler.setLevel(config.LOG_LEVEL_STR)
             # Use the structlog formatter for human-readable output
-            file_handler.setFormatter(config.formatter)
+            file_handler.setFormatter(simple_formatter)
             root_logger.addHandler(file_handler)
             root_logger.info(f"File logging enabled. Log file: {log_path}")
         except Exception as e:
             console_handler_fallback = stdlib_logging.StreamHandler()
             # Use the structlog formatter for human-readable output
-            console_handler_fallback.setFormatter(config.formatter)
+            console_handler_fallback.setFormatter(simple_formatter)
             root_logger.addHandler(console_handler_fallback)
             root_logger.error(
                 f"Failed to configure file logging: {e}. Logging to console instead.",
@@ -1724,7 +1725,7 @@ def setup_logging_nana():
         stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
         # Use the structlog formatter for human-readable output
-        stream_handler.setFormatter(config.formatter)
+        stream_handler.setFormatter(simple_formatter)
         root_logger.addHandler(stream_handler)
         root_logger.info("Standard stream logging handler enabled for console.")
 

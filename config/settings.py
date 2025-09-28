@@ -403,15 +403,62 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
-# Simple human‑readable formatter for structlog
+# Simple human-readable formatter for structlog
+def simple_log_format(logger, name, event_dict):
+    """Simple human-readable log formatter that maintains structured data internally."""
+    level = event_dict.pop("level", "INFO")
+    timestamp = event_dict.pop("timestamp", "")
+    logger_name = event_dict.pop("logger", "")
+    event = event_dict.pop("event", "")
+    
+    # Format as simple human-readable line
+    parts = []
+    if timestamp:
+        parts.append(f"{timestamp}")
+    if logger_name:
+        parts.append(f"[{logger_name}]")
+    parts.append(f"{level}")
+    
+    # Add the main event message
+    parts.append(f"{event}")
+    
+    # Add any remaining key-value pairs as context
+    if event_dict:
+        context_parts = []
+        for key, value in event_dict.items():
+            context_parts.append(f"{key}={value}")
+        if context_parts:
+            parts.append(f"({' '.join(context_parts)})")
+    
+    return " - ".join(parts)
+
 formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
-    processors=[structlog.dev.ConsoleRenderer(colors=False)],
+    processors=[
+        structlog.dev.ConsoleRenderer(
+            colors=False,
+            exception_formatter=structlog.dev.plain_traceback,
+            sort_keys=False
+        )
+    ],
+)
+
+# Alternative: Even simpler formatter that outputs clean, readable lines
+simple_formatter = structlog.stdlib.ProcessorFormatter(
+    foreign_pre_chain=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+    ],
+    processors=[simple_log_format],
 )
 
 handler = stdlib_logging.StreamHandler()
@@ -421,7 +468,7 @@ if settings.LOG_FILE:
     )
 
 
-handler.setFormatter(formatter)
+handler.setFormatter(simple_formatter)
 root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
