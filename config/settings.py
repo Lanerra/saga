@@ -403,6 +403,7 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+
 # Simple human-readable formatter for structlog
 def simple_log_format(logger, name, event_dict):
     """Simple human-readable log formatter that maintains structured data internally."""
@@ -410,7 +411,7 @@ def simple_log_format(logger, name, event_dict):
     timestamp = event_dict.pop("timestamp", "")
     logger_name = event_dict.pop("logger", "")
     event = event_dict.pop("event", "")
-    
+
     # Format as simple human-readable line
     parts = []
     if timestamp:
@@ -418,10 +419,10 @@ def simple_log_format(logger, name, event_dict):
     if logger_name:
         parts.append(f"[{logger_name}]")
     parts.append(f"{level}")
-    
+
     # Add the main event message
     parts.append(f"{event}")
-    
+
     # Add any remaining key-value pairs as context
     if event_dict:
         context_parts = []
@@ -429,8 +430,9 @@ def simple_log_format(logger, name, event_dict):
             context_parts.append(f"{key}={value}")
         if context_parts:
             parts.append(f"({' '.join(context_parts)})")
-    
+
     return " - ".join(parts)
+
 
 formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
@@ -444,7 +446,7 @@ formatter = structlog.stdlib.ProcessorFormatter(
         structlog.dev.ConsoleRenderer(
             colors=False,
             exception_formatter=structlog.dev.plain_traceback,
-            sort_keys=False
+            sort_keys=False,
         )
     ],
 )

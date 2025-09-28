@@ -8,7 +8,6 @@ import structlog
 import config
 from core.llm_interface_refactored import llm_service
 from core.text_processing_service import truncate_text_by_tokens
-from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
 from models.narrative_state import NarrativeState
 from prompts.prompt_data_getters import (
@@ -54,8 +53,6 @@ class NarrativeAgent:
         if cache_key not in self._token_cache:
             self._token_cache[cache_key] = llm_service.count_tokens(text, model)
         return self._token_cache[cache_key]
-
-    
 
     def _parse_llm_scene_plan_output(
         self, json_text: str, chapter_number: int
@@ -658,5 +655,3 @@ class NarrativeAgent:
 
         logger.info("Quality checks passed")
         return True
-
-    

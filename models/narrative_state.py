@@ -43,6 +43,7 @@ class ContextSnapshot:
 
     def _compute_fingerprint(self) -> str:
         """Compute a stable fingerprint of the snapshot contents."""
+
         def _stable(obj: Any) -> str:
             try:
                 return json.dumps(obj, sort_keys=True, ensure_ascii=False)
@@ -55,7 +56,12 @@ class ContextSnapshot:
             _stable(self.chapter_plan),
             self.hybrid_context or "",
             self.kg_facts_block or "",
-            _stable({k: self.recent_chapters_map.get(k) for k in sorted(self.recent_chapters_map.keys())}),
+            _stable(
+                {
+                    k: self.recent_chapters_map.get(k)
+                    for k in sorted(self.recent_chapters_map.keys())
+                }
+            ),
         ]
         joined = "\n".join(parts)
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
@@ -85,4 +91,3 @@ class NarrativeState:
         self.snapshot: ContextSnapshot | None = None
         self.caches: dict[str, Any] = {}
         self.reads_locked: bool = False
-

@@ -9,11 +9,11 @@ from typing import Any
 import structlog
 
 import config
-from config import settings, simple_formatter
 import utils
 from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from agents.revision_agent import RevisionAgent
+from config import simple_formatter
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
 from core.runtime_config_validator import (
@@ -23,6 +23,7 @@ from data_access import (
     chapter_queries,
     plot_queries,
 )
+from data_access.chapter_queries import get_chapter_content_batch_native
 
 # Import native versions for performance optimization
 from data_access.character_queries import (
@@ -51,13 +52,12 @@ from orchestration.chapter_flow import run_chapter_pipeline
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
 from processing.zero_copy_context_generator import ZeroCopyContextGenerator
-from ui.rich_display import RichDisplayManager
-from utils.common import split_text_into_chapters
 from prompts.prompt_data_getters import (
     clear_context_cache,
     get_reliable_kg_facts_for_drafting_prompt,
 )
-from data_access.chapter_queries import get_chapter_content_batch_native
+from ui.rich_display import RichDisplayManager
+from utils.common import split_text_into_chapters
 
 try:
     from rich.logging import RichHandler
@@ -953,9 +953,7 @@ class NANA_Orchestrator:
                 raw_output or "Drafting Agent returned None for raw output.",
             )
             return None, None
-        await self._save_debug_output(
-            novel_chapter_number, "initial_draft", draft_text
-        )
+        await self._save_debug_output(novel_chapter_number, "initial_draft", draft_text)
         return draft_text, raw_output
 
     async def _process_and_revise_draft(
@@ -1366,8 +1364,9 @@ class NANA_Orchestrator:
                     "fingerprint": state.snapshot.snapshot_fingerprint,
                 }
             logger.info(
-                f"=== SAGA: Finished Novel Chapter {novel_chapter_number} - {status_message} ==="
-            , **log_kwargs)
+                f"=== SAGA: Finished Novel Chapter {novel_chapter_number} - {status_message} ===",
+                **log_kwargs,
+            )
             self._update_rich_display(
                 step=f"Ch {novel_chapter_number} - {status_message}"
             )

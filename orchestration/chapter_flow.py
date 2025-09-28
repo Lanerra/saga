@@ -47,7 +47,9 @@ async def run_chapter_pipeline(
     # Build/refresh snapshot once after prerequisites if supported
     if state is not None and hasattr(orchestrator, "_refresh_snapshot"):
         try:
-            await orchestrator._refresh_snapshot(state, chapter_plan, novel_chapter_number)
+            await orchestrator._refresh_snapshot(
+                state, chapter_plan, novel_chapter_number
+            )
             # Prefer snapshot context for the rest of the chapter
             if state.snapshot and getattr(state.snapshot, "hybrid_context", None):
                 hybrid_context_for_draft = state.snapshot.hybrid_context

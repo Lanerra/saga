@@ -473,7 +473,7 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     # precomputed KG facts block, prefer returning it to avoid redundant reads.
     try:
         if snapshot is not None and getattr(snapshot, "kg_facts_block", None):
-            return getattr(snapshot, "kg_facts_block")
+            return snapshot.kg_facts_block
     except Exception:
         # Non-fatal; fall back to normal path
         pass
