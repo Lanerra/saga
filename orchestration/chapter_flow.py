@@ -15,12 +15,26 @@ async def run_chapter_pipeline(
         chapter_num=novel_chapter_number, step="Starting Chapter"
     )
 
+    # Optional NarrativeState lifecycle (backward compatible for tests/mocks)
+    state = None
+    if hasattr(orchestrator, "_begin_chapter_state"):
+        try:
+            state = orchestrator._begin_chapter_state(novel_chapter_number)
+        except Exception:
+            state = None
+
     if not await orchestrator._validate_plot_outline(novel_chapter_number):
         return None
 
-    prereq_result = await orchestrator._prepare_chapter_prerequisites(
-        novel_chapter_number
-    )
+    # Prefer state-aware prerequisites if available
+    if hasattr(orchestrator, "_prepare_chapter_prerequisites_with_state"):
+        prereq_result = await orchestrator._prepare_chapter_prerequisites_with_state(
+            novel_chapter_number, state
+        )
+    else:
+        prereq_result = await orchestrator._prepare_chapter_prerequisites(
+            novel_chapter_number
+        )
     processed_prereqs = await orchestrator._process_prereq_result(
         novel_chapter_number, prereq_result
     )
@@ -30,11 +44,22 @@ async def run_chapter_pipeline(
         processed_prereqs
     )
 
+    # Build/refresh snapshot once after prerequisites if supported
+    if state is not None and hasattr(orchestrator, "_refresh_snapshot"):
+        try:
+            await orchestrator._refresh_snapshot(state, chapter_plan, novel_chapter_number)
+            # Prefer snapshot context for the rest of the chapter
+            if state.snapshot and getattr(state.snapshot, "hybrid_context", None):
+                hybrid_context_for_draft = state.snapshot.hybrid_context
+        except Exception:
+            pass
+
     draft_result = await orchestrator._draft_initial_chapter_text(
         novel_chapter_number,
         plot_point_focus,
         hybrid_context_for_draft,
         chapter_plan,
+        state,
     )
     processed_draft = await orchestrator._process_initial_draft(
         novel_chapter_number, draft_result
@@ -51,6 +76,7 @@ async def run_chapter_pipeline(
         plot_point_index,
         hybrid_context_for_draft,
         chapter_plan,
+        state,
     )
     processed_revision = await orchestrator._process_revision_result(
         novel_chapter_number, revision_result
@@ -60,5 +86,5 @@ async def run_chapter_pipeline(
     processed_text, processed_raw_llm, is_flawed = processed_revision
 
     return await orchestrator._finalize_and_log(
-        novel_chapter_number, processed_text, processed_raw_llm, is_flawed
+        novel_chapter_number, processed_text, processed_raw_llm, is_flawed, state
     )

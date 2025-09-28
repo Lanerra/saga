@@ -454,6 +454,7 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     chapter_plan: list[SceneDetail] | None = None,
     max_facts_per_char: int = 2,
     max_total_facts: int = 7,
+    snapshot: Any | None = None,
 ) -> str:
     """
     Gather reliable KG facts for drafting prompts by combining novel-level info
@@ -467,6 +468,15 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     5. Assembling the results into a formatted prompt snippet
     """
     _ensure_cache_is_scoped_to_chapter(chapter_number)
+
+    # Snapshot fast-path: when a ContextSnapshot is provided and contains the
+    # precomputed KG facts block, prefer returning it to avoid redundant reads.
+    try:
+        if snapshot is not None and getattr(snapshot, "kg_facts_block", None):
+            return getattr(snapshot, "kg_facts_block")
+    except Exception:
+        # Non-fatal; fall back to normal path
+        pass
 
     if chapter_number <= 0:
         return "No KG facts applicable for pre-first chapter."

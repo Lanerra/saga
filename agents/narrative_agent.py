@@ -10,7 +10,7 @@ from core.llm_interface_refactored import llm_service
 from core.text_processing_service import truncate_text_by_tokens
 from data_access import chapter_queries
 from models import CharacterProfile, SceneDetail, WorldItem
-from processing.zero_copy_context_generator import ZeroCopyContextGenerator
+from models.narrative_state import NarrativeState
 from prompts.prompt_data_getters import (
     get_reliable_kg_facts_for_drafting_prompt,
 )
@@ -55,61 +55,7 @@ class NarrativeAgent:
             self._token_cache[cache_key] = llm_service.count_tokens(text, model)
         return self._token_cache[cache_key]
 
-    async def _build_previous_chapter_context(self, chapter_number: int) -> str:
-        """Build enhanced context from previous chapter data with narrative continuation."""
-        if chapter_number <= 1:
-            return ""
-
-        prev_chap_data = await chapter_queries.get_chapter_data_from_db(
-            chapter_number - 1
-        )
-
-        if not prev_chap_data:
-            return ""
-
-        # Use public helper for narrative continuation extraction
-        from processing.zero_copy_context_generator import (
-            extract_narrative_continuation_context,
-        )
-
-        enhanced_context = extract_narrative_continuation_context(
-            prev_chap_data, chapter_number - 1
-        )
-
-        if enhanced_context:
-            prev_is_provisional = prev_chap_data.get("is_provisional", False)
-            provisional_prefix = "[PROVISIONAL] " if prev_is_provisional else ""
-
-            return f"{provisional_prefix}**Previous Chapter Context for Narrative Continuation:**\n{enhanced_context}\n\n"
-
-        # Fallback to original behavior if enhanced context fails
-        context_summary_parts: list[str] = []
-        prev_summary = prev_chap_data.get("summary")
-        prev_is_provisional = prev_chap_data.get("is_provisional", False)
-
-        summary_prefix = (
-            "[Provisional Summary from Prev Ch] "
-            if prev_is_provisional and prev_summary
-            else "[Summary from Prev Ch] "
-        )
-
-        if prev_summary:
-            context_summary_parts.append(
-                f"{summary_prefix}({chapter_number - 1}):\n{prev_summary[:config.NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS].strip()}...\n"
-            )
-        else:
-            prev_text = prev_chap_data.get("text", "")
-            text_prefix = (
-                "[Provisional Text Snippet from Prev Ch] "
-                if prev_is_provisional and prev_text
-                else "[Text Snippet from Prev Ch] "
-            )
-            if prev_text:
-                context_summary_parts.append(
-                    f"{text_prefix}({chapter_number - 1}):\n...{prev_text[-config.NARRATIVE_CONTEXT_TEXT_TAIL_CHARS:].strip()}\n"
-                )
-
-        return "".join(context_summary_parts)
+    
 
     def _parse_llm_scene_plan_output(
         self, json_text: str, chapter_number: int
@@ -296,8 +242,8 @@ class NarrativeAgent:
             )
             return None, None
 
-        # Build context summary using helper method
-        context_summary_str = await self._build_previous_chapter_context(chapter_number)
+        # Snapshot provides continuation context during drafting; not used for planning here
+        context_summary_str = ""
 
         protagonist_name = plot_outline.get(
             "protagonist_name", self.config.DEFAULT_PROTAGONIST_NAME
@@ -547,6 +493,8 @@ class NarrativeAgent:
         plot_point_focus: str,
         hybrid_context_for_draft: str,
         chapter_plan: list[SceneDetail] | None,
+        *,
+        state: NarrativeState | None = None,
     ) -> tuple[str | None, str | None, dict[str, int] | None]:
         """
         Draft a chapter using either a provided scene plan or by drafting the entire chapter at once.
@@ -567,6 +515,10 @@ class NarrativeAgent:
             A tuple of the draft text, the raw LLM output, and token usage data, or (None, raw_output, usage)
             if drafting fails.
         """
+        # Prefer snapshot-provided context if available
+        if state and getattr(state, "snapshot", None) and state.snapshot.hybrid_context:
+            hybrid_context_for_draft = state.snapshot.hybrid_context
+
         if chapter_plan is None:
             # When no scene plan is provided, call the LLM once for the whole chapter.
             # Use the same logic as in `_draft_chapter` but without scene iteration.
@@ -707,101 +659,4 @@ class NarrativeAgent:
         logger.info("Quality checks passed")
         return True
 
-    async def generate_chapter(
-        self,
-        plot_outline: dict,
-        character_profiles: list[CharacterProfile],  # List instead of dict
-        world_building: list[WorldItem],  # List instead of nested dict
-        chapter_number: int,
-        plot_point_focus: str,
-    ) -> tuple[str, str, dict[str, int]]:
-        """
-        Generate a new chapter based on plot outline and character/world context.
-        Works directly with model lists for optimal performance.
-
-        Returns:
-            Tuple of (draft_text, raw_llm_output, usage_data)
-        """
-        self.logger.info("Generating chapter", chapter=chapter_number)
-
-        # Get the current plot point index
-        all_plot_points = plot_outline.get("plot_points", [])
-        plot_point_index = -1
-        for i, pp in enumerate(all_plot_points):
-            if isinstance(pp, str) and pp.strip() == plot_point_focus:
-                plot_point_index = i
-                break
-
-        if plot_point_index == -1:
-            logger.error(f"Could not find plot point focus: {plot_point_focus}")
-            return "Failed to generate chapter: plot point focus not found", "Error", {}
-
-        # Plan the chapter scenes
-        scenes, planning_usage_data = await self._plan_chapter_scenes(
-            plot_outline,
-            character_profiles,
-            world_building,
-            chapter_number,
-            plot_point_focus,
-            plot_point_index,
-        )
-
-        if not scenes:
-            logger.error(f"Failed to plan scenes for chapter {chapter_number}")
-            return (
-                "Failed to generate chapter: scene planning failed",
-                "Error",
-                planning_usage_data or {},
-            )
-
-        # Generate a hybrid context based on prior chapters and KG facts.
-        try:
-            hybrid_context_for_draft: str = (
-                await ZeroCopyContextGenerator.generate_hybrid_context_native(
-                    plot_outline,
-                    chapter_number,
-                    scenes,
-                )
-            )
-        except Exception as e:
-            # If hybrid context generation fails for any reason, fall back to basic metadata
-            logger.error(
-                f"Failed to generate hybrid context for chapter {chapter_number}: {e}"
-            )
-            hybrid_context_for_draft = (
-                f"Protagonist: {plot_outline.get('protagonist_name', 'Unknown')}\n"
-                f"Genre: {plot_outline.get('genre', 'Unknown')}\n"
-                f"Theme: {plot_outline.get('theme', 'Unknown')}\n"
-                f"Character Arc: {plot_outline.get('character_arc', 'Unknown')}"
-            )
-
-        # Draft the chapter with the generated hybrid context
-        draft_text, raw_output, draft_usage = await self._draft_chapter(
-            plot_outline,
-            chapter_number,
-            plot_point_focus,
-            hybrid_context_for_draft,
-            scenes,
-        )
-
-        if not draft_text:
-            logger.error(f"Failed to draft chapter {chapter_number}")
-            return (
-                "Failed to generate chapter: drafting failed",
-                raw_output or "Error",
-                draft_usage or {},
-            )
-
-        # Combine usage data from planning and drafting
-        total_usage = planning_usage_data or {}
-        if draft_usage:
-            for key, value in draft_usage.items():
-                total_usage[key] = total_usage.get(key, 0) + value
-
-        # Perform quality checks
-        if not await self._check_quality(draft_text):
-            logger.warning(f"Chapter {chapter_number} failed quality checks")
-            # Return the draft anyway but mark it as low quality
-            return draft_text, raw_output or "", total_usage
-
-        return draft_text, raw_output or "", total_usage
+    
