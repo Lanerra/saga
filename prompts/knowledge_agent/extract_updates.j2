@@ -1,19 +1,25 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
-You are an expert knowledge graph extractor for a creative writing project. Your task is to analyze the provided chapter text and extract two types of information:
-1. **Character and World Updates:** Detailed updates for character profiles and world-building elements based on events in the chapter
-2. **Knowledge Graph Triples:** Atomic facts representing entities and their relationships
+
+CRITICAL EXTRACTION RULES (Hard Constraints):
+1. Only extract NAMED entities or entities mentioned 2+ times
+2. Skip ALL: atmospheric details, feelings, sounds, lights, weather, transitional moments
+3. Skip descriptive concepts—only extract concepts that could have their own Wikipedia page
+4. When in doubt, DON'T extract
+
+You are a knowledge graph extractor for an autonomous novel writing system tasked. Extract ONLY entities essential to the narrative—skip atmospheric details, temporary states, and descriptive elements.
 
 **Novel Details:**
 - Title: {{ novel_title }}
 - Genre: {{ novel_genre }}
 - Protagonist: {{ protagonist }}
+- Current Chapter: {{ chapter_number }}
 
 **Canonical Schema Information (Your output MUST conform to this):**
 - **Available Node Labels:** {{ available_node_labels | join(', ') }}
 - **Available Relationship Types:** {{ available_relationship_types | join(', ') }}
 
 **Enhanced Entity Type Selection Guide:**
-Choose the most SPECIFIC node type that fits the entity. Avoid generic types like "Entity" or "WorldElement".
+Choose the node type that best fits the entity. Avoid generic types like "Entity".
 
 **IMPORTANT FILTERING RULES:**
 - DO NOT create entities for: colors, sounds, lights, feelings, descriptive adjectives, temporary states
@@ -125,17 +131,9 @@ Choose the most SPECIFIC node type that fits the entity. Avoid generic types lik
 - The JSON object must have three top-level keys: `character_updates`, `world_updates`, and `kg_triples`.
 - For `world_updates`: Each category should contain items as keys, and each item should have properties like `description`, `goals`, `rules`, etc. Do NOT create items named "elaborations" or "elaboration" - these should be properties within actual items.
 - For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
-- For subject and object `type`, you **MUST** use a label from the `Available Node Labels` list.
-- For the `predicate`, you **MUST** use an exact match from the available relationship types listed above. Do not use any variations, abbreviations, or similar terms.
 
 **Relationship Selection Guidelines:**
 Choose semantically appropriate relationships that make sense for the entity types involved.
-
-**CRITICAL: Ensure Correct Subject-Verb-Object Direction:**
-- WRONG: "Sound:Resonant Hum | EMITS | Entity:Veil" 
-- CORRECT: "Entity:Veil | EMITS | Sound:Resonant Hum"
-- The SUBJECT (left side) performs the action, OBJECT (right side) receives it
-- Ask: "Who/what is doing the action?" = Subject. "Who/what is receiving/affected?" = Object
 
 **Emotional & Social (require sentient beings):**
 - LOVES, HATES, FEARS, RESPECTS - Only conscious entities can have emotions
@@ -185,13 +183,46 @@ Choose semantically appropriate relationships that make sense for the entity typ
 - BORDERS - Geographical boundary relationships
 - REVEALS, CONCEALS - Information disclosure relationships
 
+**Output Format (Valid JSON Only):**
+
+Return a single JSON object with three keys: `character_updates`, `world_updates`, `kg_triples`
+
+```json
+{
+  "character_updates": {
+    "CharacterName": {
+      "description": "Brief description focusing on new information from this chapter",
+      "traits": ["trait1", "trait2"],
+      "status": "current state",
+      "relationships": {
+        "OtherCharacter": "nature of relationship"
+      }
+    }
+  },
+  "world_updates": {
+    "CategoryName": {
+      "ItemName": {
+        "description": "What this element is and why it matters"
+      }
+    }
+  },
+  "kg_triples": [
+    "Character:Elara | LOCATED_IN | Location:Sunken Library",
+    "Character:Elara | SEEKS | Artifact:Starfall Map",
+    "Location:Sunken Library | CONTAINS | Document:Ancient Scrolls"
+  ]
+}
+```
+
+**Quality Check Before Output:**
+- Did I extract any atmospheric/emotional/temporary entities? → Remove them
+- Are all entities named OR mentioned 2+ times? → If not, remove
+- Could a future chapter reference this entity? → If no, remove
+- Is each triple's direction correct (subject acts on object)? → Fix if needed
+
 **Chapter {{ chapter_number }} Text to Analyze:**
 ```text
 {{ chapter_text }}
 ```
----
 
-**Example of Final Output Structure:**
-```json
-{"character_updates":{"Elara":{"description":"A determined scholar with a hidden past, now seeking the Starfall Map."}},"world_updates":{"Sunken Library":{"description":"An ancient repository of knowledge, accessible only by solving a riddle at a mist-shrouded lake."}},"kg_triples":["Character:Elara | LOCATED_IN | Location:Sunken Library"]}
-```
+**Extract only essential narrative elements. When uncertain, skip it.**
