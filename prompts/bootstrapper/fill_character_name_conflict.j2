@@ -2,13 +2,26 @@
 You are a character development expert specializing in creating compelling, multidimensional characters for narrative fiction.
 Your task is to generate a UNIQUE character name that resolves a naming conflict while maintaining narrative consistency.
 
+**CRITICAL DIVERSITY REQUIREMENTS:**
+1. The new name MUST be completely different from the conflicting name in structure, origin, and sound
+2. Avoid names that share the same first letter, similar phonetic patterns, or common elements
+3. Do NOT create variations like "Kaelen Vex" -> "Kaelen Voss" -> "Kaelen Vey" (same first name, similar last names)
+4. Generate names with different cultural origins, different lengths, different phonetic structures
+
 **Conflict Resolution Instructions:**
-1.  The name "{{ context.conflicting_name }}" has been generated but conflicts with an existing character.
-2.  Generate a completely different, unique character name that fits the same character profile and story context.
-3.  Ensure the new name is DISTINCT from all existing names: {{ context.existing_names | join(", ") }}
-4.  The new name should still fit the character's role, personality, and the story's genre and setting.
-5.  Avoid simple variations like adding numbers or common suffixes.
-6.  Create a name that sounds natural and fits within the same fictional world.
+1. The name "{{ context.conflicting_name }}" has been generated but conflicts with an existing character.
+2. Generate a completely different, unique character name that fits the same character profile and story context.
+3. Ensure the new name is DISTINCT from all existing names: {{ context.existing_names | join(", ") }}
+4. The new name should still fit the character's role, personality, and the story's genre and setting.
+5. Avoid simple variations like adding numbers or common suffixes.
+6. Create a name that sounds natural and fits within the same fictional world.
+
+**DIVERSITY CHECKLIST:**
+- First name should be different in origin/structure
+- Last name should be different in origin/structure  
+- Overall phonetic pattern should be different
+- Cultural/naming tradition should be different
+- Length should be different if possible
 
 **Story Context:**
 Genre: {{ context.plot_outline.genre or "Unknown" }}
@@ -19,9 +32,9 @@ Role: {{ context.profile.updates.role or "supporting" }}
 Description: {{ context.profile.description or "Not yet generated" }}
 Traits: {{ context.profile.traits | join(", ") if context.profile.traits else "Not yet generated" }}
 
-**Existing Character Names to Avoid:**
+**Existing Character Names to Avoid (with diversity emphasis):**
 {% for name in context.existing_names %}
-- {{ name }}
+- {{ name }} (avoid {{ name.split()[0] if name.split() else name }}-like names, avoid {{ name.split()[-1] if name.split() else name }}-like surnames)
 {% endfor %}
 
 **Your Response MUST be a single JSON object with this exact format:**
@@ -31,14 +44,16 @@ Traits: {{ context.profile.traits | join(", ") if context.profile.traits else "N
 }
 ```
 
-**Example of GOOD responses:**
-- {"name": "Mira Thorne"} (completely different from "Kael Thorne")
-- {"name": "Elena Blackwater"} (distinct from existing names)
-- {"name": "Captain Ryker"} (different naming convention)
+**Examples of ACCEPTABLE responses (diverse names):**
+- {"name": "Zara Blackwood"} (completely different from "Kael Thorne")
+- {"name": "Dmitri Ironforge"} (different cultural origin)
+- {"name": "Sera Nightshade"} (different structure and sound)
 
-**Example of BAD responses:**
+**Examples of UNACCEPTABLE responses (similar names):**
 - {"name": "Kael Thorne"} (same as conflicting name)
 - {"name": "Kael 2"} (simple numeric variation)
 - {"name": "Kael Junior"} (derivative variation)
+- {"name": "Kaelen Voss"} (same first name, similar last name)
+- {"name": "Kealan Vuss"} (phonetically similar)
 
-Generate a unique, narrative-appropriate character name that resolves this conflict.
+Generate a unique, narrative-appropriate character name that resolves this conflict with maximum diversity.

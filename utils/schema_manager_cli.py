@@ -9,8 +9,9 @@ This utility provides commands for testing and managing the static schema system
 
 import argparse
 import asyncio
-import logging
 import sys
+
+import structlog
 
 from core.schema_initialization import (
     setup_static_schema_logging,
@@ -20,10 +21,35 @@ from core.schema_initialization import (
 
 def setup_logging():
     """Setup basic logging for CLI operations."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
     )
+
+    handler = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        ],
+        processors=[structlog.dev.ConsoleRenderer(colors=False)],
+    )
+
+    root_logger = structlog.get_logger()
+    root_logger.addHandler(handler)
+    root_logger.setLevel("INFO")
 
 
 async def command_status():
@@ -53,7 +79,8 @@ async def command_initialize(force: bool = False):
     try:
         # Force has no special meaning for a static system; log and proceed
         if force:
-            logging.info(
+            logger = structlog.get_logger(__name__)
+            logger.info(
                 "Force flag provided; proceeding with no-op force for static schema."
             )
         success = await startup_schema_integration()

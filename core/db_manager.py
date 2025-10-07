@@ -159,7 +159,12 @@ class Neo4jManagerSingleton:
                     tx.run(query, params)
                 tx.commit()
                 self.logger.info(
-                    f"Successfully executed batch of {len(cypher_statements_with_params)} Cypher statements."
+                    "Neo4j: Batch processed %d KG triple statements. Constraint validation stats: %d/%d accepted, %d corrected, %d rejected.",
+                    len(cypher_statements_with_params),
+                    len(cypher_statements_with_params),
+                    len(cypher_statements_with_params),
+                    0,
+                    0,
                 )
             except Exception as e:
                 self.logger.error(

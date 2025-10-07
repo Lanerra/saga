@@ -1,14 +1,14 @@
 # utils/similarity.py
 import asyncio
-import logging
 
 import numpy as np
+import structlog
 
 from core.llm_interface_refactored import llm_service
 
 from .text_processing import get_text_segments
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def numpy_cosine_similarity(vec1: np.ndarray | None, vec2: np.ndarray | None) -> float:

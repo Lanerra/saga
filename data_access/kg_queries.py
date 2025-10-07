@@ -1,10 +1,10 @@
 # data_access/kg_queries.py
 import difflib
 import hashlib
-import logging
 import re
 from typing import Any
 
+import structlog
 from async_lru import alru_cache
 
 import config
@@ -18,7 +18,7 @@ from models.kg_constants import (
     RELATIONSHIP_TYPES,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Cache to prevent repeated type upgrade logging for the same entity
 _upgrade_logged = set()

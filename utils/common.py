@@ -8,14 +8,14 @@ into a single import surface to reduce file count and simplify imports.
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 
+import structlog
 import yaml
 
 import config
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # --- helpers.py ---

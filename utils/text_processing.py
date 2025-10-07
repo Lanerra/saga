@@ -1,7 +1,8 @@
 # utils/text_processing.py
-import logging
 import re
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 # Optional imports. We keep them out of module import path to avoid hard deps.
 try:  # pragma: no cover - optional dependency
@@ -9,7 +10,7 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover - if rapidfuzz missing
     partial_ratio_alignment = None  # type: ignore
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover - for type hints only
     pass

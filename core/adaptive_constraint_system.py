@@ -6,14 +6,15 @@ This system discovers relationship constraints by analyzing the actual relations
 in the knowledge graph, providing data-driven validation instead of static rules.
 """
 
-import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 class ConstraintType(Enum):

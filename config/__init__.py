@@ -60,4 +60,4 @@ for _obj_name in ("Models", "Temperatures"):
 
 # Export additional objects needed for backward compatibility (e.g., structlog formatter)
 if hasattr(_settings_mod, "formatter"):
-    globals()["formatter"] = _settings_mod.formatter
+    globals()["simple_formatter"] = _settings_mod.simple_formatter

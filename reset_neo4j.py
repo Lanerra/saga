@@ -1,19 +1,33 @@
 # reset_neo4j.py
 import argparse
 import asyncio
-import logging
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import structlog
+
 import config
 from core.db_manager import Neo4jManagerSingleton
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.UnicodeDecoder(),
+        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
 )
-logger = logging.getLogger(__name__)
+
+logger = structlog.get_logger(__name__)
 
 neo4j_manager_instance = Neo4jManagerSingleton()
 

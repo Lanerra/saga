@@ -6,9 +6,10 @@ This module provides real-time schema discovery by querying the Neo4j database
 directly, replacing static mappings with dynamic, data-driven schema understanding.
 """
 
-import logging
 from datetime import datetime, timedelta
 from typing import Any
+
+import structlog
 
 from core.db_manager import neo4j_manager
 from core.lightweight_cache import (
@@ -18,7 +19,7 @@ from core.lightweight_cache import (
     set_cached_value,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class SchemaIntrospector:

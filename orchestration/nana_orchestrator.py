@@ -1,17 +1,19 @@
 # orchestration/nana_orchestrator.py
-# nana_orchestrator.py
 import asyncio
-import logging
+import logging as stdlib_logging
 import logging.handlers
 import os
 import time  # For Rich display updates
 from typing import Any
+
+import structlog
 
 import config
 import utils
 from agents.knowledge_agent import KnowledgeAgent
 from agents.narrative_agent import NarrativeAgent
 from agents.revision_agent import RevisionAgent
+from config import simple_formatter
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
 from core.runtime_config_validator import (
@@ -21,6 +23,7 @@ from data_access import (
     chapter_queries,
     plot_queries,
 )
+from data_access.chapter_queries import get_chapter_content_batch_native
 
 # Import native versions for performance optimization
 from data_access.character_queries import (
@@ -43,11 +46,16 @@ from models import (
     SceneDetail,
     WorldItem,
 )
+from models.narrative_state import ContextSnapshot, NarrativeState
 from models.user_input_models import UserStoryInputModel, user_story_to_objects
 from orchestration.chapter_flow import run_chapter_pipeline
 from processing.revision_logic import revise_chapter_draft_logic
 from processing.text_deduplicator import TextDeduplicator
 from processing.zero_copy_context_generator import ZeroCopyContextGenerator
+from prompts.prompt_data_getters import (
+    clear_context_cache,
+    get_reliable_kg_facts_for_drafting_prompt,
+)
 from ui.rich_display import RichDisplayManager
 from utils.common import split_text_into_chapters
 
@@ -58,12 +66,12 @@ try:
 except Exception:  # pragma: no cover - fallback when Rich is missing
     RICH_AVAILABLE = False
 
-    class RichHandler(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover
-            logging.getLogger(__name__).handle(record)
+    class RichHandler(stdlib_logging.Handler):
+        def emit(self, record: stdlib_logging.LogRecord) -> None:  # pragma: no cover
+            stdlib_logging.getLogger(__name__).handle(record)
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class NANA_Orchestrator:
@@ -82,6 +90,84 @@ class NANA_Orchestrator:
         self.run_start_time: float = 0.0
         utils.load_spacy_model_if_needed()
         logger.info("SAGA Orchestrator initialized.")
+
+    # ------------------------------------------------------------------
+    # NarrativeState lifecycle and snapshot builder
+    # ------------------------------------------------------------------
+
+    def _begin_chapter_state(self, chapter_number: int) -> NarrativeState:
+        """Create a new NarrativeState for the chapter and clear caches."""
+        clear_context_cache()
+        embedding_handle = getattr(llm_service, "_embedding_service", None)
+        state = NarrativeState(
+            neo4j=neo4j_manager,
+            llm=llm_service,
+            embedding=embedding_handle,
+            plot_outline=self.plot_outline,
+        )
+        logger.info(
+            "NarrativeState initialized",
+            chapter=chapter_number,
+            epoch=state.context_epoch,
+        )
+        return state
+
+    async def _build_context_snapshot(
+        self, chapter_number: int, chapter_plan: list[SceneDetail] | None
+    ) -> ContextSnapshot:
+        """Build a deterministic context snapshot for the chapter."""
+        # Determine plot point focus using existing helper
+        plot_point_focus, _ = self._get_plot_point_info_for_chapter(chapter_number)
+
+        # Build hybrid context and gather auxiliary blocks concurrently
+        hybrid_task = ZeroCopyContextGenerator.generate_hybrid_context_native(
+            self.plot_outline, chapter_number, chapter_plan
+        )
+
+        # Match recent numbers logic used by generator for consistency
+        recent_count = getattr(config, "CONTEXT_CHAPTER_COUNT", 3)
+        start = max(1, chapter_number - recent_count)
+        recent_numbers = [n for n in range(start, chapter_number)]
+
+        recent_task = get_chapter_content_batch_native(recent_numbers)
+        kg_task = get_reliable_kg_facts_for_drafting_prompt(
+            self.plot_outline, chapter_number, chapter_plan
+        )
+
+        hybrid_context, recent_chapters_map, kg_facts_block = await asyncio.gather(
+            hybrid_task, recent_task, kg_task
+        )
+
+        snapshot = ContextSnapshot(
+            chapter_number=chapter_number,
+            plot_point_focus=plot_point_focus,
+            chapter_plan=chapter_plan,
+            hybrid_context=hybrid_context or "",
+            kg_facts_block=kg_facts_block or "",
+            recent_chapters_map=recent_chapters_map or {},
+        )
+        return snapshot
+
+    async def _refresh_snapshot(
+        self,
+        state: NarrativeState,
+        chapter_plan: list[SceneDetail] | None,
+        chapter_number: int,
+    ) -> None:
+        """Build and assign a new ContextSnapshot, advancing epoch."""
+        snapshot = await self._build_context_snapshot(chapter_number, chapter_plan)
+        state.snapshot = snapshot
+        state.context_epoch += 1
+        logger.info(
+            "Context snapshot refreshed",
+            chapter=chapter_number,
+            epoch=state.context_epoch,
+            fingerprint=snapshot.snapshot_fingerprint,
+        )
+
+    def _lock_context_reads(self, state: NarrativeState) -> None:
+        state.reads_locked = True
+        logger.info("Context reads locked for current epoch", epoch=state.context_epoch)
 
     def _update_rich_display(
         self, chapter_num: int | None = None, step: str | None = None
@@ -705,11 +791,102 @@ class NANA_Orchestrator:
                     f"SAGA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
                 )
 
-        hybrid_context_for_draft = (
-            await ZeroCopyContextGenerator.generate_hybrid_context_native(
-                self.plot_outline, novel_chapter_number, chapter_plan
+        if config.ENABLE_AGENTIC_PLANNING and chapter_plan is None:
+            logger.warning(
+                f"SAGA: Ch {novel_chapter_number}: Planning Agent failed or plan invalid. Proceeding with plot point focus only."
             )
+        await self._save_debug_output(
+            novel_chapter_number,
+            "scene_plan",
+            chapter_plan if chapter_plan else "No plan generated.",
         )
+        # Hybrid context is now provided by NarrativeState snapshot; return None here.
+        return (
+            plot_point_focus,
+            plot_point_index,
+            chapter_plan,
+            None,
+        )
+
+    async def _prepare_chapter_prerequisites_with_state(
+        self, novel_chapter_number: int, state: NarrativeState
+    ) -> tuple[str | None, int, list[SceneDetail] | None, str | None]:
+        """
+        State-aware variant: builds scene plan, then uses a snapshot-equivalent
+        hybrid context for validation world_state.previous_chapters_context.
+        """
+        self._update_rich_display(
+            step=f"Ch {novel_chapter_number} - Preparing Prerequisites"
+        )
+
+        plot_point_focus, plot_point_index = self._get_plot_point_info_for_chapter(
+            novel_chapter_number
+        )
+        if plot_point_focus is None:
+            logger.error(
+                f"SAGA: Ch {novel_chapter_number} prerequisite check failed: no concrete plot point focus (index {plot_point_index})."
+            )
+            return None, -1, None, None
+
+        self._update_novel_props_cache()
+
+        characters_for_planning = await get_character_profiles()
+        world_items_for_planning = await get_world_building()
+
+        chapter_plan, _ = await self.narrative_agent._plan_chapter_scenes(
+            self.plot_outline,
+            characters_for_planning,
+            world_items_for_planning,
+            novel_chapter_number,
+            plot_point_focus,
+            plot_point_index,
+        )
+
+        # Build a temporary snapshot-equivalent context for validation
+        temp_snapshot = await self._build_context_snapshot(
+            novel_chapter_number, chapter_plan
+        )
+
+        if (
+            config.ENABLE_SCENE_PLAN_VALIDATION
+            and chapter_plan is not None
+            and config.ENABLE_WORLD_CONTINUITY_CHECK
+        ):
+            world_state = {
+                "plot_outline": self.plot_outline,
+                "chapter_number": novel_chapter_number,
+                "previous_chapters_context": temp_snapshot.hybrid_context,
+            }
+            draft_text = "\n".join(
+                [scene.get("description", "") for scene in chapter_plan]
+            )
+            is_valid, issues = await self.revision_agent.validate_revision(
+                draft_text, "", world_state
+            )
+            plan_problems = []
+            if not is_valid:
+                for issue in issues:
+                    plan_problems.append(
+                        {
+                            "issue_category": "consistency",
+                            "problem_description": issue,
+                            "quote_from_original_text": "N/A - Plan Issue",
+                            "quote_char_start": None,
+                            "quote_char_end": None,
+                            "sentence_char_start": None,
+                            "sentence_char_end": None,
+                            "suggested_fix_focus": "Address scene plan consistency issues.",
+                        }
+                    )
+            await self._save_debug_output(
+                novel_chapter_number,
+                "scene_plan_consistency_problems",
+                plan_problems,
+            )
+            if plan_problems:
+                logger.warning(
+                    f"SAGA: Ch {novel_chapter_number} scene plan has {len(plan_problems)} consistency issues."
+                )
 
         if config.ENABLE_AGENTIC_PLANNING and chapter_plan is None:
             logger.warning(
@@ -720,87 +897,64 @@ class NANA_Orchestrator:
             "scene_plan",
             chapter_plan if chapter_plan else "No plan generated.",
         )
-        await self._save_debug_output(
-            novel_chapter_number,
-            "hybrid_context_for_draft",
-            hybrid_context_for_draft,
-        )
 
+        # Return None for hybrid_context_for_draft; snapshot will be refreshed after this step
         return (
             plot_point_focus,
             plot_point_index,
             chapter_plan,
-            hybrid_context_for_draft,
+            None,
         )
 
     async def _draft_initial_chapter_text(
         self,
         novel_chapter_number: int,
         plot_point_focus: str,
-        hybrid_context_for_draft: str,
+        hybrid_context_for_draft: str | None,
         chapter_plan: list[SceneDetail] | None,
+        state: NarrativeState | None = None,
     ) -> tuple[str | None, str | None]:
         self._update_rich_display(
             step=f"Ch {novel_chapter_number} - Drafting Initial Text"
         )
-        # Prefer using precomputed chapter_plan and hybrid context if available to avoid re-planning and ensure continuity.
-        # Use native queries for optimal performance (Phase 3 optimization)
-        characters = await get_character_profiles()
-        world_items = await get_world_building()
-        if chapter_plan is not None and hybrid_context_for_draft is not None:
-            # Draft the chapter directly using the prepared scenes and context.
-            # _draft_chapter expects: plot_outline, chapter_number, plot_point_focus, hybrid_context_for_draft, chapter_plan
-            (
-                draft_text,
-                raw_output,
-                _,  # unused usage data
-            ) = await self.narrative_agent.draft_chapter(
-                self.plot_outline,
-                novel_chapter_number,
-                plot_point_focus,
-                hybrid_context_for_draft,
-                chapter_plan,
+        # Prefer snapshot-provided context when available
+        if state and state.snapshot and state.snapshot.hybrid_context:
+            hybrid_context_for_draft = state.snapshot.hybrid_context
+            logger.info(
+                "Draft using snapshot context",
+                epoch=state.context_epoch,
+                fingerprint=state.snapshot.snapshot_fingerprint,
             )
-            if not draft_text:
-                logger.error(
-                    f"SAGA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
-                )
-                await self._save_debug_output(
-                    novel_chapter_number,
-                    "initial_draft_fail_raw_llm",
-                    raw_output or "Drafting Agent returned None for raw output.",
-                )
-                return None, None
-            await self._save_debug_output(
-                novel_chapter_number, "initial_draft", draft_text
+        # Require hybrid context (from snapshot) and draft using provided plan (or single-pass if None)
+        if not hybrid_context_for_draft:
+            logger.error(
+                f"SAGA: Ch {novel_chapter_number} - Missing hybrid context; snapshot build likely failed."
             )
-            return draft_text, raw_output
-        # Fallback: if no valid plan/context, use generate_chapter for optimal performance
+            return None, None
         (
-            initial_draft_text,
-            initial_raw_llm_text,
+            draft_text,
+            raw_output,
             _,  # unused usage data
-        ) = await self.narrative_agent.generate_chapter(
+        ) = await self.narrative_agent.draft_chapter(
             self.plot_outline,
-            characters,  # List[CharacterProfile]
-            world_items,  # List[WorldItem]
             novel_chapter_number,
             plot_point_focus,
+            hybrid_context_for_draft,
+            chapter_plan,
+            state=state,
         )
-        if not initial_draft_text:
+        if not draft_text:
             logger.error(
                 f"SAGA: Drafting Agent failed for Ch {novel_chapter_number}. No initial draft produced."
             )
             await self._save_debug_output(
                 novel_chapter_number,
                 "initial_draft_fail_raw_llm",
-                initial_raw_llm_text or "Drafting Agent returned None for raw output.",
+                raw_output or "Drafting Agent returned None for raw output.",
             )
             return None, None
-        await self._save_debug_output(
-            novel_chapter_number, "initial_draft", initial_draft_text
-        )
-        return initial_draft_text, initial_raw_llm_text
+        await self._save_debug_output(novel_chapter_number, "initial_draft", draft_text)
+        return draft_text, raw_output
 
     async def _process_and_revise_draft(
         self,
@@ -809,9 +963,18 @@ class NANA_Orchestrator:
         initial_raw_llm_text: str | None,
         plot_point_focus: str,
         plot_point_index: int,
-        hybrid_context_for_draft: str,
+        hybrid_context_for_draft: str | None,
         chapter_plan: list[SceneDetail] | None,
+        state: NarrativeState | None = None,
     ) -> tuple[str | None, str | None, bool]:
+        # Prefer snapshot-provided context when available
+        if state and state.snapshot and state.snapshot.hybrid_context:
+            hybrid_context_for_draft = state.snapshot.hybrid_context
+            logger.info(
+                "Revision using snapshot context",
+                epoch=state.context_epoch,
+                fingerprint=state.snapshot.snapshot_fingerprint,
+            )
         # FAST PATH: If all evaluation agents are disabled, just de-duplicate and return.
         if (
             not config.ENABLE_COMPREHENSIVE_EVALUATION
@@ -1137,7 +1300,8 @@ class NANA_Orchestrator:
             hybrid_context_for_draft,
         ) = prereq_result
 
-        if plot_point_focus is None or hybrid_context_for_draft is None:
+        # Only require plot_point_focus; hybrid context can be supplied by snapshot later
+        if plot_point_focus is None:
             self._update_rich_display(
                 step=f"Ch {novel_chapter_number} Failed - Prerequisites Incomplete"
             )
@@ -1146,7 +1310,7 @@ class NANA_Orchestrator:
             plot_point_focus,
             plot_point_index,
             chapter_plan,
-            hybrid_context_for_draft,
+            hybrid_context_for_draft or "",
         )
 
     async def _process_initial_draft(
@@ -1181,6 +1345,7 @@ class NANA_Orchestrator:
         processed_text: str,
         processed_raw_llm: str | None,
         is_flawed: bool,
+        state: NarrativeState | None = None,
     ) -> str | None:
         final_text_result = await self._finalize_and_save_chapter(
             novel_chapter_number, processed_text, processed_raw_llm, is_flawed
@@ -1192,8 +1357,15 @@ class NANA_Orchestrator:
                 if not is_flawed
                 else "Generated (Marked with Flaws)"
             )
+            log_kwargs = {}
+            if state and state.snapshot:
+                log_kwargs = {
+                    "epoch": state.context_epoch,
+                    "fingerprint": state.snapshot.snapshot_fingerprint,
+                }
             logger.info(
-                f"=== SAGA: Finished Novel Chapter {novel_chapter_number} - {status_message} ==="
+                f"=== SAGA: Finished Novel Chapter {novel_chapter_number} - {status_message} ===",
+                **log_kwargs,
             )
             self._update_rich_display(
                 step=f"Ch {novel_chapter_number} - {status_message}"
@@ -1639,21 +1811,21 @@ class NANA_Orchestrator:
 
 def setup_logging_nana():
     # Keep logging simple for single-user unless advanced mode is desired.
-    logging.basicConfig(
+    stdlib_logging.basicConfig(
         level=config.LOG_LEVEL_STR,
         format=config.LOG_FORMAT,
         datefmt=config.LOG_DATE_FORMAT,
         handlers=[],
     )
-    root_logger = logging.getLogger()
+    root_logger = stdlib_logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
     # Simple logging mode: console only, no rotation or Rich coupling
     if getattr(config, "SIMPLE_LOGGING_MODE", False):
-        stream_handler = logging.StreamHandler()
+        stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
-        stream_handler.setFormatter(config.formatter)
+        stream_handler.setFormatter(simple_formatter)
         root_logger.addHandler(stream_handler)
         root_logger.info("Simple logging mode enabled: console only.")
     elif config.LOG_FILE:
@@ -1663,7 +1835,7 @@ def setup_logging_nana():
             )
             # Ensure the parent directory exists, not the file path itself
             os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
-            file_handler = logging.handlers.RotatingFileHandler(
+            file_handler = stdlib_logging.handlers.RotatingFileHandler(
                 log_path,
                 maxBytes=10 * 1024 * 1024,
                 backupCount=5,
@@ -1672,13 +1844,13 @@ def setup_logging_nana():
             )
             file_handler.setLevel(config.LOG_LEVEL_STR)
             # Use the structlog formatter for human-readable output
-            file_handler.setFormatter(config.formatter)
+            file_handler.setFormatter(simple_formatter)
             root_logger.addHandler(file_handler)
             root_logger.info(f"File logging enabled. Log file: {log_path}")
         except Exception as e:
-            console_handler_fallback = logging.StreamHandler()
+            console_handler_fallback = stdlib_logging.StreamHandler()
             # Use the structlog formatter for human-readable output
-            console_handler_fallback.setFormatter(config.formatter)
+            console_handler_fallback.setFormatter(simple_formatter)
             root_logger.addHandler(console_handler_fallback)
             root_logger.error(
                 f"Failed to configure file logging: {e}. Logging to console instead.",
@@ -1693,7 +1865,9 @@ def setup_logging_nana():
         existing_console = None
         if root_logger.handlers:
             for h_idx, h in enumerate(root_logger.handlers):
-                if hasattr(h, "console") and not isinstance(h, logging.FileHandler):
+                if hasattr(h, "console") and not isinstance(
+                    h, stdlib_logging.FileHandler
+                ):
                     existing_console = h.console  # type: ignore
                     break
 
@@ -1715,18 +1889,24 @@ def setup_logging_nana():
         )
         root_logger.addHandler(rich_handler)
         root_logger.info("Rich logging handler enabled for console.")
-    elif not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
-        stream_handler = logging.StreamHandler()
+    elif not any(
+        isinstance(h, stdlib_logging.StreamHandler) for h in root_logger.handlers
+    ):
+        stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
         # Use the structlog formatter for human-readable output
-        stream_handler.setFormatter(config.formatter)
+        stream_handler.setFormatter(simple_formatter)
         root_logger.addHandler(stream_handler)
         root_logger.info("Standard stream logging handler enabled for console.")
 
-    logging.getLogger("neo4j.notifications").setLevel(logging.WARNING)
-    logging.getLogger("neo4j").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    root_logger.info(
-        f"SAGA Logging setup complete. Application Log Level: {logging.getLevelName(config.LOG_LEVEL_STR)}."
+    stdlib_logging.getLogger("neo4j.notifications").setLevel(stdlib_logging.WARNING)
+    stdlib_logging.getLogger("neo4j").setLevel(stdlib_logging.WARNING)
+    stdlib_logging.getLogger("httpx").setLevel(stdlib_logging.WARNING)
+    stdlib_logging.getLogger("httpcore").setLevel(stdlib_logging.WARNING)
+
+    # Log the completion message using structlog to avoid the None logger issue
+    import structlog
+
+    structlog.get_logger().info(
+        f"SAGA Logging setup complete. Application Log Level: {stdlib_logging.getLevelName(config.LOG_LEVEL_STR)}."
     )

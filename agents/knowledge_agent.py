@@ -2,10 +2,10 @@
 # knowledge_agent.py
 import asyncio
 import json
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from async_lru import alru_cache  # type: ignore
 
 import config
@@ -38,7 +38,7 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 if TYPE_CHECKING:
     from processing.state_tracker import StateTracker
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @alru_cache(maxsize=config.SUMMARY_CACHE_SIZE)

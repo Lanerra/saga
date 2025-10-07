@@ -150,7 +150,7 @@ class SagaSettings(BaseSettings):
     # Token budgets (defaults are generous; override via FAST_PROFILE for laptops)
     MAX_CONTEXT_TOKENS: int = 40960
     MAX_GENERATION_TOKENS: int = 16384
-    CONTEXT_CHAPTER_COUNT: int = 3
+    CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 2
     KG_HEALING_INTERVAL: int = 2
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 20
@@ -171,8 +171,8 @@ class SagaSettings(BaseSettings):
     MAX_PLANNING_TOKENS: int = 16384
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
-    PLANNING_CONTEXT_MAX_CHARS_PER_PROFILE_DESC: int = 80
-    PLANNING_CONTEXT_MAX_RECENT_DEV_PER_PROFILE: int = 120
+    PLANNING_CONTEXT_MAX_CHARS_PER_PROFILE_DESC: int = 800
+    PLANNING_CONTEXT_MAX_RECENT_DEV_PER_PROFILE: int = 1200
     PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET: int = 5
     PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY: int = 3
     PLANNING_CONTEXT_MAX_LOCATIONS_IN_SNIPPET: int = 3
@@ -389,12 +389,11 @@ os.makedirs(DEBUG_OUTPUTS_DIR, exist_ok=True)
 # Configure structlog to integrate with standard logging and output human‑readable messages
 structlog.configure(
     processors=[
-        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M"),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M:%S"),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],
@@ -404,15 +403,64 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
-# Simple human‑readable formatter for structlog
+
+# Simple human-readable formatter for structlog
+def simple_log_format(logger, name, event_dict):
+    """Simple human-readable log formatter that maintains structured data internally."""
+    level = event_dict.pop("level", "INFO")
+    timestamp = event_dict.pop("timestamp", "")
+    logger_name = event_dict.pop("logger", "")
+    event = event_dict.pop("event", "")
+
+    # Format as simple human-readable line
+    parts = []
+    if timestamp:
+        parts.append(f"{timestamp}")
+    if logger_name:
+        parts.append(f"[{logger_name}]")
+    parts.append(f"{level}")
+
+    # Add the main event message
+    parts.append(f"{event}")
+
+    # Add any remaining key-value pairs as context
+    if event_dict:
+        context_parts = []
+        for key, value in event_dict.items():
+            context_parts.append(f"{key}={value}")
+        if context_parts:
+            parts.append(f"({' '.join(context_parts)})")
+
+    return " - ".join(parts)
+
+
 formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
-    processors=[structlog.dev.ConsoleRenderer(colors=False)],
+    processors=[
+        structlog.dev.ConsoleRenderer(
+            colors=False,
+            exception_formatter=structlog.dev.plain_traceback,
+            sort_keys=False,
+        )
+    ],
+)
+
+# Alternative: Even simpler formatter that outputs clean, readable lines
+simple_formatter = structlog.stdlib.ProcessorFormatter(
+    foreign_pre_chain=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+    ],
+    processors=[simple_log_format],
 )
 
 handler = stdlib_logging.StreamHandler()
@@ -420,7 +468,9 @@ if settings.LOG_FILE:
     handler = stdlib_logging.FileHandler(
         os.path.join(settings.BASE_OUTPUT_DIR, settings.LOG_FILE)
     )
-handler.setFormatter(formatter)
+
+
+handler.setFormatter(simple_formatter)
 root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)

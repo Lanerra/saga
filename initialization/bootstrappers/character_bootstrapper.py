@@ -46,16 +46,13 @@ async def _try_generate_unique_name(
     base_context: dict[str, Any],
     state_tracker: StateTracker,
     existing_profile_names: list[str],
-    max_attempts: int = 3,
+    max_attempts: int = 5,
 ) -> str | None:
-    """Attempt to generate a unique, narrative-appropriate name via LLM with retries.
-
-    Tries the conflict-specific template first, then falls back to the general
-    field template with added diversity instructions. Verifies uniqueness against
-    StateTracker and existing profiles after each attempt.
-    """
+    """Attempt to generate a unique, diverse name via LLM with enhanced diversity checks."""
     context = dict(base_context)
     attempt = 0
+    used_names: set[str] = set()
+
     while attempt < max_attempts:
         attempt += 1
         try:
@@ -66,9 +63,10 @@ async def _try_generate_unique_name(
                     "bootstrapper/fill_character_name_conflict.j2",
                 )
             else:
-                # Enrich context to push for diversity on subsequent attempts
+                # Enrich context with diversity instructions on subsequent attempts
                 context["diversity_instruction"] = (
-                    "Provide a distinct, non-derivative name unlike any listed."
+                    "Provide a completely different name with different cultural origin, "
+                    "phonetic structure, and visual appearance from any listed."
                 )
                 candidate, _ = await bootstrap_field(
                     "name",
@@ -81,60 +79,363 @@ async def _try_generate_unique_name(
         if not candidate or not isinstance(candidate, str) or not candidate.strip():
             continue
 
-        # Uniqueness checks
+        candidate = candidate.strip()
+
+        # Comprehensive uniqueness and diversity checks
         if await state_tracker.check(candidate):
             continue
         if candidate in existing_profile_names:
             continue
+        if candidate in used_names:
+            continue
+        if _is_too_similar_to_existing(candidate, existing_profile_names):
+            continue
+        if _is_too_similar_to_used(candidate, used_names):
+            continue
+
+        used_names.add(candidate)
         return candidate
+
+    # Fallback: use deterministic diverse generation
+    for variant in _generate_diverse_name_variants(
+        base_context.get("conflicting_name", "Generic"),
+        existing_profile_names + list(used_names),
+    ):
+        if (
+            not await state_tracker.check(variant)
+            and variant not in existing_profile_names
+            and variant not in used_names
+            and not _is_too_similar_to_existing(variant, existing_profile_names)
+        ):
+            return variant
 
     return None
 
 
-def _morph_name_variants(base: str) -> list[str]:
-    """Generate deterministic, human-like variants of a name without numbering.
-
-    Applies simple phonetic tweaks and token swaps to produce distinct but
-    related alternatives. This is intentionally lightweight and local-first.
-    """
+def _generate_diverse_name_variants(base: str, existing_names: list[str]) -> list[str]:
+    """Generate truly diverse name variants using multiple strategies."""
     variants: list[str] = []
     name = base.strip()
     if not name:
         return variants
 
-    # Basic vowel swaps
-    vowel_swaps = {"e": "a", "a": "e", "i": "y", "o": "u", "u": "o"}
-    swapped = "".join(vowel_swaps.get(ch, ch) for ch in name)
-    if swapped != name:
-        variants.append(swapped)
+    # Strategy 1: Cultural/linguistic diversification
+    cultural_variants = _get_cultural_variants(name, existing_names)
+    variants.extend(cultural_variants)
 
-    # Soft consonant tweaks
-    cons_swaps = {"v": "w", "ph": "f", "c": "k", "s": "z"}
-    cons_variant = name
-    for src, dst in cons_swaps.items():
-        cons_variant = cons_variant.replace(src, dst).replace(src.upper(), dst.upper())
-    if cons_variant != name:
-        variants.append(cons_variant)
+    # Strategy 2: Structural diversification (first/last name separation)
+    structural_variants = _get_structural_variants(name, existing_names)
+    variants.extend(structural_variants)
 
-    # Token rearrangement for two-token names
-    tokens = name.split()
-    if len(tokens) == 2:
-        variants.append(f"{tokens[1]} {tokens[0]}")
+    # Strategy 3: Phonetic diversification
+    phonetic_variants = _get_phonetic_variants(name, existing_names)
+    variants.extend(phonetic_variants)
 
-    # Minimal suffix alteration (non-numeric)
-    if not name.endswith("on"):
-        variants.append(name + "on")
-    elif not name.endswith("ar"):
-        variants.append(name[:-2] + "ar")
+    # Strategy 4: Genre-appropriate diversification
+    genre_variants = _get_genre_variants(name, existing_names)
+    variants.extend(genre_variants)
 
-    # Deduplicate while preserving order
+    # Remove duplicates while preserving order
     seen: set[str] = set()
-    unique_variants = []
+    unique_variants: list[str] = []
     for v in variants:
-        if v not in seen:
+        if v not in seen and v != base:
             seen.add(v)
             unique_variants.append(v)
     return unique_variants
+
+
+def _get_cultural_variants(base_name: str, existing_names: list[str]) -> list[str]:
+    """Generate names from different cultural naming traditions."""
+    variants: list[str] = []
+
+    cultural_patterns = {
+        "nordic": [
+            "Astrid",
+            "Bjorn",
+            "Erik",
+            "Freya",
+            "Gunnar",
+            "Ingrid",
+            "Lars",
+            "Sigrid",
+        ],
+        "japanese": [
+            "Akira",
+            "Hiroshi",
+            "Kenji",
+            "Mariko",
+            "Nobu",
+            "Sato",
+            "Tanaka",
+            "Yuki",
+        ],
+        "arabic": [
+            "Amara",
+            "Farid",
+            "Hakim",
+            "Leila",
+            "Malik",
+            "Nadia",
+            "Omar",
+            "Zara",
+        ],
+        "slavic": [
+            "Boris",
+            "Dmitri",
+            "Ivana",
+            "Katarina",
+            "Mikhail",
+            "Nikolai",
+            "Svetlana",
+        ],
+        "celtic": [
+            "Aiden",
+            "Bran",
+            "Cian",
+            "Deirdre",
+            "Finn",
+            "Maeve",
+            "Oisín",
+            "Siobhan",
+        ],
+        "latin": [
+            "Antonius",
+            "Caesar",
+            "Flavius",
+            "Julius",
+            "Lucius",
+            "Marcus",
+            "Octavius",
+            "Valerius",
+        ],
+    }
+
+    parts = base_name.split()
+    if parts:
+        for culture, names in cultural_patterns.items():
+            if not _appears_to_be_cultural(base_name, culture):
+                for nm in names[:3]:
+                    variants.append(
+                        f"{nm} {parts[-1] if len(parts) > 1 else _generate_generic_surname()}"
+                    )
+
+    return variants
+
+
+def _get_structural_variants(base_name: str, existing_names: list[str]) -> list[str]:
+    """Generate variants by changing name structure and components."""
+    variants: list[str] = []
+    parts = base_name.split()
+
+    if len(parts) == 2:
+        first, last = parts
+        variants.append(f"{last} {first}")
+
+        new_firsts = _generate_alternative_first_names(first)
+        for new_first in new_firsts:
+            variants.append(f"{new_first} {last}")
+
+        new_lasts = _generate_alternative_last_names(last)
+        for new_last in new_lasts:
+            variants.append(f"{first} {new_last}")
+
+    elif len(parts) == 1:
+        new_lasts = _generate_alternative_last_names("Generic")
+        for new_last in new_lasts:
+            variants.append(f"{parts[0]} {new_last}")
+
+    return variants
+
+
+def _get_phonetic_variants(base_name: str, existing_names: list[str]) -> list[str]:
+    """Generate phonetically diverse variants to avoid similar-sounding names."""
+    variants: list[str] = []
+    name = base_name.lower()
+
+    similar_sounds = {
+        "v": ["w", "f"],
+        "w": ["v", "f"],
+        "f": ["v", "w"],
+        "b": ["p"],
+        "p": ["b"],
+        "d": ["t"],
+        "t": ["d"],
+        "g": ["k"],
+        "k": ["g"],
+        "s": ["z", "c"],
+        "z": ["s"],
+        "x": ["ks", "z"],
+        "c": ["s", "k"],
+    }
+
+    for char, replacements in similar_sounds.items():
+        if char in name:
+            for replacement in replacements:
+                if replacement not in name:
+                    new_name = name.replace(char, replacement)
+                    if _calculate_name_distance(base_name, new_name) > 0.3:
+                        variants.append(new_name.title())
+
+    return variants
+
+
+def _get_genre_variants(base_name: str, existing_names: list[str]) -> list[str]:
+    """Generate genre-appropriate names that fit the story context."""
+    return [
+        f"{_generate_random_first_name()} {_generate_random_surname()}"
+        for _ in range(3)
+    ]
+
+
+def _calculate_name_distance(name1: str, name2: str) -> float:
+    """Calculate a simple distance metric between names."""
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, name1.lower(), name2.lower()).ratio()
+
+
+def _appears_to_be_cultural(name: str, culture: str) -> bool:
+    """Simple heuristic to determine if name appears to be from a specific culture."""
+    cultural_indicators = {
+        "nordic": ["bj", "erik", "ing", "gunn", "sig", "astr", "fre"],
+        "japanese": ["ak", "hiro", "ken", "mar", "nobu", "tan", "yuk"],
+        "arabic": ["far", "hak", "lei", "mal", "nad", "om", "zar"],
+    }
+
+    name_lower = name.lower()
+    if culture in cultural_indicators:
+        return any(
+            indicator in name_lower for indicator in cultural_indicators[culture]
+        )
+    return False
+
+
+def _generate_generic_surname() -> str:
+    """Generate a generic surname."""
+    import random
+
+    generic_surnames = [
+        "Smith",
+        "Johnson",
+        "Williams",
+        "Brown",
+        "Jones",
+        "Miller",
+        "Davis",
+        "Garcia",
+    ]
+    return random.choice(generic_surnames)
+
+
+def _generate_alternative_first_names(original_first: str) -> list[str]:
+    """Generate alternative first names that are structurally different."""
+    alternatives = {
+        "short": ["Alex", "Sam", "Max", "Jay", "Roe", "Kai", "Zoe", "Ace"],
+        "long": [
+            "Alexander",
+            "Samantha",
+            "Maximilian",
+            "Sebastian",
+            "Valentina",
+            "Constantine",
+        ],
+        "unique": ["Aether", "Nyx", "Zephyr", "Aurora", "Caspian", "Seraphina"],
+    }
+
+    if len(original_first) <= 4:
+        return alternatives["long"][:3]
+    else:
+        return alternatives["short"][:3]
+
+
+def _generate_alternative_last_names(original_last: str) -> list[str]:
+    """Generate alternative last names that are structurally different."""
+    import random
+
+    return [
+        f"{random.choice(['Dark', 'Light', 'Storm', 'Raven', 'Iron', 'Stone'])}{random.choice(['hold', 'brook', 'ward', 'crest', 'blade', 'heart'])}"
+        for _ in range(5)
+    ]
+
+
+def _generate_random_first_name() -> str:
+    """Generate a random first name."""
+    import random
+
+    first_names = [
+        "Aria",
+        "Caelum",
+        "Dante",
+        "Elara",
+        "Fenris",
+        "Gideon",
+        "Hazel",
+        "Iris",
+        "Jasper",
+        "Kira",
+        "Luna",
+        "Milo",
+        "Nova",
+        "Orion",
+        "Piper",
+        "Quinn",
+        "Riley",
+        "Sage",
+        "Tobias",
+        "Una",
+        "Vera",
+        "Wyatt",
+        "Xander",
+        "Yara",
+        "Zion",
+    ]
+    return random.choice(first_names)
+
+
+def _generate_random_surname() -> str:
+    """Generate a random surname."""
+    import random
+
+    surnames = [
+        "Blackwood",
+        "Crestfall",
+        "Duskbane",
+        "Emberheart",
+        "Frostwind",
+        "Goldleaf",
+        "Holloway",
+        "Ironforge",
+        "Nightshade",
+        "Oakenheart",
+        "Palewater",
+        "Quickshot",
+        "Ravencrest",
+        "Stormwright",
+        "Thornfield",
+        "Underhill",
+        "Valewood",
+        "Whitestone",
+        "Youngblade",
+        "Zephyrwind",
+    ]
+    return random.choice(surnames)
+
+
+def _is_too_similar_to_existing(candidate: str, existing_names: list[str]) -> bool:
+    """Check if candidate name is too similar to existing names."""
+    for existing in existing_names:
+        if _calculate_name_distance(candidate, existing) > 0.6:
+            return True
+    return False
+
+
+def _is_too_similar_to_used(candidate: str, used_names: set[str]) -> bool:
+    """Check if candidate name is too similar to recently used names."""
+    for used in used_names:
+        if _calculate_name_distance(candidate, used) > 0.6:
+            return True
+    return False
 
 
 async def bootstrap_characters(
@@ -313,8 +614,10 @@ async def bootstrap_characters(
                             unique_name=value,
                         )
                     else:
-                        # Try deterministic, human-like variants before giving up
-                        for variant in _morph_name_variants(value):
+                        # Try deterministic, diverse variants before giving up
+                        for variant in _generate_diverse_name_variants(
+                            value, [p.name for p in character_profiles.values()]
+                        ):
                             if not await state_tracker.check(
                                 variant
                             ) and variant not in [
@@ -327,6 +630,45 @@ async def bootstrap_characters(
                                     unique_name=value,
                                 )
                                 break
+
+                # Additional diversity check when name changed successfully
+                if hasattr(state_tracker, "check_name_diversity"):
+                    try:
+                        diversity_ok = await state_tracker.check_name_diversity(value)
+                    except Exception:
+                        diversity_ok = True
+                    if not diversity_ok:
+                        logger.warning(
+                            "Generated name lacks diversity, generating alternative",
+                            old_name=name,
+                            new_name=value,
+                        )
+                        profile_dict = character_profiles[name].to_dict()
+                        profile_dict["name"] = character_profiles[name].name
+                        conflict_context = {
+                            "profile": profile_dict,
+                            "plot_outline": plot_outline,
+                            "conflicting_name": value,
+                            "existing_names": [
+                                p.name for p in character_profiles.values()
+                            ],
+                            "diversity_issue": True,
+                        }
+                        if serial_world is not None:
+                            conflict_context["world"] = serial_world
+
+                        diverse_name_result = await _try_generate_unique_name(
+                            conflict_context,
+                            state_tracker,
+                            [p.name for p in character_profiles.values()],
+                        )
+                        if diverse_name_result:
+                            value = diverse_name_result
+                            logger.info(
+                                "Generated diverse name to resolve similarity issue",
+                                old_name=name,
+                                diverse_name=value,
+                            )
 
                 # Even if no conflict, ensure we have a valid name change
                 # This handles cases where LLM might return the same name or invalid response
@@ -361,7 +703,9 @@ async def bootstrap_characters(
                             new_name=value,
                         )
                     else:
-                        for variant in _morph_name_variants(name):
+                        for variant in _generate_diverse_name_variants(
+                            name, [p.name for p in character_profiles.values()]
+                        ):
                             if not await state_tracker.check(
                                 variant
                             ) and variant not in [
@@ -433,7 +777,9 @@ async def bootstrap_characters(
                             new_name=value,
                         )
                     else:
-                        for variant in _morph_name_variants(name):
+                        for variant in _generate_diverse_name_variants(
+                            name, [p.name for p in character_profiles.values()]
+                        ):
                             if not await state_tracker.check(
                                 variant
                             ) and variant not in [

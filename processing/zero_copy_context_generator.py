@@ -310,16 +310,5 @@ class ZeroCopyContextGenerator:
     # Legacy fallback path removed; recent-chapters path is now primary.
 
 
-# Public helper for narrative continuation extraction to avoid private calls from agents
-def extract_narrative_continuation_context(
-    chap_data: dict[str, Any], chap_num: int
-) -> str:
-    """Public wrapper that delegates to the internal extraction logic.
-
-    Exposes a stable function for agents to use without importing private methods.
-    """
-    return ZeroCopyContextGenerator._extract_narrative_continuation(chap_data, chap_num)
-
-
 ## Note: Legacy wrapper generate_hybrid_chapter_context_native removed.
 ## Call ZeroCopyContextGenerator.generate_hybrid_context_native directly.

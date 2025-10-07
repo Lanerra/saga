@@ -1,13 +1,13 @@
 # data_access/chapter_queries.py
-import logging
 from typing import Any
 
 import numpy as np
+import structlog
 
 import config
 from core.db_manager import neo4j_manager
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def load_chapter_count_from_db() -> int:

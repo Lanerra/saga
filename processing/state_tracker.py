@@ -217,3 +217,41 @@ class StateTracker:
                     continue
 
             return recent_entities
+
+    async def get_name_diversity_score(self, new_name: str) -> float:
+        """Calculate diversity score for a new name compared to existing character names.
+
+        Returns a value in [0,1], where higher means more diverse (less similar).
+        """
+        async with self._lock:
+            if not self._entities:
+                return 1.0
+
+            diversity_scores: list[float] = []
+            for name, metadata in self._entities.items():
+                if metadata["type"] == "character":
+                    score = _st_calculate_name_distance(new_name, name)
+                    diversity_scores.append(score)
+
+            if not diversity_scores:
+                return 1.0
+
+            avg_similarity = sum(diversity_scores) / len(diversity_scores)
+            return 1.0 - avg_similarity
+
+    async def check_name_diversity(
+        self, new_name: str, min_diversity_threshold: float = 0.4
+    ) -> bool:
+        """Check if a new name meets diversity requirements.
+
+        Returns True if diversity is acceptable (>= threshold).
+        """
+        diversity_score = await self.get_name_diversity_score(new_name)
+        return diversity_score >= min_diversity_threshold
+
+
+def _st_calculate_name_distance(name1: str, name2: str) -> float:
+    """Lightweight similarity ratio for names used by StateTracker."""
+    from difflib import SequenceMatcher
+
+    return SequenceMatcher(None, name1.lower(), name2.lower()).ratio()
