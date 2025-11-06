@@ -1557,8 +1557,7 @@ RETURN chapter, time, desc
 │   ├── rules.yaml             # World-building constraints
 │   └── history.yaml
 └── exports/
-    ├── novel_full.md          # Complete manuscript
-    └── novel_full.epub        # E-book format
+    └── novel_full.md          # Complete manuscript
 ```
 
 ---
