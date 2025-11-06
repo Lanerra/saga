@@ -13,7 +13,7 @@ Components:
     graph: Graph definition and workflow orchestration
 
 Usage:
-    from core.langgraph import NarrativeState, create_initial_state
+    from core.langgraph import NarrativeState, create_initial_state, extract_entities
 
     # Create initial state
     state = create_initial_state(
@@ -27,8 +27,12 @@ Usage:
         project_dir="./output/my-novel",
         protagonist_name="Hero"
     )
+
+    # Use extraction node
+    updated_state = await extract_entities(state)
 """
 
+from core.langgraph.nodes import extract_entities
 from core.langgraph.state import (
     Contradiction,
     ExtractedEntity,
@@ -45,6 +49,7 @@ __all__ = [
     "ExtractedRelationship",
     "Contradiction",
     "create_initial_state",
+    "extract_entities",
 ]
 
 __version__ = "0.1.0"

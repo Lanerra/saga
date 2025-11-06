@@ -1,11 +1,13 @@
 """
 LangGraph nodes for SAGA narrative generation workflow.
 
-This module will contain individual processing nodes that make up the
+This module contains individual processing nodes that make up the
 LangGraph-based narrative generation workflow.
 
+Implemented Nodes:
+    - extraction_node: Entity extraction from generated text ✓
+
 Planned Nodes (from migration plan):
-    - extraction_node: Entity extraction from generated text
     - commit_node: Deduplication and Neo4j commitment
     - validation_node: Consistency and quality validation
     - generation_node: Chapter text generation
@@ -20,6 +22,8 @@ Each node follows the LangGraph signature:
         return updated_state
 """
 
-__all__ = []
+from core.langgraph.nodes.extraction_node import extract_entities
+
+__all__ = ["extract_entities"]
 
 __version__ = "0.1.0"
