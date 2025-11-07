@@ -4,14 +4,15 @@ Tests for LangGraph extraction node (Step 1.1.2).
 Tests the extract_entities node and its helper functions.
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import AsyncMock, patch
 
 from core.langgraph.nodes.extraction_node import (
-    extract_entities,
-    _parse_extraction_json,
     _clean_llm_json,
     _map_category_to_type,
+    _parse_extraction_json,
+    extract_entities,
 )
 
 
@@ -31,19 +32,19 @@ class TestCleanLLMJSON:
         raw = '{"array": [1, 2, 3,], "nested": {"key": "value",}}'
         cleaned = _clean_llm_json(raw)
         # Check that trailing commas are removed
-        assert not cleaned.endswith(',]')
-        assert not cleaned.endswith(',}')
+        assert not cleaned.endswith(",]")
+        assert not cleaned.endswith(",}")
         assert cleaned == '{"array": [1, 2, 3], "nested": {"key": "value"}}'
 
     def test_clean_curly_quotes(self):
         """Test converting curly quotes to straight quotes."""
         # Use actual Unicode curly quotes (U+201C and U+201D)
-        raw = '\u007b\u201ckey\u201d: \u201cvalue\u201d\u007d'  # {"key": "value"} with curly quotes
+        raw = "\u007b\u201ckey\u201d: \u201cvalue\u201d\u007d"  # {"key": "value"} with curly quotes
         cleaned = _clean_llm_json(raw)
         # Check that straight quotes are present and curly quotes are removed
         assert '"' in cleaned
-        assert '\u201c' not in cleaned  # Left double quotation mark
-        assert '\u201d' not in cleaned  # Right double quotation mark
+        assert "\u201c" not in cleaned  # Left double quotation mark
+        assert "\u201d" not in cleaned  # Right double quotation mark
 
     def test_clean_already_clean_json(self):
         """Test that already clean JSON is unchanged."""
@@ -60,8 +61,8 @@ class TestCleanLLMJSON:
         # Check markdown blocks are removed
         assert not cleaned.startswith("```")
         # Check trailing commas are removed
-        assert ',]' not in cleaned
-        assert ',}' not in cleaned
+        assert ",]" not in cleaned
+        assert ",}" not in cleaned
 
 
 class TestMapCategoryToType:
@@ -158,7 +159,10 @@ class TestExtractEntities:
         assert result["current_node"] == "extract_entities"
 
     async def test_extract_entities_successful(
-        self, sample_state_with_extraction, mock_llm_service, sample_llm_extraction_response
+        self,
+        sample_state_with_extraction,
+        mock_llm_service,
+        sample_llm_extraction_response,
     ):
         """Test successful entity extraction."""
         state = sample_state_with_extraction
@@ -170,7 +174,9 @@ class TestExtractEntities:
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
 
-        with patch("core.langgraph.nodes.extraction_node.llm_service", mock_llm_service):
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
             result = await extract_entities(state)
 
             assert "extracted_entities" in result
@@ -188,7 +194,9 @@ class TestExtractEntities:
         # Mock LLM to raise exception
         mock_llm_service.async_call_llm.side_effect = Exception("LLM service error")
 
-        with patch("core.langgraph.nodes.extraction_node.llm_service", mock_llm_service):
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
             result = await extract_entities(state)
 
             assert result["extracted_entities"] == {}
@@ -205,7 +213,9 @@ class TestExtractEntities:
         # Mock LLM to return empty string
         mock_llm_service.async_call_llm.return_value = ("", None)
 
-        with patch("core.langgraph.nodes.extraction_node.llm_service", mock_llm_service):
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
             result = await extract_entities(state)
 
             assert result["extracted_entities"] == {}
@@ -224,7 +234,9 @@ class TestExtractEntities:
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
 
-        with patch("core.langgraph.nodes.extraction_node.llm_service", mock_llm_service):
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
             result = await extract_entities(state)
 
             # State should preserve original fields
@@ -248,7 +260,9 @@ class TestExtractEntities:
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
 
-        with patch("core.langgraph.nodes.extraction_node.llm_service", mock_llm_service):
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
             result = await extract_entities(state)
 
             # Should handle gracefully
@@ -269,7 +283,9 @@ class TestExtractEntities:
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
 
-        with patch("core.langgraph.nodes.extraction_node.llm_service", mock_llm_service):
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
             await extract_entities(state)
 
             # Verify LLM was called

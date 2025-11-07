@@ -22,25 +22,25 @@ Source Code Referenced:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 
 from core.db_manager import neo4j_manager
-from data_access import character_queries, chapter_queries, world_queries
-from models.kg_models import CharacterProfile, WorldItem
+from data_access import chapter_queries, character_queries, world_queries
+from models.kg_models import CharacterProfile
 
 logger = structlog.get_logger(__name__)
 
 
 async def build_context_from_graph(
     current_chapter: int,
-    active_character_names: Optional[List[str]] = None,
-    location_id: Optional[str] = None,
+    active_character_names: list[str] | None = None,
+    location_id: str | None = None,
     lookback_chapters: int = 5,
     max_characters: int = 10,
     max_world_items: int = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Query Neo4j for narrative context to inform chapter generation.
 
@@ -75,7 +75,7 @@ async def build_context_from_graph(
         char_count=len(active_character_names) if active_character_names else "auto",
     )
 
-    context: Dict[str, Any] = {
+    context: dict[str, Any] = {
         "characters": [],
         "world_items": [],
         "relationships": [],
@@ -91,9 +91,11 @@ async def build_context_from_graph(
             characters = await _get_characters_by_names(active_character_names)
         else:
             # Get contextually relevant characters
-            characters = await character_queries.get_characters_for_chapter_context_native(
-                chapter_number=current_chapter,
-                limit=max_characters,
+            characters = (
+                await character_queries.get_characters_for_chapter_context_native(
+                    chapter_number=current_chapter,
+                    limit=max_characters,
+                )
             )
         context["characters"] = characters
 
@@ -148,8 +150,8 @@ async def build_context_from_graph(
 
 
 async def _get_characters_by_names(
-    character_names: List[str],
-) -> List[CharacterProfile]:
+    character_names: list[str],
+) -> list[CharacterProfile]:
     """
     Get specific characters by their names.
 
@@ -179,8 +181,8 @@ async def _get_characters_by_names(
 
 
 async def _get_character_relationships(
-    character_names: List[str],
-) -> List[Dict[str, Any]]:
+    character_names: list[str],
+) -> list[dict[str, Any]]:
     """
     Get relationships between characters.
 
@@ -219,13 +221,15 @@ async def _get_character_relationships(
 
         relationships = []
         for record in results:
-            relationships.append({
-                "source": record.get("source", ""),
-                "target": record.get("target", ""),
-                "rel_type": record.get("rel_type", "RELATES_TO"),
-                "description": record.get("description", ""),
-                "confidence": record.get("confidence", 0.8),
-            })
+            relationships.append(
+                {
+                    "source": record.get("source", ""),
+                    "target": record.get("target", ""),
+                    "rel_type": record.get("rel_type", "RELATES_TO"),
+                    "description": record.get("description", ""),
+                    "confidence": record.get("confidence", 0.8),
+                }
+            )
 
         logger.debug(
             "_get_character_relationships: retrieved relationships",
@@ -246,7 +250,7 @@ async def _get_character_relationships(
 async def _get_recent_summaries(
     current_chapter: int,
     lookback_chapters: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get summaries of recent chapters for context.
 
@@ -280,10 +284,12 @@ async def _get_recent_summaries(
             if chapter_num in chapter_data:
                 data = chapter_data[chapter_num]
                 if data.get("summary"):
-                    summaries.append({
-                        "chapter": chapter_num,
-                        "summary": data["summary"],
-                    })
+                    summaries.append(
+                        {
+                            "chapter": chapter_num,
+                            "summary": data["summary"],
+                        }
+                    )
 
         logger.debug(
             "_get_recent_summaries: retrieved summaries",
@@ -302,7 +308,7 @@ async def _get_recent_summaries(
         return []
 
 
-async def _get_location_details(location_id: str) -> Optional[Dict[str, Any]]:
+async def _get_location_details(location_id: str) -> dict[str, Any] | None:
     """
     Get details about a specific location.
 
@@ -327,9 +333,7 @@ async def _get_location_details(location_id: str) -> Optional[Dict[str, Any]]:
     """
 
     try:
-        results = await neo4j_manager.execute_read_query(
-            query, {"loc_id": location_id}
-        )
+        results = await neo4j_manager.execute_read_query(query, {"loc_id": location_id})
 
         if results and len(results) > 0:
             record = results[0]
@@ -369,7 +373,7 @@ async def get_key_events(
     current_chapter: int,
     lookback_chapters: int = 10,
     max_events: int = 20,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get key events from recent chapters for context.
 
@@ -413,11 +417,13 @@ async def get_key_events(
 
         events = []
         for record in results:
-            events.append({
-                "description": record.get("description", ""),
-                "chapter": record.get("chapter", 0),
-                "importance": record.get("importance", 0.5),
-            })
+            events.append(
+                {
+                    "description": record.get("description", ""),
+                    "chapter": record.get("chapter", 0),
+                    "importance": record.get("importance", 0.5),
+                }
+            )
 
         logger.debug(
             "get_key_events: retrieved events",

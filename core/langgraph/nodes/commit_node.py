@@ -24,13 +24,11 @@ Source Code Ported From:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
-
 import structlog
 
 import config
-from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.knowledge_graph_service import knowledge_graph_service
+from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from data_access import chapter_queries, kg_queries
 from models.kg_models import CharacterProfile, WorldItem
 from processing.entity_deduplication import (
@@ -85,8 +83,8 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     relationships = state.get("extracted_relationships", [])
 
     # Track mappings for deduplication
-    char_mappings: Dict[str, str] = {}  # new_name -> existing_name (or same)
-    world_mappings: Dict[str, str] = {}  # new_name -> existing_id (or new_id)
+    char_mappings: dict[str, str] = {}  # new_name -> existing_name (or same)
+    world_mappings: dict[str, str] = {}  # new_name -> existing_id (or new_id)
 
     try:
         # Step 1: Deduplicate characters
@@ -171,9 +169,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         }
 
 
-async def _deduplicate_character(
-    name: str, description: str, chapter: int
-) -> str:
+async def _deduplicate_character(name: str, description: str, chapter: int) -> str:
     """
     Check for duplicate characters and return the name to use.
 
@@ -280,10 +276,10 @@ async def _deduplicate_world_item(
 
 
 def _convert_to_character_profiles(
-    entities: List[ExtractedEntity],
-    name_mappings: Dict[str, str],
+    entities: list[ExtractedEntity],
+    name_mappings: dict[str, str],
     chapter: int,
-) -> List[CharacterProfile]:
+) -> list[CharacterProfile]:
     """
     Convert ExtractedEntity instances to CharacterProfile models.
 
@@ -305,7 +301,9 @@ def _convert_to_character_profiles(
         final_name = name_mappings.get(entity.name, entity.name)
 
         # Extract traits from attributes
-        traits = [k for k, v in entity.attributes.items() if isinstance(v, str) and not v]
+        traits = [
+            k for k, v in entity.attributes.items() if isinstance(v, str) and not v
+        ]
         if not traits:
             # Try to extract from description or use empty list
             traits = []
@@ -337,10 +335,10 @@ def _convert_to_character_profiles(
 
 
 def _convert_to_world_items(
-    entities: List[ExtractedEntity],
-    id_mappings: Dict[str, str],
+    entities: list[ExtractedEntity],
+    id_mappings: dict[str, str],
     chapter: int,
-) -> List[WorldItem]:
+) -> list[WorldItem]:
     """
     Convert ExtractedEntity instances to WorldItem models.
 
@@ -404,9 +402,9 @@ def _convert_to_world_items(
 
 
 async def _create_relationships(
-    relationships: List[ExtractedRelationship],
-    char_mappings: Dict[str, str],
-    world_mappings: Dict[str, str],
+    relationships: list[ExtractedRelationship],
+    char_mappings: dict[str, str],
+    world_mappings: dict[str, str],
     chapter: int,
     is_from_flawed_draft: bool,
 ) -> None:

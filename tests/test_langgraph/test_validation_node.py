@@ -4,14 +4,15 @@ Tests for LangGraph validation node (Step 1.4.1).
 Tests the validate_consistency node and its helper functions.
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from core.langgraph.nodes.validation_node import (
-    validate_consistency,
-    _validate_relationships,
     _check_character_traits,
     _is_plot_stagnant,
+    _validate_relationships,
+    validate_consistency,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship
 from core.relationship_validator import ValidationResult
@@ -29,7 +30,9 @@ class TestValidateConsistency:
         state["draft_word_count"] = 2000
 
         # Mock validation to return valid results
-        with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
+        with patch(
+            "core.langgraph.nodes.validation_node.validate_batch_constraints"
+        ) as mock_validate:
             mock_validate.return_value = [
                 ValidationResult(
                     is_valid=True,
@@ -38,7 +41,9 @@ class TestValidateConsistency:
                 )
             ]
 
-            with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+            with patch(
+                "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+            ):
                 result = await validate_consistency(state)
 
                 assert result["current_node"] == "validate_consistency"
@@ -53,7 +58,9 @@ class TestValidateConsistency:
         state["draft_word_count"] = 2000
 
         # Mock validation to return invalid results
-        with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
+        with patch(
+            "core.langgraph.nodes.validation_node.validate_batch_constraints"
+        ) as mock_validate:
             mock_validate.return_value = [
                 ValidationResult(
                     is_valid=False,
@@ -64,7 +71,9 @@ class TestValidateConsistency:
                 )
             ]
 
-            with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+            with patch(
+                "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+            ):
                 result = await validate_consistency(state)
 
                 assert len(result["contradictions"]) > 0
@@ -80,10 +89,14 @@ class TestValidateConsistency:
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
-        with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
+        with patch(
+            "core.langgraph.nodes.validation_node.validate_batch_constraints"
+        ) as mock_validate:
             mock_validate.return_value = []
 
-            with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+            with patch(
+                "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+            ):
                 result = await validate_consistency(state)
 
                 # Should detect plot stagnation
@@ -102,21 +115,32 @@ class TestValidateConsistency:
         # Add 3 relationships to match the 3 ValidationResults
         state["extracted_relationships"] = [
             ExtractedRelationship(
-                source_name="Alice", target_name="Bob",
-                relationship_type="REL1", description="Rel 1", chapter=1
+                source_name="Alice",
+                target_name="Bob",
+                relationship_type="REL1",
+                description="Rel 1",
+                chapter=1,
             ),
             ExtractedRelationship(
-                source_name="Bob", target_name="Charlie",
-                relationship_type="REL2", description="Rel 2", chapter=1
+                source_name="Bob",
+                target_name="Charlie",
+                relationship_type="REL2",
+                description="Rel 2",
+                chapter=1,
             ),
             ExtractedRelationship(
-                source_name="Alice", target_name="Charlie",
-                relationship_type="REL3", description="Rel 3", chapter=1
+                source_name="Alice",
+                target_name="Charlie",
+                relationship_type="REL3",
+                description="Rel 3",
+                chapter=1,
             ),
         ]
 
         # Mock validation to return multiple invalid results
-        with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
+        with patch(
+            "core.langgraph.nodes.validation_node.validate_batch_constraints"
+        ) as mock_validate:
             mock_validate.return_value = [
                 ValidationResult(
                     is_valid=False,
@@ -135,7 +159,9 @@ class TestValidateConsistency:
                 ),
             ]
 
-            with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+            with patch(
+                "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+            ):
                 result = await validate_consistency(state)
 
                 # More than 2 major issues should trigger revision
@@ -150,7 +176,9 @@ class TestValidateConsistency:
         state["force_continue"] = True
 
         # Mock validation to return invalid results
-        with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
+        with patch(
+            "core.langgraph.nodes.validation_node.validate_batch_constraints"
+        ) as mock_validate:
             mock_validate.return_value = [
                 ValidationResult(
                     is_valid=False,
@@ -159,7 +187,9 @@ class TestValidateConsistency:
                 )
             ]
 
-            with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+            with patch(
+                "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+            ):
                 result = await validate_consistency(state)
 
                 # Should not need revision due to force_continue
@@ -182,7 +212,9 @@ class TestValidateRelationships:
             )
         ]
 
-        with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
+        with patch(
+            "core.langgraph.nodes.validation_node.validate_batch_constraints"
+        ) as mock_validate:
             mock_validate.return_value = [
                 ValidationResult(
                     is_valid=True,
@@ -211,7 +243,9 @@ class TestValidateRelationships:
             )
         ]
 
-        with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
+        with patch(
+            "core.langgraph.nodes.validation_node.validate_batch_constraints"
+        ) as mock_validate:
             mock_validate.side_effect = Exception("Validation error")
 
             contradictions = await _validate_relationships(relationships, 1)
@@ -240,7 +274,9 @@ class TestCheckCharacterTraits:
             {"traits": ["brave", "loyal"], "first_chapter": 1, "description": "..."}
         ]
 
-        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+        with patch(
+            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+        ):
             contradictions = await _check_character_traits(characters, 1)
             assert len(contradictions) == 0
 
@@ -261,7 +297,9 @@ class TestCheckCharacterTraits:
             {"traits": ["brave"], "first_chapter": 1, "description": "A brave warrior"}
         ]
 
-        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+        with patch(
+            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+        ):
             contradictions = await _check_character_traits(characters, 5)
 
             # Should detect brave/cowardly contradiction
@@ -288,7 +326,9 @@ class TestCheckCharacterTraits:
         # Mock Neo4j to return empty result (no existing character)
         mock_neo4j_manager.execute_read_query.return_value = []
 
-        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
+        with patch(
+            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
+        ):
             contradictions = await _check_character_traits(characters, 1)
             assert len(contradictions) == 0
 

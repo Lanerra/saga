@@ -10,7 +10,7 @@ Migration Reference: docs/langgraph_migration_plan.md - Step 1.1.1
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -30,7 +30,7 @@ class ExtractedEntity(BaseModel):
     type: Literal["character", "location", "event", "object"]
     description: str
     first_appearance_chapter: int
-    attributes: Dict[str, Any] = Field(default_factory=dict)
+    attributes: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         """Pydantic configuration."""
@@ -71,9 +71,9 @@ class Contradiction(BaseModel):
 
     type: str
     description: str
-    conflicting_chapters: List[int]
+    conflicting_chapters: list[int]
     severity: Literal["minor", "major", "critical"]
-    suggested_fix: Optional[str] = None
+    suggested_fix: str | None = None
 
     class Config:
         """Pydantic configuration."""
@@ -110,7 +110,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Neo4j Connection (reconstructed on load, not persisted)
     # =========================================================================
-    neo4j_conn: Optional[Any]  # Will be reconstructed from project_id
+    neo4j_conn: Any | None  # Will be reconstructed from project_id
 
     # =========================================================================
     # Current Position in Story
@@ -122,34 +122,34 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Plot Outline (compatible with existing plot_outline structure)
     # =========================================================================
-    plot_outline: Dict[int, Dict[str, Any]]
+    plot_outline: dict[int, dict[str, Any]]
 
     # =========================================================================
     # Active Context (for prompt construction)
     # =========================================================================
-    active_characters: List[CharacterProfile]  # Reuses existing model
-    current_location: Optional[Dict[str, Any]]
-    previous_chapter_summaries: List[str]
-    key_events: List[Dict[str, Any]]
+    active_characters: list[CharacterProfile]  # Reuses existing model
+    current_location: dict[str, Any] | None
+    previous_chapter_summaries: list[str]
+    key_events: list[dict[str, Any]]
 
     # =========================================================================
     # Generated Content (current chapter)
     # =========================================================================
-    draft_text: Optional[str]
+    draft_text: str | None
     draft_word_count: int
 
     # =========================================================================
     # Entity Extraction Results (NEW: centralized extraction state)
     # =========================================================================
-    extracted_entities: Dict[str, List[ExtractedEntity]]
-    extracted_relationships: List[ExtractedRelationship]
+    extracted_entities: dict[str, list[ExtractedEntity]]
+    extracted_relationships: list[ExtractedRelationship]
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)
     # =========================================================================
-    contradictions: List[Contradiction]
+    contradictions: list[Contradiction]
     needs_revision: bool
-    revision_feedback: Optional[str]
+    revision_feedback: str | None
 
     # =========================================================================
     # Model Configuration
@@ -169,7 +169,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Error Handling
     # =========================================================================
-    last_error: Optional[str]
+    last_error: str | None
     retry_count: int
 
     # =========================================================================
@@ -183,32 +183,32 @@ class NarrativeState(TypedDict, total=False):
     # Context Management (maintains compatibility with existing context system)
     # =========================================================================
     context_epoch: int  # Compatible with NarrativeState.context_epoch
-    hybrid_context: Optional[str]  # Compatible with ContextSnapshot
-    kg_facts_block: Optional[str]  # Compatible with ContextSnapshot
+    hybrid_context: str | None  # Compatible with ContextSnapshot
+    kg_facts_block: str | None  # Compatible with ContextSnapshot
 
     # =========================================================================
     # Chapter Planning (compatible with existing SceneDetail structure)
     # =========================================================================
-    chapter_plan: Optional[List[Dict[str, Any]]]  # List of SceneDetail dicts
-    plot_point_focus: Optional[str]
+    chapter_plan: list[dict[str, Any]] | None  # List of SceneDetail dicts
+    plot_point_focus: str | None
 
     # =========================================================================
     # Revision State (compatible with existing evaluation workflow)
     # =========================================================================
-    evaluation_result: Optional[Dict[str, Any]]  # EvaluationResult structure
-    patch_instructions: Optional[List[Dict[str, Any]]]  # PatchInstruction list
+    evaluation_result: dict[str, Any] | None  # EvaluationResult structure
+    patch_instructions: list[dict[str, Any]] | None  # PatchInstruction list
 
     # =========================================================================
     # World Building Context
     # =========================================================================
-    world_items: List[WorldItem]  # Reuses existing model
-    current_world_rules: List[str]
+    world_items: list[WorldItem]  # Reuses existing model
+    current_world_rules: list[str]
 
     # =========================================================================
     # Protagonist and Key Characters
     # =========================================================================
     protagonist_name: str
-    protagonist_profile: Optional[CharacterProfile]
+    protagonist_profile: CharacterProfile | None
 
 
 # Type alias for improved readability in node signatures

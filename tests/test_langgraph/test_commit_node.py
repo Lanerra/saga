@@ -4,13 +4,14 @@ Tests for LangGraph commit node (Step 1.2.1).
 Tests the commit_to_graph node and its helper functions.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from core.langgraph.nodes.commit_node import (
-    commit_to_graph,
     _convert_to_character_profiles,
     _convert_to_world_items,
+    commit_to_graph,
 )
 from core.langgraph.state import ExtractedEntity
 
@@ -30,8 +31,13 @@ class TestCommitToGraph:
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
-        with patch("core.langgraph.nodes.commit_node.knowledge_graph_service", mock_knowledge_graph_service):
-            with patch("core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries):
+        with patch(
+            "core.langgraph.nodes.commit_node.knowledge_graph_service",
+            mock_knowledge_graph_service,
+        ):
+            with patch(
+                "core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries
+            ):
                 result = await commit_to_graph(state)
 
                 assert result["current_node"] == "commit_to_graph"
@@ -47,10 +53,20 @@ class TestCommitToGraph:
         """Test commit with entities and relationships."""
         state = sample_state_with_extraction
 
-        with patch("core.langgraph.nodes.commit_node.knowledge_graph_service", mock_knowledge_graph_service):
-            with patch("core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries):
-                with patch("core.langgraph.nodes.commit_node.kg_queries", mock_kg_queries):
-                    with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
+        with patch(
+            "core.langgraph.nodes.commit_node.knowledge_graph_service",
+            mock_knowledge_graph_service,
+        ):
+            with patch(
+                "core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries
+            ):
+                with patch(
+                    "core.langgraph.nodes.commit_node.kg_queries", mock_kg_queries
+                ):
+                    with patch(
+                        "core.langgraph.nodes.commit_node.check_entity_similarity",
+                        new=AsyncMock(return_value=None),
+                    ):
                         result = await commit_to_graph(state)
 
                         assert result["current_node"] == "commit_to_graph"
@@ -70,10 +86,18 @@ class TestCommitToGraph:
         state = sample_state_with_extraction
 
         # Mock service to raise exception
-        mock_knowledge_graph_service.persist_entities.side_effect = Exception("Database error")
+        mock_knowledge_graph_service.persist_entities.side_effect = Exception(
+            "Database error"
+        )
 
-        with patch("core.langgraph.nodes.commit_node.knowledge_graph_service", mock_knowledge_graph_service):
-            with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
+        with patch(
+            "core.langgraph.nodes.commit_node.knowledge_graph_service",
+            mock_knowledge_graph_service,
+        ):
+            with patch(
+                "core.langgraph.nodes.commit_node.check_entity_similarity",
+                new=AsyncMock(return_value=None),
+            ):
                 result = await commit_to_graph(state)
 
                 assert result["current_node"] == "commit_to_graph"
@@ -223,11 +247,19 @@ class TestDeduplication:
         state = sample_state_with_extraction
 
         # Mock no duplicates found
-        with patch("core.langgraph.nodes.commit_node.check_entity_similarity") as mock_check:
+        with patch(
+            "core.langgraph.nodes.commit_node.check_entity_similarity"
+        ) as mock_check:
             mock_check.return_value = None
 
-            with patch("core.langgraph.nodes.commit_node.knowledge_graph_service", mock_knowledge_graph_service):
-                with patch("core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries):
+            with patch(
+                "core.langgraph.nodes.commit_node.knowledge_graph_service",
+                mock_knowledge_graph_service,
+            ):
+                with patch(
+                    "core.langgraph.nodes.commit_node.chapter_queries",
+                    mock_chapter_queries,
+                ):
                     with patch("core.langgraph.nodes.commit_node.kg_queries"):
                         result = await commit_to_graph(state)
 
@@ -244,11 +276,19 @@ class TestDeduplication:
         """Test world item deduplication."""
         state = sample_state_with_extraction
 
-        with patch("core.langgraph.nodes.commit_node.check_entity_similarity") as mock_check:
+        with patch(
+            "core.langgraph.nodes.commit_node.check_entity_similarity"
+        ) as mock_check:
             mock_check.return_value = None
 
-            with patch("core.langgraph.nodes.commit_node.knowledge_graph_service", mock_knowledge_graph_service):
-                with patch("core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries):
+            with patch(
+                "core.langgraph.nodes.commit_node.knowledge_graph_service",
+                mock_knowledge_graph_service,
+            ):
+                with patch(
+                    "core.langgraph.nodes.commit_node.chapter_queries",
+                    mock_chapter_queries,
+                ):
                     with patch("core.langgraph.nodes.commit_node.kg_queries"):
                         result = await commit_to_graph(state)
 

@@ -15,7 +15,7 @@ Source Code Referenced:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import structlog
 
@@ -56,7 +56,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         characters=len(state.get("extracted_entities", {}).get("characters", [])),
     )
 
-    contradictions: List[Contradiction] = []
+    contradictions: list[Contradiction] = []
 
     # Check 1: Validate all extracted relationships
     # USES: relationship_validator.validate_batch_constraints()
@@ -119,9 +119,9 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 
 
 async def _validate_relationships(
-    relationships: List[Any],
+    relationships: list[Any],
     chapter: int,
-) -> List[Contradiction]:
+) -> list[Contradiction]:
     """
     Validate extracted relationships using relationship constraint system.
 
@@ -158,7 +158,7 @@ async def _validate_relationships(
         validation_results = validate_batch_constraints(triples)
 
         # Convert validation failures to contradictions
-        for rel, result in zip(relationships, validation_results):
+        for rel, result in zip(relationships, validation_results, strict=False):
             if not result.is_valid:
                 # Determine severity based on whether suggestions exist
                 severity = "minor" if result.suggestions else "major"
@@ -167,9 +167,13 @@ async def _validate_relationships(
                 suggested_fix = None
                 if result.suggestions:
                     best_suggestion = result.suggestions[0]
-                    suggested_fix = f"Use: {best_suggestion[0]} (reason: {best_suggestion[1]})"
+                    suggested_fix = (
+                        f"Use: {best_suggestion[0]} (reason: {best_suggestion[1]})"
+                    )
                 elif result.validated_relationship != result.original_relationship:
-                    suggested_fix = f"Use normalized form: {result.validated_relationship}"
+                    suggested_fix = (
+                        f"Use normalized form: {result.validated_relationship}"
+                    )
 
                 # Build error description
                 error_details = (
@@ -207,9 +211,9 @@ async def _validate_relationships(
 
 
 async def _check_character_traits(
-    extracted_chars: List[ExtractedEntity],
+    extracted_chars: list[ExtractedEntity],
     current_chapter: int,
-) -> List[Contradiction]:
+) -> list[Contradiction]:
     """
     Compare extracted character attributes with established traits.
 
@@ -272,7 +276,10 @@ async def _check_character_traits(
                 # Check for contradictions
                 for trait_a, trait_b in contradictory_pairs:
                     # Check if established trait conflicts with new trait
-                    if trait_a in established_traits and trait_b in new_trait_candidates:
+                    if (
+                        trait_a in established_traits
+                        and trait_b in new_trait_candidates
+                    ):
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
@@ -288,7 +295,10 @@ async def _check_character_traits(
                             )
                         )
                     # Also check reverse
-                    elif trait_b in established_traits and trait_a in new_trait_candidates:
+                    elif (
+                        trait_b in established_traits
+                        and trait_a in new_trait_candidates
+                    ):
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",

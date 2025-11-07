@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import structlog
 
@@ -30,7 +30,6 @@ from core.langgraph.state import (
     NarrativeState,
 )
 from core.llm_interface_refactored import llm_service
-from models.kg_models import CharacterProfile, WorldItem
 from processing.entity_deduplication import generate_entity_id
 from processing.parsing_utils import parse_llm_triples
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -148,14 +147,14 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
 
 async def _llm_extract_updates(
     *,
-    plot_outline: Dict[str, Any],
+    plot_outline: dict[str, Any],
     chapter_text: str,
     chapter_number: int,
     title: str,
     genre: str,
     protagonist_name: str,
     extraction_model: str,
-) -> Tuple[str, Dict[str, int] | None]:
+) -> tuple[str, dict[str, int] | None]:
     """
     Call the LLM to extract structured updates from chapter text.
 
@@ -213,13 +212,15 @@ async def _llm_extract_updates(
         )
         return text, usage
     except Exception as e:
-        logger.error("_llm_extract_updates: LLM call failed", error=str(e), exc_info=True)
+        logger.error(
+            "_llm_extract_updates: LLM call failed", error=str(e), exc_info=True
+        )
         return "", None
 
 
 async def _extract_updates_as_models(
     raw_text: str, chapter_number: int
-) -> Tuple[List[ExtractedEntity], List[ExtractedEntity], List[ExtractedRelationship]]:
+) -> tuple[list[ExtractedEntity], list[ExtractedEntity], list[ExtractedRelationship]]:
     """
     Parse LLM extraction response and convert to model instances.
 
@@ -239,9 +240,9 @@ async def _extract_updates_as_models(
     Returns:
         Tuple of (character_entities, world_entities, relationships)
     """
-    char_updates: List[ExtractedEntity] = []
-    world_updates: List[ExtractedEntity] = []
-    relationships: List[ExtractedRelationship] = []
+    char_updates: list[ExtractedEntity] = []
+    world_updates: list[ExtractedEntity] = []
+    relationships: list[ExtractedRelationship] = []
 
     # Parse JSON
     extraction_data = await _parse_extraction_json(raw_text, chapter_number)
@@ -258,7 +259,9 @@ async def _extract_updates_as_models(
                 # Process traits
                 traits = char_info.get("traits", [])
                 if isinstance(traits, list):
-                    traits_dict = {trait: "" for trait in traits if isinstance(trait, str)}
+                    traits_dict = {
+                        trait: "" for trait in traits if isinstance(trait, str)
+                    }
                 else:
                     traits_dict = {}
 
@@ -276,7 +279,9 @@ async def _extract_updates_as_models(
                             if ":" in rel_entry:
                                 parts = rel_entry.split(":", 1)
                                 if len(parts) == 2 and parts[0].strip():
-                                    relationships_dict[parts[0].strip()] = parts[1].strip()
+                                    relationships_dict[parts[0].strip()] = parts[
+                                        1
+                                    ].strip()
                             elif rel_entry.strip():
                                 relationships_dict[rel_entry.strip()] = "related"
                         elif isinstance(rel_entry, dict):
@@ -311,7 +316,9 @@ async def _extract_updates_as_models(
                         description = item_info.get("description", "")
 
                         # Generate deterministic ID
-                        item_id = generate_entity_id(item_name, category, chapter_number)
+                        item_id = generate_entity_id(
+                            item_name, category, chapter_number
+                        )
 
                         # Extract attributes
                         attributes = {
@@ -388,7 +395,7 @@ async def _extract_updates_as_models(
 
 async def _parse_extraction_json(
     raw_text: str, chapter_number: int
-) -> Dict[str, Any] | None:
+) -> dict[str, Any] | None:
     """
     Parse and clean LLM JSON response.
 
@@ -408,7 +415,9 @@ async def _parse_extraction_json(
         Parsed dictionary or None if parsing fails
     """
     if not raw_text or not raw_text.strip():
-        logger.warning("_parse_extraction_json: empty extraction text", chapter=chapter_number)
+        logger.warning(
+            "_parse_extraction_json: empty extraction text", chapter=chapter_number
+        )
         return None
 
     # Clean up common LLM JSON formatting issues
@@ -473,7 +482,7 @@ def _clean_llm_json(raw_text: str) -> str:
 
     # Fix common quote issues (curly quotes to straight quotes)
     # Replace left and right double quotation marks with straight quotes
-    cleaned = cleaned.replace('\u201c', '"').replace('\u201d', '"')
+    cleaned = cleaned.replace("\u201c", '"').replace("\u201d", '"')
 
     return cleaned.strip()
 

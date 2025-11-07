@@ -26,15 +26,16 @@ Phase 1 Implementation:
     - Conditional routing based on validation results
 """
 
-import structlog
 from typing import Literal
-from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.sqlite import SqliteSaver
 
-from core.langgraph.state import NarrativeState
-from core.langgraph.nodes.extraction_node import extract_entities
+import structlog
+
 from core.langgraph.nodes.commit_node import commit_to_graph
+from core.langgraph.nodes.extraction_node import extract_entities
 from core.langgraph.nodes.validation_node import validate_consistency
+from core.langgraph.state import NarrativeState
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph import END, StateGraph
 
 logger = structlog.get_logger(__name__)
 

@@ -5,14 +5,14 @@ This module provides common fixtures, mocks, and test data for testing
 the LangGraph migration Phase 1 components.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from core.langgraph.state import (
     Contradiction,
     ExtractedEntity,
     ExtractedRelationship,
-    NarrativeState,
     create_initial_state,
 )
 from models.kg_models import CharacterProfile, WorldItem
