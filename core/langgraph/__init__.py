@@ -63,7 +63,9 @@ from core.langgraph.state import (
 from core.langgraph.workflow import (
     create_checkpointer,
     create_phase1_graph,
+    create_phase2_graph,
     should_revise,
+    should_revise_or_continue,
 )
 
 __all__ = [
@@ -88,8 +90,10 @@ __all__ = [
     "get_key_events",
     # Workflow
     "create_phase1_graph",
+    "create_phase2_graph",
     "create_checkpointer",
     "should_revise",
+    "should_revise_or_continue",
 ]
 
 __version__ = "0.1.0"
