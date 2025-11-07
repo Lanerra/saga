@@ -96,6 +96,36 @@ async def main():
         print("\nPlease ensure Neo4j is running and configured correctly in .env")
         return 1
 
+    # Step 1.5: Bootstrap Neo4j database schema and initial nodes
+    print("Step 1.5: Bootstrapping Neo4j database...")
+    try:
+        # Create schema (constraints, indexes, vector index)
+        await db_manager.create_db_schema()
+        print("✓ Database schema created (constraints, indexes)")
+
+        # Create initial NovelInfo node
+        from data_access.plot_queries import ensure_novel_info
+
+        await ensure_novel_info()
+        print("✓ NovelInfo node initialized")
+
+        # Create WorldContainer node
+        from data_access.world_queries import sync_full_state_from_object_to_db
+
+        minimal_world_data = {
+            "_overview_": {
+                "name": "_overview_",
+                "category": "_overview_",
+                "description": "Test world for E2E validation",
+            }
+        }
+        await sync_full_state_from_object_to_db(minimal_world_data)
+        print("✓ WorldContainer node initialized")
+        print()
+    except Exception as e:
+        print(f"⚠ Database bootstrap warning: {e}")
+        print("  Continuing anyway (may cause warnings in logs)...\n")
+
     # Step 2: Set up test novel
     print("Step 2: Creating test novel outline...")
     outline = await setup_test_novel()
