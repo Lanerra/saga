@@ -11,16 +11,14 @@ Components:
     state: Core state schema for LangGraph workflow
     nodes: Individual processing nodes (extraction, validation, generation, etc.)
     graph_context: Neo4j context construction (wraps existing data_access queries)
-    graph: Graph definition and workflow orchestration
+    workflow: Graph definition and workflow orchestration
 
 Usage:
     from core.langgraph import (
         NarrativeState,
         create_initial_state,
-        extract_entities,
-        commit_to_graph,
-        validate_consistency,
-        build_context_from_graph
+        create_phase1_graph,
+        create_checkpointer
     )
 
     # Create initial state
@@ -36,16 +34,12 @@ Usage:
         protagonist_name="Hero"
     )
 
-    # Build context from knowledge graph
-    context = await build_context_from_graph(
-        current_chapter=5,
-        lookback_chapters=3
-    )
+    # Create and run workflow
+    checkpointer = create_checkpointer("./checkpoints/my-novel.db")
+    graph = create_phase1_graph(checkpointer=checkpointer)
 
-    # Use nodes in sequence
-    state = await extract_entities(state)
-    state = await commit_to_graph(state)
-    state = await validate_consistency(state)
+    # Execute workflow
+    result = await graph.ainvoke(state, config={"configurable": {"thread_id": "my-novel-ch1"}})
 """
 
 from core.langgraph.graph_context import build_context_from_graph, get_key_events
@@ -58,19 +52,31 @@ from core.langgraph.state import (
     State,
     create_initial_state,
 )
+from core.langgraph.workflow import (
+    create_checkpointer,
+    create_phase1_graph,
+    should_revise,
+)
 
 __all__ = [
+    # State
     "NarrativeState",
     "State",
     "ExtractedEntity",
     "ExtractedRelationship",
     "Contradiction",
     "create_initial_state",
+    # Nodes
     "extract_entities",
     "commit_to_graph",
     "validate_consistency",
+    # Context
     "build_context_from_graph",
     "get_key_events",
+    # Workflow
+    "create_phase1_graph",
+    "create_checkpointer",
+    "should_revise",
 ]
 
 __version__ = "0.1.0"
