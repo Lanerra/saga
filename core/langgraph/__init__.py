@@ -43,7 +43,12 @@ Usage:
 """
 
 from core.langgraph.graph_context import build_context_from_graph, get_key_events
-from core.langgraph.nodes import commit_to_graph, extract_entities, validate_consistency
+from core.langgraph.nodes import (
+    commit_to_graph,
+    extract_entities,
+    generate_chapter,
+    validate_consistency,
+)
 from core.langgraph.state import (
     Contradiction,
     ExtractedEntity,
@@ -66,10 +71,12 @@ __all__ = [
     "ExtractedRelationship",
     "Contradiction",
     "create_initial_state",
-    # Nodes
+    # Nodes (Phase 1)
     "extract_entities",
     "commit_to_graph",
     "validate_consistency",
+    # Nodes (Phase 2)
+    "generate_chapter",
     # Context
     "build_context_from_graph",
     "get_key_events",
