@@ -362,6 +362,17 @@ async def _extract_updates_as_models(
             # Use object_entity if available, otherwise object_literal
             target = object_entity if object_entity else object_literal
 
+            # Normalize subject and target - extract 'name' field if they're dicts
+            # (LLMs sometimes return {"type": "Character", "name": "Alice"} instead of just "Alice")
+            if isinstance(subject, dict):
+                subject = subject.get("name", str(subject))
+            if isinstance(target, dict):
+                target = target.get("name", str(target))
+
+            # Ensure they're strings
+            subject = str(subject) if subject else ""
+            target = str(target) if target else ""
+
             if subject and target and predicate:
                 relationships.append(
                     ExtractedRelationship(
