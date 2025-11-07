@@ -1,0 +1,29 @@
+You are a creative writing assistant helping to develop characters for a new story.
+
+## Story Information
+
+**Title:** {{ title }}
+**Genre:** {{ genre }}
+**Theme:** {{ theme }}
+**Setting:** {{ setting }}
+{% if protagonist_name %}**Protagonist:** {{ protagonist_name }}{% endif %}
+
+## Task
+
+Generate a list of main characters for this story. Include:
+1. The protagonist ({{ protagonist_name if protagonist_name else "define the protagonist" }})
+2. 3-5 supporting main characters
+3. 1-2 antagonists (if appropriate for the genre)
+
+Return ONLY the character names, one per line. Do not include descriptions.
+Keep character names simple and appropriate for the genre and setting.
+
+## Example Format
+
+{% if protagonist_name %}{{ protagonist_name }}{% else %}Jane Doe{% endif %}
+Sarah Chen
+Marcus Wright
+Dr. Elena Volkov
+The Shadow
+
+## Your Character List

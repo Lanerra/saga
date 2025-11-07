@@ -375,10 +375,179 @@ def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSa
     return checkpointer
 
 
+def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"]:
+    """
+    Conditional edge function: Determine if initialization is needed.
+
+    Routes to:
+    - "initialize": If initialization_complete=False
+    - "generate": If initialization_complete=True
+
+    Args:
+        state: Current narrative state
+
+    Returns:
+        Next node name ("initialize" or "generate")
+    """
+    initialization_complete = state.get("initialization_complete", False)
+
+    if not initialization_complete:
+        logger.info("should_initialize: initialization required, routing to init")
+        return "initialize"
+    else:
+        logger.info("should_initialize: initialization complete, routing to generate")
+        return "generate"
+
+
+def should_generate_chapter_outline(
+    state: NarrativeState,
+) -> Literal["chapter_outline", "generate"]:
+    """
+    Conditional edge function: Determine if chapter outline generation is needed.
+
+    Routes to:
+    - "chapter_outline": If chapter outline doesn't exist for current chapter
+    - "generate": If chapter outline exists
+
+    Args:
+        state: Current narrative state
+
+    Returns:
+        Next node name ("chapter_outline" or "generate")
+    """
+    current_chapter = state.get("current_chapter", 1)
+    chapter_outlines = state.get("chapter_outlines", {})
+
+    if current_chapter not in chapter_outlines:
+        logger.info(
+            "should_generate_chapter_outline: outline needed",
+            chapter=current_chapter,
+        )
+        return "chapter_outline"
+    else:
+        logger.info(
+            "should_generate_chapter_outline: outline exists",
+            chapter=current_chapter,
+        )
+        return "generate"
+
+
+def create_full_workflow_graph(checkpointer=None) -> StateGraph:
+    """
+    Create complete workflow with initialization and generation phases.
+
+    This is the full end-to-end workflow that:
+    1. Runs initialization (character sheets, outlines)
+    2. For each chapter:
+       a. Generates chapter outline (on-demand)
+       b. Generates chapter text
+       c. Extracts entities
+       d. Commits to graph
+       e. Validates
+       f. Optionally revises
+       g. Summarizes and finalizes
+
+    Workflow:
+        START → {init?}
+                ├─ initialize → [character_sheets → global_outline → act_outlines] → chapter_loop
+                └─ chapter_loop → {outline?}
+                                  ├─ chapter_outline → generate
+                                  └─ generate → extract → commit → validate → {revise?}
+                                                                                 ├─ revise → extract
+                                                                                 └─ summarize → finalize → END
+
+    Args:
+        checkpointer: Optional checkpoint saver (SqliteSaver, PostgresSaver, etc.)
+
+    Returns:
+        Compiled LangGraph StateGraph ready for execution
+    """
+    logger.info("create_full_workflow_graph: building complete workflow")
+
+    from core.langgraph.initialization import (
+        generate_character_sheets,
+        generate_global_outline,
+        generate_act_outlines,
+        generate_chapter_outline,
+    )
+
+    # Create graph
+    workflow = StateGraph(NarrativeState)
+
+    # Add initialization nodes (grouped into sub-workflow)
+    workflow.add_node("init_character_sheets", generate_character_sheets)
+    workflow.add_node("init_global_outline", generate_global_outline)
+    workflow.add_node("init_act_outlines", generate_act_outlines)
+
+    # Add chapter outline generation (on-demand)
+    workflow.add_node("chapter_outline", generate_chapter_outline)
+
+    # Add all generation nodes
+    workflow.add_node("generate", generate_chapter)
+    workflow.add_node("extract", extract_entities)
+    workflow.add_node("commit", commit_to_graph)
+    workflow.add_node("validate", validate_consistency)
+    workflow.add_node("revise", revise_chapter)
+    workflow.add_node("summarize", summarize_chapter)
+    workflow.add_node("finalize", finalize_chapter)
+
+    # Initialization flow
+    workflow.add_edge("init_character_sheets", "init_global_outline")
+    workflow.add_edge("init_global_outline", "init_act_outlines")
+    workflow.add_edge("init_act_outlines", "chapter_outline")
+
+    # Chapter outline → generate
+    workflow.add_edge("chapter_outline", "generate")
+
+    # Generation flow
+    workflow.add_edge("generate", "extract")
+    workflow.add_edge("extract", "commit")
+    workflow.add_edge("commit", "validate")
+
+    # Conditional edge: validate → (revise or summarize)
+    workflow.add_conditional_edges(
+        "validate",
+        should_revise_or_continue,
+        {
+            "revise": "revise",
+            "summarize": "summarize",
+        },
+    )
+
+    # Revision loop
+    workflow.add_edge("revise", "extract")
+
+    # Finalization
+    workflow.add_edge("summarize", "finalize")
+    workflow.add_edge("finalize", END)
+
+    # Set entry point to initialization
+    workflow.set_entry_point("init_character_sheets")
+
+    logger.info(
+        "create_full_workflow_graph: graph built successfully",
+        total_nodes=11,
+        entry_point="init_character_sheets",
+    )
+
+    # Compile graph
+    if checkpointer:
+        logger.info("create_full_workflow_graph: compiling with checkpointing enabled")
+        compiled_graph = workflow.compile(checkpointer=checkpointer)
+    else:
+        logger.info("create_full_workflow_graph: compiling without checkpointing")
+        compiled_graph = workflow.compile()
+
+    return compiled_graph
+
+
 __all__ = [
     "create_phase1_graph",
     "create_phase2_graph",
     "create_checkpointer",
+    "create_full_workflow_graph",
     "should_revise",
     "should_revise_or_continue",
+    "should_initialize",
+    "should_generate_chapter_outline",
 ]

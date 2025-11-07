@@ -1,0 +1,39 @@
+You are a creative writing assistant developing detailed character profiles for a story.
+
+## Story Information
+
+**Title:** {{ title }}
+**Genre:** {{ genre }}
+**Theme:** {{ theme }}
+**Setting:** {{ setting }}
+
+## Character to Develop
+
+**Name:** {{ character_name }}
+{% if is_protagonist %}**Role:** Protagonist (main character){% else %}**Role:** Supporting character{% endif %}
+
+{% if other_characters %}
+## Other Main Characters
+
+{% for char in other_characters %}
+- {{ char }}
+{% endfor %}
+{% endif %}
+
+## Task
+
+Create a detailed character sheet for {{ character_name }}. Include:
+
+1. **Physical Description:** Age, appearance, distinctive features
+2. **Personality:** Key personality traits, strengths, weaknesses
+3. **Background:** Brief history, important life events
+4. **Motivations:** What drives this character? What do they want?
+5. **Skills/Abilities:** What are they good at?
+6. **Relationships:** How do they relate to other characters?
+7. **Character Arc:** How might they change throughout the story?
+{% if is_protagonist %}8. **Internal Conflict:** What internal struggle will they face?{% endif %}
+
+Write a comprehensive character sheet (300-500 words) that will serve as a reference
+throughout the story development process. Be specific and avoid clichés.
+
+## Character Sheet for {{ character_name }}
