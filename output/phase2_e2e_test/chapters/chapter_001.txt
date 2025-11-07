@@ -1,0 +1,79 @@
+The silence out here was not empty. It pressed against the hull of the *Aethelstan* like a living thing, a velvet shroud stretched across the infinite dark between stars. Dr. Sarah Chen knew it well—knew its weight, its patient indifference. She had spent three years on this remote outpost, orbiting a dead star in the Kuiper Belt’s fringes, where sunlight was a memory and time moved in slow, deliberate pulses. Her station, a skeletal lattice of carbon-fiber struts and solar collectors clinging to the frozen shell of an ancient ice world named Eos-9, was the last human presence for twenty light-years in any direction. No comms traffic. No ships. Just her, the machines, and the stars.
+
+She worked alone—by choice, by necessity. The mission was simple on paper: monitor deep-space radio emissions for anomalous patterns, particularly those that might suggest non-terrestrial intelligence. In practice, it was a monotonous ballet of data streams, calibration cycles, and the slow erosion of solitude. Each day began with the same ritual: wake from a dreamless sleep in her narrow pod, float through the station’s central spine—its walls lined with humming servers and blinking diagnostic lights—and settle into the primary observation deck. There, perched before a curved viewport that offered an unbroken view of the cosmos, she’d begin her scan.
+
+Tonight was no different. The sky outside pulsed with cold fire: distant nebulae like smears of ink in starlight, the occasional flicker of a passing asteroid, the faint blue glow of Eos-9’s tattered atmosphere below. The station’s internal hum—a constant low thrum from the fusion core and cooling systems—was her only companion. She sipped cold coffee from a sealed thermos, its flavor long since faded into metallic bitterness. Her fingers danced across the holographic interface, adjusting frequency bands, fine-tuning the array of phased antennas that stretched like skeletal arms into the void.
+
+She was reviewing archival data from two months prior—routine background noise filtered through layers of cosmic dust—when it happened.
+
+Not a sound. Not a flash. Something deeper. A ripple in the silence.
+
+Her eyes snapped to the central display. The waveform had shifted. A faint, repeating pulse—clean, precise, impossible to dismiss as static or interference. It came from deep within the Sagittarius Arm, nearly 20,000 light-years away, a region of space where no known stellar bodies existed that could produce such a signal. And yet there it was: three sharp bursts, spaced exactly 1.7 seconds apart, followed by a pause, then three more. Not random. Not natural.
+
+Sarah froze.
+
+Her breath caught in her throat. She leaned forward, her fingers hovering over the controls, heart thudding against her ribs like a trapped bird. She’d spent years hunting for this—this *sign*. Not just noise. A pattern. A message.
+
+“Signal integrity?” she whispered, voice cracking in the quiet.
+
+The system confirmed: “Confirmed. Non-terrestrial origin. Signal strength: 0.03 nanowatts. Source: Sagittarius Arm, coordinates 264.17, -28.92.”
+
+She stared at the numbers as if they might vanish.
+
+No. Not a glitch. Not a solar flare. This was deliberate.
+
+Her fingers trembled as she initiated a deep-scan sequence, rerouting power from non-essential systems to the main receiver array. The station’s sensors whined softly in protest, adjusting focus. She pulled up spectrographic analysis—frequency modulation matched nothing in the database. No known pulsar, no quasar, no man-made satellite could produce this. It wasn’t a broadcast. It was a *code*. A sequence.
+
+She typed a command: “Decode pattern.”
+
+The system hesitated. Then, after a pause that felt like an eternity, it returned a result:
+
+> **Pattern recognized: Binary sequence consistent with prime number progression (2, 3, 5, 7, 11).**
+>
+> **Next step: Sequence repeats every 17 seconds. Origin unknown.**
+>
+> **Signal contains embedded data packet. Decryption required.**
+
+Sarah exhaled slowly.
+
+It wasn’t just a signal. It was a *challenge*.
+
+She leaned back in her chair, eyes fixed on the pulsing waveform on the screen. The stars outside seemed to dim, as if holding their breath. Her mind raced—not with excitement, but with dread. This wasn’t just discovery. This was intrusion. A voice from beyond the edge of known space, speaking a language no one had ever heard.
+
+And it had found her.
+
+She reached for her log terminal, fingers brushing the cold surface of the tablet. She opened a new entry, her hand shaking as she typed:
+
+> *Day 1097. Remote Station Eos-9. Signal received at 23:48 UTC.*
+>
+> *Origin: Sagittarius Arm, 20,000 light-years distant. Frequency: 47.3 GHz. Modulation: Binary prime sequence. Repeating every 17 seconds.*
+>
+> *No known source. No natural explanation. Pattern suggests intelligence.*
+>
+> *It is not just a signal. It is a greeting.*
+>
+> *Or a warning.*
+
+She paused, staring at the final line.
+
+Then she added one more sentence:
+
+> *It knows I’m here.*
+
+The silence returned, heavier now. The station’s lights flickered once—just once—before settling back into their steady rhythm. Outside, Eos-9 glowed faintly in the distance, a frozen world untouched by time. But inside, something had changed.
+
+Sarah stood, her chair sliding slowly backward on the magnetic floor. She walked to the viewport, pressing her palm against the cold glass. The stars stared back—endless, indifferent. Yet one of them had just spoken.
+
+And she had answered.
+
+Not with words. Not yet.
+
+But in that moment, as her eyes traced the faint, repeating pulse on the screen, she felt it: a shiver not of fear, but of recognition. As if the universe had been waiting for her to listen.
+
+She turned away from the window and returned to her console. Her fingers flew across the interface—not to send a reply, not yet—but to isolate the signal’s source, to map its trajectory, to understand what kind of intelligence could send a message across such a chasm.
+
+And as she did, she realized something deeper than any data could convey:
+
+This was not just a signal from deep space.
+
+It was the first step in a conversation that had already begun.
