@@ -9,9 +9,9 @@ Implemented Nodes:
     - commit_node: Deduplication and Neo4j commitment ✓
     - validation_node: Consistency and quality validation ✓
     - generation_node: Chapter text generation ✓ (Phase 2)
+    - revision_node: Content revision based on feedback ✓ (Phase 2)
 
 Planned Nodes (from migration plan):
-    - revision_node: Content revision based on feedback
     - summary_node: Chapter summarization
     - finalize_node: Chapter persistence and cleanup
 
@@ -26,6 +26,7 @@ Each node follows the LangGraph signature:
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.extraction_node import extract_entities
 from core.langgraph.nodes.generation_node import generate_chapter
+from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.validation_node import validate_consistency
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "commit_to_graph",
     "validate_consistency",
     "generate_chapter",
+    "revise_chapter",
 ]
 
 __version__ = "0.1.0"
