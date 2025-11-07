@@ -55,6 +55,7 @@ The script executes a complete single-chapter generation workflow:
 
 1. **Setup**
    - Connects to Neo4j
+   - Bootstraps database schema (constraints, indexes, initial nodes)
    - Creates test novel outline ("The Last Signal" - sci-fi short story)
    - Initializes project directory in `output/phase2_e2e_test/`
 
@@ -95,6 +96,11 @@ Configuration:
 
 Step 1: Connecting to Neo4j...
 ✓ Neo4j connection established
+
+Step 1.5: Bootstrapping Neo4j database...
+✓ Database schema created (constraints, indexes)
+✓ NovelInfo node initialized
+✓ WorldContainer node initialized
 
 Step 2: Creating test novel outline...
 ✓ Created outline for: The Last Signal
