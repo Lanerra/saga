@@ -10,6 +10,7 @@ Migration Reference: docs/langgraph_migration_plan.md
 Components:
     state: Core state schema for LangGraph workflow
     nodes: Individual processing nodes (extraction, validation, generation, etc.)
+    graph_context: Neo4j context construction (wraps existing data_access queries)
     graph: Graph definition and workflow orchestration
 
 Usage:
@@ -17,7 +18,8 @@ Usage:
         NarrativeState,
         create_initial_state,
         extract_entities,
-        commit_to_graph
+        commit_to_graph,
+        build_context_from_graph
     )
 
     # Create initial state
@@ -33,11 +35,18 @@ Usage:
         protagonist_name="Hero"
     )
 
+    # Build context from knowledge graph
+    context = await build_context_from_graph(
+        current_chapter=5,
+        lookback_chapters=3
+    )
+
     # Use nodes in sequence
     state = await extract_entities(state)
     state = await commit_to_graph(state)
 """
 
+from core.langgraph.graph_context import build_context_from_graph, get_key_events
 from core.langgraph.nodes import commit_to_graph, extract_entities
 from core.langgraph.state import (
     Contradiction,
@@ -57,6 +66,8 @@ __all__ = [
     "create_initial_state",
     "extract_entities",
     "commit_to_graph",
+    "build_context_from_graph",
+    "get_key_events",
 ]
 
 __version__ = "0.1.0"
