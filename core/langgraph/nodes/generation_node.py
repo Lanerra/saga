@@ -16,12 +16,10 @@ Source Code Ported From:
 
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
 
 import config
-from core.langgraph.graph_context import build_context_from_graph, get_key_events
+from core.langgraph.graph_context import get_key_events
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
@@ -85,16 +83,6 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
             )
             plot_point_focus = f"Continue the story in Chapter {chapter_number}"
 
-    # Step 1: Build context from knowledge graph
-    context = await build_context_from_graph(
-        current_chapter=chapter_number,
-        active_character_names=state.get("active_character_names"),
-        location_id=state.get("current_location"),
-        lookback_chapters=5,
-        max_characters=10,
-        max_world_items=10,
-    )
-
     # Get key events for additional context
     key_events = await get_key_events(
         current_chapter=chapter_number,
@@ -118,7 +106,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     # Add previous chapter summaries
     if state.get("previous_chapter_summaries"):
         summaries_text = "\n\n**Recent Chapter Summaries:**\n"
-        for i, summary in enumerate(state["previous_chapter_summaries"][-3:], 1):
+        for summary in state["previous_chapter_summaries"][-3:]:
             summaries_text += f"\n{summary}"
         hybrid_context_parts.append(summaries_text)
 

@@ -79,23 +79,13 @@ def mock_llm_generation():
 def mock_context_builder():
     """Mock context building functions."""
     with patch(
-        "core.langgraph.nodes.generation_node.build_context_from_graph"
-    ) as mock_build, patch(
         "core.langgraph.nodes.generation_node.get_key_events"
     ) as mock_events, patch(
         "core.langgraph.nodes.generation_node.get_reliable_kg_facts_for_drafting_prompt"
     ) as mock_kg:
-        mock_build.return_value = {
-            "characters": [],
-            "world_items": [],
-            "relationships": [],
-            "recent_summaries": [],
-            "location": None,
-        }
         mock_events.return_value = []
         mock_kg.return_value = "**Knowledge Graph Facts:**\n- Test fact 1\n- Test fact 2"
         yield {
-            "build_context": mock_build,
             "get_events": mock_events,
             "get_kg_facts": mock_kg,
         }
@@ -204,7 +194,6 @@ class TestGenerateChapter:
         result = await generate_chapter(sample_generation_state)
 
         # Verify context building was called
-        mock_context_builder["build_context"].assert_called_once()
         mock_context_builder["get_kg_facts"].assert_called_once()
 
         # Check that hybrid context was stored in state
@@ -275,10 +264,8 @@ class TestGenerateChapter:
         assert result["draft_text"] is not None
         assert result["last_error"] is None
 
-        # Verify context building was called with correct chapter
-        mock_context_builder["build_context"].assert_called_once()
-        call_args = mock_context_builder["build_context"].call_args
-        assert call_args.kwargs["current_chapter"] == 3
+        # Verify KG facts were fetched
+        mock_context_builder["get_kg_facts"].assert_called_once()
 
     async def test_generate_chapter_extracts_plot_point_from_outline(
         self, sample_generation_state, mock_llm_generation, mock_context_builder
@@ -330,13 +317,8 @@ class TestGenerateChapter:
         # Should succeed
         assert result["draft_text"] is not None
 
-        # Verify context builder was called with character names
-        call_args = mock_context_builder["build_context"].call_args
-        assert call_args.kwargs["active_character_names"] == [
-            "Hero",
-            "Mentor",
-            "Villain",
-        ]
+        # Verify KG facts were fetched
+        mock_context_builder["get_kg_facts"].assert_called_once()
 
     async def test_generate_chapter_with_location(
         self, sample_generation_state, mock_llm_generation, mock_context_builder
@@ -350,9 +332,8 @@ class TestGenerateChapter:
         # Should succeed
         assert result["draft_text"] is not None
 
-        # Verify context builder was called with location
-        call_args = mock_context_builder["build_context"].call_args
-        assert call_args.kwargs["location_id"] == "castle_001"
+        # Verify KG facts were fetched
+        mock_context_builder["get_kg_facts"].assert_called_once()
 
 
 @pytest.mark.asyncio
