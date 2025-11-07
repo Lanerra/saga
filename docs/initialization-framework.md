@@ -4,6 +4,8 @@
 
 The Initialization Framework provides a structured approach to setting up a narrative generation workflow by creating foundational elements before chapter generation begins. This ensures coherence and maintains consistency throughout the story generation process.
 
+**Key Feature**: The framework includes a **commit node** that bridges initialization data to the Neo4j knowledge graph, ensuring that generated character sheets and world elements are immediately available to the generation loop.
+
 ## Architecture
 
 ### Workflow Structure
@@ -11,9 +13,9 @@ The Initialization Framework provides a structured approach to setting up a narr
 ```
 [Initialize State] → [Generate Character Sheets]
    ↓                          ↓
-[Global Outline] → [Act Outlines] → [Chapter Outlines (on-demand)]
-   ↓
-[Generation Loop]
+[Global Outline] → [Act Outlines] → [Commit to Knowledge Graph]
+   ↓                                          ↓
+[Chapter Outlines (on-demand)] ← [Generation Loop]
 ```
 
 ### Components
@@ -64,6 +66,14 @@ initialization_step: str | None
 - Includes scene breakdown and key beats
 - Specifies character interactions and plot advancement
 - Maintains connection to previous chapters and overall story arc
+
+**Commit Initialization to Graph Node** (`commit_init_node.py`) ⭐ **NEW**
+- **Bridges initialization to generation loop**
+- Parses character sheets to extract structured traits using LLM
+- Converts text descriptions to `CharacterProfile` models
+- Extracts world items from outlines and creates `WorldItem` models
+- Commits all initialization data to Neo4j knowledge graph
+- Makes characters and world elements immediately available to generation
 
 #### 3. Workflows
 
