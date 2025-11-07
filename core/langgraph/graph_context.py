@@ -393,6 +393,14 @@ async def get_key_events(
         - chapter: Chapter where event occurred
         - importance: Importance score (if available)
     """
+    # For the first chapter, there are no previous events
+    if current_chapter <= 1:
+        logger.debug(
+            "get_key_events: skipping for first chapter",
+            chapter=current_chapter,
+        )
+        return []
+
     start_chapter = max(1, current_chapter - lookback_chapters)
 
     query = """
@@ -434,11 +442,14 @@ async def get_key_events(
         return events
 
     except Exception as e:
-        logger.error(
-            "get_key_events: error retrieving events",
+        logger.warning(
+            "get_key_events: error retrieving events (returning empty list)",
             error=str(e),
+            chapter=current_chapter,
+            start_chapter=start_chapter,
             exc_info=True,
         )
+        # Gracefully degrade - return empty list so workflow continues
         return []
 
 

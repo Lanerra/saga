@@ -198,7 +198,7 @@ async def _deduplicate_character(name: str, description: str, chapter: int) -> s
 
     if similar_entity:
         # Determine if we should merge based on similarity
-        should_merge = await should_merge_entities(
+        should_merge = should_merge_entities(
             name,
             description,
             similar_entity,
@@ -253,7 +253,7 @@ async def _deduplicate_world_item(
 
     if similar_entity:
         # Determine if we should merge based on similarity
-        should_merge = await should_merge_entities(
+        should_merge = should_merge_entities(
             name,
             description,
             similar_entity,
