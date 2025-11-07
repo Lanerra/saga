@@ -7,6 +7,9 @@ __pycache__/
 htmlcov/
 .pytest_cache/
 
+# Runtime logs and debug outputs
+output/
+
 # Generated novel output
 novel_output/
 
