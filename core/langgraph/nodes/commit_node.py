@@ -127,6 +127,8 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         if relationships:
             await _create_relationships(
                 relationships,
+                char_entities,
+                world_entities,
                 char_mappings,
                 world_mappings,
                 state["current_chapter"],
@@ -403,6 +405,8 @@ def _convert_to_world_items(
 
 async def _create_relationships(
     relationships: list[ExtractedRelationship],
+    char_entities: list[ExtractedEntity],
+    world_entities: list[ExtractedEntity],
     char_mappings: dict[str, str],
     world_mappings: dict[str, str],
     chapter: int,
@@ -420,6 +424,8 @@ async def _create_relationships(
 
     Args:
         relationships: List of ExtractedRelationship instances
+        char_entities: List of character ExtractedEntity instances
+        world_entities: List of world item ExtractedEntity instances
         char_mappings: Character name mappings (old -> deduplicated)
         world_mappings: World item name to ID mappings
         chapter: Current chapter number
@@ -427,6 +433,39 @@ async def _create_relationships(
     """
     if not relationships:
         return
+
+    # Build entity lookup maps for type resolution
+    entity_type_map = {}
+    entity_category_map = {}
+
+    for entity in char_entities:
+        entity_type_map[entity.name] = entity.type
+        entity_category_map[entity.name] = entity.attributes.get("category", "")
+
+    for entity in world_entities:
+        entity_type_map[entity.name] = entity.type
+        entity_category_map[entity.name] = entity.attributes.get("category", "")
+
+    # Helper to create subject/object dict with type info
+    def _make_entity_dict(name: str, original_name: str) -> dict:
+        """Create entity dict with name, type, and category."""
+        entity_type = entity_type_map.get(original_name, "object")  # Default to object
+        entity_category = entity_category_map.get(original_name, "")
+
+        # Map extraction types to Neo4j node types
+        type_mapping = {
+            "character": "Character",
+            "location": "Location",
+            "event": "Event",
+            "object": "Object",
+        }
+        neo4j_type = type_mapping.get(entity_type, "Object")
+
+        return {
+            "name": name,
+            "type": neo4j_type,
+            "category": entity_category,
+        }
 
     # Convert to triple format expected by add_kg_triples_batch_to_db
     structured_triples = []
@@ -440,11 +479,11 @@ async def _create_relationships(
         if rel.target_name in world_mappings:
             target_name = world_mappings[rel.target_name]
 
-        # Build triple in the format expected by kg_queries
+        # Build triple in the format expected by kg_queries (dict format for subject/object)
         triple = {
-            "subject": source_name,
+            "subject": _make_entity_dict(source_name, rel.source_name),
             "predicate": rel.relationship_type,
-            "object_entity": target_name,
+            "object_entity": _make_entity_dict(target_name, rel.target_name),
             "is_literal_object": False,
             "description": rel.description,
             "confidence": rel.confidence,
