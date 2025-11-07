@@ -46,6 +46,7 @@ from core.langgraph.graph_context import build_context_from_graph, get_key_event
 from core.langgraph.nodes import (
     commit_to_graph,
     extract_entities,
+    finalize_chapter,
     generate_chapter,
     revise_chapter,
     summarize_chapter,
@@ -81,6 +82,7 @@ __all__ = [
     "generate_chapter",
     "revise_chapter",
     "summarize_chapter",
+    "finalize_chapter",
     # Context
     "build_context_from_graph",
     "get_key_events",

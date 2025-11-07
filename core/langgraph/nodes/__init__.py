@@ -11,9 +11,9 @@ Implemented Nodes:
     - generation_node: Chapter text generation ✓ (Phase 2)
     - revision_node: Content revision based on feedback ✓ (Phase 2)
     - summary_node: Chapter summarization ✓ (Phase 2)
+    - finalize_node: Chapter persistence and cleanup ✓ (Phase 2)
 
-Planned Nodes (from migration plan):
-    - finalize_node: Chapter persistence and cleanup
+All Phase 2 nodes complete! Ready for workflow integration.
 
 Migration Reference: docs/langgraph_migration_plan.md - Phase 1
 
@@ -25,6 +25,7 @@ Each node follows the LangGraph signature:
 
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.extraction_node import extract_entities
+from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.generation_node import generate_chapter
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
@@ -37,6 +38,7 @@ __all__ = [
     "generate_chapter",
     "revise_chapter",
     "summarize_chapter",
+    "finalize_chapter",
 ]
 
 __version__ = "0.1.0"
