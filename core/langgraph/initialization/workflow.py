@@ -29,6 +29,9 @@ from core.langgraph.initialization.character_sheets_node import (
 )
 from core.langgraph.initialization.global_outline_node import generate_global_outline
 from core.langgraph.initialization.act_outlines_node import generate_act_outlines
+from core.langgraph.initialization.commit_init_node import (
+    commit_initialization_to_graph,
+)
 from core.langgraph.state import NarrativeState
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, StateGraph
@@ -44,11 +47,12 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     1. Character sheets for main characters
     2. Global story outline
     3. Act-level outlines
+    4. Commits all initialization data to Neo4j knowledge graph
 
     After initialization, the state is ready for the main generation loop.
 
     Workflow:
-        START → character_sheets → global_outline → act_outlines → END
+        START → character_sheets → global_outline → act_outlines → commit_to_graph → END
 
     Args:
         checkpointer: Optional checkpoint saver (SqliteSaver, PostgresSaver, etc.)
@@ -66,6 +70,7 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("character_sheets", generate_character_sheets)
     workflow.add_node("global_outline", generate_global_outline)
     workflow.add_node("act_outlines", generate_act_outlines)
+    workflow.add_node("commit_to_graph", commit_initialization_to_graph)
 
     # Add finalization node to mark initialization complete
     def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
@@ -88,7 +93,8 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     # Define linear flow
     workflow.add_edge("character_sheets", "global_outline")
     workflow.add_edge("global_outline", "act_outlines")
-    workflow.add_edge("act_outlines", "complete")
+    workflow.add_edge("act_outlines", "commit_to_graph")
+    workflow.add_edge("commit_to_graph", "complete")
     workflow.add_edge("complete", END)
 
     # Set entry point
@@ -96,7 +102,7 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
 
     logger.info(
         "create_initialization_graph: graph built successfully",
-        nodes=["character_sheets", "global_outline", "act_outlines", "complete"],
+        nodes=["character_sheets", "global_outline", "act_outlines", "commit_to_graph", "complete"],
         entry_point="character_sheets",
     )
 

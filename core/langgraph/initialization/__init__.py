@@ -21,6 +21,9 @@ from core.langgraph.initialization.act_outlines_node import generate_act_outline
 from core.langgraph.initialization.chapter_outline_node import (
     generate_chapter_outline,
 )
+from core.langgraph.initialization.commit_init_node import (
+    commit_initialization_to_graph,
+)
 from core.langgraph.initialization.workflow import create_initialization_graph
 
 __all__ = [
@@ -28,5 +31,6 @@ __all__ = [
     "generate_global_outline",
     "generate_act_outlines",
     "generate_chapter_outline",
+    "commit_initialization_to_graph",
     "create_initialization_graph",
 ]
