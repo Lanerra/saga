@@ -179,11 +179,9 @@ async def _llm_extract_updates(
         Tuple of (extracted_text, usage_stats)
     """
     # Load available schema types for the prompt
-    # Note: In the original code, these are loaded from kg_constants
-    # For now we'll use empty lists; these will be populated by schema introspection
     from models.kg_constants import (
-        AVAILABLE_NODE_LABELS,
-        AVAILABLE_RELATIONSHIP_TYPES,
+        NODE_LABELS,
+        RELATIONSHIP_TYPES,
     )
 
     prompt = render_prompt(
@@ -195,8 +193,8 @@ async def _llm_extract_updates(
             "novel_title": title,
             "novel_genre": genre,
             "chapter_text": chapter_text,
-            "available_node_labels": AVAILABLE_NODE_LABELS,
-            "available_relationship_types": AVAILABLE_RELATIONSHIP_TYPES,
+            "available_node_labels": sorted(NODE_LABELS),
+            "available_relationship_types": sorted(RELATIONSHIP_TYPES),
         },
     )
 
@@ -474,7 +472,8 @@ def _clean_llm_json(raw_text: str) -> str:
     cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
 
     # Fix common quote issues (curly quotes to straight quotes)
-    cleaned = cleaned.replace(""", '"').replace(""", '"')
+    # Replace left and right double quotation marks with straight quotes
+    cleaned = cleaned.replace('\u201c', '"').replace('\u201d', '"')
 
     return cleaned.strip()
 

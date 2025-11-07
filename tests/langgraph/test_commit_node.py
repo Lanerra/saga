@@ -50,7 +50,7 @@ class TestCommitToGraph:
         with patch("core.langgraph.nodes.commit_node.knowledge_graph_service", mock_knowledge_graph_service):
             with patch("core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries):
                 with patch("core.langgraph.nodes.commit_node.kg_queries", mock_kg_queries):
-                    with patch("core.langgraph.nodes.commit_node.check_entity_similarity", return_value=AsyncMock(return_value=None)):
+                    with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
                         result = await commit_to_graph(state)
 
                         assert result["current_node"] == "commit_to_graph"
@@ -73,7 +73,7 @@ class TestCommitToGraph:
         mock_knowledge_graph_service.persist_entities.side_effect = Exception("Database error")
 
         with patch("core.langgraph.nodes.commit_node.knowledge_graph_service", mock_knowledge_graph_service):
-            with patch("core.langgraph.nodes.commit_node.check_entity_similarity", return_value=AsyncMock(return_value=None)):
+            with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
                 result = await commit_to_graph(state)
 
                 assert result["current_node"] == "commit_to_graph"

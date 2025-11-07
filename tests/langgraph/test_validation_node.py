@@ -99,6 +99,22 @@ class TestValidateConsistency:
         state = sample_state_with_extraction
         state["draft_word_count"] = 2000
 
+        # Add 3 relationships to match the 3 ValidationResults
+        state["extracted_relationships"] = [
+            ExtractedRelationship(
+                source_name="Alice", target_name="Bob",
+                relationship_type="REL1", description="Rel 1", chapter=1
+            ),
+            ExtractedRelationship(
+                source_name="Bob", target_name="Charlie",
+                relationship_type="REL2", description="Rel 2", chapter=1
+            ),
+            ExtractedRelationship(
+                source_name="Alice", target_name="Charlie",
+                relationship_type="REL3", description="Rel 3", chapter=1
+            ),
+        ]
+
         # Mock validation to return multiple invalid results
         with patch("core.langgraph.nodes.validation_node.validate_batch_constraints") as mock_validate:
             mock_validate.return_value = [
