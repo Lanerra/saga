@@ -10,9 +10,9 @@ Implemented Nodes:
     - validation_node: Consistency and quality validation ✓
     - generation_node: Chapter text generation ✓ (Phase 2)
     - revision_node: Content revision based on feedback ✓ (Phase 2)
+    - summary_node: Chapter summarization ✓ (Phase 2)
 
 Planned Nodes (from migration plan):
-    - summary_node: Chapter summarization
     - finalize_node: Chapter persistence and cleanup
 
 Migration Reference: docs/langgraph_migration_plan.md - Phase 1
@@ -27,6 +27,7 @@ from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.extraction_node import extract_entities
 from core.langgraph.nodes.generation_node import generate_chapter
 from core.langgraph.nodes.revision_node import revise_chapter
+from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.nodes.validation_node import validate_consistency
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "validate_consistency",
     "generate_chapter",
     "revise_chapter",
+    "summarize_chapter",
 ]
 
 __version__ = "0.1.0"

@@ -48,6 +48,7 @@ from core.langgraph.nodes import (
     extract_entities,
     generate_chapter,
     revise_chapter,
+    summarize_chapter,
     validate_consistency,
 )
 from core.langgraph.state import (
@@ -79,6 +80,7 @@ __all__ = [
     # Nodes (Phase 2)
     "generate_chapter",
     "revise_chapter",
+    "summarize_chapter",
     # Context
     "build_context_from_graph",
     "get_key_events",
