@@ -6,9 +6,9 @@ LangGraph-based narrative generation workflow.
 
 Implemented Nodes:
     - extraction_node: Entity extraction from generated text ✓
+    - commit_node: Deduplication and Neo4j commitment ✓
 
 Planned Nodes (from migration plan):
-    - commit_node: Deduplication and Neo4j commitment
     - validation_node: Consistency and quality validation
     - generation_node: Chapter text generation
     - revision_node: Content revision based on feedback
@@ -22,8 +22,9 @@ Each node follows the LangGraph signature:
         return updated_state
 """
 
+from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.extraction_node import extract_entities
 
-__all__ = ["extract_entities"]
+__all__ = ["extract_entities", "commit_to_graph"]
 
 __version__ = "0.1.0"
