@@ -13,7 +13,12 @@ Components:
     graph: Graph definition and workflow orchestration
 
 Usage:
-    from core.langgraph import NarrativeState, create_initial_state, extract_entities
+    from core.langgraph import (
+        NarrativeState,
+        create_initial_state,
+        extract_entities,
+        commit_to_graph
+    )
 
     # Create initial state
     state = create_initial_state(
@@ -28,11 +33,12 @@ Usage:
         protagonist_name="Hero"
     )
 
-    # Use extraction node
-    updated_state = await extract_entities(state)
+    # Use nodes in sequence
+    state = await extract_entities(state)
+    state = await commit_to_graph(state)
 """
 
-from core.langgraph.nodes import extract_entities
+from core.langgraph.nodes import commit_to_graph, extract_entities
 from core.langgraph.state import (
     Contradiction,
     ExtractedEntity,
@@ -50,6 +56,7 @@ __all__ = [
     "Contradiction",
     "create_initial_state",
     "extract_entities",
+    "commit_to_graph",
 ]
 
 __version__ = "0.1.0"
