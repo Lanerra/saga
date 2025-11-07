@@ -350,32 +350,26 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
         )
         return True
 
-    # Check 2: Events extracted
-    # If no events were extracted, the chapter may not be advancing the plot
+    # Check 2: Get all extracted elements
     entities = state.get("extracted_entities", {})
     events = entities.get("events", [])
-    if len(events) == 0:
-        logger.debug("_is_plot_stagnant: no events extracted")
-        # Don't fail just for this - relationships might be enough
-        # return True
-
-    # Check 3: Relationships changed
-    # New relationships indicate character interactions and plot development
-    relationships = state.get("extracted_relationships", [])
-    if len(relationships) == 0:
-        logger.debug("_is_plot_stagnant: no relationships extracted")
-        # Combined with no events, this might indicate stagnation
-        if len(events) == 0:
-            return True
-
-    # Check 4: New characters or world items
-    # Adding new elements shows world expansion
     characters = entities.get("characters", [])
     world_items = entities.get("world_items", [])
+    relationships = state.get("extracted_relationships", [])
 
-    total_new_elements = len(characters) + len(world_items)
-    if total_new_elements == 0 and len(relationships) == 0:
-        logger.debug("_is_plot_stagnant: no new elements or relationships")
+    # Check 3: Count total new content
+    total_new_elements = len(characters) + len(world_items) + len(events)
+    total_relationships = len(relationships)
+
+    # If we have no new elements AND no relationships, the plot is stagnant
+    if total_new_elements == 0 and total_relationships == 0:
+        logger.debug(
+            "_is_plot_stagnant: no new elements or relationships",
+            characters=len(characters),
+            world_items=len(world_items),
+            events=len(events),
+            relationships=total_relationships,
+        )
         return True
 
     # If we made it here, the chapter seems to be making progress

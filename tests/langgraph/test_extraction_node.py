@@ -30,15 +30,20 @@ class TestCleanLLMJSON:
         """Test removing trailing commas before closing brackets."""
         raw = '{"array": [1, 2, 3,], "nested": {"key": "value",}}'
         cleaned = _clean_llm_json(raw)
-        assert ',' not in cleaned.split(']')[0].split('[')[1]  # No comma before ]
+        # Check that trailing commas are removed
+        assert not cleaned.endswith(',]')
+        assert not cleaned.endswith(',}')
         assert cleaned == '{"array": [1, 2, 3], "nested": {"key": "value"}}'
 
     def test_clean_curly_quotes(self):
         """Test converting curly quotes to straight quotes."""
-        raw = '{"key": "value"}'  # Curly quotes
+        # Use actual Unicode curly quotes (U+201C and U+201D)
+        raw = '\u007b\u201ckey\u201d: \u201cvalue\u201d\u007d'  # {"key": "value"} with curly quotes
         cleaned = _clean_llm_json(raw)
+        # Check that straight quotes are present and curly quotes are removed
         assert '"' in cleaned
-        assert '"' not in cleaned
+        assert '\u201c' not in cleaned  # Left double quotation mark
+        assert '\u201d' not in cleaned  # Right double quotation mark
 
     def test_clean_already_clean_json(self):
         """Test that already clean JSON is unchanged."""
@@ -52,8 +57,11 @@ class TestCleanLLMJSON:
         {"array": [1, 2,], "key": "value",}
         ```"""
         cleaned = _clean_llm_json(raw)
+        # Check markdown blocks are removed
         assert not cleaned.startswith("```")
-        assert ',' not in cleaned.split(']')[0].split('[')[1]
+        # Check trailing commas are removed
+        assert ',]' not in cleaned
+        assert ',}' not in cleaned
 
 
 class TestMapCategoryToType:
