@@ -19,6 +19,7 @@ Usage:
         create_initial_state,
         extract_entities,
         commit_to_graph,
+        validate_consistency,
         build_context_from_graph
     )
 
@@ -44,10 +45,11 @@ Usage:
     # Use nodes in sequence
     state = await extract_entities(state)
     state = await commit_to_graph(state)
+    state = await validate_consistency(state)
 """
 
 from core.langgraph.graph_context import build_context_from_graph, get_key_events
-from core.langgraph.nodes import commit_to_graph, extract_entities
+from core.langgraph.nodes import commit_to_graph, extract_entities, validate_consistency
 from core.langgraph.state import (
     Contradiction,
     ExtractedEntity,
@@ -66,6 +68,7 @@ __all__ = [
     "create_initial_state",
     "extract_entities",
     "commit_to_graph",
+    "validate_consistency",
     "build_context_from_graph",
     "get_key_events",
 ]
