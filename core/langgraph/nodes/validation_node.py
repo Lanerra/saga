@@ -63,6 +63,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     relationship_contradictions = await _validate_relationships(
         state.get("extracted_relationships", []),
         state["current_chapter"],
+        state.get("extracted_entities"),
     )
     contradictions.extend(relationship_contradictions)
 
@@ -121,6 +122,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 async def _validate_relationships(
     relationships: list[Any],
     chapter: int,
+    extracted_entities: dict[str, list[ExtractedEntity]] | None = None,
 ) -> list[Contradiction]:
     """
     Validate extracted relationships using relationship constraint system.
@@ -134,6 +136,7 @@ async def _validate_relationships(
     Args:
         relationships: List of ExtractedRelationship instances
         chapter: Current chapter number
+        extracted_entities: Dict with "characters" and "world_items" lists for type lookup
 
     Returns:
         List of Contradiction instances for invalid relationships
@@ -144,13 +147,47 @@ async def _validate_relationships(
     contradictions = []
 
     try:
+        # Build entity type lookup from extracted entities
+        entity_type_map = {}
+        entity_category_map = {}
+
+        if extracted_entities:
+            for entity in extracted_entities.get("characters", []):
+                entity_type_map[entity.name] = entity.type
+                entity_category_map[entity.name] = entity.attributes.get("category", "")
+
+            for entity in extracted_entities.get("world_items", []):
+                entity_type_map[entity.name] = entity.type
+                entity_category_map[entity.name] = entity.attributes.get("category", "")
+
+        # Helper to create entity dict with type info
+        def _make_entity_dict(name: str) -> dict:
+            """Create entity dict with name, type, and category."""
+            entity_type = entity_type_map.get(name, "object")  # Default to object
+            entity_category = entity_category_map.get(name, "")
+
+            # Map extraction types to Neo4j node types
+            type_mapping = {
+                "character": "Character",
+                "location": "Location",
+                "event": "Event",
+                "object": "Object",
+            }
+            neo4j_type = type_mapping.get(entity_type, "Object")
+
+            return {
+                "name": name,
+                "type": neo4j_type,
+                "category": entity_category,
+            }
+
         # Convert to triple format for validation
         triples = []
         for rel in relationships:
             triple = {
-                "subject": rel.source_name,
+                "subject": _make_entity_dict(rel.source_name),
                 "predicate": rel.relationship_type,
-                "object_entity": rel.target_name,
+                "object_entity": _make_entity_dict(rel.target_name),
             }
             triples.append(triple)
 
