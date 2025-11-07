@@ -16,7 +16,6 @@ Requirements:
 """
 
 import asyncio
-import json
 import sys
 import time
 from pathlib import Path
@@ -77,7 +76,7 @@ async def main():
     print("\n" + "="*80)
     print("SAGA Phase 2 End-to-End Test")
     print("="*80)
-    print(f"\nConfiguration:")
+    print("\nConfiguration:")
     print(f"  Generation Model: {settings.LARGE_MODEL}")
     print(f"  Extraction Model: {settings.SMALL_MODEL}")
     print(f"  Revision Model: {settings.MEDIUM_MODEL}")
@@ -103,7 +102,7 @@ async def main():
     print(f"✓ Created outline for: {outline['title']}")
     print(f"  Genre: {outline['genre']}")
     print(f"  Theme: {outline['theme']}")
-    print(f"  Chapters: 1")
+    print("  Chapters: 1")
     print()
 
     # Step 3: Create project directory
@@ -206,7 +205,7 @@ async def main():
         # Check summary
         summaries = result.get("previous_chapter_summaries", [])
         if summaries:
-            print(f"✓ Chapter summary generated:")
+            print("✓ Chapter summary generated:")
             print(f"  {summaries[-1]}")
         else:
             print("⚠ No summary generated")

@@ -17,7 +17,6 @@ import json
 
 import structlog
 
-import config
 from core.db_manager import neo4j_manager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -143,7 +142,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     except Exception as e:
-        error_msg = f"Error during summarization: {str(e)}"
         logger.error(
             "summarize_chapter: exception during summarization",
             chapter=state["current_chapter"],
