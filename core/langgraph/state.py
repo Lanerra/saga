@@ -210,6 +210,25 @@ class NarrativeState(TypedDict, total=False):
     protagonist_name: str
     protagonist_profile: CharacterProfile | None
 
+    # =========================================================================
+    # Initialization Phase State (for initialization workflow)
+    # =========================================================================
+    # Character sheets generated during initialization
+    character_sheets: dict[str, dict[str, Any]]  # character_name -> character_sheet
+
+    # Global outline generated during initialization
+    global_outline: dict[str, Any] | None
+
+    # Act outlines generated during initialization
+    act_outlines: dict[int, dict[str, Any]]  # act_number -> act_outline
+
+    # Chapter outlines (generated on-demand or pre-generated)
+    chapter_outlines: dict[int, dict[str, Any]]  # chapter_number -> chapter_outline
+
+    # Initialization state tracking
+    initialization_complete: bool
+    initialization_step: str | None  # Current initialization step
+
 
 # Type alias for improved readability in node signatures
 State = NarrativeState
@@ -320,6 +339,13 @@ def create_initial_state(
         # Protagonist
         "protagonist_name": protagonist_name,
         "protagonist_profile": None,
+        # Initialization phase
+        "character_sheets": {},
+        "global_outline": None,
+        "act_outlines": {},
+        "chapter_outlines": {},
+        "initialization_complete": False,
+        "initialization_step": None,
     }
 
     return state
