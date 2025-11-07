@@ -1,0 +1,428 @@
+"""
+Tests for LangGraph finalize node (Phase 2, Step 2.4).
+
+Tests the finalize_chapter node and its helper functions.
+
+Migration Reference: docs/phase2_migration_plan.md - Step 2.4
+"""
+
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import numpy as np
+import pytest
+
+from core.langgraph.nodes.finalize_node import finalize_chapter
+from core.langgraph.state import create_initial_state
+
+
+@pytest.fixture
+def sample_finalize_state(tmp_path):
+    """Sample state ready for finalization."""
+    state = create_initial_state(
+        project_id="test-project",
+        title="Test Novel",
+        genre="Fantasy",
+        theme="Adventure",
+        setting="Medieval world",
+        target_word_count=80000,
+        total_chapters=20,
+        project_dir=str(tmp_path / "test-project"),
+        protagonist_name="Hero",
+        generation_model="test-model",
+        extraction_model="test-model",
+        revision_model="test-model",
+    )
+
+    # Add finalized chapter text
+    state["draft_text"] = """
+    The hero completed their quest, returning to the village victorious.
+    The villagers celebrated their bravery and the kingdom was saved.
+    Peace was restored to the land.
+    """
+    state["draft_word_count"] = 25
+
+    # Set current chapter
+    state["current_chapter"] = 1
+
+    # Add extraction results (to be cleaned up)
+    state["extracted_entities"] = {
+        "characters": [{"name": "Hero", "type": "character"}],
+        "locations": [{"name": "Village", "type": "location"}],
+    }
+    state["extracted_relationships"] = [
+        {"source": "Hero", "target": "Village", "type": "RETURNED_TO"}
+    ]
+
+    # Add contradictions (to be cleared)
+    state["contradictions"] = []
+
+    # Add iteration tracking
+    state["iteration_count"] = 2
+    state["needs_revision"] = False
+
+    # Add summary
+    state["previous_chapter_summaries"] = [
+        "The hero completed their quest and returned home victorious."
+    ]
+
+    return state
+
+
+@pytest.fixture
+def mock_llm_service():
+    """Mock LLM service for embedding generation."""
+    with patch("core.langgraph.nodes.finalize_node.llm_service") as mock:
+        # Return a mock embedding vector
+        mock.async_get_embedding = AsyncMock(
+            return_value=np.random.rand(1024).astype(np.float32)
+        )
+        yield mock
+
+
+@pytest.fixture
+def mock_save_chapter_data():
+    """Mock chapter data saving."""
+    with patch(
+        "core.langgraph.nodes.finalize_node.save_chapter_data_to_db"
+    ) as mock:
+        mock.return_value = AsyncMock(return_value=None)
+        yield mock
+
+
+@pytest.mark.asyncio
+class TestFinalizeChapter:
+    """Tests for finalize_chapter node function."""
+
+    async def test_finalize_chapter_success(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test successful chapter finalization."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Check that state was cleaned up
+        assert result["extracted_entities"] == {}
+        assert result["extracted_relationships"] == []
+        assert result["contradictions"] == []
+        assert result["iteration_count"] == 0
+        assert result["needs_revision"] is False
+
+        # Check current node was updated
+        assert result["current_node"] == "finalize"
+
+        # Check no errors
+        assert result["last_error"] is None
+
+        # Verify embedding was generated
+        mock_llm_service.async_get_embedding.assert_called_once()
+
+        # Verify Neo4j save was called
+        mock_save_chapter_data.assert_called_once()
+        call_args = mock_save_chapter_data.call_args
+        assert call_args.kwargs["chapter_number"] == 1
+        assert call_args.kwargs["text"] == sample_finalize_state["draft_text"]
+        assert call_args.kwargs["is_provisional"] is False
+
+    async def test_finalize_chapter_no_draft_text(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test finalization fails gracefully without draft text."""
+        state = {**sample_finalize_state}
+        state["draft_text"] = None
+
+        result = await finalize_chapter(state)
+
+        # Should return error state
+        assert result["last_error"] is not None
+        assert "No draft text" in result["last_error"]
+        assert result["current_node"] == "finalize"
+
+        # Embedding generation should not be called
+        mock_llm_service.async_get_embedding.assert_not_called()
+
+        # Neo4j save should not be called
+        mock_save_chapter_data.assert_not_called()
+
+    async def test_finalize_chapter_filesystem_save(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that chapter is saved to filesystem."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Check that file was created
+        project_dir = Path(sample_finalize_state["project_dir"])
+        chapter_file = project_dir / "chapters" / "chapter_001.txt"
+
+        assert chapter_file.exists()
+        assert chapter_file.read_text() == sample_finalize_state["draft_text"]
+
+    async def test_finalize_chapter_embedding_generation(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that embedding is generated for the chapter."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Verify embedding was requested
+        mock_llm_service.async_get_embedding.assert_called_once()
+        call_args = mock_llm_service.async_get_embedding.call_args
+        assert call_args.args[0] == sample_finalize_state["draft_text"]
+
+        # Verify embedding was passed to Neo4j
+        neo4j_call_args = mock_save_chapter_data.call_args
+        embedding = neo4j_call_args.kwargs["embedding_array"]
+        assert embedding is not None
+        assert isinstance(embedding, np.ndarray)
+
+    async def test_finalize_chapter_embedding_failure(
+        self, sample_finalize_state, mock_save_chapter_data
+    ):
+        """Test that embedding failures don't block finalization."""
+        with patch("core.langgraph.nodes.finalize_node.llm_service") as mock_llm:
+            mock_llm.async_get_embedding = AsyncMock(
+                side_effect=Exception("Embedding service unavailable")
+            )
+
+            result = await finalize_chapter(sample_finalize_state)
+
+            # Should still succeed without embedding
+            assert result["last_error"] is None
+            assert result["current_node"] == "finalize"
+
+            # Neo4j should still be called (with None embedding)
+            mock_save_chapter_data.assert_called_once()
+            call_args = mock_save_chapter_data.call_args
+            assert call_args.kwargs["embedding_array"] is None
+
+    async def test_finalize_chapter_neo4j_failure(
+        self, sample_finalize_state, mock_llm_service
+    ):
+        """Test that Neo4j failures are reported as errors."""
+        with patch(
+            "core.langgraph.nodes.finalize_node.save_chapter_data_to_db"
+        ) as mock_save:
+            mock_save.side_effect = Exception("Neo4j unavailable")
+
+            result = await finalize_chapter(sample_finalize_state)
+
+            # Should return error state
+            assert result["last_error"] is not None
+            assert "Neo4j" in result["last_error"]
+            assert result["current_node"] == "finalize"
+
+    async def test_finalize_chapter_filesystem_failure_continues(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that filesystem failures don't block Neo4j save."""
+        # Make project_dir invalid to cause filesystem failure
+        state = {**sample_finalize_state}
+        state["project_dir"] = "/invalid/nonexistent/path"
+
+        result = await finalize_chapter(state)
+
+        # Should still succeed (Neo4j is source of truth)
+        assert result["last_error"] is None
+
+        # Neo4j save should still be called
+        mock_save_chapter_data.assert_called_once()
+
+    async def test_finalize_chapter_clears_extracted_entities(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that extracted entities are cleared after finalization."""
+        # Add extracted entities
+        state = {**sample_finalize_state}
+        state["extracted_entities"] = {
+            "characters": [{"name": "Hero"}],
+            "locations": [{"name": "Castle"}],
+        }
+
+        result = await finalize_chapter(state)
+
+        # Should be cleared
+        assert result["extracted_entities"] == {}
+
+    async def test_finalize_chapter_clears_relationships(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that extracted relationships are cleared."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Should be cleared
+        assert result["extracted_relationships"] == []
+
+    async def test_finalize_chapter_clears_contradictions(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that contradictions are cleared."""
+        # Add contradictions
+        state = {**sample_finalize_state}
+        state["contradictions"] = [
+            {"type": "character", "description": "Test contradiction"}
+        ]
+
+        result = await finalize_chapter(state)
+
+        # Should be cleared
+        assert result["contradictions"] == []
+
+    async def test_finalize_chapter_resets_iteration_count(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that iteration count is reset."""
+        # Set iteration count
+        state = {**sample_finalize_state}
+        state["iteration_count"] = 3
+
+        result = await finalize_chapter(state)
+
+        # Should be reset
+        assert result["iteration_count"] == 0
+
+    async def test_finalize_chapter_resets_needs_revision(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that needs_revision flag is reset."""
+        # Set needs_revision
+        state = {**sample_finalize_state}
+        state["needs_revision"] = True
+
+        result = await finalize_chapter(state)
+
+        # Should be reset
+        assert result["needs_revision"] is False
+
+    async def test_finalize_chapter_preserves_draft_text(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that draft_text is preserved in state."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Draft text should still be available
+        assert result["draft_text"] == sample_finalize_state["draft_text"]
+        assert result["draft_word_count"] == sample_finalize_state["draft_word_count"]
+
+    async def test_finalize_chapter_includes_summary(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that summary is included in Neo4j save."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Verify summary was passed to Neo4j
+        call_args = mock_save_chapter_data.call_args
+        summary = call_args.kwargs["summary"]
+        assert summary is not None
+        assert summary == sample_finalize_state["previous_chapter_summaries"][-1]
+
+    async def test_finalize_chapter_no_summary(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test finalization works without summary."""
+        state = {**sample_finalize_state}
+        state["previous_chapter_summaries"] = []
+
+        result = await finalize_chapter(state)
+
+        # Should succeed
+        assert result["last_error"] is None
+
+        # Neo4j should be called with None summary
+        call_args = mock_save_chapter_data.call_args
+        assert call_args.kwargs["summary"] is None
+
+    async def test_finalize_chapter_creates_chapters_directory(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that chapters directory is created if it doesn't exist."""
+        # Use a new temporary directory
+        project_dir = Path(sample_finalize_state["project_dir"])
+        chapters_dir = project_dir / "chapters"
+
+        # Ensure directory doesn't exist
+        if chapters_dir.exists():
+            import shutil
+
+            shutil.rmtree(chapters_dir)
+
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Directory should be created
+        assert chapters_dir.exists()
+        assert chapters_dir.is_dir()
+
+    async def test_finalize_chapter_correct_filename_format(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that chapter filename uses correct format."""
+        # Test different chapter numbers
+        for chapter_num in [1, 10, 99]:
+            state = {**sample_finalize_state}
+            state["current_chapter"] = chapter_num
+
+            result = await finalize_chapter(state)
+
+            # Check file was created with correct name
+            project_dir = Path(state["project_dir"])
+            expected_file = project_dir / "chapters" / f"chapter_{chapter_num:03d}.txt"
+            assert expected_file.exists()
+
+    async def test_finalize_chapter_preserves_other_state(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that other state fields are preserved."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Verify important fields are preserved
+        assert result["current_chapter"] == sample_finalize_state["current_chapter"]
+        assert result["title"] == sample_finalize_state["title"]
+        assert result["genre"] == sample_finalize_state["genre"]
+        assert result["project_id"] == sample_finalize_state["project_id"]
+
+
+@pytest.mark.asyncio
+class TestFinalizeIntegration:
+    """Integration tests for finalize node."""
+
+    async def test_full_finalization_workflow(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test complete finalization workflow."""
+        # Finalize chapter
+        result = await finalize_chapter(sample_finalize_state)
+
+        # Verify all expected operations occurred
+        assert result["current_node"] == "finalize"
+        assert result["last_error"] is None
+
+        # Verify cleanup
+        assert result["extracted_entities"] == {}
+        assert result["extracted_relationships"] == []
+        assert result["contradictions"] == []
+        assert result["iteration_count"] == 0
+        assert result["needs_revision"] is False
+
+        # Verify embedding was generated
+        mock_llm_service.async_get_embedding.assert_called_once()
+
+        # Verify Neo4j was updated
+        mock_save_chapter_data.assert_called_once()
+
+        # Verify filesystem save
+        project_dir = Path(sample_finalize_state["project_dir"])
+        chapter_file = project_dir / "chapters" / "chapter_001.txt"
+        assert chapter_file.exists()
+
+    async def test_finalization_ready_for_next_chapter(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test that state is ready for next chapter after finalization."""
+        result = await finalize_chapter(sample_finalize_state)
+
+        # State should be clean for next chapter
+        assert result["iteration_count"] == 0
+        assert result["needs_revision"] is False
+        assert result["extracted_entities"] == {}
+        assert result["extracted_relationships"] == []
+        assert result["contradictions"] == []
+
+        # Summary should be available for next chapter
+        assert len(result["previous_chapter_summaries"]) > 0
