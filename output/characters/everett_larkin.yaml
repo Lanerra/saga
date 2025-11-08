@@ -1,59 +1,44 @@
 name: Everett Larkin
 role: protagonist
-description: '**Everett Larkin** is a 34-year-old survivor living on the brink in
-  Cicada Prime''s decaying metropolis, a city of rusted infrastructure and perpetual
-  twilight. His physical description is striking: lean and wiry at 5''11", with sunken
-  eyes the color of tarnished copper that miss nothing. His skin is the color of dust,
-  perpetually dirty from working in the city''s maintenance tunnels. A faint scar
-  cuts through his left eyebrow from a childhood encounter with a feral scavenger,
-  and his hands are calloused and scarred from years of manual labor. He moves with
-  a permanent hunch, as if expecting the next structural collapse at any moment.
-
-
-  Everett''s personality is defined by his cynical pragmatism and dry wit. He''s fiercely
-  observant, noticing details others ignore, which has kept him alive in the dangerous
-  environment. His greatest strength is his adaptability and resourcefulness, but
-  his weaknesses are his tendency to isolate himself and a deep-seated distrust of
-  authority. He''s sarcastic to the point of abrasiveness, using humor as a shield
-  against the world''s horrors.
-
-
-  Born in the city''s underbelly to a maintenance worker and a midwife who died in
-  childbirth during a power surge, Everett grew up in the shadow of his father''s
-  early death from respiratory failure caused by the toxic air. At 16, he was forced
-  to take over his father''s maintenance route, learning the city''s hidden infrastructure
-  intimately. This experience forged his survival skills but also instilled in him
-  a profound disillusionment with the system that promised progress but delivered
-  decay.
-
-
-  Everett''s primary motivation is simple survival, but beneath this lies a deeper
-  drive: the desperate need to protect those few people he still cares about. He''s
-  haunted by the engineered oblivion program that he knows is happening, and his motivation
-  is increasingly fueled by a desire to expose the truth and stop it, even if it costs
-  him everything.
-
-
-  His skills include expert knowledge of the city''s maintenance systems, mechanical
-  repair, urban survival tactics, and an ability to navigate the complex social hierarchies
-  of the underworld. He''s particularly adept at reading people and identifying hidden
-  agendas.
-
-
-  In relationships, Everett maintains a carefully guarded distance. He respects Kai
-  Jensen''s street smarts but keeps their interactions strictly transactional. He
-  has a complicated history with Dr. Aris Thorne, whose idealism initially annoyed
-  him but whom he now sees as potentially valuable. He harbors deep distrust for Commander
-  Marcus Reed, recognizing the corruption in authority, and views The Architect with
-  a mixture of fear and contempt.
-
-
-  Everett''s character arc begins as a survivor focused on individual preservation
-  but gradually evolves into someone willing to risk everything for collective resistance
-  against the oblivion program. His internal conflict centers on reconciling his hardened
-  pragmatism with the moral imperative to act against the system that is destroying
-  his world. The tension between his desire for safety and his growing need for justice
-  forms the core of his struggle, forcing him to confront the true cost of his survival
-  instincts.'
-generated_at: '2025-11-07T21:18:41.507636'
+physical_description: Everett stands at 5'11" with a lean but wiry frame developed from years of manual
+  labor and clandestine movement. His face is angular, with high cheekbones and a perpetually shadowed
+  gaze that misses nothing. A pale scar runs from his left eyebrow to the corner of his mouth, a relic
+  from a factory accident that ended his sister's life. His hands are calloused and capable, bearing the
+  faint blue tattoos of a former laborer's guild mark now partially obscured. His most distinctive feature
+  is a prosthetic left eye—cobalt blue and slightly too large for his socket—replacing the one lost during
+  a confrontation with Overseer forces.
+personality: Everett is methodical and analytical, observing the world around him with detached curiosity.
+  He possesses a dry, understated wit that surfaces unexpectedly in tense situations. His greatest strength
+  is his ability to compartmentalize—he can maintain focus during impossible circumstances and make coldly
+  logical decisions under pressure. However, this same trait makes him emotionally distant and suspicious
+  of overt displays of sentiment. He distrusts authority by default, having witnessed firsthand how it
+  justifies horrific acts. His weakness is his inability to fully trust anyone, seeing potential betrayals
+  in every interaction.
+background: Everett was born in Sector 7, one of Cicada Prime's most overcrowded urban centers. His father
+  died in a mining accident when Everett was twelve, leaving him and his younger sister, Maya, to fend
+  for themselves. The pair survived through petty theft and scavenging until the Great Culling, when Everett
+  was forced to kill a neighbor to protect Maya from Overseer enforcers rounding up "excess population."
+  Two years later, Everett joined the Underscour laborers' guild, working in the toxic refineries until
+  a workplace explosion claimed Maya's life. After losing his remaining eye in a subsequent riot, he spent
+  three years in the underground before being recruited by the Resistance.
+motivations: Everett seeks justice for the millions killed by the Overseer regime, but more fundamentally,
+  he wants to understand the true nature of the "Solution"—the engineered oblivion program. He believes
+  uncovering its mechanics might reveal a way to stop it or expose the lie that has justified humanity's
+  descent into barbarism.
+skills: Everett is an expert in urban survival and evasion, having navigated the labyrinthine underbelly
+  of Cicada Prime for years. He possesses advanced knowledge of engineering and toxicology from his refinery
+  work, allowing him to identify and bypass security systems. His prosthetic eye grants him limited thermal
+  and spectral vision, making him invaluable for reconnaissance. He is proficient with several weapons,
+  including the serrated blade he carries as both tool and weapon.
+relationships: Everett has a complex relationship with Sarah Chen, the Resistance leader he both respects
+  and resents for her idealism. He views Marcus Wright as a brother figure, their shared history in the
+  Underscour creating an unspoken bond. He distrusts Dr. Volkov's methods, seeing her scientific approach
+  as dangerously detached from human suffering. With Commander Singh, he maintains a professional respect
+  mixed with personal caution, recognizing her tactical brilliance but never fully trusting her allegiance.
+character_arc: 'Everett begins as a reluctant operative focused solely on survival and revenge. Throughout
+  the story, he evolves into a strategic leader, gradually accepting the need to sacrifice his solitary
+  methods for the greater good. His arc culminates in him making the ultimate choice: to destroy the evidence
+  of the Solution''s existence to prevent its replication, even if it means sacrificing his chance for
+  personal vengeance.'
+generated_at: '2025-11-07T22:04:50.490289'
 source: initialization

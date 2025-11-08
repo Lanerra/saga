@@ -5,39 +5,39 @@ setting: "The planet Cicada Prime, a dying world where humanity\u2019s populatio
   \ exploded after terraforming failed."
 total_chapters: 20
 target_word_count: 80000
-generated_at: '2025-11-07T21:18:41.516542'
+generated_at: '2025-11-07T22:04:50.500942'
 global_outline:
   act_count: 3
   structure_type: 3-act
-  summary: '# Global Story Outline: Untitled Narrative
+  summary: '# GLOBAL STORY OUTLINE: UNTITLED NARRATIVE
 
 
-    ## Overall Structure
+    ## OVERALL STRUCTURE
 
-    This grimdark science fiction follows a three-act structure spanning 20 chapters,
-    with each act containing approximately 7 chapters. The narrative escalates from
-    survival-focused struggles to uncovering conspiracy to a desperate fight against
-    engineered oblivion.
+    This narrative follows a three-act structure spanning 20 chapters, divided into
+    three major arcs: Setup (Chapters 1-5), Confrontation (Chapters 6-15), and Resolution
+    (Chapters 16-20).
 
 
-    ## Beginning (Chapters 1-7)
+    ## BEGINNING
 
-    The story opens on Cicada Prime, a dying world shrouded in perpetual twilight
-    due to its failing atmosphere. Everett Larkin, 34, survives in t...'
+    The story opens on Cicada Prime, a dying world where humanity''s population has
+    exploded after terraforming failed. Everett Larkin, 34, works in the underbelly
+    of New Jericho, repairing hydroponics systems in the city''s lower levels. The
+    ...'
 acts:
   act_1:
     act_number: 1
     role: Setup/Introduction
     chapters: 6
-    summary: '# Act 1 Outline: The Shattered World
+    summary: '# Act 1 Outline: "The Cracking of the Sky"
 
 
       ## Act Summary
 
-      Act 1 introduces Everett Larkin''s desperate existence in the decaying metropolis
-      of Rusthaven on Cicada Prime, establishing the grim world, Everett''s personal
-      motivations, and the government''s increasingly oppressive measures. The act
-      culminates i...'
+      Act 1 establishes the grim reality of Cicada Prime, introduces Everett Larkin
+      as a man struggling to survive in a decaying world, and sets the stage for the
+      discovery of government population control measures through the mysterious disappear...'
   act_2:
     act_number: 2
     role: Confrontation/Rising Action
@@ -47,18 +47,19 @@ acts:
 
       ## Act Summary
 
-      Act 2 begins with Everett''s discovery of the government''s sterilization program
-      and plunges him into a desperate struggle against forces that would eliminate
-      the masses. This act escalates from personal tragedy to systemic conspiracy,
-      forc...'
+      Act 2 begins with Everett and Sarah discovering Marcus''s fate and joining forces
+      with Dr. Elena Volkov to uncover the truth behind "The Cleansing." As they dig
+      deeper, they face increasing danger from government forces while gathering evid...'
   act_3:
     act_number: 3
     role: Resolution/Climax
     chapters: 6
-    summary: '## Act 3 Outline: Resolution/Climax
+    summary: '# ACT 3 OUTLINE: RESOLUTION/CLIMAX
 
 
-      **Act Summary:** Everett confronts the full scope of the government''s population
-      control program, racing against time to expose the truth and prevent mass sterilization.
-      The act culminates in a desperate battle against the system designed to erase
-      humanity''s futu...'
+      ## ACT SUMMARY
+
+      The final act of this grimdark science fiction narrative delivers the devastating
+      resolution to Everett''s investigation into "The Cleansing." As Everett confronts
+      High Overseer Thorne in a climactic showdown, the truth about the engineered
+      oblivion ...'
