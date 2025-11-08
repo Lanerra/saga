@@ -369,7 +369,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
             from processing.entity_deduplication import generate_entity_id
 
             item = WorldItem(
-                id=generate_entity_id(name, category),
+                id=generate_entity_id(name, category, chapter=0),  # chapter=0 for initialization
                 name=name,
                 description=description,
                 category=category,
