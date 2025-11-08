@@ -432,6 +432,39 @@ def should_generate_chapter_outline(
         return "generate"
 
 
+def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
+    """
+    Conditional routing: Check if initialization step succeeded.
+
+    Routes to:
+    - "continue": If initialization step succeeded
+    - "error": If initialization step failed
+
+    Args:
+        state: Current narrative state
+
+    Returns:
+        Next step ("continue" or "error")
+    """
+    last_error = state.get("last_error")
+    init_step = state.get("initialization_step", "")
+
+    # Check for failure indicators
+    if last_error or "failed" in init_step.lower():
+        logger.error(
+            "should_continue_init: initialization failed, halting workflow",
+            error=last_error,
+            step=init_step,
+        )
+        return "error"
+
+    logger.info(
+        "should_continue_init: initialization step succeeded, continuing",
+        step=init_step,
+    )
+    return "continue"
+
+
 def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"]:
     """
     Conditional entry routing: Determine if initialization is needed.
@@ -513,6 +546,24 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
 
     workflow.add_node("route", route_entry)
 
+    # Add error handler node for initialization failures
+    def handle_init_error(state: NarrativeState) -> NarrativeState:
+        """Handle initialization errors and terminate workflow gracefully."""
+        error = state.get("last_error", "Unknown initialization error")
+        step = state.get("initialization_step", "unknown")
+        logger.error(
+            "handle_init_error: initialization failed, terminating workflow",
+            error=error,
+            step=step,
+        )
+        return {
+            **state,
+            "workflow_failed": True,
+            "failure_reason": f"Initialization failed at step {step}: {error}",
+        }
+
+    workflow.add_node("init_error", handle_init_error)
+
     # Add initialization nodes (grouped into sub-workflow)
     workflow.add_node("init_character_sheets", generate_character_sheets)
     workflow.add_node("init_global_outline", generate_global_outline)
@@ -559,8 +610,21 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
         },
     )
 
-    # Initialization flow
-    workflow.add_edge("init_character_sheets", "init_global_outline")
+    # Initialization flow with error handling
+    # After character_sheets, check if it succeeded
+    workflow.add_conditional_edges(
+        "init_character_sheets",
+        should_continue_init,
+        {
+            "continue": "init_global_outline",
+            "error": "init_error",
+        },
+    )
+
+    # Add error → END edge to terminate workflow gracefully
+    workflow.add_edge("init_error", END)
+
+    # Continue with rest of initialization flow
     workflow.add_edge("init_global_outline", "init_act_outlines")
     workflow.add_edge("init_act_outlines", "init_commit_to_graph")
     workflow.add_edge("init_commit_to_graph", "init_persist_files")
@@ -597,7 +661,7 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=13,
+        total_nodes=14,  # route + init_error + 6 init nodes + 6 generation nodes
         entry_point="route",
     )
 
