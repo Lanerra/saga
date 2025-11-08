@@ -20,6 +20,7 @@ import structlog
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.chapter_queries import save_chapter_data_to_db
+from utils.file_io import write_text_file
 
 logger = structlog.get_logger(__name__)
 
@@ -170,34 +171,75 @@ async def _save_chapter_to_filesystem(
     project_dir: str,
 ) -> None:
     """
-    Save chapter text to filesystem.
+    Save finalized chapter to filesystem.
 
-    Creates a text file in the project's chapters directory.
+    Writes the canonical Markdown artifact with YAML front matter and a
+    legacy .txt mirror for backward compatibility.
+
+    Canonical artifact:
+        chapters/chapter_{chapter_number:03d}.md
+
+    Legacy compatibility:
+        chapters/chapter_{chapter_number:03d}.txt
+        (plain text only, no front matter; maintained temporarily)
 
     Args:
-        chapter_number: Chapter number (used for filename)
-        text: Chapter text to save
+        chapter_number: Chapter number (used for filename and metadata)
+        text: Finalized chapter prose
         project_dir: Base project directory (e.g., "output/my-novel")
     """
-    # Create chapters directory if it doesn't exist
-    chapters_dir = Path(project_dir) / "chapters"
-    chapters_dir.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime
 
-    # Save chapter file
-    chapter_file = chapters_dir / f"chapter_{chapter_number:03d}.txt"
+    # Create chapters directory if it doesn't exist (handled implicitly by helpers,
+    # but we keep the directory Path for clarity and logging).
+    chapters_dir = Path(project_dir) / "chapters"
+
+    # Compute metadata
+    word_count = len(text.split())
+    # NOTE: Title/pov_character are intentionally not sourced from state here to
+    # avoid tight coupling; they can be injected in a future refactor.
+    title = f"Chapter {chapter_number}"
+    generated_at = datetime.utcnow().isoformat()
+    version = 1
+
+    # Build Markdown with YAML front matter
+    front_matter_lines = [
+        "---",
+        f"chapter: {chapter_number}",
+        f"title: {title}",
+        f"word_count: {word_count}",
+        f"generated_at: {generated_at}",
+        f"version: {version}",
+        "---",
+        "",
+    ]
+    markdown_content = "\n".join(front_matter_lines) + text
+
+    # Canonical .md path
+    md_file = chapters_dir / f"chapter_{chapter_number:03d}.md"
+    # Legacy .txt path (plain body only)
+    txt_file = chapters_dir / f"chapter_{chapter_number:03d}.txt"
 
     try:
-        chapter_file.write_text(text, encoding="utf-8")
+        # Write canonical Markdown artifact
+        write_text_file(md_file, markdown_content)
+
+        # Write legacy .txt mirror for existing consumers/tests
+        write_text_file(txt_file, text)
+
         logger.info(
             "finalize_chapter: chapter saved to filesystem",
             chapter=chapter_number,
-            path=str(chapter_file),
+            md_path=str(md_file),
+            txt_path=str(txt_file),
+            word_count=word_count,
         )
     except Exception as e:
         logger.error(
-            "finalize_chapter: failed to write chapter file",
+            "finalize_chapter: failed to write chapter files",
             chapter=chapter_number,
-            path=str(chapter_file),
+            md_path=str(md_file),
+            txt_path=str(txt_file),
             error=str(e),
             exc_info=True,
         )

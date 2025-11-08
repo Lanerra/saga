@@ -487,10 +487,14 @@ def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"
     )
 
     if not initialization_complete:
-        logger.info("should_initialize: initialization needed, routing to init workflow")
+        logger.info(
+            "should_initialize: initialization needed, routing to init workflow"
+        )
         return "initialize"
     else:
-        logger.info("should_initialize: initialization complete, routing to chapter generation")
+        logger.info(
+            "should_initialize: initialization complete, routing to chapter generation"
+        )
         return "generate"
 
 
@@ -527,11 +531,11 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     logger.info("create_full_workflow_graph: building complete workflow")
 
     from core.langgraph.initialization import (
-        generate_character_sheets,
-        generate_global_outline,
+        commit_initialization_to_graph,
         generate_act_outlines,
         generate_chapter_outline,
-        commit_initialization_to_graph,
+        generate_character_sheets,
+        generate_global_outline,
         persist_initialization_files,
     )
 

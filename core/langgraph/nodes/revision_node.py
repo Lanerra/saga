@@ -282,7 +282,9 @@ Please ensure your revision stays true to this plot point while addressing all i
                 f"{i}. [{severity_label}] {contradiction.description}\n"
             )
             if contradiction.suggested_fix:
-                all_problem_descriptions += f"   Suggested fix: {contradiction.suggested_fix}\n"
+                all_problem_descriptions += (
+                    f"   Suggested fix: {contradiction.suggested_fix}\n"
+                )
 
     # Note about length requirements
     min_length = getattr(config, "MIN_ACCEPTABLE_DRAFT_LENGTH", 8000)

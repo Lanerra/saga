@@ -20,23 +20,20 @@ The chapter outline generation is done on-demand during the generation loop,
 not as part of the initialization workflow.
 """
 
-from typing import Literal
-
 import structlog
 
+from core.langgraph.initialization.act_outlines_node import generate_act_outlines
 from core.langgraph.initialization.character_sheets_node import (
     generate_character_sheets,
 )
-from core.langgraph.initialization.global_outline_node import generate_global_outline
-from core.langgraph.initialization.act_outlines_node import generate_act_outlines
 from core.langgraph.initialization.commit_init_node import (
     commit_initialization_to_graph,
 )
+from core.langgraph.initialization.global_outline_node import generate_global_outline
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
 from core.langgraph.state import NarrativeState
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, StateGraph
 
 logger = structlog.get_logger(__name__)
@@ -109,15 +106,20 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
 
     logger.info(
         "create_initialization_graph: graph built successfully",
-        nodes=["character_sheets", "global_outline", "act_outlines", "commit_to_graph", "persist_files", "complete"],
+        nodes=[
+            "character_sheets",
+            "global_outline",
+            "act_outlines",
+            "commit_to_graph",
+            "persist_files",
+            "complete",
+        ],
         entry_point="character_sheets",
     )
 
     # Compile graph
     if checkpointer:
-        logger.info(
-            "create_initialization_graph: compiling with checkpointing enabled"
-        )
+        logger.info("create_initialization_graph: compiling with checkpointing enabled")
         compiled_graph = workflow.compile(checkpointer=checkpointer)
     else:
         logger.info("create_initialization_graph: compiling without checkpointing")

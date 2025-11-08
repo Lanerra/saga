@@ -6,8 +6,6 @@ NANA pipeline, running initialization and then generating chapters using
 the Phase 2 complete workflow.
 """
 
-import asyncio
-import os
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +13,9 @@ import structlog
 
 import config
 from core.db_manager import neo4j_manager
-from core.langgraph.state import create_initial_state, NarrativeState
-from core.langgraph.workflow import create_full_workflow_graph, create_checkpointer
+from core.langgraph.initialization.validation import validate_initialization_artifacts
+from core.langgraph.state import NarrativeState, create_initial_state
+from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
 from data_access import chapter_queries
 
 logger = structlog.get_logger(__name__)
@@ -147,6 +146,21 @@ class LangGraphOrchestrator:
         state["current_chapter"] = current_chapter
         state["initialization_complete"] = initialization_complete
 
+        # Advisory validation of initialization artifacts (non-breaking)
+        if self.project_dir.exists():
+            ok, missing = validate_initialization_artifacts(self.project_dir)
+            if ok:
+                logger.info(
+                    "Initialization artifacts appear complete",
+                    project_dir=str(self.project_dir),
+                )
+            else:
+                logger.warning(
+                    "Initialization artifacts incomplete for %s: %s",
+                    str(self.project_dir),
+                    "; ".join(missing),
+                )
+
         return state
 
     async def _run_chapter_generation_loop(
@@ -165,7 +179,7 @@ class LangGraphOrchestrator:
         current_chapter = state.get("current_chapter", 1)
 
         logger.info(
-            f"Starting chapter generation loop",
+            "Starting chapter generation loop",
             chapters_per_run=chapters_per_run,
             starting_chapter=current_chapter,
             total_chapters=total_chapters,
@@ -174,11 +188,14 @@ class LangGraphOrchestrator:
         config_dict = {"configurable": {"thread_id": "saga_generation"}}
 
         chapters_generated = 0
-        while chapters_generated < chapters_per_run and current_chapter <= total_chapters:
+        while (
+            chapters_generated < chapters_per_run and current_chapter <= total_chapters
+        ):
             logger.info(
                 "=" * 60
                 + f"\nGenerating Chapter {current_chapter} of {total_chapters}"
-                + "\n" + "=" * 60
+                + "\n"
+                + "=" * 60
             )
 
             # Update state for this chapter
@@ -222,7 +239,7 @@ class LangGraphOrchestrator:
                 break
 
         logger.info(
-            f"Chapter generation loop complete",
+            "Chapter generation loop complete",
             chapters_generated=chapters_generated,
             final_chapter=current_chapter - 1,
         )

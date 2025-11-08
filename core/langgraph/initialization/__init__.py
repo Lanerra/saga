@@ -13,17 +13,17 @@ Initialization Workflow:
     [Generation Loop]
 """
 
-from core.langgraph.initialization.character_sheets_node import (
-    generate_character_sheets,
-)
-from core.langgraph.initialization.global_outline_node import generate_global_outline
 from core.langgraph.initialization.act_outlines_node import generate_act_outlines
 from core.langgraph.initialization.chapter_outline_node import (
     generate_chapter_outline,
 )
+from core.langgraph.initialization.character_sheets_node import (
+    generate_character_sheets,
+)
 from core.langgraph.initialization.commit_init_node import (
     commit_initialization_to_graph,
 )
+from core.langgraph.initialization.global_outline_node import generate_global_outline
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
