@@ -5,61 +5,60 @@ setting: "The planet Cicada Prime, a dying world where humanity\u2019s populatio
   \ exploded after terraforming failed."
 total_chapters: 20
 target_word_count: 80000
-generated_at: '2025-11-07T20:28:55.038831'
+generated_at: '2025-11-07T21:18:41.516542'
 global_outline:
   act_count: 3
   structure_type: 3-act
-  summary: '# Global Story Outline: "Untitled Narrative"
+  summary: '# Global Story Outline: Untitled Narrative
 
 
     ## Overall Structure
 
-    This grimdark science fiction story follows a modified 5-act structure spanning
-    20 chapters, designed to build tension gradually before erupting into chaos and
-    eventual resolution.
+    This grimdark science fiction follows a three-act structure spanning 20 chapters,
+    with each act containing approximately 7 chapters. The narrative escalates from
+    survival-focused struggles to uncovering conspiracy to a desperate fight against
+    engineered oblivion.
 
 
-    ## Beginning (Chapters 1-3)
+    ## Beginning (Chapters 1-7)
 
-    The story opens on Cicada Prime, a dying world where humanity''s population has
-    exploded following a failed terraforming attempt. Everett Larkin, 34, works in
-    the refineries, surviving on meager rations while his family disa...'
+    The story opens on Cicada Prime, a dying world shrouded in perpetual twilight
+    due to its failing atmosphere. Everett Larkin, 34, survives in t...'
 acts:
   act_1:
     act_number: 1
     role: Setup/Introduction
     chapters: 6
-    summary: '# Act 1 Outline: "Untitled Narrative"
+    summary: '# Act 1 Outline: The Shattered World
 
 
       ## Act Summary
 
-      Act 1 introduces Everett Larkin''s desperate existence on Cicada Prime, establishing
-      a dying world ravaged by overpopulation, resource scarcity, and societal collapse.
-      The act explores Everett''s ordinary life in the refineries, his gradual discove...'
+      Act 1 introduces Everett Larkin''s desperate existence in the decaying metropolis
+      of Rusthaven on Cicada Prime, establishing the grim world, Everett''s personal
+      motivations, and the government''s increasingly oppressive measures. The act
+      culminates i...'
   act_2:
     act_number: 2
     role: Confrontation/Rising Action
     chapters: 6
-    summary: '# Act 2 Outline
+    summary: '# Act 2 Outline: Confrontation/Rising Action
 
 
       ## Act Summary
 
-      Act 2 follows Everett''s descent into the underbelly of "New Horizon" as he
-      uncovers the systematic nature of the population control initiative. Pursued
-      by Commander Thorne and betrayed by allies, Everett must navigate a web of deception
-      while struggling to locate his ...'
+      Act 2 begins with Everett''s discovery of the government''s sterilization program
+      and plunges him into a desperate struggle against forces that would eliminate
+      the masses. This act escalates from personal tragedy to systemic conspiracy,
+      forc...'
   act_3:
     act_number: 3
     role: Resolution/Climax
     chapters: 6
-    summary: '# Act 3 Outline: Resolution/Climax
+    summary: '## Act 3 Outline: Resolution/Climax
 
 
-      ## Act Summary
-
-      Act 3 represents the culmination of Everett''s journey, as he confronts the
-      High Overseer Varga in a desperate bid to expose the engineered oblivion project
-      and save the remaining population from systematic eradication. This act combines
-      explosive ac...'
+      **Act Summary:** Everett confronts the full scope of the government''s population
+      control program, racing against time to expose the truth and prevent mass sterilization.
+      The act culminates in a desperate battle against the system designed to erase
+      humanity''s futu...'
