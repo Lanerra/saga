@@ -202,7 +202,7 @@ BACKGROUND: Brief history"""
 
     try:
         response, _ = await llm_service.async_call_llm(
-            model_name=config.DEFAULT_MODEL_NAME,
+            model_name=config.NARRATIVE_MODEL,
             prompt=prompt,
             temperature=0.3,  # Low temp for extraction
             max_tokens=500,
@@ -311,7 +311,7 @@ Example:
 
     try:
         response, _ = await llm_service.async_call_llm(
-            model_name=config.DEFAULT_MODEL_NAME,
+            model_name=config.NARRATIVE_MODEL,
             prompt=prompt,
             temperature=0.5,
             max_tokens=1000,
@@ -369,7 +369,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
             from processing.entity_deduplication import generate_entity_id
 
             item = WorldItem(
-                id=generate_entity_id(name, category),
+                id=generate_entity_id(name, category, chapter=0),  # chapter=0 for initialization
                 name=name,
                 description=description,
                 category=category,

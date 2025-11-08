@@ -432,12 +432,74 @@ def should_generate_chapter_outline(
         return "generate"
 
 
+def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
+    """
+    Conditional routing: Check if initialization step succeeded.
+
+    Routes to:
+    - "continue": If initialization step succeeded
+    - "error": If initialization step failed
+
+    Args:
+        state: Current narrative state
+
+    Returns:
+        Next step ("continue" or "error")
+    """
+    last_error = state.get("last_error")
+    init_step = state.get("initialization_step", "")
+
+    # Check for failure indicators
+    if last_error or "failed" in init_step.lower():
+        logger.error(
+            "should_continue_init: initialization failed, halting workflow",
+            error=last_error,
+            step=init_step,
+        )
+        return "error"
+
+    logger.info(
+        "should_continue_init: initialization step succeeded, continuing",
+        step=init_step,
+    )
+    return "continue"
+
+
+def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"]:
+    """
+    Conditional entry routing: Determine if initialization is needed.
+
+    Routes to:
+    - "initialize": If initialization_complete=False (run init workflow)
+    - "generate": If initialization_complete=True (skip to chapter generation)
+
+    Args:
+        state: Current narrative state
+
+    Returns:
+        Next node name ("initialize" or "generate")
+    """
+    initialization_complete = state.get("initialization_complete", False)
+
+    logger.info(
+        "should_initialize: routing decision",
+        initialization_complete=initialization_complete,
+    )
+
+    if not initialization_complete:
+        logger.info("should_initialize: initialization needed, routing to init workflow")
+        return "initialize"
+    else:
+        logger.info("should_initialize: initialization complete, routing to chapter generation")
+        return "generate"
+
+
 def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     """
     Create complete workflow with initialization and generation phases.
 
     This is the full end-to-end workflow that:
-    1. Runs initialization (character sheets, outlines)
+    1. Runs initialization (character sheets, outlines) if needed
     2. For each chapter:
        a. Generates chapter outline (on-demand)
        b. Generates chapter text
@@ -476,12 +538,55 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     # Create graph
     workflow = StateGraph(NarrativeState)
 
+    # Add routing node for conditional entry
+    def route_entry(state: NarrativeState) -> NarrativeState:
+        """Pass-through routing node for conditional entry."""
+        logger.info("route_entry: determining workflow path")
+        return state
+
+    workflow.add_node("route", route_entry)
+
+    # Add error handler node for initialization failures
+    def handle_init_error(state: NarrativeState) -> NarrativeState:
+        """Handle initialization errors and terminate workflow gracefully."""
+        error = state.get("last_error", "Unknown initialization error")
+        step = state.get("initialization_step", "unknown")
+        logger.error(
+            "handle_init_error: initialization failed, terminating workflow",
+            error=error,
+            step=step,
+        )
+        return {
+            **state,
+            "workflow_failed": True,
+            "failure_reason": f"Initialization failed at step {step}: {error}",
+        }
+
+    workflow.add_node("init_error", handle_init_error)
+
     # Add initialization nodes (grouped into sub-workflow)
     workflow.add_node("init_character_sheets", generate_character_sheets)
     workflow.add_node("init_global_outline", generate_global_outline)
     workflow.add_node("init_act_outlines", generate_act_outlines)
     workflow.add_node("init_commit_to_graph", commit_initialization_to_graph)
     workflow.add_node("init_persist_files", persist_initialization_files)
+
+    # Mark initialization complete
+    def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
+        """Mark the initialization phase as complete."""
+        logger.info(
+            "mark_initialization_complete: initialization phase finished",
+            title=state.get("title", ""),
+            characters=len(state.get("character_sheets", {})),
+            acts=len(state.get("act_outlines", {})),
+        )
+        return {
+            **state,
+            "initialization_complete": True,
+            "initialization_step": "complete",
+        }
+
+    workflow.add_node("init_complete", mark_initialization_complete)
 
     # Add chapter outline generation (on-demand)
     workflow.add_node("chapter_outline", generate_chapter_outline)
@@ -495,12 +600,36 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)
 
-    # Initialization flow
-    workflow.add_edge("init_character_sheets", "init_global_outline")
+    # Conditional entry: route → (init or chapter_outline)
+    workflow.add_conditional_edges(
+        "route",
+        should_initialize,
+        {
+            "initialize": "init_character_sheets",
+            "generate": "chapter_outline",
+        },
+    )
+
+    # Initialization flow with error handling
+    # After character_sheets, check if it succeeded
+    workflow.add_conditional_edges(
+        "init_character_sheets",
+        should_continue_init,
+        {
+            "continue": "init_global_outline",
+            "error": "init_error",
+        },
+    )
+
+    # Add error → END edge to terminate workflow gracefully
+    workflow.add_edge("init_error", END)
+
+    # Continue with rest of initialization flow
     workflow.add_edge("init_global_outline", "init_act_outlines")
     workflow.add_edge("init_act_outlines", "init_commit_to_graph")
     workflow.add_edge("init_commit_to_graph", "init_persist_files")
-    workflow.add_edge("init_persist_files", "chapter_outline")
+    workflow.add_edge("init_persist_files", "init_complete")
+    workflow.add_edge("init_complete", "chapter_outline")
 
     # Chapter outline → generate
     workflow.add_edge("chapter_outline", "generate")
@@ -527,13 +656,13 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     workflow.add_edge("summarize", "finalize")
     workflow.add_edge("finalize", END)
 
-    # Set entry point to initialization
-    workflow.set_entry_point("init_character_sheets")
+    # Set entry point to routing node
+    workflow.set_entry_point("route")
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=11,
-        entry_point="init_character_sheets",
+        total_nodes=14,  # route + init_error + 6 init nodes + 6 generation nodes
+        entry_point="route",
     )
 
     # Compile graph

@@ -31,6 +31,23 @@ from core.langgraph.state import NarrativeState
 logger = structlog.get_logger(__name__)
 
 
+# Custom YAML string class for literal block scalar (|) formatting
+class _LiteralString(str):
+    """String subclass that renders as literal block scalar in YAML."""
+    pass
+
+
+def _literal_string_representer(dumper, data):
+    """YAML representer for _LiteralString to use literal block scalar."""
+    if len(data.splitlines()) > 1:  # Only use block scalar for multiline
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+
+# Register the custom representer
+yaml.add_representer(_LiteralString, _literal_string_representer)
+
+
 async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
     """
     Write initialization data to human-readable files on disk.
@@ -70,10 +87,12 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         if global_outline or act_outlines:
             _write_outline_files(project_dir, global_outline, act_outlines, state)
 
-        # Write world items file
+        # Write world items file (always, even if empty)
         world_items = state.get("world_items", [])
-        if world_items:
-            _write_world_items_file(project_dir, world_items, state.get("setting", ""))
+        _write_world_items_file(project_dir, world_items, state.get("setting", ""))
+
+        # Write placeholder summaries README
+        _write_summaries_readme(project_dir)
 
         logger.info(
             "persist_initialization_files: successfully wrote all files",
@@ -125,12 +144,57 @@ def _create_directory_structure(project_dir: Path) -> None:
     )
 
 
+def _parse_character_sheet_text(text: str) -> dict:
+    """
+    Parse character sheet text into structured fields.
+
+    Looks for common section headers like:
+    - Physical Description
+    - Personality
+    - Background
+    - Motivations
+    - Skills/Abilities
+    - Relationships
+    - Character Arc
+    """
+    import re
+
+    # Common section patterns
+    sections = {
+        "physical_description": r"\*\*Physical Description:\*\*\s*(.*?)(?=\*\*|\Z)",
+        "personality": r"\*\*Personality:\*\*\s*(.*?)(?=\*\*|\Z)",
+        "background": r"\*\*Background:\*\*\s*(.*?)(?=\*\*|\Z)",
+        "motivations": r"\*\*Motivations:\*\*\s*(.*?)(?=\*\*|\Z)",
+        "skills": r"\*\*Skills/Abilities:\*\*\s*(.*?)(?=\*\*|\Z)",
+        "relationships": r"\*\*Relationships:\*\*\s*(.*?)(?=\*\*|\Z)",
+        "character_arc": r"\*\*Character Arc:\*\*\s*(.*?)(?=\*\*|\Z)",
+    }
+
+    parsed = {}
+    for field, pattern in sections.items():
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        if match:
+            # Clean up the text
+            content = match.group(1).strip()
+            # Remove excessive whitespace
+            content = re.sub(r'\s+', ' ', content)
+            parsed[field] = content
+
+    # If we couldn't parse anything, fall back to raw description
+    if not parsed:
+        parsed["description"] = text
+
+    return parsed
+
+
 def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
     """
     Write individual YAML files for each character.
 
     Format:
         characters/{character_name}.yaml
+
+    Parses the character sheet text into structured fields for readability.
     """
     characters_dir = project_dir / "characters"
 
@@ -139,16 +203,20 @@ def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
         safe_name = name.lower().replace(" ", "_").replace("'", "")
         file_path = characters_dir / f"{safe_name}.yaml"
 
+        # Parse character sheet into structured fields
+        description_text = sheet.get("description", "")
+        parsed_data = _parse_character_sheet_text(description_text)
+
         character_data = {
             "name": name,
             "role": "protagonist" if sheet.get("is_protagonist") else "character",
-            "description": sheet.get("description", ""),
+            **parsed_data,  # Merge parsed fields
             "generated_at": datetime.now().isoformat(),
             "source": "initialization",
         }
 
         with open(file_path, "w") as f:
-            yaml.dump(character_data, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(character_data, f, default_flow_style=False, sort_keys=False, allow_unicode=True, width=100)
 
         logger.debug(
             "_write_character_files: wrote character file",
@@ -210,26 +278,37 @@ def _write_outline_files(
     )
 
     # Write beats.yaml with full outline text
+    # Use literal block scalar for better markdown readability
     beats_data = {
         "generated_at": datetime.now().isoformat(),
         "source": "initialization",
     }
 
     if global_outline:
-        beats_data["global_outline"] = global_outline.get("raw_text", "")
+        raw_text = global_outline.get("raw_text", "")
+        # Use literal block scalar class for multiline text
+        beats_data["global_outline"] = _LiteralString(raw_text)
 
     if act_outlines:
         beats_data["act_outlines"] = {}
         for act_num, act_data in sorted(act_outlines.items()):
+            raw_text = act_data.get("raw_text", "")
             beats_data["act_outlines"][f"act_{act_num}"] = {
                 "act_number": act_num,
                 "role": act_data.get("act_role", ""),
-                "outline": act_data.get("raw_text", ""),
+                "outline": _LiteralString(raw_text),
             }
 
     beats_path = outline_dir / "beats.yaml"
     with open(beats_path, "w") as f:
-        yaml.dump(beats_data, f, default_flow_style=False, sort_keys=False)
+        yaml.dump(
+            beats_data,
+            f,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            width=100,
+        )
 
     logger.debug(
         "_write_outline_files: wrote beats file",
@@ -273,6 +352,38 @@ def _write_world_items_file(
         "_write_world_items_file: wrote world items file",
         path=str(items_path),
         count=len(world_items),
+    )
+
+
+def _write_summaries_readme(project_dir: Path) -> None:
+    """
+    Write README file in summaries/ directory.
+
+    The summaries directory is populated during chapter generation,
+    not initialization. This creates a placeholder README to explain that.
+    """
+    summaries_dir = project_dir / "summaries"
+    readme_path = summaries_dir / "README.md"
+
+    readme_content = """# Chapter Summaries
+
+This directory will contain chapter summaries as they are generated.
+
+Summaries are created automatically during chapter generation and saved as:
+- `chapter_001_summary.txt`
+- `chapter_002_summary.txt`
+- etc.
+
+These summaries are used to maintain narrative coherence across chapters
+by providing context to the LLM during generation of subsequent chapters.
+"""
+
+    with open(readme_path, "w") as f:
+        f.write(readme_content)
+
+    logger.debug(
+        "_write_summaries_readme: wrote summaries README",
+        path=str(readme_path),
     )
 
 
