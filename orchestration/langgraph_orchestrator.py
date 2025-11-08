@@ -35,7 +35,8 @@ class LangGraphOrchestrator:
 
     def __init__(self):
         logger.info("Initializing LangGraph Orchestrator...")
-        self.project_dir = Path(config.OUTPUT_DIR)
+        # Use settings.BASE_OUTPUT_DIR which is the Pydantic field
+        self.project_dir = Path(config.settings.BASE_OUTPUT_DIR)
         self.checkpointer_path = self.project_dir / ".saga" / "checkpoints.db"
         logger.info("LangGraph Orchestrator initialized.")
 
@@ -114,13 +115,13 @@ class LangGraphOrchestrator:
         # For now, create fresh state
         # TODO: Load from checkpoint if resuming
         state = create_initial_state(
-            project_id=config.PROJECT_ID or "saga_novel",
-            title=config.NOVEL_TITLE or "Untitled Novel",
-            genre=config.NOVEL_GENRE or "fiction",
-            theme=config.NOVEL_THEME or "",
-            setting=config.NOVEL_SETTING or "",
-            target_word_count=config.TARGET_WORD_COUNT or 80000,
-            total_chapters=config.TARGET_CHAPTERS or 20,
+            project_id="saga_novel",
+            title=config.DEFAULT_PLOT_OUTLINE_TITLE,
+            genre=config.CONFIGURED_GENRE,
+            theme=config.CONFIGURED_THEME or "",
+            setting=config.CONFIGURED_SETTING_DESCRIPTION or "",
+            target_word_count=80000,  # Default, can be loaded from plot_outline
+            total_chapters=20,  # Default, can be loaded from plot_outline
             project_dir=str(self.project_dir),
             protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
             generation_model=config.DEFAULT_MODEL_NAME,
