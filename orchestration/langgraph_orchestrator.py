@@ -107,10 +107,10 @@ class LangGraphOrchestrator:
         Otherwise, create fresh initial state.
         """
         # Check if we have existing chapters to determine current chapter
-        existing_chapters = await chapter_queries.get_all_chapter_numbers()
-        current_chapter = (max(existing_chapters) + 1) if existing_chapters else 1
+        chapter_count = await chapter_queries.load_chapter_count_from_db()
+        current_chapter = chapter_count + 1
 
-        logger.info(f"Current chapter: {current_chapter}")
+        logger.info(f"Current chapter: {current_chapter} (existing: {chapter_count})")
 
         # For now, create fresh state
         # TODO: Load from checkpoint if resuming
