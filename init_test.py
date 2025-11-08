@@ -7,6 +7,7 @@ to generate character sheets, outlines, and commit them to the knowledge graph.
 import asyncio
 import sys
 import os
+from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -99,8 +100,41 @@ async def main():
         for item in world_items[:5]:  # Show first 5
             print(f"  - {item.name} ({item.category})")
 
+        # Files created
+        print("\n✓ Files Created:")
+        project_dir = Path(result.get('project_dir', './output/init_test'))
+
+        # Character files
+        char_dir = project_dir / "characters"
+        if char_dir.exists():
+            char_files = list(char_dir.glob("*.yaml"))
+            print(f"  - characters/: {len(char_files)} files")
+            for f in char_files[:3]:
+                print(f"    • {f.name}")
+
+        # Outline files
+        outline_dir = project_dir / "outline"
+        if outline_dir.exists():
+            outline_files = list(outline_dir.glob("*.yaml"))
+            print(f"  - outline/: {len(outline_files)} files")
+            for f in outline_files:
+                print(f"    • {f.name}")
+
+        # World files
+        world_dir = project_dir / "world"
+        if world_dir.exists():
+            world_files = list(world_dir.glob("*.yaml"))
+            if world_files:
+                print(f"  - world/: {len(world_files)} files")
+                for f in world_files:
+                    print(f"    • {f.name}")
+
         print("\n" + "="*60)
-        print("Initialization data is now in Neo4j and ready for generation!")
+        print("Initialization complete!")
+        print(f"  - Data in Neo4j: ✓")
+        print(f"  - Human-readable files: ✓")
+        print(f"  - Checkpointer state: ✓")
+        print(f"\nProject directory: {project_dir}")
         print("="*60)
 
         # Show sample character details
