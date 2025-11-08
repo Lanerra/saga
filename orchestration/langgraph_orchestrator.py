@@ -47,8 +47,8 @@ class LangGraphOrchestrator:
         Flow:
         1. Connect to Neo4j
         2. Load or create initial state
-        3. Run initialization if needed
-        4. Generate CHAPTERS_PER_RUN chapters
+        3. Create workflow with checkpointing
+        4. Generate CHAPTERS_PER_RUN chapters (initialization handled automatically)
         5. Save state for resumption
         """
         logger.info("=" * 60)
@@ -68,16 +68,9 @@ class LangGraphOrchestrator:
 
             graph = create_full_workflow_graph(checkpointer=checkpointer)
 
-            # Step 4: Determine starting point
-            if not state.get("initialization_complete", False):
-                logger.info("Initialization not complete. Running initialization phase...")
-                state = await self._run_initialization(graph, state)
-            else:
-                logger.info(
-                    "Initialization already complete. Resuming chapter generation..."
-                )
-
-            # Step 5: Generate chapters
+            # Step 4: Generate chapters
+            # The graph will automatically run initialization on first run
+            # via the conditional routing node
             await self._run_chapter_generation_loop(graph, state)
 
             logger.info("=" * 60)
@@ -133,31 +126,6 @@ class LangGraphOrchestrator:
         state["current_chapter"] = current_chapter
 
         return state
-
-    async def _run_initialization(
-        self, graph: Any, state: NarrativeState
-    ) -> NarrativeState:
-        """
-        Run the initialization phase through the workflow.
-
-        This runs: character_sheets → global_outline → act_outlines →
-                  commit_to_graph → persist_files → complete
-        """
-        logger.info("Running initialization workflow...")
-
-        config_dict = {"configurable": {"thread_id": "saga_generation"}}
-
-        # The full workflow starts with initialization nodes
-        # It will run until initialization is complete, then stop at chapter_outline
-        result = await graph.ainvoke(state, config=config_dict)
-
-        logger.info(
-            "Initialization complete",
-            characters=len(result.get("character_sheets", {})),
-            acts=len(result.get("act_outlines", {})),
-        )
-
-        return result
 
     async def _run_chapter_generation_loop(
         self, graph: Any, state: NarrativeState
