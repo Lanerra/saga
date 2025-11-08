@@ -470,6 +470,7 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
         generate_act_outlines,
         generate_chapter_outline,
         commit_initialization_to_graph,
+        persist_initialization_files,
     )
 
     # Create graph
@@ -480,6 +481,7 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("init_global_outline", generate_global_outline)
     workflow.add_node("init_act_outlines", generate_act_outlines)
     workflow.add_node("init_commit_to_graph", commit_initialization_to_graph)
+    workflow.add_node("init_persist_files", persist_initialization_files)
 
     # Add chapter outline generation (on-demand)
     workflow.add_node("chapter_outline", generate_chapter_outline)
@@ -497,7 +499,8 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     workflow.add_edge("init_character_sheets", "init_global_outline")
     workflow.add_edge("init_global_outline", "init_act_outlines")
     workflow.add_edge("init_act_outlines", "init_commit_to_graph")
-    workflow.add_edge("init_commit_to_graph", "chapter_outline")
+    workflow.add_edge("init_commit_to_graph", "init_persist_files")
+    workflow.add_edge("init_persist_files", "chapter_outline")
 
     # Chapter outline → generate
     workflow.add_edge("chapter_outline", "generate")

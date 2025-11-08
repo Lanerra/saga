@@ -32,6 +32,9 @@ from core.langgraph.initialization.act_outlines_node import generate_act_outline
 from core.langgraph.initialization.commit_init_node import (
     commit_initialization_to_graph,
 )
+from core.langgraph.initialization.persist_files_node import (
+    persist_initialization_files,
+)
 from core.langgraph.state import NarrativeState
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, StateGraph
@@ -48,11 +51,13 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     2. Global story outline
     3. Act-level outlines
     4. Commits all initialization data to Neo4j knowledge graph
+    5. Persists human-readable files to disk (YAML/Markdown)
 
     After initialization, the state is ready for the main generation loop.
 
     Workflow:
-        START → character_sheets → global_outline → act_outlines → commit_to_graph → END
+        START → character_sheets → global_outline → act_outlines →
+                commit_to_graph → persist_files → END
 
     Args:
         checkpointer: Optional checkpoint saver (SqliteSaver, PostgresSaver, etc.)
@@ -71,6 +76,7 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("global_outline", generate_global_outline)
     workflow.add_node("act_outlines", generate_act_outlines)
     workflow.add_node("commit_to_graph", commit_initialization_to_graph)
+    workflow.add_node("persist_files", persist_initialization_files)
 
     # Add finalization node to mark initialization complete
     def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
@@ -94,7 +100,8 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     workflow.add_edge("character_sheets", "global_outline")
     workflow.add_edge("global_outline", "act_outlines")
     workflow.add_edge("act_outlines", "commit_to_graph")
-    workflow.add_edge("commit_to_graph", "complete")
+    workflow.add_edge("commit_to_graph", "persist_files")
+    workflow.add_edge("persist_files", "complete")
     workflow.add_edge("complete", END)
 
     # Set entry point
@@ -102,7 +109,7 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
 
     logger.info(
         "create_initialization_graph: graph built successfully",
-        nodes=["character_sheets", "global_outline", "act_outlines", "commit_to_graph", "complete"],
+        nodes=["character_sheets", "global_outline", "act_outlines", "commit_to_graph", "persist_files", "complete"],
         entry_point="character_sheets",
     )
 
