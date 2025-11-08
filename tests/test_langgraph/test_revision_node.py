@@ -79,7 +79,9 @@ def sample_revision_state():
     state["needs_revision"] = True
 
     # Add hybrid context
-    state["hybrid_context"] = "**Previous context:** Hero is established as brave and honorable."
+    state["hybrid_context"] = (
+        "**Previous context:** Hero is established as brave and honorable."
+    )
 
     return state
 
@@ -109,7 +111,9 @@ def mock_prompt_data_getters():
     with patch(
         "core.langgraph.nodes.revision_node.get_reliable_kg_facts_for_drafting_prompt"
     ) as mock_kg:
-        mock_kg.return_value = "**Knowledge Graph Facts:**\n- Hero is brave\n- Forest is dangerous"
+        mock_kg.return_value = (
+            "**Knowledge Graph Facts:**\n- Hero is brave\n- Forest is dangerous"
+        )
         yield {"get_kg_facts": mock_kg}
 
 
@@ -206,9 +210,7 @@ class TestFormatContradictionsForPrompt:
 class TestConstructRevisionPrompt:
     """Tests for _construct_revision_prompt function."""
 
-    async def test_construct_basic_revision_prompt(
-        self, mock_prompt_data_getters
-    ):
+    async def test_construct_basic_revision_prompt(self, mock_prompt_data_getters):
         """Test constructing a basic revision prompt."""
         contradictions = [
             Contradiction(
@@ -258,9 +260,7 @@ class TestConstructRevisionPrompt:
         # Should fetch KG facts
         mock_prompt_data_getters["get_kg_facts"].assert_called_once()
 
-    async def test_construct_prompt_with_length_issue(
-        self, mock_prompt_data_getters
-    ):
+    async def test_construct_prompt_with_length_issue(self, mock_prompt_data_getters):
         """Test prompt includes length warning for short drafts."""
         short_text = "Too short"
 
@@ -278,9 +278,7 @@ class TestConstructRevisionPrompt:
         assert "LENGTH REQUIREMENT" in prompt
         assert "too short" in prompt
 
-    async def test_construct_prompt_with_plot_point(
-        self, mock_prompt_data_getters
-    ):
+    async def test_construct_prompt_with_plot_point(self, mock_prompt_data_getters):
         """Test prompt includes plot point focus."""
         prompt = await _construct_revision_prompt(
             draft_text="Text",

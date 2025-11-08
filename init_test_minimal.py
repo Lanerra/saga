@@ -1,6 +1,7 @@
 """
 Minimal test - just verify the initialization graph can be created.
 """
+
 from core.langgraph.initialization import create_initialization_graph
 
 # Test 1: Create graph without checkpointing
