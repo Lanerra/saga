@@ -1,0 +1,55 @@
+setting: The planet Cicada Prime, a dying world where humanity’s population exploded
+  after terraforming failed.
+generated_at: '2025-11-08T09:39:06.097715'
+source: initialization
+items:
+- id: entity_944ba7ca
+  name: Undercity of Sector 7
+  category: location
+  description: A subterranean slum beneath the decaying surface cities, where the
+    forgotten survive on scraps and hidden data.
+- id: entity_3f42cddf
+  name: Cicada Prime
+  category: location
+  description: A dying, overpopulated planet with failed terraforming, now a rusted,
+    dust-choked world sustained by engineered extinction.
+- id: entity_0860c722
+  name: The Spire
+  category: location
+  description: A towering, sealed megabuilding in the center of the planet’s last
+    functioning megacity, housing the Stabilization Initiative’s core.
+- id: entity_c49dd829
+  name: Encrypted Archive Drive
+  category: object
+  description: A data storage device containing forbidden historical records and suppressed
+    truths about the planet’s collapse.
+- id: entity_abf22af5
+  name: Synth-Protein Ration Pack
+  category: object
+  description: A nutrient-dense, life-sustaining food packet distributed by the state,
+    chemically engineered to suppress fertility.
+- id: entity_4678e75b
+  name: Neural Dampener Implant
+  category: object
+  description: A mandatory device implanted at birth that suppresses aggression and
+    memory retention, preventing rebellion.
+- id: entity_955ba32a
+  name: Stabilization Initiative
+  category: concept
+  description: A planetary-wide program that enforces population control through engineered
+    extinction, disguised as a survival strategy.
+- id: entity_340e9e1f
+  name: The Ritual of Dissolution
+  category: concept
+  description: A state-sanctioned, ritualized process of mass extinction—orchestrated
+    through environmental decay, engineered plagues, and psychological conditioning.
+- id: entity_dcc25028
+  name: The Engineered Oblivion
+  category: concept
+  description: The core doctrine of the Stabilization Initiative, which frames the
+    extinction of the majority as the only moral solution to overpopulation.
+- id: entity_e53522de
+  name: Data Scavenging
+  category: concept
+  description: A black-market practice of retrieving lost digital archives from dead
+    servers, often containing forbidden knowledge.

@@ -1,0 +1,43 @@
+name: Dax Renn
+role: character
+physical_description: Dax stands at 5'10", wiry and lean from years of subsistence
+  labor, with a frame that seems perpetually coiled for motion. His skin is weathered
+  and pale, etched with fine scars—some from industrial accidents, others from self-inflicted
+  burns during his early days as a data scavenger. His most striking feature is his
+  left eye, a milky white cataract that obscures depth perception, compensated by
+  a custom ocular implant that projects real-time data overlays in his right eye.
+  His hair is cropped short, gray at the temples, and frequently dusted with the fine,
+  rust-colored particulate of Cicada Prime’s decaying atmosphere. He wears a modified
+  bio-suit—patched and layered with scavenged tech—its fabric woven with memory-fiber
+  threads that subtly shift color based on his stress levels.
+personality: Dax is a reluctant pragmatist, haunted by the weight of his past decisions.
+  He speaks in clipped, precise sentences, often trailing off mid-thought as if debating
+  himself internally. His strength lies in his uncanny ability to read systems—social,
+  mechanical, or digital—almost instinctively. He is deeply empathetic, yet emotionally
+  guarded, having learned early that vulnerability is a death sentence on Cicada Prime.
+  His greatest weakness is his tendency to isolate himself, believing his insights
+  are too dangerous to share. He harbors a quiet, simmering guilt over a failed rescue
+  mission that cost eight lives.
+background: 'Born in the Undercity Slums of Sector 7, Dax was orphaned at twelve when
+  a "clean-up" operation—officially labeled a "structural collapse"—wiped out his
+  district. He survived by stealing data cores from dead tech-archivists and selling
+  them on the black market. By 28, he was an underground information broker, known
+  only as *Ghost-Link*, feeding intelligence to underground resistance cells. His
+  downfall came when he uncovered evidence of the Architect’s true purpose: the mass
+  "relocation" of populations via neural erasure and atmospheric dispersion. He tried
+  to warn a coalition of survivors, but was betrayed. His team was executed, and he
+  was left with a damaged eye and a shattered mind.'
+motivations: Dax seeks redemption—not through heroism, but through truth. He wants
+  to expose the Architect’s system not to destroy it, but to prove that the people
+  *mattered*. He believes the only way to prevent further engineered oblivion is to
+  ensure no one forgets what was lost.
+skills: Expert in underground data recovery, neural interface hacking, and psychological
+  profiling. Can interface with decaying city-wide networks using jury-rigged hardware.
+  Possesses eidetic memory for encrypted data patterns and emotional trauma markers.
+relationships: '-'
+character_arc: Dax begins as a ghost of his former self, unwilling to act. By the
+  story’s end, he sacrifices his own neural integrity to broadcast the full truth
+  of the Architect’s work—erasing his own memories to ensure the system cannot be
+  silenced again. His final act is not rebellion, but remembrance.
+generated_at: '2025-11-08T09:39:06.080680'
+source: initialization
