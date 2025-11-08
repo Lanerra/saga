@@ -63,15 +63,14 @@ class LangGraphOrchestrator:
             state = await self._load_or_create_state()
 
             # Step 3: Create workflow with checkpointing
-            checkpointer = create_checkpointer(str(self.checkpointer_path))
-            await checkpointer.setup()  # Initialize checkpointer
+            # AsyncSqliteSaver.from_conn_string() returns an async context manager
+            async with create_checkpointer(str(self.checkpointer_path)) as checkpointer:
+                graph = create_full_workflow_graph(checkpointer=checkpointer)
 
-            graph = create_full_workflow_graph(checkpointer=checkpointer)
-
-            # Step 4: Generate chapters
-            # The graph will automatically run initialization on first run
-            # via the conditional routing node
-            await self._run_chapter_generation_loop(graph, state)
+                # Step 4: Generate chapters
+                # The graph will automatically run initialization on first run
+                # via the conditional routing node
+                await self._run_chapter_generation_loop(graph, state)
 
             logger.info("=" * 60)
             logger.info("SAGA: LangGraph Generation Complete")
