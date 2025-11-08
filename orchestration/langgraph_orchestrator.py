@@ -105,8 +105,30 @@ class LangGraphOrchestrator:
 
         logger.info(f"Current chapter: {current_chapter} (existing: {chapter_count})")
 
-        # For now, create fresh state
-        # TODO: Load from checkpoint if resuming
+        # Check if initialization was already completed by checking for
+        # initialization artifacts (character profiles in Neo4j or YAML files)
+        from data_access.character_queries import get_character_profiles
+
+        try:
+            character_profiles = await get_character_profiles()
+            initialization_complete = len(character_profiles) > 0
+            logger.info(
+                f"Initialization detection: {len(character_profiles)} characters found",
+                initialization_complete=initialization_complete,
+            )
+        except Exception as e:
+            logger.warning(
+                f"Could not check for existing initialization: {e}",
+                exc_info=True,
+            )
+            # Fallback: check for initialization files
+            init_file = self.project_dir / "outline" / "structure.yaml"
+            initialization_complete = init_file.exists()
+            logger.info(
+                f"Initialization detection (fallback): structure.yaml exists={initialization_complete}"
+            )
+
+        # Create initial state
         state = create_initial_state(
             project_id="saga_novel",
             title=config.DEFAULT_PLOT_OUTLINE_TITLE,
@@ -122,8 +144,9 @@ class LangGraphOrchestrator:
             revision_model=config.NARRATIVE_MODEL,
         )
 
-        # Update current chapter
+        # Update current chapter and initialization status
         state["current_chapter"] = current_chapter
+        state["initialization_complete"] = initialization_complete
 
         return state
 
