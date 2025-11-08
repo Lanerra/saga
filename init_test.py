@@ -4,17 +4,18 @@ Test script for initialization workflow.
 This script demonstrates how to run the initialization phase standalone
 to generate character sheets, outlines, and commit them to the knowledge graph.
 """
+
 import asyncio
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from core.db_manager import neo4j_manager
 from core.langgraph.initialization import create_initialization_graph
 from core.langgraph.state import create_initial_state
-from core.db_manager import neo4j_manager
 
 
 async def main():
@@ -62,47 +63,47 @@ async def main():
         result = await graph.ainvoke(initial_state)
 
         # Step 5: Display results
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("INITIALIZATION COMPLETE!")
-        print("="*60)
+        print("=" * 60)
 
         print(f"\n✓ Initialization Status: {result.get('initialization_step')}")
         print(f"✓ Complete: {result.get('initialization_complete')}")
 
         # Character sheets
-        character_sheets = result.get('character_sheets', {})
+        character_sheets = result.get("character_sheets", {})
         print(f"\n✓ Character Sheets Generated: {len(character_sheets)}")
         for name in character_sheets.keys():
             print(f"  - {name}")
 
         # Global outline
-        global_outline = result.get('global_outline')
+        global_outline = result.get("global_outline")
         if global_outline:
-            print(f"\n✓ Global Outline Generated:")
+            print("\n✓ Global Outline Generated:")
             print(f"  - Act Count: {global_outline.get('act_count')}")
             print(f"  - Structure: {global_outline.get('structure_type')}")
 
         # Act outlines
-        act_outlines = result.get('act_outlines', {})
+        act_outlines = result.get("act_outlines", {})
         print(f"\n✓ Act Outlines Generated: {len(act_outlines)}")
         for act_num in sorted(act_outlines.keys()):
             print(f"  - Act {act_num}: {act_outlines[act_num].get('act_role')}")
 
         # Active characters (committed to Neo4j)
-        active_characters = result.get('active_characters', [])
+        active_characters = result.get("active_characters", [])
         print(f"\n✓ Characters Committed to Neo4j: {len(active_characters)}")
         for char in active_characters:
             print(f"  - {char.name}: {len(char.traits)} traits")
 
         # World items
-        world_items = result.get('world_items', [])
+        world_items = result.get("world_items", [])
         print(f"\n✓ World Items Committed to Neo4j: {len(world_items)}")
         for item in world_items[:5]:  # Show first 5
             print(f"  - {item.name} ({item.category})")
 
         # Files created
         print("\n✓ Files Created:")
-        project_dir = Path(result.get('project_dir', './output/init_test'))
+        project_dir = Path(result.get("project_dir", "./output/init_test"))
 
         # Character files
         char_dir = project_dir / "characters"
@@ -129,13 +130,13 @@ async def main():
                 for f in world_files:
                     print(f"    • {f.name}")
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Initialization complete!")
-        print(f"  - Data in Neo4j: ✓")
-        print(f"  - Human-readable files: ✓")
-        print(f"  - Checkpointer state: ✓")
+        print("  - Data in Neo4j: ✓")
+        print("  - Human-readable files: ✓")
+        print("  - Checkpointer state: ✓")
         print(f"\nProject directory: {project_dir}")
-        print("="*60)
+        print("=" * 60)
 
         # Show sample character details
         if active_characters:
@@ -149,6 +150,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ ERROR during initialization: {e}")
         import traceback
+
         traceback.print_exc()
 
     finally:

@@ -15,7 +15,7 @@ from core.knowledge_graph_service import knowledge_graph_service
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from models.kg_models import CharacterProfile, WorldItem
-from prompts.prompt_renderer import render_prompt, get_system_prompt
+from prompts.prompt_renderer import get_system_prompt
 
 logger = structlog.get_logger(__name__)
 
@@ -51,9 +51,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
     global_outline = state.get("global_outline")
 
     if not character_sheets:
-        logger.warning(
-            "commit_initialization_to_graph: no character sheets to commit"
-        )
+        logger.warning("commit_initialization_to_graph: no character sheets to commit")
 
     try:
         # Step 1: Parse character sheets into CharacterProfile models
@@ -369,7 +367,9 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
             from processing.entity_deduplication import generate_entity_id
 
             item = WorldItem(
-                id=generate_entity_id(name, category, chapter=0),  # chapter=0 for initialization
+                id=generate_entity_id(
+                    name, category, chapter=0
+                ),  # chapter=0 for initialization
                 name=name,
                 description=description,
                 category=category,

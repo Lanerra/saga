@@ -1,0 +1,49 @@
+name: Mira Sol
+role: character
+physical_description: Mira is lean and wiry, with a spine that bears the faint, permanent
+  curve of years spent hunched over micro-scrutiny devices. Her olive skin is marred
+  by faint, silvery scars along her left forearm—residual burns from a failed prototype
+  nutrient-seed dispersal unit. Her eyes are an unnerving, deep amber, a genetic quirk
+  from her mother’s lineage, which she hides behind thick, smudged lenses when not
+  in her work zone. Her dark hair is cropped short and uneven, as if she cuts it herself
+  with a dull blade. She wears a patched, high-collared synth-leather coat, its pockets
+  stuffed with salvaged data chips and a chipped ceramic flask of synthetic stimulant.
+  She moves with a quiet, almost furtive precision, as if afraid of being noticed.
+personality: 'Mira is a study in quiet defiance. She speaks in measured, clipped sentences,
+  often trailing off mid-thought as if she’s weighing every syllable. Her strength
+  lies in her hyper-attentiveness—she notices minute details others overlook, from
+  the flicker of a corrupted data stream to the subtle shift in a person’s breath
+  when lying. But this precision is paired with deep emotional repression. She avoids
+  physical contact, recoils from loud noises, and rarely makes eye contact. Her greatest
+  weakness is her guilt: she helped design the first generation of the *Cicada Protocol*,
+  the algorithmic culling system now used to "manage" the population. She believes
+  she is complicit in the deaths of millions.'
+background: Born in the third generation of Cicada Prime’s failed terraforming colony,
+  Mira was orphaned at twelve when her parents died in a nutrient-purge riot. She
+  was taken in by the Ministry of Population Stability and trained as a bio-architect,
+  specializing in neural feedback systems. At twenty-five, she contributed to the
+  development of the *Cicada Protocol*—a system that predicted individual "overpopulation
+  risk" based on genetic, behavioral, and metabolic data, then triggered targeted,
+  silent neurotoxin release via city-wide air filtration. When the system went live,
+  it killed 3.2 million in a single month. Mira fled the Ministry, faking her death,
+  and has since lived in the undercity, preserving forbidden archives of the old world—records
+  of what humanity once was.
+motivations: 'Mira seeks redemption through truth. She wants to expose the full scope
+  of the *Cicada Protocol*, not to destroy it, but to understand it—to prove that
+  the solution wasn’t inevitability, but choice. She also harbors a secret: she once
+  saved one life during the purge—Kira Voss, who she believes died. Her motivation
+  is personal: if she can find Kira alive, she may finally confront her past.'
+skills: Expert in neural architecture and bio-data decryption; fluent in six dead
+  languages; can navigate the city’s subterranean transit tunnels blindfolded; possesses
+  an eidetic memory for technical schematics; highly skilled at stealth and social
+  camouflage.
+relationships: '-'
+character_arc: 'Mira begins as a ghost of her former self—hidden, numb, and consumed
+  by guilt. As she uncovers evidence that the *Cicada Protocol* was not a necessity
+  but a calculated purge, she evolves from passive archivist to active rebel. Her
+  arc culminates not in violence, but in revelation: she chooses to release the truth—not
+  to incite chaos, but to force humanity to confront the cost of its own survival.
+  She dies in silence, transmitting the final archive to the surface, her last act
+  a whisper of hope.'
+generated_at: '2025-11-08T09:39:06.079101'
+source: initialization

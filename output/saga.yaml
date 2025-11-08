@@ -1,0 +1,14 @@
+title: Untitled Narrative
+genre: Grimdark science fiction
+theme: The engineered oblivion of the masses as the only 'solution' to overpopulation
+setting: The planet Cicada Prime, a dying world where humanity’s population exploded
+  after terraforming failed.
+total_chapters: 20
+target_word_count: 80000
+project_id: saga_novel
+paths:
+  outline: outline/
+  characters: characters/
+  world: world/
+  summaries: summaries/
+  exports: exports/

@@ -1,0 +1,63 @@
+title: Untitled Narrative
+genre: Grimdark science fiction
+theme: The engineered oblivion of the masses as the only 'solution' to overpopulation
+setting: The planet Cicada Prime, a dying world where humanity’s population exploded
+  after terraforming failed.
+total_chapters: 20
+target_word_count: 80000
+generated_at: '2025-11-08T09:39:06.083298'
+global_outline:
+  act_count: 5
+  structure_type: 5-act
+  summary: "**Title:** *Untitled Narrative*  \n**Genre:** Grimdark Science Fiction\
+    \  \n**Theme:** *The engineered oblivion of the masses as the only \"solution\"\
+    \ to overpopulation*  \n**Setting:** Cicada Prime – a dying, overpopulated planet\
+    \ where terraforming failed, leaving humanity trapped in a decaying, hyper-structured\
+    \ society built on engineered extinction.  \n\n---\n\n### **Overall Structure:\
+    \ 5-Act with 20 Chapters**  \n- **Act I (Chapters 1–5):** *The Weight of Survival*\
+    \ – Introduction to the world, protagonis..."
+acts:
+  act_1:
+    act_number: 1
+    role: Setup/Introduction
+    chapters: 4
+    summary: "**Act 1: The Weight of Survival**  \n*Chapters 1–5 | 520 words*\n\n\
+      ---\n\n### **Act Summary**  \nAct I introduces the suffocating reality of Cicada\
+      \ Prime, where overpopulation has rendered survival a calculated crime. Through\
+      \ the eyes of Everett Larkin, a haunted data scavenger, we witness the oppressive\
+      \ ..."
+  act_2:
+    act_number: 2
+    role: Rising Action
+    chapters: 4
+    summary: "**Act 2: Fractures in the System (Chapters 6–10)**  \n*Summary:* Everett\
+      \ Larkin’s discovery of a child’s voice in a dead archive fractures his belief\
+      \ in the system’s benevolence, thrusting him into a hidden resistance. As he\
+      \ uncovers the truth behind the \"relocation\" events, he forms uneasy alliances..."
+  act_3:
+    act_number: 3
+    role: Midpoint/Crisis
+    chapters: 4
+    summary: "**Act 3: The Architect’s Gambit** *(Chapters 11–15)*  \n**Genre:** Grimdark\
+      \ Science Fiction  \n**Theme:** *The engineered oblivion of the masses as the\
+      \ only \"solution\" to overpopulation*  \n**Role:** Midpoint/Crisis — The truth\
+      \ is revealed, and the moral foundation of the world collapses.\n\n---\n\n###\
+      \ **A..."
+  act_4:
+    act_number: 4
+    role: Falling Action
+    chapters: 4
+    summary: "**Act 4: The Collapse of Certainty** *(Chapters 16–18)*  \n**Genre:**\
+      \ Grimdark Science Fiction  \n**Theme:** *The engineered oblivion of the masses\
+      \ as the only \"solution\" to overpopulation*  \n**Setting:** Cicada Prime –\
+      \ the Undercity, the Spire of Stabilization, and the forgotten bio-archives\
+      \ beneath ..."
+  act_5:
+    act_number: 5
+    role: Resolution/Climax
+    chapters: 4
+    summary: "**Act 5: Ashes of the Old World**  \n*Resolution/Climax | 4 Chapters\
+      \ | 500–600 words*\n\n---\n\n### **Act Summary**  \nIn the final act, Everett\
+      \ Larkin confronts the truth of the Stabilization Initiative not as a policy,\
+      \ but as a sacred ritual—an engineered oblivion designed to erase humanity’s\
+      \ suffering ..."

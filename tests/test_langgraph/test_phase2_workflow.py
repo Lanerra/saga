@@ -6,7 +6,7 @@ Tests the complete narrative generation workflow including all Phase 2 nodes.
 Migration Reference: docs/phase2_migration_plan.md - Step 2.5
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -55,17 +55,15 @@ def sample_phase2_state(tmp_path):
 @pytest.fixture
 def mock_all_nodes():
     """Mock all node functions for testing workflow routing."""
-    with patch("core.langgraph.workflow.generate_chapter") as mock_generate, patch(
-        "core.langgraph.workflow.extract_entities"
-    ) as mock_extract, patch("core.langgraph.workflow.commit_to_graph") as mock_commit, patch(
-        "core.langgraph.workflow.validate_consistency"
-    ) as mock_validate, patch(
-        "core.langgraph.workflow.revise_chapter"
-    ) as mock_revise, patch(
-        "core.langgraph.workflow.summarize_chapter"
-    ) as mock_summarize, patch(
-        "core.langgraph.workflow.finalize_chapter"
-    ) as mock_finalize:
+    with (
+        patch("core.langgraph.workflow.generate_chapter") as mock_generate,
+        patch("core.langgraph.workflow.extract_entities") as mock_extract,
+        patch("core.langgraph.workflow.commit_to_graph") as mock_commit,
+        patch("core.langgraph.workflow.validate_consistency") as mock_validate,
+        patch("core.langgraph.workflow.revise_chapter") as mock_revise,
+        patch("core.langgraph.workflow.summarize_chapter") as mock_summarize,
+        patch("core.langgraph.workflow.finalize_chapter") as mock_finalize,
+    ):
         # Configure generate node
         mock_generate.side_effect = lambda state: {
             **state,

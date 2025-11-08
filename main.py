@@ -6,8 +6,8 @@ import structlog
 
 from core.db_manager import neo4j_manager
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
-from orchestration.nana_orchestrator import NANA_Orchestrator, setup_logging_nana
 from orchestration.langgraph_orchestrator import LangGraphOrchestrator
+from orchestration.nana_orchestrator import NANA_Orchestrator, setup_logging_nana
 
 logger = structlog.get_logger(__name__)
 

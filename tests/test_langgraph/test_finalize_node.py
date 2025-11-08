@@ -7,7 +7,7 @@ Migration Reference: docs/phase2_migration_plan.md - Step 2.4
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
@@ -83,9 +83,7 @@ def mock_llm_service():
 @pytest.fixture
 def mock_save_chapter_data():
     """Mock chapter data saving."""
-    with patch(
-        "core.langgraph.nodes.finalize_node.save_chapter_data_to_db"
-    ) as mock:
+    with patch("core.langgraph.nodes.finalize_node.save_chapter_data_to_db") as mock:
         mock.return_value = AsyncMock(return_value=None)
         yield mock
 
@@ -143,18 +141,47 @@ class TestFinalizeChapter:
         # Neo4j save should not be called
         mock_save_chapter_data.assert_not_called()
 
-    async def test_finalize_chapter_filesystem_save(
+    async def test_finalize_chapter_filesystem_save_markdown_and_text(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
-        """Test that chapter is saved to filesystem."""
+        """Test that chapter is saved as .md with YAML front matter and .txt mirror."""
         result = await finalize_chapter(sample_finalize_state)
 
-        # Check that file was created
         project_dir = Path(sample_finalize_state["project_dir"])
-        chapter_file = project_dir / "chapters" / "chapter_001.txt"
+        chapters_dir = project_dir / "chapters"
 
-        assert chapter_file.exists()
-        assert chapter_file.read_text() == sample_finalize_state["draft_text"]
+        # .md file assertions
+        md_path = chapters_dir / "chapter_001.md"
+        assert md_path.exists()
+
+        md_content = md_path.read_text(encoding="utf-8")
+        # Expect front matter delimiters
+        parts = md_content.split("---")
+        assert len(parts) >= 3  # "", front_matter, body... or similar
+        front_matter_raw = parts[1].strip()
+        body = "---".join(parts[2:]).lstrip("\n")
+
+        import yaml
+
+        meta = yaml.safe_load(front_matter_raw)
+        assert isinstance(meta, dict)
+        assert meta["chapter"] == 1
+        assert meta["title"] == "Chapter 1"
+        assert isinstance(meta["word_count"], int)
+        assert meta["word_count"] == len(sample_finalize_state["draft_text"].split())
+        assert isinstance(meta["generated_at"], str)
+        assert meta["generated_at"]
+        assert meta["version"] == 1
+
+        # Body must equal original draft text (ignoring a trailing newline difference)
+        assert body.rstrip("\n") == sample_finalize_state["draft_text"].rstrip("\n")
+
+        # .txt legacy mirror assertions (plain text only)
+        txt_path = chapters_dir / "chapter_001.txt"
+        assert txt_path.exists()
+        assert (
+            txt_path.read_text(encoding="utf-8") == sample_finalize_state["draft_text"]
+        )
 
     async def test_finalize_chapter_embedding_generation(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
@@ -352,18 +379,21 @@ class TestFinalizeChapter:
     async def test_finalize_chapter_correct_filename_format(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
-        """Test that chapter filename uses correct format."""
-        # Test different chapter numbers
+        """Test that chapter filenames use zero-padded format for .md and .txt."""
         for chapter_num in [1, 10, 99]:
             state = {**sample_finalize_state}
             state["current_chapter"] = chapter_num
 
             result = await finalize_chapter(state)
 
-            # Check file was created with correct name
             project_dir = Path(state["project_dir"])
-            expected_file = project_dir / "chapters" / f"chapter_{chapter_num:03d}.txt"
-            assert expected_file.exists()
+            chapters_dir = project_dir / "chapters"
+
+            md_expected = chapters_dir / f"chapter_{chapter_num:03d}.md"
+            txt_expected = chapters_dir / f"chapter_{chapter_num:03d}.txt"
+
+            assert md_expected.exists()
+            assert txt_expected.exists()
 
     async def test_finalize_chapter_preserves_other_state(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
@@ -406,10 +436,11 @@ class TestFinalizeIntegration:
         # Verify Neo4j was updated
         mock_save_chapter_data.assert_called_once()
 
-        # Verify filesystem save
+        # Verify filesystem save of canonical .md and legacy .txt
         project_dir = Path(sample_finalize_state["project_dir"])
-        chapter_file = project_dir / "chapters" / "chapter_001.txt"
-        assert chapter_file.exists()
+        chapters_dir = project_dir / "chapters"
+        assert (chapters_dir / "chapter_001.md").exists()
+        assert (chapters_dir / "chapter_001.txt").exists()
 
     async def test_finalization_ready_for_next_chapter(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data

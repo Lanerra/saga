@@ -78,13 +78,16 @@ def mock_llm_generation():
 @pytest.fixture
 def mock_context_builder():
     """Mock context building functions."""
-    with patch(
-        "core.langgraph.nodes.generation_node.get_key_events"
-    ) as mock_events, patch(
-        "core.langgraph.nodes.generation_node.get_reliable_kg_facts_for_drafting_prompt"
-    ) as mock_kg:
+    with (
+        patch("core.langgraph.nodes.generation_node.get_key_events") as mock_events,
+        patch(
+            "core.langgraph.nodes.generation_node.get_reliable_kg_facts_for_drafting_prompt"
+        ) as mock_kg,
+    ):
         mock_events.return_value = []
-        mock_kg.return_value = "**Knowledge Graph Facts:**\n- Test fact 1\n- Test fact 2"
+        mock_kg.return_value = (
+            "**Knowledge Graph Facts:**\n- Test fact 1\n- Test fact 2"
+        )
         yield {
             "get_events": mock_events,
             "get_kg_facts": mock_kg,

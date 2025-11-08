@@ -52,12 +52,12 @@ async def setup_test_novel() -> dict:
                 "key_events": [
                     "Sarah completes routine maintenance on the deep space radio telescope",
                     "She detects an unusual pattern in the background noise",
-                    "Initial analysis suggests the signal is artificial and impossibly distant"
+                    "Initial analysis suggests the signal is artificial and impossibly distant",
                 ],
                 "active_characters": ["Sarah Chen"],
-                "location": "Deep Space Research Station Alpha"
+                "location": "Deep Space Research Station Alpha",
             }
-        }
+        },
     }
     return outline
 
@@ -73,9 +73,9 @@ async def main():
     4. Handle revision loop if needed
     5. Generate summary and finalize
     """
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("SAGA Phase 2 End-to-End Test")
-    print("="*80)
+    print("=" * 80)
     print("\nConfiguration:")
     print(f"  Generation Model: {settings.LARGE_MODEL}")
     print(f"  Extraction Model: {settings.SMALL_MODEL}")
@@ -178,7 +178,9 @@ async def main():
     print("Step 5: Creating Phase 2 workflow graph...")
     graph = create_phase2_graph()
     print("✓ Workflow graph compiled")
-    print("  Nodes: generate → extract → commit → validate → {revise OR summarize} → finalize")
+    print(
+        "  Nodes: generate → extract → commit → validate → {revise OR summarize} → finalize"
+    )
     print()
 
     # Step 6: Execute workflow
@@ -225,7 +227,9 @@ async def main():
 
         # Check extracted entities
         entities = result.get("extracted_entities", {})
-        total_entities = sum(len(v) if isinstance(v, list) else 1 for v in entities.values())
+        total_entities = sum(
+            len(v) if isinstance(v, list) else 1 for v in entities.values()
+        )
         print(f"✓ Entities extracted: {total_entities}")
 
         # Check relationships
@@ -254,8 +258,8 @@ async def main():
         print("Step 8: Performance Metrics...")
         print(f"  Total Time: {elapsed_time:.2f} seconds")
         print(f"  Words Generated: {result.get('draft_word_count', 0)}")
-        if result.get('draft_word_count', 0) > 0:
-            wps = result['draft_word_count'] / elapsed_time
+        if result.get("draft_word_count", 0) > 0:
+            wps = result["draft_word_count"] / elapsed_time
             print(f"  Generation Rate: {wps:.1f} words/second")
 
         # Check against Phase 2 success criteria

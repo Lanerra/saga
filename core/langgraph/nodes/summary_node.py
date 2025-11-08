@@ -14,6 +14,8 @@ New Functionality:
 from __future__ import annotations
 
 import json
+from datetime import datetime
+from pathlib import Path
 
 import structlog
 
@@ -21,6 +23,7 @@ from core.db_manager import neo4j_manager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.file_io import write_text_file
 
 logger = structlog.get_logger(__name__)
 
@@ -124,7 +127,22 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             summary=summary,
         )
 
-        # Step 5: Update state with summary
+        # Step 5: Persist per-chapter summary file (best-effort, non-fatal)
+        try:
+            _write_chapter_summary_file(
+                chapter_number=state.get("current_chapter"),
+                summary_text=summary,
+                project_dir=state.get("project_dir"),
+            )
+        except Exception as e:
+            logger.error(
+                "summarize_chapter: failed to write summary file",
+                chapter=state.get("current_chapter"),
+                error=str(e),
+                exc_info=True,
+            )
+
+        # Step 6: Update state with summary
         # Keep rolling window of last 5 summaries
         previous_summaries = list(state.get("previous_chapter_summaries", []))[-4:]
         previous_summaries.append(summary)
@@ -241,6 +259,67 @@ async def _save_summary_to_neo4j(
             exc_info=True,
         )
         # Don't raise - summarization is non-critical
+
+
+def _write_chapter_summary_file(
+    chapter_number: int | None,
+    summary_text: str,
+    project_dir: str | None,
+) -> None:
+    """
+    Write per-chapter summary file to the summaries/ directory.
+
+    Format:
+        summaries/chapter_{chapter_number:03d}.md
+
+    Content:
+        ---                       # YAML front matter
+        chapter: N
+        generated_at: ISO-8601
+        ---
+
+        {summary_text}
+
+    Behavior:
+    - Uses project_dir from state; if missing/invalid, this is a no-op.
+    - Creates summaries/ directory if it does not exist.
+    - Overwrites existing file for idempotence.
+    - Normalizes any literal "\\n" sequences into real newlines in the body.
+    """
+    if not chapter_number or chapter_number <= 0:
+        # Graceful no-op: invalid or missing chapter number
+        return
+
+    if not project_dir:
+        # Graceful no-op: cannot determine target directory
+        return
+
+    summaries_dir = Path(project_dir) / "summaries"
+
+    # Normalize summary text: convert literal "\\n" sequences to actual newlines.
+    body = str(summary_text)
+    if "\\n" in body:
+        body = body.replace("\\n", "\n")
+
+    # Build YAML front matter
+    generated_at = datetime.utcnow().isoformat()
+    front_matter_lines = [
+        "---",
+        f"chapter: {int(chapter_number)}",
+        f"generated_at: {generated_at}",
+        "---",
+        "",
+    ]
+    content = "\n".join(front_matter_lines) + body
+
+    summary_path = summaries_dir / f"chapter_{int(chapter_number):03d}.md"
+    write_text_file(summary_path, content)
+
+    logger.info(
+        "summarize_chapter: summary file written",
+        chapter=int(chapter_number),
+        path=str(summary_path),
+    )
 
 
 __all__ = ["summarize_chapter"]
