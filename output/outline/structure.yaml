@@ -1,0 +1,65 @@
+title: Untitled Narrative
+genre: Grimdark science fiction
+theme: The engineered oblivion of the masses as the only 'solution' to overpopulation
+setting: "The planet Cicada Prime, a dying world where humanity\u2019s population\
+  \ exploded after terraforming failed."
+total_chapters: 20
+target_word_count: 80000
+generated_at: '2025-11-07T20:28:55.038831'
+global_outline:
+  act_count: 3
+  structure_type: 3-act
+  summary: '# Global Story Outline: "Untitled Narrative"
+
+
+    ## Overall Structure
+
+    This grimdark science fiction story follows a modified 5-act structure spanning
+    20 chapters, designed to build tension gradually before erupting into chaos and
+    eventual resolution.
+
+
+    ## Beginning (Chapters 1-3)
+
+    The story opens on Cicada Prime, a dying world where humanity''s population has
+    exploded following a failed terraforming attempt. Everett Larkin, 34, works in
+    the refineries, surviving on meager rations while his family disa...'
+acts:
+  act_1:
+    act_number: 1
+    role: Setup/Introduction
+    chapters: 6
+    summary: '# Act 1 Outline: "Untitled Narrative"
+
+
+      ## Act Summary
+
+      Act 1 introduces Everett Larkin''s desperate existence on Cicada Prime, establishing
+      a dying world ravaged by overpopulation, resource scarcity, and societal collapse.
+      The act explores Everett''s ordinary life in the refineries, his gradual discove...'
+  act_2:
+    act_number: 2
+    role: Confrontation/Rising Action
+    chapters: 6
+    summary: '# Act 2 Outline
+
+
+      ## Act Summary
+
+      Act 2 follows Everett''s descent into the underbelly of "New Horizon" as he
+      uncovers the systematic nature of the population control initiative. Pursued
+      by Commander Thorne and betrayed by allies, Everett must navigate a web of deception
+      while struggling to locate his ...'
+  act_3:
+    act_number: 3
+    role: Resolution/Climax
+    chapters: 6
+    summary: '# Act 3 Outline: Resolution/Climax
+
+
+      ## Act Summary
+
+      Act 3 represents the culmination of Everett''s journey, as he confronts the
+      High Overseer Varga in a desperate bid to expose the engineered oblivion project
+      and save the remaining population from systematic eradication. This act combines
+      explosive ac...'
