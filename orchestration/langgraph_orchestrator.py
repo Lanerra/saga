@@ -360,7 +360,12 @@ class LangGraphOrchestrator:
             if contradictions:
                 severity_counts = {}
                 for c in contradictions:
-                    severity = c.get("severity", "unknown")
+                    # Contradiction is a Pydantic model, not a dict
+                    # Access severity as an attribute
+                    if isinstance(c, dict):
+                        severity = c.get("severity", "unknown")
+                    else:
+                        severity = getattr(c, "severity", "unknown")
                     severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
                 logger.warning(
@@ -409,7 +414,9 @@ class LangGraphOrchestrator:
             Human-readable description of current step
         """
         # Initialization phase descriptions
-        if initialization_step:
+        # Only use initialization_step if it's a recognized initialization phase
+        # Ignore chapter outline completion markers like "chapter_outline_2_complete"
+        if initialization_step and not initialization_step.startswith("chapter_outline"):
             init_descriptions = {
                 "character_sheets": "Generating Character Sheets",
                 "global_outline": "Creating Global Story Outline",
@@ -418,9 +425,11 @@ class LangGraphOrchestrator:
                 "files_persisted": "Writing Initialization Files",
                 "complete": "Initialization Complete",
             }
-            return init_descriptions.get(initialization_step, f"Initializing: {initialization_step}")
+            # Only return init description if it's a known init step
+            if initialization_step in init_descriptions:
+                return init_descriptions[initialization_step]
 
-        # Generation phase descriptions
+        # Generation phase descriptions (prioritized for all non-init nodes)
         node_descriptions = {
             "route": "Routing Workflow",
             "chapter_outline": "Generating Chapter Outline",
