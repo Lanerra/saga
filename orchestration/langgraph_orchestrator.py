@@ -4,8 +4,11 @@ LangGraph-based orchestrator for SAGA narrative generation.
 This orchestrator uses the LangGraph workflow system instead of the legacy
 NANA pipeline, running initialization and then generating chapters using
 the Phase 2 complete workflow.
+
+Migration Reference: docs/langgraph-architecture.md - Section 10.2
 """
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,7 @@ from core.langgraph.initialization.validation import validate_initialization_art
 from core.langgraph.state import NarrativeState, create_initial_state
 from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
 from data_access import chapter_queries
+from ui.rich_display import RichDisplayManager
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +41,11 @@ class LangGraphOrchestrator:
         # Use settings.BASE_OUTPUT_DIR which is the Pydantic field
         self.project_dir = Path(config.settings.BASE_OUTPUT_DIR)
         self.checkpointer_path = self.project_dir / ".saga" / "checkpoints.db"
+
+        # Initialize Rich display for progress tracking
+        self.display = RichDisplayManager()
+        self.run_start_time: float = 0.0
+
         logger.info("LangGraph Orchestrator initialized.")
 
     async def run_novel_generation_loop(self):
@@ -53,6 +62,10 @@ class LangGraphOrchestrator:
         logger.info("=" * 60)
         logger.info("SAGA: LangGraph-based Novel Generation Starting")
         logger.info("=" * 60)
+
+        # Start Rich display for progress tracking
+        self.run_start_time = time.time()
+        self.display.start()
 
         try:
             # Step 1: Connect to Neo4j
@@ -82,6 +95,9 @@ class LangGraphOrchestrator:
                 exc_info=True,
             )
             raise
+        finally:
+            # Stop Rich display
+            await self.display.stop()
 
     async def _ensure_neo4j_connection(self):
         """Ensure Neo4j connection is established."""
@@ -202,7 +218,7 @@ class LangGraphOrchestrator:
             state["current_chapter"] = current_chapter
 
             try:
-                # Run workflow for this chapter
+                # Run workflow for this chapter using event streaming
                 # The workflow will:
                 # 1. Generate chapter outline (on-demand)
                 # 2. Generate chapter text
@@ -212,10 +228,18 @@ class LangGraphOrchestrator:
                 # 6. (Optional) Revise
                 # 7. Summarize
                 # 8. Finalize
-                result = await graph.ainvoke(state, config=config_dict)
+
+                # Use astream() for event-based progress tracking
+                # Each event represents state after a node execution
+                result = None
+                async for event in graph.astream(state, config=config_dict):
+                    # Handle workflow event for progress tracking
+                    await self._handle_workflow_event(event, current_chapter)
+                    # Keep latest state
+                    result = event
 
                 # Check if chapter was successfully generated
-                if result.get("draft_text"):
+                if result and result.get("draft_text"):
                     chapters_generated += 1
                     current_chapter += 1
 
@@ -243,6 +267,139 @@ class LangGraphOrchestrator:
             chapters_generated=chapters_generated,
             final_chapter=current_chapter - 1,
         )
+
+    async def _handle_workflow_event(
+        self, event: dict[str, Any], chapter_number: int
+    ) -> None:
+        """
+        Handle LangGraph workflow events for real-time progress tracking.
+
+        This method is called for each node execution in the workflow,
+        providing visibility into the generation process as outlined in
+        docs/langgraph-architecture.md section 4.2.
+
+        Args:
+            event: State dict after node execution
+            chapter_number: Current chapter being generated
+
+        Migration Reference: docs/langgraph-architecture.md - Section 10.2.4
+        """
+        # Extract node information from event state
+        node_name = event.get("current_node", "unknown")
+        initialization_step = event.get("initialization_step", "")
+
+        # Determine human-readable step description
+        step_description = self._get_step_description(node_name, initialization_step)
+
+        # Update Rich display with current progress
+        # Note: plot_outline may not be in state yet during initialization
+        plot_outline = None
+        if event.get("title"):
+            # Construct minimal plot outline for display
+            plot_outline = {"title": event.get("title", "Novel Generation")}
+
+        self.display.update(
+            plot_outline=plot_outline,
+            chapter_num=chapter_number,
+            step=step_description,
+            run_start_time=self.run_start_time,
+        )
+
+        # Log structured event information
+        logger.info(
+            f"[Chapter {chapter_number}] {step_description}",
+            node=node_name,
+            chapter=chapter_number,
+            init_step=initialization_step if initialization_step else None,
+        )
+
+        # Handle specific node events with additional logging
+        if node_name == "validate":
+            contradictions = event.get("contradictions", [])
+            if contradictions:
+                severity_counts = {}
+                for c in contradictions:
+                    severity = c.get("severity", "unknown")
+                    severity_counts[severity] = severity_counts.get(severity, 0) + 1
+
+                logger.warning(
+                    f"  ⚠️  Found {len(contradictions)} consistency issues",
+                    total=len(contradictions),
+                    severity_breakdown=severity_counts,
+                )
+
+        elif node_name == "revise":
+            iteration = event.get("iteration_count", 0)
+            max_iter = event.get("max_iterations", 3)
+            logger.info(
+                f"  🔄 Revision attempt {iteration}/{max_iter}",
+                iteration=iteration,
+                max_iterations=max_iter,
+            )
+
+        elif node_name == "finalize":
+            word_count = event.get("draft_word_count", 0)
+            logger.info(
+                f"  ✅ Chapter finalized",
+                word_count=word_count,
+                chapter=chapter_number,
+            )
+
+        elif node_name == "init_complete":
+            character_count = len(event.get("character_sheets", {}))
+            act_count = len(event.get("act_outlines", {}))
+            logger.info(
+                f"  🎭 Initialization complete",
+                characters=character_count,
+                acts=act_count,
+            )
+
+    def _get_step_description(
+        self, node_name: str, initialization_step: str = ""
+    ) -> str:
+        """
+        Convert node name to human-readable step description.
+
+        Args:
+            node_name: Internal node name from workflow
+            initialization_step: Optional initialization phase indicator
+
+        Returns:
+            Human-readable description of current step
+        """
+        # Initialization phase descriptions
+        if initialization_step:
+            init_descriptions = {
+                "character_sheets": "Generating Character Sheets",
+                "global_outline": "Creating Global Story Outline",
+                "act_outlines": "Detailing Act Structures",
+                "committing": "Saving to Knowledge Graph",
+                "files_persisted": "Writing Initialization Files",
+                "complete": "Initialization Complete",
+            }
+            return init_descriptions.get(initialization_step, f"Initializing: {initialization_step}")
+
+        # Generation phase descriptions
+        node_descriptions = {
+            "route": "Routing Workflow",
+            "chapter_outline": "Generating Chapter Outline",
+            "generate": "Generating Chapter Text",
+            "extract": "Extracting Entities & Relationships",
+            "commit": "Committing to Knowledge Graph",
+            "validate": "Validating Consistency",
+            "revise": "Revising Chapter",
+            "summarize": "Creating Chapter Summary",
+            "finalize": "Finalizing Chapter",
+            "init_character_sheets": "Creating Character Sheets",
+            "init_global_outline": "Creating Story Outline",
+            "init_act_outlines": "Detailing Acts",
+            "init_commit_to_graph": "Saving Initialization Data",
+            "init_persist_files": "Writing Files",
+            "init_complete": "Completing Initialization",
+            "init_error": "Initialization Error",
+        }
+
+        return node_descriptions.get(node_name, f"Processing: {node_name}")
 
 
 __all__ = ["LangGraphOrchestrator"]
