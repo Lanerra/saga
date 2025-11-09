@@ -41,6 +41,13 @@ def _literal_string_representer(dumper, data: _LiteralString):
 
     Uses literal block style for multiline values to keep prose readable.
     Falls back to plain style for single-line values.
+
+    Args:
+        dumper: PyYAML dumper instance.
+        data: String data to represent.
+
+    Returns:
+        YAML scalar node with appropriate style (literal block or plain).
     """
     text = str(data)
     if "\n" in text:
@@ -60,6 +67,12 @@ def _normalize_prose(value: str | None) -> _LiteralString | str:
     - Returns ``_LiteralString`` for multiline prose so PyYAML emits ``|`` blocks.
     - Safe to call repeatedly (idempotent on already-normalized input).
     - Only intended for clearly prose-oriented fields at call sites.
+
+    Args:
+        value: Input text to normalize, may be None.
+
+    Returns:
+        _LiteralString if multiline, plain str if single-line, empty str if None.
     """
     if value is None:
         return ""
@@ -164,7 +177,11 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
 
 
 def _create_directory_structure(project_dir: Path) -> None:
-    """Create the SAGA 2.0 directory structure."""
+    """Create the SAGA 2.0 directory structure.
+
+    Args:
+        project_dir: Root project directory path.
+    """
     directories = [
         project_dir / ".saga",
         project_dir / "outline",
@@ -185,8 +202,7 @@ def _create_directory_structure(project_dir: Path) -> None:
 
 
 def _parse_character_sheet_text(text: str) -> dict:
-    """
-    Parse character sheet text into structured fields.
+    """Parse character sheet text into structured fields.
 
     Looks for common section headers like:
     - Physical Description
@@ -196,6 +212,12 @@ def _parse_character_sheet_text(text: str) -> dict:
     - Skills/Abilities
     - Relationships
     - Character Arc
+
+    Args:
+        text: Raw character sheet text to parse.
+
+    Returns:
+        Dictionary with parsed fields, or {"description": text} if parsing fails.
     """
     import re
 
@@ -228,13 +250,16 @@ def _parse_character_sheet_text(text: str) -> dict:
 
 
 def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
-    """
-    Write individual YAML files for each character.
+    """Write individual YAML files for each character.
 
     Format:
         characters/{character_name}.yaml
 
     Parses the character sheet text into structured fields for readability.
+
+    Args:
+        project_dir: Root project directory path.
+        character_sheets: Dictionary mapping character names to sheet data.
     """
     characters_dir = project_dir / "characters"
 
@@ -279,12 +304,17 @@ def _write_outline_files(
     act_outlines: dict,
     state: NarrativeState,
 ) -> None:
-    """
-    Write outline structure and beats to YAML files.
+    """Write outline structure and beats to YAML files.
 
     Creates:
     - outline/structure.yaml: Act/scene structure
     - outline/beats.yaml: Key plot beats
+
+    Args:
+        project_dir: Root project directory path.
+        global_outline: Global story outline data (may be None).
+        act_outlines: Dictionary mapping act numbers to act outline data.
+        state: Current narrative state with metadata.
     """
     outline_dir = project_dir / "outline"
 
@@ -361,11 +391,15 @@ def _write_outline_files(
 
 
 def _write_world_items_file(project_dir: Path, world_items: list, setting: str) -> None:
-    """
-    Write world items to YAML file.
+    """Write world items to YAML file.
 
     Creates:
     - world/items.yaml: Locations, objects, concepts
+
+    Args:
+        project_dir: Root project directory path.
+        world_items: List of WorldItem objects to write.
+        setting: Story setting description.
     """
     world_dir = project_dir / "world"
 
@@ -399,11 +433,14 @@ def _write_world_items_file(project_dir: Path, world_items: list, setting: str) 
 
 
 def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
-    """
-    Write saga.yaml at the project root with basic metadata and directory paths.
+    """Write saga.yaml at the project root with basic metadata and directory paths.
 
     This file acts as a lightweight entrypoint/manifest for the SAGA workspace.
     It must be robust to partial state: only emit fields that are present.
+
+    Args:
+        project_dir: Root project directory path.
+        state: Current narrative state with metadata.
     """
     saga_data: dict = {}
 
@@ -440,8 +477,7 @@ def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
 
 
 def _write_world_rules_file(project_dir: Path, state: NarrativeState) -> None:
-    """
-    Write world/rules.yaml capturing world rules/constraints if available.
+    """Write world/rules.yaml capturing world rules/constraints if available.
 
     Structure:
         rules:
@@ -450,6 +486,10 @@ def _write_world_rules_file(project_dir: Path, state: NarrativeState) -> None:
         note: "..."
 
     Falls back to an empty stub that guides the user when no data is present.
+
+    Args:
+        project_dir: Root project directory path.
+        state: Current narrative state with world rules data.
     """
     world_dir = project_dir / "world"
     rules_path = world_dir / "rules.yaml"
@@ -497,8 +537,7 @@ def _write_world_rules_file(project_dir: Path, state: NarrativeState) -> None:
 
 
 def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
-    """
-    Write world/history.yaml capturing historical events/timeline if available.
+    """Write world/history.yaml capturing historical events/timeline if available.
 
     Structure:
         events:
@@ -508,6 +547,10 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
         note: "..."
 
     Falls back to an empty stub when no history data is present.
+
+    Args:
+        project_dir: Root project directory path.
+        state: Current narrative state with historical events data.
     """
     world_dir = project_dir / "world"
     history_path = world_dir / "history.yaml"
@@ -571,11 +614,13 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
 
 
 def _write_summaries_readme(project_dir: Path) -> None:
-    """
-    Write README file in summaries/ directory.
+    """Write README file in summaries/ directory.
 
     The summaries directory is populated during chapter generation,
     not initialization. This creates a placeholder README to explain that.
+
+    Args:
+        project_dir: Root project directory path.
     """
     summaries_dir = project_dir / "summaries"
     readme_path = summaries_dir / "README.md"
