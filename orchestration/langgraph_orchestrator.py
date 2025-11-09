@@ -296,6 +296,16 @@ class LangGraphOrchestrator:
 
         Migration Reference: docs/langgraph-architecture.md - Section 10.2.4
         """
+        # DEBUG: Log the actual event structure to understand format
+        event_keys = list(event.keys()) if isinstance(event, dict) else []
+        if len(event_keys) < 20:  # Only log if reasonable size
+            logger.debug(
+                "Event structure received",
+                event_type=type(event).__name__,
+                keys=event_keys,
+                has_current_node="current_node" in event if isinstance(event, dict) else False,
+            )
+
         # LangGraph's astream() may return events in different formats
         # Handle both direct state dicts and wrapped events
         state = event
