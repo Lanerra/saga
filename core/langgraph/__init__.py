@@ -12,13 +12,15 @@ Components:
     nodes: Individual processing nodes (extraction, validation, generation, etc.)
     graph_context: Neo4j context construction (wraps existing data_access queries)
     workflow: Graph definition and workflow orchestration
+    visualization: Visual debugging tools for workflows
 
 Usage:
     from core.langgraph import (
         NarrativeState,
         create_initial_state,
         create_phase1_graph,
-        create_checkpointer
+        create_checkpointer,
+        visualize_workflow
     )
 
     # Create initial state
@@ -37,6 +39,9 @@ Usage:
     # Create and run workflow
     checkpointer = create_checkpointer("./checkpoints/my-novel.db")
     graph = create_phase1_graph(checkpointer=checkpointer)
+
+    # Visualize workflow (for debugging)
+    visualize_workflow(graph, "docs/workflow.md", format="mermaid")
 
     # Execute workflow
     result = await graph.ainvoke(state, config={"configurable": {"thread_id": "my-novel-ch1"}})
@@ -59,6 +64,10 @@ from core.langgraph.state import (
     NarrativeState,
     State,
     create_initial_state,
+)
+from core.langgraph.visualization import (
+    print_workflow_summary,
+    visualize_workflow,
 )
 from core.langgraph.workflow import (
     create_checkpointer,
@@ -94,6 +103,9 @@ __all__ = [
     "create_checkpointer",
     "should_revise",
     "should_revise_or_continue",
+    # Visualization
+    "visualize_workflow",
+    "print_workflow_summary",
 ]
 
 __version__ = "0.1.0"

@@ -77,7 +77,14 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
 
     # Add finalization node to mark initialization complete
     def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
-        """Mark the initialization phase as complete."""
+        """Mark the initialization phase as complete.
+
+        Args:
+            state: Current narrative state.
+
+        Returns:
+            Updated state with initialization_complete=True.
+        """
         logger.info(
             "mark_initialization_complete: initialization phase finished",
             title=state["title"],

@@ -230,28 +230,47 @@ class LangGraphOrchestrator:
                 # 8. Finalize
 
                 # Use astream() for event-based progress tracking
-                # Each event represents state after a node execution
-                result = None
+                # LangGraph's astream() yields events in format: {node_name: state_update}
+                # We need to merge all updates to get the final state
+                last_node = None
                 async for event in graph.astream(state, config=config_dict):
                     # Handle workflow event for progress tracking
                     await self._handle_workflow_event(event, current_chapter)
-                    # Keep latest state
-                    result = event
+
+                    # Merge state updates from event
+                    # Event format: {node_name: state_update_dict}
+                    if isinstance(event, dict) and len(event) > 0:
+                        node_name = list(event.keys())[0]
+                        if not node_name.startswith("__"):  # Skip internal nodes
+                            state_update = event[node_name]
+                            if isinstance(state_update, dict):
+                                # Merge update into state
+                                state = {**state, **state_update}
+                                last_node = node_name
 
                 # Check if chapter was successfully generated
-                if result and result.get("draft_text"):
+                # After finalization, last executed node should be "finalize"
+                if last_node == "finalize":
                     chapters_generated += 1
-                    current_chapter += 1
-
                     logger.info(
-                        f"✓ Chapter {result['current_chapter']} complete",
-                        word_count=result.get("draft_word_count", 0),
+                        f"✓ Chapter {current_chapter} complete",
+                        word_count=state.get("draft_word_count", 0),
+                        node=last_node,
                     )
 
-                    # Update state for next iteration
-                    state = result
+                    # Increment chapter for next iteration
+                    current_chapter = state.get("current_chapter", current_chapter) + 1
+                elif last_node:
+                    # Generation ran but didn't complete successfully
+                    error = state.get("last_error", "Unknown error")
+                    logger.error(
+                        f"Chapter {current_chapter} generation incomplete",
+                        final_node=last_node,
+                        error=error,
+                    )
+                    break
                 else:
-                    logger.error(f"Chapter {current_chapter} generation failed")
+                    logger.error(f"Chapter {current_chapter} generation failed - no events received")
                     break
 
             except Exception as e:
@@ -279,24 +298,43 @@ class LangGraphOrchestrator:
         docs/langgraph-architecture.md section 4.2.
 
         Args:
-            event: State dict after node execution
+            event: Event dict from astream() in format {node_name: state_update}
             chapter_number: Current chapter being generated
 
         Migration Reference: docs/langgraph-architecture.md - Section 10.2.4
         """
-        # Extract node information from event state
-        node_name = event.get("current_node", "unknown")
-        initialization_step = event.get("initialization_step", "")
+        # LangGraph's astream() yields events in "updates" mode format:
+        # {node_name: state_update_dict}
+        #
+        # Example: {"generate": {"current_node": "generate", "draft_text": "...", ...}}
+        #
+        # The node name is the KEY, and the state update is the VALUE.
+
+        if not isinstance(event, dict) or len(event) == 0:
+            logger.warning("Received empty or invalid event", event_type=type(event).__name__)
+            return
+
+        # Extract node name and state update from event
+        # Event format: {node_name: state_update}
+        node_name = list(event.keys())[0]  # Get first (and usually only) key
+        state_update = event[node_name]
+
+        # Skip special internal nodes that don't represent user-visible progress
+        if node_name.startswith("__"):
+            logger.debug(f"Skipping internal node event: {node_name}")
+            return
+
+        initialization_step = state_update.get("initialization_step", "") if isinstance(state_update, dict) else ""
 
         # Determine human-readable step description
         step_description = self._get_step_description(node_name, initialization_step)
 
         # Update Rich display with current progress
-        # Note: plot_outline may not be in state yet during initialization
+        # Note: plot_outline may not be in state_update during initialization
         plot_outline = None
-        if event.get("title"):
+        if isinstance(state_update, dict) and state_update.get("title"):
             # Construct minimal plot outline for display
-            plot_outline = {"title": event.get("title", "Novel Generation")}
+            plot_outline = {"title": state_update.get("title", "Novel Generation")}
 
         self.display.update(
             plot_outline=plot_outline,
@@ -314,12 +352,20 @@ class LangGraphOrchestrator:
         )
 
         # Handle specific node events with additional logging
-        if node_name == "validate":
-            contradictions = event.get("contradictions", [])
+        if not isinstance(state_update, dict):
+            return
+
+        if node_name == "validate" or node_name == "validate_consistency":
+            contradictions = state_update.get("contradictions", [])
             if contradictions:
                 severity_counts = {}
                 for c in contradictions:
-                    severity = c.get("severity", "unknown")
+                    # Contradiction is a Pydantic model, not a dict
+                    # Access severity as an attribute
+                    if isinstance(c, dict):
+                        severity = c.get("severity", "unknown")
+                    else:
+                        severity = getattr(c, "severity", "unknown")
                     severity_counts[severity] = severity_counts.get(severity, 0) + 1
 
                 logger.warning(
@@ -329,8 +375,8 @@ class LangGraphOrchestrator:
                 )
 
         elif node_name == "revise":
-            iteration = event.get("iteration_count", 0)
-            max_iter = event.get("max_iterations", 3)
+            iteration = state_update.get("iteration_count", 0)
+            max_iter = state_update.get("max_iterations", 3)
             logger.info(
                 f"  🔄 Revision attempt {iteration}/{max_iter}",
                 iteration=iteration,
@@ -338,7 +384,7 @@ class LangGraphOrchestrator:
             )
 
         elif node_name == "finalize":
-            word_count = event.get("draft_word_count", 0)
+            word_count = state_update.get("draft_word_count", 0)
             logger.info(
                 f"  ✅ Chapter finalized",
                 word_count=word_count,
@@ -346,8 +392,8 @@ class LangGraphOrchestrator:
             )
 
         elif node_name == "init_complete":
-            character_count = len(event.get("character_sheets", {}))
-            act_count = len(event.get("act_outlines", {}))
+            character_count = len(state_update.get("character_sheets", {}))
+            act_count = len(state_update.get("act_outlines", {}))
             logger.info(
                 f"  🎭 Initialization complete",
                 characters=character_count,
@@ -368,7 +414,9 @@ class LangGraphOrchestrator:
             Human-readable description of current step
         """
         # Initialization phase descriptions
-        if initialization_step:
+        # Only use initialization_step if it's a recognized initialization phase
+        # Ignore chapter outline completion markers like "chapter_outline_2_complete"
+        if initialization_step and not initialization_step.startswith("chapter_outline"):
             init_descriptions = {
                 "character_sheets": "Generating Character Sheets",
                 "global_outline": "Creating Global Story Outline",
@@ -377,19 +425,28 @@ class LangGraphOrchestrator:
                 "files_persisted": "Writing Initialization Files",
                 "complete": "Initialization Complete",
             }
-            return init_descriptions.get(initialization_step, f"Initializing: {initialization_step}")
+            # Only return init description if it's a known init step
+            if initialization_step in init_descriptions:
+                return init_descriptions[initialization_step]
 
-        # Generation phase descriptions
+        # Generation phase descriptions (prioritized for all non-init nodes)
         node_descriptions = {
             "route": "Routing Workflow",
             "chapter_outline": "Generating Chapter Outline",
             "generate": "Generating Chapter Text",
+            "generate_chapter": "Generating Chapter Text",
             "extract": "Extracting Entities & Relationships",
+            "extract_entities": "Extracting Entities & Relationships",
             "commit": "Committing to Knowledge Graph",
+            "commit_to_graph": "Committing to Knowledge Graph",
             "validate": "Validating Consistency",
+            "validate_consistency": "Validating Consistency",
             "revise": "Revising Chapter",
+            "revise_chapter": "Revising Chapter",
             "summarize": "Creating Chapter Summary",
+            "summarize_chapter": "Creating Chapter Summary",
             "finalize": "Finalizing Chapter",
+            "finalize_chapter": "Finalizing Chapter",
             "init_character_sheets": "Creating Character Sheets",
             "init_global_outline": "Creating Story Outline",
             "init_act_outlines": "Detailing Acts",
