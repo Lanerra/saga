@@ -230,7 +230,7 @@ class LangGraphOrchestrator:
                 # 8. Finalize
 
                 # Use astream() for event-based progress tracking
-                # Each event represents state after a node execution
+                # LangGraph's astream() yields state snapshots after each node execution
                 result = None
                 async for event in graph.astream(state, config=config_dict):
                     # Handle workflow event for progress tracking
@@ -239,19 +239,31 @@ class LangGraphOrchestrator:
                     result = event
 
                 # Check if chapter was successfully generated
-                if result and result.get("draft_text"):
+                # After finalization, current_node should be "finalize" and we should have a chapter file
+                if result and result.get("current_node") == "finalize":
                     chapters_generated += 1
-                    current_chapter += 1
-
                     logger.info(
-                        f"✓ Chapter {result['current_chapter']} complete",
+                        f"✓ Chapter {current_chapter} complete",
                         word_count=result.get("draft_word_count", 0),
+                        node=result.get("current_node"),
                     )
 
                     # Update state for next iteration
                     state = result
+                    # Increment chapter for next iteration
+                    current_chapter = result.get("current_chapter", current_chapter) + 1
+                elif result:
+                    # Generation ran but didn't complete successfully
+                    final_node = result.get("current_node", "unknown")
+                    error = result.get("last_error", "Unknown error")
+                    logger.error(
+                        f"Chapter {current_chapter} generation incomplete",
+                        final_node=final_node,
+                        error=error,
+                    )
+                    break
                 else:
-                    logger.error(f"Chapter {current_chapter} generation failed")
+                    logger.error(f"Chapter {current_chapter} generation failed - no result")
                     break
 
             except Exception as e:
@@ -279,14 +291,21 @@ class LangGraphOrchestrator:
         docs/langgraph-architecture.md section 4.2.
 
         Args:
-            event: State dict after node execution
+            event: State dict after node execution (or event wrapper containing state)
             chapter_number: Current chapter being generated
 
         Migration Reference: docs/langgraph-architecture.md - Section 10.2.4
         """
+        # LangGraph's astream() may return events in different formats
+        # Handle both direct state dicts and wrapped events
+        state = event
+        if isinstance(event, dict) and "state" in event:
+            # Event is wrapped with metadata
+            state = event["state"]
+
         # Extract node information from event state
-        node_name = event.get("current_node", "unknown")
-        initialization_step = event.get("initialization_step", "")
+        node_name = state.get("current_node", "unknown")
+        initialization_step = state.get("initialization_step", "")
 
         # Determine human-readable step description
         step_description = self._get_step_description(node_name, initialization_step)
@@ -294,9 +313,9 @@ class LangGraphOrchestrator:
         # Update Rich display with current progress
         # Note: plot_outline may not be in state yet during initialization
         plot_outline = None
-        if event.get("title"):
+        if state.get("title"):
             # Construct minimal plot outline for display
-            plot_outline = {"title": event.get("title", "Novel Generation")}
+            plot_outline = {"title": state.get("title", "Novel Generation")}
 
         self.display.update(
             plot_outline=plot_outline,
@@ -315,7 +334,7 @@ class LangGraphOrchestrator:
 
         # Handle specific node events with additional logging
         if node_name == "validate":
-            contradictions = event.get("contradictions", [])
+            contradictions = state.get("contradictions", [])
             if contradictions:
                 severity_counts = {}
                 for c in contradictions:
@@ -329,8 +348,8 @@ class LangGraphOrchestrator:
                 )
 
         elif node_name == "revise":
-            iteration = event.get("iteration_count", 0)
-            max_iter = event.get("max_iterations", 3)
+            iteration = state.get("iteration_count", 0)
+            max_iter = state.get("max_iterations", 3)
             logger.info(
                 f"  🔄 Revision attempt {iteration}/{max_iter}",
                 iteration=iteration,
@@ -338,7 +357,7 @@ class LangGraphOrchestrator:
             )
 
         elif node_name == "finalize":
-            word_count = event.get("draft_word_count", 0)
+            word_count = state.get("draft_word_count", 0)
             logger.info(
                 f"  ✅ Chapter finalized",
                 word_count=word_count,
@@ -346,8 +365,8 @@ class LangGraphOrchestrator:
             )
 
         elif node_name == "init_complete":
-            character_count = len(event.get("character_sheets", {}))
-            act_count = len(event.get("act_outlines", {}))
+            character_count = len(state.get("character_sheets", {}))
+            act_count = len(state.get("act_outlines", {}))
             logger.info(
                 f"  🎭 Initialization complete",
                 characters=character_count,
