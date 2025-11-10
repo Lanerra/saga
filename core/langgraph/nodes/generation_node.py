@@ -57,8 +57,23 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     )
 
     # Validate we have the necessary inputs
-    if not state.get("plot_outline"):
-        error_msg = "No plot outline available for generation"
+    # Prefer chapter_outlines (canonical) over plot_outline (deprecated)
+    chapter_outlines = state.get("chapter_outlines")
+    plot_outline = state.get("plot_outline")
+
+    # Check for deprecated plot_outline usage
+    if plot_outline and not chapter_outlines:
+        logger.warning(
+            "generate_chapter: using deprecated plot_outline field. "
+            "Please migrate to chapter_outlines. "
+            "plot_outline will be removed in SAGA v3.0",
+            deprecation=True,
+        )
+        # Use plot_outline as fallback
+        chapter_outlines = plot_outline
+
+    if not chapter_outlines:
+        error_msg = "No chapter outlines available for generation"
         logger.error("generate_chapter: fatal error", error=error_msg)
         return {
             **state,
@@ -69,16 +84,15 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     chapter_number = state["current_chapter"]
-    plot_outline = state["plot_outline"]
 
     # Validate chapter exists in outline
-    if chapter_number not in plot_outline:
-        error_msg = f"Chapter {chapter_number} not found in plot outline"
+    if chapter_number not in chapter_outlines:
+        error_msg = f"Chapter {chapter_number} not found in chapter outlines"
         logger.error(
             "generate_chapter: fatal error",
             error=error_msg,
             chapter=chapter_number,
-            available_chapters=list(plot_outline.keys()),
+            available_chapters=list(chapter_outlines.keys()),
         )
         return {
             **state,
@@ -92,7 +106,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     plot_point_focus = state.get("plot_point_focus")
     if not plot_point_focus:
         # Try to extract from outline
-        chapter_outline = plot_outline.get(chapter_number)
+        chapter_outline = chapter_outlines.get(chapter_number)
         if chapter_outline and isinstance(chapter_outline, dict):
             plot_point_focus = chapter_outline.get("plot_point", "")
 

@@ -95,18 +95,8 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
             "initialization_step": f"chapter_outline_{chapter_number}_failed",
         }
 
-    # Update chapter_outlines dict
+    # Update chapter_outlines dict (canonical source of truth)
     updated_outlines = {**existing_outlines, chapter_number: chapter_outline}
-
-    # Also update plot_outline for compatibility with existing generation code
-    plot_outline = state.get("plot_outline", {})
-    plot_outline[chapter_number] = {
-        "chapter": chapter_number,
-        "act": act_number,
-        "scene_description": chapter_outline.get("scene_description", ""),
-        "key_beats": chapter_outline.get("key_beats", []),
-        "plot_point": chapter_outline.get("plot_point", ""),
-    }
 
     logger.info(
         "generate_chapter_outline: generation complete",
@@ -117,7 +107,8 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
     return {
         **state,
         "chapter_outlines": updated_outlines,
-        "plot_outline": plot_outline,
+        # Note: plot_outline is deprecated and no longer updated
+        # generation_node now reads from chapter_outlines directly
         "current_node": "chapter_outline",
         "last_error": None,
         "initialization_step": f"chapter_outline_{chapter_number}_complete",
