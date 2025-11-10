@@ -592,3 +592,111 @@ class TestRevisionIntegration:
         # Should still succeed with general quality improvement
         assert result["draft_text"] is not None
         assert result["last_error"] is None
+
+
+@pytest.mark.asyncio
+class TestRevisionErrorHandling:
+    """Tests for error handling in revision node (P1.1 & P1.3)."""
+
+    async def test_revise_chapter_max_iterations_fatal_error(
+        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
+    ):
+        """Test revision with max iterations exceeded triggers fatal error."""
+        state = {**sample_revision_state}
+        state["iteration_count"] = 3
+        state["max_iterations"] = 3
+
+        result = await revise_chapter(state)
+
+        assert result["last_error"] is not None
+        assert "Max revision attempts" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "revise"
+        assert result["needs_revision"] is False
+        assert result["current_node"] == "revise"
+
+        mock_llm_revision.async_call_llm.assert_not_called()
+
+    async def test_revise_chapter_missing_draft_text_fatal_error(
+        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
+    ):
+        """Test revision with missing draft_text triggers fatal error."""
+        state = {**sample_revision_state}
+        state["draft_text"] = None
+
+        result = await revise_chapter(state)
+
+        assert result["last_error"] is not None
+        assert "No draft text available" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "revise"
+        assert result["current_node"] == "revise"
+
+        mock_llm_revision.async_call_llm.assert_not_called()
+
+    async def test_revise_chapter_token_budget_exceeded_fatal_error(
+        self, sample_revision_state, mock_prompt_data_getters
+    ):
+        """Test revision with token budget exceeded triggers fatal error."""
+        with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
+            mock_llm.count_tokens = lambda text, model: 150000
+
+            result = await revise_chapter(sample_revision_state)
+
+            assert result["last_error"] is not None
+            assert "token" in result["last_error"].lower()
+            assert result["has_fatal_error"] is True
+            assert result["error_node"] == "revise"
+
+            mock_llm.async_call_llm.assert_not_called()
+
+    async def test_revise_chapter_prompt_construction_failure_fatal_error(
+        self, sample_revision_state, mock_llm_revision
+    ):
+        """Test revision with prompt construction failure triggers fatal error."""
+        with patch(
+            "core.langgraph.nodes.revision_node._construct_revision_prompt"
+        ) as mock_prompt:
+            mock_prompt.side_effect = Exception("Prompt construction failed")
+
+            state = {**sample_revision_state}
+            state["hybrid_context"] = None
+
+            result = await revise_chapter(state)
+
+            assert result["last_error"] is not None
+            assert "Prompt construction failed" in result["last_error"]
+            assert result["has_fatal_error"] is True
+            assert result["error_node"] == "revise"
+
+    async def test_revise_chapter_llm_failure_fatal_error(
+        self, sample_revision_state, mock_prompt_data_getters
+    ):
+        """Test revision with LLM failure triggers fatal error."""
+        with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
+            mock_llm.async_call_llm = AsyncMock(
+                side_effect=Exception("LLM service error")
+            )
+            mock_llm.count_tokens = lambda text, model: 800
+
+            result = await revise_chapter(sample_revision_state)
+
+            assert result["last_error"] is not None
+            assert "LLM service error" in result["last_error"]
+            assert result["has_fatal_error"] is True
+            assert result["error_node"] == "revise"
+
+    async def test_revise_chapter_empty_llm_response_returns_error(
+        self, sample_revision_state, mock_prompt_data_getters
+    ):
+        """Test revision with empty LLM response returns error but not fatal."""
+        with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
+            mock_llm.async_call_llm = AsyncMock(return_value=("", {}))
+            mock_llm.count_tokens = lambda text, model: 800
+
+            result = await revise_chapter(sample_revision_state)
+
+            assert result["last_error"] is not None
+            assert "empty" in result["last_error"].lower()
+            assert result.get("has_fatal_error", False) is False
+            assert result["current_node"] == "revise"
