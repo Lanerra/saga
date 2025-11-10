@@ -253,6 +253,122 @@ def should_revise_or_continue(
     return "summarize"
 
 
+def should_handle_error(state: NarrativeState) -> Literal["error", "continue"]:
+    """
+    Check if a fatal error occurred and needs handling.
+
+    Routes to:
+    - "error": If has_fatal_error=True (stop workflow gracefully)
+    - "continue": If no fatal error (proceed normally)
+
+    Args:
+        state: Current narrative state
+
+    Returns:
+        "error" or "continue"
+    """
+    if state.get("has_fatal_error", False):
+        logger.error(
+            "should_handle_error: fatal error detected",
+            error=state.get("last_error"),
+            node=state.get("error_node"),
+        )
+        return "error"
+
+    return "continue"
+
+
+def should_revise_or_handle_error(
+    state: NarrativeState,
+) -> Literal["error", "revise", "continue"]:
+    """
+    Combined check for fatal errors and revision needs.
+
+    This function is used after validation to determine the next step.
+    It prioritizes fatal errors over revision needs.
+
+    Routes to:
+    - "error": If has_fatal_error=True (stop workflow gracefully)
+    - "revise": If needs_revision=True and no fatal error
+    - "continue": If no errors and no revision needed (proceed to summarize)
+
+    Priority:
+    1. Fatal error → "error"
+    2. Needs revision → "revise"
+    3. Otherwise → "continue"
+
+    Args:
+        state: Current narrative state
+
+    Returns:
+        "error", "revise", or "continue"
+    """
+    # Check for fatal errors first
+    if state.get("has_fatal_error", False):
+        logger.error(
+            "should_revise_or_handle_error: fatal error detected",
+            error=state.get("last_error"),
+            node=state.get("error_node"),
+        )
+        return "error"
+
+    # Check if revision needed
+    needs_revision = state.get("needs_revision", False)
+    iteration_count = state.get("iteration_count", 0)
+    max_iterations = state.get("max_iterations", 3)
+    force_continue = state.get("force_continue", False)
+
+    if force_continue:
+        logger.info(
+            "should_revise_or_handle_error: force_continue enabled, routing to continue"
+        )
+        return "continue"
+
+    if iteration_count >= max_iterations:
+        logger.warning(
+            "should_revise_or_handle_error: max iterations reached, routing to continue",
+            iteration_count=iteration_count,
+            max_iterations=max_iterations,
+        )
+        return "continue"
+
+    if needs_revision:
+        logger.info(
+            "should_revise_or_handle_error: revision needed, routing to revise"
+        )
+        return "revise"
+
+    return "continue"
+
+
+def handle_fatal_error(state: NarrativeState) -> NarrativeState:
+    """
+    Handle fatal errors gracefully.
+
+    Logs detailed error information and prepares state for clean exit.
+
+    Args:
+        state: Current narrative state with error information
+
+    Returns:
+        Updated state with error_handler as current_node
+    """
+    logger.error(
+        "handle_fatal_error: workflow terminated due to fatal error",
+        error=state.get("last_error"),
+        failed_node=state.get("error_node"),
+        chapter=state.get("current_chapter"),
+    )
+
+    # Could write error to file for debugging in the future
+    # error_file = Path(state["project_dir"]) / ".saga" / "last_error.json"
+
+    return {
+        **state,
+        "current_node": "error_handler",
+    }
+
+
 def create_phase2_graph(checkpointer=None) -> StateGraph:
     """
     Create Phase 2 LangGraph workflow (COMPLETE).
@@ -291,29 +407,74 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("revise", revise_chapter)
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)
+    workflow.add_node("error_handler", handle_fatal_error)
 
-    # Define linear edges
-    workflow.add_edge("generate", "extract")
-    workflow.add_edge("extract", "commit")
-    workflow.add_edge("commit", "validate")
-
-    # Conditional edge: validate → (revise or summarize)
+    # Add error checking after generate
     workflow.add_conditional_edges(
-        "validate",
-        should_revise_or_continue,
+        "generate",
+        should_handle_error,
         {
-            "revise": "revise",
-            "summarize": "summarize",
+            "error": "error_handler",
+            "continue": "extract",
         },
     )
 
-    # After revision, loop back to extract
-    # (revised text needs to be re-extracted and re-validated)
-    workflow.add_edge("revise", "extract")
+    # Add error checking after extract
+    workflow.add_conditional_edges(
+        "extract",
+        should_handle_error,
+        {
+            "error": "error_handler",
+            "continue": "commit",
+        },
+    )
 
-    # Linear flow to completion
+    # Add error checking after commit
+    workflow.add_conditional_edges(
+        "commit",
+        should_handle_error,
+        {
+            "error": "error_handler",
+            "continue": "validate",
+        },
+    )
+
+    # Conditional edge: validate → (error, revise, or summarize)
+    workflow.add_conditional_edges(
+        "validate",
+        should_revise_or_handle_error,
+        {
+            "error": "error_handler",
+            "revise": "revise",
+            "continue": "summarize",
+        },
+    )
+
+    # After revision, check for errors then loop back to extract
+    workflow.add_conditional_edges(
+        "revise",
+        should_handle_error,
+        {
+            "error": "error_handler",
+            "continue": "extract",
+        },
+    )
+
+    # Summarize failures are non-critical (continue anyway)
     workflow.add_edge("summarize", "finalize")
-    workflow.add_edge("finalize", END)
+
+    # Check for errors after finalize
+    workflow.add_conditional_edges(
+        "finalize",
+        should_handle_error,
+        {
+            "error": "error_handler",
+            "continue": END,
+        },
+    )
+
+    # Error handler terminates workflow
+    workflow.add_edge("error_handler", END)
 
     # Set entry point
     workflow.set_entry_point("generate")
@@ -328,6 +489,7 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
             "revise",
             "summarize",
             "finalize",
+            "error_handler",
         ],
         entry_point="generate",
     )
@@ -689,4 +851,7 @@ __all__ = [
     "should_revise_or_continue",
     "should_initialize",
     "should_generate_chapter_outline",
+    "should_handle_error",
+    "should_revise_or_handle_error",
+    "handle_fatal_error",
 ]

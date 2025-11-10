@@ -409,6 +409,82 @@ class TestFinalizeChapter:
 
 
 @pytest.mark.asyncio
+class TestFinalizeErrorHandling:
+    """Tests for error handling in finalize node (P1.1 & P1.3)."""
+
+    async def test_finalize_chapter_missing_draft_text_fatal_error(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test finalization with missing draft_text triggers fatal error."""
+        state = {**sample_finalize_state}
+        state["draft_text"] = None
+
+        result = await finalize_chapter(state)
+
+        assert result["last_error"] is not None
+        assert "No draft text available" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "finalize"
+        assert result["current_node"] == "finalize"
+
+        mock_llm_service.async_get_embedding.assert_not_called()
+        mock_save_chapter_data.assert_not_called()
+
+    async def test_finalize_chapter_empty_draft_text_fatal_error(
+        self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
+    ):
+        """Test finalization with empty draft_text triggers fatal error."""
+        state = {**sample_finalize_state}
+        state["draft_text"] = ""
+
+        result = await finalize_chapter(state)
+
+        assert result["last_error"] is not None
+        assert "No draft text available" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "finalize"
+
+        mock_llm_service.async_get_embedding.assert_not_called()
+        mock_save_chapter_data.assert_not_called()
+
+    async def test_finalize_chapter_neo4j_failure_fatal_error(
+        self, sample_finalize_state, mock_llm_service
+    ):
+        """Test finalization with Neo4j failure triggers fatal error."""
+        with patch(
+            "core.langgraph.nodes.finalize_node.save_chapter_data_to_db"
+        ) as mock_save:
+            mock_save.side_effect = Exception("Neo4j connection failed")
+
+            result = await finalize_chapter(sample_finalize_state)
+
+            assert result["last_error"] is not None
+            assert "Neo4j" in result["last_error"]
+            assert result["has_fatal_error"] is True
+            assert result["error_node"] == "finalize"
+            assert result["current_node"] == "finalize"
+
+    async def test_finalize_chapter_embedding_failure_continues_gracefully(
+        self, sample_finalize_state, mock_save_chapter_data
+    ):
+        """Test that embedding failures don't trigger fatal error."""
+        with patch("core.langgraph.nodes.finalize_node.llm_service") as mock_llm:
+            mock_llm.async_get_embedding = AsyncMock(
+                side_effect=Exception("Embedding service down")
+            )
+
+            result = await finalize_chapter(sample_finalize_state)
+
+            assert result["last_error"] is None
+            assert result.get("has_fatal_error", False) is False
+            assert result["current_node"] == "finalize"
+
+            mock_save_chapter_data.assert_called_once()
+            call_args = mock_save_chapter_data.call_args
+            assert call_args.kwargs["embedding_array"] is None
+
+
+@pytest.mark.asyncio
 class TestFinalizeIntegration:
     """Integration tests for finalize node."""
 

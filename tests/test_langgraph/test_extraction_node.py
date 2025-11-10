@@ -296,3 +296,91 @@ class TestExtractEntities:
 
             # Check model name
             assert call_args.kwargs.get("model_name") == "test-extraction-model"
+
+
+@pytest.mark.asyncio
+class TestExtractionErrorHandling:
+    """Tests for error handling in extraction node (P1.1 & P1.3)."""
+
+    async def test_extract_entities_missing_draft_text_fatal_error(
+        self, sample_initial_state
+    ):
+        """Test extraction with missing draft_text triggers fatal error."""
+        state = sample_initial_state
+        state["draft_text"] = None
+
+        result = await extract_entities(state)
+
+        assert result["last_error"] is not None
+        assert "No draft text available" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "extract"
+        assert result["current_node"] == "extract_entities"
+        assert result["extracted_entities"] == {}
+        assert result["extracted_relationships"] == []
+
+    async def test_extract_entities_empty_draft_text_fatal_error(
+        self, sample_initial_state
+    ):
+        """Test extraction with empty draft_text triggers fatal error."""
+        state = sample_initial_state
+        state["draft_text"] = ""
+
+        result = await extract_entities(state)
+
+        assert result["last_error"] is not None
+        assert "No draft text available" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "extract"
+
+    async def test_extract_entities_llm_exception_returns_empty(
+        self, sample_initial_state, mock_llm_service
+    ):
+        """Test extraction with LLM exception returns empty response."""
+        state = sample_initial_state
+        state["draft_text"] = "Some text..."
+
+        mock_llm_service.async_call_llm.side_effect = Exception(
+            "Extraction service crashed"
+        )
+
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
+            result = await extract_entities(state)
+
+            assert result["last_error"] is not None
+            assert "LLM extraction returned empty response" in result["last_error"]
+            assert result.get("has_fatal_error", False) is False
+            assert result["extracted_entities"] == {}
+            assert result["extracted_relationships"] == []
+
+    async def test_extract_entities_parsing_exception_triggers_fatal_error(
+        self, sample_initial_state, mock_llm_service
+    ):
+        """Test extraction with parsing exception triggers fatal error."""
+        state = sample_initial_state
+        state["draft_text"] = "Some text..."
+
+        mock_llm_service.async_call_llm.return_value = (
+            '{"valid": "json"}',
+            {"prompt_tokens": 100, "completion_tokens": 50},
+        )
+
+        with patch(
+            "core.langgraph.nodes.extraction_node.llm_service", mock_llm_service
+        ):
+            with patch(
+                "core.langgraph.nodes.extraction_node._extract_updates_as_models"
+            ) as mock_parse:
+                mock_parse.side_effect = Exception("Parsing crashed")
+
+                result = await extract_entities(state)
+
+                assert result["last_error"] is not None
+                assert "Entity extraction failed" in result["last_error"]
+                assert "Parsing crashed" in result["last_error"]
+                assert result["has_fatal_error"] is True
+                assert result["error_node"] == "extract"
+                assert result["extracted_entities"] == {}
+                assert result["extracted_relationships"] == []

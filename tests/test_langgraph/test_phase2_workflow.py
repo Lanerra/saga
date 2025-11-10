@@ -13,7 +13,10 @@ import pytest
 from core.langgraph.state import Contradiction, create_initial_state
 from core.langgraph.workflow import (
     create_phase2_graph,
+    handle_fatal_error,
+    should_handle_error,
     should_revise_or_continue,
+    should_revise_or_handle_error,
 )
 
 
@@ -516,3 +519,250 @@ class TestPhase2Integration:
 
         # Graph should have nodes and edges
         # (LangGraph doesn't expose direct inspection, but compilation validates structure)
+
+
+class TestErrorRoutingFunctions:
+    """Tests for error routing conditional edge functions (P1.3)."""
+
+    def test_should_handle_error_routes_to_error_on_fatal_error(self):
+        """Test should_handle_error routes to error when has_fatal_error is True."""
+        state = {
+            "has_fatal_error": True,
+            "last_error": "Test error",
+            "error_node": "generate",
+        }
+
+        result = should_handle_error(state)
+        assert result == "error"
+
+    def test_should_handle_error_routes_to_continue_when_no_error(self):
+        """Test should_handle_error routes to continue when has_fatal_error is False."""
+        state = {
+            "has_fatal_error": False,
+            "last_error": None,
+            "error_node": None,
+        }
+
+        result = should_handle_error(state)
+        assert result == "continue"
+
+    def test_should_handle_error_routes_to_continue_when_error_missing(self):
+        """Test should_handle_error routes to continue when has_fatal_error is missing."""
+        state = {}
+
+        result = should_handle_error(state)
+        assert result == "continue"
+
+    def test_should_revise_or_handle_error_prioritizes_fatal_error(self):
+        """Test should_revise_or_handle_error prioritizes fatal error over revision."""
+        state = {
+            "has_fatal_error": True,
+            "needs_revision": True,
+            "last_error": "Fatal error",
+        }
+
+        result = should_revise_or_handle_error(state)
+        assert result == "error"
+
+    def test_should_revise_or_handle_error_routes_to_revise_when_needed(self):
+        """Test should_revise_or_handle_error routes to revise when needs_revision is True."""
+        state = {
+            "has_fatal_error": False,
+            "needs_revision": True,
+        }
+
+        result = should_revise_or_handle_error(state)
+        assert result == "revise"
+
+    def test_should_revise_or_handle_error_routes_to_continue_when_no_issues(self):
+        """Test should_revise_or_handle_error routes to continue when no errors or revision needed."""
+        state = {
+            "has_fatal_error": False,
+            "needs_revision": False,
+        }
+
+        result = should_revise_or_handle_error(state)
+        assert result == "continue"
+
+    def test_handle_fatal_error_sets_error_handler_node(self):
+        """Test handle_fatal_error node sets current_node to error_handler."""
+        state = {
+            "has_fatal_error": True,
+            "last_error": "Test fatal error",
+            "error_node": "generate",
+            "current_chapter": 1,
+        }
+
+        result = handle_fatal_error(state)
+
+        assert result["current_node"] == "error_handler"
+        assert result["has_fatal_error"] is True
+        assert result["last_error"] == "Test fatal error"
+        assert result["error_node"] == "generate"
+
+
+@pytest.mark.asyncio
+class TestWorkflowErrorHandling:
+    """Tests for error handling in Phase 2 workflow (P1.1 & P1.3)."""
+
+    async def test_workflow_routes_to_error_handler_on_generation_failure(
+        self, sample_phase2_state, mock_all_nodes
+    ):
+        """Test workflow routes to error_handler when generation fails."""
+        mock_all_nodes["generate"].side_effect = lambda state: {
+            **state,
+            "last_error": "Generation failed",
+            "has_fatal_error": True,
+            "error_node": "generate",
+            "current_node": "generate",
+        }
+
+        graph = create_phase2_graph()
+
+        result = await graph.ainvoke(sample_phase2_state)
+
+        assert result.get("has_fatal_error") is True
+        assert result.get("error_node") == "generate"
+        mock_all_nodes["generate"].assert_called_once()
+        mock_all_nodes["extract"].assert_not_called()
+
+    async def test_workflow_routes_to_error_handler_on_extraction_failure(
+        self, sample_phase2_state, mock_all_nodes
+    ):
+        """Test workflow routes to error_handler when extraction fails."""
+        mock_all_nodes["extract"].side_effect = lambda state: {
+            **state,
+            "last_error": "Extraction failed",
+            "has_fatal_error": True,
+            "error_node": "extract",
+            "current_node": "extract_entities",
+        }
+
+        graph = create_phase2_graph()
+
+        result = await graph.ainvoke(sample_phase2_state)
+
+        assert result.get("has_fatal_error") is True
+        assert result.get("error_node") == "extract"
+        mock_all_nodes["generate"].assert_called_once()
+        mock_all_nodes["extract"].assert_called()
+        mock_all_nodes["commit"].assert_not_called()
+
+    async def test_workflow_routes_to_error_handler_on_validation_failure(
+        self, sample_phase2_state, mock_all_nodes
+    ):
+        """Test workflow routes to error_handler when validation triggers fatal error."""
+        mock_all_nodes["validate"].side_effect = lambda state: {
+            **state,
+            "last_error": "Validation failed",
+            "has_fatal_error": True,
+            "error_node": "validate",
+            "current_node": "validate",
+        }
+
+        graph = create_phase2_graph()
+
+        result = await graph.ainvoke(sample_phase2_state)
+
+        assert result.get("has_fatal_error") is True
+        assert result.get("error_node") == "validate"
+        mock_all_nodes["summarize"].assert_not_called()
+        mock_all_nodes["finalize"].assert_not_called()
+
+    async def test_workflow_routes_to_error_handler_on_revision_failure(
+        self, sample_phase2_state, mock_all_nodes
+    ):
+        """Test workflow routes to error_handler when revision fails."""
+        call_count = {"validate": 0}
+
+        def validate_with_revision_then_error(state):
+            call_count["validate"] += 1
+            if call_count["validate"] == 1:
+                return {
+                    **state,
+                    "needs_revision": True,
+                    "contradictions": [
+                        Contradiction(
+                            type="test",
+                            description="Test issue",
+                            conflicting_chapters=[1],
+                            severity="minor",
+                        )
+                    ],
+                    "current_node": "validate",
+                }
+            else:
+                return {
+                    **state,
+                    "has_fatal_error": True,
+                    "last_error": "Revision max iterations",
+                    "error_node": "revise",
+                    "current_node": "validate",
+                }
+
+        mock_all_nodes["validate"].side_effect = validate_with_revision_then_error
+        mock_all_nodes["revise"].side_effect = lambda state: {
+            **state,
+            "last_error": "Max revisions reached",
+            "has_fatal_error": True,
+            "error_node": "revise",
+            "needs_revision": False,
+            "current_node": "revise",
+        }
+
+        graph = create_phase2_graph()
+
+        result = await graph.ainvoke(sample_phase2_state)
+
+        assert result.get("has_fatal_error") is True
+        mock_all_nodes["revise"].assert_called_once()
+        mock_all_nodes["summarize"].assert_not_called()
+
+    async def test_workflow_completes_successfully_without_errors(
+        self, sample_phase2_state, mock_all_nodes
+    ):
+        """Test workflow completes when no fatal errors occur."""
+        graph = create_phase2_graph()
+
+        result = await graph.ainvoke(sample_phase2_state)
+
+        assert result.get("has_fatal_error", False) is False
+        assert result["current_node"] == "finalize"
+        mock_all_nodes["generate"].assert_called_once()
+        mock_all_nodes["extract"].assert_called()
+        mock_all_nodes["commit"].assert_called()
+        mock_all_nodes["validate"].assert_called()
+        mock_all_nodes["summarize"].assert_called_once()
+        mock_all_nodes["finalize"].assert_called_once()
+
+    async def test_workflow_stops_at_first_fatal_error(
+        self, sample_phase2_state, mock_all_nodes
+    ):
+        """Test workflow stops execution at first fatal error encountered."""
+        mock_all_nodes["generate"].side_effect = lambda state: {
+            **state,
+            "draft_text": "Generated text",
+            "current_node": "generate",
+        }
+
+        mock_all_nodes["extract"].side_effect = lambda state: {
+            **state,
+            "last_error": "First fatal error",
+            "has_fatal_error": True,
+            "error_node": "extract",
+            "current_node": "extract_entities",
+        }
+
+        graph = create_phase2_graph()
+
+        result = await graph.ainvoke(sample_phase2_state)
+
+        assert result.get("has_fatal_error") is True
+        assert result.get("error_node") == "extract"
+
+        mock_all_nodes["generate"].assert_called_once()
+        mock_all_nodes["extract"].assert_called()
+        mock_all_nodes["commit"].assert_not_called()
+        mock_all_nodes["validate"].assert_not_called()
+        mock_all_nodes["summarize"].assert_not_called()
+        mock_all_nodes["finalize"].assert_not_called()

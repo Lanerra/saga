@@ -120,8 +120,10 @@ class NarrativeState(TypedDict, total=False):
     current_act: int
 
     # =========================================================================
-    # Plot Outline (compatible with existing plot_outline structure)
+    # Plot Outline - DEPRECATED
     # =========================================================================
+    # DEPRECATED: Use chapter_outlines instead (see Initialization Phase State below)
+    # This field is kept for backward compatibility and will be removed in v3.0
     plot_outline: dict[int, dict[str, Any]]
 
     # =========================================================================
@@ -170,6 +172,8 @@ class NarrativeState(TypedDict, total=False):
     # Error Handling
     # =========================================================================
     last_error: str | None
+    has_fatal_error: bool  # True if workflow should stop due to unrecoverable error
+    error_node: str | None  # Which node encountered the fatal error
     retry_count: int
 
     # =========================================================================
@@ -222,7 +226,9 @@ class NarrativeState(TypedDict, total=False):
     # Act outlines generated during initialization
     act_outlines: dict[int, dict[str, Any]]  # act_number -> act_outline
 
-    # Chapter outlines (generated on-demand or pre-generated)
+    # Chapter outlines (generated on-demand or pre-generated) - CANONICAL SOURCE
+    # This is the primary source of truth for chapter outlines.
+    # Schema per chapter: {chapter, act, scene_description, key_beats, plot_point, ...}
     chapter_outlines: dict[int, dict[str, Any]]  # chapter_number -> chapter_outline
 
     # Initialization state tracking
@@ -318,6 +324,8 @@ def create_initial_state(
         "force_continue": False,
         # Error handling
         "last_error": None,
+        "has_fatal_error": False,
+        "error_node": None,
         "retry_count": 0,
         # Filesystem paths
         "project_dir": project_dir,

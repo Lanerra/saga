@@ -340,6 +340,79 @@ class TestGenerateChapter:
 
 
 @pytest.mark.asyncio
+class TestGenerationErrorHandling:
+    """Tests for error handling in generation node (P1.1 & P1.3)."""
+
+    async def test_generate_chapter_empty_chapter_outlines_fatal_error(
+        self, sample_generation_state, mock_llm_generation, mock_context_builder
+    ):
+        """Test generation with empty chapter_outlines triggers fatal error."""
+        state = {**sample_generation_state}
+        state["chapter_outlines"] = None
+        state["plot_outline"] = None
+
+        result = await generate_chapter(state)
+
+        assert result["last_error"] is not None
+        assert "No chapter outlines available" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "generate"
+        assert result["current_node"] == "generate"
+
+        mock_llm_generation.async_call_llm.assert_not_called()
+
+    async def test_generate_chapter_missing_current_chapter_in_outlines(
+        self, sample_generation_state, mock_llm_generation, mock_context_builder
+    ):
+        """Test generation when current chapter is not in chapter_outlines."""
+        state = {**sample_generation_state}
+        state["current_chapter"] = 5
+        state["chapter_outlines"] = {1: {"plot_point": "Chapter 1"}}
+        state["plot_outline"] = None
+
+        result = await generate_chapter(state)
+
+        assert result["last_error"] is not None
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "generate"
+
+        mock_llm_generation.async_call_llm.assert_not_called()
+
+    async def test_generate_chapter_deprecation_warning_for_plot_outline(
+        self, sample_generation_state, mock_llm_generation, mock_context_builder
+    ):
+        """Test that using plot_outline triggers deprecation warning."""
+        state = {**sample_generation_state}
+        state["chapter_outlines"] = None
+        state["plot_outline"] = {
+            1: {"plot_point": "Test point"},
+            "title": "Test",
+        }
+
+        result = await generate_chapter(state)
+
+        assert result["draft_text"] is not None
+        assert result["last_error"] is None
+
+    async def test_generate_chapter_prefers_chapter_outlines_over_plot_outline(
+        self, sample_generation_state, mock_llm_generation, mock_context_builder
+    ):
+        """Test that chapter_outlines is preferred over deprecated plot_outline."""
+        state = {**sample_generation_state}
+        state["chapter_outlines"] = {
+            1: {"plot_point": "From chapter_outlines"},
+        }
+        state["plot_outline"] = {
+            1: {"plot_point": "From plot_outline"},
+        }
+
+        result = await generate_chapter(state)
+
+        assert result["draft_text"] is not None
+        assert result["last_error"] is None
+
+
+@pytest.mark.asyncio
 class TestGenerationIntegration:
     """Integration tests for generation node."""
 

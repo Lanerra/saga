@@ -68,9 +68,13 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
 
     # Validate we have text to extract from
     if not state.get("draft_text"):
-        logger.warning("extract_entities: no draft text to extract from")
+        error_msg = "No draft text available for entity extraction"
+        logger.error("extract_entities: fatal error", error=error_msg)
         return {
             **state,
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "extract",
             "extracted_entities": {},
             "extracted_relationships": [],
             "current_node": "extract_entities",
@@ -130,18 +134,21 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
         }
 
     except Exception as e:
+        error_msg = f"Entity extraction failed: {str(e)}"
         logger.error(
-            "extract_entities: error processing extraction",
-            error=str(e),
+            "extract_entities: fatal error",
+            error=error_msg,
             chapter=state["current_chapter"],
             exc_info=True,
         )
         return {
             **state,
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "extract",
             "extracted_entities": {},
             "extracted_relationships": [],
             "current_node": "extract_entities",
-            "last_error": f"Extraction processing failed: {e}",
         }
 
 

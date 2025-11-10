@@ -59,10 +59,13 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
 
     # Validate we have text to finalize
     if not state.get("draft_text"):
-        logger.error("finalize_chapter: no draft text to finalize")
+        error_msg = "No draft text available for finalization"
+        logger.error("finalize_chapter: fatal error", error=error_msg)
         return {
             **state,
-            "last_error": "No draft text available for finalization",
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "finalize",
             "current_node": "finalize",
         }
 
@@ -125,17 +128,19 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
             chapter=chapter_number,
         )
     except Exception as e:
-        error_msg = f"Error saving chapter to Neo4j: {str(e)}"
+        error_msg = f"Failed to finalize chapter: {str(e)}"
         logger.error(
-            "finalize_chapter: Neo4j save failed",
+            "finalize_chapter: fatal error - Neo4j save failed",
+            error=error_msg,
             chapter=chapter_number,
-            error=str(e),
             exc_info=True,
         )
         # This is critical - return error state
         return {
             **state,
             "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "finalize",
             "current_node": "finalize",
         }
 

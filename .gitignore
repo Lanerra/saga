@@ -8,7 +8,7 @@ htmlcov/
 .pytest_cache/
 
 # Runtime logs and debug outputs
-# output/
+output/
 
 # Generated novel output
 novel_output/
@@ -29,5 +29,4 @@ user_story_elements.ba*
 chorus.md
 story-test.txt
 .aider*
-CLAUDE.md
 .gitignore
