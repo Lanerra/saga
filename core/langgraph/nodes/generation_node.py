@@ -58,15 +58,35 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
     # Validate we have the necessary inputs
     if not state.get("plot_outline"):
-        logger.error("generate_chapter: no plot outline available")
+        error_msg = "No plot outline available for generation"
+        logger.error("generate_chapter: fatal error", error=error_msg)
         return {
             **state,
-            "last_error": "No plot outline available for generation",
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "generate",
             "current_node": "generate",
         }
 
     chapter_number = state["current_chapter"]
     plot_outline = state["plot_outline"]
+
+    # Validate chapter exists in outline
+    if chapter_number not in plot_outline:
+        error_msg = f"Chapter {chapter_number} not found in plot outline"
+        logger.error(
+            "generate_chapter: fatal error",
+            error=error_msg,
+            chapter=chapter_number,
+            available_chapters=list(plot_outline.keys()),
+        )
+        return {
+            **state,
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "generate",
+            "current_node": "generate",
+        }
 
     # Get plot point focus for this chapter
     plot_point_focus = state.get("plot_point_focus")

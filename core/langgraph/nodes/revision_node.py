@@ -60,27 +60,30 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
 
     # Step 1: Check iteration limit
     if state["iteration_count"] >= state["max_iterations"]:
-        error_msg = (
-            f"Max revisions ({state['max_iterations']}) reached. Manual review needed."
-        )
-        logger.warning(
-            "revise_chapter: max iterations reached",
-            iteration_count=state["iteration_count"],
+        error_msg = f"Max revision attempts ({state['max_iterations']}) reached"
+        logger.error(
+            "revise_chapter: iteration limit exceeded",
+            iterations=state["iteration_count"],
             max_iterations=state["max_iterations"],
         )
         return {
             **state,
-            "needs_revision": False,  # Stop the revision loop
             "last_error": error_msg,
-            "current_node": "revise_failed",
+            "has_fatal_error": True,
+            "error_node": "revise",
+            "needs_revision": False,
+            "current_node": "revise",
         }
 
     # Validate we have text to revise
     if not state.get("draft_text"):
-        logger.error("revise_chapter: no draft text to revise")
+        error_msg = "No draft text available for revision"
+        logger.error("revise_chapter: fatal error", error=error_msg)
         return {
             **state,
-            "last_error": "No draft text available for revision",
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "revise",
             "current_node": "revise",
         }
 
@@ -99,15 +102,17 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             ),
         )
     except Exception as e:
-        error_msg = f"Error constructing revision prompt: {str(e)}"
+        error_msg = f"Revision prompt construction failed: {str(e)}"
         logger.error(
-            "revise_chapter: prompt construction failed",
-            error=str(e),
+            "revise_chapter: fatal error",
+            error=error_msg,
             exc_info=True,
         )
         return {
             **state,
             "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "revise",
             "current_node": "revise",
         }
 
@@ -127,10 +132,12 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             f"Insufficient token space for revision. "
             f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
         )
-        logger.error("revise_chapter: token budget exceeded", error=error_msg)
+        logger.error("revise_chapter: fatal error - token budget exceeded", error=error_msg)
         return {
             **state,
             "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "revise",
             "current_node": "revise",
         }
 
@@ -193,16 +200,18 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     except Exception as e:
-        error_msg = f"Error during LLM revision: {str(e)}"
+        error_msg = f"Revision failed: {str(e)}"
         logger.error(
-            "revise_chapter: exception during revision",
+            "revise_chapter: fatal error",
+            error=error_msg,
             chapter=state["current_chapter"],
-            error=str(e),
             exc_info=True,
         )
         return {
             **state,
             "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "revise",
             "current_node": "revise",
         }
 

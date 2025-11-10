@@ -170,6 +170,8 @@ class NarrativeState(TypedDict, total=False):
     # Error Handling
     # =========================================================================
     last_error: str | None
+    has_fatal_error: bool  # True if workflow should stop due to unrecoverable error
+    error_node: str | None  # Which node encountered the fatal error
     retry_count: int
 
     # =========================================================================
@@ -318,6 +320,8 @@ def create_initial_state(
         "force_continue": False,
         # Error handling
         "last_error": None,
+        "has_fatal_error": False,
+        "error_node": None,
         "retry_count": 0,
         # Filesystem paths
         "project_dir": project_dir,
