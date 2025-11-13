@@ -19,8 +19,11 @@ from core.relationship_constraints.simple_types import (
     TEMPORAL,
 )
 from models.kg_constants import NODE_LABELS
-        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.INANIMATE,
-        "valid_object_types": {"Trait"} | NodeClassifications.ABSTRACT,
+
+ABSTRACT_TRAIT_RELATIONSHIPS: dict[str, dict[str, object]] = {
+    "HAS_TRAIT": {
+        "valid_subject_types": SENTIENT | INANIMATE,
+        "valid_object_types": {"Trait"} | ABSTRACT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Trait or characteristic relationship",
@@ -28,9 +31,9 @@ from models.kg_constants import NODE_LABELS
         "examples_invalid": ["Trait:Courage | HAS_TRAIT | Character:Hero"],
     },
     "HAS_VOICE": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.INANIMATE
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": INANIMATE
+        | ABSTRACT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Voice or communication channel relationship",
@@ -41,9 +44,9 @@ from models.kg_constants import NODE_LABELS
         "examples_invalid": ["WorldElement:Stone | HAS_VOICE | Character:Hero"],
     },
     "SYMBOLIZES": {
-        "valid_subject_types": NodeClassifications.INANIMATE
-        | NodeClassifications.SPATIAL,
-        "valid_object_types": NodeClassifications.ABSTRACT | {"Trait"},
+        "valid_subject_types": INANIMATE
+        | SPATIAL,
+        "valid_object_types": ABSTRACT | {"Trait"},
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Symbolic representation",
@@ -58,11 +61,11 @@ from models.kg_constants import NODE_LABELS
 
 ACCESSIBILITY_AND_USAGE_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "ACCESSIBLE_BY": {
-        "valid_subject_types": NodeClassifications.SPATIAL
-        | NodeClassifications.INFORMATIONAL
-        | NodeClassifications.INANIMATE,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.SPATIAL
+        "valid_subject_types": SPATIAL
+        | INFORMATIONAL
+        | INANIMATE,
+        "valid_object_types": SENTIENT
+        | SPATIAL
         | {"Path", "Role", "Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -74,11 +77,11 @@ ACCESSIBILITY_AND_USAGE_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "USED_IN": {
-        "valid_subject_types": NodeClassifications.INANIMATE
-        | NodeClassifications.ABSTRACT
-        | NodeClassifications.SYSTEM_ENTITIES,
-        "valid_object_types": NodeClassifications.TEMPORAL
-        | NodeClassifications.ABSTRACT
+        "valid_subject_types": INANIMATE
+        | ABSTRACT
+        | SYSTEM_ENTITIES,
+        "valid_object_types": TEMPORAL
+        | ABSTRACT
         | {"Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -90,9 +93,9 @@ ACCESSIBILITY_AND_USAGE_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "TARGETS": {
-        "valid_subject_types": NodeClassifications.INFORMATIONAL
-        | NodeClassifications.INANIMATE
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": INFORMATIONAL
+        | INANIMATE
+        | ABSTRACT,
         "valid_object_types": NODE_LABELS - {"ValueNode"},  # Can target almost anything
         "invalid_combinations": [],
         "bidirectional": False,
@@ -124,9 +127,9 @@ ASSOCIATION_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 COGNITIVE_MENTAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "BELIEVES": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.ABSTRACT
-        | NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": ABSTRACT
+        | SENTIENT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Belief relationship from sentient beings",
@@ -137,8 +140,8 @@ COGNITIVE_MENTAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Book | BELIEVES | Lore:Truth"],
     },
     "REALIZES": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.ABSTRACT | {"PlotPoint"},
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": ABSTRACT | {"PlotPoint"},
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Realization or understanding",
@@ -149,7 +152,7 @@ COGNITIVE_MENTAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Location:Library | REALIZES | Lore:Knowledge"],
     },
     "REMEMBERS": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
         "valid_object_types": NODE_LABELS - {"Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -161,9 +164,9 @@ COGNITIVE_MENTAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Diary | REMEMBERS | Character:Writer"],
     },
     "UNDERSTANDS": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.ABSTRACT
-        | NodeClassifications.INANIMATE,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": ABSTRACT
+        | INANIMATE,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Understanding relationship",
@@ -178,12 +181,12 @@ COGNITIVE_MENTAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 COMMUNICATION_AND_DISPLAY_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "DISPLAYS": {
-        "valid_subject_types": NodeClassifications.INANIMATE
-        | NodeClassifications.SYSTEM_ENTITIES
-        | NodeClassifications.SPATIAL
+        "valid_subject_types": INANIMATE
+        | SYSTEM_ENTITIES
+        | SPATIAL
         | {"WorldElement", "Entity"},
-        "valid_object_types": NodeClassifications.INFORMATIONAL
-        | NodeClassifications.ABSTRACT
+        "valid_object_types": INFORMATIONAL
+        | ABSTRACT
         | {"ValueNode", "Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -195,9 +198,9 @@ COMMUNICATION_AND_DISPLAY_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "SPOKEN_BY": {
-        "valid_subject_types": NodeClassifications.INFORMATIONAL
+        "valid_subject_types": INFORMATIONAL
         | {"Message", "ValueNode"},
-        "valid_object_types": NodeClassifications.SENTIENT,
+        "valid_object_types": SENTIENT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Communication originating from sentient beings",
@@ -208,11 +211,11 @@ COMMUNICATION_AND_DISPLAY_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "EMITS": {
-        "valid_subject_types": NodeClassifications.INANIMATE
-        | NodeClassifications.SYSTEM_ENTITIES
+        "valid_subject_types": INANIMATE
+        | SYSTEM_ENTITIES
         | {"WorldElement", "Entity"},
-        "valid_object_types": NodeClassifications.ABSTRACT
-        | NodeClassifications.INFORMATIONAL
+        "valid_object_types": ABSTRACT
+        | INFORMATIONAL
         | {"ValueNode", "Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -245,10 +248,10 @@ DEFAULT_FALLBACK_RESTRICTED: dict[str, dict[str, object]] = {
 
 EMOTIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "LOVES": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.SPATIAL
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT
+        | SPATIAL
+        | ABSTRACT,
         "invalid_combinations": [
             # No self-love validation needed - that's philosophically valid
         ],
@@ -264,10 +267,10 @@ EMOTIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         ],
     },
     "HATES": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.SPATIAL
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT
+        | SPATIAL
+        | ABSTRACT,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Emotional animosity from sentient beings toward any entity",
@@ -278,7 +281,7 @@ EMOTIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Rock | HATES | Character:Hero"],
     },
     "FEARS": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
         "valid_object_types": NODE_LABELS
         - {"Entity"},  # Can fear anything except the base Entity type
         "invalid_combinations": [],
@@ -291,10 +294,10 @@ EMOTIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Location:Cave | FEARS | Character:Hero"],
     },
     "RESPECTS": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ABSTRACT
-        | NodeClassifications.ORGANIZATIONAL,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT
+        | ABSTRACT
+        | ORGANIZATIONAL,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Respect between sentient beings or toward abstract concepts/institutions",
@@ -309,8 +312,8 @@ EMOTIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 HIERARCHICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "MENTOR_TO": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT,
         "invalid_combinations": [],
         "bidirectional": False,  # Mentorship has clear direction
         "description": "Teaching/guidance relationship between sentient beings",
@@ -318,8 +321,8 @@ HIERARCHICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Book | MENTOR_TO | Character:Student"],
     },
     "STUDENT_OF": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Learning relationship between sentient beings",
@@ -327,10 +330,10 @@ HIERARCHICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Character:Student | STUDENT_OF | WorldElement:TextBook"],
     },
     "LEADS": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL,
+        "valid_object_types": SENTIENT
+        | ORGANIZATIONAL,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Leadership relationship",
@@ -341,9 +344,9 @@ HIERARCHICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Crown | LEADS | Character:King"],
     },
     "WORKS_FOR": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT
+        | ORGANIZATIONAL,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Employment or service relationship",
@@ -354,10 +357,10 @@ HIERARCHICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Tool | WORKS_FOR | Character:Craftsman"],
     },
     "SERVES": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT
+        | ORGANIZATIONAL
+        | ABSTRACT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Service or allegiance relationship",
@@ -372,11 +375,11 @@ HIERARCHICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 INFORMATION_AND_RECORDING_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "RECORDS": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.SYSTEM_ENTITIES
-        | NodeClassifications.INFORMATIONAL,
-        "valid_object_types": NodeClassifications.INFORMATIONAL
-        | NodeClassifications.ABSTRACT
+        "valid_subject_types": SENTIENT
+        | SYSTEM_ENTITIES
+        | INFORMATIONAL,
+        "valid_object_types": INFORMATIONAL
+        | ABSTRACT
         | {"ValueNode", "Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -388,12 +391,12 @@ INFORMATION_AND_RECORDING_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "PRESERVES": {
-        "valid_subject_types": NodeClassifications.CONTAINERS
-        | NodeClassifications.SPATIAL
-        | NodeClassifications.ORGANIZATIONAL,
-        "valid_object_types": NodeClassifications.INFORMATIONAL
-        | NodeClassifications.INANIMATE
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": CONTAINERS
+        | SPATIAL
+        | ORGANIZATIONAL,
+        "valid_object_types": INFORMATIONAL
+        | INANIMATE
+        | ABSTRACT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Preservation or archival relationship",
@@ -404,11 +407,11 @@ INFORMATION_AND_RECORDING_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "HAS_METADATA": {
-        "valid_subject_types": NodeClassifications.INFORMATIONAL
-        | NodeClassifications.INANIMATE
-        | NodeClassifications.SYSTEM_ENTITIES,
-        "valid_object_types": NodeClassifications.INFORMATIONAL
-        | NodeClassifications.ABSTRACT
+        "valid_subject_types": INFORMATIONAL
+        | INANIMATE
+        | SYSTEM_ENTITIES,
+        "valid_object_types": INFORMATIONAL
+        | ABSTRACT
         | {"ValueNode", "Attribute"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -424,9 +427,9 @@ INFORMATION_AND_RECORDING_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 OPERATIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "EMPLOYS": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
-        "valid_object_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL,
+        "valid_object_types": SENTIENT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Employment or hiring relationship",
@@ -437,11 +440,11 @@ OPERATIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "CONTROLS": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL
-        | NodeClassifications.SYSTEM_ENTITIES,
-        "valid_object_types": NodeClassifications.SYSTEM_ENTITIES
-        | NodeClassifications.INANIMATE
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL
+        | SYSTEM_ENTITIES,
+        "valid_object_types": SYSTEM_ENTITIES
+        | INANIMATE
         | {"WorldElement", "Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -469,8 +472,8 @@ OPERATIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 ORGANIZATIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "MEMBER_OF": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.ORGANIZATIONAL,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": ORGANIZATIONAL,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Membership in organizations",
@@ -481,9 +484,9 @@ ORGANIZATIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Banner | MEMBER_OF | Faction:Army"],
     },
     "LEADER_OF": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.ORGANIZATIONAL
-        | NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": ORGANIZATIONAL
+        | SENTIENT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Leadership role",
@@ -494,10 +497,10 @@ ORGANIZATIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Faction:Council | LEADER_OF | Character:Mayor"],
     },
     "FOUNDED": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
-        "valid_object_types": NodeClassifications.ORGANIZATIONAL
-        | NodeClassifications.SPATIAL,
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL,
+        "valid_object_types": ORGANIZATIONAL
+        | SPATIAL,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Founding relationship",
@@ -512,8 +515,8 @@ ORGANIZATIONAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 PHYSICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "PART_OF": {
-        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
-        "valid_object_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "valid_subject_types": PHYSICAL_PRESENCE,
+        "valid_object_types": PHYSICAL_PRESENCE,
         "invalid_combinations": [
             ("Character", "WorldElement"),  # Characters aren't parts of objects
             ("Character", "Location"),  # Characters aren't parts of places
@@ -527,8 +530,8 @@ PHYSICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Character:Guard | PART_OF | Location:Castle"],
     },
     "CONNECTED_TO": {
-        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
-        "valid_object_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "valid_subject_types": PHYSICAL_PRESENCE,
+        "valid_object_types": PHYSICAL_PRESENCE,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Physical connection",
@@ -539,8 +542,8 @@ PHYSICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Trait:Loyalty | CONNECTED_TO | Character:Knight"],
     },
     "CONNECTS_TO": {
-        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
-        "valid_object_types": NodeClassifications.PHYSICAL_PRESENCE,
+        "valid_subject_types": PHYSICAL_PRESENCE,
+        "valid_object_types": PHYSICAL_PRESENCE,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Physical or functional connection (alias for CONNECTED_TO)",
@@ -551,8 +554,8 @@ PHYSICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Trait:Courage | CONNECTS_TO | Character:Hero"],
     },
     "PULSES_WITH": {
-        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE,
-        "valid_object_types": NodeClassifications.ABSTRACT
+        "valid_subject_types": PHYSICAL_PRESENCE,
+        "valid_object_types": ABSTRACT
         | {"ValueNode"},  # Can pulse with emotions, energies, etc.
         "invalid_combinations": [],
         "bidirectional": False,
@@ -564,8 +567,8 @@ PHYSICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Character:Hero | PULSES_WITH | Character:Villain"],
     },
     "RESPONDS_TO": {
-        "valid_subject_types": NodeClassifications.PHYSICAL_PRESENCE
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": PHYSICAL_PRESENCE
+        | ABSTRACT,
         "valid_object_types": NODE_LABELS - {"Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -581,9 +584,9 @@ PHYSICAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 POSSESSION_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "OWNS": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
-        "valid_object_types": NodeClassifications.OWNABLE | NodeClassifications.SPATIAL,
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL,
+        "valid_object_types": OWNABLE | SPATIAL,
         "invalid_combinations": [
             # Characters can't own other characters (slavery check)
             ("Character", "Character"),
@@ -600,9 +603,9 @@ POSSESSION_RELATIONSHIPS: dict[str, dict[str, object]] = {
         ],
     },
     "POSSESSES": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.OWNABLE
-        | NodeClassifications.ABSTRACT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": OWNABLE
+        | ABSTRACT,
         "invalid_combinations": [
             ("Character", "Character"),  # Can't possess people
         ],
@@ -615,15 +618,15 @@ POSSESSION_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Ring | POSSESSES | Character:Wearer"],
     },
     "CREATED_BY": {
-        "valid_subject_types": NodeClassifications.INANIMATE
-        | NodeClassifications.SPATIAL
-        | NodeClassifications.ABSTRACT
-        | NodeClassifications.INFORMATIONAL
-        | NodeClassifications.SYSTEM_ENTITIES,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL
-        | NodeClassifications.INANIMATE
-        | NodeClassifications.SYSTEM_ENTITIES,  # Things can be created by other things, including systems
+        "valid_subject_types": INANIMATE
+        | SPATIAL
+        | ABSTRACT
+        | INFORMATIONAL
+        | SYSTEM_ENTITIES,
+        "valid_object_types": SENTIENT
+        | ORGANIZATIONAL
+        | INANIMATE
+        | SYSTEM_ENTITIES,  # Things can be created by other things, including systems
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Creation relationship - expanded to include documents, systems, and information",
@@ -636,15 +639,15 @@ POSSESSION_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Character:Hero | CREATED_BY | WorldElement:Potion"],
     },
     "CREATES": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL
-        | NodeClassifications.INANIMATE
-        | NodeClassifications.SYSTEM_ENTITIES,  # Inverse of CREATED_BY
-        "valid_object_types": NodeClassifications.INANIMATE
-        | NodeClassifications.SPATIAL
-        | NodeClassifications.ABSTRACT
-        | NodeClassifications.INFORMATIONAL
-        | NodeClassifications.SYSTEM_ENTITIES,
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL
+        | INANIMATE
+        | SYSTEM_ENTITIES,  # Inverse of CREATED_BY
+        "valid_object_types": INANIMATE
+        | SPATIAL
+        | ABSTRACT
+        | INFORMATIONAL
+        | SYSTEM_ENTITIES,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Active creation relationship - inverse of CREATED_BY",
@@ -660,8 +663,8 @@ POSSESSION_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 SOCIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "FAMILY_OF": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Family relationships between sentient beings",
@@ -672,8 +675,8 @@ SOCIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         ],
     },
     "FRIEND_OF": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Friendship between sentient beings",
@@ -681,10 +684,10 @@ SOCIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Character:Hero | FRIEND_OF | WorldElement:Sword"],
     },
     "ENEMY_OF": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL,
+        "valid_object_types": SENTIENT
+        | ORGANIZATIONAL,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Enmity between sentient beings or organizations",
@@ -695,10 +698,10 @@ SOCIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["WorldElement:Sword | ENEMY_OF | Character:Hero"],
     },
     "ALLY_OF": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
-        "valid_object_types": NodeClassifications.SENTIENT
-        | NodeClassifications.ORGANIZATIONAL,
+        "valid_subject_types": SENTIENT
+        | ORGANIZATIONAL,
+        "valid_object_types": SENTIENT
+        | ORGANIZATIONAL,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Alliance between sentient beings or organizations",
@@ -709,8 +712,8 @@ SOCIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Location:Castle | ALLY_OF | Character:King"],
     },
     "ROMANTIC_WITH": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.SENTIENT,
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": SENTIENT,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Romantic relationships between sentient beings",
@@ -722,8 +725,8 @@ SOCIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 SPATIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "LOCATED_IN": {
-        "valid_subject_types": NodeClassifications.LOCATABLE,
-        "valid_object_types": NodeClassifications.SPATIAL,
+        "valid_subject_types": LOCATABLE,
+        "valid_object_types": SPATIAL,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Containment within a spatial location",
@@ -737,8 +740,8 @@ SPATIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         ],
     },
     "LOCATED_AT": {
-        "valid_subject_types": NodeClassifications.LOCATABLE,
-        "valid_object_types": NodeClassifications.SPATIAL,
+        "valid_subject_types": LOCATABLE,
+        "valid_object_types": SPATIAL,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Presence at a specific location",
@@ -749,18 +752,18 @@ SPATIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Trait:Brave | LOCATED_AT | Location:Battlefield"],
     },
     "CONTAINS": {
-        "valid_subject_types": NodeClassifications.SPATIAL
-        | NodeClassifications.CONTAINERS
-        | NodeClassifications.INFORMATIONAL
-        | NodeClassifications.SYSTEM_ENTITIES
+        "valid_subject_types": SPATIAL
+        | CONTAINERS
+        | INFORMATIONAL
+        | SYSTEM_ENTITIES
         | {
             "WorldElement",
             "Entity",
             "Artifact",
         },  # Expanded to include information containers
-        "valid_object_types": NodeClassifications.LOCATABLE
-        | NodeClassifications.INFORMATIONAL
-        | NodeClassifications.ABSTRACT
+        "valid_object_types": LOCATABLE
+        | INFORMATIONAL
+        | ABSTRACT
         | {
             "ValueNode",
             "Entity",
@@ -779,10 +782,10 @@ SPATIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Character:Hero | CONTAINS | Character:Friend"],
     },
     "NEAR": {
-        "valid_subject_types": NodeClassifications.LOCATABLE
-        | NodeClassifications.SPATIAL,
-        "valid_object_types": NodeClassifications.LOCATABLE
-        | NodeClassifications.SPATIAL,
+        "valid_subject_types": LOCATABLE
+        | SPATIAL,
+        "valid_object_types": LOCATABLE
+        | SPATIAL,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Proximity relationship",
@@ -793,8 +796,8 @@ SPATIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": ["Trait:Courage | NEAR | Location:Battlefield"],
     },
     "ADJACENT_TO": {
-        "valid_subject_types": NodeClassifications.SPATIAL,
-        "valid_object_types": NodeClassifications.SPATIAL,
+        "valid_subject_types": SPATIAL,
+        "valid_object_types": SPATIAL,
         "invalid_combinations": [],
         "bidirectional": True,
         "description": "Direct spatial adjacency",
@@ -806,9 +809,9 @@ SPATIAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
 
 SPECIAL_ACTION_RELATIONSHIPS: dict[str, dict[str, object]] = {
     "WHISPERS": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.SYSTEM_ENTITIES,
-        "valid_object_types": NodeClassifications.INFORMATIONAL
+        "valid_subject_types": SENTIENT
+        | SYSTEM_ENTITIES,
+        "valid_object_types": INFORMATIONAL
         | {"Message", "ValueNode"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -820,8 +823,8 @@ SPECIAL_ACTION_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "WORE": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.INANIMATE | {"Item", "Object"},
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": INANIMATE | {"Item", "Object"},
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Past wearing or carrying relationship",
@@ -829,8 +832,8 @@ SPECIAL_ACTION_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "DEPRECATED": {
-        "valid_subject_types": NodeClassifications.SYSTEM_ENTITIES
-        | NodeClassifications.ORGANIZATIONAL,
+        "valid_subject_types": SYSTEM_ENTITIES
+        | ORGANIZATIONAL,
         "valid_object_types": NODE_LABELS - {"Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -852,11 +855,11 @@ STATUS_AND_STATE_CHANGE_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "CHARACTERIZED_BY": {
-        "valid_subject_types": NodeClassifications.TEMPORAL
-        | NodeClassifications.ABSTRACT
-        | NodeClassifications.SPATIAL,
-        "valid_object_types": NodeClassifications.ABSTRACT
-        | NodeClassifications.INFORMATIONAL
+        "valid_subject_types": TEMPORAL
+        | ABSTRACT
+        | SPATIAL,
+        "valid_object_types": ABSTRACT
+        | INFORMATIONAL
         | {"Concept", "Attribute"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -865,8 +868,8 @@ STATUS_AND_STATE_CHANGE_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "IS_NOW": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.ORGANIZATIONAL | {"Role", "Status"},
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": ORGANIZATIONAL | {"Role", "Status"},
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Current role or status",
@@ -874,8 +877,8 @@ STATUS_AND_STATE_CHANGE_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "IS_NO_LONGER": {
-        "valid_subject_types": NodeClassifications.SENTIENT,
-        "valid_object_types": NodeClassifications.ORGANIZATIONAL | {"Role", "Status"},
+        "valid_subject_types": SENTIENT,
+        "valid_object_types": ORGANIZATIONAL | {"Role", "Status"},
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Former role or status",
@@ -937,10 +940,10 @@ TEMPORAL_CAUSAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],  # Very permissive for narrative flexibility
     },
     "OCCURRED_IN": {
-        "valid_subject_types": NodeClassifications.TEMPORAL
-        | NodeClassifications.ABSTRACT,
-        "valid_object_types": NodeClassifications.TEMPORAL
-        | NodeClassifications.SPATIAL
+        "valid_subject_types": TEMPORAL
+        | ABSTRACT,
+        "valid_object_types": TEMPORAL
+        | SPATIAL
         | {"ValueNode"},  # Can occur at times or places
         "invalid_combinations": [],
         "bidirectional": False,
@@ -952,8 +955,8 @@ TEMPORAL_CAUSAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
         "examples_invalid": [],
     },
     "PREVENTS": {
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.INANIMATE,
+        "valid_subject_types": SENTIENT
+        | INANIMATE,
         "valid_object_types": NODE_LABELS - {"Entity"},
         "invalid_combinations": [],
         "bidirectional": False,
@@ -978,8 +981,8 @@ TEMPORAL_CAUSAL_RELATIONSHIPS: dict[str, dict[str, object]] = {
     },
     "TRIGGERS": {
         "valid_subject_types": NODE_LABELS - {"Entity"},
-        "valid_object_types": NodeClassifications.TEMPORAL
-        | NodeClassifications.ABSTRACT,
+        "valid_object_types": TEMPORAL
+        | ABSTRACT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Triggering of events or states",
