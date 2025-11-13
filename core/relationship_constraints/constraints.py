@@ -19,16 +19,12 @@ from core.relationship_constraints.simple_types import (
     TEMPORAL,
 )
 from models.kg_constants import NODE_LABELS
-        "valid_subject_types": NodeClassifications.SENTIENT
-        | NodeClassifications.INANIMATE,
+        "valid_subject_types": NodeClassifications.SENTIENT | NodeClassifications.INANIMATE,
         "valid_object_types": {"Trait"} | NodeClassifications.ABSTRACT,
         "invalid_combinations": [],
         "bidirectional": False,
         "description": "Trait or characteristic relationship",
-        "examples_valid": [
-            "Character:Hero | HAS_TRAIT | Trait:Brave",
-            "WorldElement:Sword | HAS_TRAIT | Trait:Sharp",
-        ],
+        "examples_valid": ["Character:Hero | HAS_TRAIT | Trait:Brave", "WorldElement:Sword | HAS_TRAIT | Trait:Sharp"],
         "examples_invalid": ["Trait:Courage | HAS_TRAIT | Character:Hero"],
     },
     "HAS_VOICE": {
