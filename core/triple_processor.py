@@ -4,31 +4,15 @@ Triple processing service for knowledge graph validation.
 
 This module handles the complex logic of processing and validating triples,
 separating concerns from the main validation logic to improve maintainability.
-
-UPDATED: Now uses unified dependency injection system for better testability
-and consistent service management across SAGA.
 """
 
-from abc import ABC, abstractmethod
 from typing import Any
 
 import structlog
 
+from core.simple_type_inference import infer_object_type, infer_subject_type
+
 logger = structlog.get_logger(__name__)
-
-
-class TypeInferenceServiceInterface(ABC):
-    """Interface for type inference services."""
-
-    @abstractmethod
-    def infer_subject_type(self, subject_info: dict) -> str:
-        """Infer the type of a subject entity."""
-        pass
-
-    @abstractmethod
-    def infer_object_type(self, object_info: dict, is_literal: bool = False) -> str:
-        """Infer the type of an object entity."""
-        pass
 
 
 class TripleProcessor:
@@ -38,25 +22,16 @@ class TripleProcessor:
     This class handles the complex logic of extracting and preparing entity
     information from triple dictionaries, separating this concern from the
     core validation logic.
-
-    Simplified for single-user deployment without dependency injection overhead.
     """
 
-    def __init__(self, type_inference_service: TypeInferenceServiceInterface = None):
-        """
-        Initialize the triple processor.
-
-        Args:
-            type_inference_service: Optional type inference service to use
-        """
+    def __init__(self):
+        """Initialize the triple processor."""
         self._processing_stats = {
             "total_triples_processed": 0,
             "successful_extractions": 0,
             "extraction_errors": 0,
             "type_inferences": 0,
         }
-        self._type_inference_service = type_inference_service
-        self._service_registry_used = False
 
     def process_triple(self, triple_dict: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -127,10 +102,8 @@ class TripleProcessor:
             logger.warning(f"Missing or empty subject name in triple: {triple_dict}")
             return None
 
-        # Use type inference service to get proper subject type
-        subject_type = self._get_type_inference_service().infer_subject_type(
-            subject_info
-        )
+        # Use simple type inference to get proper subject type
+        subject_type = infer_subject_type(subject_info)
         self._processing_stats["type_inferences"] += 1
 
         return {
@@ -181,10 +154,8 @@ class TripleProcessor:
                 logger.warning(f"Missing or empty object name in triple: {triple_dict}")
                 return None
 
-            # Use type inference service to get proper object type
-            object_type = self._get_type_inference_service().infer_object_type(
-                object_entity_info, is_literal=False
-            )
+            # Use simple type inference to get proper object type
+            object_type = infer_object_type(object_entity_info, is_literal=False)
             self._processing_stats["type_inferences"] += 1
 
             return {
@@ -193,27 +164,6 @@ class TripleProcessor:
                 "is_literal": False,
                 "original_info": object_entity_info,
             }
-
-    def _get_type_inference_service(self) -> TypeInferenceServiceInterface:
-        """
-        Get type inference service.
-
-        Simplified for single-user deployment without dependency injection overhead.
-        """
-        # Direct instantiation - no dependency injection needed for static deployment
-        if (
-            not hasattr(self, "_type_inference_service")
-            or self._type_inference_service is None
-        ):
-            from core.intelligent_type_inference import IntelligentTypeInference
-            from core.schema_introspector import schema_introspector
-
-            self._type_inference_service = IntelligentTypeInference(schema_introspector)
-            logger.debug(
-                "Type inference service created directly for static deployment"
-            )
-
-        return self._type_inference_service
 
     def process_batch(self, triples: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
@@ -260,71 +210,4 @@ class TripleProcessor:
             "successful_extractions": 0,
             "extraction_errors": 0,
             "type_inferences": 0,
-            "service_registry_resolutions": 0,
-            "fallback_resolutions": 0,
         }
-
-    def get_service_info(self) -> dict[str, Any]:
-        """
-        Get service information for monitoring (ServiceInterface compliance).
-        """
-        return {
-            "service_name": "TripleProcessor",
-            "service_type": "triple_processing",
-            "dependency_injection_method": "service_registry"
-            if self._service_registry_used
-            else "validation_provider",
-            "type_inference_service_available": self._type_inference_service
-            is not None,
-            "type_inference_service_type": type(self._type_inference_service).__name__
-            if self._type_inference_service
-            else None,
-            "processing_statistics": self._processing_stats,
-            "supports_batch_processing": True,
-            "supports_statistics_reset": True,
-        }
-
-    def set_type_inference_service(
-        self, service: TypeInferenceServiceInterface
-    ) -> None:
-        """
-        Set the type inference service explicitly (useful for testing).
-
-        Args:
-            service: Type inference service instance to use
-        """
-        self._type_inference_service = service
-        self._service_registry_used = False
-        logger.debug(f"Type inference service set explicitly: {type(service).__name__}")
-
-    def dispose(self) -> None:
-        """
-        Dispose of the triple processor and clean up resources.
-
-        Called by service lifecycle manager during shutdown.
-        """
-        self._type_inference_service = None
-        self._service_registry_used = False
-        logger.debug("Triple processor disposed")
-
-
-# Factory function for enhanced triple processor creation
-def create_triple_processor_with_service(
-    type_inference_service: TypeInferenceServiceInterface,
-) -> TripleProcessor:
-    """
-    Create a triple processor with a specific type inference service.
-
-    Useful for testing and specialized configurations.
-
-    Args:
-        type_inference_service: Type inference service to use
-
-    Returns:
-        Configured TripleProcessor instance
-    """
-    processor = TripleProcessor(type_inference_service)
-    logger.debug(
-        f"Created triple processor with service: {type(type_inference_service).__name__}"
-    )
-    return processor

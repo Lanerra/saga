@@ -3,11 +3,22 @@
 
 from __future__ import annotations
 
-from core.enhanced_node_taxonomy import NodeClassification as NodeClassifications
+from core.relationship_constraints.simple_types import (
+    ABSTRACT,
+    CONSCIOUS,
+    CONTAINERS,
+    INFORMATIONAL,
+    INANIMATE,
+    LOCATABLE,
+    ORGANIZATIONAL,
+    OWNABLE,
+    PHYSICAL_PRESENCE,
+    SENTIENT,
+    SPATIAL,
+    SYSTEM_ENTITIES,
+    TEMPORAL,
+)
 from models.kg_constants import NODE_LABELS
-
-ABSTRACT_TRAIT_RELATIONSHIPS: dict[str, dict[str, object]] = {
-    "HAS_TRAIT": {
         "valid_subject_types": NodeClassifications.SENTIENT
         | NodeClassifications.INANIMATE,
         "valid_object_types": {"Trait"} | NodeClassifications.ABSTRACT,
