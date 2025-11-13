@@ -135,6 +135,9 @@ SYSTEM_ENTITIES = {
     "Economy",
 }
 
+# Entities capable of social relationships (sentient beings + organizations)
+SOCIAL = SENTIENT | ORGANIZATIONAL
+
 # Physical presence (things that exist physically in space)
 PHYSICAL_PRESENCE = (
     SENTIENT
