@@ -52,26 +52,6 @@ def register_cache_service(service_name: str) -> None:
     _ensure_service(service_name)
 
 
-def invalidate_by_tag(
-    tag: str, service_name: str | None = None
-) -> None:  # pragma: no cover
-    """Removed: tag-based invalidation is no longer supported."""
-    raise NotImplementedError("Tag-based invalidation removed")
-
-
-def add_tags(key: str, tags: set[str], service_name: str) -> None:  # pragma: no cover
-    """Removed: tagging is no longer supported."""
-    raise NotImplementedError("Tagging removed")
-
-
-def get_by_tag(tag: str, service_name: str) -> dict[str, Any]:  # pragma: no cover
-    """Removed: tag queries are no longer supported."""
-    raise NotImplementedError("Tag queries removed")
-
-
 def clear_service_cache(service_name: str) -> None:
     """Clear all cache entries for a service."""
     _SERVICE_CACHES[service_name] = {}
-
-
-## Note: The cache is intentionally minimal. No TTLs, tags, metrics beyond size, or async variants.
