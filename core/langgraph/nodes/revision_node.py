@@ -195,6 +195,12 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             revised_text, segment_level="paragraph"
         )
 
+        # Track if deduplication modified text (signals potentially flawed extraction)
+        # Preserve existing flag if already set, or set based on this revision
+        is_from_flawed_draft = state.get("is_from_flawed_draft", False) or (
+            removed_chars > 0
+        )
+
         if removed_chars > 0:
             final_word_count = len(deduplicated_text.split())
             logger.info(
@@ -204,6 +210,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
                 chars_removed=removed_chars,
                 original_words=word_count,
                 final_words=final_word_count,
+                is_from_flawed_draft=True,
             )
         else:
             deduplicated_text = revised_text
@@ -212,12 +219,14 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
                 "revise_chapter: no duplicates detected",
                 chapter=state["current_chapter"],
                 iteration=state["iteration_count"] + 1,
+                is_from_flawed_draft=is_from_flawed_draft,
             )
 
         return {
             **state,
             "draft_text": deduplicated_text,
             "draft_word_count": final_word_count,
+            "is_from_flawed_draft": is_from_flawed_draft,
             "iteration_count": state["iteration_count"] + 1,
             "contradictions": [],  # Will be re-validated
             "needs_revision": False,  # Reset flag, will be set again by validation if needed

@@ -239,6 +239,9 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
             draft_text, segment_level="paragraph"
         )
 
+        # Track if deduplication modified text (signals potentially flawed extraction)
+        is_from_flawed_draft = removed_chars > 0
+
         if removed_chars > 0:
             final_word_count = len(deduplicated_text.split())
             logger.info(
@@ -247,6 +250,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
                 chars_removed=removed_chars,
                 original_words=word_count,
                 final_words=final_word_count,
+                is_from_flawed_draft=True,
             )
         else:
             deduplicated_text = draft_text
@@ -254,12 +258,14 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
             logger.info(
                 "generate_chapter: no duplicates detected",
                 chapter=chapter_number,
+                is_from_flawed_draft=False,
             )
 
         return {
             **state,
             "draft_text": deduplicated_text,
             "draft_word_count": final_word_count,
+            "is_from_flawed_draft": is_from_flawed_draft,
             "current_node": "generate",
             "last_error": None,
             "hybrid_context": hybrid_context_for_draft,  # Store for potential reuse

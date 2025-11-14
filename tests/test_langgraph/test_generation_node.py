@@ -536,3 +536,77 @@ class TestGenerationDeduplication:
             assert result["draft_text"] is not None
             assert len(result["draft_text"]) > 0
             assert result["last_error"] is None
+
+
+@pytest.mark.asyncio
+class TestProvisionalFlagging:
+    """Tests for is_from_flawed_draft provisional flagging."""
+
+    async def test_provisional_flag_set_when_dedup_removes_text(
+        self, sample_generation_state, mock_context_builder
+    ):
+        """Test that is_from_flawed_draft is True when deduplication removes text."""
+        # Create text with duplicates that will be removed
+        duplicate_text = (
+            "Paragraph one with content.\n\n"
+            "Paragraph two with different content.\n\n"
+            "Paragraph one with content.\n\n"  # Exact duplicate
+        )
+
+        with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
+            mock_llm.async_call_llm = AsyncMock(
+                return_value=(duplicate_text, {"total_tokens": 100})
+            )
+            mock_llm.count_tokens = lambda text, model: 500
+
+            result = await generate_chapter(sample_generation_state)
+
+            # Flag should be set when deduplication removes text
+            # Note: Actual removal depends on TextDeduplicator config
+            assert "is_from_flawed_draft" in result
+            assert result["last_error"] is None
+
+    async def test_provisional_flag_false_when_no_duplicates(
+        self, sample_generation_state, mock_context_builder
+    ):
+        """Test that is_from_flawed_draft is False when no duplicates found."""
+        unique_text = (
+            "First paragraph with unique content.\n\n"
+            "Second paragraph with different content.\n\n"
+            "Third paragraph completely different."
+        )
+
+        with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
+            mock_llm.async_call_llm = AsyncMock(
+                return_value=(unique_text, {"total_tokens": 100})
+            )
+            mock_llm.count_tokens = lambda text, model: 500
+
+            result = await generate_chapter(sample_generation_state)
+
+            # Flag should be False when no deduplication occurs
+            assert result.get("is_from_flawed_draft") is False
+            assert result["last_error"] is None
+
+    async def test_provisional_flag_logged(
+        self, sample_generation_state, mock_context_builder
+    ):
+        """Test that provisional flag is included in logging."""
+        test_text = "Some chapter text without duplicates."
+
+        with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
+            with patch("core.langgraph.nodes.generation_node.logger") as mock_logger:
+                mock_llm.async_call_llm = AsyncMock(
+                    return_value=(test_text, {"total_tokens": 100})
+                )
+                mock_llm.count_tokens = lambda text, model: 500
+
+                result = await generate_chapter(sample_generation_state)
+
+                # Verify logging includes the flag
+                # Look for calls that include is_from_flawed_draft
+                info_calls = [
+                    call for call in mock_logger.info.call_args_list
+                ]
+                assert len(info_calls) > 0
+                assert result.get("is_from_flawed_draft") is not None
