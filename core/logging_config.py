@@ -78,7 +78,7 @@ def setup_saga_logging():
     ):
         existing_console = None
         if root_logger.handlers:
-            for h_idx, h in enumerate(root_logger.handlers):
+            for _h_idx, h in enumerate(root_logger.handlers):
                 if hasattr(h, "console") and not isinstance(
                     h, stdlib_logging.FileHandler
                 ):

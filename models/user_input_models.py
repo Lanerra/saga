@@ -136,7 +136,7 @@ def user_story_to_objects(
         characters[ant_cp.name] = ant_cp
 
     if model.other_key_characters:
-        for name, info in model.other_key_characters.items():
+        for _name, info in model.other_key_characters.items():
             cp = CharacterProfile(name=info.name)
             cp.description = info.description or ""
             cp.traits = info.traits

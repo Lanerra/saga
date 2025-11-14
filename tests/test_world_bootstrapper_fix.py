@@ -33,7 +33,7 @@ async def test_union_operation_fix():
 
     # This should not raise AttributeError: 'list' object has no attribute 'union'
     try:
-        result = await _bootstrap_world_names(
+        await _bootstrap_world_names(
             world_building, plot_outline, state_tracker
         )
         # If we get here without exception, the fix worked

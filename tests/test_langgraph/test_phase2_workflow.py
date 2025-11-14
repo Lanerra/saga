@@ -316,7 +316,7 @@ class TestPhase2Workflow:
         graph = create_phase2_graph()
 
         # Execute workflow
-        result = await graph.ainvoke(state)
+        await graph.ainvoke(state)
 
         # Should revise exactly max_iterations times (2)
         assert mock_all_nodes["revise"].call_count == 2
@@ -352,7 +352,7 @@ class TestPhase2Workflow:
         graph = create_phase2_graph()
 
         # Execute workflow
-        result = await graph.ainvoke(state)
+        await graph.ainvoke(state)
 
         # Revision should not be called (force_continue)
         mock_all_nodes["revise"].assert_not_called()
@@ -384,7 +384,7 @@ class TestPhase2Workflow:
         graph = create_phase2_graph()
 
         # Execute workflow
-        result = await graph.ainvoke(sample_phase2_state)
+        await graph.ainvoke(sample_phase2_state)
 
         # Verify execution order
         expected_order = [

@@ -43,7 +43,7 @@ class TestCacheIntegration:
         embedding_client = EmbeddingHTTPClient(mock_http_client)
 
         # Create embedding service (this should auto-register with cache coordinator)
-        embedding_service = EmbeddingService(embedding_client)
+        EmbeddingService(embedding_client)
 
         # Verify service is registered by performing cache operations
         test_key = "test_cache_key"
@@ -104,7 +104,7 @@ class TestCacheIntegration:
     def test_schema_introspector_cache_integration(self):
         """Test that SchemaIntrospector integrates with coordinated cache."""
         # Create schema introspector (this should auto-register with cache coordinator)
-        schema_introspector = SchemaIntrospector()
+        SchemaIntrospector()
 
         # Verify service is registered by performing cache operations
         test_labels = {"Person", "Location", "Event"}

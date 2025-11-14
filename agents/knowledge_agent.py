@@ -1318,8 +1318,6 @@ class KnowledgeAgent:
             return candidates
 
         try:
-            # Get all tracked entities from StateTracker
-            tracked_entities = asyncio.create_task(state_tracker.get_all())
             # Since this method needs to be sync for compatibility, we'll implement
             # async version separately and call it from async contexts
             logger.debug(
@@ -1364,7 +1362,6 @@ class KnowledgeAgent:
 
             for candidate in candidates:
                 candidate_name = candidate.get("name", "")
-                candidate_id = candidate.get("id", "")
 
                 # Base score
                 score = 0.0

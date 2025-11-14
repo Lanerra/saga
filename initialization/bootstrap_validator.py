@@ -334,7 +334,7 @@ async def quick_validate_world(
         seen_names = set()
         duplicates = []
 
-        for name, item in locations.items():
+        for name, _item in locations.items():
             if name in seen_names:
                 duplicates.append(name)
             else:
@@ -389,7 +389,7 @@ async def quick_validate_characters(
     seen_names = set()
     duplicates = []
 
-    for name, profile in character_profiles.items():
+    for name, _profile in character_profiles.items():
         if name in seen_names:
             duplicates.append(name)
         else:

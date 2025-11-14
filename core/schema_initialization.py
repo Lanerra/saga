@@ -33,7 +33,7 @@ def setup_static_schema_logging():
     ]
 
     for logger_name in schema_loggers:
-        component_logger = structlog.get_logger(logger_name)
+        structlog.get_logger(logger_name)
         # For structlog, we don't set levels directly on loggers
         # The level filtering is handled by the configuration
         pass

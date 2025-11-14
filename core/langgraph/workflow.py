@@ -535,30 +535,6 @@ def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSa
     return checkpointer
 
 
-def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"]:
-    """
-    Conditional edge function: Determine if initialization is needed.
-
-    Routes to:
-    - "initialize": If initialization_complete=False
-    - "generate": If initialization_complete=True
-
-    Args:
-        state: Current narrative state
-
-    Returns:
-        Next node name ("initialize" or "generate")
-    """
-    initialization_complete = state.get("initialization_complete", False)
-
-    if not initialization_complete:
-        logger.info("should_initialize: initialization required, routing to init")
-        return "initialize"
-    else:
-        logger.info("should_initialize: initialization complete, routing to generate")
-        return "generate"
-
-
 def should_generate_chapter_outline(
     state: NarrativeState,
 ) -> Literal["chapter_outline", "generate"]:

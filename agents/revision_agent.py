@@ -46,11 +46,6 @@ class RevisionAgent:
         """
         logger.info("Validating revision", threshold=self.threshold)
 
-        # Extract required information from world_state
-        plot_outline = world_state.get("plot_outline", {})
-        chapter_number = world_state.get("chapter_number", 1)
-        previous_chapters_context = world_state.get("previous_chapters_context", "")
-
         # Step 1: Check continuity (from WorldContinuityAgent)
         continuity_problems = await self._check_continuity(chapter_text, world_state)
 

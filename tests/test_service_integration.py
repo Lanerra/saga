@@ -25,7 +25,7 @@ def test_embedding_service_cache():
     # (actual network calls are not exercised in this test)
     mock_http_client = HTTPClientService()
     embedding_client = EmbeddingHTTPClient(mock_http_client)
-    embedding_service = EmbeddingService(embedding_client)
+    EmbeddingService(embedding_client)
 
     # Test that the service registered itself
     metrics = get_cache_metrics("llm_embedding")
@@ -40,7 +40,7 @@ def test_schema_introspector_cache():
     print("Testing SchemaIntrospector cache integration...")
 
     # Create schema introspector
-    schema_introspector = SchemaIntrospector()
+    SchemaIntrospector()
 
     # Test cache operations
     test_labels = {"Person", "Location", "Event"}

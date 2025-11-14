@@ -354,7 +354,7 @@ async def _bootstrap_world_names(
             generated_names[generated_name] = category
 
             # Other items need new names (fallback to sequential)
-            for category, item_name, item_obj in conflicting_items[1:]:
+            for category, item_name, _item_obj in conflicting_items[1:]:
                 failed_generations.append((category, item_name))
 
     # Sequential fallback for failed/conflicted items
@@ -596,7 +596,7 @@ async def _bootstrap_world_properties(
                 ),
             ]
 
-            for prop_name, prop_field, prop_description in list_properties_to_bootstrap:
+            for prop_name, _prop_field, prop_description in list_properties_to_bootstrap:
                 current_value = getattr(item_obj, prop_name, None)
                 if not current_value or len(current_value) == 0:
                     logger.info(
