@@ -4,6 +4,8 @@
 
 **NOTE**: `MAX_REVISION_CYCLES_PER_CHAPTER` currently defaults to `0`, effectively disabling the revision cycle during chapter generation. It is currently broken and imminently going to be refactored.
 
+**DEPRECATION NOTICE**: As of Phase 2, LangGraph is now the default orchestration pipeline. The legacy NANA pipeline is deprecated and will be removed in SAGA v3.0. To use the legacy NANA pipeline, run `python main.py --nana`. Please migrate to LangGraph for continued support.
+
 SAGA is a local‑first, single‑process Python CLI that uses a Neo4j knowledge graph and a small set of cooperating agents to plan, draft, and revise long‑form fiction while preserving continuity across chapters.
 
 
@@ -46,9 +48,14 @@ Start Neo4j (optional helper)
 docker-compose up -d   # uses docker-compose.yml in this repo
 ```
 
-Run the generator
+Run the generator (uses LangGraph workflow by default)
 ```bash
 python main.py
+```
+
+Run with legacy NANA pipeline (deprecated)
+```bash
+python main.py --nana
 ```
 
 Optional: Run the bootstrap independent of the novel generation cycle (world → characters → plot)
@@ -91,7 +98,9 @@ python main.py --ingest path/to/novel.txt
 
 ## CLI Overview
 
-`python main.py` — start the chapter generation loop.
+`python main.py` — start the chapter generation loop (uses LangGraph workflow by default).
+
+`python main.py --nana` — use legacy NANA pipeline (deprecated; will be removed in v3.0).
 
 `python main.py --bootstrap [options]` — run the multi‑phase bootstrap and exit.
 - `--bootstrap-phase {world|characters|plot|all}`
@@ -100,7 +109,7 @@ python main.py --ingest path/to/novel.txt
 - `--bootstrap-kg-heal` (heal/enrich after each phase write)
 - `--bootstrap-reset-kg` (wipe Neo4j before bootstrapping; destructive)
 
-`python main.py --ingest <file>` — ingest a text file into the KG (experimental).
+`python main.py --ingest <file>` — ingest a text file into the KG (experimental; requires `--nana` flag).
 
 
 ## Configuration

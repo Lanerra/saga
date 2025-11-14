@@ -20,9 +20,10 @@ def main() -> None:
 
     # LangGraph vs Legacy Pipeline
     parser.add_argument(
-        "--langgraph",
+        "--nana",
         action="store_true",
-        help="Use LangGraph-based workflow instead of legacy NANA pipeline.",
+        help="[DEPRECATED] Use legacy NANA pipeline instead of LangGraph workflow. "
+        "NANA pipeline will be removed in SAGA v3.0. Please migrate to LangGraph.",
     )
 
     # Bootstrap CLI flags (standalone and integrated)
@@ -60,13 +61,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Choose orchestrator based on --langgraph flag
-    if args.langgraph:
-        logger.info("Using LangGraph-based workflow")
-        orchestrator = LangGraphOrchestrator()
-    else:
-        logger.info("Using legacy NANA workflow")
+    # Choose orchestrator based on --nana flag (LangGraph is now default)
+    if args.nana:
+        logger.warning(
+            "Using DEPRECATED legacy NANA pipeline. "
+            "This pipeline will be removed in SAGA v3.0. "
+            "Please migrate to LangGraph workflow (now default).",
+            deprecation=True,
+        )
         orchestrator = NANA_Orchestrator()
+    else:
+        logger.info("Using LangGraph-based workflow (default)")
+        orchestrator = LangGraphOrchestrator()
 
     try:
         if args.bootstrap:
@@ -116,7 +122,10 @@ def main() -> None:
             if hasattr(orchestrator, "run_ingestion_process"):
                 asyncio.run(orchestrator.run_ingestion_process(args.ingest))
             else:
-                logger.error("Ingestion not supported with LangGraph orchestrator yet")
+                logger.error(
+                    "Ingestion is not yet supported with LangGraph orchestrator. "
+                    "Use --nana flag to run ingestion with legacy NANA pipeline."
+                )
         else:
             asyncio.run(orchestrator.run_novel_generation_loop())
     except KeyboardInterrupt:
