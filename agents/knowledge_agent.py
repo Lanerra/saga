@@ -625,15 +625,10 @@ class KnowledgeAgent:
     async def summarize_chapter(
         self, chapter_text: str | None, chapter_number: int
     ) -> tuple[str | None, dict[str, int] | None]:
-        if (
-            not chapter_text
-            or len(chapter_text) < config.MIN_ACCEPTABLE_DRAFT_LENGTH // 2
-        ):
+        if not chapter_text:
             logger.warning(
-                "Chapter %s text too short for summarization (%d chars, min_req for meaningful summary: %d).",
+                "Chapter %s text is empty, cannot summarize.",
                 chapter_number,
-                len(chapter_text or ""),
-                config.MIN_ACCEPTABLE_DRAFT_LENGTH // 2,
             )
             return None, None
 
@@ -1323,8 +1318,6 @@ class KnowledgeAgent:
             return candidates
 
         try:
-            # Get all tracked entities from StateTracker
-            tracked_entities = asyncio.create_task(state_tracker.get_all())
             # Since this method needs to be sync for compatibility, we'll implement
             # async version separately and call it from async contexts
             logger.debug(
@@ -1369,7 +1362,6 @@ class KnowledgeAgent:
 
             for candidate in candidates:
                 candidate_name = candidate.get("name", "")
-                candidate_id = candidate.get("id", "")
 
                 # Base score
                 score = 0.0

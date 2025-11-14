@@ -27,7 +27,7 @@ class Neo4jManagerSingleton:
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
-            cls._instance = super(Neo4jManagerSingleton, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance._initialized_flag = False
         return cls._instance
 
@@ -72,7 +72,7 @@ class Neo4jManagerSingleton:
                     "original_error": str(e),
                     "suggestion": "Ensure the Neo4j database is running and accessible",
                 },
-            )
+            ) from e
         except Exception as e:
             self.logger.critical(
                 "Unexpected error during Neo4j connection",
@@ -81,7 +81,7 @@ class Neo4jManagerSingleton:
                 exc_info=True,
             )
             self.driver = None
-            raise handle_database_error("connection", e, uri=config.NEO4J_URI)
+            raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
 
     async def close(self):
         """Close the synchronous driver."""
@@ -182,7 +182,7 @@ class Neo4jManagerSingleton:
                         "original_error": str(e),
                         "operation": "batch_execution",
                     },
-                )
+                ) from e
 
     def _ensure_connected_sync(self):
         """Synchronous counterpart of _ensure_connected for thread helpers."""
@@ -286,7 +286,7 @@ class Neo4jManagerSingleton:
                             "original_error": str(e),
                             "operation": "execute_in_transaction",
                         },
-                    )
+                    ) from e
 
         return await asyncio.to_thread(_run_transaction)
 

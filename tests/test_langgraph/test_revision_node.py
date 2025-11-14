@@ -418,7 +418,7 @@ class TestReviseChapter:
         self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
     ):
         """Test that revision uses the revision_model from state."""
-        result = await revise_chapter(sample_revision_state)
+        await revise_chapter(sample_revision_state)
 
         # Verify correct model was used
         call_args = mock_llm_revision.async_call_llm.call_args
@@ -428,7 +428,7 @@ class TestReviseChapter:
         self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
     ):
         """Test that revision uses lower temperature for consistency."""
-        result = await revise_chapter(sample_revision_state)
+        await revise_chapter(sample_revision_state)
 
         # Verify temperature is lower than generation default
         call_args = mock_llm_revision.async_call_llm.call_args

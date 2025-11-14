@@ -88,9 +88,6 @@ async def test_run_bootstrap_pipeline_skips_with_user_story(monkeypatch, tmp_pat
         async def persist_profiles(self, *_args, **_kwargs):
             calls["persist_profiles"] = calls.get("persist_profiles", 0) + 1
 
-        async def heal_and_enrich_kg(self, *_args, **_kwargs):
-            calls["heal"] = calls.get("heal", 0) + 1
-
     async def stub_save_plot(plot_outline):
         calls["save_plot"] = {
             "title": plot_outline.get("title"),

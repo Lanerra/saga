@@ -18,7 +18,6 @@ from agents.knowledge_agent import KnowledgeAgent
 from data_access import plot_queries
 from initialization.bootstrap_validator import (
     BootstrapValidationResult,
-    create_bootstrap_validation_report,
     quick_validate_characters,
     quick_validate_world,
     validate_bootstrap_result,
@@ -111,10 +110,9 @@ async def run_world_phase(
     state_tracker: StateTracker,
     *,
     dry_run: bool = False,
-    kg_heal: bool = False,
     kg_agent: KnowledgeAgent | None = None,
 ) -> tuple[dict[str, dict[str, WorldItem]], BootstrapValidationResult]:
-    """Generate world, validate uniqueness, optionally persist and heal."""
+    """Generate world, validate uniqueness, optionally persist."""
     world_building = world_building or create_default_world()
 
     world_building, _ = await bootstrap_world(
@@ -151,8 +149,6 @@ async def run_world_phase(
         await kg.persist_world(
             world_building, config.KG_PREPOPULATION_CHAPTER_NUM, full_sync=True
         )
-        if kg_heal and getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True):
-            await kg.heal_and_enrich_kg()
 
     return world_building, validation
 
@@ -163,11 +159,10 @@ async def run_characters_phase(
     state_tracker: StateTracker,
     *,
     dry_run: bool = False,
-    kg_heal: bool = False,
     world_building: dict[str, dict[str, WorldItem]] | None = None,
     kg_agent: KnowledgeAgent | None = None,
 ) -> tuple[dict[str, CharacterProfile], BootstrapValidationResult]:
-    """Generate characters, validate duplicates, optionally persist and heal."""
+    """Generate characters, validate duplicates, optionally persist."""
     protagonist_name = plot_outline.get(
         "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
     )
@@ -198,8 +193,6 @@ async def run_characters_phase(
         await kg.persist_profiles(
             character_profiles, config.KG_PREPOPULATION_CHAPTER_NUM, full_sync=True
         )
-        if kg_heal and getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True):
-            await kg.heal_and_enrich_kg()
 
     return character_profiles, validation
 
@@ -210,7 +203,6 @@ async def run_plot_phase(
     world_building: dict[str, dict[str, WorldItem]],
     *,
     dry_run: bool = False,
-    kg_heal: bool = False,
 ) -> tuple[dict[str, Any], BootstrapValidationResult]:
     """Generate plot outline leveraging world + characters; validate and persist."""
     plot_outline = plot_outline or create_default_plot(
@@ -313,7 +305,6 @@ async def run_bootstrap_pipeline(
     level: BootstrapLevel = "enhanced",
     *,
     dry_run: bool = False,
-    kg_heal: bool = False,
 ) -> tuple[
     dict[str, Any],
     dict[str, CharacterProfile],
@@ -370,8 +361,6 @@ async def run_bootstrap_pipeline(
                     config.KG_PREPOPULATION_CHAPTER_NUM,
                     full_sync=True,
                 )
-                if kg_heal and getattr(config, "BOOTSTRAP_RUN_KG_HEAL", True):
-                    await kg.heal_and_enrich_kg()
             return plot_outline, character_profiles, world_building, warnings
 
         logger.info(
@@ -397,7 +386,6 @@ async def run_bootstrap_pipeline(
             world_building,
             state_tracker,
             dry_run=dry_run,
-            kg_heal=kg_heal,
             kg_agent=kg_agent,
         )
         # Deduplicate warnings across phases
@@ -411,7 +399,6 @@ async def run_bootstrap_pipeline(
             character_profiles,
             state_tracker,
             dry_run=dry_run,
-            kg_heal=kg_heal,
             world_building=world_building,
             kg_agent=kg_agent,
         )
@@ -425,7 +412,6 @@ async def run_bootstrap_pipeline(
             character_profiles,
             world_building,
             dry_run=dry_run,
-            kg_heal=kg_heal,
         )
         warnings.extend([w for w in plot_val.warnings if w not in warnings])
 
@@ -468,15 +454,10 @@ async def run_bootstrap_pipeline(
                 ]
                 warnings.extend(validation_warnings)
 
-                # Create validation report for debugging
-                validation_report = create_bootstrap_validation_report(
-                    validation_errors
-                )
                 logger.info(
                     "Bootstrap validation completed",
                     validation_passed=len(validation_errors) == 0,
                     error_count=len(validation_errors),
-                    report_summary=validation_report.get("summary"),
                 )
 
         except Exception as e:

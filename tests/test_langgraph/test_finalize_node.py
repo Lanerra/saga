@@ -145,7 +145,7 @@ class TestFinalizeChapter:
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
         """Test that chapter is saved as .md with YAML front matter and .txt mirror."""
-        result = await finalize_chapter(sample_finalize_state)
+        await finalize_chapter(sample_finalize_state)
 
         project_dir = Path(sample_finalize_state["project_dir"])
         chapters_dir = project_dir / "chapters"
@@ -187,7 +187,7 @@ class TestFinalizeChapter:
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
         """Test that embedding is generated for the chapter."""
-        result = await finalize_chapter(sample_finalize_state)
+        await finalize_chapter(sample_finalize_state)
 
         # Verify embedding was requested
         mock_llm_service.async_get_embedding.assert_called_once()
@@ -332,7 +332,7 @@ class TestFinalizeChapter:
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
         """Test that summary is included in Neo4j save."""
-        result = await finalize_chapter(sample_finalize_state)
+        await finalize_chapter(sample_finalize_state)
 
         # Verify summary was passed to Neo4j
         call_args = mock_save_chapter_data.call_args
@@ -370,7 +370,7 @@ class TestFinalizeChapter:
 
             shutil.rmtree(chapters_dir)
 
-        result = await finalize_chapter(sample_finalize_state)
+        await finalize_chapter(sample_finalize_state)
 
         # Directory should be created
         assert chapters_dir.exists()
@@ -384,7 +384,7 @@ class TestFinalizeChapter:
             state = {**sample_finalize_state}
             state["current_chapter"] = chapter_num
 
-            result = await finalize_chapter(state)
+            await finalize_chapter(state)
 
             project_dir = Path(state["project_dir"])
             chapters_dir = project_dir / "chapters"

@@ -1,12 +1,11 @@
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Union
 
 import structlog
 
 logger = structlog.get_logger(__name__)
 
-PathLike = Union[str, Path]
+PathLike = str | Path
 
 
 def _require_file(root: Path, relative: str, missing: list[str]) -> None:

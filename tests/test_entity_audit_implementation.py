@@ -147,7 +147,7 @@ class TestEntityAuditImplementation:
         fields but fails to detect the core duplicate name issue.
         """
         # Create character profiles with potential duplicates
-        character_profiles = {
+        {
             "Alice": CharacterProfile(name="Alice", description="First character"),
             "Bob": CharacterProfile(name="Bob", description="Second character"),
         }
@@ -195,12 +195,12 @@ class TestEntityAuditImplementation:
         # Test the full bootstrap -> validation -> healing workflow
 
         # 1. Bootstrap phase with StateTracker integration
-        characters = [
+        [
             CharacterProfile(name="Hero", description="Main protagonist"),
             CharacterProfile(name="Villain", description="Main antagonist"),
         ]
 
-        world_items = [
+        [
             WorldItem.from_dict(
                 "locations", "Castle", {"description": "Ancient fortress"}
             ),

@@ -78,10 +78,6 @@ class NarrativeAgent:
             )
             parsed_data = safe_json_loads(cleaned_json_text, expected=list)
             if parsed_data is None:
-                if config.settings.NARRATIVE_JSON_DEBUG_SAVE:
-                    self._save_malformed_json_for_debugging(
-                        cleaned_json_text, chapter_number
-                    )
                 return None
 
         if not isinstance(parsed_data, list):
@@ -185,31 +181,6 @@ class NarrativeAgent:
         return text.strip()
 
     # JSON extraction moved to utils/json_utils.py for reuse
-
-    def _save_malformed_json_for_debugging(
-        self, malformed_json: str, chapter_number: int
-    ) -> None:
-        """
-        Save malformed JSON to a file for debugging purposes.
-        """
-        try:
-            import os
-
-            import config
-
-            # Use configured debug outputs directory under BASE_OUTPUT_DIR
-            debug_dir = config.DEBUG_OUTPUTS_DIR
-            os.makedirs(debug_dir, exist_ok=True)
-
-            filename = f"chapter_{chapter_number:04d}_malformed_scene_plan.json"
-            filepath = os.path.join(debug_dir, filename)
-
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(malformed_json)
-
-            logger.info(f"Saved malformed JSON for debugging: {filepath}")
-        except Exception as e:
-            logger.error(f"Failed to save malformed JSON for debugging: {e}")
 
     async def _plan_chapter_scenes(
         self,
@@ -414,8 +385,6 @@ class NarrativeAgent:
                     "scene_detail": scene_detail,
                     "hybrid_context_for_draft": hybrid_context_for_draft,
                     "previous_scenes_prose": previous_scenes_prose_for_prompt,
-                    "min_length_per_scene": self.config.MIN_ACCEPTABLE_DRAFT_LENGTH
-                    // len(chapter_plan),
                 },
             )
 
@@ -530,7 +499,6 @@ class NarrativeAgent:
                     "novel_genre": novel_genre,
                     "plot_point_focus": plot_point_focus,
                     "hybrid_context_for_draft": hybrid_context_for_draft,
-                    "min_length": self.config.MIN_ACCEPTABLE_DRAFT_LENGTH,
                 },
             )
             prompt_tokens = self._cached_count_tokens(prompt, self.model)
@@ -602,13 +570,6 @@ class NarrativeAgent:
         Returns:
             True if quality checks pass, False otherwise.
         """
-        # Check minimum length
-        if len(draft_text.strip()) < self.config.MIN_ACCEPTABLE_DRAFT_LENGTH:
-            logger.warning(
-                f"Draft too short: {len(draft_text)} characters. Minimum required: {self.config.MIN_ACCEPTABLE_DRAFT_LENGTH}"
-            )
-            return False
-
         # Check for common coherence issues
         # Look for repetitive patterns that might indicate poor quality
 

@@ -223,7 +223,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
 
         match_end = match_start + len(cleaned_llm_quote_for_direct_search)
         found_sentence_span = None
-        for sent_text, s_start, s_end in sentences:
+        for _sent_text, s_start, s_end in sentences:
             if s_start <= match_start < s_end and s_start < match_end <= s_end:
                 found_sentence_span = (s_start, s_end)
                 break

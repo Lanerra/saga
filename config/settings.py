@@ -142,7 +142,6 @@ class SagaSettings(BaseSettings):
     WORLD_BUILDER_FILE: str = "world_building.json"
     CHAPTERS_DIR: str = "chapters"
     CHAPTER_LOGS_DIR: str = "chapter_logs"
-    DEBUG_OUTPUTS_DIR: str = "debug_outputs"
 
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
@@ -152,7 +151,6 @@ class SagaSettings(BaseSettings):
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 2
-    KG_HEALING_INTERVAL: int = 2
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 20
     MAX_CONCURRENT_CHAPTERS: int = 1
 
@@ -177,8 +175,6 @@ class SagaSettings(BaseSettings):
 
     # Revision and Validation
     ENABLE_COMPREHENSIVE_EVALUATION: bool = True
-    ENABLE_WORLD_CONTINUITY_CHECK: bool = True
-    ENABLE_SCENE_PLAN_VALIDATION: bool = True
     ENABLE_PATCH_BASED_REVISION: bool = True
     AGENT_ENABLE_PATCH_VALIDATION: bool = True
     MAX_PATCH_INSTRUCTIONS_TO_GENERATE: int = 5
@@ -186,20 +182,16 @@ class SagaSettings(BaseSettings):
     MAX_CHARS_FOR_PATCH_CONTEXT_WINDOW: int = 16384
     PATCH_VALIDATION_THRESHOLD: int = 70
     REVISION_COHERENCE_THRESHOLD: float = 0.60
-    REVISION_SIMILARITY_ACCEPTANCE: float = 0.995
     POST_PATCH_PROBLEM_THRESHOLD: int = 0
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 0
     MAX_SUMMARY_TOKENS: int = 8192
     MAX_KG_TRIPLE_TOKENS: int = 8192
     MAX_PREPOP_KG_TOKENS: int = 16384
 
-    MIN_ACCEPTABLE_DRAFT_LENGTH: int = 12000
-
     # Narrative Agent Configuration
     NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS: int = 1000
     NARRATIVE_CONTEXT_TEXT_TAIL_CHARS: int = 1000
     NARRATIVE_TOKEN_BUFFER: int = 200
-    NARRATIVE_JSON_DEBUG_SAVE: bool = True
 
     ENABLE_DYNAMIC_STATE_ADAPTATION: bool = True
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
@@ -267,7 +259,6 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_HIGHER_SETTING: str = "enhanced"  # basic|enhanced|max
     BOOTSTRAP_VALIDATE_EACH_PHASE: bool = True
     BOOTSTRAP_PUSH_TO_KG_EACH_PHASE: bool = True
-    BOOTSTRAP_RUN_KG_HEAL: bool = True
     BOOTSTRAP_FAIL_FAST: bool = True
 
     # Enhanced character bootstrap settings
@@ -287,11 +278,6 @@ class SagaSettings(BaseSettings):
             object.__setattr__(
                 self, "MAX_GENERATION_TOKENS", min(self.MAX_GENERATION_TOKENS, 2048)
             )
-            object.__setattr__(
-                self,
-                "MIN_ACCEPTABLE_DRAFT_LENGTH",
-                min(self.MIN_ACCEPTABLE_DRAFT_LENGTH, 3500),
-            )
             # Slightly reduce planning and patch windows to match
             object.__setattr__(
                 self,
@@ -310,7 +296,7 @@ class SagaSettings(BaseSettings):
             )
         return self
 
-    model_config = SettingsConfigDict(env_prefix="", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
 
 settings = SagaSettings()
@@ -356,13 +342,11 @@ CHARACTER_PROFILES_FILE = os.path.join(
 WORLD_BUILDER_FILE = os.path.join(settings.BASE_OUTPUT_DIR, settings.WORLD_BUILDER_FILE)
 CHAPTERS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTERS_DIR)
 CHAPTER_LOGS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTER_LOGS_DIR)
-DEBUG_OUTPUTS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.DEBUG_OUTPUTS_DIR)
 
 # Ensure output directories exist
 os.makedirs(settings.BASE_OUTPUT_DIR, exist_ok=True)
 os.makedirs(CHAPTERS_DIR, exist_ok=True)
 os.makedirs(CHAPTER_LOGS_DIR, exist_ok=True)
-os.makedirs(DEBUG_OUTPUTS_DIR, exist_ok=True)
 
 # Configure structlog to integrate with standard logging and output human‑readable messages
 structlog.configure(

@@ -459,7 +459,7 @@ async def bootstrap_characters(
 
     # Pre-reserve all placeholder names to prevent conflicts during parallel generation
     placeholder_reservations = {}
-    for name, profile in character_profiles.items():
+    for name, _profile in character_profiles.items():
         if name in [
             "Antagonist",
             "SupportingChar1",

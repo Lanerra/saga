@@ -213,71 +213,7 @@ class BootstrapValidationPipeline:
 
         return corrected
 
-    def generate_validation_report(
-        self,
-        validation_errors: list[ConfigurationValidationError],
-        corrections: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Generate a detailed validation report.
-
-        Args:
-            validation_errors: List of validation errors found
-            corrections: Suggested corrections (if any)
-
-        Returns:
-            Dictionary containing validation report
-        """
-        report = {
-            "validation_timestamp": None,  # Will be set by caller
-            "total_errors": len(validation_errors),
-            "is_valid": len(validation_errors) == 0,
-            "errors": [
-                {
-                    "field": error.field,
-                    "message": error.message,
-                    "bootstrap_value": str(error.bootstrap_value),
-                    "runtime_value": str(error.runtime_value),
-                }
-                for error in validation_errors
-            ],
-            "corrections": corrections,
-            "summary": self._generate_validation_summary(validation_errors),
-        }
-
-        return report
-
-    def _generate_validation_summary(
-        self, validation_errors: list[ConfigurationValidationError]
-    ) -> str:
-        """
-        Generate a human-readable summary of validation results.
-
-        Args:
-            validation_errors: List of validation errors
-
-        Returns:
-            Summary string
-        """
-        if not validation_errors:
-            return "Bootstrap validation passed: All content is consistent with runtime configuration."
-
-        error_fields = [error.field for error in validation_errors]
-        field_counts = {}
-        for field in error_fields:
-            field_counts[field] = field_counts.get(field, 0) + 1
-
-        summary_parts = [
-            f"Bootstrap validation failed with {len(validation_errors)} error(s):"
-        ]
-
-        for field, count in field_counts.items():
-            summary_parts.append(f"  - {field}: {count} error(s)")
-
-        return " ".join(summary_parts)
-
-
-# Global pipeline instance
+    # Global pipeline instance
 bootstrap_validation_pipeline = BootstrapValidationPipeline()
 
 
@@ -299,23 +235,6 @@ async def validate_bootstrap_result(
     )
 
 
-def create_bootstrap_validation_report(
-    validation_errors: list[ConfigurationValidationError],
-    corrections: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """
-    Create a validation report for bootstrap results.
-
-    Args:
-        validation_errors: List of validation errors found
-        corrections: Suggested corrections (if any)
-
-    Returns:
-        Dictionary containing validation report
-    """
-    return bootstrap_validation_pipeline.generate_validation_report(
-        validation_errors, corrections
-    )
 
 
 async def validate_bootstrap_results(
@@ -415,7 +334,7 @@ async def quick_validate_world(
         seen_names = set()
         duplicates = []
 
-        for name, item in locations.items():
+        for name, _item in locations.items():
             if name in seen_names:
                 duplicates.append(name)
             else:
@@ -470,7 +389,7 @@ async def quick_validate_characters(
     seen_names = set()
     duplicates = []
 
-    for name, profile in character_profiles.items():
+    for name, _profile in character_profiles.items():
         if name in seen_names:
             duplicates.append(name)
         else:

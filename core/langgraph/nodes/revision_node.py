@@ -332,13 +332,6 @@ Please ensure your revision stays true to this plot point while addressing all i
                     f"   Suggested fix: {contradiction.suggested_fix}\n"
                 )
 
-    # Note about length requirements
-    min_length = getattr(config, "MIN_ACCEPTABLE_DRAFT_LENGTH", 8000)
-    length_issue_explicit_instruction = ""
-    if len(draft_text) < min_length:
-        length_issue_explicit_instruction = f"""**LENGTH REQUIREMENT:** The original draft was too short ({len(draft_text)} chars).
-Your revision MUST be at least {min_length} characters of narrative text."""
-
     # Render using the full chapter rewrite template
     prompt = render_prompt(
         "revision_agent/full_chapter_rewrite.j2",
@@ -348,12 +341,10 @@ Your revision MUST be at least {min_length} characters of narrative text."""
             "revision_reason": revision_reason,
             "all_problem_descriptions": all_problem_descriptions,
             "deduplication_note": "",  # Not applicable in this context
-            "length_issue_explicit_instruction": length_issue_explicit_instruction,
             "plan_focus_section": plan_focus_section,
             "hybrid_context_for_revision": hybrid_context,
             "original_snippet": draft_text,  # Full text, not just snippet
             "genre": novel_genre,
-            "min_acceptable_draft_length": min_length,
         },
     )
 

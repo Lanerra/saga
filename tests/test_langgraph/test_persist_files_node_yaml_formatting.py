@@ -92,11 +92,11 @@ def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
     state = _make_state(tmp_path)
 
     # Execute node
-    new_state = (
+    (
         yaml.safe_load(
             yaml.safe_dump(
                 {
-                    **(awaitable := persist_initialization_files(state)),  # type: ignore[func-returns-value]
+                    **(_awaitable := persist_initialization_files(state)),  # type: ignore[func-returns-value]
                 }
             )
         )

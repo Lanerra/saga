@@ -1,6 +1,12 @@
 # tests/test_prompts_templates.py
 import pytest
-from jinja2 import DictLoader, Environment, StrictUndefined
+from jinja2 import (
+    DictLoader,
+    Environment,
+    StrictUndefined,
+    TemplateError,
+    UndefinedError,
+)
 
 import prompts.prompt_renderer as pr
 
@@ -12,7 +18,7 @@ def test_renderer_uses_strict_undefined(monkeypatch):
         undefined=StrictUndefined,
     )
     monkeypatch.setattr(pr, "_env", env)
-    with pytest.raises(Exception):
+    with pytest.raises((UndefinedError, TemplateError)):
         pr.render_prompt("tpl.j2", {})
 
 
