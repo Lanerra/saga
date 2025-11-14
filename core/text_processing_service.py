@@ -42,7 +42,7 @@ class TokenizerService:
             "fallback_used": 0,
         }
 
-    @functools.lru_cache(maxsize=config.TOKENIZER_CACHE_SIZE)
+    @functools.lru_cache(maxsize=config.TOKENIZER_CACHE_SIZE)  # noqa: B019
     def get_tokenizer(self, model_name: str) -> tiktoken.Encoding | None:
         """
         Get a tiktoken encoder for the given model name, with caching.

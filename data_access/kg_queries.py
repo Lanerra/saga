@@ -856,7 +856,6 @@ def validate_relationship_type(proposed_type: str) -> str:
         "LED": "LEADER_OF",
         "FOLLOWED": "SERVES",
         # Additional employment variations
-        "EMPLOY": "LEADS",
         "MANAGE": "LEADS",
         "LIVE": "LOCATED_IN",
         "RESIDE": "LOCATED_IN",
