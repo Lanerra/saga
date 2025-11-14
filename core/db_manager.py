@@ -268,7 +268,9 @@ class Neo4jManagerSingleton:
                 try:
                     result = transaction_func(tx, *args, **kwargs)
                     tx.commit()
-                    self.logger.debug("execute_in_transaction: transaction committed successfully")
+                    self.logger.debug(
+                        "execute_in_transaction: transaction committed successfully"
+                    )
                     return result
                 except Exception as e:
                     self.logger.error(

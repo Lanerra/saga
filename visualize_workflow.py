@@ -138,7 +138,10 @@ def _generate_all_workflows(output_dir: str, format_override: str | None) -> Non
     workflows = {
         "phase1": (create_phase1_graph, "Phase 1 Workflow (Extract, Commit, Validate)"),
         "phase2": (create_phase2_graph, "Phase 2 Workflow (Full Chapter Generation)"),
-        "full": (create_full_workflow_graph, "Full SAGA Workflow (Initialization + Generation)"),
+        "full": (
+            create_full_workflow_graph,
+            "Full SAGA Workflow (Initialization + Generation)",
+        ),
     }
 
     print(f"Generating visualizations in {output_dir}/\n")

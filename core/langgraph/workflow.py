@@ -333,9 +333,7 @@ def should_revise_or_handle_error(
         return "continue"
 
     if needs_revision:
-        logger.info(
-            "should_revise_or_handle_error: revision needed, routing to revise"
-        )
+        logger.info("should_revise_or_handle_error: revision needed, routing to revise")
         return "revise"
 
     return "continue"

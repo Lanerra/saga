@@ -27,7 +27,6 @@ from __future__ import annotations
 import structlog
 
 import config
-from core.knowledge_graph_service import knowledge_graph_service
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from data_access import chapter_queries, kg_queries
 from models.kg_models import CharacterProfile, WorldItem
@@ -781,7 +780,6 @@ def _build_chapter_node_statement(
     Returns:
         Tuple of (cypher_query, parameters)
     """
-    from core.db_manager import neo4j_manager
 
     query = """
     MERGE (c:Chapter {number: $chapter_number_param})

@@ -212,9 +212,7 @@ def infer_entity_type(
             for word in ["character", "person", "human", "humanoid"]
         ):
             return "Character"
-        elif any(
-            word in category_lower for word in ["location", "place", "area"]
-        ):
+        elif any(word in category_lower for word in ["location", "place", "area"]):
             return "Location"
         elif any(
             word in category_lower for word in ["structure", "building", "construct"]

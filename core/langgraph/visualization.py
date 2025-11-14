@@ -212,7 +212,9 @@ def _export_ascii(graph, output_path: Path, title: str | None) -> None:
                 lines.append(f"  {source} --> {target}")
 
         lines.append("")
-        lines.append(f"Entry Point: {graph_obj.entry_point if hasattr(graph_obj, 'entry_point') else 'unknown'}")
+        lines.append(
+            f"Entry Point: {graph_obj.entry_point if hasattr(graph_obj, 'entry_point') else 'unknown'}"
+        )
         lines.append("")
 
         ascii_diagram = "\n".join(lines)

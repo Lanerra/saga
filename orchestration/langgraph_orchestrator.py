@@ -270,7 +270,9 @@ class LangGraphOrchestrator:
                     )
                     break
                 else:
-                    logger.error(f"Chapter {current_chapter} generation failed - no events received")
+                    logger.error(
+                        f"Chapter {current_chapter} generation failed - no events received"
+                    )
                     break
 
             except Exception as e:
@@ -311,7 +313,9 @@ class LangGraphOrchestrator:
         # The node name is the KEY, and the state update is the VALUE.
 
         if not isinstance(event, dict) or len(event) == 0:
-            logger.warning("Received empty or invalid event", event_type=type(event).__name__)
+            logger.warning(
+                "Received empty or invalid event", event_type=type(event).__name__
+            )
             return
 
         # Extract node name and state update from event
@@ -324,7 +328,11 @@ class LangGraphOrchestrator:
             logger.debug(f"Skipping internal node event: {node_name}")
             return
 
-        initialization_step = state_update.get("initialization_step", "") if isinstance(state_update, dict) else ""
+        initialization_step = (
+            state_update.get("initialization_step", "")
+            if isinstance(state_update, dict)
+            else ""
+        )
 
         # Determine human-readable step description
         step_description = self._get_step_description(node_name, initialization_step)
@@ -386,7 +394,7 @@ class LangGraphOrchestrator:
         elif node_name == "finalize":
             word_count = state_update.get("draft_word_count", 0)
             logger.info(
-                f"  ✅ Chapter finalized",
+                "  ✅ Chapter finalized",
                 word_count=word_count,
                 chapter=chapter_number,
             )
@@ -395,7 +403,7 @@ class LangGraphOrchestrator:
             character_count = len(state_update.get("character_sheets", {}))
             act_count = len(state_update.get("act_outlines", {}))
             logger.info(
-                f"  🎭 Initialization complete",
+                "  🎭 Initialization complete",
                 characters=character_count,
                 acts=act_count,
             )
@@ -416,7 +424,9 @@ class LangGraphOrchestrator:
         # Initialization phase descriptions
         # Only use initialization_step if it's a recognized initialization phase
         # Ignore chapter outline completion markers like "chapter_outline_2_complete"
-        if initialization_step and not initialization_step.startswith("chapter_outline"):
+        if initialization_step and not initialization_step.startswith(
+            "chapter_outline"
+        ):
             init_descriptions = {
                 "character_sheets": "Generating Character Sheets",
                 "global_outline": "Creating Global Story Outline",
