@@ -71,19 +71,13 @@ docker-compose up -d
 
 ### Running SAGA
 ```bash
-# Legacy NANA pipeline (default)
+# Run generation loop
 python main.py
-
-# LangGraph pipeline (experimental)
-python main.py --langgraph
 
 # Bootstrap world/characters/plot (standalone)
 python main.py --bootstrap
 python main.py --bootstrap --bootstrap-phase world  # or characters|plot
 python main.py --bootstrap --bootstrap-reset-kg     # destructive: wipes Neo4j first
-
-# Ingest existing text (experimental)
-python main.py --ingest path/to/novel.txt
 ```
 
 ### Testing
@@ -130,18 +124,14 @@ python init_test_minimal.py      # minimal test
 
 ## Architecture Overview
 
-### Two Orchestration Modes
+### Orchestration
 
-1. **Legacy NANA Pipeline** (`orchestration/nana_orchestrator.py`)
-   - Original imperative orchestrator
-   - Custom state management
-   - Sequential chapter flow
-
-2. **LangGraph Pipeline** (`orchestration/langgraph_orchestrator.py`)
-   - Graph-based workflow with declarative nodes
-   - Built-in checkpointing (SQLite)
-   - Automatic resume from interruption
-   - Defined in `core/langgraph/workflow.py`
+**LangGraph Pipeline** (`orchestration/langgraph_orchestrator.py`)
+- Graph-based workflow with declarative nodes
+- Built-in checkpointing (SQLite)
+- Automatic resume from interruption
+- Defined in `core/langgraph/workflow.py`
+- Phase 3: Legacy NANA orchestrator removed
 
 ### Core Components
 
@@ -167,9 +157,10 @@ python init_test_minimal.py      # minimal test
 - `bootstrappers/`: World, character, and plot generators with validation
 
 **Orchestration** (`orchestration/`)
-- `langgraph_orchestrator.py`: LangGraph-based workflow orchestrator
-- `nana_orchestrator.py`: Legacy procedural orchestrator
-- `chapter_flow.py`: Chapter generation loop logic
+- `langgraph_orchestrator.py`: LangGraph-based workflow orchestrator (only orchestrator)
+
+**Logging** (`core/`)
+- `logging_config.py`: SAGA logging setup with Rich console and file rotation
 
 **Processing** (`processing/`)
 - Text processing utilities, embeddings, semantic search
@@ -377,10 +368,9 @@ def my_node(state: NarrativeState) -> NarrativeState:
 
 ## Known Issues & Current State
 
-From README warning:
-- SAGA is in functional flux during LangGraph refactor
+Current state:
 - `MAX_REVISION_CYCLES_PER_CHAPTER` defaults to 0 (disabled, broken, being refactored)
-- LangGraph pipeline is experimental; legacy NANA pipeline is stable default
+- Phase 3 complete: Legacy NANA orchestrator removed, LangGraph is the only pipeline
 
 ## Documentation
 

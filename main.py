@@ -5,26 +5,17 @@ import asyncio
 import structlog
 
 from core.db_manager import neo4j_manager
+from core.logging_config import setup_saga_logging
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
 from orchestration.langgraph_orchestrator import LangGraphOrchestrator
-from orchestration.nana_orchestrator import NANA_Orchestrator, setup_logging_nana
 
 logger = structlog.get_logger(__name__)
 
 
 def main() -> None:
-    setup_logging_nana()
+    setup_saga_logging()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ingest", default=None, help="Path to text file to ingest")
-
-    # LangGraph vs Legacy Pipeline
-    parser.add_argument(
-        "--nana",
-        action="store_true",
-        help="[DEPRECATED] Use legacy NANA pipeline instead of LangGraph workflow. "
-        "NANA pipeline will be removed in SAGA v3.0. Please migrate to LangGraph.",
-    )
 
     # Bootstrap CLI flags (standalone and integrated)
     parser.add_argument(
@@ -61,18 +52,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Choose orchestrator based on --nana flag (LangGraph is now default)
-    if args.nana:
-        logger.warning(
-            "Using DEPRECATED legacy NANA pipeline. "
-            "This pipeline will be removed in SAGA v3.0. "
-            "Please migrate to LangGraph workflow (now default).",
-            deprecation=True,
-        )
-        orchestrator = NANA_Orchestrator()
-    else:
-        logger.info("Using LangGraph-based workflow (default)")
-        orchestrator = LangGraphOrchestrator()
+    orchestrator = LangGraphOrchestrator()
 
     try:
         if args.bootstrap:
@@ -118,14 +98,6 @@ def main() -> None:
             )
             if warnings:
                 logger.warning("Bootstrap warnings: %s", "; ".join(warnings))
-        elif args.ingest:
-            if hasattr(orchestrator, "run_ingestion_process"):
-                asyncio.run(orchestrator.run_ingestion_process(args.ingest))
-            else:
-                logger.error(
-                    "Ingestion is not yet supported with LangGraph orchestrator. "
-                    "Use --nana flag to run ingestion with legacy NANA pipeline."
-                )
         else:
             asyncio.run(orchestrator.run_novel_generation_loop())
     except KeyboardInterrupt:
