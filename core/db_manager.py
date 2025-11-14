@@ -221,6 +221,75 @@ class Neo4jManagerSingleton:
             self._sync_execute_cypher_batch, cypher_statements_with_params
         )
 
+    async def execute_in_transaction(
+        self,
+        transaction_func,
+        *args,
+        **kwargs,
+    ):
+        """
+        Execute a function within a Neo4j transaction with automatic rollback on errors.
+
+        This method provides transaction safety for complex multi-step operations.
+        If any operation fails, the entire transaction is rolled back to maintain
+        database consistency.
+
+        Usage:
+            async def my_transaction_operations(tx, param1, param2):
+                result1 = tx.run("CREATE (n:Node {id: $id})", id=param1)
+                result2 = tx.run("MATCH (n:Node {id: $id}) RETURN n", id=param1)
+                return result2.single()
+
+            result = await neo4j_manager.execute_in_transaction(
+                my_transaction_operations,
+                "node1",
+                "value2"
+            )
+
+        Args:
+            transaction_func: Synchronous function that takes (tx, *args, **kwargs)
+                            and performs Neo4j operations within the transaction
+            *args: Positional arguments to pass to transaction_func
+            **kwargs: Keyword arguments to pass to transaction_func
+
+        Returns:
+            Result of transaction_func
+
+        Raises:
+            DatabaseTransactionError: If transaction fails and is rolled back
+            DatabaseConnectionError: If driver is not connected
+        """
+        await self._ensure_connected()
+
+        def _run_transaction():
+            """Synchronous function to run in thread."""
+            with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+                tx = session.begin_transaction()
+                try:
+                    result = transaction_func(tx, *args, **kwargs)
+                    tx.commit()
+                    self.logger.debug(
+                        "execute_in_transaction: transaction committed successfully"
+                    )
+                    return result
+                except Exception as e:
+                    self.logger.error(
+                        "execute_in_transaction: transaction failed, rolling back",
+                        error=str(e),
+                        exc_info=True,
+                    )
+                    if not tx.closed():
+                        tx.rollback()
+                    raise DatabaseTransactionError(
+                        "Transaction failed and was rolled back",
+                        details={
+                            "original_error": str(e),
+                            "operation": "execute_in_transaction",
+                        },
+                    )
+
+        return await asyncio.to_thread(_run_transaction)
+
     # -------------------------------------------------------------------------
     # Schema/property key discovery helpers
     # -------------------------------------------------------------------------
@@ -383,8 +452,18 @@ class Neo4jManagerSingleton:
         property_warmup_queries = [
             # Warm up node timestamp keys
             "CREATE (e:__PropWarmup:Entity {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
-            # Warm up common node properties that may be referenced before they exist anywhere
-            "CREATE (e:__PropWarmupNodeProps:Entity {description: '', source: '', is_provisional: false, category: ''}) WITH e DELETE e",
+            # Warm up CRITICAL common node properties (name, id, description, category, etc.)
+            (
+                "CREATE (e:__PropWarmupNodeProps:Entity {name: '', id: '', description: '', "
+                "source: '', is_provisional: false, category: ''}) WITH e DELETE e"
+            ),
+            # Warm up ValueNode-specific properties
+            "CREATE (v:__PropWarmupValueNode:ValueNode {value: ''}) WITH v DELETE v",
+            # Warm up NovelInfo-specific properties
+            (
+                "CREATE (ni:__PropWarmupNovelInfo:NovelInfo:Entity {id: '', theme: '', "
+                "central_conflict: ''}) WITH ni DELETE ni"
+            ),
             # Warm up typical relationship properties used across queries (ensure keys are registered)
             (
                 "CREATE (a:__PropWarmupA:Entity)-[r:__WARMUP_REL {chapter_added: 0, "

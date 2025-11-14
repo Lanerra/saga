@@ -162,10 +162,6 @@ class SagaSettings(BaseSettings):
     KG_TRIPLE_EXTRACTION_CACHE_SIZE: int = 16
     TOKENIZER_CACHE_SIZE: int = 10
 
-    # Reranking Configuration
-    ENABLE_RERANKING: bool = False
-    RERANKER_CANDIDATE_COUNT: int = 15
-
     # Agentic Planning & Prompt Context Snippets
     ENABLE_AGENTIC_PLANNING: bool = True
     MAX_PLANNING_TOKENS: int = 16384
@@ -278,24 +274,6 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
-
-    # Dynamic Schema System Configuration (Disabled for single-user deployment)
-    ENABLE_DYNAMIC_SCHEMA: bool = False
-    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = False
-    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2
-    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = False
-    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = False
-
-    # Type Inference Configuration
-    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.6
-    DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = 3
-
-    # Constraint System Configuration
-    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.6
-    DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3
-
-    # Schema Discovery Configuration
-    SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = 2
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
@@ -498,5 +476,4 @@ STATE_TRACKER_SIMILARITY_THRESHOLD: float = (
 
 # Legacy Degradation Flags (non-breaking defaults)
 # Legacy WorldElement toggle removed; single typed-entity model is standard
-ENABLE_LEGACY_WORLDELEMENT: bool = False  # Deprecated/no-op
 ENABLE_STATUS_IS_ALIAS: bool = True

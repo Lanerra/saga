@@ -7,10 +7,22 @@ from typing import Any
 
 import structlog
 
-from core.enhanced_node_taxonomy import NodeClassification as NodeClassifications
 from models.kg_constants import NODE_LABELS
 
 from .constraints import RELATIONSHIP_CONSTRAINTS as _RELATIONSHIP_CONSTRAINTS
+from .simple_types import (
+    ABSTRACT,
+    CONSCIOUS,
+    INANIMATE,
+    LOCATABLE,
+    ORGANIZATIONAL,
+    OWNABLE,
+    PHYSICAL_PRESENCE,
+    SENTIENT,
+    SOCIAL,
+    SPATIAL,
+    TEMPORAL,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -67,27 +79,27 @@ def get_node_classifications(node_type: str) -> set[str]:
     """Get all classifications that apply to a given node type."""
     classifications = set()
 
-    if node_type in NodeClassifications.SENTIENT:
+    if node_type in SENTIENT:
         classifications.add("SENTIENT")
-    if node_type in NodeClassifications.INANIMATE:
+    if node_type in INANIMATE:
         classifications.add("INANIMATE")
-    if node_type in NodeClassifications.SPATIAL:
+    if node_type in SPATIAL:
         classifications.add("SPATIAL")
-    if node_type in NodeClassifications.ABSTRACT:
+    if node_type in ABSTRACT:
         classifications.add("ABSTRACT")
-    if node_type in NodeClassifications.TEMPORAL:
+    if node_type in TEMPORAL:
         classifications.add("TEMPORAL")
-    if node_type in NodeClassifications.ORGANIZATIONAL:
+    if node_type in ORGANIZATIONAL:
         classifications.add("ORGANIZATIONAL")
-    if node_type in NodeClassifications.PHYSICAL_PRESENCE:
+    if node_type in PHYSICAL_PRESENCE:
         classifications.add("PHYSICAL_PRESENCE")
-    if node_type in NodeClassifications.CONSCIOUS:
+    if node_type in CONSCIOUS:
         classifications.add("CONSCIOUS")
-    if node_type in NodeClassifications.LOCATABLE:
+    if node_type in LOCATABLE:
         classifications.add("LOCATABLE")
-    if node_type in NodeClassifications.OWNABLE:
+    if node_type in OWNABLE:
         classifications.add("OWNABLE")
-    if node_type in NodeClassifications.SOCIAL:
+    if node_type in SOCIAL:
         classifications.add("SOCIAL")
 
     return classifications
@@ -158,28 +170,21 @@ def _check_semantic_rule(
     rule = rule_config["rule"]
 
     if rule == "Subject must be from CONSCIOUS classification":
-        return subject_type in NodeClassifications.CONSCIOUS
+        return subject_type in CONSCIOUS
 
     elif rule == "Both subject and object must be SENTIENT":
-        return (
-            subject_type in NodeClassifications.SENTIENT
-            and object_type in NodeClassifications.SENTIENT
-        )
+        return subject_type in SENTIENT and object_type in SENTIENT
 
     elif rule == "Both nodes must have PHYSICAL_PRESENCE trait":
-        return (
-            subject_type in NodeClassifications.PHYSICAL_PRESENCE
-            and object_type in NodeClassifications.PHYSICAL_PRESENCE
-        )
+        return subject_type in PHYSICAL_PRESENCE and object_type in PHYSICAL_PRESENCE
 
     elif rule == "Cannot own/possess sentient beings":
         return not (
-            relationship_type in ["OWNS", "POSSESSES"]
-            and object_type in NodeClassifications.SENTIENT
+            relationship_type in ["OWNS", "POSSESSES"] and object_type in SENTIENT
         )
 
     elif rule == "Subject must be CONSCIOUS":
-        return subject_type in NodeClassifications.CONSCIOUS
+        return subject_type in CONSCIOUS
 
     return True
 

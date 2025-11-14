@@ -5,17 +5,18 @@ import asyncio
 import structlog
 
 from core.db_manager import neo4j_manager
+from core.logging_config import setup_saga_logging
 from initialization.bootstrap_pipeline import run_bootstrap_pipeline
-from orchestration.nana_orchestrator import NANA_Orchestrator, setup_logging_nana
+from orchestration.langgraph_orchestrator import LangGraphOrchestrator
 
 logger = structlog.get_logger(__name__)
 
 
 def main() -> None:
-    setup_logging_nana()
+    setup_saga_logging()
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ingest", default=None, help="Path to text file to ingest")
+
     # Bootstrap CLI flags (standalone and integrated)
     parser.add_argument(
         "--bootstrap",
@@ -51,7 +52,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    orchestrator = NANA_Orchestrator()
+    orchestrator = LangGraphOrchestrator()
+
     try:
         if args.bootstrap:
             # Optional reset wrapper using existing reset script
@@ -96,8 +98,6 @@ def main() -> None:
             )
             if warnings:
                 logger.warning("Bootstrap warnings: %s", "; ".join(warnings))
-        elif args.ingest:
-            asyncio.run(orchestrator.run_ingestion_process(args.ingest))
         else:
             asyncio.run(orchestrator.run_novel_generation_loop())
     except KeyboardInterrupt:
