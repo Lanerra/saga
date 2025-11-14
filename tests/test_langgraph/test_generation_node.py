@@ -605,8 +605,6 @@ class TestProvisionalFlagging:
 
                 # Verify logging includes the flag
                 # Look for calls that include is_from_flawed_draft
-                info_calls = [
-                    call for call in mock_logger.info.call_args_list
-                ]
+                info_calls = [call for call in mock_logger.info.call_args_list]
                 assert len(info_calls) > 0
                 assert result.get("is_from_flawed_draft") is not None

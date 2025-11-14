@@ -176,9 +176,7 @@ def _check_semantic_rule(
         return subject_type in SENTIENT and object_type in SENTIENT
 
     elif rule == "Both nodes must have PHYSICAL_PRESENCE trait":
-        return (
-            subject_type in PHYSICAL_PRESENCE and object_type in PHYSICAL_PRESENCE
-        )
+        return subject_type in PHYSICAL_PRESENCE and object_type in PHYSICAL_PRESENCE
 
     elif rule == "Cannot own/possess sentient beings":
         return not (

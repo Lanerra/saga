@@ -10,6 +10,7 @@ from config import simple_formatter
 
 try:
     from rich.logging import RichHandler
+
     from ui.rich_display import RichDisplayManager
 
     RICH_AVAILABLE = True

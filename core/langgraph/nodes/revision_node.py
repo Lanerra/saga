@@ -133,7 +133,9 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             f"Insufficient token space for revision. "
             f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
         )
-        logger.error("revise_chapter: fatal error - token budget exceeded", error=error_msg)
+        logger.error(
+            "revise_chapter: fatal error - token budget exceeded", error=error_msg
+        )
         return {
             **state,
             "last_error": error_msg,
