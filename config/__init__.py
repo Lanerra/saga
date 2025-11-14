@@ -38,8 +38,8 @@ def reload():
 #    raw field values).
 # 2) Then, override with any UPPERCASE constants defined at module scope in
 #    config.settings (these include the fully-joined output paths like
-#    CHAPTERS_DIR, CHAPTER_LOGS_DIR, DEBUG_OUTPUTS_DIR). This ensures modules
-#    importing `config.CHAPTERS_DIR` get the resolved path under BASE_OUTPUT_DIR
+#    CHAPTERS_DIR, CHAPTER_LOGS_DIR). This ensures modules importing
+#    `config.CHAPTERS_DIR` get the resolved path under BASE_OUTPUT_DIR
 #    rather than the raw field value "chapters".
 import importlib
 

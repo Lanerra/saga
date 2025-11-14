@@ -296,7 +296,7 @@ class SagaSettings(BaseSettings):
             )
         return self
 
-    model_config = SettingsConfigDict(env_prefix="", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
 
 settings = SagaSettings()
