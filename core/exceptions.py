@@ -39,32 +39,12 @@ class ValidationError(SAGACoreError):
     """Errors related to data validation."""
 
 
-class SchemaValidationError(ValidationError):
-    """Errors related to schema validation."""
-
-
-class RelationshipValidationError(ValidationError):
-    """Errors related to relationship validation."""
-
-
 class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
 
 
-class LLMConnectionError(LLMServiceError):
-    """Errors related to LLM service connectivity."""
-
-
-class LLMResponseError(LLMServiceError):
-    """Errors related to LLM response processing."""
-
-
 class ConfigurationError(SAGACoreError):
     """Errors related to system configuration."""
-
-
-class SecurityError(SAGACoreError):
-    """Errors related to security violations."""
 
 
 def create_error_context(**kwargs) -> dict[str, Any]:
@@ -127,7 +107,7 @@ def handle_llm_error(
         **context: Additional context information
 
     Returns:
-        Appropriate LLMServiceError subclass
+        LLMServiceError instance
     """
     error_details = create_error_context(
         operation=operation,
@@ -136,18 +116,6 @@ def handle_llm_error(
         **context,
     )
 
-    if any(
-        keyword in str(original_error).lower()
-        for keyword in ["connection", "timeout", "network"]
-    ):
-        return LLMConnectionError(
-            f"LLM service connection failed during {operation}", details=error_details
-        )
-    elif "response" in str(original_error).lower():
-        return LLMResponseError(
-            f"LLM response processing failed during {operation}", details=error_details
-        )
-    else:
-        return LLMServiceError(
-            f"LLM service error during {operation}", details=error_details
-        )
+    return LLMServiceError(
+        f"LLM service error during {operation}", details=error_details
+    )
