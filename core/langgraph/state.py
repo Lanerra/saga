@@ -152,6 +152,7 @@ class NarrativeState(TypedDict, total=False):
     contradictions: list[Contradiction]
     needs_revision: bool
     revision_feedback: str | None
+    is_from_flawed_draft: bool  # True if deduplication removed text or other quality issues detected
 
     # =========================================================================
     # Model Configuration
@@ -313,6 +314,7 @@ def create_initial_state(
         "contradictions": [],
         "needs_revision": False,
         "revision_feedback": None,
+        "is_from_flawed_draft": False,
         # Model configuration
         "generation_model": generation_model,
         "extraction_model": extraction_model,

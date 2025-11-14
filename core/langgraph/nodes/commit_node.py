@@ -132,7 +132,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 char_mappings,
                 world_mappings,
                 state["current_chapter"],
-                is_from_flawed_draft=False,
+                is_from_flawed_draft=state.get("is_from_flawed_draft", False),
             )
             all_statements.extend(relationship_statements)
 
