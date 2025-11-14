@@ -22,6 +22,7 @@ import config
 from core.langgraph.graph_context import get_key_events
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from processing.text_deduplicator import TextDeduplicator
 from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
@@ -232,10 +233,33 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
             tokens_used=usage.get("total_tokens", 0) if usage else 0,
         )
 
+        # Step 7: Deduplicate text to remove repetitive segments
+        deduplicator = TextDeduplicator()
+        deduplicated_text, removed_chars = await deduplicator.deduplicate(
+            draft_text, segment_level="paragraph"
+        )
+
+        if removed_chars > 0:
+            final_word_count = len(deduplicated_text.split())
+            logger.info(
+                "generate_chapter: deduplication applied",
+                chapter=chapter_number,
+                chars_removed=removed_chars,
+                original_words=word_count,
+                final_words=final_word_count,
+            )
+        else:
+            deduplicated_text = draft_text
+            final_word_count = word_count
+            logger.info(
+                "generate_chapter: no duplicates detected",
+                chapter=chapter_number,
+            )
+
         return {
             **state,
-            "draft_text": draft_text,
-            "draft_word_count": word_count,
+            "draft_text": deduplicated_text,
+            "draft_word_count": final_word_count,
             "current_node": "generate",
             "last_error": None,
             "hybrid_context": hybrid_context_for_draft,  # Store for potential reuse
