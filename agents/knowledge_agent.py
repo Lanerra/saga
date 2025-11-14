@@ -625,15 +625,10 @@ class KnowledgeAgent:
     async def summarize_chapter(
         self, chapter_text: str | None, chapter_number: int
     ) -> tuple[str | None, dict[str, int] | None]:
-        if (
-            not chapter_text
-            or len(chapter_text) < config.MIN_ACCEPTABLE_DRAFT_LENGTH // 2
-        ):
+        if not chapter_text:
             logger.warning(
-                "Chapter %s text too short for summarization (%d chars, min_req for meaningful summary: %d).",
+                "Chapter %s text is empty, cannot summarize.",
                 chapter_number,
-                len(chapter_text or ""),
-                config.MIN_ACCEPTABLE_DRAFT_LENGTH // 2,
             )
             return None, None
 

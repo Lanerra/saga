@@ -280,11 +280,6 @@ class RevisionAgent:
             needs_revision = True
             reasons_for_revision_summary.append("Draft is empty")
             return needs_revision, reasons_for_revision_summary
-        elif len(chapter_text) < self.config.MIN_ACCEPTABLE_DRAFT_LENGTH:
-            needs_revision = True
-            reasons_for_revision_summary.append(
-                f"Draft is too short ({len(chapter_text)} chars). Minimum required: {self.config.MIN_ACCEPTABLE_DRAFT_LENGTH}."
-            )
 
         # Check coherence with previous chapter if available
         if chapter_number > 1 and previous_chapters_context:
@@ -594,7 +589,6 @@ class RevisionAgent:
                 "chapter_number": chapter_number,
                 "novel_title": plot_outline.get("title", "Untitled Novel"),
                 "protagonist_name_str": protagonist_name_str,
-                "min_length": self.config.MIN_ACCEPTABLE_DRAFT_LENGTH,
                 "novel_genre": plot_outline.get("genre", "N/A"),
                 "novel_theme": plot_outline.get("theme", "N/A"),
                 "novel_protagonist": plot_outline.get("protagonist_name", "N/A"),

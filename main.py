@@ -41,11 +41,6 @@ def main() -> None:
         help="Generate and validate but do not write to Neo4j.",
     )
     parser.add_argument(
-        "--bootstrap-kg-heal",
-        action="store_true",
-        help="After each phase write, run KG healing/enrichment.",
-    )
-    parser.add_argument(
         "--bootstrap-reset-kg",
         action="store_true",
         help="Reset the Knowledge Graph before bootstrapping.",
@@ -76,7 +71,6 @@ def main() -> None:
                     phase=args.bootstrap_phase,  # type: ignore[arg-type]
                     level=args.bootstrap_level,  # type: ignore[arg-type]
                     dry_run=args.bootstrap_dry_run,
-                    kg_heal=args.bootstrap_kg_heal,
                 )
             )
             logger.info(
