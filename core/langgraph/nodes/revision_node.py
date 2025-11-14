@@ -21,6 +21,7 @@ import structlog
 import config
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
+from processing.text_deduplicator import TextDeduplicator
 from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
@@ -188,10 +189,35 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             tokens_used=usage.get("total_tokens", 0) if usage else 0,
         )
 
+        # Step 6: Deduplicate text to remove repetitive segments
+        deduplicator = TextDeduplicator()
+        deduplicated_text, removed_chars = await deduplicator.deduplicate(
+            revised_text, segment_level="paragraph"
+        )
+
+        if removed_chars > 0:
+            final_word_count = len(deduplicated_text.split())
+            logger.info(
+                "revise_chapter: deduplication applied",
+                chapter=state["current_chapter"],
+                iteration=state["iteration_count"] + 1,
+                chars_removed=removed_chars,
+                original_words=word_count,
+                final_words=final_word_count,
+            )
+        else:
+            deduplicated_text = revised_text
+            final_word_count = word_count
+            logger.info(
+                "revise_chapter: no duplicates detected",
+                chapter=state["current_chapter"],
+                iteration=state["iteration_count"] + 1,
+            )
+
         return {
             **state,
-            "draft_text": revised_text,
-            "draft_word_count": word_count,
+            "draft_text": deduplicated_text,
+            "draft_word_count": final_word_count,
             "iteration_count": state["iteration_count"] + 1,
             "contradictions": [],  # Will be re-validated
             "needs_revision": False,  # Reset flag, will be set again by validation if needed

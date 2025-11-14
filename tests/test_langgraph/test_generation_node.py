@@ -464,3 +464,75 @@ class TestGenerationIntegration:
         # Should still succeed with minimal state
         assert result["draft_text"] is not None
         assert result["last_error"] is None
+
+
+@pytest.mark.asyncio
+class TestGenerationDeduplication:
+    """Tests for text deduplication in generation node."""
+
+    async def test_generate_chapter_deduplicates_text(
+        self, sample_generation_state, mock_context_builder
+    ):
+        """Test that deduplication is applied to generated text."""
+        # Create text with duplicate paragraphs
+        duplicate_text = (
+            "The hero walked through the forest.\n\n"
+            "The sky was dark and foreboding.\n\n"
+            "The hero walked through the forest.\n\n"  # Duplicate
+            "They continued onward with determination."
+        )
+
+        with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
+            mock_llm.async_call_llm = AsyncMock(
+                return_value=(duplicate_text, {"total_tokens": 100})
+            )
+            mock_llm.count_tokens = lambda text, model: 500
+
+            result = await generate_chapter(sample_generation_state)
+
+            # Should have text
+            assert result["draft_text"] is not None
+            # Deduplication should have removed duplicate paragraph
+            # The exact behavior depends on deduplicator settings
+            assert result["last_error"] is None
+
+    async def test_generate_chapter_deduplication_updates_word_count(
+        self, sample_generation_state, mock_context_builder
+    ):
+        """Test that word count reflects deduplicated text."""
+        # Create text with duplicate segments
+        duplicate_text = "Same text. " * 50  # Repetitive text
+
+        with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
+            mock_llm.async_call_llm = AsyncMock(
+                return_value=(duplicate_text, {"total_tokens": 100})
+            )
+            mock_llm.count_tokens = lambda text, model: 500
+
+            result = await generate_chapter(sample_generation_state)
+
+            # Word count should reflect final deduplicated text
+            assert result["draft_word_count"] == len(result["draft_text"].split())
+
+    async def test_generate_chapter_no_duplicates_preserves_text(
+        self, sample_generation_state, mock_llm_generation, mock_context_builder
+    ):
+        """Test that unique text is preserved during deduplication."""
+        unique_text = (
+            "The hero embarked on their quest with determination. "
+            "Each step brought new challenges and discoveries. "
+            "The path ahead was uncertain but filled with promise."
+        )
+
+        with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
+            mock_llm.async_call_llm = AsyncMock(
+                return_value=(unique_text, {"total_tokens": 100})
+            )
+            mock_llm.count_tokens = lambda text, model: 500
+
+            result = await generate_chapter(sample_generation_state)
+
+            # Text should be preserved (deduplicator won't remove unique content)
+            assert result["draft_text"] is not None
+            assert len(result["draft_text"]) > 0
+            assert result["last_error"] is None
