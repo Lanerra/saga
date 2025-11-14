@@ -4,11 +4,8 @@ Finalization node for LangGraph workflow.
 This module contains the chapter finalization logic for the LangGraph-based
 narrative generation workflow.
 
-Migration Reference: docs/phase2_migration_plan.md - Step 2.4
-
-Source Code Ported From:
-- orchestration/nana_orchestrator.py: Chapter persistence logic
-- agents/narrative_agent.py: File saving patterns
+Phase 3: Legacy orchestrator removed. This is now the canonical implementation
+for chapter persistence and finalization.
 """
 
 from __future__ import annotations
