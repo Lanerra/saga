@@ -162,9 +162,7 @@ def load_yaml_file(
 
 
 # --- ingestion_utils.py ---
-def split_text_into_chapters(
-    text: str, max_chars: int = 8000
-) -> list[str]:
+def split_text_into_chapters(text: str, max_chars: int = 8000) -> list[str]:
     """Split text into pseudo-chapters by paragraph boundaries."""
     separator = "\n\n"
     sep_len = len(separator)

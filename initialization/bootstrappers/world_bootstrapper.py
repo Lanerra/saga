@@ -596,7 +596,11 @@ async def _bootstrap_world_properties(
                 ),
             ]
 
-            for prop_name, _prop_field, prop_description in list_properties_to_bootstrap:
+            for (
+                prop_name,
+                _prop_field,
+                prop_description,
+            ) in list_properties_to_bootstrap:
                 current_value = getattr(item_obj, prop_name, None)
                 if not current_value or len(current_value) == 0:
                     logger.info(
