@@ -214,6 +214,8 @@ class BootstrapValidationPipeline:
         return corrected
 
     # Global pipeline instance
+
+
 bootstrap_validation_pipeline = BootstrapValidationPipeline()
 
 
@@ -233,8 +235,6 @@ async def validate_bootstrap_result(
     return await bootstrap_validation_pipeline.validate_and_correct_bootstrap(
         bootstrap_result, auto_correct
     )
-
-
 
 
 async def validate_bootstrap_results(
