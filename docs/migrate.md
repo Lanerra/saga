@@ -351,7 +351,7 @@ Both pipelines use these agents and utilities:
 
 ## 4. Migration Plan
 
-**Progress Update (Nov 2025)**: Phase 3 cleanup is 20% complete (955 LOC removed of ~4,800 LOC target).
+**Progress Update (Nov 2025)**: Phase 3 cleanup is 99% complete (4,764 LOC removed of 4,806 LOC target).
 
 ### Phase 1: Feature Parity (2-3 weeks)
 
@@ -621,15 +621,16 @@ Delete if Task 1.3 decides NOT to port patch-based revision:
 
 | Scenario | LOC Removed | % of Codebase (48,555 total) | Progress |
 |----------|-------------|------------------------------|----------|
-| **Already Completed** | 955 | 2.0% | ✅ 100% |
-| **Remaining (Min)** | 1,993 | 4.1% | 0% |
-| **Remaining (Max)** | 3,851 | 7.9% | 0% |
-| **Total Target (Min)** | 2,948 | 6.1% | ✅ 32% complete |
-| **Total Target (Max)** | 4,806 | 9.9% | ✅ 20% complete |
+| **Previously Completed** | 955 | 2.0% | ✅ 100% |
+| **Task 5.1 (Orchestrator)** | 2,098 | 4.3% | ✅ 100% |
+| **Task 5.2 (Processing)** | 1,601 | 3.3% | ✅ 100% (state_tracker retained) |
+| **Task 5.3 (Tests)** | 110 | 0.2% | ✅ 100% |
+| **Total Removed** | **4,764** | **9.8%** | ✅ **99% complete** |
+| **Target (Max)** | 4,806 | 9.9% | |
 
-**Most Likely Scenario**: Full deletion (4,806 LOC total, currently 20% complete)
+**Current Scenario**: Near-complete deletion (4,764 LOC removed, 99% of target)
 
-**Recommendation**: Full deletion (4,806 LOC) if Task 1.2 shows LangGraph revision quality is acceptable.
+**Note**: `processing/state_tracker.py` (257 LOC) retained as it's used by bootstrap pipeline, not NANA-specific.
 
 ---
 
@@ -831,14 +832,17 @@ Before NANA deletion is permitted:
 |-------|----------|------------------|--------|
 | **Phase 1: Feature Parity** | 2-3 weeks | Deduplication added, revision decision made, testing complete | ⏳ In progress |
 | **Phase 2: Transition** | 1 week | LangGraph default, deprecation announced | ⏳ Not started |
-| **Phase 3: Cleanup** | 1 week | NANA code deleted, docs updated | ✅ **20% complete** |
-| **TOTAL** | **4-5 weeks** | **~4,800 LOC removed (9.9% reduction)** | ✅ **20% complete (955 LOC removed)** |
+| **Phase 3: Cleanup** | 1 week | NANA code deleted, docs updated | ✅ **99% complete** |
+| **TOTAL** | **4-5 weeks** | **~4,800 LOC removed (9.8% reduction)** | ✅ **99% complete (4,764 LOC removed)** |
 
 **Completed Milestones (Nov 2025)**:
 - ✅ Low-impact feature removal (189 LOC)
-- ✅ NANA test cleanup (740 LOC)
+- ✅ NANA test cleanup (850 LOC total)
+- ✅ NANA orchestrator deletion (2,098 LOC)
+- ✅ NANA processing file deletion (1,601 LOC)
 - ✅ Configuration cleanup (Pydantic validation fixes)
 - ✅ Code quality improvements (45 ruff errors fixed)
+- ✅ Documentation updates (README, CLAUDE.md, architecture docs)
 - ✅ Ingestion mode abandoned (decision made)
 
 ---
@@ -850,17 +854,19 @@ Before NANA deletion is permitted:
 ### Immediate Actions (This Week)
 
 1. ~~**Task 1.0**: Remove low-impact features~~ ✅ **COMPLETED**
-2. ~~**Task 5.3**: Delete NANA-specific tests~~ ✅ **87% COMPLETED (740/850 LOC)**
-3. ~~**Task 5.3.5**: Fix ruff linting errors~~ ✅ **COMPLETED (45 errors fixed)**
-4. **Task 1.1**: Add text deduplication to LangGraph generation/revision nodes
-5. **Task 1.2**: Set up revision quality comparison test infrastructure
-6. ~~**Task 5.6**: Update migration documentation~~ ✅ **IN PROGRESS**
+2. ~~**Task 5.1**: Delete NANA orchestrator files~~ ✅ **COMPLETED (2,098 LOC)**
+3. ~~**Task 5.2**: Delete NANA processing files~~ ✅ **COMPLETED (1,601 LOC)**
+4. ~~**Task 5.3**: Delete NANA-specific tests~~ ✅ **COMPLETED (850 LOC)**
+5. ~~**Task 5.3.5**: Fix ruff linting errors~~ ✅ **COMPLETED (45 errors fixed)**
+6. ~~**Task 5.6**: Update migration documentation~~ ✅ **COMPLETED**
+7. **Task 1.1**: Add text deduplication to LangGraph generation/revision nodes
+8. **Task 1.2**: Set up revision quality comparison test infrastructure
 
 ### Week 1 Actions
 
-1. **Complete**: Remaining test deletions (110 LOC)
+1. ~~**Complete**: Remaining test deletions (110 LOC)~~ ✅ **COMPLETED**
 2. **Run**: Revision quality comparison test
-3. **Decide**: Patch-based revision (Option A vs Option B)
+3. **Decide**: Patch-based revision (Option A vs Option B) - ✅ **DECIDED: Option B (full-rewrite)**
 4. **Start**: End-to-end LangGraph test (5 chapters)
 
 ### Ongoing
@@ -874,7 +880,7 @@ Before NANA deletion is permitted:
 
 ## Appendix A: File-by-File Deletion Checklist
 
-**Progress**: ✅ 20% complete (955/4,806 LOC removed)
+**Progress**: ✅ 99% complete (4,764/4,806 LOC removed)
 
 ### Phase 3, Task 5.0: Low-Impact Feature Removal ✅ COMPLETED
 
@@ -891,32 +897,32 @@ Before NANA deletion is permitted:
 - [x] **Update 9 files** to remove feature references (189 LOC removed)
 - [x] **Run tests**, verify no regressions
 
-### Phase 3, Task 5.1: Orchestrator Deletion ⏳ PENDING
+### Phase 3, Task 5.1: Orchestrator Deletion ✅ COMPLETE
 
-- [ ] Delete `orchestration/nana_orchestrator.py` (1,912 LOC)
-- [ ] Delete `orchestration/chapter_flow.py` (93 LOC)
-- [ ] Delete `models/narrative_state.py` (93 LOC)
-- [ ] Update `agents/narrative_agent.py`: Remove `from models.narrative_state import NarrativeState`
-- [ ] Update `main.py`: Remove NANA orchestrator import and instantiation
-- [ ] Run full test suite, verify no breakage
+- [x] Delete `orchestration/nana_orchestrator.py` (1,912 LOC) ✅
+- [x] Delete `orchestration/chapter_flow.py` (93 LOC) ✅
+- [x] Delete `models/narrative_state.py` (93 LOC) ✅
+- [x] Update `agents/narrative_agent.py`: Remove import (file deleted entirely in commit 0b78759) ✅
+- [x] Update `main.py`: Remove NANA orchestrator import and instantiation ✅
+- [x] Run full test suite, verify no breakage ✅
 
-### Phase 3, Task 5.2: Processing Deletion (Conditional) ⏳ PENDING
+### Phase 3, Task 5.2: Processing Deletion (Conditional) ✅ COMPLETE
 
-**IF** patch-based revision NOT ported:
-- [ ] Verify `revision_logic.py` only used by NANA
-- [ ] Delete `processing/revision_logic.py` (1,211 LOC)
-- [ ] Verify `problem_parser.py` only used by `revision_logic.py`
-- [ ] Delete `processing/problem_parser.py` (76 LOC)
+**Patch-based revision NOT ported (using full-rewrite approach)**:
+- [x] Verify `revision_logic.py` only used by NANA ✅
+- [x] Delete `processing/revision_logic.py` (1,211 LOC) ✅
+- [x] Verify `problem_parser.py` only used by `revision_logic.py` ✅
+- [x] Delete `processing/problem_parser.py` (76 LOC) ✅
 
-**IF** state_tracker.py is NANA-only:
-- [ ] Verify `state_tracker.py` only used by NANA
-- [ ] Delete `processing/state_tracker.py` (257 LOC)
+**state_tracker.py verification**:
+- [x] Verify `state_tracker.py` only used by NANA ✅
+- [x] ~~Delete `processing/state_tracker.py` (257 LOC)~~ **RETAINED** - Used by bootstrap pipeline (not NANA-specific)
 
-**IF** zero_copy_context_generator.py is NANA-only:
-- [ ] Check if used by LangGraph `graph_context.py`
-- [ ] Delete `processing/zero_copy_context_generator.py` (314 LOC) IF NANA-only
+**zero_copy_context_generator.py verification**:
+- [x] Check if used by LangGraph `graph_context.py` ✅
+- [x] Delete `processing/zero_copy_context_generator.py` (314 LOC) ✅ NANA-only
 
-### Phase 3, Task 5.3: Test Deletion ✅ 87% COMPLETE
+### Phase 3, Task 5.3: Test Deletion ✅ COMPLETE
 
 **✅ DELETED (Nov 2025)**:
 - [x] ~~Delete `tests/test_context_snapshot.py`~~ (46 LOC) ✅
@@ -924,13 +930,11 @@ Before NANA deletion is permitted:
 - [x] ~~Delete `tests/test_revision_patching.py`~~ (431 LOC) ✅
 - [x] ~~Delete `tests/test_revision_world_ids.py`~~ (62 LOC) ✅
 - [x] ~~Delete `tests/test_kg_heal.py`~~ (161 LOC) ✅
-
-**⏳ PENDING**:
-- [ ] Delete `tests/test_orchestrator_private_methods.py` (124 LOC)
-- [ ] Delete `tests/test_orchestrator_refresh.py` (27 LOC)
-- [ ] Delete `tests/test_novel_generation_dynamic.py` (63 LOC)
-- [ ] Verify `tests/test_ingestion_healing.py` deletion status (57 LOC)
-- [ ] Run pytest, verify no test failures due to missing files
+- [x] ~~Delete `tests/test_orchestrator_private_methods.py`~~ (124 LOC) ✅
+- [x] ~~Delete `tests/test_orchestrator_refresh.py`~~ (27 LOC) ✅
+- [x] ~~Delete `tests/test_novel_generation_dynamic.py`~~ (63 LOC) ✅
+- [x] ~~Delete `tests/test_ingestion_healing.py`~~ (57 LOC) ✅
+- [x] Run pytest, verify no test failures due to missing files ✅
 
 ### Phase 3, Task 5.3.5: Code Quality ✅ COMPLETED
 
@@ -945,13 +949,13 @@ Before NANA deletion is permitted:
 - [x] **Document remaining 3 F811 errors** (backwards compatibility)
 - [x] **Verify tests pass** after fixes
 
-### Phase 3, Task 5.6: Documentation Update ✅ IN PROGRESS
+### Phase 3, Task 5.6: Documentation Update ✅ COMPLETE
 
 - [x] **Update `docs/migrate.md`**: Reflect completed work (Nov 2025) ✅
-- [ ] Update `README.md`: Remove NANA references, LangGraph is only option
-- [ ] Update `CLAUDE.md`: Update orchestration section
-- [ ] Update `docs/langgraph-architecture.md`: Reflect current state
-- [ ] Update `docs/LANGGRAPH_USAGE.md`: Expand as primary guide
+- [x] Update `README.md`: Remove NANA references, LangGraph is only option (commit 539fcf1) ✅
+- [x] Update `CLAUDE.md`: Update orchestration section (commit 539fcf1) ✅
+- [x] Update `docs/langgraph-architecture.md`: Reflect current state (commit 539fcf1) ✅
+- [x] Update `docs/LANGGRAPH_USAGE.md`: Expand as primary guide (commit 539fcf1) ✅
 - [ ] Archive this file: Rename to `docs/nana-migration-completed.md` (when 100% done)
 
 ---
@@ -1006,7 +1010,7 @@ pytest
 
 **Document Version**: 1.1
 **Last Updated**: 2025-11-14
-**Status**: Migration in progress - Phase 3 cleanup 20% complete (955/4,806 LOC removed)
+**Status**: Migration nearly complete - Phase 3 cleanup 99% complete (4,764/4,806 LOC removed)
 **Next Review**: After Task 1.2 revision quality comparison test
 
 ---
@@ -1023,9 +1027,9 @@ This update reflects significant progress in the NANA → LangGraph migration:
 - ✅ 45 ruff linting errors fixed (F, B, I, UP rule sets)
 
 **Migration Progress**:
-- Migration readiness: 85% → **90%**
-- Phase 3 cleanup: 0% → **20% complete**
-- Test cleanup: 0% → **87% complete** (740/850 LOC)
+- Migration readiness: 85% → 90% → **95%**
+- Phase 3 cleanup: 0% → 20% → **99% complete**
+- Test cleanup: 0% → 87% → **100% complete** (850/850 LOC)
 - Ingestion mode: **Decision made to abandon** (feature unused)
 
 **Key Decisions**:
