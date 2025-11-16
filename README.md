@@ -2,23 +2,24 @@
 
 **NOTE**: `MAX_REVISION_CYCLES_PER_CHAPTER` currently defaults to `0`, effectively disabling the revision cycle during chapter generation. It is currently broken and imminently going to be refactored.
 
-SAGA is a local‑first, single‑process Python CLI that uses a Neo4j knowledge graph, LangGraph workflow orchestration, and a small set of cooperating agents to plan, draft, and revise long‑form fiction while preserving continuity across chapters.
+SAGA is a local‑first, single‑process Python CLI that uses a Neo4j knowledge graph, LangGraph workflow orchestration, and a small set of cooperating nodes to plan, draft, and revise long‑form fiction while preserving continuity across chapters.
 
 
 ## What SAGA Does
 
 - Local knowledge graph continuity
   - Persists entities, relationships, plot points, and chapter metadata in a local Neo4j database.
-  - Maintains coherence via periodic “healing/enrichment” passes and duplicate prevention/merging.
-- Agentic writing pipeline
-  - Plans scenes, drafts prose, and runs patch‑based revisions with automated evaluation gates.
-  - Generates continuation plot points when the outline runs out, based on recent chapter summaries.
+  - Maintains coherence via duplicate prevention/merging.
+- LangGraph workflow pipeline
+  - Initialization: Generates character sheets, global outline, and act-level outlines
+  - Chapter generation: Creates chapter outlines on-demand, drafts prose, extracts entities
+  - Quality assurance: Validates consistency, revises via full-rewrite when needed
 - Multi‑phase bootstrap (optional)
-  - World → Characters → Plot, each with lightweight validation and optional graph healing.
+  - World → Characters → Plot, each with lightweight validation.
   - Can run standalone or as an integrated prelude to generation.
 - Semantic context and search
   - Embeddings stored on chapter nodes with a Neo4j vector index for fast similarity search.
-  - “Zero‑copy” context assembly pulls just the snippets needed for the current chapter.
+  - Context assembly pulls relevant entities, relationships, and summaries for each chapter.
 - Rich CLI progress
   - Live panel shows novel title, chapter progress, current step, elapsed time, and request rate.
 
@@ -60,7 +61,6 @@ python main.py --bootstrap --bootstrap-phase world     # or characters|plot
 # Tuning and safety
 python main.py --bootstrap --bootstrap-level basic     # basic|enhanced|max
 python main.py --bootstrap --bootstrap-dry-run
-python main.py --bootstrap --bootstrap-kg-heal
 python main.py --bootstrap --bootstrap-reset-kg
 ```
 
@@ -70,15 +70,15 @@ python main.py --bootstrap --bootstrap-reset-kg
 
 - Knowledge Graph backbone (Neo4j)
   - Schema creation with constraints/indexes, including a vector index on chapter embeddings.
-  - Entity merge helpers and enrichment to reduce duplication and fill gaps over time.
-- Agents, not services
-  - NarrativeAgent: scene planning and chapter drafting using KG‑aware context.
-  - RevisionAgent: evaluation + small, targeted patch cycles to improve drafts.
-  - KnowledgeAgent: KG extraction/persistence, healing/enrichment, and outline sync.
-- Continuation planning
-  - When all concrete plot points are used, SAGA plans additional points from prior summaries.
+  - Entity deduplication and enrichment to reduce duplication and maintain coherence.
+- LangGraph workflow orchestration
+  - Declarative graph-based workflow with automatic state persistence
+  - Initialization workflow: Character sheets → Global outline → Act outlines → On-demand chapter outlines
+  - Generation workflow: Generate → Extract → Commit → Validate → Revise (if needed) → Summarize → Finalize
+  - Built-in checkpointing allows resume from interruption
 - Output artifacts
-  - Chapter text files, per‑chapter logs, and debug JSON under `output/`.
+  - Chapter text files, per‑chapter logs, and YAML initialization artifacts under `output/`.
+  - Structured outputs: `characters/`, `outline/`, `world/`, `chapters/`, `summaries/`
 - Local‑first architecture
   - No web servers or distributed components; single user on a single machine.
 
@@ -91,7 +91,6 @@ python main.py --bootstrap --bootstrap-reset-kg
 - `--bootstrap-phase {world|characters|plot|all}`
 - `--bootstrap-level {basic|enhanced|max}`
 - `--bootstrap-dry-run` (validate only; do not write to Neo4j)
-- `--bootstrap-kg-heal` (heal/enrich after each phase write)
 - `--bootstrap-reset-kg` (wipe Neo4j before bootstrapping; destructive)
 
 
@@ -113,15 +112,29 @@ Outputs are written under `output/`:
 ## How It Works (High Level)
 
 1) Bootstrap (optional, independent loop)
-- Generate a minimal world, a cast of characters, and a plot outline; validate and persist to the KG.
+- Generate character sheets, global story outline (3 or 5 acts), and detailed act outlines
+- Validate structure and persist to Neo4j knowledge graph
+- Creates human-readable YAML files in `output/characters/`, `output/outline/`, `output/world/`
 
-2) Per‑chapter loop
-- Build KG‑aware context (recent summaries, reliable facts, relevant world/character snippets).
-- Plan scenes, draft prose, evaluate, and apply small patch cycles if needed.
-- Save chapter text, summary, and embedding; periodically heal/enrich the graph.
+2) Initialization (first run only)
+- If not bootstrapped, LangGraph initialization workflow generates minimal required structure
+- Creates character sheets, global outline, act outlines automatically
+- Persists to both Neo4j and YAML files for human review/editing
 
-3) Continuation
-- If the outline runs out of concrete plot points, generate more from recent narrative context.
+3) Per‑chapter workflow (LangGraph orchestrated)
+- **Chapter Outline**: Generate chapter-specific outline from act outline and context
+- **Generate**: Build KG‑aware context and draft prose
+- **Extract**: Extract entities and relationships from generated text
+- **Commit**: Deduplicate and persist entities to Neo4j
+- **Validate**: Check for continuity contradictions
+- **Revise**: If validation fails, regenerate chapter with feedback
+- **Summarize**: Create chapter summary for future context
+- **Finalize**: Save chapter to disk and database, advance to next chapter
+
+4) State persistence
+- All workflow state automatically checkpointed to SQLite
+- Resume from interruption without data loss
+- Chapter progress tracked in Neo4j
 
 
 ## Screenshots

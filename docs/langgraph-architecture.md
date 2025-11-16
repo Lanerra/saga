@@ -1,36 +1,36 @@
-Please evaluate the below proposed framework for a narrative generation architecture using LangGraph. Please provide your educated and informed opinion on it. You must maintain intellectual honesty at all times.
+# SAGA: LangGraph-Based Narrative Generation Architecture
 
-# SAGA 2.0: LangGraph-Based Narrative Generation Architecture
-
-> **Semantically And Graph-enhanced Authoring - Second Generation**
+> **Semantically And Graph-enhanced Authoring**
 >
 > A hybrid architecture combining LangGraph workflow orchestration with Neo4j knowledge graph persistence for coherent long-form narrative generation.
+
+**Status**: ✅ **Production** - LangGraph is the only generation pipeline (NANA removed in Phase 3)
 
 ---
 
 ## Executive Summary
 
-SAGA 2.0 addresses the core limitations of the original SAGA implementation:
+SAGA uses LangGraph workflow orchestration to address the core challenges of long-form narrative generation:
 
-**Problems Solved:**
-- Replace 31K+ lines of bespoke state management with LangGraph's built-in checkpointing
-- Reduce complexity of workflow coordination through declarative graph definitions
-- Enable parallel execution for entity extraction, validation, and quality checking
-- Provide visual debugging through graph visualization
-- Maintain Neo4j knowledge graph sophistication while improving modularity
+**Architecture Benefits:**
+- ✅ **Automatic state persistence** via LangGraph checkpointing (replaces ~3,400 LOC of custom orchestration)
+- ✅ **Declarative workflow** with clear graph structure and conditional routing
+- ✅ **Resume from interruption** without data loss
+- ✅ **Visual debugging** through graph visualization
+- ✅ **Neo4j knowledge graph** for entity relationships and narrative continuity
 
-**Not Thrown Away:**
-- Neo4j knowledge graph architecture (your competitive advantage)
-- Entity deduplication and identity resolution logic
-- Relationship validation and connectivity checking
-- Multi-model orchestration strategy
+**Core Components:**
+- Neo4j knowledge graph for entity/relationship persistence
+- Entity deduplication and identity resolution via fuzzy matching + embeddings
+- Relationship validation and constraint enforcement
+- Multi-model orchestration (generation, extraction, validation)
 - Context construction from graph queries
 
-**Architecture Philosophy:**
-- LangGraph for *orchestration*
-- Neo4j for *memory*
-- Specialized models for *execution*
-- Python for *logic*
+**Architecture Stack:**
+- **LangGraph** for orchestration and state management
+- **Neo4j** for knowledge graph memory
+- **Local LLMs** for generation (OpenAI-compatible endpoints)
+- **Python async** for high-performance I/O
 
 ---
 
@@ -41,7 +41,7 @@ SAGA 2.0 addresses the core limitations of the original SAGA implementation:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     User Interface Layer                     │
-│  CLI / Web UI / API (FastAPI)                               │
+│  Rich CLI (single-user, local-first)                        │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐

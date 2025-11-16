@@ -135,16 +135,28 @@ python init_test_minimal.py      # minimal test
 
 ### Core Components
 
-**Agents** (`agents/`)
-- `narrative_agent.py`: Scene planning, chapter drafting, prose generation
-- `knowledge_agent.py`: Entity extraction, KG persistence, healing/enrichment
-- `revision_agent.py`: Quality evaluation, patch-based revisions
+**LangGraph Nodes** (`core/langgraph/nodes/`)
+- `generation_node.py`: Chapter drafting from outline and KG context
+- `extraction_node.py`: Entity and relationship extraction from generated text
+- `commit_node.py`: Deduplication and persistence to Neo4j
+- `validation_node.py`: Consistency checking and contradiction detection
+- `revision_node.py`: Full chapter regeneration with validation feedback
+- `summary_node.py`: Chapter summary generation
+- `finalize_node.py`: Persistence to disk and database
+
+**LangGraph Initialization** (`core/langgraph/initialization/`)
+- `character_sheets_node.py`: Character sheet generation
+- `global_outline_node.py`: 3/5-act story outline generation
+- `act_outlines_node.py`: Detailed act-level outlines
+- `chapter_outline_node.py`: On-demand chapter outlines
+- `commit_init_node.py`: Persist initialization to Neo4j
+- `persist_files_node.py`: Write YAML artifacts to disk
 
 **Core Systems** (`core/`)
 - `db_manager.py`: Neo4j connection management, schema creation
 - `knowledge_graph_service.py`: Entity/relationship CRUD operations
 - `llm_interface_refactored.py`: OpenAI-compatible API client for local LLMs
-- `enhanced_node_taxonomy.py`: Entity type system and validation
+- `simple_type_inference.py`: Lightweight entity type inference
 - `relationship_validator.py`: Relationship constraint enforcement
 - `langgraph/`: LangGraph workflow definitions, state management, visualization
 
@@ -259,8 +271,8 @@ output/
 
 **Test Organization** (`tests/`)
 - Unit tests: Individual functions, entity extraction, validation logic
-- Integration tests: Agent workflows, Neo4j operations, LLM interactions
-- LangGraph tests: Workflow node execution, state transitions
+- Integration tests: LangGraph node workflows, Neo4j operations, LLM interactions
+- LangGraph tests: Workflow node execution, state transitions, initialization
 
 **Test Markers** (defined in `pyproject.toml`):
 - `unit`: Fast, isolated unit tests
@@ -294,19 +306,21 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 - Local embedded instance only
 - Think "personal knowledge base" not "web-scale backend"
 
-**Agent Architecture**:
-- Sequential processing pipeline, not concurrent microservices
-- Agents are functions/classes, not separate processes
+**LangGraph Node Architecture**:
+- Sequential processing pipeline orchestrated by LangGraph state machine
+- Nodes are async functions that transform state, not separate processes
+- Declarative graph definition with conditional routing
 
 ## Development Workflow
 
 ### When Adding New Features
 
 1. **Bootstrap Phase**: If adding world/character/plot generation logic, work in `initialization/bootstrappers/`
-2. **Agent Logic**: For narrative generation/revision, work in `agents/`
-3. **KG Operations**: For Neo4j queries/schema changes, work in `data_access/` or `core/knowledge_graph_service.py`
-4. **LangGraph Nodes**: For workflow changes, edit `core/langgraph/workflow.py`
-5. **Prompts**: Add/edit Jinja2 templates in `prompts/` (maintain per-agent organization)
+2. **LangGraph Nodes**: For narrative generation/revision, work in `core/langgraph/nodes/`
+3. **Initialization Nodes**: For initialization workflow changes, work in `core/langgraph/initialization/`
+4. **KG Operations**: For Neo4j queries/schema changes, work in `data_access/` or `core/knowledge_graph_service.py`
+5. **Workflow Changes**: For graph structure/routing, edit `core/langgraph/workflow.py`
+6. **Prompts**: Add/edit Jinja2 templates in `prompts/` (organized by node type)
 
 ### When Debugging
 
@@ -358,6 +372,7 @@ def my_node(state: NarrativeState) -> NarrativeState:
 ### Revision Loop
 - Max iterations configurable (`MAX_REVISION_CYCLES_PER_CHAPTER`, currently disabled)
 - Validation identifies contradictions (character traits, relationships, timeline)
+- Full chapter regeneration with validation feedback (not patch-based)
 - Revision prompt includes specific issues + suggested fixes
 - Re-extract and re-validate after revision
 
@@ -376,20 +391,21 @@ Current state:
 
 Key docs in `docs/`:
 - `langgraph-architecture.md`: Detailed LangGraph design (comprehensive)
-- `LANGGRAPH_USAGE.md`: Usage guide for LangGraph mode
+- `LANGGRAPH_USAGE.md`: Usage guide for LangGraph workflow
+- `WORKFLOW_WALKTHROUGH.md`: Complete data flow walkthrough
 - `PROJECT_CONSTRAINTS.md`: Hard constraints and architectural decisions
 - `initialization-framework.md`: Bootstrap pipeline details
-- `HIGH_PRIORITY_FIXES.md`: Current priority issues
 - `schema-map.md`: Neo4j schema documentation
-- `WORKFLOW_VISUALIZATION.md`, `WORKFLOW_WALKTHROUGH.md`: Workflow diagrams
+- `migrate.md`: NANA→LangGraph migration progress tracker
 
 ## When Working on This Codebase
 
 1. **Respect the local-first constraint**: No web frameworks, no auth, no scaling
-2. **Use existing patterns**: Follow agent structure, Neo4j session management, LLM interface
-3. **Test with pytest**: Write tests for new logic, especially KG operations
+2. **Use existing patterns**: Follow LangGraph node structure, Neo4j session management, LLM interface
+3. **Test with pytest**: Write tests for new logic, especially KG operations and LangGraph nodes
 4. **Check Neo4j schema**: Don't introduce new node/relationship types without constraint updates
 5. **Use type hints**: Codebase uses mypy strict mode (`disallow_untyped_defs = true`)
 6. **Log with structlog**: Use structured logging, not print statements
 7. **Configuration over hardcoding**: Use `config/settings.py` for tunable parameters
 8. **Async/await**: Most operations are async; use `asyncio.run()` for entry points
+9. **State immutability**: LangGraph nodes should return new state dicts, not mutate existing state
