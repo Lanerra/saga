@@ -1,3 +1,4 @@
+# core/langgraph/nodes/summary_node.py
 """
 Summarization node for LangGraph workflow.
 

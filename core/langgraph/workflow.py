@@ -1,3 +1,4 @@
+# core/langgraph/workflow.py
 """
 LangGraph workflow for SAGA narrative generation.
 

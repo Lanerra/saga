@@ -1,3 +1,4 @@
+# core/langgraph/initialization/character_sheets_node.py
 """
 Character Sheets Generation Node for Initialization Phase.
 

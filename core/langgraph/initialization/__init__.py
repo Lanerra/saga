@@ -1,3 +1,4 @@
+# core/langgraph/initialization/__init__.py
 """
 Initialization nodes for LangGraph-based narrative generation.
 

@@ -1,3 +1,4 @@
+# core/langgraph/nodes/generation_node.py
 """
 Generation node for LangGraph workflow.
 

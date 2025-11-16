@@ -1,3 +1,4 @@
+# core/langgraph/nodes/__init__.py
 """
 LangGraph nodes for SAGA narrative generation workflow.
 

@@ -1,3 +1,4 @@
+# init_test_minimal.py
 """
 Minimal test - just verify the initialization graph can be created.
 """

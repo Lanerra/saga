@@ -1,3 +1,4 @@
+# core/langgraph/nodes/finalize_node.py
 """
 Finalization node for LangGraph workflow.
 

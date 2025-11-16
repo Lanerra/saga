@@ -1,3 +1,4 @@
+# core/langgraph/initialization/workflow.py
 """
 Initialization Workflow for LangGraph-based narrative generation.
 

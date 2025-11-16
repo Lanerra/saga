@@ -1,3 +1,4 @@
+# tests/test_langgraph/test_generation_node.py
 """
 Tests for LangGraph generation node (Phase 2, Step 2.1).
 
