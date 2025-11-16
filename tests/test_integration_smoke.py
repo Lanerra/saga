@@ -33,9 +33,10 @@ async def test_knowledge_agent_initialization():
     agent = KnowledgeAgent()
     assert agent is not None
 
-    # Test that methods exist
-    assert hasattr(agent, "prioritize_candidates_with_state_tracker")
-    assert hasattr(agent, "prioritize_candidates_with_state_tracker_async")
+    # Test that core persistence methods exist
+    assert hasattr(agent, "persist_profiles")
+    assert hasattr(agent, "persist_world")
+    assert hasattr(agent, "summarize_chapter")
 
 
 if __name__ == "__main__":
