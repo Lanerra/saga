@@ -291,6 +291,9 @@ class TestEntityAuditImplementation:
             metadata = await state_tracker.check("Test")
             assert metadata is None  # Always returns None when disabled
 
+    @pytest.mark.skip(
+        reason="prioritize_candidates_with_state_tracker removed in NANA cleanup"
+    )
     @pytest.mark.asyncio
     async def test_state_tracker_prioritization_enhanced(self):
         """Test enhanced StateTracker prioritization for healing logic."""

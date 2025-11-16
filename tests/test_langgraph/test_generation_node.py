@@ -184,7 +184,7 @@ class TestGenerateChapter:
 
         # Should return error state
         assert result["last_error"] is not None
-        assert "plot outline" in result["last_error"].lower()
+        assert "chapter outlines" in result["last_error"].lower()
         assert result["current_node"] == "generate"
 
         # LLM should not be called

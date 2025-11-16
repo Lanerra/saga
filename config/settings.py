@@ -201,6 +201,9 @@ class SagaSettings(BaseSettings):
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
+    # Chapter Generation Configuration
+    MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
+
     # Relationship Constraint Configuration
     ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
     RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = 0.3
@@ -366,9 +369,22 @@ structlog.configure(
 )
 
 
-# Simple human-readable formatter for structlog
-def simple_log_format(logger, name, event_dict):
-    """Simple human-readable log formatter that maintains structured data internally."""
+# Filter internal structlog fields
+def filter_internal_keys(logger, name, event_dict):
+    """Remove internal structlog fields from event dict."""
+    keys_to_remove = [k for k in event_dict.keys() if k.startswith("_")]
+    for key in keys_to_remove:
+        event_dict.pop(key, None)
+    return event_dict
+
+
+# Simple human-readable formatter for structlog (with Rich markup for console)
+def simple_log_format_rich(logger, name, event_dict):
+    """Simple human-readable log formatter with Rich markup for console output."""
+    # Remove internal structlog metadata
+    event_dict.pop("_record", None)
+    event_dict.pop("_from_structlog", None)
+
     level = event_dict.pop("level", "INFO")
     timestamp = event_dict.pop("timestamp", "")
     logger_name = event_dict.pop("logger", "")
@@ -379,21 +395,87 @@ def simple_log_format(logger, name, event_dict):
     if timestamp:
         parts.append(f"{timestamp}")
     if logger_name:
-        parts.append(f"[{logger_name}]")
-    parts.append(f"{level}")
+        # Shorten logger names for readability
+        short_name = logger_name.split(".")[-1] if "." in logger_name else logger_name
+        parts.append(f"[cyan]{short_name}[/cyan]")
+
+    # Add level with color coding for Rich handler
+    level_upper = level.upper()
+    if level_upper == "ERROR" or level_upper == "CRITICAL":
+        parts.append(f"[red]{level_upper}[/red]")
+    elif level_upper == "WARNING":
+        parts.append(f"[yellow]{level_upper}[/yellow]")
+    elif level_upper == "INFO":
+        parts.append(f"[green]{level_upper}[/green]")
+    else:
+        parts.append(level_upper)
 
     # Add the main event message
-    parts.append(f"{event}")
+    parts.append(f"[bold]{event}[/bold]" if event else "")
 
-    # Add any remaining key-value pairs as context
+    # Add any remaining key-value pairs as context (more compact format)
     if event_dict:
         context_parts = []
         for key, value in event_dict.items():
-            context_parts.append(f"{key}={value}")
+            # Skip internal keys
+            if key.startswith("_"):
+                continue
+            # Format value nicely
+            if isinstance(value, str) and len(value) > 50:
+                value_str = f"{value[:47]}..."
+            else:
+                value_str = str(value)
+            context_parts.append(f"[dim]{key}[/dim]={value_str}")
         if context_parts:
-            parts.append(f"({' '.join(context_parts)})")
+            parts.append(f"({', '.join(context_parts)})")
 
-    return " - ".join(parts)
+    return " ".join(parts)
+
+
+# Simple human-readable formatter for structlog (plain text for files)
+def simple_log_format_plain(logger, name, event_dict):
+    """Simple human-readable log formatter without markup for file output."""
+    # Remove internal structlog metadata
+    event_dict.pop("_record", None)
+    event_dict.pop("_from_structlog", None)
+
+    level = event_dict.pop("level", "INFO")
+    timestamp = event_dict.pop("timestamp", "")
+    logger_name = event_dict.pop("logger", "")
+    event = event_dict.pop("event", "")
+
+    # Format as simple human-readable line
+    parts = []
+    if timestamp:
+        parts.append(f"{timestamp}")
+    if logger_name:
+        # Shorten logger names for readability
+        short_name = logger_name.split(".")[-1] if "." in logger_name else logger_name
+        parts.append(f"[{short_name}]")
+
+    # Add level without color coding
+    parts.append(level.upper())
+
+    # Add the main event message
+    parts.append(event if event else "")
+
+    # Add any remaining key-value pairs as context (more compact format)
+    if event_dict:
+        context_parts = []
+        for key, value in event_dict.items():
+            # Skip internal keys
+            if key.startswith("_"):
+                continue
+            # Format value nicely
+            if isinstance(value, str) and len(value) > 50:
+                value_str = f"{value[:47]}..."
+            else:
+                value_str = str(value)
+            context_parts.append(f"{key}={value_str}")
+        if context_parts:
+            parts.append(f"({', '.join(context_parts)})")
+
+    return " ".join(parts)
 
 
 formatter = structlog.stdlib.ProcessorFormatter(
@@ -413,16 +495,34 @@ formatter = structlog.stdlib.ProcessorFormatter(
     ],
 )
 
-# Alternative: Even simpler formatter that outputs clean, readable lines
+# Formatter for file output (plain text, no Rich markup)
 simple_formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M:%S"),
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
-    processors=[simple_log_format],
+    processors=[
+        filter_internal_keys,  # Remove internal fields first
+        simple_log_format_plain,  # Then format for display (no markup)
+    ],
+)
+
+# Formatter for Rich console output (with color markup)
+rich_formatter = structlog.stdlib.ProcessorFormatter(
+    foreign_pre_chain=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M:%S"),
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+    ],
+    processors=[
+        filter_internal_keys,  # Remove internal fields first
+        simple_log_format_rich,  # Then format with Rich markup
+    ],
 )
 
 handler = stdlib_logging.StreamHandler()

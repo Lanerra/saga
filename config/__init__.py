@@ -58,6 +58,8 @@ for _obj_name in ("Models", "Temperatures"):
     if hasattr(_settings_mod, _obj_name):
         globals()[_obj_name] = getattr(_settings_mod, _obj_name)
 
-# Export additional objects needed for backward compatibility (e.g., structlog formatter)
-if hasattr(_settings_mod, "formatter"):
+# Export additional objects needed for backward compatibility (e.g., structlog formatters)
+if hasattr(_settings_mod, "simple_formatter"):
     globals()["simple_formatter"] = _settings_mod.simple_formatter
+if hasattr(_settings_mod, "rich_formatter"):
+    globals()["rich_formatter"] = _settings_mod.rich_formatter

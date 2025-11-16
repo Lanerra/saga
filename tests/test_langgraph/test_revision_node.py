@@ -260,6 +260,7 @@ class TestConstructRevisionPrompt:
         # Should fetch KG facts
         mock_prompt_data_getters["get_kg_facts"].assert_called_once()
 
+    @pytest.mark.skip(reason="Length requirements removed from revision prompt")
     async def test_construct_prompt_with_length_issue(self, mock_prompt_data_getters):
         """Test prompt includes length warning for short drafts."""
         short_text = "Too short"

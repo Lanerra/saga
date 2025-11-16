@@ -341,6 +341,7 @@ Please ensure your revision stays true to this plot point while addressing all i
             "revision_reason": revision_reason,
             "all_problem_descriptions": all_problem_descriptions,
             "deduplication_note": "",  # Not applicable in this context
+            "length_issue_explicit_instruction": "",  # Length check removed, kept for template compatibility
             "plan_focus_section": plan_focus_section,
             "hybrid_context_for_revision": hybrid_context,
             "original_snippet": draft_text,  # Full text, not just snippet

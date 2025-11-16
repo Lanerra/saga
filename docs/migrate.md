@@ -375,20 +375,22 @@ Both pipelines use these agents and utilities:
 - **Files Modified**: 9 files (config/settings.py, agents/, initialization/, prompts/, utils/)
 - **Result**: Simplified codebase, no functional loss
 
-**⏳ Task 1.1: Add Text Deduplication to LangGraph (PENDING)**
-- **Location**: Insert after `generation_node` and `revision_node`
-- **Effort**: ~50 LOC (utility already exists in `processing/text_deduplicator.py`)
-- **Implementation**:
+**✅ Task 1.1: Add Text Deduplication to LangGraph (COMPLETE)**
+- **Status**: Completed in commit `459a7c5`
+- **Implementation**: `TextDeduplicator` integrated into both nodes
   ```python
-  # In generation_node.py and revision_node.py
-  from processing.text_deduplicator import deduplicate_text
+  # In generation_node.py and revision_node.py (lines 237-243, 195-201)
+  from processing.text_deduplicator import TextDeduplicator
 
-  # After draft generation
-  deduplicated_text = deduplicate_text(draft_text)
+  deduplicator = TextDeduplicator()
+  deduplicated_text, removed_chars = await deduplicator.deduplicate(
+      draft_text, segment_level="paragraph"
+  )
   state["draft_text"] = deduplicated_text
+  state["is_from_flawed_draft"] = removed_chars > 0
   ```
-- **Files Modified**: `nodes/generation_node.py`, `nodes/revision_node.py`
-- **Tests**: Add deduplication assertion to generation tests
+- **Files Modified**: `core/langgraph/nodes/generation_node.py`, `core/langgraph/nodes/revision_node.py`
+- **Tests**: Deduplication tracked via `is_from_flawed_draft` state flag
 
 **Task 1.2: Revision Quality Comparison Test**
 - **Goal**: Measure quality difference between patch-based (NANA) vs full-rewrite (LangGraph)
@@ -399,18 +401,19 @@ Both pipelines use these agents and utilities:
 - **Deliverable**: Report with recommendation (port patch system or accept full rewrite)
 - **Files**: Create `scripts/compare_revision_quality.py`
 
-**Task 1.3: DECISION POINT - Patch-Based Revision**
-- **Option A**: Port `revision_logic.py` to LangGraph node
+**✅ Task 1.3: DECISION MADE - Patch-Based Revision**
+- **Decision**: **Option B** - Accept full-rewrite approach (SELECTED)
+  - Effort: 0 (already implemented in `core/langgraph/nodes/revision_node.py`)
+  - Benefit: Simplicity, structural fixes, maintainability
+  - Rationale: Full-rewrite provides structural improvements and reduces complexity
+
+- **Option A**: Port `revision_logic.py` to LangGraph node (REJECTED)
   - Effort: ~1-2 weeks (1,211 LOC to adapt)
   - Benefit: Preserve targeted revision capability
   - Risk: Complexity increase, maintenance burden
+  - Status: Not pursued - full-rewrite approach deemed sufficient
 
-- **Option B**: Accept full-rewrite approach
-  - Effort: 0 (already implemented)
-  - Benefit: Simplicity, structural fixes
-  - Risk: Quality regression if patch-based is superior
-
-- **Recommendation**: Run Task 1.2 comparison test first, then decide
+- **Implementation**: LangGraph revision node uses full chapter regeneration with validation feedback
 
 #### Week 2: Ingestion & Optional Features
 

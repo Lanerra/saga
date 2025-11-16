@@ -36,7 +36,7 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 # Types available for type checking only
 if TYPE_CHECKING:
-    from processing.state_tracker import StateTracker
+    pass
 
 logger = structlog.get_logger(__name__)
 

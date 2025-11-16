@@ -109,7 +109,7 @@ async def test_run_bootstrap_pipeline_skips_with_user_story(monkeypatch, tmp_pat
             character_profiles,
             world_building,
             warnings,
-        ) = await run_bootstrap_pipeline(kg_heal=False)
+        ) = await run_bootstrap_pipeline()
     finally:
         for key, value in original_overrides.items():
             config.set(key, value)
