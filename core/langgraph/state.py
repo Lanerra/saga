@@ -1,3 +1,4 @@
+# core/langgraph/state.py
 """
 LangGraph State Schema for SAGA Narrative Generation.
 

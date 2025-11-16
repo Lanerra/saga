@@ -1,3 +1,4 @@
+# core/langgraph/initialization/chapter_outline_node.py
 """
 Chapter Outline Generation Node (On-Demand).
 

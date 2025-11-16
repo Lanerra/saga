@@ -1,3 +1,4 @@
+# core/langgraph/nodes/validation_node.py
 """
 Consistency validation node for LangGraph workflow.
 

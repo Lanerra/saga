@@ -1,3 +1,4 @@
+# core/langgraph/nodes/commit_node.py
 """
 Knowledge graph commit node with deduplication for LangGraph workflow.
 

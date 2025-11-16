@@ -1,3 +1,4 @@
+# core/langgraph/nodes/extraction_node.py
 """
 Entity extraction node for LangGraph workflow.
 

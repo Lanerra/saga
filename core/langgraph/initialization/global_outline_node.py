@@ -1,3 +1,4 @@
+# core/langgraph/initialization/global_outline_node.py
 """
 Global Outline Generation Node for Initialization Phase.
 

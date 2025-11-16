@@ -1,3 +1,4 @@
+# core/langgraph/graph_context.py
 """
 Neo4j context construction for LangGraph workflow.
 
