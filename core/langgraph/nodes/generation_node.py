@@ -317,6 +317,9 @@ async def _construct_generation_prompt(
     Returns:
         Rendered prompt string ready for LLM
     """
+    # Get minimum chapter length from config
+    min_length = getattr(config.settings, "MIN_CHAPTER_LENGTH_CHARS", 12000)
+
     prompt = render_prompt(
         "narrative_agent/draft_chapter_from_plot_point.j2",
         {
@@ -327,6 +330,7 @@ async def _construct_generation_prompt(
             "protagonist_name": protagonist_name,
             "plot_point_focus": plot_point_focus,
             "hybrid_context_for_draft": hybrid_context,
+            "min_length": min_length,
         },
     )
 

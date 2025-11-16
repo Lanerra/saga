@@ -201,6 +201,9 @@ class SagaSettings(BaseSettings):
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
+    # Chapter Generation Configuration
+    MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
+
     # Relationship Constraint Configuration
     ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
     RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = 0.3
