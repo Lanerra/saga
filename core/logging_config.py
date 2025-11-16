@@ -6,7 +6,7 @@ import os
 import structlog
 
 import config
-from config import simple_formatter, rich_formatter
+from config import rich_formatter, simple_formatter
 
 try:
     from rich.logging import RichHandler
@@ -42,7 +42,9 @@ def setup_saga_logging():
     if getattr(config, "SIMPLE_LOGGING_MODE", False):
         stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
-        stream_handler.setFormatter(rich_formatter)  # Use rich formatter for better console output
+        stream_handler.setFormatter(
+            rich_formatter
+        )  # Use rich formatter for better console output
         root_logger.addHandler(stream_handler)
         root_logger.info("Simple logging mode enabled: console only.")
     elif config.LOG_FILE:
@@ -108,7 +110,9 @@ def setup_saga_logging():
     ):
         stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
-        stream_handler.setFormatter(rich_formatter)  # Use rich formatter for better console output
+        stream_handler.setFormatter(
+            rich_formatter
+        )  # Use rich formatter for better console output
         root_logger.addHandler(stream_handler)
         root_logger.info("Standard stream logging handler enabled for console.")
 

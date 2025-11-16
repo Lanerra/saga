@@ -505,8 +505,8 @@ simple_formatter = structlog.stdlib.ProcessorFormatter(
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
     processors=[
-        filter_internal_keys,      # Remove internal fields first
-        simple_log_format_plain,   # Then format for display (no markup)
+        filter_internal_keys,  # Remove internal fields first
+        simple_log_format_plain,  # Then format for display (no markup)
     ],
 )
 
@@ -520,8 +520,8 @@ rich_formatter = structlog.stdlib.ProcessorFormatter(
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
     processors=[
-        filter_internal_keys,     # Remove internal fields first
-        simple_log_format_rich,   # Then format with Rich markup
+        filter_internal_keys,  # Remove internal fields first
+        simple_log_format_rich,  # Then format with Rich markup
     ],
 )
 
