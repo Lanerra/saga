@@ -552,12 +552,6 @@ DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
     True  # Enable world item duplicate prevention
 )
 
-# State Tracker Configuration
-STATE_TRACKER_ENABLED: bool = True  # Enable StateTracker for bootstrap generation
-STATE_TRACKER_SIMILARITY_THRESHOLD: float = (
-    0.75  # Threshold for description similarity checks
-)
-
 # Legacy Degradation Flags (non-breaking defaults)
 # Legacy WorldElement toggle removed; single typed-entity model is standard
 ENABLE_STATUS_IS_ALIAS: bool = True
