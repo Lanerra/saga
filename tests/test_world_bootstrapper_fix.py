@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from initialization.bootstrappers.world_bootstrapper import _bootstrap_world_names
-from processing.state_tracker import StateTracker
 
 
 @pytest.mark.asyncio

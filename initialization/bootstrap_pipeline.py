@@ -40,7 +40,6 @@ from initialization.data_loader import (
     load_user_supplied_model,
 )
 from models import CharacterProfile, WorldItem
-from processing.state_tracker import StateTracker
 
 logger = structlog.get_logger(__name__)
 
@@ -107,7 +106,6 @@ def _apply_level_overrides(level: BootstrapLevel) -> None:
 async def run_world_phase(
     plot_outline: dict[str, Any],
     world_building: dict[str, dict[str, WorldItem]] | None,
-    state_tracker: StateTracker,
     *,
     dry_run: bool = False,
     kg_agent: KnowledgeAgent | None = None,
@@ -116,7 +114,7 @@ async def run_world_phase(
     world_building = world_building or create_default_world()
 
     world_building, _ = await bootstrap_world(
-        world_building, plot_outline, state_tracker
+        world_building, plot_outline
     )
 
     # Phase-local validation: world uniqueness and basic checks only
@@ -125,7 +123,6 @@ async def run_world_phase(
     validation = await quick_validate_world(
         plot_outline,
         world_building,
-        state_tracker,
     )
 
     # Enforce duplicate-check requirements for locations specifically
@@ -156,7 +153,6 @@ async def run_world_phase(
 async def run_characters_phase(
     plot_outline: dict[str, Any],
     character_profiles: dict[str, CharacterProfile] | None,
-    state_tracker: StateTracker,
     *,
     dry_run: bool = False,
     world_building: dict[str, dict[str, WorldItem]] | None = None,
@@ -173,7 +169,6 @@ async def run_characters_phase(
     character_profiles, _ = await bootstrap_characters(
         character_profiles,
         plot_outline,
-        state_tracker,
         world_building=world_building,
     )
 
@@ -181,7 +176,6 @@ async def run_characters_phase(
     # causing fail-fast before the plot phase fills them in.
     validation = await quick_validate_characters(
         character_profiles,
-        state_tracker,
     )
 
     # Enforce hard fail on duplicate character names
@@ -373,9 +367,6 @@ async def run_bootstrap_pipeline(
         character_profiles = create_default_characters(plot_outline["protagonist_name"])
         world_building = create_default_world()
 
-    # Shared state tracker
-    state_tracker = StateTracker()
-
     # Phase execution in order: world -> characters -> plot (unless limited by phase)
     # Reuse a single KnowledgeAgent instance for the run to avoid repeated init
     kg_agent: KnowledgeAgent | None = KnowledgeAgent()
@@ -384,7 +375,6 @@ async def run_bootstrap_pipeline(
         world_building, world_val = await run_world_phase(
             plot_outline,
             world_building,
-            state_tracker,
             dry_run=dry_run,
             kg_agent=kg_agent,
         )
@@ -397,7 +387,6 @@ async def run_bootstrap_pipeline(
         character_profiles, char_val = await run_characters_phase(
             plot_outline,
             character_profiles,
-            state_tracker,
             dry_run=dry_run,
             world_building=world_building,
             kg_agent=kg_agent,

@@ -7,7 +7,6 @@ import structlog
 import config
 import utils
 from models import WorldItem
-from processing.state_tracker import StateTracker
 
 from .common import bootstrap_field
 
@@ -97,7 +96,7 @@ def create_default_world() -> dict[str, dict[str, WorldItem]]:
 async def _bootstrap_world_overview(
     world_building: dict[str, Any],
     plot_outline: dict[str, Any],
-    state_tracker: StateTracker | None = None,
+    state_tracker: Any | None = None,
 ) -> dict[str, int] | None:
     """Bootstrap the world overview description."""
     usage_data: dict[str, int] = {
@@ -170,7 +169,7 @@ async def _bootstrap_world_overview(
 async def _bootstrap_world_names(
     world_building: dict[str, Any],
     plot_outline: dict[str, Any],
-    state_tracker: StateTracker,
+    state_tracker: Any,
 ) -> dict[str, int] | None:
     """Bootstrap names for world items that need them."""
     usage_data: dict[str, int] = {
@@ -761,7 +760,7 @@ async def _bootstrap_world_properties(
 async def bootstrap_world(
     world_building: dict[str, Any],
     plot_outline: dict[str, Any],
-    state_tracker: StateTracker | None = None,
+    state_tracker: Any | None = None,
 ) -> tuple[dict[str, Any], dict[str, int] | None]:
     """Fill missing world-building information via LLM."""
     overall_usage_data: dict[str, int] = {
@@ -770,9 +769,12 @@ async def bootstrap_world(
         "total_tokens": 0,
     }
 
-    # Initialize StateTracker if not provided
+    # StateTracker support removed - using Neo4j MERGE for deduplication instead
     if state_tracker is None:
-        state_tracker = StateTracker()
+        state_tracker = type('MockStateTracker', (), {
+            'reserve': lambda self, *args: None,
+            'check': lambda self, *args: False
+        })()
 
     def _accumulate_usage(item_usage: dict[str, int] | None) -> None:
         if item_usage:

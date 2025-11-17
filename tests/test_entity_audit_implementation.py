@@ -13,7 +13,6 @@ import pytest
 
 from agents.knowledge_agent import KnowledgeAgent
 from models.kg_models import CharacterProfile, WorldItem
-from processing.state_tracker import StateTracker
 
 
 class TestEntityAuditImplementation:
@@ -22,7 +21,7 @@ class TestEntityAuditImplementation:
     @pytest.fixture
     def state_tracker(self):
         """Create a StateTracker instance for testing."""
-        return StateTracker()
+        return None
 
     @pytest.fixture
     def knowledge_agent(self):

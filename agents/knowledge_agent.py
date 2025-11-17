@@ -1304,21 +1304,6 @@ class KnowledgeAgent:
             f"Processing {len(candidate_pairs)} candidate pairs for resolution."
         )
 
-        # Enhance candidates with StateTracker metadata if available
-        # Try to get StateTracker instance from the current context
-        # This is a simplified approach - in practice, StateTracker would be passed in
-        try:
-            # Prioritize candidates using StateTracker if available
-            prioritized_pairs = (
-                await self._prioritize_candidate_pairs_with_state_tracker(
-                    candidate_pairs
-                )
-            )
-            candidate_pairs = prioritized_pairs
-            logger.info("Prioritized candidate pairs using StateTracker metadata")
-        except Exception as e:
-            logger.debug(f"StateTracker prioritization not available: {e}")
-
         # Process pairs in batches for better memory management
         batch_size = 5  # Reduced batch size to limit concurrent LLM calls
         processed_pairs = 0

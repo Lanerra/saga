@@ -4,13 +4,12 @@
 import pytest
 
 from agents.knowledge_agent import KnowledgeAgent
-from processing.state_tracker import StateTracker
 
 
 @pytest.mark.asyncio
 async def test_basic_state_tracker_functionality():
     """Basic smoke test for StateTracker functionality."""
-    tracker = StateTracker()
+    tracker = None
 
     # Test basic reservation
     result = await tracker.reserve("TestCharacter", "character", "A test character")

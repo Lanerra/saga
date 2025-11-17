@@ -7,7 +7,6 @@ import structlog
 import config
 import utils
 from models import CharacterProfile
-from processing.state_tracker import StateTracker
 
 from .common import bootstrap_field
 
@@ -44,7 +43,7 @@ def create_default_characters(protagonist_name: str) -> dict[str, CharacterProfi
 
 async def _try_generate_unique_name(
     base_context: dict[str, Any],
-    state_tracker: StateTracker,
+    state_tracker: Any,
     existing_profile_names: list[str],
     max_attempts: int = 5,
 ) -> str | None:
@@ -441,7 +440,7 @@ def _is_too_similar_to_used(candidate: str, used_names: set[str]) -> bool:
 async def bootstrap_characters(
     character_profiles: dict[str, CharacterProfile],
     plot_outline: dict[str, Any],
-    state_tracker: StateTracker | None = None,
+    state_tracker: Any = None,
     world_building: dict[str, Any] | None = None,
 ) -> tuple[dict[str, CharacterProfile], dict[str, int] | None]:
     """Fill missing character profile data via LLM with proactive shared state management."""
@@ -453,9 +452,12 @@ async def bootstrap_characters(
         "total_tokens": 0,
     }
 
-    # Initialize StateTracker if not provided
+    # StateTracker support removed - using Neo4j MERGE for deduplication instead
     if state_tracker is None:
-        state_tracker = StateTracker()
+        state_tracker = type('MockStateTracker', (), {
+            'reserve': lambda self, *args: None,
+            'check': lambda self, *args: False
+        })()
 
     # Pre-reserve all placeholder names to prevent conflicts during parallel generation
     placeholder_reservations = {}
