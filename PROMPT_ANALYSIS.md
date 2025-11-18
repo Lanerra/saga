@@ -241,6 +241,26 @@ Verify:
 - `prompts/initialization/generate_global_outline.j2` - Removed redundant role description
 - `prompts/initialization/generate_act_outline.j2` - Removed redundant role description
 - `prompts/initialization/generate_chapter_outline.j2` - Removed redundant role description
+- `PROMPT_ANALYSIS.md` - Updated to reflect template deletions
+
+### Deleted (17 legacy templates):
+- `prompts/bootstrapper/fill_character_field.j2`
+- `prompts/bootstrapper/fill_character_name_conflict.j2`
+- `prompts/bootstrapper/fill_plot_field.j2`
+- `prompts/bootstrapper/fill_plot_points.j2`
+- `prompts/bootstrapper/fill_world_item_field.j2`
+- `prompts/knowledge_agent/base_enrichment.j2`
+- `prompts/knowledge_agent/dynamic_relationship_resolution.j2`
+- `prompts/knowledge_agent/enrich_character.j2`
+- `prompts/knowledge_agent/enrich_world_element.j2`
+- `prompts/knowledge_agent/entity_resolution.j2`
+- `prompts/narrative_agent/draft_scene.j2`
+- `prompts/narrative_agent/plan_continuation.j2`
+- `prompts/narrative_agent/scene_plan.j2`
+- `prompts/revision_agent/consistency_check.j2`
+- `prompts/revision_agent/evaluate_chapter.j2`
+- `prompts/revision_agent/patch_generation.j2`
+- `prompts/revision_agent/validate_patch.j2`
 
 ---
 
@@ -283,33 +303,18 @@ The prompt system is production-ready for the LangGraph-based SAGA workflow.
 **Revision Phase:**
 8. `prompts/revision_agent/full_chapter_rewrite.j2`
 
-### Legacy Templates (Not Used in LangGraph Workflow)
+**Knowledge Extraction Phase:**
+9. `prompts/knowledge_agent/extract_updates.j2`
+10. `prompts/knowledge_agent/chapter_summary.j2`
 
-**Narrative Agent (Legacy):**
-- `prompts/narrative_agent/scene_plan.j2`
-- `prompts/narrative_agent/plan_continuation.j2`
-- `prompts/narrative_agent/draft_scene.j2`
+### Legacy Templates (Deleted)
 
-**Revision Agent (Legacy):**
-- `prompts/revision_agent/patch_generation.j2`
-- `prompts/revision_agent/validate_patch.j2`
-- `prompts/revision_agent/evaluate_chapter.j2`
-- `prompts/revision_agent/consistency_check.j2`
+All legacy templates from the NANA workflow have been removed as they are no longer used by the LangGraph workflow:
 
-**Knowledge Agent (Legacy):**
-- `prompts/knowledge_agent/extract_updates.j2`
-- `prompts/knowledge_agent/enrich_world_element.j2`
-- `prompts/knowledge_agent/entity_resolution.j2`
-- `prompts/knowledge_agent/enrich_character.j2`
-- `prompts/knowledge_agent/dynamic_relationship_resolution.j2`
-- `prompts/knowledge_agent/chapter_summary.j2`
-- `prompts/knowledge_agent/base_enrichment.j2`
+**Deleted Templates (17 total):**
+- 5 bootstrapper templates
+- 3 narrative_agent templates (scene_plan, plan_continuation, draft_scene)
+- 4 revision_agent templates (patch_generation, validate_patch, evaluate_chapter, consistency_check)
+- 5 knowledge_agent templates (base_enrichment, enrich_character, enrich_world_element, entity_resolution, dynamic_relationship_resolution)
 
-**Bootstrapper (Legacy):**
-- `prompts/bootstrapper/fill_world_item_field.j2`
-- `prompts/bootstrapper/fill_plot_points.j2`
-- `prompts/bootstrapper/fill_plot_field.j2`
-- `prompts/bootstrapper/fill_character_name_conflict.j2`
-- `prompts/bootstrapper/fill_character_field.j2`
-
-**Note:** Legacy templates may need similar updates if the NANA workflow is ever re-enabled. For now, they are not used by the LangGraph workflow and were not modified.
+**Rationale:** These templates were part of the legacy NANA orchestrator which was removed in Phase 3. The LangGraph workflow uses a different, streamlined set of templates.
