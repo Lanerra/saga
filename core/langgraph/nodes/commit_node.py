@@ -630,6 +630,9 @@ async def _build_relationship_statements(
     This builds the same triples as _create_relationships but returns
     Cypher statements instead of executing them.
 
+    Layer 2 Validation: Verifies that both subject and object entities exist
+    in the extracted entity lists before creating relationship statements.
+
     Args:
         relationships: List of ExtractedRelationship instances
         char_entities: List of character ExtractedEntity instances
@@ -648,14 +651,17 @@ async def _build_relationship_statements(
     # Build entity lookup maps for type resolution (same as _create_relationships)
     entity_type_map = {}
     entity_category_map = {}
+    entity_name_set = set()  # Track all valid entity names for validation
 
     for entity in char_entities:
         entity_type_map[entity.name] = entity.type
         entity_category_map[entity.name] = entity.attributes.get("category", "")
+        entity_name_set.add(entity.name.lower().strip())
 
     for entity in world_entities:
         entity_type_map[entity.name] = entity.type
         entity_category_map[entity.name] = entity.attributes.get("category", "")
+        entity_name_set.add(entity.name.lower().strip())
 
     # Helper to create subject/object dict with type info
     def _make_entity_dict(name: str, original_name: str) -> dict:
@@ -676,15 +682,77 @@ async def _build_relationship_statements(
             "category": entity_category,
         }
 
-    # Convert to triple format
+    # Convert to triple format with Layer 2 validation
     structured_triples = []
+    validation_stats = {
+        "total": 0,
+        "accepted": 0,
+        "rejected_missing_subject": 0,
+        "rejected_missing_target": 0,
+    }
 
     for rel in relationships:
+        validation_stats["total"] += 1
+
+        # Apply deduplication mappings
         source_name = char_mappings.get(rel.source_name, rel.source_name)
         target_name = char_mappings.get(rel.target_name, rel.target_name)
 
         if rel.target_name in world_mappings:
             target_name = world_mappings[rel.target_name]
+
+        # Layer 2 Validation: Check if both entities exist in extracted entities
+        source_normalized = source_name.lower().strip()
+        target_normalized = target_name.lower().strip()
+
+        # Validate subject exists
+        if source_normalized not in entity_name_set:
+            logger.warning(
+                "commit_node: rejecting relationship - subject not in extracted entities",
+                subject=rel.source_name,
+                mapped_subject=source_name,
+                predicate=rel.relationship_type,
+                target=rel.target_name,
+                chapter=chapter,
+            )
+            validation_stats["rejected_missing_subject"] += 1
+            continue
+
+        # Validate target exists (unless it's a literal value)
+        # For now, we don't have a reliable way to detect literals here,
+        # so we'll be lenient with targets that might be literal values
+        if target_normalized not in entity_name_set:
+            # Check if this might be a literal value (heuristic)
+            # If the target is very short or looks like a status/value, allow it
+            is_likely_literal = (
+                len(target_name) < 30
+                and not any(
+                    c.isupper() for c in target_name[1:]
+                )  # Not a proper name
+            )
+
+            if not is_likely_literal:
+                logger.warning(
+                    "commit_node: rejecting relationship - target not in extracted entities",
+                    subject=rel.source_name,
+                    predicate=rel.relationship_type,
+                    target=rel.target_name,
+                    mapped_target=target_name,
+                    chapter=chapter,
+                )
+                validation_stats["rejected_missing_target"] += 1
+                continue
+            else:
+                logger.debug(
+                    "commit_node: allowing relationship with literal-like target",
+                    subject=source_name,
+                    predicate=rel.relationship_type,
+                    target=target_name,
+                    chapter=chapter,
+                )
+
+        # Validation passed - build triple
+        validation_stats["accepted"] += 1
 
         triple = {
             "subject": _make_entity_dict(source_name, rel.source_name),
@@ -722,9 +790,12 @@ async def _build_relationship_statements(
             object_labels = _get_cypher_labels(object_type)
 
             # Build relationship Cypher
+            # Layer 3 Protection: Use MATCH instead of MERGE for nodes
+            # This prevents creation of orphaned nodes if entities don't exist
+            # The query will fail gracefully if either node is missing
             query = f"""
-            MERGE (subj{subject_labels} {{name: $subject_name}})
-            MERGE (obj{object_labels} {{name: $object_name}})
+            MATCH (subj{subject_labels} {{name: $subject_name}})
+            MATCH (obj{object_labels} {{name: $object_name}})
             MERGE (subj)-[r:{predicate_clean}]->(obj)
             SET r.type = $rel_type,
                 r.chapter_added = $chapter,
@@ -756,8 +827,12 @@ async def _build_relationship_statements(
 
     logger.info(
         "_build_relationship_statements: built statements",
-        relationships=len(relationships),
+        total_relationships=validation_stats["total"],
+        accepted=validation_stats["accepted"],
+        rejected_missing_subject=validation_stats["rejected_missing_subject"],
+        rejected_missing_target=validation_stats["rejected_missing_target"],
         statements=len(statements),
+        chapter=chapter,
     )
 
     return statements

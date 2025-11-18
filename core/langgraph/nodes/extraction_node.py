@@ -360,6 +360,9 @@ async def _extract_updates_as_models(
         # Parse triples into structured format
         parsed_triples = parse_llm_triples(kg_triples_text)
 
+        # Build entity name registry for validation
+        entity_registry = _build_entity_registry(char_updates, world_updates)
+
         for triple in parsed_triples:
             # Extract components from parsed triple
             subject = triple.get("subject", "")
@@ -382,16 +385,27 @@ async def _extract_updates_as_models(
             target = str(target) if target else ""
 
             if subject and target and predicate:
-                relationships.append(
-                    ExtractedRelationship(
-                        source_name=subject,
-                        target_name=target,
-                        relationship_type=predicate,
-                        description=triple.get("description", ""),
-                        chapter=chapter_number,
-                        confidence=0.8,
-                    )
+                # Validate and potentially correct entity names
+                validated_relationship = _validate_relationship_entities(
+                    subject=subject,
+                    target=target,
+                    predicate=predicate,
+                    entity_registry=entity_registry,
+                    is_literal_object=bool(object_literal and not object_entity),
+                    chapter_number=chapter_number,
                 )
+
+                if validated_relationship:
+                    relationships.append(
+                        ExtractedRelationship(
+                            source_name=validated_relationship["subject"],
+                            target_name=validated_relationship["target"],
+                            relationship_type=predicate,
+                            description=triple.get("description", ""),
+                            chapter=chapter_number,
+                            confidence=validated_relationship.get("confidence", 0.8),
+                        )
+                    )
 
         logger.debug(
             "_extract_updates_as_models: extraction complete",
@@ -549,6 +563,161 @@ def _map_category_to_type(category: str) -> str:
     # Default to object for everything else
     # (artifacts, items, resources, documents, etc.)
     return "object"
+
+
+def _build_entity_registry(
+    char_updates: list[ExtractedEntity], world_updates: list[ExtractedEntity]
+) -> dict[str, ExtractedEntity]:
+    """
+    Build a registry of all extracted entities for relationship validation.
+
+    Creates a lookup dictionary with normalized entity names as keys,
+    mapping to the corresponding ExtractedEntity. This enables fuzzy
+    matching and validation of relationship entities.
+
+    Args:
+        char_updates: List of extracted character entities
+        world_updates: List of extracted world item entities
+
+    Returns:
+        Dictionary mapping normalized names to ExtractedEntity instances
+    """
+    registry: dict[str, ExtractedEntity] = {}
+
+    # Add characters to registry
+    for entity in char_updates:
+        # Use normalized name as key (lowercase, stripped)
+        normalized_name = entity.name.lower().strip()
+        registry[normalized_name] = entity
+
+        # Also add original name if different
+        if entity.name != normalized_name:
+            registry[entity.name] = entity
+
+    # Add world items to registry
+    for entity in world_updates:
+        normalized_name = entity.name.lower().strip()
+        registry[normalized_name] = entity
+
+        if entity.name != normalized_name:
+            registry[entity.name] = entity
+
+    logger.debug(
+        "_build_entity_registry: built registry",
+        total_entities=len(char_updates) + len(world_updates),
+        registry_keys=len(registry),
+    )
+
+    return registry
+
+
+def _validate_relationship_entities(
+    subject: str,
+    target: str,
+    predicate: str,
+    entity_registry: dict[str, ExtractedEntity],
+    is_literal_object: bool,
+    chapter_number: int,
+) -> dict[str, any] | None:
+    """
+    Validate and potentially correct entity names in a relationship triple.
+
+    This function implements Layer 1 validation to prevent orphaned nodes by:
+    1. Checking if both subject and target exist in extracted entities
+    2. Attempting fuzzy matching to auto-correct minor misspellings
+    3. Filtering out relationships with non-existent entities
+    4. Logging issues for debugging
+
+    Args:
+        subject: Subject entity name from triple
+        target: Target entity name from triple
+        predicate: Relationship type
+        entity_registry: Registry of extracted entities
+        is_literal_object: Whether target is a literal value (not an entity)
+        chapter_number: Current chapter number for logging
+
+    Returns:
+        Dictionary with validated subject/target/confidence, or None if invalid
+    """
+    from difflib import get_close_matches
+
+    validated = {"subject": subject, "target": target, "confidence": 0.8}
+
+    # Validate subject entity (must always be an extracted entity)
+    subject_normalized = subject.lower().strip()
+    if subject_normalized not in entity_registry:
+        # Try fuzzy matching
+        possible_matches = get_close_matches(
+            subject_normalized, entity_registry.keys(), n=1, cutoff=0.85
+        )
+
+        if possible_matches:
+            matched_name = possible_matches[0]
+            correct_name = entity_registry[matched_name].name
+            logger.info(
+                "relationship_validation: auto-corrected subject name",
+                original=subject,
+                corrected=correct_name,
+                chapter=chapter_number,
+                predicate=predicate,
+            )
+            validated["subject"] = correct_name
+            validated["confidence"] = 0.7  # Lower confidence for corrected names
+        else:
+            logger.warning(
+                "relationship_validation: subject not found in extracted entities",
+                subject=subject,
+                predicate=predicate,
+                target=target,
+                chapter=chapter_number,
+                available_entities=list(entity_registry.keys())[:10],  # Sample for debugging
+            )
+            return None  # Reject relationship with invalid subject
+
+    # Validate target entity (skip if literal object)
+    if not is_literal_object:
+        target_normalized = target.lower().strip()
+        if target_normalized not in entity_registry:
+            # Try fuzzy matching
+            possible_matches = get_close_matches(
+                target_normalized, entity_registry.keys(), n=1, cutoff=0.85
+            )
+
+            if possible_matches:
+                matched_name = possible_matches[0]
+                correct_name = entity_registry[matched_name].name
+                logger.info(
+                    "relationship_validation: auto-corrected target name",
+                    original=target,
+                    corrected=correct_name,
+                    chapter=chapter_number,
+                    predicate=predicate,
+                )
+                validated["target"] = correct_name
+                validated["confidence"] = min(
+                    validated["confidence"], 0.7
+                )  # Use minimum confidence
+            else:
+                logger.warning(
+                    "relationship_validation: target not found in extracted entities",
+                    subject=subject,
+                    predicate=predicate,
+                    target=target,
+                    chapter=chapter_number,
+                    available_entities=list(entity_registry.keys())[:10],
+                )
+                return None  # Reject relationship with invalid target
+
+    logger.debug(
+        "relationship_validation: relationship validated",
+        subject=validated["subject"],
+        predicate=predicate,
+        target=validated["target"],
+        confidence=validated["confidence"],
+        chapter=chapter_number,
+    )
+
+    return validated
 
 
 __all__ = ["extract_entities"]
