@@ -49,7 +49,13 @@ class NativeCypherBuilder:
         UNWIND $relationship_data AS rel_data
         CALL (c, rel_data) {
             WITH c, rel_data
-            MATCH (other:Entity {name: rel_data.target_name})
+            // Use MERGE instead of MATCH to create provisional nodes if they don't exist
+            MERGE (other:Entity {name: rel_data.target_name})
+            ON CREATE SET 
+                other.is_provisional = true,
+                other.created_chapter = $chapter_number,
+                other.id = randomUUID() // Assign a temporary ID if needed, or let it be null/generated later
+            
             MERGE (c)-[r:RELATIONSHIP {type: rel_data.rel_type}]->(other)
             SET r.description = rel_data.description,
                 r.last_updated = timestamp()
@@ -168,6 +174,7 @@ class NativeCypherBuilder:
                 "message": "Message",
                 "signal": "Signal",
                 "record": "Record",
+                "history": "History",
             }
             return mapping.get(c, "Object")
 
@@ -198,8 +205,43 @@ class NativeCypherBuilder:
             w += $additional_props
         SET w{labels_clause}
         
+        // Handle relationships as separate merge operations
+        WITH w
+        UNWIND $relationship_data AS rel_data
+        CALL (w, rel_data) {{
+            WITH w, rel_data
+            // Use MERGE instead of MATCH to create provisional nodes if they don't exist
+            MERGE (other:Entity {{name: rel_data.target_name}})
+            ON CREATE SET 
+                other.is_provisional = true,
+                other.created_chapter = $chapter_number,
+                other.id = randomUUID()
+            
+            MERGE (w)-[r:RELATIONSHIP {{type: rel_data.rel_type}}]->(other)
+            SET r.description = rel_data.description,
+                r.last_updated = timestamp()
+        }}
+        
         RETURN w.id as updated_world_item
         """
+
+        # Process relationships for batch operations
+        relationship_data = []
+        for target_name, rel_info in item.relationships.items():
+            if isinstance(rel_info, dict):
+                rel_type = rel_info.get("type", "RELATED_TO")
+                rel_desc = rel_info.get("description", "")
+            else:
+                rel_type = "RELATED_TO"
+                rel_desc = str(rel_info) if rel_info else ""
+
+            relationship_data.append(
+                {
+                    "target_name": target_name,
+                    "rel_type": rel_type,
+                    "description": rel_desc,
+                }
+            )
 
         params = {
             "id": item.id,
@@ -214,6 +256,7 @@ class NativeCypherBuilder:
             "is_provisional": item.is_provisional,
             "chapter_number": chapter_number,
             "additional_props": flattened_additional_props,  # Flattened to ensure primitive types
+            "relationship_data": relationship_data,
         }
 
         return cypher, params
