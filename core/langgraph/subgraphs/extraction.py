@@ -2,8 +2,12 @@
 import structlog
 from langgraph.graph import END, StateGraph
 
-from core.langgraph.nodes.extraction_node import (
-    extract_entities as original_extract_entities,
+from core.langgraph.nodes.extraction_nodes import (
+    extract_characters,
+    extract_locations,
+    extract_events,
+    extract_relationships,
+    consolidate_extraction,
 )
 from core.langgraph.state import NarrativeState
 
@@ -16,49 +20,6 @@ def extract_router(state: NarrativeState) -> NarrativeState:
     """
     logger.info("extract_router: preparing for parallel extraction")
     return state
-
-
-def extract_characters(state: NarrativeState) -> NarrativeState:
-    """
-    Extract character details.
-    """
-    logger.info("extract_characters: extracting characters")
-    # Placeholder: In full implementation, this would call a specific LLM prompt
-    return state
-
-
-def extract_locations(state: NarrativeState) -> NarrativeState:
-    """
-    Extract location details.
-    """
-    logger.info("extract_locations: extracting locations")
-    return state
-
-
-def extract_events(state: NarrativeState) -> NarrativeState:
-    """
-    Extract events.
-    """
-    logger.info("extract_events: extracting events")
-    return state
-
-
-def extract_relationships(state: NarrativeState) -> NarrativeState:
-    """
-    Extract relationships.
-    """
-    logger.info("extract_relationships: extracting relationships")
-    return state
-
-
-def consolidate_extraction(state: NarrativeState) -> NarrativeState:
-    """
-    Merge results from parallel extractions.
-    """
-    logger.info("consolidate_extraction: merging results")
-    # For this initial refactor, we call the original monolithic extraction here
-    # to ensure we still get valid results while the parallel nodes are placeholders.
-    return original_extract_entities(state)
 
 
 def create_extraction_subgraph() -> StateGraph:
@@ -76,8 +37,7 @@ def create_extraction_subgraph() -> StateGraph:
 
     workflow.set_entry_point("extract_router")
 
-    # In a real parallel execution, we would use map/reduce or parallel branches.
-    # LangGraph supports parallel execution by adding multiple edges from one node.
+    # Parallel execution
     workflow.add_edge("extract_router", "extract_characters")
     workflow.add_edge("extract_router", "extract_locations")
     workflow.add_edge("extract_router", "extract_events")

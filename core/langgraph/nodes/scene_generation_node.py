@@ -58,7 +58,6 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         new_drafts = current_drafts + [draft_text]
 
         return {
-            **state,
             "scene_drafts": new_drafts,
             "current_scene_index": scene_index + 1,  # Increment for next loop
             "current_node": "draft_scene",

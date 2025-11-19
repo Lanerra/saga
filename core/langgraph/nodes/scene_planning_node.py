@@ -75,7 +75,6 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
 
         return {
-            **state,
             "chapter_plan": scenes,
             "current_scene_index": 0,
             "scene_drafts": [],

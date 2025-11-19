@@ -146,6 +146,12 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     extracted_entities: dict[str, list[ExtractedEntity]]
     extracted_relationships: list[ExtractedRelationship]
+    
+    # Temporary keys for parallel extraction
+    character_updates: list[ExtractedEntity]
+    location_updates: list[ExtractedEntity]
+    event_updates: list[ExtractedEntity]
+    relationship_updates: list[ExtractedRelationship]
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)

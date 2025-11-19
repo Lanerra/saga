@@ -63,7 +63,6 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     hybrid_context = "\n\n".join(hybrid_context_parts)
 
     return {
-        **state,
         "hybrid_context": hybrid_context,
         "current_node": "retrieve_context",
     }

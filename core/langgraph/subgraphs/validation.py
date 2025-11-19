@@ -10,12 +10,12 @@ from core.langgraph.state import NarrativeState
 logger = structlog.get_logger(__name__)
 
 
-def validate_consistency(state: NarrativeState) -> NarrativeState:
+async def validate_consistency(state: NarrativeState) -> NarrativeState:
     """
     Check against graph constraints.
     """
     logger.info("validate_consistency: checking graph constraints")
-    return original_validate_consistency(state)
+    return await original_validate_consistency(state)
 
 
 def evaluate_quality(state: NarrativeState) -> NarrativeState:

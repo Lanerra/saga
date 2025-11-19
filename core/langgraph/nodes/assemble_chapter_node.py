@@ -30,7 +30,6 @@ def assemble_chapter(state: NarrativeState) -> NarrativeState:
     logger.info("assemble_chapter: assembled chapter", word_count=word_count)
 
     return {
-        **state,
         "draft_text": full_text,
         "draft_word_count": word_count,
         "current_node": "assemble_chapter",
