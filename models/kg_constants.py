@@ -195,6 +195,7 @@ SPATIAL_TEMPORAL_RELATIONSHIPS = {
     "HAPPENS_AFTER",  # Temporal sequence
     "ORIGINATES_FROM",  # Place of origin
     "TRAVELS_TO",  # Movement destination
+    "OCCURRED_IN",  # Event occurrence in a chapter/time
 }
 
 # Possession/Ownership Relationships
