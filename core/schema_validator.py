@@ -114,9 +114,6 @@ def validate_node_labels(labels: list[str]) -> list[str]:
     return errors
 
 
-# Deprecated functions have been removed - use core.relationship_validator instead
-
-
 def validate_character_profile(profile: CharacterProfile) -> list[str]:
     """
     Validate a CharacterProfile object.

@@ -16,7 +16,25 @@ from core.langgraph.nodes.validation_node import (
     validate_consistency,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship
-from core.relationship_validator import ValidationResult
+
+
+# Mock ValidationResult for tests (constraint system removed)
+class ValidationResult:
+    """Mock ValidationResult for backward compatibility with tests."""
+
+    def __init__(
+        self,
+        is_valid: bool,
+        original_relationship: str,
+        validated_relationship: str,
+        errors: list[str] | None = None,
+        suggestions: list[tuple[str, str]] | None = None,
+    ):
+        self.is_valid = is_valid
+        self.original_relationship = original_relationship
+        self.validated_relationship = validated_relationship
+        self.errors = errors or []
+        self.suggestions = suggestions or []
 
 
 @pytest.mark.asyncio

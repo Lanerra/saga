@@ -7,11 +7,8 @@ against the knowledge graph and established narrative rules.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.4.1
 
-Source Code Referenced:
-- core/relationship_validator.py:
-  - validate_batch_constraints() (line 416+)
-  - should_accept_relationship() (line 479+)
-  - ValidationResult class (lines 38-59)
+NOTE: Relationship constraint validation has been removed. See commit:
+"refactor: remove entire relationship constraint system"
 """
 
 from __future__ import annotations
@@ -22,7 +19,6 @@ import structlog
 
 from core.db_manager import neo4j_manager
 from core.langgraph.state import Contradiction, ExtractedEntity, NarrativeState
-from core.relationship_validator import validate_batch_constraints
 
 logger = structlog.get_logger(__name__)
 
@@ -39,7 +35,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     4. World rule violations (future enhancement)
     5. Event timeline violations (future enhancement)
 
-    PORTED FROM: core/relationship_validator.py
+    NOTE: Relationship validation has been disabled (constraint system removed)
 
     The validation results determine whether the chapter needs revision.
     If critical or too many major issues are found, needs_revision is set to True.
@@ -60,13 +56,14 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     contradictions: list[Contradiction] = []
 
     # Check 1: Validate all extracted relationships
-    # USES: relationship_validator.validate_batch_constraints()
-    relationship_contradictions = await _validate_relationships(
-        state.get("extracted_relationships", []),
-        state["current_chapter"],
-        state.get("extracted_entities"),
-    )
-    contradictions.extend(relationship_contradictions)
+    # NOTE: Relationship constraint validation disabled (system removed)
+    # All relationships are now accepted for creative writing flexibility
+    # relationship_contradictions = await _validate_relationships(
+    #     state.get("extracted_relationships", []),
+    #     state["current_chapter"],
+    #     state.get("extracted_entities"),
+    # )
+    # contradictions.extend(relationship_contradictions)
 
     # Check 2: Character trait consistency
     # NEW FUNCTIONALITY: Checks for contradictory character traits
@@ -126,13 +123,11 @@ async def _validate_relationships(
     extracted_entities: dict[str, list[ExtractedEntity]] | None = None,
 ) -> list[Contradiction]:
     """
-    Validate extracted relationships using relationship constraint system.
+    Validate extracted relationships.
 
-    USES: core.relationship_validator.validate_batch_constraints()
-
-    This function converts ExtractedRelationship instances to triple format,
-    validates them using the existing constraint system, and converts
-    validation failures to Contradiction instances.
+    NOTE: Relationship constraint system has been removed. This function
+    no longer performs semantic validation and returns no contradictions.
+    Relationships are accepted as-is for creative writing flexibility.
 
     Args:
         relationships: List of ExtractedRelationship instances
@@ -140,112 +135,16 @@ async def _validate_relationships(
         extracted_entities: Dict with "characters" and "world_items" lists for type lookup
 
     Returns:
-        List of Contradiction instances for invalid relationships
+        Empty list (no contradictions - all relationships accepted)
     """
-    if not relationships:
-        return []
-
-    contradictions = []
-
-    try:
-        # Build entity type lookup from extracted entities
-        entity_type_map = {}
-        entity_category_map = {}
-
-        if extracted_entities:
-            for entity in extracted_entities.get("characters", []):
-                entity_type_map[entity.name] = entity.type
-                entity_category_map[entity.name] = entity.attributes.get("category", "")
-
-            for entity in extracted_entities.get("world_items", []):
-                entity_type_map[entity.name] = entity.type
-                entity_category_map[entity.name] = entity.attributes.get("category", "")
-
-        # Helper to create entity dict with type info
-        def _make_entity_dict(name: str) -> dict:
-            """Create entity dict with name, type, and category."""
-            entity_type = entity_type_map.get(name, "object")  # Default to object
-            entity_category = entity_category_map.get(name, "")
-
-            # Map extraction types to Neo4j node types
-            type_mapping = {
-                "character": "Character",
-                "location": "Location",
-                "event": "Event",
-                "object": "Object",
-            }
-            neo4j_type = type_mapping.get(entity_type, "Object")
-
-            return {
-                "name": name,
-                "type": neo4j_type,
-                "category": entity_category,
-            }
-
-        # Convert to triple format for validation
-        triples = []
-        for rel in relationships:
-            triple = {
-                "subject": _make_entity_dict(rel.source_name),
-                "predicate": rel.relationship_type,
-                "object_entity": _make_entity_dict(rel.target_name),
-            }
-            triples.append(triple)
-
-        # Validate using existing constraint system
-        validation_results = validate_batch_constraints(triples)
-
-        # Convert validation failures to contradictions
-        for rel, result in zip(relationships, validation_results, strict=False):
-            if not result.is_valid:
-                # Determine severity based on whether suggestions exist
-                severity = "minor" if result.suggestions else "major"
-
-                # Build suggested fix from validation result
-                suggested_fix = None
-                if result.suggestions:
-                    best_suggestion = result.suggestions[0]
-                    suggested_fix = (
-                        f"Use: {best_suggestion[0]} (reason: {best_suggestion[1]})"
-                    )
-                elif result.validated_relationship != result.original_relationship:
-                    suggested_fix = (
-                        f"Use normalized form: {result.validated_relationship}"
-                    )
-
-                # Build error description
-                error_details = (
-                    f"Errors: {', '.join(result.errors)}" if result.errors else ""
-                )
-
-                contradictions.append(
-                    Contradiction(
-                        type="relationship",
-                        description=f"Invalid relationship: {rel.source_name} "
-                        f"{rel.relationship_type} {rel.target_name}. "
-                        f"{error_details}",
-                        conflicting_chapters=[chapter],
-                        severity=severity,
-                        suggested_fix=suggested_fix,
-                    )
-                )
-
-        logger.debug(
-            "_validate_relationships: validation complete",
-            total=len(relationships),
-            invalid=len(contradictions),
-        )
-
-        return contradictions
-
-    except Exception as e:
-        logger.error(
-            "_validate_relationships: error during validation",
-            error=str(e),
-            exc_info=True,
-        )
-        # Return empty list on error to avoid breaking workflow
-        return []
+    # Constraint system removed - accept all relationships for creative writing
+    # Original validation logic removed as part of constraint system removal
+    # See commit: refactor: remove entire relationship constraint system
+    #
+    # Rationale: SAGA is a creative writing tool where rigid semantic
+    # constraints inhibit storytelling. The constraint system was disabled
+    # by default and provided no value in production.
+    return []
 
 
 async def _check_character_traits(

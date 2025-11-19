@@ -208,14 +208,6 @@ class SagaSettings(BaseSettings):
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
 
-    # Relationship Constraint Configuration
-    ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
-    RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = 0.3
-    RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = False
-    RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS: bool = True
-    RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = False
-    DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING: bool = True
-
     # Enhanced Node Type Configuration
     ENABLE_ENHANCED_NODE_TYPES: bool = True
 
