@@ -122,16 +122,16 @@ START → [route]
          │             ↓
          └─ True → [chapter_outline]
                       ↓
-                   [generate]
+                   [generation_subgraph]
                       ↓
-                   [extract]
+                   [extraction_subgraph]
                       ↓
                    [commit]
                       ↓
-                   [validate]
+                   [validation_subgraph]
                       ↓
                  {needs_revision?}
-                      ├─ Yes → [revise] → (loop back to extract)
+                      ├─ Yes → [revise] → (loop back to extraction)
                       └─ No → [summarize]
                                 ↓
                              [finalize]

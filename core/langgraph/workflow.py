@@ -373,16 +373,16 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
     Create Phase 2 LangGraph workflow (COMPLETE).
 
     This is the full narrative generation workflow including:
-    - Generation: Create chapter from outline and context
-    - Extraction: Extract entities and relationships
+    - Generation: Create chapter from outline and context (SUBGRAPH)
+    - Extraction: Extract entities and relationships (SUBGRAPH)
     - Commitment: Deduplicate and commit to Neo4j
-    - Validation: Check for contradictions and quality issues
+    - Validation: Check for contradictions and quality issues (SUBGRAPH)
     - Revision: Fix issues (conditional, with iteration limit)
     - Summarization: Create concise chapter summary
     - Finalization: Persist to filesystem and Neo4j
 
     Workflow:
-        generate → extract → commit → validate → {revise? revise → extract : summarize} → finalize → END
+        generate_subgraph → extract_subgraph → commit → validate_subgraph → {revise? revise → extract : summarize} → finalize → END
 
     Migration Reference: docs/phase2_migration_plan.md - Step 2.5
 
@@ -395,14 +395,18 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
     """
     logger.info("create_phase2_graph: building complete workflow graph")
 
+    from core.langgraph.subgraphs.generation import create_generation_subgraph
+    from core.langgraph.subgraphs.extraction import create_extraction_subgraph
+    from core.langgraph.subgraphs.validation import create_validation_subgraph
+
     # Create graph
     workflow = StateGraph(NarrativeState)
 
-    # Add all nodes
-    workflow.add_node("generate", generate_chapter)
-    workflow.add_node("extract", extract_entities)
+    # Add nodes (using subgraphs where applicable)
+    workflow.add_node("generate", create_generation_subgraph())
+    workflow.add_node("extract", create_extraction_subgraph())
     workflow.add_node("commit", commit_to_graph)
-    workflow.add_node("validate", validate_consistency)
+    workflow.add_node("validate", create_validation_subgraph())
     workflow.add_node("revise", revise_chapter)
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)
@@ -481,10 +485,10 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
     logger.info(
         "create_phase2_graph: graph built successfully",
         nodes=[
-            "generate",
-            "extract",
+            "generate (subgraph)",
+            "extract (subgraph)",
             "commit",
-            "validate",
+            "validate (subgraph)",
             "revise",
             "summarize",
             "finalize",
@@ -732,11 +736,15 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     # Add chapter outline generation (on-demand)
     workflow.add_node("chapter_outline", generate_chapter_outline)
 
-    # Add all generation nodes
-    workflow.add_node("generate", generate_chapter)
-    workflow.add_node("extract", extract_entities)
+    from core.langgraph.subgraphs.generation import create_generation_subgraph
+    from core.langgraph.subgraphs.extraction import create_extraction_subgraph
+    from core.langgraph.subgraphs.validation import create_validation_subgraph
+
+    # Add all generation nodes (using subgraphs where applicable)
+    workflow.add_node("generate", create_generation_subgraph())
+    workflow.add_node("extract", create_extraction_subgraph())
     workflow.add_node("commit", commit_to_graph)
-    workflow.add_node("validate", validate_consistency)
+    workflow.add_node("validate", create_validation_subgraph())
     workflow.add_node("revise", revise_chapter)
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)

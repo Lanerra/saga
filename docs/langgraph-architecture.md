@@ -46,10 +46,19 @@ SAGA uses LangGraph workflow orchestration to address the core challenges of lon
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                  LangGraph Orchestration Layer               │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │ Generate │  │ Extract  │  │ Validate │  │ Revise   │   │
-│  │  Node    │  │   Node   │  │   Node   │  │   Node   │   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+│                                                             │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐ │
+│  │ Generation     │  │ Extraction     │  │ Validation     │ │
+│  │ Subgraph       │  │ Subgraph       │  │ Subgraph       │ │
+│  │ ┌────────────┐ │  │ ┌────────────┐ │  │ ┌────────────┐ │ │
+│  │ │ Plan Scenes│ │  │ │ Characters │ │  │ │ Consistency│ │ │
+│  │ ├────────────┤ │  │ ├────────────┤ │  │ ├────────────┤ │ │
+│  │ │ Draft Scene│ │  │ │ Locations  │ │  │ │ Quality    │ │ │
+│  │ ├────────────┤ │  │ ├────────────┤ │  │ ├────────────┤ │ │
+│  │ │ Assemble   │ │  │ │ Events     │ │  │ │ Logic      │ │ │
+│  │ └────────────┘ │  │ └────────────┘ │  │ └────────────┘ │ │
+│  └────────────────┘  └────────────────┘  └────────────────┘ │
+│                                                             │
 │         State Graph + Checkpointer + Conditional Edges      │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -268,9 +277,73 @@ model: {state['generation_model']}
 
 ---
 
-## 3. Node Implementations
+## 3. Subgraph Implementations
 
-### 3.1 Generation Node
+### 3.1 Generation Subgraph
+
+The generation process is now a subgraph that handles scene-by-scene generation.
+
+```python
+def create_generation_subgraph() -> StateGraph:
+    workflow = StateGraph(NarrativeState)
+    
+    workflow.add_node("plan_scenes", plan_scenes_node)
+    workflow.add_node("retrieve_context", retrieve_context_node)
+    workflow.add_node("draft_scene", draft_scene_node)
+    workflow.add_node("assemble_chapter", assemble_chapter_node)
+    
+    workflow.set_entry_point("plan_scenes")
+    
+    workflow.add_edge("plan_scenes", "retrieve_context")
+    workflow.add_edge("retrieve_context", "draft_scene")
+    
+    # Loop for each scene
+    workflow.add_conditional_edges(
+        "draft_scene",
+        should_continue_scenes,
+        {
+            "continue": "retrieve_context",
+            "end": "assemble_chapter"
+        }
+    )
+    
+    workflow.add_edge("assemble_chapter", END)
+    
+    return workflow.compile()
+```
+
+### 3.2 Extraction Subgraph
+
+Extraction is parallelized for better performance and granularity.
+
+```python
+def create_extraction_subgraph() -> StateGraph:
+    workflow = StateGraph(NarrativeState)
+    
+    workflow.add_node("extract_router", extract_router_node)
+    workflow.add_node("extract_characters", extract_characters_node)
+    workflow.add_node("extract_locations", extract_locations_node)
+    workflow.add_node("extract_events", extract_events_node)
+    workflow.add_node("extract_relationships", extract_relationships_node)
+    workflow.add_node("consolidate", consolidate_extraction_node)
+    
+    workflow.set_entry_point("extract_router")
+    
+    # Parallel execution
+    workflow.add_edge("extract_router", "extract_characters")
+    workflow.add_edge("extract_router", "extract_locations")
+    workflow.add_edge("extract_router", "extract_events")
+    workflow.add_edge("extract_router", "extract_relationships")
+    
+    workflow.add_edge("extract_characters", "consolidate")
+    workflow.add_edge("extract_locations", "consolidate")
+    workflow.add_edge("extract_events", "consolidate")
+    workflow.add_edge("extract_relationships", "consolidate")
+    
+    workflow.add_edge("consolidate", END)
+    
+    return workflow.compile()
+```
 
 ```python
 from langgraph.graph import StateGraph
