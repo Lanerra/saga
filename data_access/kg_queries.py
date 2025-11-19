@@ -643,287 +643,19 @@ def _to_pascal_case(text: str) -> str:
 
 def validate_relationship_type(proposed_type: str) -> str:
     """
-    Validate and normalize a relationship type with fuzzy matching.
+    Normalize a relationship type to a consistent format.
 
     Args:
-        proposed_type: The relationship type to validate
+        proposed_type: The relationship type to normalize
 
     Returns:
-        A valid relationship type from VALID_RELATIONSHIP_TYPES, or the original type if semantic flattening is disabled
+        Normalized relationship type (uppercase, underscores instead of spaces)
     """
     if not proposed_type or not proposed_type.strip():
         return "RELATES_TO"
 
-    # Check if semantic flattening is disabled
-    if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
-        # Return the original type without any validation or fallbacks
-        return proposed_type.strip().upper().replace(" ", "_")
-
-    # Clean and normalize input
-    clean_type = proposed_type.strip().upper().replace(" ", "_")
-
-    # Check normalization mappings first (using lowercase key)
-    lower_key = proposed_type.strip().lower().replace(" ", "_")
-    if lower_key in RELATIONSHIP_NORMALIZATIONS:
-        normalized_type = RELATIONSHIP_NORMALIZATIONS[lower_key]
-        logger.debug(f"Applied normalization: '{proposed_type}' -> '{normalized_type}'")
-        return normalized_type
-
-    # Check if it's already valid
-    if clean_type in VALID_RELATIONSHIP_TYPES:
-        return clean_type
-
-    # Special handling for DYNAMIC_REL - this is a meta-type, not a content type
-    if clean_type == "DYNAMIC_REL":
-        logger.debug("DYNAMIC_REL is a meta-type, using RELATES_TO as fallback")
-        return "RELATES_TO"
-
-    # Try fuzzy matching with high confidence
-    closest_matches = difflib.get_close_matches(
-        clean_type,
-        VALID_RELATIONSHIP_TYPES,
-        n=1,
-        cutoff=0.7,  # High threshold for confidence
-    )
-
-    if closest_matches:
-        matched_type = closest_matches[0]
-        if clean_type != matched_type:
-            logger.info(
-                f"Corrected relationship type: '{proposed_type}' -> '{matched_type}'"
-            )
-        return matched_type
-
-    # Enhanced semantic mappings using comprehensive keyword patterns
-    # Convert keyword_mappings structure to direct mappings for faster lookup
-    semantic_mappings = {
-        # Social relationships - direct mappings
-        "FRIEND": "FRIEND_OF",
-        "BEFRIEND": "FRIEND_OF",
-        "ENEMY": "ENEMY_OF",
-        "ANTAGONIZE": "ENEMY_OF",
-        "OPPOSE": "ENEMY_OF",
-        "ALLY": "ALLY_OF",
-        "ALLIED": "ALLY_OF",
-        "RIVAL": "RIVAL_OF",
-        "COMPETE": "RIVAL_OF",
-        "FAMILY": "FAMILY_OF",
-        "RELATED": "FAMILY_OF",
-        "PARENT": "FAMILY_OF",
-        "CHILD": "FAMILY_OF",
-        "SIBLING": "FAMILY_OF",
-        "LOVE": "ROMANTIC_WITH",
-        "ROMANTIC": "ROMANTIC_WITH",
-        "DATING": "ROMANTIC_WITH",
-        "MARRIED": "ROMANTIC_WITH",
-        "MENTOR": "MENTOR_TO",
-        "TEACH": "MENTOR_TO",
-        "GUIDE": "MENTOR_TO",
-        "STUDENT": "STUDENT_OF",
-        "LEARN": "STUDENT_OF",
-        "WORK": "WORKS_FOR",
-        "EMPLOY": "WORKS_FOR",
-        "JOB": "WORKS_FOR",
-        "LEAD": "LEADS",
-        "COMMAND": "LEADS",
-        "BOSS": "LEADS",
-        "SUPERVISE": "LEADS",
-        "SERVE": "SERVES",
-        "LOYAL": "SERVES",
-        "KNOW": "KNOWS",
-        "ACQUAINT": "KNOWS",
-        "TRUST": "TRUSTS",
-        "DISTRUST": "DISTRUSTS",
-        "MISTRUST": "DISTRUSTS",
-        # Emotional relationships
-        "HATE": "HATES",
-        "LOATH": "HATES",
-        "DESPISE": "HATES",
-        "FEAR": "FEARS",
-        "AFRAID": "FEARS",
-        "SCARE": "FEARS",
-        "RESPECT": "RESPECTS",
-        "ADMIRE": "RESPECTS",
-        "ENVY": "ENVIES",
-        "JEALOUS": "ENVIES",
-        "PITY": "PITIES",
-        "SYMPATHY": "PITIES",
-        # Causal relationships
-        "CAUSE": "CAUSES",
-        "LEAD_TO": "CAUSES",
-        "RESULT": "CAUSES",
-        "PREVENT": "PREVENTS",
-        "STOP": "PREVENTS",
-        "BLOCK": "PREVENTS",
-        "ENABLE": "ENABLES",
-        "ALLOW": "ENABLES",
-        "TRIGGER": "TRIGGERS",
-        "START": "TRIGGERS",
-        "DEPEND": "DEPENDS_ON",
-        "REQUIRE": "DEPENDS_ON",
-        "CONFLICT": "CONFLICTS_WITH",
-        "CLASH": "CONFLICTS_WITH",
-        "SUPPORT": "SUPPORTS",
-        "HELP": "SUPPORTS",
-        "AID": "SUPPORTS",
-        "THREATEN": "THREATENS",
-        "DANGER": "THREATENS",
-        "PROTECT": "PROTECTS",
-        "GUARD": "PROTECTS",
-        "DEFEND": "PROTECTS",
-        # Spatial relationships
-        "LOCATED": "LOCATED_AT",
-        "POSITION": "LOCATED_AT",
-        "SITUATED": "LOCATED_AT",
-        "INSIDE": "LOCATED_IN",
-        "WITHIN": "LOCATED_IN",
-        "CONTAINED": "LOCATED_IN",
-        "NEAR": "NEAR",
-        "CLOSE": "NEAR",
-        "PROXIMITY": "NEAR",
-        "ADJACENT": "ADJACENT_TO",
-        "NEXT": "ADJACENT_TO",
-        "ORIGIN": "ORIGINATES_FROM",
-        "FROM": "ORIGINATES_FROM",
-        "TRAVEL": "TRAVELS_TO",
-        "MOVE": "TRAVELS_TO",
-        "GO": "TRAVELS_TO",
-        # Ownership relationships
-        "OWN": "OWNS",
-        "POSSESS": "OWNS",
-        "HAVE": "OWNS",
-        "BELONG": "OWNS",
-        "CREATE": "CREATED_BY",
-        "MAKE": "CREATED_BY",
-        "BUILD": "CREATED_BY",
-        "INHERIT": "INHERITED_FROM",
-        "STEAL": "STOLEN_FROM",
-        "ROB": "STOLEN_FROM",
-        "GIVE": "GIVEN_BY",
-        "GIFT": "GIVEN_BY",
-        "FIND": "FOUND_AT",
-        "DISCOVER": "FOUND_AT",
-        # Organizational relationships
-        "MEMBER": "MEMBER_OF",
-        "JOIN": "MEMBER_OF",
-        "LEADER": "LEADER_OF",
-        "HEAD": "LEADER_OF",
-        "FOUND": "FOUNDED",
-        "ESTABLISH": "FOUNDED",
-        "REPRESENT": "REPRESENTS",
-        # Physical relationships
-        "PART": "PART_OF",
-        "COMPONENT": "PART_OF",
-        "CONTAIN": "CONTAINS",
-        "HOLD": "CONTAINS",
-        "CONNECT": "CONNECTED_TO",
-        "LINK": "CONNECTED_TO",
-        "DESTROY": "DESTROYED_BY",
-        "RUIN": "DESTROYED_BY",
-        "DAMAGE": "DAMAGED_BY",
-        "HARM": "DAMAGED_BY",
-        "REPAIR": "REPAIRED_BY",
-        "FIX": "REPAIRED_BY",
-        # Additional direct mappings for common variations
-        "IS_IN": "LOCATED_IN",
-        "HAS": "OWNS",
-        "LIKES": "FRIEND_OF",
-        "DISLIKES": "ENEMY_OF",
-        "WORKS_AT": "WORKS_FOR",
-        "LIVES_IN": "LOCATED_IN",
-        "COMES_FROM": "ORIGINATES_FROM",
-        "GOES_TO": "TRAVELS_TO",
-        "IS_PART_OF": "PART_OF",
-        "CONTAINS_THING": "CONTAINS",
-        "IS_CONNECTED_TO": "CONNECTED_TO",
-        "IS_NEAR": "NEAR",
-        "MADE_BY": "CREATED_BY",
-        "BUILT_FROM": "MADE_OF",
-        # Verb forms
-        "LOVING": "LOVES",
-        "HATING": "HATES",
-        "FEARING": "FEARS",
-        "TRUSTING": "TRUSTS",
-        "RESPECTING": "RESPECTS",
-        "LEADING": "LEADER_OF",
-        "FOLLOWING": "SERVES",
-        # Past tense
-        "LOVED": "LOVES",
-        "HATED": "HATES",
-        "FEARED": "FEARS",
-        "TRUSTED": "TRUSTS",
-        "RESPECTED": "RESPECTS",
-        "LED": "LEADER_OF",
-        "FOLLOWED": "SERVES",
-        # Additional employment variations
-        "MANAGE": "LEADS",
-        "LIVE": "LOCATED_IN",
-        "RESIDE": "LOCATED_IN",
-        "STAY": "LOCATED_IN",
-        "JOURNEY": "TRAVELS_TO",
-        # Add to semantic_mappings:
-        "REALIZES": "DISCOVERS",
-        "BELIEVES": "TRUSTS",
-        "REMEMBERS": "KNOWS",
-        "HAS_PROPERTY": "HAS_TRAIT",
-        "PULSES_WITH": "CONNECTED_TO",
-        # Cognitive mappings (these appear frequently)
-        "REALIZE": "REALIZES",
-        "REMEMBER": "REMEMBERS",
-        "UNDERSTAND": "UNDERSTANDS",
-        "BELIEVE": "BELIEVES",
-        "FEEL": "FEELS",
-        "THINK": "THINKS_ABOUT",
-        "WATCH": "WATCHES",
-        "SEE": "SEES",
-        "PERCEIVE": "PERCEIVES",
-        # Property mappings
-        "PROPERTY": "HAS_PROPERTY",
-        "FEATURE": "HAS_FEATURE",
-        "ACCESS": "HAS_ACCESS",
-        "PULSE": "HAS_PULSE",
-        "VOICE": "HAS_VOICE",
-        "RULE": "HAS_RULE",
-        "GOAL": "HAS_GOAL",
-        # Communication mappings
-        "COMMUNICATE": "COMMUNICATES_THROUGH",
-        "SPEAK": "SPEAKS_TO",
-        "DECLARE": "DECLARES",
-        "RECORD": "RECORDS",
-        "WRITE": "WRITTEN_BY",
-        # Process mappings
-        "OCCUR": "OCCURRED_IN",
-        "HAPPEN": "OCCURRED_IN",
-        "PERFORM": "PERFORMS_ACTION",
-        "USE": "IS_USED_FOR",
-        "FUEL": "IS_FUELED_BY",
-        "SYNC": "IS_SYNCHRONIZED_WITH",
-        "TRANSFORM": "TRANSFORMED_BY",
-        # Existential mappings
-        "EXIST": "EXISTS_BECAUSE_OF",
-        "LIVING": "ARE_LIVING_TISSUE",
-        "ACCESSIBLE": "IS_ACCESSIBLE_ONLY_TO",
-    }
-
-    mapped_type = semantic_mappings.get(clean_type)
-    if mapped_type:
-        logger.info(
-            f"Semantically mapped relationship type: '{proposed_type}' -> '{mapped_type}'"
-        )
-        return mapped_type
-
-    # Final fallback - log for analysis, but only use if semantic flattening is not disabled
-    if config.settings.DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING:
-        # Preserve original relationship type
-        logger.debug(
-            f"Preserving original relationship type '{proposed_type}' (semantic flattening disabled)"
-        )
-        return clean_type
-    else:
-        logger.warning(
-            f"Unknown relationship type '{proposed_type}', using RELATES_TO as fallback"
-        )
-        return "RELATES_TO"
+    # Clean and normalize: strip whitespace, uppercase, replace spaces with underscores
+    return proposed_type.strip().upper().replace(" ", "_")
 
 
 def normalize_relationship_type(rel_type: str) -> str:
@@ -1149,31 +881,7 @@ async def add_kg_triples_batch_to_db(
         logger.info("Neo4j: add_kg_triples_batch_to_db: No structured triples to add.")
         return
 
-    # Import constraint validation here to avoid circular imports
-    try:
-        from core.relationship_validator import (
-            should_accept_relationship,
-            validate_batch_constraints,
-        )
-
-        constraint_validation_enabled = True
-    except ImportError:
-        logger.warning(
-            "Relationship constraint validation not available - proceeding without validation"
-        )
-        constraint_validation_enabled = False
-
     statements_with_params: list[tuple[str, dict[str, Any]]] = []
-    validation_stats = {"total": 0, "accepted": 0, "rejected": 0, "corrected": 0}
-
-    # Validate all triples before processing if validation is enabled
-    if constraint_validation_enabled:
-        validation_results = validate_batch_constraints(structured_triples_data)
-        logger.info(
-            f"Constraint validation completed for {len(validation_results)} triples"
-        )
-    else:
-        validation_results = [None] * len(structured_triples_data)
 
     for i, triple_dict in enumerate(structured_triples_data):
         subject_info = triple_dict.get("subject")
@@ -2725,46 +2433,15 @@ async def validate_single_relationship(
     subject_type: str, relationship_type: str, object_type: str
 ) -> str | None:
     """
-    Validate a single relationship and return the corrected relationship type if valid.
+    Normalize a relationship type to a consistent format.
 
     Args:
-        subject_type: Type of the subject node
+        subject_type: Type of the subject node (unused, kept for API compatibility)
         relationship_type: Proposed relationship type
-        object_type: Type of the object node
+        object_type: Type of the object node (unused, kept for API compatibility)
 
     Returns:
-        Validated relationship type if valid, None if should be rejected
+        Normalized relationship type
     """
-    try:
-        # Import here to avoid circular imports
-        from core.relationship_validator import (
-            should_accept_relationship,
-            validate_relationship_constraint,
-        )
-
-        # Validate the relationship
-        validation_result = validate_relationship_constraint(
-            subject_type, relationship_type, object_type
-        )
-
-        # Check if we should accept this relationship (uses configured min confidence)
-        if should_accept_relationship(validation_result):
-            return validation_result.validated_relationship
-        else:
-            logger.debug(
-                f"Relationship validation failed: {subject_type} | {relationship_type} | {object_type}. "
-                f"Errors: {validation_result.errors}"
-            )
-            return None
-
-    except ImportError:
-        # Fallback to basic validation if constraint system is not available
-        logger.debug(
-            "Relationship constraint validation not available - using basic validation"
-        )
-        normalized = validate_relationship_type(relationship_type)
-        return normalized if normalized in VALID_RELATIONSHIP_TYPES else None
-    except Exception as e:
-        logger.error(f"Error in relationship validation: {e}", exc_info=True)
-        # Return the original if validation fails
-        return validate_relationship_type(relationship_type)
+    # Simply normalize the relationship type
+    return validate_relationship_type(relationship_type)
