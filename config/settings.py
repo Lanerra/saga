@@ -188,6 +188,10 @@ class SagaSettings(BaseSettings):
     MAX_KG_TRIPLE_TOKENS: int = 8192
     MAX_PREPOP_KG_TOKENS: int = 16384
 
+    # Knowledge Graph Entity Filtering (Proper Noun Preference)
+    ENTITY_MENTION_THRESHOLD_PROPER_NOUN: int = 1
+    ENTITY_MENTION_THRESHOLD_COMMON_NOUN: int = 3
+
     # Narrative Agent Configuration
     NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS: int = 1000
     NARRATIVE_CONTEXT_TEXT_TAIL_CHARS: int = 1000

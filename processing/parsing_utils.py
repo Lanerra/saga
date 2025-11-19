@@ -101,13 +101,68 @@ ENTITY_BLACKLIST_PATTERNS = [
 ]
 
 
-def _should_filter_entity(entity_name: str, entity_type: str = None) -> bool:
+def _is_proper_noun(entity_name: str) -> bool:
+    """
+    Detect if an entity name is likely a proper noun.
+
+    Proper nouns are names that:
+    1. Have most words capitalized (excluding articles/prepositions)
+    2. Are not generic descriptors like "the rebellion" or "the artifact"
+    3. Represent specific named entities
+
+    Args:
+        entity_name: The entity name to check
+
+    Returns:
+        True if the name appears to be a proper noun
+    """
+    if not entity_name or not entity_name.strip():
+        return False
+
+    words = entity_name.strip().split()
+    if not words:
+        return False
+
+    # Articles and prepositions that don't count toward proper noun status
+    lowercase_allowed = {"the", "a", "an", "of", "in", "on", "at", "to", "for", "and", "or"}
+
+    # Count words that should be capitalized (excluding allowed lowercase words)
+    significant_words = [w for w in words if w.lower() not in lowercase_allowed]
+    if not significant_words:
+        return False
+
+    capitalized_count = sum(1 for w in significant_words if w and w[0].isupper())
+
+    # Proper noun if 60%+ of significant words are capitalized
+    is_mostly_capitalized = capitalized_count >= len(significant_words) * 0.6
+
+    # Additional heuristic: filter out generic patterns even if capitalized
+    name_lower = entity_name.lower().strip()
+    generic_patterns = [
+        "the ",  # "the Rebellion" might be generic vs "Rebellion of the North"
+    ]
+
+    # If it starts with "the " and only has 1-2 words total, likely generic
+    if name_lower.startswith("the ") and len(words) <= 2:
+        return False
+
+    return is_mostly_capitalized
+
+
+def _should_filter_entity(
+    entity_name: str, entity_type: str = None, mention_count: int = 1
+) -> bool:
     """
     Filter out problematic entity names that create noise in the knowledge graph.
+
+    Uses a hybrid approach with proper noun preference:
+    - Proper nouns: Accepted with 1+ mentions
+    - Common nouns: Require 3+ mentions to be considered significant
 
     Args:
         entity_name: The name of the entity to check
         entity_type: Optional type for additional filtering
+        mention_count: Number of times entity is mentioned (default: 1)
 
     Returns:
         True if entity should be filtered out (not created)
@@ -151,6 +206,38 @@ def _should_filter_entity(entity_name: str, entity_type: str = None) -> bool:
     # Filter ephemeral/internal placeholder ids like 'entity_4097e8ba'
     if name_lower.startswith("entity_"):
         return True
+
+    # Proper noun preference: use tiered mention thresholds
+    is_proper = _is_proper_noun(entity_name)
+
+    try:
+        import config
+
+        proper_noun_threshold = getattr(
+            config, "ENTITY_MENTION_THRESHOLD_PROPER_NOUN", 1
+        )
+        common_noun_threshold = getattr(
+            config, "ENTITY_MENTION_THRESHOLD_COMMON_NOUN", 3
+        )
+    except ImportError:
+        # Fallback defaults if config not available
+        proper_noun_threshold = 1
+        common_noun_threshold = 3
+
+    if is_proper:
+        # Proper nouns: keep if mentioned threshold or more times
+        if mention_count < proper_noun_threshold:
+            logger.debug(
+                f"Filtered proper noun '{entity_name}' with {mention_count} mentions (threshold: {proper_noun_threshold})"
+            )
+            return True
+    else:
+        # Common nouns: require higher threshold
+        if mention_count < common_noun_threshold:
+            logger.debug(
+                f"Filtered common noun '{entity_name}' with {mention_count} mentions (threshold: {common_noun_threshold})"
+            )
+            return True
 
     return False
 
