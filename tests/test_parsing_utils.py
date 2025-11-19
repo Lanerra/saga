@@ -155,14 +155,10 @@ class TestEntityFiltering(unittest.TestCase):
     def test_common_noun_single_mention(self):
         """Common nouns should be filtered with only 1 mention."""
         self.assertTrue(
-            _should_filter_entity(
-                "the girl", entity_type="Character", mention_count=1
-            )
+            _should_filter_entity("the girl", entity_type="Character", mention_count=1)
         )
         self.assertTrue(
-            _should_filter_entity(
-                "the artifact", entity_type="Object", mention_count=1
-            )
+            _should_filter_entity("the artifact", entity_type="Object", mention_count=1)
         )
 
     def test_common_noun_three_mentions(self):
@@ -257,9 +253,7 @@ class TestProperNounPreferenceInTriples(unittest.TestCase):
         # First triple should be filtered (fear is blacklisted)
         # Second triple should be filtered (violet glow is blacklisted)
         # Third triple should pass (healthy is a literal, Alice is proper noun)
-        alice_triples = [
-            t for t in parsed if t["subject"]["name"] == "Alice"
-        ]
+        alice_triples = [t for t in parsed if t["subject"]["name"] == "Alice"]
 
         # Only the HAS_STATUS triple should remain
         self.assertEqual(len(alice_triples), 1)

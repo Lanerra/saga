@@ -4,40 +4,6 @@ LangGraph workflow for SAGA narrative generation.
 
 This module wires together all nodes into complete workflow graphs
 with conditional edges, revision loops, and checkpointing.
-
-Phase 1 Workflow Structure:
-    START
-      ↓
-    [extract_entities]
-      ↓
-    [commit_to_graph]
-      ↓
-    [validate_consistency]
-      ↓
-    {needs_revision?}
-      ├─ Yes → [revise_placeholder] → (loop back)
-      └─ No → END
-
-Phase 2 Workflow Structure (COMPLETE):
-    START
-      ↓
-    [generate_chapter]
-      ↓
-    [extract_entities]
-      ↓
-    [commit_to_graph]
-      ↓
-    [validate_consistency]
-      ↓
-    {needs_revision?}
-      ├─ Yes → [revise_chapter] → (loop back to extract)
-      └─ No → [summarize_chapter]
-              ↓
-            [finalize_chapter]
-              ↓
-            END
-
-Migration Reference: docs/phase2_migration_plan.md - Step 2.5
 """
 
 from typing import Literal
@@ -47,7 +13,6 @@ import structlog
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.extraction_node import extract_entities
 from core.langgraph.nodes.finalize_node import finalize_chapter
-from core.langgraph.nodes.generation_node import generate_chapter
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.nodes.validation_node import validate_consistency
@@ -395,8 +360,8 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
     """
     logger.info("create_phase2_graph: building complete workflow graph")
 
-    from core.langgraph.subgraphs.generation import create_generation_subgraph
     from core.langgraph.subgraphs.extraction import create_extraction_subgraph
+    from core.langgraph.subgraphs.generation import create_generation_subgraph
     from core.langgraph.subgraphs.validation import create_validation_subgraph
 
     # Create graph
@@ -736,8 +701,8 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     # Add chapter outline generation (on-demand)
     workflow.add_node("chapter_outline", generate_chapter_outline)
 
-    from core.langgraph.subgraphs.generation import create_generation_subgraph
     from core.langgraph.subgraphs.extraction import create_extraction_subgraph
+    from core.langgraph.subgraphs.generation import create_generation_subgraph
     from core.langgraph.subgraphs.validation import create_validation_subgraph
 
     # Add all generation nodes (using subgraphs where applicable)

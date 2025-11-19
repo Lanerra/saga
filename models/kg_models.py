@@ -158,7 +158,7 @@ class WorldItem(BaseModel):
         rules = data.get("rules", [])
         key_elements = data.get("key_elements", [])
         traits = data.get("traits", [])
-        
+
         # Extract relationships if present
         relationships = data.get("relationships", {})
 
@@ -233,7 +233,7 @@ class WorldItem(BaseModel):
         additional_props = Neo4jExtractor.extract_core_fields_from_node(
             node, core_fields
         )
-        
+
         # Extract relationships if available
         relationships = {}
         rels = (

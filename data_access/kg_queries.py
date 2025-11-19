@@ -1,5 +1,4 @@
 # data_access/kg_queries.py
-import difflib
 import hashlib
 import re
 from typing import Any
@@ -14,7 +13,6 @@ from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
     NODE_LABELS,
-    RELATIONSHIP_NORMALIZATIONS,
     RELATIONSHIP_TYPES,
 )
 

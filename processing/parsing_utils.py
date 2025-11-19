@@ -124,7 +124,19 @@ def _is_proper_noun(entity_name: str) -> bool:
         return False
 
     # Articles and prepositions that don't count toward proper noun status
-    lowercase_allowed = {"the", "a", "an", "of", "in", "on", "at", "to", "for", "and", "or"}
+    lowercase_allowed = {
+        "the",
+        "a",
+        "an",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "and",
+        "or",
+    }
 
     # Count words that should be capitalized (excluding allowed lowercase words)
     significant_words = [w for w in words if w.lower() not in lowercase_allowed]

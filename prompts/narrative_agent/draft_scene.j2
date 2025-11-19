@@ -1,0 +1,27 @@
+You are writing a scene for Chapter {{ chapter_number }} of the novel "{{ novel_title }}".
+
+## Scene Context
+**Title:** {{ scene.title }}
+**POV Character:** {{ scene.pov_character }}
+**Setting:** {{ scene.setting }}
+**Characters Present:** {{ scene.characters | join(', ') }}
+**Plot Point:** {{ scene.plot_point }}
+**Conflict:** {{ scene.conflict }}
+**Outcome:** {{ scene.outcome }}
+
+## Narrative Context
+**Genre:** {{ novel_genre }}
+**Theme:** {{ novel_theme }}
+
+## Story So Far (Context)
+{{ hybrid_context }}
+
+## Instructions
+Write the prose for this scene.
+- Focus on the POV character's experience.
+- Show, don't just tell.
+- Advance the plot towards the defined outcome.
+- Maintain the tone of a {{ novel_genre }} novel.
+- Write approximately {{ target_word_count }} words.
+
+Begin writing the scene now.

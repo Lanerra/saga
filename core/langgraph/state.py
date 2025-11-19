@@ -199,6 +199,8 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     chapter_plan: list[dict[str, Any]] | None  # List of SceneDetail dicts
     plot_point_focus: str | None
+    current_scene_index: int  # Index of the scene currently being processed
+    scene_drafts: list[str]  # List of generated text for each scene
 
     # =========================================================================
     # Revision State (compatible with existing evaluation workflow)
@@ -343,6 +345,8 @@ def create_initial_state(
         # Chapter planning
         "chapter_plan": None,
         "plot_point_focus": None,
+        "current_scene_index": 0,
+        "scene_drafts": [],
         # Revision state
         "evaluation_result": None,
         "patch_instructions": None,
