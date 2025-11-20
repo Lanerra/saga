@@ -460,6 +460,7 @@ async def _parse_extraction_json(
             error=str(e),
             chapter=chapter_number,
         )
+        logger.error("_parse_extraction_json: failed raw_text", raw_text=raw_text)
         # Return minimal structure to avoid breaking the pipeline
         return {
             "character_updates": {},
@@ -500,7 +501,6 @@ def _clean_llm_json(raw_text: str) -> str:
     cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
 
     # Fix common quote issues (curly quotes to straight quotes)
-    # Replace left and right double quotation marks with straight quotes
     cleaned = cleaned.replace("\u201c", '"').replace("\u201d", '"')
 
     return cleaned.strip()

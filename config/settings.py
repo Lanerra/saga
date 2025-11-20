@@ -96,7 +96,7 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_PLANNING: float = 0.6
     TEMPERATURE_EVALUATION: float = 0.3
     TEMPERATURE_CONSISTENCY_CHECK: float = 0.2
-    TEMPERATURE_KG_EXTRACTION: float = 0.4
+    TEMPERATURE_KG_EXTRACTION: float = 0.1
     TEMPERATURE_SUMMARY: float = 0.5
     TEMPERATURE_PATCH: float = 0.7
 
