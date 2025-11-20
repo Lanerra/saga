@@ -140,6 +140,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     draft_text: str | None
     draft_word_count: int
+    generated_embedding: list[float] | None
 
     # =========================================================================
     # Entity Extraction Results (NEW: centralized extraction state)
@@ -328,6 +329,7 @@ def create_initial_state(
         # Generated content
         "draft_text": None,
         "draft_word_count": 0,
+        "generated_embedding": None,
         # Entity extraction
         "extracted_entities": {},
         "extracted_relationships": [],

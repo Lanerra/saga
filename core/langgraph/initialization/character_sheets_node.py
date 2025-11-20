@@ -234,7 +234,7 @@ async def _generate_character_sheet(
             )
             return None
 
-        # For now, store as text. In future, could parse into structured format
+        # For now, store as text. In future, parse into structured format
         sheet = {
             "name": character_name,
             "description": response,

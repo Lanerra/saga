@@ -17,7 +17,7 @@ import structlog
 import config
 from core.langgraph.state import NarrativeState
 from core.text_processing_service import count_tokens, truncate_text_by_tokens
-from data_access import character_queries, kg_queries
+from data_access import character_queries, chapter_queries, kg_queries
 from prompts.prompt_data_getters import (
     get_filtered_character_profiles_for_prompt_plain_text,
     get_reliable_kg_facts_for_drafting_prompt,
@@ -34,6 +34,7 @@ PREVIOUS_SCENES_TOKEN_BUDGET = 2000  # Max tokens for previous scene context
 SUMMARY_MAX_TOKENS = 150  # Target tokens per scene summary
 CHARACTER_PROFILES_TOKEN_BUDGET = 3000  # Max tokens for character profiles
 KG_FACTS_TOKEN_BUDGET = 1500  # Max tokens for KG facts
+SEMANTIC_CONTEXT_TOKEN_BUDGET = 2000  # Max tokens for semantic search results
 
 
 async def retrieve_context(state: NarrativeState) -> NarrativeState:
@@ -125,6 +126,19 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     )
     if location_context:
         hybrid_context_parts.append(location_context)
+
+    # =========================================================================
+    # 6. Semantic Context (Vector Search)
+    # =========================================================================
+    # Generate query from current scene description
+    scene_query = f"{current_scene.get('title', '')} {current_scene.get('scene_description', '')}"
+    semantic_context = await _get_semantic_context(
+        query_text=scene_query,
+        chapter_number=chapter_number,
+        model_name=model_name,
+    )
+    if semantic_context:
+        hybrid_context_parts.append(semantic_context)
 
     hybrid_context = "\n\n".join(hybrid_context_parts)
 
@@ -574,6 +588,78 @@ async def _get_scene_location_context(
         )
 
     return None
+
+
+async def _get_semantic_context(
+    query_text: str,
+    chapter_number: int,
+    model_name: str,
+) -> str | None:
+    """
+    Get semantically similar context from previous chapters.
+
+    Args:
+        query_text: Text to generate embedding for
+        chapter_number: Current chapter number (to exclude)
+        model_name: Model for token counting
+
+    Returns:
+        Formatted semantic context string or None
+    """
+    if not query_text.strip():
+        return None
+
+    try:
+        # Generate embedding for query
+        query_embedding = await llm_service.async_get_embedding(query_text)
+        
+        if query_embedding is None:
+            logger.warning("retrieve_context: failed to generate query embedding")
+            return None
+
+        # Find similar context using native query
+        # This gets both similar chapters and the immediate previous chapter
+        context_chapters = await chapter_queries.find_semantic_context_native(
+            query_embedding=query_embedding,
+            current_chapter_number=chapter_number,
+            limit=3  # Get top 3 similar + previous
+        )
+
+        if not context_chapters:
+            return None
+
+        formatted_parts = []
+        formatted_parts.append("**Relevant Past Context (Semantic Search):**")
+
+        for chapter in context_chapters:
+            chap_num = chapter.get("chapter_number")
+            summary = chapter.get("summary")
+            score = chapter.get("score", 0)
+            context_type = chapter.get("context_type", "similarity")
+            
+            # Label context type clearly
+            label = "Previous Chapter" if context_type == "immediate_previous" else f"Similar Chapter (Score: {score:.2f})"
+            
+            if summary:
+                formatted_parts.append(f"\n--- Chapter {chap_num} ({label}) ---\n{summary}")
+
+        result_text = "\n".join(formatted_parts)
+        
+        # Truncate if needed
+        return truncate_text_by_tokens(
+            text=result_text,
+            model_name=model_name,
+            max_tokens=SEMANTIC_CONTEXT_TOKEN_BUDGET,
+            truncation_marker="\n... (semantic context truncated)"
+        )
+
+    except Exception as e:
+        logger.error(
+            "retrieve_context: error getting semantic context",
+            error=str(e),
+            exc_info=True
+        )
+        return None
 
 
 __all__ = ["retrieve_context"]

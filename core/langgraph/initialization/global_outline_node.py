@@ -162,7 +162,7 @@ def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, any
         Dictionary containing structured outline data
     """
     # For now, store the raw outline text and infer structure
-    # In future iterations, this could be enhanced with JSON parsing
+    # In future iterations, enhance with JSON parsing
 
     # Try to detect act structure from the response
     act_count = 3  # Default three-act structure
