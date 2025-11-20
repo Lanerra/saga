@@ -425,6 +425,7 @@ async def _parse_extraction_json(
     - Trailing commas
     - Incorrect quote characters
     - Malformed JSON structure
+    - Truncated JSON responses
 
     Args:
         raw_text: Raw text from LLM
@@ -460,13 +461,182 @@ async def _parse_extraction_json(
             error=str(e),
             chapter=chapter_number,
         )
-        logger.error("_parse_extraction_json: failed raw_text", raw_text=raw_text)
+
+        # Attempt to repair truncated JSON
+        repaired_data = _attempt_json_repair(cleaned_text, chapter_number)
+        if repaired_data:
+            logger.info(
+                "_parse_extraction_json: successfully repaired truncated JSON",
+                chapter=chapter_number,
+            )
+            return repaired_data
+
+        logger.error(
+            "_parse_extraction_json: failed raw_text",
+            raw_text=raw_text[:500] + "..." if len(raw_text) > 500 else raw_text,
+        )
         # Return minimal structure to avoid breaking the pipeline
         return {
             "character_updates": {},
             "world_updates": {},
             "kg_triples": [],
         }
+
+
+def _attempt_json_repair(text: str, chapter_number: int) -> dict[str, Any] | None:
+    """
+    Attempt to repair truncated or malformed JSON.
+
+    This function tries multiple strategies to recover data from
+    partially valid JSON:
+    1. Close open brackets/braces
+    2. Extract valid portions
+    3. Parse individual sections
+
+    Args:
+        text: Cleaned but malformed JSON text
+        chapter_number: Chapter number for logging
+
+    Returns:
+        Repaired dictionary or None if repair fails
+    """
+    # Strategy 1: Try to close unclosed brackets/braces
+    repaired = _close_json_brackets(text)
+    try:
+        data = json.loads(repaired)
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 2: Find and extract the main JSON object
+    # Look for the opening brace and try to find as much valid JSON as possible
+    brace_start = text.find("{")
+    if brace_start == -1:
+        return None
+
+    json_text = text[brace_start:]
+
+    # Try progressively shorter versions until we get valid JSON
+    for end_pos in range(len(json_text), 0, -100):
+        attempt = json_text[:end_pos]
+        closed = _close_json_brackets(attempt)
+        try:
+            data = json.loads(closed)
+            if isinstance(data, dict):
+                logger.debug(
+                    "_attempt_json_repair: recovered partial JSON",
+                    chapter=chapter_number,
+                    original_length=len(text),
+                    recovered_length=end_pos,
+                )
+                return data
+        except json.JSONDecodeError:
+            continue
+
+    # Strategy 3: Try to extract individual sections
+    result = {
+        "character_updates": {},
+        "world_updates": {},
+        "kg_triples": [],
+    }
+
+    # Try to extract character_updates
+    char_match = re.search(
+        r'"character_updates"\s*:\s*(\{[^}]*(?:\{[^}]*\}[^}]*)*\})',
+        text,
+        re.DOTALL
+    )
+    if char_match:
+        try:
+            result["character_updates"] = json.loads(char_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Try to extract kg_triples
+    triples_match = re.search(
+        r'"kg_triples"\s*:\s*\[(.*?)\]',
+        text,
+        re.DOTALL
+    )
+    if triples_match:
+        # Parse the array content
+        triples_content = triples_match.group(1)
+        # Extract individual quoted strings
+        triple_strings = re.findall(r'"([^"]*)"', triples_content)
+        result["kg_triples"] = triple_strings
+
+    # If we recovered anything, return it
+    if result["character_updates"] or result["kg_triples"]:
+        logger.debug(
+            "_attempt_json_repair: extracted partial data",
+            chapter=chapter_number,
+            characters=len(result["character_updates"]),
+            triples=len(result["kg_triples"]),
+        )
+        return result
+
+    return None
+
+
+def _close_json_brackets(text: str) -> str:
+    """
+    Close unclosed JSON brackets and braces.
+
+    Counts open brackets/braces and adds closing ones as needed.
+
+    Args:
+        text: JSON text that may be truncated
+
+    Returns:
+        Text with brackets closed
+    """
+    # Count brackets
+    open_braces = 0
+    open_brackets = 0
+    in_string = False
+    escape_next = False
+
+    for char in text:
+        if escape_next:
+            escape_next = False
+            continue
+
+        if char == "\\":
+            escape_next = True
+            continue
+
+        if char == '"' and not escape_next:
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if char == "{":
+            open_braces += 1
+        elif char == "}":
+            open_braces -= 1
+        elif char == "[":
+            open_brackets += 1
+        elif char == "]":
+            open_brackets -= 1
+
+    # If we're in a string, close it
+    if in_string:
+        text += '"'
+
+    # Remove trailing comma before closing
+    text = re.sub(r',\s*$', '', text)
+
+    # Add closing brackets/braces
+    result = text
+    for _ in range(max(0, open_brackets)):
+        result += "]"
+    for _ in range(max(0, open_braces)):
+        result += "}"
+
+    return result
 
 
 def _clean_llm_json(raw_text: str) -> str:
@@ -479,6 +649,7 @@ def _clean_llm_json(raw_text: str) -> str:
     - Markdown code blocks (```json ... ```)
     - Trailing commas before closing brackets
     - Incorrect quote characters (curly quotes)
+    - Truncated responses without closing markdown
 
     Args:
         raw_text: Raw text from LLM
@@ -486,22 +657,46 @@ def _clean_llm_json(raw_text: str) -> str:
     Returns:
         Cleaned JSON text
     """
+    cleaned = raw_text.strip()
+
     # Remove markdown code blocks if present
-    if raw_text.strip().startswith("```"):
-        lines = raw_text.strip().split("\n")
-        if len(lines) > 2:
-            # Remove first and last lines (markdown markers)
-            cleaned = "\n".join(lines[1:-1])
-        else:
-            cleaned = raw_text
-    else:
-        cleaned = raw_text
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\n")
+
+        # Find the first line (skip the opening ```)
+        start_idx = 1
+
+        # Find the closing ``` - it might not exist if truncated
+        end_idx = len(lines)
+        for i in range(len(lines) - 1, 0, -1):
+            if lines[i].strip() == "```":
+                end_idx = i
+                break
+
+        # Extract content between markers
+        if end_idx > start_idx:
+            cleaned = "\n".join(lines[start_idx:end_idx])
+        elif len(lines) > 1:
+            # No closing ```, just skip the first line
+            cleaned = "\n".join(lines[1:])
+
+    # Also handle case where ``` appears at the end of the content
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+
+    # Remove any remaining ``` markers that might be embedded
+    cleaned = re.sub(r'^```\w*\n?', '', cleaned)
+    cleaned = re.sub(r'\n?```$', '', cleaned)
 
     # Remove common trailing commas before closing brackets/braces
     cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
 
     # Fix common quote issues (curly quotes to straight quotes)
     cleaned = cleaned.replace("\u201c", '"').replace("\u201d", '"')
+    cleaned = cleaned.replace("\u2018", "'").replace("\u2019", "'")
+
+    # Remove any BOM or other unicode artifacts
+    cleaned = cleaned.lstrip('\ufeff')
 
     return cleaned.strip()
 
