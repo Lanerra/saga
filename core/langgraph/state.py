@@ -164,6 +164,16 @@ class NarrativeState(TypedDict, total=False):
     )
 
     # =========================================================================
+    # Quality Metrics (NEW: LLM-evaluated quality scores)
+    # =========================================================================
+    coherence_score: float | None  # 0.0-1.0 score for narrative coherence
+    prose_quality_score: float | None  # 0.0-1.0 score for prose quality
+    plot_advancement_score: float | None  # 0.0-1.0 score for plot advancement
+    pacing_score: float | None  # 0.0-1.0 score for narrative pacing
+    tone_consistency_score: float | None  # 0.0-1.0 score for tone consistency
+    quality_feedback: str | None  # Detailed feedback from quality evaluation
+
+    # =========================================================================
     # Model Configuration
     # =========================================================================
     generation_model: str
@@ -326,6 +336,13 @@ def create_initial_state(
         "needs_revision": False,
         "revision_feedback": None,
         "is_from_flawed_draft": False,
+        # Quality metrics
+        "coherence_score": None,
+        "prose_quality_score": None,
+        "plot_advancement_score": None,
+        "pacing_score": None,
+        "tone_consistency_score": None,
+        "quality_feedback": None,
         # Model configuration
         "generation_model": generation_model,
         "extraction_model": extraction_model,
