@@ -98,6 +98,33 @@ ENTITY_BLACKLIST_PATTERNS = [
     "now",
     "then",
     "current",
+    # Abstract/Metaphysical concepts (Aggressive filtering)
+    "memory",
+    "voice",
+    "signal",
+    "echo",
+    "ghost",
+    "shadow",
+    "silence",
+    "darkness",
+    "light",
+    "dead",
+    "alive",
+    "awake",
+    "asleep",
+    "gone",
+    "lost",
+    "found",
+    "pulse",
+    "thrum",
+    "beacon",
+    "network",
+    "void",
+    "abyss",
+    "truth",
+    "lie",
+    "hope",
+    "despair",
 ]
 
 
@@ -150,12 +177,11 @@ def _is_proper_noun(entity_name: str) -> bool:
 
     # Additional heuristic: filter out generic patterns even if capitalized
     name_lower = entity_name.lower().strip()
-    generic_patterns = [
-        "the ",  # "the Rebellion" might be generic vs "Rebellion of the North"
-    ]
-
-    # If it starts with "the " and only has 1-2 words total, likely generic
-    if name_lower.startswith("the ") and len(words) <= 2:
+    
+    # If it starts with "the ", "a ", "an " and only has 1-2 words total, likely generic
+    # e.g. "The Room", "A Man" -> False (not proper)
+    # "The Order of the Phoenix" -> True (proper)
+    if (name_lower.startswith("the ") or name_lower.startswith("a ") or name_lower.startswith("an ")) and len(words) <= 2:
         return False
 
     return is_mostly_capitalized
@@ -217,6 +243,31 @@ def _should_filter_entity(
 
     # Filter ephemeral/internal placeholder ids like 'entity_4097e8ba'
     if name_lower.startswith("entity_"):
+        return True
+
+    # Filter generic "A [Noun]" patterns (e.g. "A Man", "An Apple")
+    # These are usually not specific enough to be knowledge graph nodes
+    if (name_lower.startswith("a ") or name_lower.startswith("an ")) and len(name_lower.split()) <= 2:
+        return True
+
+    # Filter "Not X" patterns (e.g., "Not Dead", "Not Gone")
+    if name_lower.startswith("not "):
+        return True
+
+    # Filter abstract phrase starts
+    abstract_prefixes = (
+        "sense of",
+        "feeling of",
+        "sound of",
+        "memory of",
+        "vision of",
+        "dream of",
+        "thought of",
+        "concept of",
+        "idea of",
+        "state of",
+    )
+    if name_lower.startswith(abstract_prefixes):
         return True
 
     # Proper noun preference: use tiered mention thresholds

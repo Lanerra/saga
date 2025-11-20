@@ -899,11 +899,12 @@ def _create_relationships(
             MERGE (c1)-[r:{rel.relationship_type}]->(c2)
             ON CREATE SET 
                 r.description = $description,
-                r.first_mentioned = $chapter,
+                r.chapter_added = $chapter,
                 r.confidence = $confidence
             ON MATCH SET
                 r.description = $description,
-                r.last_mentioned = $chapter
+                r.last_mentioned = $chapter,
+                r.confidence = $confidence
         """,
             source_id=source_id,
             target_id=target_id,
@@ -1041,7 +1042,7 @@ def _check_relationships(session, extracted_rels: List[ExtractedRelationship], c
         existing = session.run("""
             MATCH (c1:Character {name: $source})-[r]->(c2:Character {name: $target})
             WHERE type(r) <> $rel_type
-            RETURN type(r) AS existing_type, r.first_mentioned AS first_chapter
+            RETURN type(r) AS existing_type, r.chapter_added AS first_chapter
         """, 
             source=rel.source_name,
             target=rel.target_name,
@@ -1533,7 +1534,7 @@ CREATE CONSTRAINT chapter_number IF NOT EXISTS FOR (ch:Chapter) REQUIRE ch.numbe
 
 ```cypher
 // Character relationships
-(c1:Character)-[:LOVES]->(c2:Character {description: "...", first_mentioned: 3})
+(c1:Character)-[:LOVES]->(c2:Character {description: "...", chapter_added: 3})
 (c1:Character)-[:HATES]->(c2:Character)
 (c1:Character)-[:TRUSTS]->(c2:Character)
 (c1:Character)-[:WORKS_FOR]->(c2:Character)
@@ -1586,7 +1587,7 @@ RETURN c.id, c.name, c.description
 // Check for contradictory relationships
 MATCH (c1:Character {name: $char1})-[r1]->(c2:Character {name: $char2})
 WHERE type(r1) IN $contradictory_types
-RETURN type(r1), r1.first_mentioned
+RETURN type(r1), r1.chapter_added
 
 // Detect isolated characters (no relationships)
 MATCH (c:Character)

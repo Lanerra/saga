@@ -11,9 +11,24 @@ Your task is to extract SEMANTIC RELATIONSHIPS between entities in the provided 
 
 **Extraction Rules:**
 1. **Focus on Triples**: Extract Subject -> Predicate -> Object relationships.
-2. **Valid Predicates**: Use standard predicates where possible (e.g., LOVES, HATES, LOCATED_IN, MEMBER_OF, OWNS, KILLS, BETRAYS).
-3. **Entities**: Use the exact names of characters, locations, and objects found in the text.
-4. **Directionality**: Ensure the direction makes sense (Subject acts on Object).
+2. **Allowed Entity Types**:
+   - **Character**: A named person or creature.
+   - **Location**: A physical place.
+   - **Event**: A specific occurrence or plot point.
+   - **Object**: A physical, tangible item (artifact, weapon, key item).
+3. **Negative Constraints (CRITICAL)**:
+   - **NO Abstract Concepts**: Do NOT create nodes for feelings, concepts, or atmospheric elements (e.g., "Silence", "Darkness", "Memory", "Voice", "Signal", "Shadow").
+   - **NO Adjectives/States**: Do NOT create nodes for states of being (e.g., "Dead", "Alive", "Not Gone", "Empty").
+   - **NO Generic Nouns**: Do NOT create nodes for generic terms unless they are specific, named objects (e.g., avoid "The Room", "A Man", use specific names).
+4. **Valid Predicates**: Use standard predicates where possible (e.g., LOVES, HATES, LOCATED_IN, MEMBER_OF, OWNS, KILLS, BETRAYS).
+5. **Directionality**: Ensure the direction makes sense (Subject acts on Object).
+6. **Significance Filter**: Extract ONLY the top 15 most significant relationships. Do not flood the graph with minor interactions.
+
+**Negative Constraints (CRITICAL):**
+- **NO Abstract Concepts**: Do NOT create nodes for "Memory", "Voice", "Signal", "Echo", "Shadow", "Silence", "Darkness".
+- **NO "Not" Entities**: Do NOT create nodes starting with "Not" (e.g., "Not Dead", "Not Gone").
+- **NO Adjectives**: Do NOT create nodes for "Dead", "Alive", "Awake", "Asleep".
+- **NO Intangible Objects**: Objects MUST be physical items you can hold.
 
 **Output Format:**
 Return a JSON object with a single key `kg_triples`.
