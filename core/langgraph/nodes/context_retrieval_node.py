@@ -1,17 +1,58 @@
 # core/langgraph/nodes/context_retrieval_node.py
+"""
+Context retrieval node for LangGraph scene generation.
+
+This module retrieves scene-specific context from the knowledge graph
+and previous scenes to build the hybrid context used for scene drafting.
+
+Key Features:
+- Scene-specific character filtering
+- Token-aware context budget management
+- Intelligent previous scene summarization
+- Targeted Neo4j queries for efficiency
+"""
+
 import structlog
 
+import config
 from core.langgraph.state import NarrativeState
-from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
+from core.text_processing_service import count_tokens, truncate_text_by_tokens
+from data_access import character_queries, kg_queries
+from prompts.prompt_data_getters import (
+    get_filtered_character_profiles_for_prompt_plain_text,
+    get_reliable_kg_facts_for_drafting_prompt,
+)
+from core.llm_interface_refactored import llm_service
+from prompts.prompt_renderer import get_system_prompt
 
 logger = structlog.get_logger(__name__)
+
+# Context budget configuration (in tokens)
+# These can be tuned based on model context window
+DEFAULT_CONTEXT_BUDGET_TOKENS = config.settings.MAX_CONTEXT_TOKENS // 2  # Reserve half for generation
+PREVIOUS_SCENES_TOKEN_BUDGET = 2000  # Max tokens for previous scene context
+SUMMARY_MAX_TOKENS = 150  # Target tokens per scene summary
+CHARACTER_PROFILES_TOKEN_BUDGET = 3000  # Max tokens for character profiles
+KG_FACTS_TOKEN_BUDGET = 1500  # Max tokens for KG facts
 
 
 async def retrieve_context(state: NarrativeState) -> NarrativeState:
     """
-    Retrieve context for the current scene/chapter.
+    Retrieve scene-specific context for chapter generation.
+
+    This node builds the hybrid_context by:
+    1. Filtering KG facts by characters mentioned in the current scene
+    2. Querying Neo4j for scene-specific entities and relationships
+    3. Building token-aware context from previous scenes
+    4. Summarizing previous scene content when necessary
+
+    Args:
+        state: Current narrative state with chapter_plan and scene index
+
+    Returns:
+        Updated state with hybrid_context populated
     """
-    logger.info("retrieve_context: fetching context")
+    logger.info("retrieve_context: fetching scene-specific context")
 
     chapter_number = state["current_chapter"]
     scene_index = state["current_scene_index"]
@@ -22,47 +63,517 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
         return state
 
     current_scene = chapter_plan[scene_index]
+    model_name = state.get("generation_model", config.NARRATIVE_MODEL)
 
-    # In a full implementation, we would query Neo4j for the specific characters
-    # and location mentioned in current_scene.
-    # For now, we'll reuse the chapter-level context getter but ideally filter it.
-
-    # TODO: Refine this to be scene-specific using current_scene['characters']
-    kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
-        state.get(
-            "plot_outline"
-        ),  # Fallback if needed, but ideally we use chapter_outlines
-        chapter_number,
-        None,  # No specific focus character for the whole chapter, but we have one for the scene
-    )
-
-    # Build hybrid context string
+    # Build context components
     hybrid_context_parts = []
 
+    # =========================================================================
+    # 1. Scene-Specific Character Context
+    # =========================================================================
+    character_context = await _get_scene_character_context(
+        current_scene=current_scene,
+        chapter_number=chapter_number,
+        plot_outline=state.get("plot_outline", {}),
+        model_name=model_name,
+    )
+    if character_context:
+        hybrid_context_parts.append(character_context)
+
+    # =========================================================================
+    # 2. Scene-Specific KG Facts
+    # =========================================================================
+    kg_facts_block = await _get_scene_specific_kg_facts(
+        current_scene=current_scene,
+        chapter_number=chapter_number,
+        plot_outline=state.get("plot_outline", {}),
+        chapter_plan=chapter_plan,
+        model_name=model_name,
+    )
     if kg_facts_block:
         hybrid_context_parts.append(kg_facts_block)
 
-    # Add previous chapter summaries
+    # =========================================================================
+    # 3. Previous Chapter Summaries
+    # =========================================================================
     if state.get("previous_chapter_summaries"):
         summaries_text = "\n\n**Recent Chapter Summaries:**\n"
         for summary in state["previous_chapter_summaries"][-3:]:
             summaries_text += f"\n{summary}"
         hybrid_context_parts.append(summaries_text)
 
-    # Add context from previous scenes in THIS chapter
+    # =========================================================================
+    # 4. Previous Scenes in This Chapter (Token-Aware)
+    # =========================================================================
     if state.get("scene_drafts"):
-        previous_scenes_text = "\n\n**Previous Scenes in This Chapter:**\n"
-        for i, draft in enumerate(state["scene_drafts"]):
-            scene_title = chapter_plan[i].get("title", f"Scene {i+1}")
-            # Summarize or truncate if too long? For now, just last few paragraphs might be better
-            # but let's put the whole thing if it fits context window.
-            # To be safe, let's just take the last 500 chars of the previous scene.
-            previous_scenes_text += f"\n--- {scene_title} ---\n...{draft[-1000:]}\n"
-        hybrid_context_parts.append(previous_scenes_text)
+        previous_scenes_context = await _get_previous_scenes_context(
+            scene_drafts=state["scene_drafts"],
+            chapter_plan=chapter_plan,
+            scene_index=scene_index,
+            model_name=model_name,
+            extraction_model=state.get("extraction_model", model_name),
+        )
+        if previous_scenes_context:
+            hybrid_context_parts.append(previous_scenes_context)
+
+    # =========================================================================
+    # 5. Location Context (if specified in scene)
+    # =========================================================================
+    location_context = await _get_scene_location_context(
+        current_scene=current_scene,
+        chapter_number=chapter_number,
+    )
+    if location_context:
+        hybrid_context_parts.append(location_context)
 
     hybrid_context = "\n\n".join(hybrid_context_parts)
+
+    # Log context size for monitoring
+    context_tokens = count_tokens(hybrid_context, model_name)
+    logger.info(
+        "retrieve_context: context built",
+        scene_index=scene_index,
+        context_length_chars=len(hybrid_context),
+        context_length_tokens=context_tokens,
+        components=len(hybrid_context_parts),
+    )
 
     return {
         "hybrid_context": hybrid_context,
         "current_node": "retrieve_context",
     }
+
+
+async def _get_scene_character_context(
+    current_scene: dict,
+    chapter_number: int,
+    plot_outline: dict,
+    model_name: str,
+) -> str | None:
+    """
+    Get character profiles filtered by scene-specific characters.
+
+    Args:
+        current_scene: Scene dict with 'characters' or 'characters_involved' field
+        chapter_number: Current chapter number for filtering
+        plot_outline: Plot outline for protagonist info
+        model_name: Model name for token counting
+
+    Returns:
+        Formatted character profiles string or None
+    """
+    # Extract character names from scene
+    scene_characters = _extract_scene_characters(current_scene)
+
+    if not scene_characters:
+        logger.debug("retrieve_context: no characters specified in scene")
+        return None
+
+    logger.debug(
+        "retrieve_context: filtering context for scene characters",
+        characters=scene_characters,
+    )
+
+    # Get filtered character profiles
+    try:
+        character_profiles_text = await get_filtered_character_profiles_for_prompt_plain_text(
+            character_names=scene_characters,
+            up_to_chapter_inclusive=chapter_number - 1 if chapter_number > 1 else config.KG_PREPOPULATION_CHAPTER_NUM,
+        )
+
+        if character_profiles_text and character_profiles_text != "No character profiles available.":
+            # Truncate if exceeds budget
+            truncated = truncate_text_by_tokens(
+                text=character_profiles_text,
+                model_name=model_name,
+                max_tokens=CHARACTER_PROFILES_TOKEN_BUDGET,
+                truncation_marker="\n... (character profiles truncated for context budget)",
+            )
+            return f"**Scene Character Profiles:**\n{truncated}"
+
+    except Exception as e:
+        logger.error(
+            "retrieve_context: error getting character profiles",
+            error=str(e),
+            exc_info=True,
+        )
+
+    return None
+
+
+def _extract_scene_characters(scene: dict) -> list[str]:
+    """
+    Extract character names from a scene definition.
+
+    Handles multiple possible field names for character lists.
+
+    Args:
+        scene: Scene dictionary
+
+    Returns:
+        List of character names
+    """
+    characters = []
+
+    # Check various possible field names
+    for field in ["characters", "characters_involved", "character_list", "cast"]:
+        scene_chars = scene.get(field)
+        if scene_chars:
+            if isinstance(scene_chars, list):
+                for char in scene_chars:
+                    if isinstance(char, str) and char.strip():
+                        characters.append(char.strip())
+                    elif isinstance(char, dict) and char.get("name"):
+                        characters.append(char["name"].strip())
+            elif isinstance(scene_chars, str):
+                # Comma-separated list
+                characters.extend([c.strip() for c in scene_chars.split(",") if c.strip()])
+            break
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_characters = []
+    for char in characters:
+        if char not in seen:
+            seen.add(char)
+            unique_characters.append(char)
+
+    return unique_characters
+
+
+async def _get_scene_specific_kg_facts(
+    current_scene: dict,
+    chapter_number: int,
+    plot_outline: dict,
+    chapter_plan: list,
+    model_name: str,
+) -> str | None:
+    """
+    Get KG facts filtered by scene-specific entities.
+
+    Uses targeted queries focusing on:
+    - Characters in the scene
+    - Location of the scene
+    - Related events and relationships
+
+    Args:
+        current_scene: Current scene definition
+        chapter_number: Current chapter number
+        plot_outline: Plot outline for context
+        chapter_plan: Full chapter plan (list of scenes)
+        model_name: Model name for token counting
+
+    Returns:
+        Formatted KG facts string or None
+    """
+    scene_characters = _extract_scene_characters(current_scene)
+
+    # Build scene detail for the KG facts function
+    # The function expects SceneDetail-like dicts
+    scene_detail = {
+        "characters_involved": scene_characters,
+        **current_scene,
+    }
+
+    try:
+        # Get KG facts with scene-specific filtering
+        kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
+            plot_outline=plot_outline,
+            chapter_number=chapter_number,
+            chapter_plan=[scene_detail],  # Pass only current scene for focused filtering
+        )
+
+        if kg_facts_block and "No specific reliable KG facts" not in kg_facts_block:
+            # Truncate if exceeds budget
+            truncated = truncate_text_by_tokens(
+                text=kg_facts_block,
+                model_name=model_name,
+                max_tokens=KG_FACTS_TOKEN_BUDGET,
+                truncation_marker="\n... (KG facts truncated for context budget)",
+            )
+            return truncated
+
+    except Exception as e:
+        logger.error(
+            "retrieve_context: error getting KG facts",
+            error=str(e),
+            exc_info=True,
+        )
+
+    return None
+
+
+async def _get_previous_scenes_context(
+    scene_drafts: list[str],
+    chapter_plan: list[dict],
+    scene_index: int,
+    model_name: str,
+    extraction_model: str,
+) -> str | None:
+    """
+    Build context from previous scenes with intelligent token management.
+
+    Strategy:
+    1. Calculate available token budget for previous scenes
+    2. For scenes that fit within budget, include full text (tail portion)
+    3. For scenes that would exceed budget, generate/use summaries
+    4. Use sliding window approach - most recent scenes get more tokens
+
+    Args:
+        scene_drafts: List of previous scene draft texts
+        chapter_plan: Full chapter plan for scene titles
+        scene_index: Current scene index
+        model_name: Model for token counting
+        extraction_model: Model for summarization
+
+    Returns:
+        Formatted previous scenes context or None
+    """
+    if not scene_drafts:
+        return None
+
+    previous_scenes_text = "\n\n**Previous Scenes in This Chapter:**\n"
+
+    # Calculate tokens per scene based on budget and number of scenes
+    num_scenes = len(scene_drafts)
+
+    # Sliding window: allocate more tokens to recent scenes
+    # Weight distribution: most recent gets most tokens
+    total_weight = sum(range(1, num_scenes + 1))
+
+    context_parts = []
+    total_tokens_used = 0
+
+    for i, draft in enumerate(scene_drafts):
+        if i >= scene_index:
+            break
+
+        scene_title = chapter_plan[i].get("title", f"Scene {i + 1}")
+
+        # Calculate token budget for this scene (more for recent scenes)
+        scene_weight = i + 1  # Earlier scenes get less weight
+        scene_token_budget = int(PREVIOUS_SCENES_TOKEN_BUDGET * (scene_weight / total_weight))
+
+        # Ensure minimum budget
+        scene_token_budget = max(scene_token_budget, SUMMARY_MAX_TOKENS)
+
+        # Check if full context fits
+        draft_tokens = count_tokens(draft, model_name)
+
+        if draft_tokens <= scene_token_budget:
+            # Full context fits within budget
+            scene_context = f"\n--- {scene_title} ---\n{draft}\n"
+            context_parts.append(scene_context)
+            total_tokens_used += draft_tokens
+        else:
+            # Need to summarize or truncate
+            if draft_tokens > scene_token_budget * 2:
+                # Scene is significantly over budget - use LLM summarization
+                summary = await _summarize_scene_text(
+                    scene_text=draft,
+                    scene_title=scene_title,
+                    extraction_model=extraction_model,
+                    max_tokens=SUMMARY_MAX_TOKENS,
+                )
+                scene_context = f"\n--- {scene_title} (Summary) ---\n{summary}\n"
+            else:
+                # Scene is slightly over budget - intelligent truncation
+                # Keep the tail (most relevant for continuity) with some head context
+                truncated = _smart_truncate_scene(
+                    text=draft,
+                    model_name=model_name,
+                    max_tokens=scene_token_budget,
+                )
+                scene_context = f"\n--- {scene_title} ---\n...{truncated}\n"
+
+            context_parts.append(scene_context)
+            total_tokens_used += count_tokens(scene_context, model_name)
+
+    if not context_parts:
+        return None
+
+    previous_scenes_text += "".join(context_parts)
+
+    logger.debug(
+        "retrieve_context: previous scenes context built",
+        num_scenes=len(context_parts),
+        total_tokens=total_tokens_used,
+        budget=PREVIOUS_SCENES_TOKEN_BUDGET,
+    )
+
+    return previous_scenes_text
+
+
+async def _summarize_scene_text(
+    scene_text: str,
+    scene_title: str,
+    extraction_model: str,
+    max_tokens: int,
+) -> str:
+    """
+    Generate a concise summary of a scene using LLM.
+
+    Args:
+        scene_text: Full scene text to summarize
+        scene_title: Scene title for context
+        extraction_model: Model to use for summarization
+        max_tokens: Target max tokens for summary
+
+    Returns:
+        Summary text
+    """
+    try:
+        # Build summarization prompt
+        prompt = f"""Summarize the following scene in 2-3 sentences, focusing on:
+- Key plot events and actions
+- Character decisions and emotional beats
+- Important information for narrative continuity
+
+Scene Title: {scene_title}
+
+Scene Text:
+{scene_text[:4000]}  # Limit input to avoid overwhelming context
+
+Provide a concise summary (max 100 words):"""
+
+        summary_text, _ = await llm_service.async_call_llm(
+            model_name=extraction_model,
+            prompt=prompt,
+            temperature=config.TEMPERATURE_SUMMARY,
+            max_tokens=max_tokens,
+            allow_fallback=True,
+            stream_to_disk=False,
+            auto_clean_response=True,
+            system_prompt=get_system_prompt("knowledge_agent"),
+        )
+
+        if summary_text and summary_text.strip():
+            return summary_text.strip()
+
+    except Exception as e:
+        logger.warning(
+            "retrieve_context: failed to summarize scene, falling back to truncation",
+            scene_title=scene_title,
+            error=str(e),
+        )
+
+    # Fallback to simple truncation
+    return truncate_text_by_tokens(
+        text=scene_text,
+        model_name=extraction_model,
+        max_tokens=max_tokens,
+        truncation_marker="...",
+    )
+
+
+def _smart_truncate_scene(
+    text: str,
+    model_name: str,
+    max_tokens: int,
+) -> str:
+    """
+    Intelligently truncate scene text keeping the most relevant parts.
+
+    Strategy:
+    - Keep the last 70% of tokens (most relevant for continuity)
+    - Include a brief head section (10%) for context
+    - Middle section (20%) gets truncated
+
+    Args:
+        text: Scene text to truncate
+        model_name: Model for token counting
+        max_tokens: Target max tokens
+
+    Returns:
+        Truncated text
+    """
+    total_tokens = count_tokens(text, model_name)
+
+    if total_tokens <= max_tokens:
+        return text
+
+    # Calculate split points
+    head_tokens = int(max_tokens * 0.1)  # 10% for beginning context
+    tail_tokens = max_tokens - head_tokens - 10  # Rest for tail, minus some for ellipsis
+
+    # Split text approximately
+    words = text.split()
+    total_words = len(words)
+
+    # Estimate tokens per word ratio
+    tokens_per_word = total_tokens / total_words if total_words > 0 else 1
+
+    head_words = int(head_tokens / tokens_per_word)
+    tail_words = int(tail_tokens / tokens_per_word)
+
+    if head_words + tail_words >= total_words:
+        # Just do simple tail truncation if the math doesn't work out
+        return truncate_text_by_tokens(
+            text=text,
+            model_name=model_name,
+            max_tokens=max_tokens,
+            truncation_marker="",
+        )
+
+    head_section = " ".join(words[:head_words])
+    tail_section = " ".join(words[-tail_words:])
+
+    return f"{head_section}\n[...]\n{tail_section}"
+
+
+async def _get_scene_location_context(
+    current_scene: dict,
+    chapter_number: int,
+) -> str | None:
+    """
+    Get location details for the current scene from Neo4j.
+
+    Args:
+        current_scene: Scene definition with location info
+        chapter_number: Current chapter number
+
+    Returns:
+        Formatted location context or None
+    """
+    location_name = current_scene.get("location") or current_scene.get("setting")
+
+    if not location_name:
+        return None
+
+    try:
+        # Query Neo4j for location details
+        kg_chapter_limit = (
+            config.KG_PREPOPULATION_CHAPTER_NUM
+            if chapter_number == 1
+            else chapter_number - 1
+        )
+
+        # Get location status and description
+        results = await kg_queries.query_kg_from_db(
+            subject=location_name,
+            chapter_limit=kg_chapter_limit,
+            limit_results=10,
+        )
+
+        if results:
+            location_facts = []
+            for fact in results:
+                predicate = fact.get("predicate", "").replace("_", " ").lower()
+                obj = fact.get("object", "")
+                if obj:
+                    location_facts.append(f"- {location_name} {predicate}: {obj}")
+
+            if location_facts:
+                return f"**Current Location - {location_name}:**\n" + "\n".join(location_facts[:5])
+
+    except Exception as e:
+        logger.debug(
+            "retrieve_context: could not get location context",
+            location=location_name,
+            error=str(e),
+        )
+
+    return None
+
+
+__all__ = ["retrieve_context"]
