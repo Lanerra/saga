@@ -59,14 +59,17 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         character_profiles = []
         if character_sheets:
             character_profiles = await _parse_character_sheets_to_profiles(
-                character_sheets
+                character_sheets,
+                model_name=state["medium_model"],
             )
 
         # Step 2: Extract world items from outlines
         world_items = []
         if global_outline:
             world_items = await _extract_world_items_from_outline(
-                global_outline, state.get("setting", "")
+                global_outline,
+                state.get("setting", ""),
+                model_name=state["medium_model"],
             )
 
         # Step 3: Commit to Neo4j using existing persistence layer
@@ -118,6 +121,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
 
 async def _parse_character_sheets_to_profiles(
     character_sheets: dict[str, dict],
+    model_name: str | None = None,
 ) -> list[CharacterProfile]:
     """
     Parse character sheet text descriptions into structured CharacterProfile models.
@@ -127,6 +131,7 @@ async def _parse_character_sheets_to_profiles(
 
     Args:
         character_sheets: Dict of character_name -> character_sheet
+        model_name: Name of the LLM to use (optional)
 
     Returns:
         List of CharacterProfile models ready for Neo4j persistence
@@ -138,7 +143,9 @@ async def _parse_character_sheets_to_profiles(
         is_protagonist = sheet.get("is_protagonist", False)
 
         # Use LLM to extract structured traits from description
-        structured_data = await _extract_structured_character_data(name, description)
+        structured_data = await _extract_structured_character_data(
+            name, description, model_name
+        )
 
         # Create CharacterProfile model
         profile = CharacterProfile(
@@ -167,7 +174,7 @@ async def _parse_character_sheets_to_profiles(
 
 
 async def _extract_structured_character_data(
-    name: str, description: str
+    name: str, description: str, model_name: str | None = None
 ) -> dict[str, any]:
     """
     Use LLM to extract structured data from character sheet description.
@@ -175,6 +182,7 @@ async def _extract_structured_character_data(
     Args:
         name: Character name
         description: Free-form character description
+        model_name: Name of the LLM to use
 
     Returns:
         Dictionary with extracted structured data (traits, status, motivations, etc.)
@@ -200,8 +208,9 @@ MOTIVATIONS: What the character wants and why
 BACKGROUND: Brief history"""
 
     try:
+        model = model_name or config.NARRATIVE_MODEL
         response, _ = await llm_service.async_call_llm(
-            model_name=config.NARRATIVE_MODEL,
+            model_name=model,
             prompt=prompt,
             temperature=0.3,  # Low temp for extraction
             max_tokens=500,
@@ -264,7 +273,7 @@ def _parse_character_extraction_response(response: str) -> dict[str, any]:
 
 
 async def _extract_world_items_from_outline(
-    global_outline: dict, setting: str
+    global_outline: dict, setting: str, model_name: str | None = None
 ) -> list[WorldItem]:
     """
     Extract world-building elements from the global outline.
@@ -275,6 +284,7 @@ async def _extract_world_items_from_outline(
     Args:
         global_outline: Global outline with story structure
         setting: Story setting description
+        model_name: Name of the LLM to use
 
     Returns:
         List of WorldItem models ready for Neo4j persistence
@@ -309,8 +319,9 @@ Example:
 [Concept] The Nexus: Central AI controlling all implanted humans"""
 
     try:
+        model = model_name or config.NARRATIVE_MODEL
         response, _ = await llm_service.async_call_llm(
-            model_name=config.NARRATIVE_MODEL,
+            model_name=model,
             prompt=prompt,
             temperature=0.5,
             max_tokens=1000,

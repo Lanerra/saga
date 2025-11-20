@@ -89,7 +89,7 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
         title=state["title"],
         genre=state["genre"],
         protagonist_name=state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
-        extraction_model=state["extraction_model"],
+        extraction_model=state["medium_model"],
     )
 
     # Handle extraction failure

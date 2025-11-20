@@ -64,7 +64,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
         return state
 
     current_scene = chapter_plan[scene_index]
-    model_name = state.get("generation_model", config.NARRATIVE_MODEL)
+    model_name = state.get("narrative_model", config.NARRATIVE_MODEL)
 
     # Build context components
     hybrid_context_parts = []
@@ -112,7 +112,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
             chapter_plan=chapter_plan,
             scene_index=scene_index,
             model_name=model_name,
-            extraction_model=state.get("extraction_model", model_name),
+            extraction_model=state.get("small_model", model_name),
         )
         if previous_scenes_context:
             hybrid_context_parts.append(previous_scenes_context)

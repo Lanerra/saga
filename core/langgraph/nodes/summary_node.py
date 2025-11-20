@@ -83,7 +83,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
 
     try:
         summary_text, usage = await llm_service.async_call_llm(
-            model_name=state["extraction_model"],  # Use fast model
+            model_name=state["small_model"],  # Use fast model
             prompt=prompt,
             temperature=0.3,  # Low temperature for consistency
             max_tokens=200,  # Short summary

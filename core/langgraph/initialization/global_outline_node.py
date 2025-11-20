@@ -71,7 +71,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
 
     try:
         response, usage = await llm_service.async_call_llm(
-            model_name=state["generation_model"],
+            model_name=state["large_model"],
             prompt=prompt,
             temperature=0.7,
             max_tokens=4000,

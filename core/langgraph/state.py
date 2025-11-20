@@ -180,6 +180,11 @@ class NarrativeState(TypedDict, total=False):
     generation_model: str
     extraction_model: str
     revision_model: str
+    # New tiered model configuration
+    large_model: str
+    medium_model: str
+    small_model: str
+    narrative_model: str
 
     # =========================================================================
     # Workflow Control
@@ -277,6 +282,11 @@ def create_initial_state(
     generation_model: str = "qwen3-a3b",
     extraction_model: str = "qwen3-a3b",
     revision_model: str = "qwen3-a3b",
+    # New model params with defaults
+    large_model: str = "qwen3-a3b",
+    medium_model: str = "qwen3-a3b",
+    small_model: str = "qwen3-a3b",
+    narrative_model: str = "qwen3-a3b",
     max_iterations: int = 3,
 ) -> NarrativeState:
     """
@@ -349,6 +359,10 @@ def create_initial_state(
         "generation_model": generation_model,
         "extraction_model": extraction_model,
         "revision_model": revision_model,
+        "large_model": large_model,
+        "medium_model": medium_model,
+        "small_model": small_model,
+        "narrative_model": narrative_model,
         # Workflow control
         "current_node": "init",
         "iteration_count": 0,
