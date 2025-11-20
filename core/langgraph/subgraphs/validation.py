@@ -841,8 +841,8 @@ async def _check_relationship_evolution(
             # Check for previous relationship between these characters
             query = """
                 MATCH (c1:Character {name: $source})-[r]->(c2:Character {name: $target})
-                RETURN type(r) AS rel_type, r.first_mentioned AS first_chapter
-                ORDER BY r.first_mentioned DESC
+                RETURN type(r) AS rel_type, r.chapter_added AS first_chapter
+                ORDER BY r.chapter_added DESC
                 LIMIT 1
             """
 
