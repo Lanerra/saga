@@ -454,7 +454,7 @@ class Neo4jManagerSingleton:
             # Warm up CRITICAL common node properties (name, id, description, category, etc.)
             (
                 "CREATE (e:__PropWarmupNodeProps:Entity {name: '', id: '', description: '', "
-                "source: '', is_provisional: false, category: ''}) WITH e DELETE e"
+                "source: '', is_provisional: false, category: '', summary: '', text: ''}) WITH e DELETE e"
             ),
             # Warm up ValueNode-specific properties
             "CREATE (v:__PropWarmupValueNode:ValueNode {value: ''}) WITH v DELETE v",

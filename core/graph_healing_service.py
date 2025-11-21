@@ -43,73 +43,64 @@ class GraphHealingService:
                 labels(n)[0] AS type,
                 n.description AS description,
                 n.traits AS traits,
-                n.created_chapter AS created_chapter,
-                n.mention_count AS mention_count
+                n.created_chapter AS created_chapter
             ORDER BY n.created_chapter ASC
         """
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(query)
-            records = await result.data()
-            return records
+        return await neo4j_manager.execute_read_query(query)
 
     async def calculate_node_confidence(self, node: dict[str, Any]) -> float:
         """
         Calculate confidence score for a provisional node.
 
         Evidence sources:
-        1. Mention frequency (30%)
+        1. Mention frequency/Connectivity (merged) (50%)
         2. Attribute completeness (50%)
-        3. Relationship connectivity (20%)
         """
         element_id = node["element_id"]
 
-        async with neo4j_manager.get_session() as session:
-            # Evidence 1: Mention frequency
-            mention_count = node.get("mention_count") or 1
-            mention_score = min(mention_count / 5, 1.0) * 0.3
+        # Evidence 1: Relationship connectivity (proxy for importance/mentions)
+        rel_query = """
+            MATCH (n)-[r]-()
+            WHERE elementId(n) = $element_id
+            RETURN count(r) AS rel_count
+        """
+        results = await neo4j_manager.execute_read_query(rel_query, {"element_id": element_id})
+        record = results[0] if results else None
+        rel_count = record["rel_count"] if record else 0
+        
+        # Normalize: 5 relationships = max score
+        connectivity_score = min(rel_count / 5, 1.0) * 0.5
 
-            # Evidence 2: Attribute completeness
-            completeness_score = 0.0
-            if node.get("description"):
-                completeness_score += 0.2
-            if node.get("traits") and len(node["traits"]) > 0:
+        # Evidence 2: Attribute completeness
+        completeness_score = 0.0
+        if node.get("description"):
+            completeness_score += 0.2
+        if node.get("traits") and len(node["traits"]) > 0:
+            completeness_score += 0.15
+
+        # Check for additional attributes based on node type
+        if node["type"] == "Character":
+            status_query = """
+                MATCH (n)
+                WHERE elementId(n) = $element_id
+                RETURN n.status AS status, n.relationships AS relationships
+            """
+            results = await neo4j_manager.execute_read_query(status_query, {"element_id": element_id})
+            record = results[0] if results else None
+            if record and record.get("status") and record["status"] != "Unknown":
                 completeness_score += 0.15
 
-            # Check for additional attributes based on node type
-            if node["type"] == "Character":
-                status_query = """
-                    MATCH (n)
-                    WHERE elementId(n) = $element_id
-                    RETURN n.status AS status, n.relationships AS relationships
-                """
-                result = await session.run(status_query, element_id=element_id)
-                record = await result.single()
-                if record and record.get("status") and record["status"] != "Unknown":
-                    completeness_score += 0.15
+        total_confidence = completeness_score + connectivity_score
 
-            # Evidence 3: Relationship connectivity
-            rel_query = """
-                MATCH (n)-[r]-()
-                WHERE elementId(n) = $element_id
-                RETURN count(r) AS rel_count
-            """
-            result = await session.run(rel_query, element_id=element_id)
-            record = await result.single()
-            rel_count = record["rel_count"] if record else 0
-            connectivity_score = min(rel_count / 3, 1.0) * 0.2
+        logger.debug(
+            "Calculated node confidence",
+            name=node["name"],
+            completeness_score=completeness_score,
+            connectivity_score=connectivity_score,
+            total=total_confidence,
+        )
 
-            total_confidence = mention_score + completeness_score + connectivity_score
-
-            logger.debug(
-                "Calculated node confidence",
-                name=node["name"],
-                mention_score=mention_score,
-                completeness_score=completeness_score,
-                connectivity_score=connectivity_score,
-                total=total_confidence,
-            )
-
-            return total_confidence
+        return total_confidence
 
     async def enrich_node_from_context(
         self,
@@ -123,16 +114,10 @@ class GraphHealingService:
         """
         element_id = node["element_id"]
 
-        async with neo4j_manager.get_session() as session:
-            # Get all chapters where this entity appears
-            mentions_query = """
-                MATCH (n)-[:APPEARS_IN|MENTIONED_IN]->(ch:Chapter)
-                WHERE elementId(n) = $element_id
-                RETURN ch.number AS chapter, ch.summary AS summary
-                ORDER BY ch.number
-            """
-            result = await session.run(mentions_query, element_id=element_id)
-            mentions = await result.data()
+        # Get all chapters where this entity appears using shared logic
+        from data_access.kg_queries import get_chapter_context_for_entity
+        
+        mentions = await get_chapter_context_for_entity(entity_id=element_id)
 
         if not mentions:
             logger.debug("No chapter mentions found for node", name=node["name"])
@@ -142,6 +127,14 @@ class GraphHealingService:
         current_description = node.get("description") or "Unknown"
         current_traits = node.get("traits") or []
 
+        # Build summaries text (handle different field names if needed)
+        summaries_text = ""
+        for m in mentions:
+            chap_num = m.get("chapter_number") or m.get("chapter")
+            summary = m.get("summary")
+            if chap_num and summary:
+                summaries_text += f"Chapter {chap_num}: {summary}\n"
+
         prompt = f"""Based on the following chapter summaries mentioning "{node['name']}",
 infer any missing attributes for this {node['type'].lower()}.
 
@@ -150,7 +143,7 @@ Current known attributes:
 - Traits: {current_traits}
 
 Chapter summaries mentioning this entity:
-{chr(10).join(f"Chapter {m['chapter']}: {m['summary']}" for m in mentions if m.get('summary'))}
+{summaries_text}
 
 Provide a JSON object with the following fields (only include fields where you have reasonable confidence):
 {{
@@ -231,9 +224,7 @@ Return ONLY the JSON object, no other text."""
         """
         params["confidence"] = enriched.get("confidence", 0.7)
 
-        async with neo4j_manager.get_session() as session:
-            await session.run(query, **params)
-
+        await neo4j_manager.execute_write_query(query, params)
         return True
 
     async def graduate_node(self, element_id: str, confidence: float) -> bool:
@@ -246,17 +237,19 @@ Return ONLY the JSON object, no other text."""
                 n.graduation_confidence = $confidence
             RETURN n.name AS name
         """
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(query, element_id=element_id, confidence=confidence)
-            record = await result.single()
-
-            if record:
-                logger.info(
-                    "Graduated node from provisional status",
-                    name=record["name"],
-                    confidence=confidence,
-                )
-                return True
+        results = await neo4j_manager.execute_write_query(
+            query,
+            {"element_id": element_id, "confidence": confidence}
+        )
+        
+        if results:
+            record = results[0]
+            logger.info(
+                "Graduated node from provisional status",
+                name=record["name"],
+                confidence=confidence,
+            )
+            return True
         return False
 
     async def find_merge_candidates(self) -> list[dict[str, Any]]:
@@ -270,19 +263,18 @@ Return ONLY the JSON object, no other text."""
         """
         candidates = []
 
-        async with neo4j_manager.get_session() as session:
-            # Get all entities with descriptions
-            query = """
-                MATCH (n)
-                WHERE n.description IS NOT NULL AND n.is_active <> false
-                RETURN
-                    elementId(n) AS element_id,
-                    n.name AS name,
-                    n.description AS description,
-                    labels(n)[0] AS type
-            """
-            result = await session.run(query)
-            entities = await result.data()
+        # Get all entities with descriptions
+        # Note: Removed n.is_active check as it's not a standard field
+        query = """
+            MATCH (n)
+            WHERE n.description IS NOT NULL
+            RETURN
+                elementId(n) AS element_id,
+                n.name AS name,
+                n.description AS description,
+                labels(n)[0] AS type
+        """
+        entities = await neo4j_manager.execute_read_query(query)
 
         if len(entities) < 2:
             return []
@@ -392,33 +384,31 @@ Return ONLY the JSON object, no other text."""
         Entities that appear together in the same chapter are less likely
         to be duplicates.
         """
-        async with neo4j_manager.get_session() as session:
-            # Check for co-occurrence
-            cooccurrence_query = """
-                MATCH (n1)-[:APPEARS_IN|MENTIONED_IN]->(ch:Chapter)<-[:APPEARS_IN|MENTIONED_IN]-(n2)
-                WHERE elementId(n1) = $primary_id AND elementId(n2) = $duplicate_id
-                RETURN count(ch) AS cooccurrences
-            """
-            result = await session.run(
-                cooccurrence_query,
-                primary_id=primary_id,
-                duplicate_id=duplicate_id
-            )
-            record = await result.single()
-            cooccurrences = record["cooccurrences"] if record else 0
+        # Check for co-occurrence via shared relationships to the same event/chapter
+        # Using a more generic path since APPEARS_IN might not exist
+        cooccurrence_query = """
+            MATCH (n1)-[]-(x)-[]-(n2)
+            WHERE elementId(n1) = $primary_id AND elementId(n2) = $duplicate_id
+            AND (x:Chapter OR x:Event)
+            RETURN count(x) AS cooccurrences
+        """
+        results = await neo4j_manager.execute_read_query(
+            cooccurrence_query,
+            {"primary_id": primary_id, "duplicate_id": duplicate_id}
+        )
+        record = results[0] if results else None
+        cooccurrences = record["cooccurrences"] if record else 0
 
-            # Get relationship patterns
-            rel_query = """
-                MATCH (n)-[r]->()
-                WHERE elementId(n) IN [$primary_id, $duplicate_id]
-                RETURN elementId(n) AS node_id, type(r) AS rel_type, count(*) AS count
-            """
-            result = await session.run(
-                rel_query,
-                primary_id=primary_id,
-                duplicate_id=duplicate_id
-            )
-            rel_patterns = await result.data()
+        # Get relationship patterns
+        rel_query = """
+            MATCH (n)-[r]->()
+            WHERE elementId(n) IN [$primary_id, $duplicate_id]
+            RETURN elementId(n) AS node_id, type(r) AS rel_type, count(*) AS count
+        """
+        rel_patterns = await neo4j_manager.execute_read_query(
+            rel_query,
+            {"primary_id": primary_id, "duplicate_id": duplicate_id}
+        )
 
         # Build relationship fingerprints
         primary_rels = {r["rel_type"]: r["count"] for r in rel_patterns if r["node_id"] == primary_id}
@@ -452,91 +442,86 @@ Return ONLY the JSON object, no other text."""
         2. Merge attributes (union of traits, keep longer description)
         3. Mark duplicate as merged (preserve history)
         """
-        async with neo4j_manager.get_session() as session:
-            # Step 1: Transfer outgoing relationships
-            transfer_out_query = """
-                MATCH (dup)-[r]->(target)
-                WHERE elementId(dup) = $dup_id
-                MATCH (primary)
-                WHERE elementId(primary) = $primary_id
-                WITH primary, target, type(r) AS rel_type, properties(r) AS props
-                MERGE (primary)-[new_rel:TRANSFERRED_REL]->(target)
-                SET new_rel = props
-                WITH primary, target, rel_type, new_rel
-                CALL apoc.refactor.setType(new_rel, rel_type) YIELD output
-                RETURN count(*) AS transferred
-            """
+        # Step 1: Transfer outgoing relationships
+        transfer_out_query = """
+            MATCH (dup)-[r]->(target)
+            WHERE elementId(dup) = $dup_id
+            MATCH (primary)
+            WHERE elementId(primary) = $primary_id
+            WITH primary, target, type(r) AS rel_type, properties(r) AS props
+            MERGE (primary)-[new_rel:TRANSFERRED_REL]->(target)
+            SET new_rel = props
+            WITH primary, target, rel_type, new_rel
+            CALL apoc.refactor.setType(new_rel, rel_type) YIELD output
+            RETURN count(*) AS transferred
+        """
 
-            # Step 2: Transfer incoming relationships
-            transfer_in_query = """
-                MATCH (source)-[r]->(dup)
-                WHERE elementId(dup) = $dup_id
-                MATCH (primary)
-                WHERE elementId(primary) = $primary_id
-                WITH source, primary, type(r) AS rel_type, properties(r) AS props
-                MERGE (source)-[new_rel:TRANSFERRED_REL]->(primary)
-                SET new_rel = props
-                WITH source, primary, rel_type, new_rel
-                CALL apoc.refactor.setType(new_rel, rel_type) YIELD output
-                RETURN count(*) AS transferred
-            """
+        # Step 2: Transfer incoming relationships
+        transfer_in_query = """
+            MATCH (source)-[r]->(dup)
+            WHERE elementId(dup) = $dup_id
+            MATCH (primary)
+            WHERE elementId(primary) = $primary_id
+            WITH source, primary, type(r) AS rel_type, properties(r) AS props
+            MERGE (source)-[new_rel:TRANSFERRED_REL]->(primary)
+            SET new_rel = props
+            WITH source, primary, rel_type, new_rel
+            CALL apoc.refactor.setType(new_rel, rel_type) YIELD output
+            RETURN count(*) AS transferred
+        """
 
-            # Step 3: Merge attributes
-            merge_attrs_query = """
-                MATCH (primary), (dup)
-                WHERE elementId(primary) = $primary_id AND elementId(dup) = $dup_id
-                SET primary.aliases = coalesce(primary.aliases, []) + [dup.name],
-                    primary.traits = apoc.coll.toSet(
-                        coalesce(primary.traits, []) + coalesce(dup.traits, [])
-                    ),
-                    primary.description = CASE
-                        WHEN size(coalesce(dup.description, '')) > size(coalesce(primary.description, ''))
-                        THEN dup.description
-                        ELSE primary.description
-                    END,
-                    primary.merged_from = coalesce(primary.merged_from, []) + [elementId(dup)],
-                    primary.merged_at = datetime()
-                RETURN primary.name AS name
-            """
+        # Step 3: Merge attributes
+        merge_attrs_query = """
+            MATCH (primary), (dup)
+            WHERE elementId(primary) = $primary_id AND elementId(dup) = $dup_id
+            SET primary.aliases = coalesce(primary.aliases, []) + [dup.name],
+                primary.traits = apoc.coll.toSet(
+                    coalesce(primary.traits, []) + coalesce(dup.traits, [])
+                ),
+                primary.description = CASE
+                    WHEN size(coalesce(dup.description, '')) > size(coalesce(primary.description, ''))
+                    THEN dup.description
+                    ELSE primary.description
+                END,
+                primary.merged_from = coalesce(primary.merged_from, []) + [elementId(dup)],
+                primary.merged_at = datetime()
+            RETURN primary.name AS name
+        """
 
-            # Step 4: Mark duplicate as merged
-            mark_merged_query = """
-                MATCH (dup)
-                WHERE elementId(dup) = $dup_id
-                SET dup.merged_into = $primary_id,
+        # Step 4: Mark duplicate as merged
+        mark_merged_query = """
+            MATCH (dup)
+            WHERE elementId(dup) = $dup_id
+            SET dup.merged_into = $primary_id,
                     dup.is_active = false,
                     dup.merged_at = datetime()
-                RETURN dup.name AS dup_name
-            """
+            RETURN dup.name AS dup_name
+        """
 
-            try:
-                # Execute in sequence
-                await session.run(
-                    transfer_out_query,
-                    dup_id=duplicate_id,
-                    primary_id=primary_id
-                )
-                await session.run(
-                    transfer_in_query,
-                    dup_id=duplicate_id,
-                    primary_id=primary_id
-                )
+        try:
+            # Execute in sequence
+            await neo4j_manager.execute_write_query(
+                transfer_out_query,
+                {"dup_id": duplicate_id, "primary_id": primary_id}
+            )
+            await neo4j_manager.execute_write_query(
+                transfer_in_query,
+                {"dup_id": duplicate_id, "primary_id": primary_id}
+            )
 
-                result = await session.run(
-                    merge_attrs_query,
-                    primary_id=primary_id,
-                    dup_id=duplicate_id
-                )
-                primary_record = await result.single()
+            primary_results = await neo4j_manager.execute_write_query(
+                merge_attrs_query,
+                {"primary_id": primary_id, "dup_id": duplicate_id}
+            )
+            primary_record = primary_results[0] if primary_results else None
 
-                result = await session.run(
-                    mark_merged_query,
-                    dup_id=duplicate_id,
-                    primary_id=primary_id
-                )
-                dup_record = await result.single()
+            dup_results = await neo4j_manager.execute_write_query(
+                mark_merged_query,
+                {"dup_id": duplicate_id, "primary_id": primary_id}
+            )
+            dup_record = dup_results[0] if dup_results else None
 
-                if primary_record and dup_record:
+            if primary_record and dup_record:
                     logger.info(
                         "Executed entity merge",
                         primary=primary_record["name"],
@@ -545,14 +530,14 @@ Return ONLY the JSON object, no other text."""
                     )
                     return True
 
-            except Exception as e:
-                logger.error(
-                    "Failed to execute merge",
-                    primary_id=primary_id,
-                    duplicate_id=duplicate_id,
-                    error=str(e),
-                )
-                return False
+        except Exception as e:
+            logger.error(
+                "Failed to execute merge",
+                primary_id=primary_id,
+                duplicate_id=duplicate_id,
+                error=str(e),
+            )
+            return False
 
         return False
 

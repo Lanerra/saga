@@ -99,10 +99,12 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         }
 
     except Exception as e:
+        import traceback
         logger.error(
             "heal_graph: Error during graph healing",
             chapter=current_chapter,
             error=str(e),
+            traceback=traceback.format_exc()
         )
 
         # Don't fail the workflow for healing errors

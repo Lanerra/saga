@@ -256,8 +256,8 @@ class LangGraphOrchestrator:
                                 last_node = node_name
 
                 # Check if chapter was successfully generated
-                # After finalization, last executed node should be "finalize"
-                if last_node == "finalize":
+                # After finalization, last executed node should be "finalize" or "heal_graph"
+                if last_node in ["finalize", "heal_graph"]:
                     chapters_generated += 1
                     logger.info(
                         f"✓ Chapter {current_chapter} complete",
