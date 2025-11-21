@@ -9,6 +9,8 @@ the narrative generation process.
 
 from __future__ import annotations
 
+import re
+
 import structlog
 
 from core.langgraph.state import NarrativeState
@@ -16,6 +18,122 @@ from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+
+def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, any]:
+    """
+    Parse the structured character sheet response into CharacterProfile-compatible format.
+
+    Args:
+        response: Raw LLM response with structured character data
+        character_name: Name of the character
+
+    Returns:
+        Dictionary with CharacterProfile-compatible fields
+    """
+    parsed = {
+        "name": character_name,
+        "description": "",
+        "traits": [],
+        "status": "Active",
+        "motivations": "",
+        "background": "",
+        "skills": [],
+        "relationships": {},
+        "internal_conflict": "",
+    }
+
+    lines = response.split("\n")
+    current_section = None
+    description_lines = []
+
+    for line in lines:
+        line_stripped = line.strip()
+
+        # Detect section headers
+        if line_stripped.startswith("### DESCRIPTION"):
+            current_section = "description"
+            continue
+        elif line_stripped.startswith("### TRAITS"):
+            current_section = "traits"
+            continue
+        elif line_stripped.startswith("### STATUS"):
+            current_section = "status"
+            continue
+        elif line_stripped.startswith("### MOTIVATIONS"):
+            current_section = "motivations"
+            continue
+        elif line_stripped.startswith("### BACKGROUND"):
+            current_section = "background"
+            continue
+        elif line_stripped.startswith("### SKILLS"):
+            current_section = "skills"
+            continue
+        elif line_stripped.startswith("### RELATIONSHIPS"):
+            current_section = "relationships"
+            continue
+        elif line_stripped.startswith("### INTERNAL_CONFLICT"):
+            current_section = "internal_conflict"
+            continue
+        elif line_stripped.startswith("###"):
+            current_section = None
+            continue
+
+        # Parse content based on current section
+        if current_section == "description" and line_stripped:
+            description_lines.append(line_stripped)
+
+        elif current_section == "traits" and line_stripped.startswith("TRAIT:"):
+            trait = line_stripped.replace("TRAIT:", "").strip()
+            if trait:
+                parsed["traits"].append(trait)
+
+        elif current_section == "status" and line_stripped.startswith("STATUS:"):
+            parsed["status"] = line_stripped.replace("STATUS:", "").strip()
+
+        elif current_section == "motivations" and line_stripped.startswith("MOTIVATIONS:"):
+            parsed["motivations"] = line_stripped.replace("MOTIVATIONS:", "").strip()
+
+        elif current_section == "background" and line_stripped.startswith("BACKGROUND:"):
+            parsed["background"] = line_stripped.replace("BACKGROUND:", "").strip()
+
+        elif current_section == "skills" and line_stripped.startswith("SKILL:"):
+            skill = line_stripped.replace("SKILL:", "").strip()
+            if skill:
+                parsed["skills"].append(skill)
+
+        elif current_section == "relationships" and line_stripped.startswith("RELATIONSHIP:"):
+            # Format: RELATIONSHIP: [name] | [type] | [description]
+            rel_content = line_stripped.replace("RELATIONSHIP:", "").strip()
+            parts = [p.strip() for p in rel_content.split("|")]
+            if len(parts) >= 2:
+                target_name = parts[0]
+                rel_type = parts[1].upper()
+                rel_desc = parts[2] if len(parts) > 2 else ""
+                parsed["relationships"][target_name] = {
+                    "type": rel_type,
+                    "description": rel_desc,
+                }
+
+        elif current_section == "internal_conflict" and line_stripped.startswith("INTERNAL_CONFLICT:"):
+            parsed["internal_conflict"] = line_stripped.replace("INTERNAL_CONFLICT:", "").strip()
+
+    # Combine description lines
+    parsed["description"] = " ".join(description_lines)
+
+    # Fallback: if parsing failed, extract what we can from raw text
+    if not parsed["description"] and not parsed["traits"]:
+        logger.warning(
+            "_parse_character_sheet_response: structured parsing failed, using fallback",
+            character=character_name,
+        )
+        # Use raw response as description
+        parsed["description"] = response
+        # Try to extract traits from text
+        trait_matches = re.findall(r'\b(brave|cunning|loyal|ambitious|cautious|intelligent|stubborn|compassionate|ruthless|wise)\b', response.lower())
+        parsed["traits"] = list(set(trait_matches))[:7]
+
+    return parsed
 
 
 async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
@@ -234,18 +352,19 @@ async def _generate_character_sheet(
             )
             return None
 
-        # For now, store as text. In future, could parse into structured format
-        sheet = {
-            "name": character_name,
-            "description": response,
-            "is_protagonist": is_protagonist,
-            "generated_at": "initialization",
-        }
+        # Parse the structured response into CharacterProfile-compatible format
+        sheet = _parse_character_sheet_response(response, character_name)
+
+        # Add metadata
+        sheet["is_protagonist"] = is_protagonist
+        sheet["generated_at"] = "initialization"
+        sheet["raw_response"] = response  # Keep raw response for reference
 
         logger.debug(
             "_generate_character_sheet: sheet generated",
             character=character_name,
-            length=len(response),
+            traits_count=len(sheet.get("traits", [])),
+            has_relationships=bool(sheet.get("relationships")),
         )
 
         return sheet
