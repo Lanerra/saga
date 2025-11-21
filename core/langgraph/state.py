@@ -18,6 +18,9 @@ from pydantic import BaseModel, Field
 # Import existing SAGA models for compatibility
 from models.kg_models import CharacterProfile, WorldItem
 
+# Import settings for model configuration
+from config.settings import settings
+
 
 class ExtractedEntity(BaseModel):
     """
@@ -292,14 +295,14 @@ def create_initial_state(
     total_chapters: int,
     project_dir: str,
     protagonist_name: str,
-    generation_model: str = "qwen3-a3b",
-    extraction_model: str = "qwen3-a3b",
-    revision_model: str = "qwen3-a3b",
+    generation_model: str = settings.NARRATIVE_MODEL,
+    extraction_model: str = settings.SMALL_MODEL,
+    revision_model: str = settings.MEDIUM_MODEL,
     # New model params with defaults
-    large_model: str = "qwen3-a3b",
-    medium_model: str = "qwen3-a3b",
-    small_model: str = "qwen3-a3b",
-    narrative_model: str = "qwen3-a3b",
+    large_model: str = settings.LARGE_MODEL,
+    medium_model: str = settings.MEDIUM_MODEL,
+    small_model: str = settings.SMALL_MODEL,
+    narrative_model: str = settings.NARRATIVE_MODEL,
     max_iterations: int = 3,
 ) -> NarrativeState:
     """
