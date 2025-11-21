@@ -46,7 +46,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     try:
         draft_text, _ = await llm_service.async_call_llm(
-            model_name=state["generation_model"],
+            model_name=state["narrative_model"],
             prompt=prompt,
             temperature=0.7,
             max_tokens=4000,  # Allow enough for a full scene

@@ -154,9 +154,15 @@ class LangGraphOrchestrator:
             total_chapters=20,  # Default, can be loaded from plot_outline
             project_dir=str(self.project_dir),
             protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
-            generation_model=config.NARRATIVE_MODEL,
-            extraction_model=config.NARRATIVE_MODEL,
-            revision_model=config.NARRATIVE_MODEL,
+            # Model Mapping
+            generation_model=config.NARRATIVE_MODEL,  # User override for generation
+            extraction_model=config.MEDIUM_MODEL,
+            revision_model=config.LARGE_MODEL,
+            # Tiered models
+            large_model=config.LARGE_MODEL,
+            medium_model=config.MEDIUM_MODEL,
+            small_model=config.SMALL_MODEL,
+            narrative_model=config.NARRATIVE_MODEL,
         )
 
         # Update current chapter and initialization status

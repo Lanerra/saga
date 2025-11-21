@@ -119,7 +119,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     # Step 3: Calculate token budget
-    model_name = state["revision_model"]
+    model_name = state["large_model"]
     prompt_tokens = llm_service.count_tokens(prompt, model_name)
 
     max_context = getattr(config, "MAX_CONTEXT_TOKENS", 128000)

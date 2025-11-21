@@ -142,6 +142,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             text=state.get("draft_text", ""),
             word_count=state.get("draft_word_count", 0),
             summary=None,
+            embedding=state.get("generated_embedding"),
         )
         all_statements.append(chapter_statement)
 
@@ -768,6 +769,7 @@ def _build_chapter_node_statement(
     text: str,
     word_count: int,
     summary: str | None,
+    embedding: list[float] | None = None,
 ) -> tuple[str, dict]:
     """
     Build Cypher statement for chapter node creation.
@@ -777,6 +779,7 @@ def _build_chapter_node_statement(
         text: Chapter text content
         word_count: Word count for metadata
         summary: Optional chapter summary
+        embedding: Optional embedding vector
 
     Returns:
         Tuple of (cypher_query, parameters)
@@ -798,7 +801,7 @@ def _build_chapter_node_statement(
         "raw_llm_output_param": text,  # Same as text
         "summary_param": summary if summary is not None else "",
         "is_provisional_param": False,  # Finalized chapter
-        "embedding_vector_param": None,  # Embeddings generated separately
+        "embedding_vector_param": embedding,
     }
 
     logger.debug(

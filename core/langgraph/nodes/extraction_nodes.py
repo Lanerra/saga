@@ -52,7 +52,7 @@ async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
 
     try:
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["extraction_model"],
+            model_name=state["medium_model"],
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
@@ -116,7 +116,7 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
 
     try:
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["extraction_model"],
+            model_name=state["medium_model"],
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
@@ -188,7 +188,7 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
 
     try:
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["extraction_model"],
+            model_name=state["medium_model"],
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
@@ -255,7 +255,7 @@ async def extract_relationships(state: NarrativeState) -> Dict[str, Any]:
 
     try:
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["extraction_model"],
+            model_name=state["medium_model"],
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,

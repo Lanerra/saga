@@ -256,7 +256,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
     try:
         response, _ = await llm_service.async_call_llm(
-            model_name=state["generation_model"],
+            model_name=state["large_model"],
             prompt=prompt,
             temperature=0.7,
             max_tokens=1000,
@@ -336,7 +336,7 @@ async def _generate_character_sheet(
 
     try:
         response, usage = await llm_service.async_call_llm(
-            model_name=state["generation_model"],
+            model_name=state["large_model"],
             prompt=prompt,
             temperature=0.7,
             max_tokens=2000,

@@ -167,7 +167,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     )
 
     # Step 4: Calculate token budget
-    model_name = state["generation_model"]
+    model_name = state["narrative_model"]
     prompt_tokens = llm_service.count_tokens(prompt, model_name)
 
     # Calculate max tokens for generation
