@@ -13,24 +13,67 @@
 
 ## Task
 
-Create a global story outline that covers the entire narrative arc. Your outline should:
+Create a global story outline in **JSON format** that covers the entire narrative arc.
 
-1. **Overall Structure:** Define the act structure (3-act or 5-act) and major turning points
-2. **Beginning:** How does the story open? What is the initial situation?
-3. **Inciting Incident:** What disrupts the status quo?
-4. **Rising Action:** What are the major conflicts and complications?
-5. **Midpoint:** What major revelation or event changes everything?
-6. **Climax:** What is the peak of the story's tension?
-7. **Resolution:** How are conflicts resolved? What is the new status quo?
-8. **Character Arcs:** How do main characters change throughout the story?
-9. **Thematic Progression:** How does the theme develop?
+You MUST output valid JSON matching the schema below. Do not include any text before or after the JSON.
 
-Ensure the outline:
-- Fits naturally within {{ total_chapters }} chapters
-- Maintains consistent pacing appropriate for {{ genre }}
-- Incorporates the theme of "{{ theme }}"
-- Provides clear story beats that can be expanded into act and chapter outlines
+## Required JSON Schema
 
-Write a detailed global outline (500-800 words).
+```json
+{
+  "act_count": 3,  // Number of acts (3 or 5)
+  "acts": [
+    {
+      "act_number": 1,
+      "title": "Act Title",
+      "summary": "Brief summary of the act (1-2 sentences)",
+      "key_events": ["Event 1", "Event 2", "Event 3"],
+      "chapters_start": 1,
+      "chapters_end": 7
+    }
+    // ... more acts
+  ],
+  "inciting_incident": "The event that disrupts the status quo and starts the story",
+  "midpoint": "Major revelation or event that changes everything",
+  "climax": "The peak of the story's tension",
+  "resolution": "How conflicts are resolved and the new status quo",
+  "character_arcs": [
+    {
+      "character_name": "Character Name",
+      "starting_state": "Character's state at story start",
+      "ending_state": "Character's state at story end",
+      "key_moments": ["Moment 1", "Moment 2"]
+    }
+  ],
+  "thematic_progression": "How the theme of '{{ theme }}' develops throughout the story",
+  "pacing_notes": "Notes on pacing appropriate for {{ genre }}"
+}
+```
 
-## Global Story Outline
+## Important Requirements
+
+1. **Chapter Allocation:** Distribute all {{ total_chapters }} chapters across the acts with no gaps or overlaps
+   - Each chapter must belong to exactly one act
+   - chapters_start and chapters_end must be inclusive (e.g., 1-7 means chapters 1 through 7)
+   - Total coverage must be chapters 1 through {{ total_chapters }}
+
+2. **Act Structure:**
+{% if total_chapters <= 15 %}
+   - Use 3-act structure for {{ total_chapters }} chapters
+   - Act 1 (Setup): ~25% of chapters
+   - Act 2 (Confrontation): ~50% of chapters
+   - Act 3 (Resolution): ~25% of chapters
+{% else %}
+   - Use 5-act structure for {{ total_chapters }} chapters
+   - Act 1 (Exposition): ~15% of chapters
+   - Act 2 (Rising Action): ~20% of chapters
+   - Act 3 (Climax): ~30% of chapters
+   - Act 4 (Falling Action): ~20% of chapters
+   - Act 5 (Resolution): ~15% of chapters
+{% endif %}
+
+3. **Character Arcs:** Include arcs for all main characters: {{ character_names | join(", ") }}
+
+4. **Genre Fit:** Ensure the outline fits {{ genre }} conventions
+
+Output only the JSON object:

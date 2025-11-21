@@ -20,18 +20,51 @@
 
 ## Task
 
-Create a detailed character sheet for {{ character_name }}. Include:
+Create a detailed character sheet for {{ character_name }} in the following STRUCTURED FORMAT.
+This format will be parsed programmatically, so follow it exactly.
 
-1. **Physical Description:** Age, appearance, distinctive features
-2. **Personality:** Key personality traits, strengths, weaknesses
-3. **Background:** Brief history, important life events
-4. **Motivations:** What drives this character? What do they want?
-5. **Skills/Abilities:** What are they good at?
-6. **Relationships:** How do they relate to other characters?
-7. **Character Arc:** How might they change throughout the story?
-{% if is_protagonist %}8. **Internal Conflict:** What internal struggle will they face?{% endif %}
+---
 
-Write a comprehensive character sheet (300-500 words) that will serve as a reference
-throughout the story development process. Be specific and avoid clichés.
+## CHARACTER SHEET: {{ character_name }}
 
-## Character Sheet for {{ character_name }}
+### DESCRIPTION
+Write a comprehensive description of the character (200-300 words) covering physical appearance, personality, and background.
+
+### TRAITS
+List 5-7 key personality traits (one per line, no bullets or dashes):
+TRAIT: [trait name]
+
+### STATUS
+Current status of the character:
+STATUS: Active
+
+### MOTIVATIONS
+What drives this character? What do they want? (1-2 sentences)
+MOTIVATIONS: [their core motivation]
+
+### BACKGROUND
+Brief history and important life events (1-2 sentences)
+BACKGROUND: [their background]
+
+### SKILLS
+List 3-5 key skills or abilities (one per line):
+SKILL: [skill name]
+
+{% if other_characters %}
+### RELATIONSHIPS
+How do they relate to other main characters? (one per line)
+Format: RELATIONSHIP: [other character name] | [relationship type] | [brief description]
+Relationship types: ALLY, RIVAL, FAMILY, FRIEND, ENEMY, MENTOR, STUDENT, ROMANTIC, COLLEAGUE
+{% endif %}
+
+{% if is_protagonist %}
+### INTERNAL_CONFLICT
+What internal struggle will they face? (1 sentence)
+INTERNAL_CONFLICT: [their internal conflict]
+{% endif %}
+
+---
+
+Begin the character sheet now, following the exact format above:
+
+## CHARACTER SHEET: {{ character_name }}

@@ -124,14 +124,14 @@ async def _parse_character_sheets_to_profiles(
     model_name: str | None = None,
 ) -> list[CharacterProfile]:
     """
-    Parse character sheet text descriptions into structured CharacterProfile models.
+    Convert pre-parsed character sheets to CharacterProfile models.
 
-    Uses LLM to extract structured information (traits, status, etc.) from
-    the free-form character sheet descriptions.
+    The character sheets are now pre-parsed during generation, containing
+    structured data (traits, motivations, relationships, etc.) that can be
+    directly used to create CharacterProfile models without additional LLM calls.
 
     Args:
-        character_sheets: Dict of character_name -> character_sheet
-        model_name: Name of the LLM to use (optional)
+        character_sheets: Dict of character_name -> character_sheet (pre-parsed)
 
     Returns:
         List of CharacterProfile models ready for Neo4j persistence
@@ -139,27 +139,44 @@ async def _parse_character_sheets_to_profiles(
     profiles = []
 
     for name, sheet in character_sheets.items():
-        description = sheet.get("description", "")
+        # Check if we have pre-parsed structured data
+        traits = sheet.get("traits", [])
+        status = sheet.get("status", "Active")
+        motivations = sheet.get("motivations", "")
+        background = sheet.get("background", "")
+        skills = sheet.get("skills", [])
+        relationships = sheet.get("relationships", {})
         is_protagonist = sheet.get("is_protagonist", False)
+        description = sheet.get("description", "")
+        internal_conflict = sheet.get("internal_conflict", "")
 
-        # Use LLM to extract structured traits from description
-        structured_data = await _extract_structured_character_data(
-            name, description, model_name
-        )
+        # If no pre-parsed traits, fall back to LLM extraction (backward compatibility)
+        if not traits and description:
+            logger.info(
+                "_parse_character_sheets_to_profiles: no pre-parsed traits, using LLM extraction",
+                character=name,
+            )
+            structured_data = await _extract_structured_character_data(name, description)
+            traits = structured_data.get("traits", [])
+            status = structured_data.get("status", status)
+            motivations = structured_data.get("motivations", motivations)
+            background = structured_data.get("background", background)
 
         # Create CharacterProfile model
         profile = CharacterProfile(
             name=name,
             description=description,
-            traits=structured_data.get("traits", []),
-            status=structured_data.get("status", "Active"),
-            relationships={},  # Will be populated during generation
+            traits=traits,
+            status=status,
+            relationships=relationships,  # Now populated from pre-parsed data
             created_chapter=0,  # Initialization entities created before chapters
             is_provisional=False,  # Initialization characters are canonical
             updates={
                 "is_protagonist": is_protagonist,
-                "motivations": structured_data.get("motivations", ""),
-                "background": structured_data.get("background", ""),
+                "motivations": motivations,
+                "background": background,
+                "skills": skills,
+                "internal_conflict": internal_conflict,
             },
         )
 
@@ -168,6 +185,7 @@ async def _parse_character_sheets_to_profiles(
             "_parse_character_sheets_to_profiles: created profile",
             name=name,
             traits=len(profile.traits),
+            has_relationships=bool(relationships),
         )
 
     return profiles
