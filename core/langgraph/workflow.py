@@ -11,6 +11,7 @@ from typing import Literal
 import structlog
 
 from core.langgraph.nodes.commit_node import commit_to_graph
+from core.langgraph.nodes.embedding_node import generate_embedding
 from core.langgraph.nodes.extraction_node import extract_entities
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
