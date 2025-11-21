@@ -263,6 +263,19 @@ class NarrativeState(TypedDict, total=False):
     initialization_complete: bool
     initialization_step: str | None  # Current initialization step
 
+    # =========================================================================
+    # Graph Healing State (for provisional node enrichment and merging)
+    # =========================================================================
+    provisional_count: int  # Number of provisional nodes in the graph
+    last_healing_chapter: int  # Last chapter where healing was run
+    merge_candidates: list[dict[str, Any]]  # Potential merge pairs with scores
+    pending_merges: list[dict[str, Any]]  # Merges awaiting user approval
+    auto_approved_merges: list[dict[str, Any]]  # High-confidence auto-approved merges
+    healing_history: list[dict[str, Any]]  # Log of healing actions taken
+    nodes_graduated: int  # Count of nodes graduated from provisional status
+    nodes_merged: int  # Count of nodes merged in this session
+    nodes_enriched: int  # Count of nodes enriched in this session
+
 
 # Type alias for improved readability in node signatures
 State = NarrativeState
@@ -402,6 +415,16 @@ def create_initial_state(
         "chapter_outlines": {},
         "initialization_complete": False,
         "initialization_step": None,
+        # Graph healing
+        "provisional_count": 0,
+        "last_healing_chapter": 0,
+        "merge_candidates": [],
+        "pending_merges": [],
+        "auto_approved_merges": [],
+        "healing_history": [],
+        "nodes_graduated": 0,
+        "nodes_merged": 0,
+        "nodes_enriched": 0,
     }
 
     return state

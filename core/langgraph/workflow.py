@@ -11,9 +11,9 @@ from typing import Literal
 import structlog
 
 from core.langgraph.nodes.commit_node import commit_to_graph
-from core.langgraph.nodes.embedding_node import generate_embedding
 from core.langgraph.nodes.extraction_node import extract_entities
 from core.langgraph.nodes.finalize_node import finalize_chapter
+from core.langgraph.nodes.graph_healing_node import heal_graph
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.nodes.validation_node import validate_consistency
@@ -376,6 +376,7 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("revise", revise_chapter)
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)
+    workflow.add_node("heal_graph", heal_graph)
     workflow.add_node("error_handler", handle_fatal_error)
 
     # Add error checking after generate
@@ -438,9 +439,12 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
         should_handle_error,
         {
             "error": "error_handler",
-            "continue": END,
+            "continue": "heal_graph",
         },
     )
+
+    # Graph healing runs after successful finalization
+    workflow.add_edge("heal_graph", END)
 
     # Error handler terminates workflow
     workflow.add_edge("error_handler", END)
@@ -458,6 +462,7 @@ def create_phase2_graph(checkpointer=None) -> StateGraph:
             "revise",
             "summarize",
             "finalize",
+            "heal_graph",
             "error_handler",
         ],
         entry_point="generate",
@@ -715,6 +720,7 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("revise", revise_chapter)
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)
+    workflow.add_node("heal_graph", heal_graph)
 
     # Conditional entry: route → (init or chapter_outline)
     workflow.add_conditional_edges(
@@ -772,16 +778,17 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     # Revision loop
     workflow.add_edge("revise", "extract")
 
-    # Finalization
+    # Finalization and graph healing
     workflow.add_edge("summarize", "finalize")
-    workflow.add_edge("finalize", END)
+    workflow.add_edge("finalize", "heal_graph")
+    workflow.add_edge("heal_graph", END)
 
     # Set entry point to routing node
     workflow.set_entry_point("route")
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=14,  # route + init_error + 6 init nodes + 6 generation nodes
+        total_nodes=15,  # route + init_error + 6 init nodes + 7 generation nodes (including heal_graph)
         entry_point="route",
     )
 
