@@ -96,7 +96,7 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_PLANNING: float = 0.6
     TEMPERATURE_EVALUATION: float = 0.3
     TEMPERATURE_CONSISTENCY_CHECK: float = 0.2
-    TEMPERATURE_KG_EXTRACTION: float = 0.4
+    TEMPERATURE_KG_EXTRACTION: float = 0.1
     TEMPERATURE_SUMMARY: float = 0.5
     TEMPERATURE_PATCH: float = 0.7
 
@@ -142,7 +142,6 @@ class SagaSettings(BaseSettings):
     WORLD_BUILDER_FILE: str = "world_building.json"
     CHAPTERS_DIR: str = "chapters"
     CHAPTER_LOGS_DIR: str = "chapter_logs"
-    DEBUG_OUTPUTS_DIR: str = "debug_outputs"
 
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
@@ -152,7 +151,6 @@ class SagaSettings(BaseSettings):
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 2
-    KG_HEALING_INTERVAL: int = 2
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 20
     MAX_CONCURRENT_CHAPTERS: int = 1
 
@@ -161,10 +159,6 @@ class SagaSettings(BaseSettings):
     SUMMARY_CACHE_SIZE: int = 32
     KG_TRIPLE_EXTRACTION_CACHE_SIZE: int = 16
     TOKENIZER_CACHE_SIZE: int = 10
-
-    # Reranking Configuration
-    ENABLE_RERANKING: bool = False
-    RERANKER_CANDIDATE_COUNT: int = 15
 
     # Agentic Planning & Prompt Context Snippets
     ENABLE_AGENTIC_PLANNING: bool = True
@@ -181,8 +175,6 @@ class SagaSettings(BaseSettings):
 
     # Revision and Validation
     ENABLE_COMPREHENSIVE_EVALUATION: bool = True
-    ENABLE_WORLD_CONTINUITY_CHECK: bool = True
-    ENABLE_SCENE_PLAN_VALIDATION: bool = True
     ENABLE_PATCH_BASED_REVISION: bool = True
     AGENT_ENABLE_PATCH_VALIDATION: bool = True
     MAX_PATCH_INSTRUCTIONS_TO_GENERATE: int = 5
@@ -190,20 +182,20 @@ class SagaSettings(BaseSettings):
     MAX_CHARS_FOR_PATCH_CONTEXT_WINDOW: int = 16384
     PATCH_VALIDATION_THRESHOLD: int = 70
     REVISION_COHERENCE_THRESHOLD: float = 0.60
-    REVISION_SIMILARITY_ACCEPTANCE: float = 0.995
     POST_PATCH_PROBLEM_THRESHOLD: int = 0
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 0
     MAX_SUMMARY_TOKENS: int = 8192
-    MAX_KG_TRIPLE_TOKENS: int = 8192
+    MAX_KG_TRIPLE_TOKENS: int = 16384
     MAX_PREPOP_KG_TOKENS: int = 16384
 
-    MIN_ACCEPTABLE_DRAFT_LENGTH: int = 12000
+    # Knowledge Graph Entity Filtering (Proper Noun Preference)
+    ENTITY_MENTION_THRESHOLD_PROPER_NOUN: int = 1
+    ENTITY_MENTION_THRESHOLD_COMMON_NOUN: int = 3
 
     # Narrative Agent Configuration
     NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS: int = 1000
     NARRATIVE_CONTEXT_TEXT_TAIL_CHARS: int = 1000
     NARRATIVE_TOKEN_BUFFER: int = 200
-    NARRATIVE_JSON_DEBUG_SAVE: bool = True
 
     ENABLE_DYNAMIC_STATE_ADAPTATION: bool = True
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
@@ -213,13 +205,8 @@ class SagaSettings(BaseSettings):
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
-    # Relationship Constraint Configuration
-    ENABLE_RELATIONSHIP_CONSTRAINTS: bool = True
-    RELATIONSHIP_CONSTRAINT_MIN_CONFIDENCE: float = 0.3
-    RELATIONSHIP_CONSTRAINT_STRICT_MODE: bool = False
-    RELATIONSHIP_CONSTRAINT_LOG_VIOLATIONS: bool = True
-    RELATIONSHIP_CONSTRAINT_AUTO_CORRECT: bool = False
-    DISABLE_RELATIONSHIP_SEMANTIC_FLATTENING: bool = True
+    # Chapter Generation Configuration
+    MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
 
     # Enhanced Node Type Configuration
     ENABLE_ENHANCED_NODE_TYPES: bool = True
@@ -271,31 +258,12 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_HIGHER_SETTING: str = "enhanced"  # basic|enhanced|max
     BOOTSTRAP_VALIDATE_EACH_PHASE: bool = True
     BOOTSTRAP_PUSH_TO_KG_EACH_PHASE: bool = True
-    BOOTSTRAP_RUN_KG_HEAL: bool = True
     BOOTSTRAP_FAIL_FAST: bool = True
 
     # Enhanced character bootstrap settings
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
-
-    # Dynamic Schema System Configuration (Disabled for single-user deployment)
-    ENABLE_DYNAMIC_SCHEMA: bool = False
-    DYNAMIC_SCHEMA_AUTO_REFRESH: bool = False
-    DYNAMIC_SCHEMA_CACHE_TTL_MINUTES: int = 2
-    DYNAMIC_SCHEMA_LEARNING_ENABLED: bool = False
-    DYNAMIC_SCHEMA_FALLBACK_ENABLED: bool = False
-
-    # Type Inference Configuration
-    DYNAMIC_TYPE_INFERENCE_CONFIDENCE_THRESHOLD: float = 0.6
-    DYNAMIC_TYPE_PATTERN_MIN_FREQUENCY: int = 3
-
-    # Constraint System Configuration
-    DYNAMIC_CONSTRAINT_CONFIDENCE_THRESHOLD: float = 0.6
-    DYNAMIC_CONSTRAINT_MIN_SAMPLES: int = 3
-
-    # Schema Discovery Configuration
-    SCHEMA_INTROSPECTION_CACHE_TTL_MINUTES: int = 2
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
@@ -308,11 +276,6 @@ class SagaSettings(BaseSettings):
             )
             object.__setattr__(
                 self, "MAX_GENERATION_TOKENS", min(self.MAX_GENERATION_TOKENS, 2048)
-            )
-            object.__setattr__(
-                self,
-                "MIN_ACCEPTABLE_DRAFT_LENGTH",
-                min(self.MIN_ACCEPTABLE_DRAFT_LENGTH, 3500),
             )
             # Slightly reduce planning and patch windows to match
             object.__setattr__(
@@ -332,7 +295,7 @@ class SagaSettings(BaseSettings):
             )
         return self
 
-    model_config = SettingsConfigDict(env_prefix="", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
 
 settings = SagaSettings()
@@ -378,13 +341,11 @@ CHARACTER_PROFILES_FILE = os.path.join(
 WORLD_BUILDER_FILE = os.path.join(settings.BASE_OUTPUT_DIR, settings.WORLD_BUILDER_FILE)
 CHAPTERS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTERS_DIR)
 CHAPTER_LOGS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTER_LOGS_DIR)
-DEBUG_OUTPUTS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.DEBUG_OUTPUTS_DIR)
 
 # Ensure output directories exist
 os.makedirs(settings.BASE_OUTPUT_DIR, exist_ok=True)
 os.makedirs(CHAPTERS_DIR, exist_ok=True)
 os.makedirs(CHAPTER_LOGS_DIR, exist_ok=True)
-os.makedirs(DEBUG_OUTPUTS_DIR, exist_ok=True)
 
 # Configure structlog to integrate with standard logging and output human‑readable messages
 structlog.configure(
@@ -404,9 +365,22 @@ structlog.configure(
 )
 
 
-# Simple human-readable formatter for structlog
-def simple_log_format(logger, name, event_dict):
-    """Simple human-readable log formatter that maintains structured data internally."""
+# Filter internal structlog fields
+def filter_internal_keys(logger, name, event_dict):
+    """Remove internal structlog fields from event dict."""
+    keys_to_remove = [k for k in event_dict.keys() if k.startswith("_")]
+    for key in keys_to_remove:
+        event_dict.pop(key, None)
+    return event_dict
+
+
+# Simple human-readable formatter for structlog (with Rich markup for console)
+def simple_log_format_rich(logger, name, event_dict):
+    """Simple human-readable log formatter with Rich markup for console output."""
+    # Remove internal structlog metadata
+    event_dict.pop("_record", None)
+    event_dict.pop("_from_structlog", None)
+
     level = event_dict.pop("level", "INFO")
     timestamp = event_dict.pop("timestamp", "")
     logger_name = event_dict.pop("logger", "")
@@ -417,21 +391,87 @@ def simple_log_format(logger, name, event_dict):
     if timestamp:
         parts.append(f"{timestamp}")
     if logger_name:
-        parts.append(f"[{logger_name}]")
-    parts.append(f"{level}")
+        # Shorten logger names for readability
+        short_name = logger_name.split(".")[-1] if "." in logger_name else logger_name
+        parts.append(f"[cyan]{short_name}[/cyan]")
+
+    # Add level with color coding for Rich handler
+    level_upper = level.upper()
+    if level_upper == "ERROR" or level_upper == "CRITICAL":
+        parts.append(f"[red]{level_upper}[/red]")
+    elif level_upper == "WARNING":
+        parts.append(f"[yellow]{level_upper}[/yellow]")
+    elif level_upper == "INFO":
+        parts.append(f"[green]{level_upper}[/green]")
+    else:
+        parts.append(level_upper)
 
     # Add the main event message
-    parts.append(f"{event}")
+    parts.append(f"[bold]{event}[/bold]" if event else "")
 
-    # Add any remaining key-value pairs as context
+    # Add any remaining key-value pairs as context (more compact format)
     if event_dict:
         context_parts = []
         for key, value in event_dict.items():
-            context_parts.append(f"{key}={value}")
+            # Skip internal keys
+            if key.startswith("_"):
+                continue
+            # Format value nicely
+            if isinstance(value, str) and len(value) > 50:
+                value_str = f"{value[:47]}..."
+            else:
+                value_str = str(value)
+            context_parts.append(f"[dim]{key}[/dim]={value_str}")
         if context_parts:
-            parts.append(f"({' '.join(context_parts)})")
+            parts.append(f"({', '.join(context_parts)})")
 
-    return " - ".join(parts)
+    return " ".join(parts)
+
+
+# Simple human-readable formatter for structlog (plain text for files)
+def simple_log_format_plain(logger, name, event_dict):
+    """Simple human-readable log formatter without markup for file output."""
+    # Remove internal structlog metadata
+    event_dict.pop("_record", None)
+    event_dict.pop("_from_structlog", None)
+
+    level = event_dict.pop("level", "INFO")
+    timestamp = event_dict.pop("timestamp", "")
+    logger_name = event_dict.pop("logger", "")
+    event = event_dict.pop("event", "")
+
+    # Format as simple human-readable line
+    parts = []
+    if timestamp:
+        parts.append(f"{timestamp}")
+    if logger_name:
+        # Shorten logger names for readability
+        short_name = logger_name.split(".")[-1] if "." in logger_name else logger_name
+        parts.append(f"[{short_name}]")
+
+    # Add level without color coding
+    parts.append(level.upper())
+
+    # Add the main event message
+    parts.append(event if event else "")
+
+    # Add any remaining key-value pairs as context (more compact format)
+    if event_dict:
+        context_parts = []
+        for key, value in event_dict.items():
+            # Skip internal keys
+            if key.startswith("_"):
+                continue
+            # Format value nicely
+            if isinstance(value, str) and len(value) > 50:
+                value_str = f"{value[:47]}..."
+            else:
+                value_str = str(value)
+            context_parts.append(f"{key}={value_str}")
+        if context_parts:
+            parts.append(f"({', '.join(context_parts)})")
+
+    return " ".join(parts)
 
 
 formatter = structlog.stdlib.ProcessorFormatter(
@@ -451,16 +491,34 @@ formatter = structlog.stdlib.ProcessorFormatter(
     ],
 )
 
-# Alternative: Even simpler formatter that outputs clean, readable lines
+# Formatter for file output (plain text, no Rich markup)
 simple_formatter = structlog.stdlib.ProcessorFormatter(
     foreign_pre_chain=[
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M:%S"),
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
     ],
-    processors=[simple_log_format],
+    processors=[
+        filter_internal_keys,  # Remove internal fields first
+        simple_log_format_plain,  # Then format for display (no markup)
+    ],
+)
+
+# Formatter for Rich console output (with color markup)
+rich_formatter = structlog.stdlib.ProcessorFormatter(
+    foreign_pre_chain=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="%m/%d/%Y, %H:%M:%S"),
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+    ],
+    processors=[
+        filter_internal_keys,  # Remove internal fields first
+        simple_log_format_rich,  # Then format with Rich markup
+    ],
 )
 
 handler = stdlib_logging.StreamHandler()
@@ -490,13 +548,6 @@ DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
     True  # Enable world item duplicate prevention
 )
 
-# State Tracker Configuration
-STATE_TRACKER_ENABLED: bool = True  # Enable StateTracker for bootstrap generation
-STATE_TRACKER_SIMILARITY_THRESHOLD: float = (
-    0.75  # Threshold for description similarity checks
-)
-
 # Legacy Degradation Flags (non-breaking defaults)
 # Legacy WorldElement toggle removed; single typed-entity model is standard
-ENABLE_LEGACY_WORLDELEMENT: bool = False  # Deprecated/no-op
 ENABLE_STATUS_IS_ALIAS: bool = True

@@ -1,10 +1,11 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
 
 CRITICAL EXTRACTION RULES (Hard Constraints):
-1. Only extract NAMED entities or entities mentioned 2+ times
-2. Skip ALL: atmospheric details, feelings, sounds, lights, weather, transitional moments
-3. Skip descriptive concepts—only extract concepts that could have their own Wikipedia page
-4. When in doubt, DON'T extract
+1. **PREFER PROPER NOUNS** - Named entities like "Elara", "Sunken Library", "Order of the Flame"
+2. For common nouns, only extract if mentioned 3+ times AND has stable referent
+3. Skip ALL: atmospheric details, feelings, sounds, lights, weather, transitional moments
+4. Skip descriptive concepts—only extract concepts that could have their own Wikipedia page
+5. When in doubt, DON'T extract
 
 You are a knowledge graph extractor for an autonomous novel writing system tasked. Extract ONLY entities essential to the narrative—skip atmospheric details, temporary states, and descriptive elements.
 
@@ -215,10 +216,22 @@ Return a single JSON object with three keys: `character_updates`, `world_updates
 ```
 
 **Quality Check Before Output:**
+- Did I prefer proper nouns over common nouns? → Proper nouns are higher quality
 - Did I extract any atmospheric/emotional/temporary entities? → Remove them
-- Are all entities named OR mentioned 2+ times? → If not, remove
+- For proper nouns (capitalized names): 1+ mention is sufficient
+- For common nouns: Mentioned 3+ times AND stable referent? → If not, remove
 - Could a future chapter reference this entity? → If no, remove
 - Is each triple's direction correct (subject acts on object)? → Fix if needed
+
+**Examples of Proper vs Common Noun Extraction:**
+✓ EXTRACT: "Character:Alice" (proper noun, named character)
+✓ EXTRACT: "Location:Sunken Library" (proper noun, specific place)
+✓ EXTRACT: "Artifact:Starfall Map" (proper noun, named artifact)
+✓ EXTRACT: "Faction:Order of the Flame" (proper noun, named organization)
+✓ EXTRACT (if 3+ mentions): "Faction:the rebellion" (common noun but significant)
+✗ SKIP: "the girl" (use character's name instead if available)
+✗ SKIP: "the artifact" (wait until it's named or track by proper name if it has one)
+✗ SKIP: "the sword" (unless mentioned 3+ times with stable referent)
 
 **Chapter {{ chapter_number }} Text to Analyze:**
 ```text

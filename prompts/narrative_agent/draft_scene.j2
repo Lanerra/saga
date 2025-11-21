@@ -1,26 +1,27 @@
-{% extends "narrative_agent/base_draft.j2" %}
+You are writing a scene for Chapter {{ chapter_number }} of the novel "{{ novel_title }}".
 
-{% block task_description %}writing a single scene{% endblock %}
+## Scene Context
+**Title:** {{ scene.title }}
+**POV Character:** {{ scene.pov_character }}
+**Setting:** {{ scene.setting }}
+**Characters Present:** {{ scene.characters | join(', ') }}
+**Plot Point:** {{ scene.plot_point }}
+**Conflict:** {{ scene.conflict }}
+**Outcome:** {{ scene.outcome }}
 
-{% block focus_section %}
-**Chapter & Scene Focus:**
-- Chapter Number: {{ chapter_number }}
-- Scene Number: {{ scene_detail.scene_number }}
-- Scene Summary: "{{ scene_detail.summary }}"
-{% endblock %}
+## Narrative Context
+**Genre:** {{ novel_genre }}
+**Theme:** {{ novel_theme }}
 
-{% block additional_context %}
-**Prior Scene Prose (for continuity within this chapter):**
---- BEGIN PRIOR SCENES ---
-{{ previous_scenes_prose }}
---- END PRIOR SCENES ---
-{% endblock %}
+## Story So Far (Context)
+{{ hybrid_context }}
 
-{% block instructions %}
-1. Write the narrative prose for this scene only. Do not include headings or meta-commentary.
-2. Ensure the prose aligns with the Hybrid Context and Prior Scene Prose.
-3. Aim for at least {{ min_length_per_scene }} characters of text.
-4. Output ONLY the scene text.
-{% endblock %}
+## Instructions
+Write the prose for this scene.
+- Focus on the POV character's experience.
+- Show, don't just tell.
+- Advance the plot towards the defined outcome.
+- Maintain the tone of a {{ novel_genre }} novel.
+- Write approximately {{ target_word_count }} words.
 
-{% block output_header %}{% endblock %}
+Begin writing the scene now.

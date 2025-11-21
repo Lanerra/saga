@@ -122,6 +122,7 @@ class WorldItem(BaseModel):
     rules: list[str] = Field(default_factory=list)
     key_elements: list[str] = Field(default_factory=list)
     traits: list[str] = Field(default_factory=list)
+    relationships: dict[str, Any] = Field(default_factory=dict)
     # Additional properties can still be stored in a dictionary for flexibility
     additional_properties: dict[str, Any] = Field(default_factory=dict)
 
@@ -158,6 +159,9 @@ class WorldItem(BaseModel):
         key_elements = data.get("key_elements", [])
         traits = data.get("traits", [])
 
+        # Extract relationships if present
+        relationships = data.get("relationships", {})
+
         # Collect remaining properties
         additional_properties = {
             k: v
@@ -174,6 +178,7 @@ class WorldItem(BaseModel):
                 "rules",
                 "key_elements",
                 "traits",
+                "relationships",
             }
         }
 
@@ -188,6 +193,7 @@ class WorldItem(BaseModel):
             rules=rules,
             key_elements=key_elements,
             traits=traits,
+            relationships=relationships,
             additional_properties=additional_properties,
         )
 
@@ -228,6 +234,23 @@ class WorldItem(BaseModel):
             node, core_fields
         )
 
+        # Extract relationships if available
+        relationships = {}
+        rels = (
+            record.get("relationships")
+            if hasattr(record, "get")
+            else record.get("relationships")
+            if isinstance(record, dict)
+            else None
+        )
+        if rels:
+            for rel in rels:
+                if rel and rel.get("target_name"):
+                    relationships[rel["target_name"]] = {
+                        "type": rel.get("type", "RELATED_TO"),
+                        "description": rel.get("description", ""),
+                    }
+
         node_dict = dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
@@ -246,6 +269,7 @@ class WorldItem(BaseModel):
                 node_dict.get("created_chapter", 0)
             ),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            relationships=relationships,
             additional_properties=additional_props,
         )
 
@@ -292,6 +316,7 @@ class WorldItem(BaseModel):
                 node_dict.get("created_chapter", 0)
             ),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            relationships={},  # Relationships handled separately
             additional_properties=additional_props,
         )
 
@@ -309,4 +334,5 @@ class WorldItem(BaseModel):
             "created_chapter": self.created_chapter,
             "is_provisional": self.is_provisional,
             "additional_props": self.additional_properties,
+            # Note: relationships handled separately
         }

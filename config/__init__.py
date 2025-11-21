@@ -38,8 +38,8 @@ def reload():
 #    raw field values).
 # 2) Then, override with any UPPERCASE constants defined at module scope in
 #    config.settings (these include the fully-joined output paths like
-#    CHAPTERS_DIR, CHAPTER_LOGS_DIR, DEBUG_OUTPUTS_DIR). This ensures modules
-#    importing `config.CHAPTERS_DIR` get the resolved path under BASE_OUTPUT_DIR
+#    CHAPTERS_DIR, CHAPTER_LOGS_DIR). This ensures modules importing
+#    `config.CHAPTERS_DIR` get the resolved path under BASE_OUTPUT_DIR
 #    rather than the raw field value "chapters".
 import importlib
 
@@ -58,6 +58,8 @@ for _obj_name in ("Models", "Temperatures"):
     if hasattr(_settings_mod, _obj_name):
         globals()[_obj_name] = getattr(_settings_mod, _obj_name)
 
-# Export additional objects needed for backward compatibility (e.g., structlog formatter)
-if hasattr(_settings_mod, "formatter"):
+# Export additional objects needed for backward compatibility (e.g., structlog formatters)
+if hasattr(_settings_mod, "simple_formatter"):
     globals()["simple_formatter"] = _settings_mod.simple_formatter
+if hasattr(_settings_mod, "rich_formatter"):
+    globals()["rich_formatter"] = _settings_mod.rich_formatter

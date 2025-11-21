@@ -713,6 +713,7 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
 
     # Add all generation nodes (using subgraphs where applicable)
     workflow.add_node("generate", create_generation_subgraph())
+    workflow.add_node("gen_embedding", generate_embedding)
     workflow.add_node("extract", create_extraction_subgraph())
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
@@ -756,7 +757,11 @@ def create_full_workflow_graph(checkpointer=None) -> StateGraph:
     workflow.add_edge("chapter_outline", "generate")
 
     # Generation flow
-    workflow.add_edge("generate", "extract")
+    # Run embedding generation and extraction after text generation
+    # Ideally these could be parallel, but for now we sequence them
+    # generate -> gen_embedding -> extract -> commit
+    workflow.add_edge("generate", "gen_embedding")
+    workflow.add_edge("gen_embedding", "extract")
     workflow.add_edge("extract", "commit")
     workflow.add_edge("commit", "validate")
 
