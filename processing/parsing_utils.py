@@ -7,7 +7,12 @@ from typing import Any
 # from rdflib.namespace import RDF, RDFS # No longer needed for triples
 import structlog
 
+from models.kg_constants import NODE_LABELS
+
 logger = structlog.get_logger(__name__)
+
+# Pre-compute normalized labels for case-insensitive matching
+_NORMALIZED_NODE_LABELS = {label.lower(): label for label in NODE_LABELS}
 
 
 class ParseError(Exception):
@@ -22,24 +27,61 @@ def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | Non
     """
     Parses 'EntityType:EntityName' or just 'EntityName' string.
     If EntityType is missing, it's set to None.
+    
+    Heuristics:
+    1. 'Type: Name' -> Type, Name
+    2. 'Type: ' -> Type, None
+    3. 'Type Name' (where Type is a known label) -> Type, Name
+    4. 'Type' (where Type is a known label) -> Type, None
+    5. 'Name' -> None, Name
     """
-    name_part = entity_text
+    text = entity_text.strip()
+    if not text:
+        return {"type": None, "name": None}
+
+    name_part = text
     type_part = None
-    if ":" in entity_text:
-        parts = entity_text.split(":", 1)
-        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-            type_part = parts[0].strip()
-            name_part = parts[1].strip()
-        elif (
-            parts[0].strip()
-        ):  # Only one part before colon, might be a type or a name with an odd colon
-            # Heuristic: if it starts with uppercase and has no spaces, assume it's a type and name is missing/error.
-            # Or if it's a common entity type. For now, simpler: if only one part before ':', it's the type.
-            # This logic might need refinement if LLM is inconsistent.
-            # Let's assume if one part before ':', it's the type and the rest is name.
-            # If no part after ':', then name is effectively empty.
-            type_part = parts[0].strip()
-            name_part = parts[1].strip() if len(parts) > 1 else ""
+
+    if ":" in text:
+        # Case 1 & 2: Explicit separator
+        parts = text.split(":", 1)
+        part1 = parts[0].strip()
+        part2 = parts[1].strip() if len(parts) > 1 else ""
+
+        if part1 and part2:
+            type_part = part1
+            name_part = part2
+        elif part1 and not part2:
+            # "Type:" case
+            # Use heuristic to decide if part1 is a type or just a name ending in colon
+            # If it's a known label or follows Type conventions (Capitalized, no spaces), assume Type.
+            if part1.lower() in _NORMALIZED_NODE_LABELS:
+                type_part = _NORMALIZED_NODE_LABELS[part1.lower()]
+                name_part = None
+            elif part1[0].isupper() and " " not in part1:
+                type_part = part1
+                name_part = None
+            else:
+                # Ambiguous, but previous logic favored Type. Keeping it as Type for consistency with "Type:" pattern.
+                type_part = part1
+                name_part = None
+    else:
+        # Case 3 & 4 & 5: No separator
+        # Try to match the first word against known node labels
+        parts = text.split(maxsplit=1)
+        if parts:
+            first_word = parts[0].strip()
+            if first_word.lower() in _NORMALIZED_NODE_LABELS:
+                # Found a known type prefix
+                type_part = _NORMALIZED_NODE_LABELS[first_word.lower()]
+                if len(parts) > 1:
+                    name_part = parts[1].strip()
+                else:
+                    name_part = None
+            else:
+                # First word is not a known type, treat whole text as name
+                type_part = None
+                name_part = text
 
     return {
         "type": type_part if type_part else None,
@@ -366,31 +408,27 @@ def parse_llm_triples(
             continue
 
         # Determine if object is an entity or a literal
-        # If object_text contains 'EntityType:', assume it's an entity.
-        # Otherwise, treat as a literal value.
+        # Uses _get_entity_type_and_name_from_text to check for valid "Type: Name" or "Type Name" patterns.
+        #
+        # Heuristics:
+        # 1. If it parses with a detected Type, it's an Entity.
+        # 2. If it parses with only a Name (Type=None), it's a Literal.
+        #    (We default to literal for objects to avoid turning every string into an entity node)
+
         object_entity_payload: dict[str, str | None] | None = None
         object_literal_payload: str | None = None
         is_literal_object = True  # Default to literal
 
-        if ":" in object_text:
-            obj_parts_check = object_text.split(":", 1)
-            # Heuristic: if part before colon is a known type or capitalized, assume entity
-            # This can be made more robust by checking against a list of known types.
-            potential_obj_type = obj_parts_check[0].strip()
-            # A simple check: if it's capitalized and has no spaces, maybe it's a type.
-            # Or if it matches any of the example types.
-            # For now, if a colon is present and there's content on both sides, assume it's Type:Name
-            if (
-                len(obj_parts_check) == 2
-                and obj_parts_check[0].strip()
-                and obj_parts_check[1].strip()
-            ):
-                # Check if potential_obj_type is likely an entity type (e.g. starts with uppercase)
-                if potential_obj_type[0].isupper() and " " not in potential_obj_type:
-                    object_entity_payload = _get_entity_type_and_name_from_text(
-                        object_text
-                    )
-                    is_literal_object = False
+        # Attempt to parse as entity
+        potential_entity = _get_entity_type_and_name_from_text(object_text)
+        
+        # If we found a valid type, treat as entity
+        if potential_entity.get("type"):
+            object_entity_payload = potential_entity
+            is_literal_object = False
+        else:
+            # No type found, treat as literal
+            is_literal_object = True
 
         if is_literal_object:
             object_literal_payload = object_text.strip()
