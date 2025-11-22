@@ -170,7 +170,7 @@ class TestEntityFiltering(unittest.TestCase):
         )
         self.assertFalse(
             _should_filter_entity(
-                "the mysterious stranger", entity_type="Character", mention_count=5
+                "the mysterious visitor", entity_type="Character", mention_count=5
             )
         )
 
@@ -258,6 +258,53 @@ class TestProperNounPreferenceInTriples(unittest.TestCase):
         # Only the HAS_STATUS triple should remain
         self.assertEqual(len(alice_triples), 1)
         self.assertEqual(alice_triples[0]["predicate"], "HAS_STATUS")
+
+
+from processing.parsing_utils import _get_entity_type_and_name_from_text
+
+class TestEntityParsingHeuristics(unittest.TestCase):
+    def test_standard_colon_format(self):
+        """Test 'Type: Name' format."""
+        result = _get_entity_type_and_name_from_text("Character: Alice")
+        self.assertEqual(result["type"], "Character")
+        self.assertEqual(result["name"], "Alice")
+
+    def test_missing_colon_known_type(self):
+        """Test 'Type Name' format where Type is a known entity type."""
+        result = _get_entity_type_and_name_from_text("Character Alice")
+        self.assertEqual(result["type"], "Character")
+        self.assertEqual(result["name"], "Alice")
+
+    def test_missing_colon_unknown_type(self):
+        """Test 'Word Name' where Word is NOT a known type."""
+        result = _get_entity_type_and_name_from_text("Alice Bob")
+        self.assertIsNone(result["type"])
+        self.assertEqual(result["name"], "Alice Bob")
+
+    def test_colon_with_empty_name(self):
+        """Test 'Type: ' format."""
+        result = _get_entity_type_and_name_from_text("Location: ")
+        self.assertEqual(result["type"], "Location")
+        self.assertIsNone(result["name"])
+
+    def test_just_type_name(self):
+        """Test 'Type' single word where it is a known entity type."""
+        result = _get_entity_type_and_name_from_text("Character")
+        self.assertEqual(result["type"], "Character")
+        self.assertIsNone(result["name"])
+
+    def test_whitespace_handling(self):
+        """Test robust whitespace handling."""
+        result = _get_entity_type_and_name_from_text("  Location  :  The Void  ")
+        self.assertEqual(result["type"], "Location")
+        self.assertEqual(result["name"], "The Void")
+
+    def test_case_insensitive_type_match(self):
+        """Test that we detect types even if lowercase in 'Type Name' format."""
+        result = _get_entity_type_and_name_from_text("character Bob")
+        self.assertIsNotNone(result["type"])
+        self.assertEqual(result["type"].lower(), "character")
+        self.assertEqual(result["name"], "Bob")
 
 
 if __name__ == "__main__":
