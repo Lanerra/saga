@@ -5,9 +5,110 @@ import structlog
 
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from data_access.character_queries import get_all_character_names, sync_characters
+from models.kg_models import CharacterProfile
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+
+async def _ensure_scene_characters_exist(
+    chapter_plan: list[dict],
+    chapter_number: int,
+) -> None:
+    """
+    Ensure all characters referenced in scene plans exist in Neo4j.
+
+    Creates stub profiles (is_provisional=True) for any new characters
+    that the LLM introduced in scene plans but don't exist in the knowledge graph.
+
+    Args:
+        chapter_plan: List of scene dictionaries with characters_involved
+        chapter_number: Current chapter number for tracking
+    """
+    # Extract all unique character names from scene plans
+    scene_characters = set()
+    for scene in chapter_plan:
+        # Check various possible field names for character lists
+        for field in ["characters", "characters_involved", "character_list", "cast"]:
+            chars = scene.get(field)
+            if chars:
+                if isinstance(chars, list):
+                    for char in chars:
+                        if isinstance(char, str) and char.strip():
+                            scene_characters.add(char.strip())
+                        elif isinstance(char, dict) and char.get("name"):
+                            scene_characters.add(char["name"].strip())
+                elif isinstance(chars, str):
+                    # Comma-separated list
+                    for c in chars.split(","):
+                        if c.strip():
+                            scene_characters.add(c.strip())
+                break
+
+    if not scene_characters:
+        logger.debug("_ensure_scene_characters_exist: no characters found in scene plans")
+        return
+
+    # Get existing characters from Neo4j
+    try:
+        existing_names = await get_all_character_names()
+        existing_names_set = set(existing_names)
+    except Exception as e:
+        logger.error(
+            "_ensure_scene_characters_exist: failed to fetch existing characters",
+            error=str(e),
+        )
+        return
+
+    # Find new characters that need stub profiles
+    new_characters = scene_characters - existing_names_set
+
+    if not new_characters:
+        logger.debug(
+            "_ensure_scene_characters_exist: all scene characters exist in Neo4j",
+            character_count=len(scene_characters),
+        )
+        return
+
+    logger.info(
+        "_ensure_scene_characters_exist: creating stub profiles for new characters",
+        new_characters=list(new_characters),
+        count=len(new_characters),
+    )
+
+    # Create stub profiles for new characters
+    stub_profiles = []
+    for char_name in new_characters:
+        stub = CharacterProfile(
+            name=char_name,
+            description=f"Character introduced in chapter {chapter_number} scene planning. Details to be developed.",
+            traits=[],
+            relationships={},
+            status="Unknown",
+            created_chapter=chapter_number,
+            is_provisional=True,
+        )
+        stub_profiles.append(stub)
+
+    # Persist stub profiles to Neo4j
+    try:
+        success = await sync_characters(stub_profiles, chapter_number)
+        if success:
+            logger.info(
+                "_ensure_scene_characters_exist: successfully created stub profiles",
+                count=len(stub_profiles),
+            )
+        else:
+            logger.warning(
+                "_ensure_scene_characters_exist: failed to persist stub profiles"
+            )
+    except Exception as e:
+        logger.error(
+            "_ensure_scene_characters_exist: error persisting stub profiles",
+            error=str(e),
+            exc_info=True,
+        )
 
 
 async def plan_scenes(state: NarrativeState) -> NarrativeState:
@@ -73,6 +174,10 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
             raise ValueError("LLM response is not a list of scenes")
 
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
+
+        # Ensure all characters in the scene plans exist in Neo4j
+        # This creates stub profiles for any new characters the LLM introduced
+        await _ensure_scene_characters_exist(scenes, chapter_number)
 
         return {
             "chapter_plan": scenes,
