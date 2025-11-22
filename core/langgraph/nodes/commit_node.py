@@ -26,6 +26,7 @@ Source Code Ported From:
 from __future__ import annotations
 
 import structlog
+import numpy as np
 
 import config
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
@@ -530,6 +531,7 @@ async def _create_chapter_node(
     text: str,
     word_count: int,
     summary: str | None,
+    embedding: list[float] | None = None,
 ) -> None:
     """
     Create chapter node in Neo4j with metadata.
@@ -542,16 +544,18 @@ async def _create_chapter_node(
         text: Chapter text content
         word_count: Word count for metadata
         summary: Optional chapter summary
+        embedding: Optional embedding vector
     """
     try:
-        # For now, we'll create a basic chapter node without embedding
-        # Embedding generation would be handled by a separate node
+        # Convert embedding to numpy array if present
+        embedding_array = np.array(embedding) if embedding else None
+
         await chapter_queries.save_chapter_data_to_db(
             chapter_number=chapter_number,
             text=text,
             raw_llm_output=text,  # Same as text in this context
             summary=summary,
-            embedding_array=None,  # Embeddings generated separately
+            embedding_array=embedding_array,
             is_provisional=False,  # Finalized chapter
         )
 
