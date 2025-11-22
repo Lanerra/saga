@@ -260,8 +260,6 @@ class TestProperNounPreferenceInTriples(unittest.TestCase):
         self.assertEqual(alice_triples[0]["predicate"], "HAS_STATUS")
 
 
-from processing.parsing_utils import _get_entity_type_and_name_from_text
-
 class TestEntityParsingHeuristics(unittest.TestCase):
     def test_standard_colon_format(self):
         """Test 'Type: Name' format."""
@@ -306,6 +304,69 @@ class TestEntityParsingHeuristics(unittest.TestCase):
         self.assertEqual(result["type"].lower(), "character")
         self.assertEqual(result["name"], "Bob")
 
+
+class TestObjectDetection(unittest.TestCase):
+    """Test object entity vs literal detection in parse_llm_triples."""
+
+    def test_standard_colon_entity(self):
+        """Test 'Type: Name' format in object position."""
+        input_text = "Character:Alice | LOVES | Character:Bob"
+        parsed = parse_llm_triples(input_text)
+        self.assertEqual(len(parsed), 1)
+        self.assertFalse(parsed[0]["is_literal_object"])
+        self.assertIsNotNone(parsed[0]["object_entity"])
+        self.assertEqual(parsed[0]["object_entity"]["type"], "Character")
+        self.assertEqual(parsed[0]["object_entity"]["name"], "Bob")
+
+    def test_missing_colon_known_type_entity(self):
+        """Test 'Type Name' format in object position with known type."""
+        # Character is a known type
+        input_text = "Character:Alice | LOVES | Character Bob"
+        parsed = parse_llm_triples(input_text)
+        self.assertEqual(len(parsed), 1)
+        self.assertFalse(parsed[0]["is_literal_object"])
+        self.assertIsNotNone(parsed[0]["object_entity"])
+        self.assertEqual(parsed[0]["object_entity"]["type"], "Character")
+        self.assertEqual(parsed[0]["object_entity"]["name"], "Bob")
+
+    def test_literal_string(self):
+        """Test literal string that shouldn't be parsed as entity."""
+        input_text = "Character:Alice | HAS_STATUS | Happy and healthy"
+        parsed = parse_llm_triples(input_text)
+        self.assertEqual(len(parsed), 1)
+        self.assertTrue(parsed[0]["is_literal_object"])
+        self.assertEqual(parsed[0]["object_literal"], "Happy and healthy")
+
+    def test_unknown_type_prefix_is_literal(self):
+        """Test 'UnknownType Name' should be treated as literal if type is unknown."""
+        # 'Strange' is not a known node label
+        input_text = "Character:Alice | HAS_TRAIT | Strange Behavior"
+        parsed = parse_llm_triples(input_text)
+        self.assertEqual(len(parsed), 1)
+        self.assertTrue(parsed[0]["is_literal_object"])
+        self.assertEqual(parsed[0]["object_literal"], "Strange Behavior")
+
+    def test_single_word_name_is_literal(self):
+        """Test single word in object position defaults to literal."""
+        # "Bob" alone should be a literal unless specified as Character:Bob
+        input_text = "Character:Alice | KNOWS | Bob"
+        parsed = parse_llm_triples(input_text)
+        self.assertEqual(len(parsed), 1)
+        self.assertTrue(parsed[0]["is_literal_object"])
+        self.assertEqual(parsed[0]["object_literal"], "Bob")
+
+    def test_single_known_type_is_literal(self):
+        """Test single known type word in object position is literal."""
+        # "Character" alone in object position is ambiguous but likely a value/literal
+        # e.g. "Alice | TYPE | Character" -> Character is a literal value for TYPE
+        input_text = "Character:Alice | TYPE | Character"
+        parsed = parse_llm_triples(input_text)
+        self.assertEqual(len(parsed), 1)
+        self.assertTrue(parsed[0]["is_literal_object"])
+        self.assertEqual(parsed[0]["object_literal"], "Character")
+
+
+from processing.parsing_utils import _get_entity_type_and_name_from_text
 
 if __name__ == "__main__":
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)

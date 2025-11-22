@@ -408,31 +408,27 @@ def parse_llm_triples(
             continue
 
         # Determine if object is an entity or a literal
-        # If object_text contains 'EntityType:', assume it's an entity.
-        # Otherwise, treat as a literal value.
+        # Uses _get_entity_type_and_name_from_text to check for valid "Type: Name" or "Type Name" patterns.
+        #
+        # Heuristics:
+        # 1. If it parses with a detected Type, it's an Entity.
+        # 2. If it parses with only a Name (Type=None), it's a Literal.
+        #    (We default to literal for objects to avoid turning every string into an entity node)
+
         object_entity_payload: dict[str, str | None] | None = None
         object_literal_payload: str | None = None
         is_literal_object = True  # Default to literal
 
-        if ":" in object_text:
-            obj_parts_check = object_text.split(":", 1)
-            # Heuristic: if part before colon is a known type or capitalized, assume entity
-            # This can be made more robust by checking against a list of known types.
-            potential_obj_type = obj_parts_check[0].strip()
-            # A simple check: if it's capitalized and has no spaces, maybe it's a type.
-            # Or if it matches any of the example types.
-            # For now, if a colon is present and there's content on both sides, assume it's Type:Name
-            if (
-                len(obj_parts_check) == 2
-                and obj_parts_check[0].strip()
-                and obj_parts_check[1].strip()
-            ):
-                # Check if potential_obj_type is likely an entity type (e.g. starts with uppercase)
-                if potential_obj_type[0].isupper() and " " not in potential_obj_type:
-                    object_entity_payload = _get_entity_type_and_name_from_text(
-                        object_text
-                    )
-                    is_literal_object = False
+        # Attempt to parse as entity
+        potential_entity = _get_entity_type_and_name_from_text(object_text)
+        
+        # If we found a valid type, treat as entity
+        if potential_entity.get("type"):
+            object_entity_payload = potential_entity
+            is_literal_object = False
+        else:
+            # No type found, treat as literal
+            is_literal_object = True
 
         if is_literal_object:
             object_literal_payload = object_text.strip()
