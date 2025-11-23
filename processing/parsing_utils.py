@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from typing import Any
+import re
 
+from utils.text_processing import normalize_entity_name
 # from rdflib import Graph, URIRef, Literal, BNode # No longer needed for triples
 # from rdflib.namespace import RDF, RDFS # No longer needed for triples
 import structlog
@@ -83,9 +85,13 @@ def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | Non
                 type_part = None
                 name_part = text
 
+    # Clean up name_part to remove parenthetical explanations and normalize quotes
+    if name_part:
+        name_part = normalize_entity_name(name_part)
+
     return {
         "type": type_part if type_part else None,
-        "name": name_part.strip() if name_part else None,
+        "name": name_part if name_part else None,
     }
 
 
@@ -212,7 +218,26 @@ def _is_proper_noun(entity_name: str) -> bool:
     if not significant_words:
         return False
 
-    capitalized_count = sum(1 for w in significant_words if w and w[0].isupper())
+    def _is_word_capitalized_or_special(w: str) -> bool:
+        if not w:
+            return False
+        # Standard capitalization
+        if w[0].isupper():
+            return True
+            
+        # Check for mixed alphanumeric or pure numbers (e.g. "7-G", "Room 101")
+        has_letters = any(c.isalpha() for c in w)
+        if not has_letters:
+            # Pure number or symbol like "7", "1984" - treat as consistent with proper noun
+            return True
+            
+        # Mixed alphanumeric: "7-G" (starts with number but has upper letter)
+        if not w[0].isalpha() and any(c.isupper() for c in w):
+            return True
+            
+        return False
+
+    capitalized_count = sum(1 for w in significant_words if _is_word_capitalized_or_special(w))
 
     # Proper noun if 60%+ of significant words are capitalized
     is_mostly_capitalized = capitalized_count >= len(significant_words) * 0.6
@@ -256,9 +281,23 @@ def _should_filter_entity(
     if len(name_lower) <= 2:
         return True
 
+    # Proper noun preference: use tiered mention thresholds
+    is_proper = _is_proper_noun(entity_name)
+
     # Filter blacklisted patterns
     for pattern in ENTITY_BLACKLIST_PATTERNS:
         if pattern in name_lower:
+            # If exact match, always filter
+            if pattern == name_lower:
+                return True
+            
+            # If it's a substring...
+            # If it's a Proper Noun containing the pattern (e.g. "Echo Protocol" contains "echo"),
+            # we allow it.
+            if is_proper:
+                continue
+                
+            # If it's NOT a proper noun and contains the pattern, filter it.
             return True
 
     # Filter entities that are just adjectives or descriptive words
@@ -311,9 +350,6 @@ def _should_filter_entity(
     )
     if name_lower.startswith(abstract_prefixes):
         return True
-
-    # Proper noun preference: use tiered mention thresholds
-    is_proper = _is_proper_noun(entity_name)
 
     try:
         import config

@@ -1,5 +1,6 @@
 # core/langgraph/nodes/scene_planning_node.py
 import json
+import re
 
 import structlog
 
@@ -7,6 +8,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.character_queries import get_all_character_names, sync_characters
 from models.kg_models import CharacterProfile
+from utils.text_processing import normalize_entity_name
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -36,14 +38,20 @@ async def _ensure_scene_characters_exist(
                 if isinstance(chars, list):
                     for char in chars:
                         if isinstance(char, str) and char.strip():
-                            scene_characters.add(char.strip())
+                            clean_name = normalize_entity_name(char)
+                            if clean_name:
+                                scene_characters.add(clean_name)
                         elif isinstance(char, dict) and char.get("name"):
-                            scene_characters.add(char["name"].strip())
+                            clean_name = normalize_entity_name(char["name"])
+                            if clean_name:
+                                scene_characters.add(clean_name)
                 elif isinstance(chars, str):
                     # Comma-separated list
                     for c in chars.split(","):
                         if c.strip():
-                            scene_characters.add(c.strip())
+                            clean_name = normalize_entity_name(c)
+                            if clean_name:
+                                scene_characters.add(clean_name)
                 break
 
     if not scene_characters:

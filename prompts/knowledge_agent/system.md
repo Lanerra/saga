@@ -15,6 +15,7 @@ You are SAGA's Knowledge Graph Extractor for a local-first novel writing system.
 ## Critical Constraints
 
 - **Never extract**: sensory details (sounds, lights, shadows), emotional states, atmospheric descriptions, generic concepts without proper names, or scene-specific metaphors
+- **Clean Names**: Never include parenthetical descriptions in entity names. Use "EntityName", not "EntityName (description)".
 - **Always validate**: entity types against allowed list, relationship directions (subject acts on object), JSON structure matches template exactly
 - **Default behavior**: when text is ambiguous, skip the entity rather than create a low-confidence entry
 
