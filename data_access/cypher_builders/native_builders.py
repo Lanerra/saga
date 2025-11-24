@@ -50,17 +50,28 @@ class NativeCypherBuilder:
         CALL (c, rel_data) {
             WITH c, rel_data
             // Use MERGE instead of MATCH to create provisional nodes if they don't exist
-            MERGE (other:Entity {name: rel_data.target_name})
-            ON CREATE SET 
+            // Mark them as Character:Entity since they're related to a character
+            MERGE (other:Character:Entity {name: rel_data.target_name})
+            ON CREATE SET
                 other.is_provisional = true,
                 other.created_chapter = $chapter_number,
-                other.id = randomUUID() // Assign a temporary ID if needed, or let it be null/generated later
-            
+                other.id = randomUUID(),
+                other.description = 'Character created from relationship. Details to be developed.',
+                other.status = 'Unknown',
+                other.traits = []
+
             MERGE (c)-[r:RELATIONSHIP {type: rel_data.rel_type}]->(other)
             SET r.description = rel_data.description,
                 r.last_updated = timestamp()
+
+            // Link provisional node to chapter for context retrieval
+            WITH other
+            OPTIONAL MATCH (chap:Chapter {number: $chapter_number})
+            FOREACH (_ IN CASE WHEN other.is_provisional = true AND chap IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (other)-[:MENTIONED_IN]->(chap)
+            )
         }
-        
+
         RETURN c.name as updated_character
         """
 
@@ -211,17 +222,26 @@ class NativeCypherBuilder:
         CALL (w, rel_data) {{
             WITH w, rel_data
             // Use MERGE instead of MATCH to create provisional nodes if they don't exist
+            // Use generic Entity label - will be updated during healing if needed
             MERGE (other:Entity {{name: rel_data.target_name}})
-            ON CREATE SET 
+            ON CREATE SET
                 other.is_provisional = true,
                 other.created_chapter = $chapter_number,
-                other.id = randomUUID()
-            
+                other.id = randomUUID(),
+                other.description = 'Entity created from world item relationship. Details to be developed.'
+
             MERGE (w)-[r:RELATIONSHIP {{type: rel_data.rel_type}}]->(other)
             SET r.description = rel_data.description,
                 r.last_updated = timestamp()
+
+            // Link provisional node to chapter for context retrieval
+            WITH other
+            OPTIONAL MATCH (chap:Chapter {{number: $chapter_number}})
+            FOREACH (_ IN CASE WHEN other.is_provisional = true AND chap IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (other)-[:MENTIONED_IN]->(chap)
+            )
         }}
-        
+
         RETURN w.id as updated_world_item
         """
 

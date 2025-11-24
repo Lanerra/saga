@@ -726,10 +726,20 @@ async def _build_relationship_statements(
             subject_labels = _get_cypher_labels(subject_type)
             object_labels = _get_cypher_labels(object_type)
 
-            # Build relationship Cypher
+            # Build relationship Cypher with proper ON CREATE SET for provisional nodes
             query = f"""
             MERGE (subj{subject_labels} {{name: $subject_name}})
+            ON CREATE SET
+                subj.is_provisional = true,
+                subj.created_chapter = $chapter,
+                subj.description = 'Entity created from relationship extraction. Details to be developed.',
+                subj.created_at = timestamp()
             MERGE (obj{object_labels} {{name: $object_name}})
+            ON CREATE SET
+                obj.is_provisional = true,
+                obj.created_chapter = $chapter,
+                obj.description = 'Entity created from relationship extraction. Details to be developed.',
+                obj.created_at = timestamp()
             MERGE (subj)-[r:{predicate_clean}]->(obj)
             SET r.type = $rel_type,
                 r.chapter_added = $chapter,
@@ -737,6 +747,16 @@ async def _build_relationship_statements(
                 r.confidence = $confidence,
                 r.description = $description,
                 r.last_updated = timestamp()
+
+            // Link newly created provisional nodes to their chapter
+            WITH subj, obj
+            OPTIONAL MATCH (c:Chapter {{number: $chapter}})
+            FOREACH (_ IN CASE WHEN subj.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (subj)-[:MENTIONED_IN]->(c)
+            )
+            FOREACH (_ IN CASE WHEN obj.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (obj)-[:MENTIONED_IN]->(c)
+            )
             """
 
             params = {
