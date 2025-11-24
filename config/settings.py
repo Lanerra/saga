@@ -539,7 +539,7 @@ REVISION_EVALUATION_THRESHOLD = 0.85
 # Duplicate Prevention Settings
 ENABLE_DUPLICATE_PREVENTION: bool = True  # Enable proactive duplicate prevention
 DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = (
-    0.3  # Similarity threshold for merging entities
+    0.6  # Similarity threshold for merging entities
 )
 DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = (
     True  # Enable character duplicate prevention

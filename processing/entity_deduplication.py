@@ -50,27 +50,31 @@ async def check_entity_similarity(
         Dict with existing entity info if similar entity found, None otherwise
     """
     try:
+        import config
+
+        threshold = config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD
+
         if entity_type == "character":
             similarity_query = """
             MATCH (c:Character:Entity)
-            WHERE c.name = $name OR 
+            WHERE c.name = $name OR
                   toLower(c.name) = toLower($name) OR
-                  apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) > 0.45
-            RETURN c.name as existing_name, 
+                  apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) > $threshold
+            RETURN c.name as existing_name,
                    labels(c) as existing_labels,
                    c.description as existing_description,
                    apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) as similarity
             ORDER BY similarity DESC
             LIMIT 1
             """
-            params = {"name": name}
+            params = {"name": name, "threshold": threshold}
         else:
             similarity_query = """
             MATCH (w:Entity)
             WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
               AND (w.name = $name OR
                    toLower(w.name) = toLower($name) OR
-                   apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > 0.45)
+                   apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > $threshold)
               AND ($category = '' OR w.category = $category)
             RETURN w.id as existing_id,
                    w.name as existing_name,
@@ -81,7 +85,7 @@ async def check_entity_similarity(
             ORDER BY similarity DESC
             LIMIT 1
             """
-            params = {"name": name, "category": category}
+            params = {"name": name, "category": category, "threshold": threshold}
 
         result = await neo4j_manager.execute_read_query(similarity_query, params)
 
