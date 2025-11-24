@@ -78,8 +78,6 @@ class SagaSettings(BaseSettings):
 
     # Neo4j Vector Index Configuration
     NEO4J_VECTOR_INDEX_NAME: str = "chapterEmbeddings"
-    NEO4J_VECTOR_NODE_LABEL: str = "Chapter"
-    NEO4J_VECTOR_PROPERTY_NAME: str = "embedding_vector"
     NEO4J_VECTOR_DIMENSIONS: int = 1024
     NEO4J_VECTOR_SIMILARITY_FUNCTION: str = "cosine"
 
@@ -117,23 +115,9 @@ class SagaSettings(BaseSettings):
 
     # LLM Frequency and Presence Penalties
     FREQUENCY_PENALTY_DRAFTING: float = 0.3
-    PRESENCE_PENALTY_DRAFTING: float = 1.0
-    FREQUENCY_PENALTY_REVISION: float = 0.2
-    PRESENCE_PENALTY_REVISION: float = 1.0
-    FREQUENCY_PENALTY_PATCH: float = 0.2
-    PRESENCE_PENALTY_PATCH: float = 1.0
-    FREQUENCY_PENALTY_PLANNING: float = 0.0
-    PRESENCE_PENALTY_PLANNING: float = 1.0
-    FREQUENCY_PENALTY_INITIAL_SETUP: float = 0.1
-    PRESENCE_PENALTY_INITIAL_SETUP: float = 1.0
-    FREQUENCY_PENALTY_EVALUATION: float = 0.0
-    PRESENCE_PENALTY_EVALUATION: float = 1.0
+    PRESENCE_PENALTY_DRAFTING: float = 0.5
     FREQUENCY_PENALTY_KG_EXTRACTION: float = 0.0
-    PRESENCE_PENALTY_KG_EXTRACTION: float = 1.0
-    FREQUENCY_PENALTY_SUMMARY: float = 0.0
-    PRESENCE_PENALTY_SUMMARY: float = 1.0
-    FREQUENCY_PENALTY_CONSISTENCY_CHECK: float = 0.0
-    PRESENCE_PENALTY_CONSISTENCY_CHECK: float = 1.0
+    PRESENCE_PENALTY_KG_EXTRACTION: float = 0.5
 
     # Output and File Paths
     BASE_OUTPUT_DIR: str = "output"
@@ -161,28 +145,11 @@ class SagaSettings(BaseSettings):
     TOKENIZER_CACHE_SIZE: int = 10
 
     # Agentic Planning & Prompt Context Snippets
-    ENABLE_AGENTIC_PLANNING: bool = True
     MAX_PLANNING_TOKENS: int = 16384
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
-    PLANNING_CONTEXT_MAX_CHARS_PER_PROFILE_DESC: int = 800
-    PLANNING_CONTEXT_MAX_RECENT_DEV_PER_PROFILE: int = 1200
-    PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET: int = 5
-    PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY: int = 3
-    PLANNING_CONTEXT_MAX_LOCATIONS_IN_SNIPPET: int = 3
-    PLANNING_CONTEXT_MAX_FACTIONS_IN_SNIPPET: int = 2
-    PLANNING_CONTEXT_MAX_SYSTEMS_IN_SNIPPET: int = 2
 
     # Revision and Validation
-    ENABLE_COMPREHENSIVE_EVALUATION: bool = True
-    ENABLE_PATCH_BASED_REVISION: bool = True
-    AGENT_ENABLE_PATCH_VALIDATION: bool = True
-    MAX_PATCH_INSTRUCTIONS_TO_GENERATE: int = 5
-    PATCH_GENERATION_ATTEMPTS: int = 1
-    MAX_CHARS_FOR_PATCH_CONTEXT_WINDOW: int = 16384
-    PATCH_VALIDATION_THRESHOLD: int = 70
-    REVISION_COHERENCE_THRESHOLD: float = 0.60
-    POST_PATCH_PROBLEM_THRESHOLD: int = 0
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 0
     MAX_SUMMARY_TOKENS: int = 8192
     MAX_KG_TRIPLE_TOKENS: int = 16384
@@ -193,11 +160,6 @@ class SagaSettings(BaseSettings):
     ENTITY_MENTION_THRESHOLD_COMMON_NOUN: int = 3
 
     # Narrative Agent Configuration
-    NARRATIVE_CONTEXT_SUMMARY_MAX_CHARS: int = 1000
-    NARRATIVE_CONTEXT_TEXT_TAIL_CHARS: int = 1000
-    NARRATIVE_TOKEN_BUFFER: int = 200
-
-    ENABLE_DYNAMIC_STATE_ADAPTATION: bool = True
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
 
     # De-duplication Configuration
@@ -207,9 +169,6 @@ class SagaSettings(BaseSettings):
 
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
-
-    # Enhanced Node Type Configuration
-    ENABLE_ENHANCED_NODE_TYPES: bool = True
 
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
@@ -245,20 +204,6 @@ class SagaSettings(BaseSettings):
     MAIN_WORLD_CONTAINER_NODE_ID: str = "world_container"
 
     DISABLE_RELATIONSHIP_NORMALIZATION: bool = True
-
-    # Bootstrap Enhancement Configuration
-    BOOTSTRAP_CREATE_RELATIONSHIPS: bool = True
-    BOOTSTRAP_USE_ENHANCED_NODE_TYPES: bool = True
-    BOOTSTRAP_MIN_CHARACTERS: int = 3
-    BOOTSTRAP_MIN_WORLD_ELEMENTS: int = 4
-    BOOTSTRAP_RELATIONSHIP_COUNT_TARGET: int = 8
-    BOOTSTRAP_USE_VALIDATION: bool = True
-    # Super-charged bootstrap toggles
-    BOOTSTRAP_ENABLED_DEFAULT: bool = False
-    BOOTSTRAP_HIGHER_SETTING: str = "enhanced"  # basic|enhanced|max
-    BOOTSTRAP_VALIDATE_EACH_PHASE: bool = True
-    BOOTSTRAP_PUSH_TO_KG_EACH_PHASE: bool = True
-    BOOTSTRAP_FAIL_FAST: bool = True
 
     # Enhanced character bootstrap settings
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
