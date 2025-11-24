@@ -28,9 +28,11 @@ logger = structlog.get_logger(__name__)
 class GraphHealingService:
     """Service for healing and enriching the knowledge graph."""
 
-    CONFIDENCE_THRESHOLD = 0.85
+    CONFIDENCE_THRESHOLD = 0.5  # Lowered from 0.85 to make graduation achievable
     MERGE_SIMILARITY_THRESHOLD = 0.75
     AUTO_MERGE_THRESHOLD = 0.95
+    AGE_GRADUATION_CHAPTERS = 3  # Graduate nodes that survive this many chapters
+    ORPHAN_CLEANUP_CHAPTERS = 5  # Remove truly orphaned nodes after this many chapters
 
     async def identify_provisional_nodes(self) -> list[dict[str, Any]]:
         """Find all provisional nodes in the graph."""
@@ -48,17 +50,19 @@ class GraphHealingService:
         """
         return await neo4j_manager.execute_read_query(query)
 
-    async def calculate_node_confidence(self, node: dict[str, Any]) -> float:
+    async def calculate_node_confidence(self, node: dict[str, Any], current_chapter: int = 0) -> float:
         """
         Calculate confidence score for a provisional node.
 
         Evidence sources:
-        1. Mention frequency/Connectivity (merged) (50%)
-        2. Attribute completeness (50%)
+        1. Relationship connectivity (40%) - lowered weight, needs only 3 relationships for max
+        2. Attribute completeness (40%)
+        3. Age bonus (20%) - nodes that survive multiple chapters get bonus
         """
         element_id = node["element_id"]
 
         # Evidence 1: Relationship connectivity (proxy for importance/mentions)
+        # Count both incoming and outgoing relationships
         rel_query = """
             MATCH (n)-[r]-()
             WHERE elementId(n) = $element_id
@@ -67,36 +71,53 @@ class GraphHealingService:
         results = await neo4j_manager.execute_read_query(rel_query, {"element_id": element_id})
         record = results[0] if results else None
         rel_count = record["rel_count"] if record else 0
-        
-        # Normalize: 5 relationships = max score
-        connectivity_score = min(rel_count / 5, 1.0) * 0.5
+
+        # Normalize: 3 relationships = max score (lowered from 5)
+        connectivity_score = min(rel_count / 3, 1.0) * 0.4
 
         # Evidence 2: Attribute completeness
         completeness_score = 0.0
-        if node.get("description"):
-            completeness_score += 0.2
+        if node.get("description") and node["description"] not in ["Unknown", "", None]:
+            # Check if description is meaningful (not just a stub)
+            desc = node["description"]
+            if len(desc) > 20 and "to be developed" not in desc.lower():
+                completeness_score += 0.2
+            else:
+                completeness_score += 0.1  # Partial credit for stub descriptions
+
         if node.get("traits") and len(node["traits"]) > 0:
-            completeness_score += 0.15
+            completeness_score += 0.1
 
         # Check for additional attributes based on node type
         if node["type"] == "Character":
             status_query = """
                 MATCH (n)
                 WHERE elementId(n) = $element_id
-                RETURN n.status AS status, n.relationships AS relationships
+                RETURN n.status AS status
             """
             results = await neo4j_manager.execute_read_query(status_query, {"element_id": element_id})
             record = results[0] if results else None
             if record and record.get("status") and record["status"] != "Unknown":
-                completeness_score += 0.15
+                completeness_score += 0.1
 
-        total_confidence = completeness_score + connectivity_score
+        # Evidence 3: Age bonus - nodes that survive multiple chapters are likely important
+        age_score = 0.0
+        created_chapter = node.get("created_chapter", current_chapter)
+        if current_chapter > 0 and created_chapter:
+            age = current_chapter - created_chapter
+            if age >= self.AGE_GRADUATION_CHAPTERS:
+                age_score = 0.2  # Full bonus for surviving 3+ chapters
+            elif age >= 1:
+                age_score = 0.1  # Partial bonus for surviving 1-2 chapters
+
+        total_confidence = completeness_score + connectivity_score + age_score
 
         logger.debug(
             "Calculated node confidence",
             name=node["name"],
             completeness_score=completeness_score,
             connectivity_score=connectivity_score,
+            age_score=age_score,
             total=total_confidence,
         )
 
@@ -541,6 +562,101 @@ Return ONLY the JSON object, no other text."""
 
         return False
 
+    async def cleanup_orphaned_nodes(self, current_chapter: int) -> dict[str, Any]:
+        """
+        Remove truly orphaned provisional nodes that have no relationships
+        and have been around for too long.
+
+        Returns summary of cleanup actions.
+        """
+        results = {
+            "nodes_removed": 0,
+            "nodes_checked": 0,
+        }
+
+        # Find orphaned provisional nodes (no relationships, old enough)
+        query = """
+            MATCH (n)
+            WHERE n.is_provisional = true
+            AND NOT (n)-[]-()
+            AND n.created_chapter IS NOT NULL
+            AND n.created_chapter <= $cutoff_chapter
+            RETURN
+                elementId(n) AS element_id,
+                n.name AS name,
+                labels(n)[0] AS type,
+                n.created_chapter AS created_chapter
+        """
+        cutoff = current_chapter - self.ORPHAN_CLEANUP_CHAPTERS
+
+        orphaned_nodes = await neo4j_manager.execute_read_query(
+            query, {"cutoff_chapter": cutoff}
+        )
+        results["nodes_checked"] = len(orphaned_nodes)
+
+        if not orphaned_nodes:
+            return results
+
+        # Remove orphaned nodes
+        for node in orphaned_nodes:
+            delete_query = """
+                MATCH (n)
+                WHERE elementId(n) = $element_id
+                DELETE n
+            """
+            try:
+                await neo4j_manager.execute_write_query(
+                    delete_query, {"element_id": node["element_id"]}
+                )
+                results["nodes_removed"] += 1
+                logger.info(
+                    "Removed orphaned provisional node",
+                    name=node["name"],
+                    type=node["type"],
+                    created_chapter=node["created_chapter"],
+                    current_chapter=current_chapter,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to remove orphaned node",
+                    name=node["name"],
+                    error=str(e),
+                )
+
+        return results
+
+    async def link_provisional_to_chapter(
+        self,
+        element_id: str,
+        chapter_number: int
+    ) -> bool:
+        """
+        Create a MENTIONED_IN relationship from a provisional node to its chapter.
+
+        This helps with context retrieval for enrichment.
+        """
+        query = """
+            MATCH (n), (c:Chapter {number: $chapter_number})
+            WHERE elementId(n) = $element_id
+            MERGE (n)-[r:MENTIONED_IN]->(c)
+            SET r.created_at = timestamp()
+            RETURN n.name AS name
+        """
+        try:
+            results = await neo4j_manager.execute_write_query(
+                query,
+                {"element_id": element_id, "chapter_number": chapter_number}
+            )
+            return bool(results)
+        except Exception as e:
+            logger.warning(
+                "Failed to link node to chapter",
+                element_id=element_id,
+                chapter=chapter_number,
+                error=str(e),
+            )
+            return False
+
     async def heal_graph(
         self,
         current_chapter: int,
@@ -562,6 +678,7 @@ Return ONLY the JSON object, no other text."""
             "nodes_enriched": 0,
             "nodes_graduated": 0,
             "nodes_merged": 0,
+            "nodes_removed": 0,
             "merge_candidates_found": 0,
             "actions": [],
         }
@@ -577,8 +694,8 @@ Return ONLY the JSON object, no other text."""
         )
 
         for node in provisional_nodes:
-            # Calculate confidence
-            confidence = await self.calculate_node_confidence(node)
+            # Calculate confidence with current chapter for age-based scoring
+            confidence = await self.calculate_node_confidence(node, current_chapter)
 
             if confidence >= self.CONFIDENCE_THRESHOLD:
                 # Graduate the node
@@ -601,7 +718,7 @@ Return ONLY the JSON object, no other text."""
                     })
 
                     # Re-check confidence after enrichment
-                    new_confidence = await self.calculate_node_confidence(node)
+                    new_confidence = await self.calculate_node_confidence(node, current_chapter)
                     if new_confidence >= self.CONFIDENCE_THRESHOLD:
                         if await self.graduate_node(node["element_id"], new_confidence):
                             results["nodes_graduated"] += 1
@@ -641,12 +758,24 @@ Return ONLY the JSON object, no other text."""
                         "auto_approved": True,
                     })
 
+        # Step 3: Clean up truly orphaned nodes
+        cleanup_results = await self.cleanup_orphaned_nodes(current_chapter)
+        results["nodes_removed"] = cleanup_results["nodes_removed"]
+
+        if cleanup_results["nodes_removed"] > 0:
+            results["actions"].append({
+                "type": "cleanup",
+                "nodes_removed": cleanup_results["nodes_removed"],
+                "nodes_checked": cleanup_results["nodes_checked"],
+            })
+
         logger.info(
             "Graph healing complete",
             chapter=current_chapter,
             graduated=results["nodes_graduated"],
             enriched=results["nodes_enriched"],
             merged=results["nodes_merged"],
+            removed=results["nodes_removed"],
         )
 
         return results

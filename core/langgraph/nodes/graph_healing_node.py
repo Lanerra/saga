@@ -56,6 +56,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         total_graduated = state.get("nodes_graduated", 0) + results["nodes_graduated"]
         total_merged = state.get("nodes_merged", 0) + results["nodes_merged"]
         total_enriched = state.get("nodes_enriched", 0) + results["nodes_enriched"]
+        total_removed = state.get("nodes_removed", 0) + results.get("nodes_removed", 0)
 
         # Extract merge candidates for potential user review
         merge_candidates = []
@@ -80,6 +81,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             graduated=results["nodes_graduated"],
             enriched=results["nodes_enriched"],
             merged=results["nodes_merged"],
+            removed=results.get("nodes_removed", 0),
             provisional_remaining=results.get("provisional_count", 0) - results["nodes_graduated"],
         )
 
@@ -92,6 +94,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             "nodes_graduated": total_graduated,
             "nodes_merged": total_merged,
             "nodes_enriched": total_enriched,
+            "nodes_removed": total_removed,
             "merge_candidates": merge_candidates,
             "pending_merges": pending_merges,
             "auto_approved_merges": auto_approved_merges,
