@@ -1,444 +1,276 @@
 # SAGA Schema Map
 
-This document provides a comprehensive and detailed mapping of all schemas used by SAGA (Semantic And Graph-enhanced Authoring).
+This document provides an exhaustive overview of the **data schemas** used by **SAGA** (Semantic and Graph‑enhanced Authoring) in its current LangGraph‑based architecture.  It explains how configuration values, Pydantic models, state structures and Neo4j metadata interrelate.  The goal of this rewrite is to remove outdated material and align the schema description with the latest codebase.
 
 ## Table of Contents
-1. [Configuration Schema](#configuration-schema)
-2. [Data Models (Pydantic)](#data-models-pydantic)
-3. [Neo4j Knowledge Graph Schema](#neo4j-knowledge-graph-schema)
-4. [User Input Schema](#user-input-schema)
+
+1. [Configuration Schema (`SagaSettings`)](#configuration-schema-sagasettings)
+2. [Core Data Models](#core-data-models)
+   1. [Entity and Relationship Extraction Models](#entity-and-relationship-extraction-models)
+   2. [Contradictions and Revision Models](#contradictions-and-revision-models)
+   3. [Narrative Planning Models](#narrative-planning-models)
+   4. [User Input Models](#user-input-models)
+3. [NarrativeState TypedDict](#narrativestate-typeddict)
+4. [Knowledge Graph Schema](#knowledge-graph-schema)
+   1. [Node Labels](#node-labels)
+   2. [Relationship Types](#relationship-types)
+   3. [Property Names, Constraints and Indexes](#property-names-constraints-and-indexes)
+5. [User Story YAML Schema](#user-story-yaml-schema)
 
 ---
 
-## Configuration Schema
+## Configuration Schema (`SagaSettings`)
 
-The configuration schema is defined in `config/settings.py` using Pydantic's BaseSettings.
+Configuration values are defined in `config/settings.py` via a Pydantic `BaseSettings` subclass.  These settings control API endpoints, model names, temperature values, token budgets, caching sizes and other runtime parameters.  Below is a categorized summary of the most important fields (defaults are shown where relevant):
 
-### Main Configuration Class: `SagaSettings`
+### API and Model Configuration
 
-#### API and Model Configuration
-- `EMBEDDING_API_BASE`: str - Base URL for embedding API (default: "http://127.0.0.1:11434")
-- `EMBEDDING_API_KEY`: str - API key for embedding service (default: "")
-- `OPENAI_API_BASE`: str - Base URL for OpenAI-compatible API (default: "http://127.0.0.1:8080/v1")
-- `OPENAI_API_KEY`: str - API key for OpenAI-compatible service (default: "nope")
-- `EMBEDDING_MODEL`: str - Name of embedding model (default: "mxbai-embed-large:latest")
-- `EXPECTED_EMBEDDING_DIM`: int - Expected embedding dimensions (default: 1024)
-- `EMBEDDING_DTYPE`: str - Data type for embeddings (default: "float16")
+- **Embedding API** – The base URL and key used for the embedding model (`EMBEDDING_API_BASE`, `EMBEDDING_API_KEY`).
+- **OpenAI‑compatible API** – Base URL and key for calling an OpenAI‑compatible inference service (`OPENAI_API_BASE`, `OPENAI_API_KEY`).
+- **Model names** – Default names for the large, medium, small and narrative models (`LARGE_MODEL`, `MEDIUM_MODEL`, `SMALL_MODEL`, `NARRATIVE_MODEL`).
 
-#### Neo4j Connection Settings
-- `NEO4J_URI`: str - Neo4j connection URI (default: "bolt://localhost:7687")
-- `NEO4J_USER`: str - Neo4j username (default: "neo4j")
-- `NEO4J_PASSWORD`: str - Neo4j password (default: "saga_password")
-- `NEO4J_DATABASE`: str | None - Database name (default: "neo4j")
+### Neo4j Connection and Vector Index
 
-#### Neo4j Vector Index Configuration
-- `NEO4J_VECTOR_INDEX_NAME`: str - Vector index name (default: "chapterEmbeddings")
-- `NEO4J_VECTOR_NODE_LABEL`: str - Vector index node label (default: "Chapter")
-- `NEO4J_VECTOR_PROPERTY_NAME`: str - Vector property name (default: "embedding_vector")
-- `NEO4J_VECTOR_DIMENSIONS`: int - Vector dimensions (default: 1024)
-- `NEO4J_VECTOR_SIMILARITY_FUNCTION`: str - Similarity function (default: "cosine")
+- **Connection parameters** – URI, username, password and optional database name for connecting to Neo4j (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`).
+- **Vector index configuration** – Name, dimension and similarity function for the chapter embedding vector index (`NEO4J_VECTOR_INDEX_NAME`, `NEO4J_VECTOR_DIMENSIONS`, `NEO4J_VECTOR_SIMILARITY_FUNCTION`).
 
-#### Base Model Definitions
-- `LARGE_MODEL`: str - Large model name (default: "qwen3-a3b")
-- `MEDIUM_MODEL`: str - Medium model name (default: "qwen3-a3b")
-- `SMALL_MODEL`: str - Small model name (default: "qwen3-a3b")
-- `NARRATIVE_MODEL`: str - Narrative model name (default: "qwen3-a3b")
+### Temperature and Sampling Parameters
 
-#### Temperature Settings
-- `TEMPERATURE_INITIAL_SETUP`: float - Initial setup temperature (default: 0.8)
-- `TEMPERATURE_DRAFTING`: float - Drafting temperature (default: 0.8)
-- `TEMPERATURE_REVISION`: float - Revision temperature (default: 0.65)
-- `TEMPERATURE_PLANNING`: float - Planning temperature (default: 0.6)
-- `TEMPERATURE_EVALUATION`: float - Evaluation temperature (default: 0.3)
-- `TEMPERATURE_CONSISTENCY_CHECK`: float - Consistency check temperature (default: 0.2)
-- `TEMPERATURE_KG_EXTRACTION`: float - KG extraction temperature (default: 0.4)
-- `TEMPERATURE_SUMMARY`: float - Summary temperature (default: 0.5)
-- `TEMPERATURE_PATCH`: float - Patch temperature (default: 0.7)
+The system uses different temperature settings for various tasks.  Important parameters include:
 
-#### LLM Call Settings & Fallbacks
-- `LLM_RETRY_ATTEMPTS`: int - Number of retry attempts (default: 3)
-- `LLM_RETRY_DELAY_SECONDS`: float - Delay between retries (default: 3.0)
-- `HTTPX_TIMEOUT`: float - HTTP timeout (default: 600.0)
+- `TEMPERATURE_INITIAL_SETUP`, `TEMPERATURE_DRAFTING`, `TEMPERATURE_REVISION`, `TEMPERATURE_PLANNING`, `TEMPERATURE_EVALUATION`, `TEMPERATURE_CONSISTENCY_CHECK`, `TEMPERATURE_KG_EXTRACTION`, `TEMPERATURE_SUMMARY` and `TEMPERATURE_PATCH`.  Each controls the randomness of the LLM for its respective phase.
+- `LLM_TOP_P` specifies nucleus sampling during drafting.
+- Frequency and presence penalties for drafting and extraction adjust repetition (`FREQUENCY_PENALTY_*`, `PRESENCE_PENALTY_*`).
 
-#### Concurrency and Rate Limiting
-- `MAX_CONCURRENT_LLM_CALLS`: int - Maximum concurrent LLM calls (default: 4)
+### Resource Budgets and Concurrency
 
-#### Output and File Paths
-- `BASE_OUTPUT_DIR`: str - Base output directory (default: "output")
-- `PLOT_OUTLINE_FILE`: str - Plot outline file (default: "plot_outline.json")
-- `CHARACTER_PROFILES_FILE`: str - Character profiles file (default: "character_profiles.json")
-- `WORLD_BUILDER_FILE`: str - World building file (default: "world_building.json")
-- `CHAPTERS_DIR`: str - Chapters directory (default: "chapters")
-- `CHAPTER_LOGS_DIR`: str - Chapter logs directory (default: "chapter_logs")
-- `DEBUG_OUTPUTS_DIR`: str - Debug outputs directory (default: "debug_outputs")
-- `USER_STORY_ELEMENTS_FILE_PATH`: str - User story elements file (default: "user_story_elements.yaml")
+- **Token budgets** – Maximum context tokens, generation tokens and planning tokens (`MAX_CONTEXT_TOKENS`, `MAX_GENERATION_TOKENS`, `MAX_PLANNING_TOKENS`).  These control how much text can be processed or generated in each step.
+- **Concurrency** – Maximum concurrent LLM calls (`MAX_CONCURRENT_LLM_CALLS`) and maximum concurrent chapters per run (`MAX_CONCURRENT_CHAPTERS`).
 
-#### Generation Parameters
-- `MAX_CONTEXT_TOKENS`: int - Max context tokens (default: 40960)
-- `MAX_GENERATION_TOKENS`: int - Max generation tokens (default: 16384)
-- `CONTEXT_CHAPTER_COUNT`: int - Context chapter count (default: 2)
-- `CHAPTERS_PER_RUN`: int - Chapters per run (default: 2)
-- `KG_HEALING_INTERVAL`: int - KG healing interval (default: 2)
-- `TARGET_PLOT_POINTS_INITIAL_GENERATION`: int - Target plot points for initial gen (default: 20)
-- `MAX_CONCURRENT_CHAPTERS`: int - Max concurrent chapters (default: 1)
+### Caching and Deduplication
 
-#### Caching
-- `EMBEDDING_CACHE_SIZE`: int - Embedding cache size (default: 128)
-- `SUMMARY_CACHE_SIZE`: int - Summary cache size (default: 32)
-- `KG_TRIPLE_EXTRACTION_CACHE_SIZE`: int - KG triple extraction cache size (default: 16)
-- `TOKENIZER_CACHE_SIZE`: int - Tokenizer cache size (default: 10)
+- **Caches** – Sizes for the embedding, summary, KG triple extraction and tokenizer caches (`EMBEDDING_CACHE_SIZE`, `SUMMARY_CACHE_SIZE`, `KG_TRIPLE_EXTRACTION_CACHE_SIZE`, `TOKENIZER_CACHE_SIZE`).
+- **Deduplication** – Flags controlling semantic deduplication, thresholds and minimum segment length (`DEDUPLICATION_USE_SEMANTIC`, `DEDUPLICATION_SEMANTIC_THRESHOLD`, `DEDUPLICATION_MIN_SEGMENT_LENGTH`).
 
-#### Revision and Validation
-- `MAX_REVISION_CYCLES_PER_CHAPTER`: int - Max revision cycles per chapter (default: 0)
-- `MAX_SUMMARY_TOKENS`: int - Max summary tokens (default: 8192)
-- `MIN_ACCEPTABLE_DRAFT_LENGTH`: int - Min acceptable draft length (default: 12000)
+### Output and Miscellaneous Settings
 
-#### Logging & UI
-- `LOG_LEVEL_STR`: str - Log level (default: "INFO")
-- `ENABLE_RICH_PROGRESS`: bool - Enable rich progress (default: True)
+- **Directories and files** – Base output directory and file names for plot outlines, character profiles, world building and logs (`BASE_OUTPUT_DIR`, `PLOT_OUTLINE_FILE`, `CHARACTER_PROFILES_FILE`, `WORLD_BUILDER_FILE`, `CHAPTERS_DIR`, `CHAPTER_LOGS_DIR`).
+- **Revision limits and summary tokens** – Maximum revision cycles per chapter and maximum summary or KG triple tokens (`MAX_REVISION_CYCLES_PER_CHAPTER`, `MAX_SUMMARY_TOKENS`, `MAX_KG_TRIPLE_TOKENS`, `MAX_PREPOP_KG_TOKENS`).
+- **Entity mention thresholds** – Proper nouns are kept with low mention frequency, while common nouns require more mentions before being persisted (`ENTITY_MENTION_THRESHOLD_PROPER_NOUN`, `ENTITY_MENTION_THRESHOLD_COMMON_NOUN`).
+- **Logging and UI** – Log level, file names and Rich progress toggles (`LOG_LEVEL_STR`, `LOG_FILE`, `ENABLE_RICH_PROGRESS`, `SIMPLE_LOGGING_MODE`).
+- **Bootstrap settings** – Minimum number of traits required when bootstrapping protagonists, antagonists and supporting characters (`BOOTSTRAP_MIN_TRAITS_PROTAGONIST`, `BOOTSTRAP_MIN_TRAITS_ANTAGONIST`, `BOOTSTRAP_MIN_TRAITS_SUPPORTING`).
+
+These configuration values can be overridden via environment variables thanks to Pydantic's `BaseSettings` mechanism.  The configuration file also contains dynamic logic to reduce budgets when the `FAST_PROFILE` flag is set.
 
 ---
 
-## Data Models (Pydantic)
+## Core Data Models
 
-### Character Profile Model (`models/kg_models.py`)
-```python
-class CharacterProfile(BaseModel):
-    name: str
-    description: str = ""
-    traits: list[str] = Field(default_factory=list)
-    relationships: dict[str, Any] = Field(default_factory=dict)
-    status: str = "Unknown"
-    updates: dict[str, Any] = Field(default_factory=dict)
-    created_chapter: int = 0
-    is_provisional: bool = False
-```
+SAGA defines several Pydantic models and `TypedDict`s to structure data as it flows through the LangGraph workflow.  The models fall into four broad categories: extraction models, contradiction/revision models, planning models and user input models.
 
-### World Item Model (`models/kg_models.py`)
-```python
-class WorldItem(BaseModel):
-    id: str
-    category: str
-    name: str
-    created_chapter: int = 0
-    is_provisional: bool = False
-    description: str = ""
-    goals: list[str] = Field(default_factory=list)
-    rules: list[str] = Field(default_factory=list)
-    key_elements: list[str] = Field(default_factory=list)
-    traits: list[str] = Field(default_factory=list)
-    additional_properties: dict[str, Any] = Field(default_factory=dict)
-```
+### Entity and Relationship Extraction Models
 
-### Narrative State Models (`models/narrative_state.py`)
+These models represent the structured output of the extraction subgraph.  They live in `core/langgraph/state.py` and are used by the extraction and commit nodes.
 
-#### ContextSnapshot
-```python
-class ContextSnapshot:
-    chapter_number: int
-    plot_point_focus: str | None
-    chapter_plan: list[SceneDetail] | None
-    hybrid_context: str
-    kg_facts_block: str
-    recent_chapters_map: dict[int, dict[str, Any]]
-```
+- **`ExtractedEntity`** – Represents an entity identified in generated text.  Fields include `name`, `type` (one of `"character"`, `"location"`, `"event"` or `"object"`), a natural‑language `description`, the `first_appearance_chapter` and a dictionary of arbitrary `attributes`.
+- **`ExtractedRelationship`** – Represents a relationship between two entities.  It stores the `source_name` and `target_name`, the `relationship_type`, a `description`, the chapter where it was found and a confidence score.
 
-#### NarrativeState
-```python
-class NarrativeState:
-    neo4j: Any
-    llm: Any
-    embedding: Any | None
-    plot_outline: dict[str, Any]
-    context_epoch: int = 0
-    snapshot: ContextSnapshot | None = None
-    caches: dict[str, Any] = {}
-    reads_locked: bool = False
-```
+### Contradictions and Revision Models
 
-### Agent Models (`models/agent_models.py`)
+Validation nodes use specialized models to capture narrative inconsistencies and provide revision instructions.
 
-#### SceneDetail (TypedDict)
-```python
-class SceneDetail(TypedDict, total=False):
-    scene_number: int
-    summary: str
-    characters_involved: list[str]
-    key_dialogue_points: list[str]
-    setting_details: str
-    scene_focus_elements: list[str]
-    contribution: str
-    scene_type: str
-    pacing: str
-    character_arc_focus: str | None
-    relationship_development: str | None
-```
+- **`Contradiction`** – Encapsulates a detected inconsistency.  It has a `type`, human‑readable `description`, the `conflicting_chapters` and a severity (`"minor"`, `"major"` or `"critical"`).
+- **`ProblemDetail`** – A `TypedDict` describing a single problem found during evaluation.  It includes the category, a description, a quote from the draft and character offsets to localize the issue.
+- **`EvaluationResult`** – A `TypedDict` summarizing evaluator output.  Fields include `needs_revision` (boolean), a list of `reasons` and a list of `problems_found`.
+- **`PatchInstruction`** – A `TypedDict` specifying how to modify text.  It contains the original problematic quote, target character ranges and the replacement string.
 
-#### ProblemDetail (TypedDict)
-```python
-class ProblemDetail(TypedDict, total=False):
-    issue_category: str
-    problem_description: str
-    quote_from_original_text: str
-    quote_char_start: int | None
-    quote_char_end: int | None
-    sentence_char_start: int | None
-    sentence_char_end: int | None
-    suggested_fix_focus: str
-```
+### Narrative Planning Models
 
-#### EvaluationResult (TypedDict)
-```python
-class EvaluationResult(TypedDict, total=False):
-    needs_revision: bool
-    reasons: list[str]
-    problems_found: list[ProblemDetail]
-```
+The generation subgraph relies on planning structures defined in `models/agent_models.py`.
 
-#### PatchInstruction (TypedDict)
-```python
-class PatchInstruction(TypedDict, total=False):
-    original_problem_quote_text: str
-    target_char_start: int | None
-    target_char_end: int | None
-    replace_with: str
-    reason_for_change: str
-```
+- **`SceneDetail`** – A `TypedDict` that plans a single scene.  It captures the scene number, summary, characters involved, key dialogue points, setting details, focus elements and metadata such as scene type, pacing and character arcs.
+- **`ContextSnapshot`** – Defined in `models/narrative_state.py`, this class stores a frozen snapshot of context for retrieval: the chapter number, plot point focus, chapter plan (list of `SceneDetail` objects), hybrid context string, KG facts block and a map of recent chapters.
 
-### User Input Models (`models/user_input_models.py`)
+### User Input Models
 
-#### NovelConceptModel
-```python
-class NovelConceptModel(BaseModel):
-    title: str = Field(..., min_length=1)
-    genre: str | None = None
-    setting: str | None = None
-    theme: str | None = None
-```
+User input is serialized via the YAML file `user_story_elements.yaml` and validated through models in `models/user_input_models.py`.
 
-#### ProtagonistModel
-```python
-class ProtagonistModel(BaseModel):
-    name: str
-    description: str | None = None
-    traits: list[str] = Field(default_factory=list)
-    motivation: str | None = None
-    role: str | None = None
-    relationships: dict[str, RelationshipModel] = Field(default_factory=dict)
-```
-
-#### SettingModel
-```python
-class SettingModel(BaseModel):
-    primary_setting_overview: str | None = None
-    key_locations: list[KeyLocationModel] = Field(default_factory=list)
-```
-
-#### KeyLocationModel
-```python
-class KeyLocationModel(BaseModel):
-    name: str
-    description: str | None = None
-    atmosphere: str | None = None
-```
-
-#### PlotElementsModel
-```python
-class PlotElementsModel(BaseModel):
-    inciting_incident: str | None = None
-    plot_points: list[str] = Field(default_factory=list)
-    central_conflict: str | None = None
-    stakes: str | None = None
-```
-
-#### UserStoryInputModel
-```python
-class UserStoryInputModel(BaseModel):
-    novel_concept: NovelConceptModel | None = None
-    protagonist: ProtagonistModel | None = None
-    antagonist: ProtagonistModel | None = None
-    characters: CharacterGroupModel | None = None
-    plot_elements: PlotElementsModel | None = None
-    setting: SettingModel | None = None
-    world_details: dict[str, Any] | None = None
-    other_key_characters: dict[str, ProtagonistModel] | None = None
-    style_and_tone: dict[str, Any] | None = None
-```
+- **`NovelConceptModel`** – Contains high‑level novel metadata (`title`, `genre`, `setting`, `theme`).
+- **`ProtagonistModel`** – Describes a main character with optional `description`, `traits`, `motivation`, `role` and a mapping of named relationships.
+- **`CharacterGroupModel`** – Bundles protagonist, antagonist and supporting characters.  It is used when multiple characters are defined together.
+- **`SettingModel`** – Captures a primary setting overview and a list of key locations (`KeyLocationModel` holds `name`, `description` and `atmosphere`).
+- **`PlotElementsModel`** – Provides the inciting incident, list of plot points, central conflict and stakes.
+- **`UserStoryInputModel`** – The top level structure combining all the above sections along with arbitrary `world_details`, `other_key_characters` and `style_and_tone` preferences.  Extra fields are allowed via the Pydantic config; this model thus functions as a flexible container for user‑provided narrative seeds.
 
 ---
 
-## Neo4j Knowledge Graph Schema
+## NarrativeState TypedDict
 
-### Node Labels (Defined in `models/kg_constants.py`)
+`NarrativeState` is a `TypedDict` defined in `core/langgraph/state.py` and forms the backbone of the LangGraph workflow.  It holds all dynamic data for a project and is automatically persisted to SQLite after each node executes.  The state is deliberately broad to support initialization, generation, extraction, validation, revision and healing.  For clarity, the fields are grouped below by function.  The field names and types are drawn directly from the code.
 
-#### Core Existing Types
-- `Entity` - Base label for all nodes
-- `NovelInfo` - Novel metadata
-- `Chapter` - Chapter entities
+### Project Metadata and Position
 
-#### Physical Entities
-- Living Beings: `Character`, `Person`, `Creature`, `Spirit`, `Deity`
-- Objects & Items: `Object`, `Artifact`, `Document`, `Item`, `Relic`
-- Locations & Structures: `Location`, `Structure`, `Region`, `Landmark`, `Territory`, `Path`, `Room`, `Settlement`
+- `project_id`, `title`, `genre`, `theme`, `setting`, `target_word_count` – Immutable descriptors of the novel.
+- `current_chapter`, `total_chapters`, `current_act` – Track where the workflow is in the act/chapter hierarchy.
 
-#### Abstract Entities
-- `Concept`, `Law`, `Tradition`, `Language`, `Symbol`, `Story`, `Song`, `Dream`, `Memory`, `Emotion`, `Skill`
+### Connection and Outline
 
-#### Temporal Entities
-- `Event`, `Era`, `Timeline`, `DevelopmentEvent`, `WorldElaborationEvent`, `Season`, `Moment`
+- `neo4j_conn` – A handle to the Neo4j driver; reconstructed on load and not persisted.
+- `plot_outline` – A deprecated dictionary of chapter outlines kept for backwards compatibility; canonical outlines live in `chapter_outlines`.
 
-#### Organizational Entities
-- `Faction`, `Organization`, `Role`, `Rank`, `Guild`, `House`, `Order`, `Council`
+### Context for Prompt Construction
 
-#### System Entities
-- `System`, `Magic`, `Technology`, `Religion`, `Culture`, `Education`, `Government`, `Economy`
+- `active_characters` – List of `CharacterProfile` objects relevant to the current scene.
+- `current_location` – A location description for the scene.
+- `previous_chapter_summaries` – Summaries of the last few chapters used for context.
+- `key_events` – A list of important events from the KG to remind the model of plot obligations.
 
-#### Resource Entities
-- `Resource`, `Currency`, `Trade`, `Food`, `Material`, `Energy`
+### Generated Content
 
-#### Information Entities
-- `Lore`, `Knowledge`, `Secret`, `Rumor`, `News`, `Message`, `Signal`, `ValueNode`, `Record`
+- `draft_text` – The full draft for the current chapter (may be `None` initially).
+- `draft_word_count` – Word count of the draft so far.
+- `generated_embedding` – Embedding vector for the chapter used in similarity search.
 
-#### Action/Event Entities
-- `Action`, `Reaction`, `Change`, `Pattern`
+### Extraction Results
 
-#### Physical/Sensory Entities
-- `Sound`, `Pollen`
+- `extracted_entities` – Map from entity type to a list of `ExtractedEntity` objects.
+- `extracted_relationships` – List of `ExtractedRelationship` objects.
+- `character_updates`, `location_updates`, `event_updates`, `relationship_updates` – Temporary lists used by parallel extraction processes.
 
-#### Purpose/Intent Entities
-- `Purpose`, `Goal`, `Outcome`
+### Validation and Quality Control
 
-#### Relationship/Abstract
-- `Relationship`
+- `contradictions` – List of `Contradiction` objects flagged by the validation subgraph.
+- `needs_revision` – Boolean indicating whether the chapter requires rewriting.
+- `revision_feedback` – Textual feedback explaining what needs to change.
+- `is_from_flawed_draft` – True if the current text stems from a flawed revision or deduplication pass.
 
-#### Quality Entities
-- `Trait`, `Attribute`, `Quality`, `Reputation`, `Status`
+### Quality Metrics
 
-#### Container Entities
-- `WorldContainer`, `PlotPoint`, `Collection`, `Archive`, `Treasury`, `Library`
+The evaluator computes several scores between 0.0 and 1.0:
 
-### Relationship Types (Defined in `models/kg_constants.py`)
+- `coherence_score`, `prose_quality_score`, `plot_advancement_score`, `pacing_score`, `tone_consistency_score` – Quantify aspects of narrative quality.
+- `quality_feedback` – Free‑form feedback summarizing strengths and weaknesses.
 
-#### Structural Relationships
-- `HAS_PLOT_POINT`, `NEXT_PLOT_POINT`, `HAS_CHARACTER`, `HAS_WORLD_META`, `CONTAINS_ELEMENT`, `DEVELOPED_IN_CHAPTER`, `ELABORATED_INCHAPTER`, `IS_A`
+### Model Configuration
 
-#### Character Social Relationships
-- `ALLY_OF`, `ENEMY_OF`, `FRIEND_OF`, `RIVAL_OF`, `FAMILY_OF`, `ROMANTIC_WITH`, `MENTOR_TO`, `STUDENT_OF`, `WORKS_FOR`, `LEADS`, `SERVES`, `KNOWS`, `TRUSTS`, `DISTRUSTS`, `OWES_DEBT_TO`
+- `generation_model`, `extraction_model`, `revision_model` – Name of the model used at each stage.
+- `large_model`, `medium_model`, `small_model`, `narrative_model` – Tiered model names, mirroring fields in `SagaSettings`.
 
-#### Character Emotional Relationships
-- `LOVES`, `HATES`, `FEARS`, `RESPECTS`, `DESPISES`, `ENVIES`, `PITIES`, `OBSESSED_WITH`
+### Workflow Control and Error Handling
 
-#### Plot Causal Relationships
-- `CAUSES`, `PREVENTS`, `ENABLES`, `TRIGGERS`, `RESULTS_IN`, `DEPENDS_ON`, `CONFLICTS_WITH`, `SUPPORTS`, `THREATENS`, `PROTECTS`
+- `current_node` – Name of the last node that updated the state.
+- `iteration_count`, `max_iterations` – Counters to cap revision loops.
+- `force_continue` – Bypasses validation failures when set.
+- `last_error`, `has_fatal_error`, `error_node`, `retry_count` – Track the last error, whether it is fatal, which node it occurred in and how many retries have been attempted.
 
-#### Spatial/Temporal Relationships
-- `LOCATED_AT`, `LOCATED_IN`, `NEAR`, `ADJACENT_TO`, `OCCURS_DURING`, `HAPPENS_BEFORE`, `HAPPENS_AFTER`, `ORIGINATES_FROM`, `TRAVELS_TO`
+### Filesystem Paths and Context Management
 
-#### Possession/Ownership Relationships
-- `OWNS`, `POSSESSES`, `CREATED_BY`, `CREATES`, `INHERITED_FROM`, `STOLEN_FROM`, `GIVEN_BY`, `FOUND_AT`, `LOST_AT`
+- `project_dir` – Base directory for output.
+- `chapters_dir`, `summaries_dir` – Directories where chapter drafts and summaries are written.
+- `context_epoch`, `hybrid_context`, `kg_facts_block` – Counters and blocks that determine how much context is passed to the LLM.
 
-#### Organizational Relationships
-- `MEMBER_OF`, `LEADER_OF`, `FOUNDED`, `BELONGS_TO`, `REPRESENTS`, `OPPOSES`, `ALLIED_WITH`
+### Chapter Planning and Revision State
 
-#### Physical/Structural Relationships
-- `PART_OF`, `CONTAINS`, `CONNECTED_TO`, `BUILT_BY`, `DESTROYED_BY`, `DAMAGED_BY`, `REPAIRED_BY`, `OWNED_BY`
+- `chapter_plan` – List of `SceneDetail` dictionaries outlining each scene.
+- `plot_point_focus` – Focus of the current scene from the outline.
+- `current_scene_index` – Index of the scene currently being processed.
+- `scene_drafts` – List of text segments for each scene.
+- `evaluation_result` – A dictionary matching `EvaluationResult` used by the evaluator.
+- `patch_instructions` – List of patch instructions to apply during revision.
 
-#### Abstract/Thematic Relationships
-- `SYMBOLIZES`, `REPRESENTS`, `CONTRASTS_WITH`, `PARALLELS`, `FORESHADOWS`, `ECHOES`, `EMBODIES`
+### World Building, Characters and Initialization
 
-#### Ability/Trait Relationships
-- `HAS_ABILITY`, `HAS_TRAIT`, `HAS_GOAL`, `HAS_RULE`, `HAS_KEY_ELEMENT`, `HAS_TRAIT_ASPECT`, `SKILLED_IN`, `WEAK_IN`
+- `world_items` – A list of `WorldItem` objects representing setting elements.
+- `current_world_rules` – List of active world rules that must be respected.
+- `protagonist_name`, `protagonist_profile` – Name and optional profile of the main character.
+- `character_sheets` – Dictionary of character sheets generated during initialization.
+- `global_outline`, `act_outlines`, `chapter_outlines` – High‑level narrative plans produced during initialization and planning.
+- `initialization_complete`, `initialization_step` – Flags that control whether initialization should be skipped or resumed.
 
-#### Status/State Relationships
-- `HAS_STATUS`, `STATUS_IS`, `IS_DEAD`, `IS_ALIVE`, `IS_MISSING`, `IS_INJURED`, `IS_HEALTHY`, `IS_ACTIVE`, `IS_INACTIVE`
+### Graph Healing Metrics
 
-#### Information and Recording Relationships
-- `RECORDS`, `PRESERVES`, `HAS_METADATA`
-
-#### Usage and Accessibility Relationships
-- `ACCESSIBLE_BY`, `USED_IN`, `TARGETS`
-
-#### Communication and Display Relationships
-- `DISPLAYS`, `SPOKEN_BY`, `EMITS`
-
-#### Operational Relationships
-- `EMPLOYS`, `CONTROLS`, `REQUIRES`
-
-### Core Property Names (Defined in `models/kg_constants.py`)
-- `KG_REL_CHAPTER_ADDED` - Chapter where relationship was added
-- `KG_NODE_CREATED_CHAPTER` - Chapter where node was created  
-- `KG_NODE_CHAPTER_UPDATED` - Chapter where node was last updated
-- `KG_IS_PROVISIONAL` - Whether the node/relationship is provisional
-
-### Neo4j Schema Constraints and Indexes (Defined in `core/db_manager.py`)
-- `entity_id_unique` - Unique constraint on Entity.id
-- `novelInfo_id_unique` - Unique constraint on NovelInfo.id
-- `chapter_number_unique` - Unique constraint on Chapter.number
-- `character_name_unique` - Unique constraint on Character.name
-- `worldContainer_id_unique` - Unique constraint on WorldContainer.id
-- `trait_name_unique` - Unique constraint on Trait.name
-- `plotPoint_id_unique` - Unique constraint on PlotPoint.id
-- `valueNode_value_type_unique` - Unique constraint on ValueNode.value and ValueNode.type
-- `developmentEvent_id_unique` - Unique constraint on DevelopmentEvent.id
-- `worldElaborationEvent_id_unique` - Unique constraint on WorldElaborationEvent.id
-
-### Indexes
-- `entity_name_property_idx` - Index on Entity.name
-- `entity_is_provisional_idx` - Index on Entity.is_provisional
-- `entity_is_deleted_idx` - Index on Entity.is_deleted
-- `plotPoint_sequence` - Index on PlotPoint.sequence
-- `developmentEvent_chapter_updated` - Index on DevelopmentEvent.chapter_updated
-- `worldElaborationEvent_chapter_updated` - Index on WorldElaborationEvent.chapter_updated
-
-### Vector Index
-- `chapterEmbeddings` - Vector index for Chapter.embedding_vector
+- `provisional_count`, `last_healing_chapter` – Track the number of provisional nodes and when healing last ran.
+- `merge_candidates`, `pending_merges`, `auto_approved_merges` – Lists used to manage proposed merges.
+- `healing_history` – Log of healing actions performed.
+- `nodes_graduated`, `nodes_merged`, `nodes_enriched` – Counters summarizing healing outcomes.
 
 ---
 
-## User Input Schema
+## Knowledge Graph Schema
 
-### User Story Elements YAML Format
-The schema for `user_story_elements.yaml` is defined by the `UserStoryInputModel` Pydantic model.
+SAGA persists its world model in a Neo4j knowledge graph.  The schema uses a labelled property graph with a rich set of node labels, relationship types and indexed properties.  All constants below are defined in `models/kg_constants.py`.
 
-#### Top Level Structure
-- `novel_concept` - Novel concept information
-- `protagonist` - Main protagonist details
-- `antagonist` - Main antagonist details
-- `characters` - Character groupings
-- `plot_elements` - Plot-related elements
-- `setting` - Setting information
-- `world_details` - World-building details
-- `other_key_characters` - Additional key characters
-- `style_and_tone` - Style and tone specifications
+### Node Labels
 
-#### Novel Concept Section
-- `title` - Title of the novel
-- `genre` - Genre of the novel
-- `setting` - Setting description
-- `theme` - Central theme
+Node labels are grouped by category.  Each group expands the graph with semantic richness:
 
-#### Protagonist Section
-- `name` - Character name
-- `description` - Character description
-- `traits` - List of character traits
-- `motivation` - Character motivation
-- `role` - Character role
-- `relationships` - Character relationships
+| Category | Examples |
+|---|---|
+| **Core** | `Entity` (base label), `NovelInfo`, `Chapter` |
+| **Living Beings** | `Character`, `Person`, `Creature`, `Spirit`, `Deity` |
+| **Objects & Items** | `Object`, `Artifact`, `Document`, `Item`, `Relic` |
+| **Locations & Structures** | `Location`, `Structure`, `Region`, `Landmark`, `Territory`, `Path`, `Room`, `Settlement` |
+| **Abstract Concepts** | `Concept`, `Law`, `Tradition`, `Language`, `Symbol`, `Story`, `Song`, `Dream`, `Memory`, `Emotion`, `Skill` |
+| **Temporal** | `Event`, `Era`, `Timeline`, `DevelopmentEvent`, `WorldElaborationEvent`, `Season`, `Moment` |
+| **Organizations** | `Faction`, `Organization`, `Role`, `Rank`, `Guild`, `House`, `Order`, `Council` |
+| **Systems** | `System`, `Magic`, `Technology`, `Religion`, `Culture`, `Education`, `Government`, `Economy` |
+| **Resources** | `Resource`, `Currency`, `Trade`, `Food`, `Material`, `Energy` |
+| **Information** | `Lore`, `Knowledge`, `Secret`, `Rumor`, `News`, `Message`, `Signal`, `ValueNode`, `Record` |
+| **Actions/Events** | `Action`, `Reaction`, `Change`, `Pattern` |
+| **Physical/Sensory** | `Sound`, `Pollen` |
+| **Intent/Purpose** | `Purpose`, `Goal`, `Outcome` |
+| **Qualities** | `Trait`, `Attribute`, `Quality`, `Reputation`, `Status` |
+| **Containers** | `WorldContainer`, `PlotPoint`, `Collection`, `Archive`, `Treasury`, `Library` |
 
-#### Plot Elements Section
-- `inciting_incident` - The inciting incident
-- `plot_points` - List of key plot points
-- `central_conflict` - Central conflict of the story
-- `stakes` - Stakes of the story
+### Relationship Types
 
-#### Setting Section
-- `primary_setting_overview` - Overview of the primary setting
-- `key_locations` - List of key locations
+The graph distinguishes many relationship categories.  For brevity only representative examples are shown; the full set is defined in `RELATIONSHIP_TYPES` in `models/kg_constants.py`.
 
-#### World Details Section
-- Arbitrary key-value pairs for world-building elements grouped by categories (e.g., factions, technology)
+| Category | Examples |
+|---|---|
+| **Structural** | `HAS_PLOT_POINT`, `NEXT_PLOT_POINT`, `HAS_CHARACTER`, `CONTAINS_ELEMENT`, `DEVELOPED_IN_CHAPTER` |
+| **Character Social** | `ALLY_OF`, `ENEMY_OF`, `FRIEND_OF`, `RIVAL_OF`, `FAMILY_OF`, `ROMANTIC_WITH`, `MENTOR_TO`, `WORKS_FOR` |
+| **Character Emotional** | `LOVES`, `HATES`, `FEARS`, `RESPECTS`, `DESPISES`, `ENVIES`, `PITIES`, `OBSESSED_WITH` |
+| **Plot Causal** | `CAUSES`, `PREVENTS`, `ENABLES`, `TRIGGERS`, `RESULTS_IN`, `DEPENDS_ON`, `CONFLICTS_WITH`, `SUPPORTS` |
+| **Spatial/Temporal** | `LOCATED_AT`, `LOCATED_IN`, `NEAR`, `HAPPENS_BEFORE`, `HAPPENS_AFTER`, `OCCURS_DURING`, `TRAVELS_TO`, `OCCURRED_IN` |
+| **Possession** | `OWNS`, `POSSESSES`, `CREATED_BY`, `INHERITED_FROM`, `STOLEN_FROM`, `FOUND_AT`, `LOST_AT` |
+| **Organizational** | `MEMBER_OF`, `LEADER_OF`, `FOUNDED`, `BELONGS_TO`, `REPRESENTS`, `OPPOSES`, `ALLIED_WITH` |
+| **Physical/Structural** | `PART_OF`, `CONTAINS`, `CONNECTED_TO`, `BUILT_BY`, `DESTROYED_BY`, `OWNED_BY` |
+| **Thematic** | `SYMBOLIZES`, `REPRESENTS`, `CONTRASTS_WITH`, `PARALLELS`, `FORESHADOWS`, `ECHOES`, `EMBODIES` |
+| **Ability/Trait** | `HAS_ABILITY`, `HAS_TRAIT`, `HAS_GOAL`, `HAS_RULE`, `HAS_KEY_ELEMENT`, `SKILLED_IN`, `WEAK_IN` |
+| **Status/State** | `HAS_STATUS`, `IS_DEAD`, `IS_ALIVE`, `IS_MISSING`, `IS_INJURED`, `IS_ACTIVE` |
+| **Information & Recording** | `RECORDS`, `PRESERVES`, `HAS_METADATA` |
+| **Usage & Accessibility** | `ACCESSIBLE_BY`, `USED_IN`, `TARGETS` |
+| **Communication & Display** | `DISPLAYS`, `SPOKEN_BY`, `EMITS` |
+| **Operational** | `EMPLOYS`, `CONTROLS`, `REQUIRES` |
+| **Enhanced Temporal/Association** | `REPLACED_BY`, `LINKED_TO`, `ASSOCIATED_WITH` |
+| **Status Change & Special Action** | `WAS_REPLACED_BY`, `CHARACTERIZED_BY`, `IS_NOW`, `IS_NO_LONGER`, `WHISPERS`, `DEPRECATED` |
 
-#### Style and Tone Section
-- `narrative_style` - Narrative style specification
-- `tone` - Tone specification
-- `pacing` - Pacing specification
+All relationships are normalized using the canonical mapping provided in `RELATIONSHIP_NORMALIZATIONS`.  For example, variations like `friends_with` or `befriends` are converted to `FRIEND_OF` to maintain consistency.
+
+### Property Names, Constraints and Indexes
+
+Core property names used on nodes and relationships include `chapter_added`, `created_chapter`, `chapter_updated` and `is_provisional`.  These mark when entities were created or updated and whether they are provisional (subject to merging).
+
+---
+
+## User Story YAML Schema
+
+`user_story_elements.yaml` allows authors to seed SAGA with their own ideas.  The file must conform to the `UserStoryInputModel`.  At the top level the YAML contains the following keys:
+
+- **`novel_concept`** – A dictionary matching `NovelConceptModel` with `title`, `genre`, `setting` and `theme`.
+- **`protagonist` / `antagonist`** – Each describes a main character using `ProtagonistModel` fields.  Alternatively, the `characters` section may embed multiple protagonists and antagonists via `CharacterGroupModel`.
+- **`characters`** – Groups protagonist, antagonist and a list of supporting characters.  Each character entry may include relationships to other characters.
+- **`plot_elements`** – Contains the inciting incident, a list of plot points, the central conflict and the stakes.
+- **`setting`** – Holds `primary_setting_overview` plus a list of `key_locations` where each entry specifies a `name`, optional `description` and `atmosphere`.
+- **`world_details`** – A free‑form mapping of categories (e.g., factions, technologies) to named world items.  These are converted into `WorldItem` objects during processing.
+- **`other_key_characters`** – A mapping from character names to additional `ProtagonistModel` descriptors.
+- **`style_and_tone`** – Optional stylistic preferences such as narrative style, tone and pacing.
+
+When the YAML is parsed, it is transformed into internal dictionaries: `plot_outline` (high‑level story plan), `characters` (a mapping of character names to `CharacterProfile`s) and `world_items` (a nested dictionary of `WorldItem`s).  The `user_story_to_objects` function in `models/user_input_models.py` performs this transformation by instantiating Pydantic models and creating `CharacterProfile` or `WorldItem` objects as needed.
+
+---
+
+### Conclusion
+
+The SAGA system uses a layered schema to orchestrate long‑form narrative generation.  Configuration values govern the behaviour of models and hardware; extraction and planning models structure intermediate results; the `NarrativeState` aggregates all runtime data; and the knowledge graph provides a persistent world model.  Understanding these schemas is essential for extending or integrating SAGA with new workflows, ensuring that every piece of data has a well‑defined place in the system.
