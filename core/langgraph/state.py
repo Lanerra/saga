@@ -28,10 +28,14 @@ class ExtractedEntity(BaseModel):
 
     This model represents entities identified during text generation
     that will be validated, deduplicated, and committed to the knowledge graph.
+
+    The type field now accepts any valid node type from the ontology
+    (e.g., "Character", "DevelopmentEvent", "PlotPoint", "Artifact", etc.)
+    instead of being limited to just "character", "location", "event", "object".
     """
 
     name: str
-    type: Literal["character", "location", "event", "object"]
+    type: str  # Changed from Literal to str to accept all node types from ontology
     description: str
     first_appearance_chapter: int
     attributes: dict[str, Any] = Field(default_factory=dict)

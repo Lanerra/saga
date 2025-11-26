@@ -462,17 +462,24 @@ async def _create_relationships(
     # Helper to create subject/object dict with type info
     def _make_entity_dict(name: str, original_name: str) -> dict:
         """Create entity dict with name, type, and category."""
-        entity_type = entity_type_map.get(original_name, "object")  # Default to object
+        entity_type = entity_type_map.get(original_name, "Object")  # Default to Object
         entity_category = entity_category_map.get(original_name, "")
 
         # Map extraction types to Neo4j node types
-        type_mapping = {
-            "character": "Character",
-            "location": "Location",
-            "event": "Event",
-            "object": "Object",
-        }
-        neo4j_type = type_mapping.get(entity_type, "Object")
+        # The LLM now provides proper node type names (e.g., "DevelopmentEvent", "PlotPoint")
+        # so we check if it's already capitalized. If not, apply legacy mapping.
+        if entity_type and entity_type[0].isupper():
+            # Already a proper node type from the ontology
+            neo4j_type = entity_type
+        else:
+            # Legacy lowercase type, apply mapping
+            type_mapping = {
+                "character": "Character",
+                "location": "Location",
+                "event": "Event",
+                "object": "Object",
+            }
+            neo4j_type = type_mapping.get(entity_type.lower(), "Object")
 
         return {
             "name": name,
@@ -664,16 +671,24 @@ async def _build_relationship_statements(
 
     # Helper to create subject/object dict with type info
     def _make_entity_dict(name: str, original_name: str) -> dict:
-        entity_type = entity_type_map.get(original_name, "object")
+        entity_type = entity_type_map.get(original_name, "Object")
         entity_category = entity_category_map.get(original_name, "")
 
-        type_mapping = {
-            "character": "Character",
-            "location": "Location",
-            "event": "Event",
-            "object": "Object",
-        }
-        neo4j_type = type_mapping.get(entity_type, "Object")
+        # Map extraction types to Neo4j node types
+        # The LLM now provides proper node type names (e.g., "DevelopmentEvent", "PlotPoint")
+        # so we check if it's already capitalized. If not, apply legacy mapping.
+        if entity_type and entity_type[0].isupper():
+            # Already a proper node type from the ontology
+            neo4j_type = entity_type
+        else:
+            # Legacy lowercase type, apply mapping
+            type_mapping = {
+                "character": "Character",
+                "location": "Location",
+                "event": "Event",
+                "object": "Object",
+            }
+            neo4j_type = type_mapping.get(entity_type.lower(), "Object")
 
         return {
             "name": name,

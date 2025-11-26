@@ -79,7 +79,7 @@ async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
                 char_updates.append(
                     ExtractedEntity(
                         name=name,
-                        type="character",
+                        type="Character",  # Capitalized to match ontology node types
                         description=info.get("description", ""),
                         first_appearance_chapter=state["current_chapter"],
                         attributes=attributes,
@@ -131,14 +131,20 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
         # Process world updates into ExtractedEntity objects
         world_updates = []
         raw_updates = data.get("world_updates", {})
-        
+
+        # Event-related types that should be skipped (handled by extract_events)
+        event_related_types = {
+            "Event", "DevelopmentEvent", "WorldElaborationEvent", "PlotPoint",
+            "Era", "Moment", "Timeline"
+        }
+
         for category, items in raw_updates.items():
             if isinstance(items, dict):
                 for name, info in items.items():
                     if isinstance(info, dict):
                         entity_type = _map_category_to_type(category)
                         # Only process non-events here (events handled by extract_events)
-                        if entity_type != "event":
+                        if entity_type not in event_related_types:
                             item_id = generate_entity_id(name, category, state["current_chapter"])
                             attributes = {
                                 "category": category,
@@ -202,10 +208,16 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
 
         event_updates = []
         raw_updates = data.get("world_updates", {})
-        
-        # Look for "Event" category or similar
+
+        # Look for event-related categories (Event, DevelopmentEvent, WorldElaborationEvent, PlotPoint, etc.)
+        event_related_types = {
+            "Event", "DevelopmentEvent", "WorldElaborationEvent", "PlotPoint",
+            "Era", "Moment", "Timeline"
+        }
+
         for category, items in raw_updates.items():
-            if _map_category_to_type(category) == "event" and isinstance(items, dict):
+            mapped_type = _map_category_to_type(category)
+            if mapped_type in event_related_types and isinstance(items, dict):
                 for name, info in items.items():
                     if isinstance(info, dict):
                         item_id = generate_entity_id(name, category, state["current_chapter"])
@@ -214,11 +226,11 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
                             "id": item_id,
                             "key_elements": info.get("key_elements", []),
                         }
-                        
+
                         event_updates.append(
                             ExtractedEntity(
                                 name=name,
-                                type="event",
+                                type=mapped_type,  # Use the specific type from mapping
                                 description=info.get("description", ""),
                                 first_appearance_chapter=state["current_chapter"],
                                 attributes=attributes,
