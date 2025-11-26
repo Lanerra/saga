@@ -74,7 +74,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "has_fatal_error": True,
             "error_node": "revise",
             "needs_revision": False,
-            "current_node": "revise",
+            "current_node": "revise_failed",
         }
 
     # Validate we have text to revise

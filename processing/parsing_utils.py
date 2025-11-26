@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from typing import Any
-import re
 
-from utils.text_processing import normalize_entity_name
 # from rdflib import Graph, URIRef, Literal, BNode # No longer needed for triples
 # from rdflib.namespace import RDF, RDFS # No longer needed for triples
 import structlog
 
 from models.kg_constants import NODE_LABELS
+from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +28,7 @@ def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | Non
     """
     Parses 'EntityType:EntityName' or just 'EntityName' string.
     If EntityType is missing, it's set to None.
-    
+
     Heuristics:
     1. 'Type: Name' -> Type, Name
     2. 'Type: ' -> Type, None
@@ -224,31 +223,37 @@ def _is_proper_noun(entity_name: str) -> bool:
         # Standard capitalization
         if w[0].isupper():
             return True
-            
+
         # Check for mixed alphanumeric or pure numbers (e.g. "7-G", "Room 101")
         has_letters = any(c.isalpha() for c in w)
         if not has_letters:
             # Pure number or symbol like "7", "1984" - treat as consistent with proper noun
             return True
-            
+
         # Mixed alphanumeric: "7-G" (starts with number but has upper letter)
         if not w[0].isalpha() and any(c.isupper() for c in w):
             return True
-            
+
         return False
 
-    capitalized_count = sum(1 for w in significant_words if _is_word_capitalized_or_special(w))
+    capitalized_count = sum(
+        1 for w in significant_words if _is_word_capitalized_or_special(w)
+    )
 
     # Proper noun if 60%+ of significant words are capitalized
     is_mostly_capitalized = capitalized_count >= len(significant_words) * 0.6
 
     # Additional heuristic: filter out generic patterns even if capitalized
     name_lower = entity_name.lower().strip()
-    
+
     # If it starts with "the ", "a ", "an " and only has 1-2 words total, likely generic
     # e.g. "The Room", "A Man" -> False (not proper)
     # "The Order of the Phoenix" -> True (proper)
-    if (name_lower.startswith("the ") or name_lower.startswith("a ") or name_lower.startswith("an ")) and len(words) <= 2:
+    if (
+        name_lower.startswith("the ")
+        or name_lower.startswith("a ")
+        or name_lower.startswith("an ")
+    ) and len(words) <= 2:
         return False
 
     return is_mostly_capitalized
@@ -290,13 +295,13 @@ def _should_filter_entity(
             # If exact match, always filter
             if pattern == name_lower:
                 return True
-            
+
             # If it's a substring...
             # If it's a Proper Noun containing the pattern (e.g. "Echo Protocol" contains "echo"),
             # we allow it.
             if is_proper:
                 continue
-                
+
             # If it's NOT a proper noun and contains the pattern, filter it.
             return True
 
@@ -328,7 +333,9 @@ def _should_filter_entity(
 
     # Filter generic "A [Noun]" patterns (e.g. "A Man", "An Apple")
     # These are usually not specific enough to be knowledge graph nodes
-    if (name_lower.startswith("a ") or name_lower.startswith("an ")) and len(name_lower.split()) <= 2:
+    if (name_lower.startswith("a ") or name_lower.startswith("an ")) and len(
+        name_lower.split()
+    ) <= 2:
         return True
 
     # Filter "Not X" patterns (e.g., "Not Dead", "Not Gone")
@@ -457,7 +464,7 @@ def parse_llm_triples(
 
         # Attempt to parse as entity
         potential_entity = _get_entity_type_and_name_from_text(object_text)
-        
+
         # If we found a valid type, treat as entity
         if potential_entity.get("type"):
             object_entity_payload = potential_entity

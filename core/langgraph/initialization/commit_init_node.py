@@ -156,7 +156,9 @@ async def _parse_character_sheets_to_profiles(
                 "_parse_character_sheets_to_profiles: no pre-parsed traits, using LLM extraction",
                 character=name,
             )
-            structured_data = await _extract_structured_character_data(name, description)
+            structured_data = await _extract_structured_character_data(
+                name, description
+            )
             traits = structured_data.get("traits", [])
             status = structured_data.get("status", status)
             motivations = structured_data.get("motivations", motivations)

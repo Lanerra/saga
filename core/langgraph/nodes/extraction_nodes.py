@@ -8,13 +8,15 @@ to extract characters, locations, events, and relationships.
 
 from __future__ import annotations
 
-import asyncio
-import json
-from typing import Any, Dict, List
+from typing import Any
 
 import structlog
 
 import config
+from core.langgraph.nodes.extraction_node import (
+    _map_category_to_type,
+    _parse_extraction_json,
+)
 from core.langgraph.state import (
     ExtractedEntity,
     ExtractedRelationship,
@@ -24,17 +26,16 @@ from core.llm_interface_refactored import llm_service
 from processing.entity_deduplication import generate_entity_id
 from processing.parsing_utils import parse_llm_triples
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from core.langgraph.nodes.extraction_node import _parse_extraction_json, _map_category_to_type
 
 logger = structlog.get_logger(__name__)
 
 
-async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
+async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     """
     Extract character details from the chapter text.
     """
     logger.info("extract_characters: starting")
-    
+
     if not state.get("draft_text"):
         return {"character_updates": []}
 
@@ -42,7 +43,9 @@ async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
         "knowledge_agent/extract_characters.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
+            "protagonist": state.get(
+                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
+            ),
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
@@ -59,7 +62,7 @@ async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
         )
-        
+
         data = await _parse_extraction_json(raw_text, state["current_chapter"])
         if not data:
             return {"character_updates": []}
@@ -67,15 +70,15 @@ async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
         # Process character updates into ExtractedEntity objects
         char_updates = []
         raw_updates = data.get("character_updates", {})
-        
+
         for name, info in raw_updates.items():
             if isinstance(info, dict):
                 attributes = {
                     "traits": info.get("traits", []),
                     "status": info.get("status", "Unknown"),
-                    "relationships": info.get("relationships", {})
+                    "relationships": info.get("relationships", {}),
                 }
-                
+
                 char_updates.append(
                     ExtractedEntity(
                         name=name,
@@ -85,7 +88,7 @@ async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
                         attributes=attributes,
                     )
                 )
-                
+
         return {"character_updates": char_updates}
 
     except Exception as e:
@@ -93,12 +96,12 @@ async def extract_characters(state: NarrativeState) -> Dict[str, Any]:
         return {"character_updates": []}
 
 
-async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
+async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     """
     Extract location details from the chapter text.
     """
     logger.info("extract_locations: starting")
-    
+
     if not state.get("draft_text"):
         return {"location_updates": []}
 
@@ -106,7 +109,9 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
         "knowledge_agent/extract_locations.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
+            "protagonist": state.get(
+                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
+            ),
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
@@ -123,7 +128,7 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
         )
-        
+
         data = await _parse_extraction_json(raw_text, state["current_chapter"])
         if not data:
             return {"location_updates": []}
@@ -134,8 +139,13 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
 
         # Event-related types that should be skipped (handled by extract_events)
         event_related_types = {
-            "Event", "DevelopmentEvent", "WorldElaborationEvent", "PlotPoint",
-            "Era", "Moment", "Timeline"
+            "Event",
+            "DevelopmentEvent",
+            "WorldElaborationEvent",
+            "PlotPoint",
+            "Era",
+            "Moment",
+            "Timeline",
         }
 
         for category, items in raw_updates.items():
@@ -145,7 +155,9 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
                         entity_type = _map_category_to_type(category)
                         # Only process non-events here (events handled by extract_events)
                         if entity_type not in event_related_types:
-                            item_id = generate_entity_id(name, category, state["current_chapter"])
+                            item_id = generate_entity_id(
+                                name, category, state["current_chapter"]
+                            )
                             attributes = {
                                 "category": category,
                                 "id": item_id,
@@ -153,7 +165,7 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
                                 "rules": info.get("rules", []),
                                 "key_elements": info.get("key_elements", []),
                             }
-                            
+
                             world_updates.append(
                                 ExtractedEntity(
                                     name=name,
@@ -163,7 +175,7 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
                                     attributes=attributes,
                                 )
                             )
-                            
+
         return {"location_updates": world_updates}
 
     except Exception as e:
@@ -171,12 +183,12 @@ async def extract_locations(state: NarrativeState) -> Dict[str, Any]:
         return {"location_updates": []}
 
 
-async def extract_events(state: NarrativeState) -> Dict[str, Any]:
+async def extract_events(state: NarrativeState) -> dict[str, Any]:
     """
     Extract significant events from the chapter text.
     """
     logger.info("extract_events: starting")
-    
+
     if not state.get("draft_text"):
         return {"event_updates": []}
 
@@ -184,7 +196,9 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
         "knowledge_agent/extract_events.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
+            "protagonist": state.get(
+                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
+            ),
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
@@ -201,7 +215,7 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
         )
-        
+
         data = await _parse_extraction_json(raw_text, state["current_chapter"])
         if not data:
             return {"event_updates": []}
@@ -211,8 +225,13 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
 
         # Look for event-related categories (Event, DevelopmentEvent, WorldElaborationEvent, PlotPoint, etc.)
         event_related_types = {
-            "Event", "DevelopmentEvent", "WorldElaborationEvent", "PlotPoint",
-            "Era", "Moment", "Timeline"
+            "Event",
+            "DevelopmentEvent",
+            "WorldElaborationEvent",
+            "PlotPoint",
+            "Era",
+            "Moment",
+            "Timeline",
         }
 
         for category, items in raw_updates.items():
@@ -220,7 +239,9 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
             if mapped_type in event_related_types and isinstance(items, dict):
                 for name, info in items.items():
                     if isinstance(info, dict):
-                        item_id = generate_entity_id(name, category, state["current_chapter"])
+                        item_id = generate_entity_id(
+                            name, category, state["current_chapter"]
+                        )
                         attributes = {
                             "category": category,
                             "id": item_id,
@@ -236,7 +257,7 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
                                 attributes=attributes,
                             )
                         )
-                        
+
         return {"event_updates": event_updates}
 
     except Exception as e:
@@ -244,12 +265,12 @@ async def extract_events(state: NarrativeState) -> Dict[str, Any]:
         return {"event_updates": []}
 
 
-async def extract_relationships(state: NarrativeState) -> Dict[str, Any]:
+async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     """
     Extract relationships between entities.
     """
     logger.info("extract_relationships: starting")
-    
+
     if not state.get("draft_text"):
         return {"relationship_updates": []}
 
@@ -257,7 +278,9 @@ async def extract_relationships(state: NarrativeState) -> Dict[str, Any]:
         "knowledge_agent/extract_relationships.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
+            "protagonist": state.get(
+                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
+            ),
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
@@ -274,14 +297,14 @@ async def extract_relationships(state: NarrativeState) -> Dict[str, Any]:
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
         )
-        
+
         data = await _parse_extraction_json(raw_text, state["current_chapter"])
         if not data:
             return {"relationship_updates": []}
 
         relationships = []
         kg_triples_list = data.get("kg_triples", [])
-        
+
         if isinstance(kg_triples_list, list):
             kg_triples_text = "\n".join([str(t) for t in kg_triples_list])
         else:
@@ -315,7 +338,7 @@ async def extract_relationships(state: NarrativeState) -> Dict[str, Any]:
                         confidence=0.8,
                     )
                 )
-                
+
         return {"relationship_updates": relationships}
 
     except Exception as e:
@@ -326,39 +349,39 @@ async def extract_relationships(state: NarrativeState) -> Dict[str, Any]:
 def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     """
     Merge results from parallel extractions.
-    
+
     This node expects the state to have been updated with partial results
     from the parallel branches. However, since LangGraph parallel branches
     return separate state updates that are merged, we need to handle
     how LangGraph merges them.
-    
+
     In LangGraph, if multiple nodes return updates to the same key, the behavior
     depends on the reducer. If we return different keys from each node,
     they will all be present in the state passed to this node.
     """
     logger.info("consolidate_extraction: merging results")
-    
+
     # Collect all updates
     # Note: In a real parallel execution, the state passed here would contain
     # the merged results of the parallel branches if they wrote to different keys.
     # We'll assume the parallel nodes return dicts that get merged into the state.
-    
+
     char_updates = state.get("character_updates", [])
     location_updates = state.get("location_updates", [])
     event_updates = state.get("event_updates", [])
     relationship_updates = state.get("relationship_updates", [])
-    
+
     # Combine world items (locations + events)
     world_items = location_updates + event_updates
-    
+
     extracted_entities = {
         "characters": char_updates,
         "world_items": world_items,
     }
-    
+
     # Clean up temporary keys
     # (We can't easily remove keys in TypedDict state, but we can ignore them)
-    
+
     return {
         **state,
         "extracted_entities": extracted_entities,
