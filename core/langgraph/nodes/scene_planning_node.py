@@ -1,6 +1,5 @@
 # core/langgraph/nodes/scene_planning_node.py
 import json
-import re
 
 import structlog
 
@@ -8,8 +7,8 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.character_queries import get_all_character_names, sync_characters
 from models.kg_models import CharacterProfile
-from utils.text_processing import normalize_entity_name
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
 
@@ -55,7 +54,9 @@ async def _ensure_scene_characters_exist(
                 break
 
     if not scene_characters:
-        logger.debug("_ensure_scene_characters_exist: no characters found in scene plans")
+        logger.debug(
+            "_ensure_scene_characters_exist: no characters found in scene plans"
+        )
         return
 
     # Get existing characters from Neo4j
@@ -110,6 +111,7 @@ async def _ensure_scene_characters_exist(
 
             # Link stub profiles to their chapter for context retrieval during enrichment
             from core.db_manager import neo4j_manager
+
             for char_name in new_characters:
                 link_query = """
                     MATCH (c:Character {name: $char_name}), (chap:Chapter {number: $chapter})
@@ -118,14 +120,13 @@ async def _ensure_scene_characters_exist(
                 """
                 try:
                     await neo4j_manager.execute_write_query(
-                        link_query,
-                        {"char_name": char_name, "chapter": chapter_number}
+                        link_query, {"char_name": char_name, "chapter": chapter_number}
                     )
                 except Exception as link_error:
                     logger.debug(
                         "_ensure_scene_characters_exist: could not link to chapter (may not exist yet)",
                         char_name=char_name,
-                        error=str(link_error)
+                        error=str(link_error),
                     )
         else:
             logger.warning(

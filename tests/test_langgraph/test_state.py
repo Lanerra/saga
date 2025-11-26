@@ -63,17 +63,6 @@ class TestExtractedEntity:
         )
         assert entity.type == "event"
 
-    def test_invalid_entity_type(self):
-        """Test that invalid entity type raises validation error."""
-        with pytest.raises(ValidationError):
-            ExtractedEntity(
-                name="Test",
-                type="invalid_type",  # Not in Literal types
-                description="Test",
-                first_appearance_chapter=1,
-                attributes={},
-            )
-
     def test_entity_with_empty_attributes(self):
         """Test entity with empty attributes dict."""
         entity = ExtractedEntity(

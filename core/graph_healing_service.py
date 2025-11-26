@@ -11,7 +11,6 @@ This service provides functionality for:
 from __future__ import annotations
 
 import json
-from collections import Counter
 from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Any
@@ -50,7 +49,9 @@ class GraphHealingService:
         """
         return await neo4j_manager.execute_read_query(query)
 
-    async def calculate_node_confidence(self, node: dict[str, Any], current_chapter: int = 0) -> float:
+    async def calculate_node_confidence(
+        self, node: dict[str, Any], current_chapter: int = 0
+    ) -> float:
         """
         Calculate confidence score for a provisional node.
 
@@ -68,7 +69,9 @@ class GraphHealingService:
             WHERE elementId(n) = $element_id
             RETURN count(r) AS rel_count
         """
-        results = await neo4j_manager.execute_read_query(rel_query, {"element_id": element_id})
+        results = await neo4j_manager.execute_read_query(
+            rel_query, {"element_id": element_id}
+        )
         record = results[0] if results else None
         rel_count = record["rel_count"] if record else 0
 
@@ -95,7 +98,9 @@ class GraphHealingService:
                 WHERE elementId(n) = $element_id
                 RETURN n.status AS status
             """
-            results = await neo4j_manager.execute_read_query(status_query, {"element_id": element_id})
+            results = await neo4j_manager.execute_read_query(
+                status_query, {"element_id": element_id}
+            )
             record = results[0] if results else None
             if record and record.get("status") and record["status"] != "Unknown":
                 completeness_score += 0.1
@@ -124,9 +129,7 @@ class GraphHealingService:
         return total_confidence
 
     async def enrich_node_from_context(
-        self,
-        node: dict[str, Any],
-        model: str
+        self, node: dict[str, Any], model: str
     ) -> dict[str, Any]:
         """
         Use LLM to infer missing attributes from all mentions of this entity.
@@ -137,7 +140,7 @@ class GraphHealingService:
 
         # Get all chapters where this entity appears using shared logic
         from data_access.kg_queries import get_chapter_context_for_entity
-        
+
         mentions = await get_chapter_context_for_entity(entity_id=element_id)
 
         if not mentions:
@@ -209,11 +212,7 @@ Return ONLY the JSON object, no other text."""
             )
             return {}
 
-    async def apply_enrichment(
-        self,
-        element_id: str,
-        enriched: dict[str, Any]
-    ) -> bool:
+    async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
         """Apply enriched attributes to a node."""
         if not enriched or enriched.get("confidence", 0) < 0.6:
             return False
@@ -226,7 +225,9 @@ Return ONLY the JSON object, no other text."""
             params["description"] = enriched["inferred_description"]
 
         if enriched.get("inferred_traits"):
-            updates.append("n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)")
+            updates.append(
+                "n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)"
+            )
             params["new_traits"] = enriched["inferred_traits"]
 
         if enriched.get("inferred_role"):
@@ -259,10 +260,9 @@ Return ONLY the JSON object, no other text."""
             RETURN n.name AS name
         """
         results = await neo4j_manager.execute_write_query(
-            query,
-            {"element_id": element_id, "confidence": confidence}
+            query, {"element_id": element_id, "confidence": confidence}
         )
-        
+
         if results:
             record = results[0]
             logger.info(
@@ -315,9 +315,7 @@ Return ONLY the JSON object, no other text."""
 
                 # Name similarity
                 name_sim = SequenceMatcher(
-                    None,
-                    e1["name"].lower(),
-                    e2["name"].lower()
+                    None, e1["name"].lower(), e2["name"].lower()
                 ).ratio()
 
                 # Embedding similarity
@@ -332,17 +330,19 @@ Return ONLY the JSON object, no other text."""
                     # Check for alias patterns
                     is_alias = self._is_likely_alias(e1["name"], e2["name"])
 
-                    candidates.append({
-                        "primary_id": e1["element_id"],
-                        "primary_name": e1["name"],
-                        "duplicate_id": e2["element_id"],
-                        "duplicate_name": e2["name"],
-                        "type": e1["type"],
-                        "similarity": combined,
-                        "name_similarity": name_sim,
-                        "embedding_similarity": emb_sim,
-                        "is_alias": is_alias,
-                    })
+                    candidates.append(
+                        {
+                            "primary_id": e1["element_id"],
+                            "primary_name": e1["name"],
+                            "duplicate_id": e2["element_id"],
+                            "duplicate_name": e2["name"],
+                            "type": e1["type"],
+                            "similarity": combined,
+                            "name_similarity": name_sim,
+                            "embedding_similarity": emb_sim,
+                            "is_alias": is_alias,
+                        }
+                    )
 
         # Sort by similarity descending
         candidates.sort(key=lambda x: -x["similarity"])
@@ -395,9 +395,7 @@ Return ONLY the JSON object, no other text."""
         return False
 
     async def validate_merge(
-        self,
-        primary_id: str,
-        duplicate_id: str
+        self, primary_id: str, duplicate_id: str
     ) -> dict[str, Any]:
         """
         Validate a merge by checking for co-occurrence.
@@ -414,8 +412,7 @@ Return ONLY the JSON object, no other text."""
             RETURN count(x) AS cooccurrences
         """
         results = await neo4j_manager.execute_read_query(
-            cooccurrence_query,
-            {"primary_id": primary_id, "duplicate_id": duplicate_id}
+            cooccurrence_query, {"primary_id": primary_id, "duplicate_id": duplicate_id}
         )
         record = results[0] if results else None
         cooccurrences = record["cooccurrences"] if record else 0
@@ -427,13 +424,20 @@ Return ONLY the JSON object, no other text."""
             RETURN elementId(n) AS node_id, type(r) AS rel_type, count(*) AS count
         """
         rel_patterns = await neo4j_manager.execute_read_query(
-            rel_query,
-            {"primary_id": primary_id, "duplicate_id": duplicate_id}
+            rel_query, {"primary_id": primary_id, "duplicate_id": duplicate_id}
         )
 
         # Build relationship fingerprints
-        primary_rels = {r["rel_type"]: r["count"] for r in rel_patterns if r["node_id"] == primary_id}
-        dup_rels = {r["rel_type"]: r["count"] for r in rel_patterns if r["node_id"] == duplicate_id}
+        primary_rels = {
+            r["rel_type"]: r["count"]
+            for r in rel_patterns
+            if r["node_id"] == primary_id
+        }
+        dup_rels = {
+            r["rel_type"]: r["count"]
+            for r in rel_patterns
+            if r["node_id"] == duplicate_id
+        }
 
         # Calculate relationship similarity
         all_types = set(primary_rels.keys()) | set(dup_rels.keys())
@@ -450,10 +454,7 @@ Return ONLY the JSON object, no other text."""
         }
 
     async def execute_merge(
-        self,
-        primary_id: str,
-        duplicate_id: str,
-        merge_info: dict[str, Any]
+        self, primary_id: str, duplicate_id: str, merge_info: dict[str, Any]
     ) -> bool:
         """
         Execute a merge of two entities.
@@ -522,34 +523,30 @@ Return ONLY the JSON object, no other text."""
         try:
             # Execute in sequence
             await neo4j_manager.execute_write_query(
-                transfer_out_query,
-                {"dup_id": duplicate_id, "primary_id": primary_id}
+                transfer_out_query, {"dup_id": duplicate_id, "primary_id": primary_id}
             )
             await neo4j_manager.execute_write_query(
-                transfer_in_query,
-                {"dup_id": duplicate_id, "primary_id": primary_id}
+                transfer_in_query, {"dup_id": duplicate_id, "primary_id": primary_id}
             )
 
             primary_results = await neo4j_manager.execute_write_query(
-                merge_attrs_query,
-                {"primary_id": primary_id, "dup_id": duplicate_id}
+                merge_attrs_query, {"primary_id": primary_id, "dup_id": duplicate_id}
             )
             primary_record = primary_results[0] if primary_results else None
 
             dup_results = await neo4j_manager.execute_write_query(
-                mark_merged_query,
-                {"dup_id": duplicate_id, "primary_id": primary_id}
+                mark_merged_query, {"dup_id": duplicate_id, "primary_id": primary_id}
             )
             dup_record = dup_results[0] if dup_results else None
 
             if primary_record and dup_record:
-                    logger.info(
-                        "Executed entity merge",
-                        primary=primary_record["name"],
-                        duplicate=dup_record["dup_name"],
-                        similarity=merge_info.get("similarity", 0),
-                    )
-                    return True
+                logger.info(
+                    "Executed entity merge",
+                    primary=primary_record["name"],
+                    duplicate=dup_record["dup_name"],
+                    similarity=merge_info.get("similarity", 0),
+                )
+                return True
 
         except Exception as e:
             logger.error(
@@ -626,9 +623,7 @@ Return ONLY the JSON object, no other text."""
         return results
 
     async def link_provisional_to_chapter(
-        self,
-        element_id: str,
-        chapter_number: int
+        self, element_id: str, chapter_number: int
     ) -> bool:
         """
         Create a MENTIONED_IN relationship from a provisional node to its chapter.
@@ -644,8 +639,7 @@ Return ONLY the JSON object, no other text."""
         """
         try:
             results = await neo4j_manager.execute_write_query(
-                query,
-                {"element_id": element_id, "chapter_number": chapter_number}
+                query, {"element_id": element_id, "chapter_number": chapter_number}
             )
             return bool(results)
         except Exception as e:
@@ -657,11 +651,7 @@ Return ONLY the JSON object, no other text."""
             )
             return False
 
-    async def heal_graph(
-        self,
-        current_chapter: int,
-        model: str
-    ) -> dict[str, Any]:
+    async def heal_graph(self, current_chapter: int, model: str) -> dict[str, Any]:
         """
         Main entry point for graph healing.
 
@@ -701,32 +691,40 @@ Return ONLY the JSON object, no other text."""
                 # Graduate the node
                 if await self.graduate_node(node["element_id"], confidence):
                     results["nodes_graduated"] += 1
-                    results["actions"].append({
-                        "type": "graduate",
-                        "name": node["name"],
-                        "confidence": confidence,
-                    })
+                    results["actions"].append(
+                        {
+                            "type": "graduate",
+                            "name": node["name"],
+                            "confidence": confidence,
+                        }
+                    )
             else:
                 # Try to enrich
                 enriched = await self.enrich_node_from_context(node, model)
                 if await self.apply_enrichment(node["element_id"], enriched):
                     results["nodes_enriched"] += 1
-                    results["actions"].append({
-                        "type": "enrich",
-                        "name": node["name"],
-                        "new_confidence": enriched.get("confidence", 0),
-                    })
+                    results["actions"].append(
+                        {
+                            "type": "enrich",
+                            "name": node["name"],
+                            "new_confidence": enriched.get("confidence", 0),
+                        }
+                    )
 
                     # Re-check confidence after enrichment
-                    new_confidence = await self.calculate_node_confidence(node, current_chapter)
+                    new_confidence = await self.calculate_node_confidence(
+                        node, current_chapter
+                    )
                     if new_confidence >= self.CONFIDENCE_THRESHOLD:
                         if await self.graduate_node(node["element_id"], new_confidence):
                             results["nodes_graduated"] += 1
-                            results["actions"].append({
-                                "type": "graduate",
-                                "name": node["name"],
-                                "confidence": new_confidence,
-                            })
+                            results["actions"].append(
+                                {
+                                    "type": "graduate",
+                                    "name": node["name"],
+                                    "confidence": new_confidence,
+                                }
+                            )
 
         # Step 2: Find and process merge candidates
         merge_candidates = await self.find_merge_candidates()
@@ -735,8 +733,7 @@ Return ONLY the JSON object, no other text."""
         for candidate in merge_candidates:
             # Validate the merge
             validation = await self.validate_merge(
-                candidate["primary_id"],
-                candidate["duplicate_id"]
+                candidate["primary_id"], candidate["duplicate_id"]
             )
 
             if not validation["is_valid"]:
@@ -745,29 +742,31 @@ Return ONLY the JSON object, no other text."""
             # Auto-approve high confidence merges
             if candidate["similarity"] >= self.AUTO_MERGE_THRESHOLD:
                 if await self.execute_merge(
-                    candidate["primary_id"],
-                    candidate["duplicate_id"],
-                    candidate
+                    candidate["primary_id"], candidate["duplicate_id"], candidate
                 ):
                     results["nodes_merged"] += 1
-                    results["actions"].append({
-                        "type": "merge",
-                        "primary": candidate["primary_name"],
-                        "duplicate": candidate["duplicate_name"],
-                        "similarity": candidate["similarity"],
-                        "auto_approved": True,
-                    })
+                    results["actions"].append(
+                        {
+                            "type": "merge",
+                            "primary": candidate["primary_name"],
+                            "duplicate": candidate["duplicate_name"],
+                            "similarity": candidate["similarity"],
+                            "auto_approved": True,
+                        }
+                    )
 
         # Step 3: Clean up truly orphaned nodes
         cleanup_results = await self.cleanup_orphaned_nodes(current_chapter)
         results["nodes_removed"] = cleanup_results["nodes_removed"]
 
         if cleanup_results["nodes_removed"] > 0:
-            results["actions"].append({
-                "type": "cleanup",
-                "nodes_removed": cleanup_results["nodes_removed"],
-                "nodes_checked": cleanup_results["nodes_checked"],
-            })
+            results["actions"].append(
+                {
+                    "type": "cleanup",
+                    "nodes_removed": cleanup_results["nodes_removed"],
+                    "nodes_checked": cleanup_results["nodes_checked"],
+                }
+            )
 
         logger.info(
             "Graph healing complete",

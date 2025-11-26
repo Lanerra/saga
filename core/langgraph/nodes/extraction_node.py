@@ -543,9 +543,7 @@ def _attempt_json_repair(text: str, chapter_number: int) -> dict[str, Any] | Non
 
     # Try to extract character_updates
     char_match = re.search(
-        r'"character_updates"\s*:\s*(\{[^}]*(?:\{[^}]*\}[^}]*)*\})',
-        text,
-        re.DOTALL
+        r'"character_updates"\s*:\s*(\{[^}]*(?:\{[^}]*\}[^}]*)*\})', text, re.DOTALL
     )
     if char_match:
         try:
@@ -554,11 +552,7 @@ def _attempt_json_repair(text: str, chapter_number: int) -> dict[str, Any] | Non
             pass
 
     # Try to extract kg_triples
-    triples_match = re.search(
-        r'"kg_triples"\s*:\s*\[(.*?)\]',
-        text,
-        re.DOTALL
-    )
+    triples_match = re.search(r'"kg_triples"\s*:\s*\[(.*?)\]', text, re.DOTALL)
     if triples_match:
         # Parse the array content
         triples_content = triples_match.group(1)
@@ -627,7 +621,7 @@ def _close_json_brackets(text: str) -> str:
         text += '"'
 
     # Remove trailing comma before closing
-    text = re.sub(r',\s*$', '', text)
+    text = re.sub(r",\s*$", "", text)
 
     # Add closing brackets/braces
     result = text
@@ -685,8 +679,8 @@ def _clean_llm_json(raw_text: str) -> str:
         cleaned = cleaned[:-3]
 
     # Remove any remaining ``` markers that might be embedded
-    cleaned = re.sub(r'^```\w*\n?', '', cleaned)
-    cleaned = re.sub(r'\n?```$', '', cleaned)
+    cleaned = re.sub(r"^```\w*\n?", "", cleaned)
+    cleaned = re.sub(r"\n?```$", "", cleaned)
 
     # Remove common trailing commas before closing brackets/braces
     cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
@@ -696,7 +690,7 @@ def _clean_llm_json(raw_text: str) -> str:
     cleaned = cleaned.replace("\u2018", "'").replace("\u2019", "'")
 
     # Remove any BOM or other unicode artifacts
-    cleaned = cleaned.lstrip('\ufeff')
+    cleaned = cleaned.lstrip("\ufeff")
 
     return cleaned.strip()
 
@@ -810,7 +804,15 @@ def _map_category_to_type(category: str) -> str:
         return "Character"
 
     # Object-related categories
-    object_keywords = ["artifact", "document", "relic", "item", "object", "resource", "currency"]
+    object_keywords = [
+        "artifact",
+        "document",
+        "relic",
+        "item",
+        "object",
+        "resource",
+        "currency",
+    ]
     if any(keyword in category_lower for keyword in object_keywords):
         if "artifact" in category_lower:
             return "Artifact"

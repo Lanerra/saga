@@ -25,8 +25,8 @@ Source Code Ported From:
 
 from __future__ import annotations
 
-import structlog
 import numpy as np
+import structlog
 
 import config
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState

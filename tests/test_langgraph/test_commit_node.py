@@ -32,13 +32,18 @@ class TestCommitToGraph:
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
+        # Mock the NativeCypherBuilder and neo4j_manager instead of knowledge_graph_service
+        # since commit_node now uses NativeCypherBuilder directly
         with patch(
-            "core.langgraph.nodes.commit_node.knowledge_graph_service",
-            mock_knowledge_graph_service,
-        ):
-            with patch(
-                "core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries
-            ):
+            "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+        ) as mock_builder_class:
+            mock_builder = mock_builder_class.return_value
+            mock_builder.character_upsert_cypher.return_value = ("query", {})
+            mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+
                 result = await commit_to_graph(state)
 
                 assert result["current_node"] == "commit_to_graph"
@@ -55,12 +60,15 @@ class TestCommitToGraph:
         state = sample_state_with_extraction
 
         with patch(
-            "core.langgraph.nodes.commit_node.knowledge_graph_service",
-            mock_knowledge_graph_service,
-        ):
-            with patch(
-                "core.langgraph.nodes.commit_node.chapter_queries", mock_chapter_queries
-            ):
+            "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+        ) as mock_builder_class:
+            mock_builder = mock_builder_class.return_value
+            mock_builder.character_upsert_cypher.return_value = ("query", {})
+            mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+
                 with patch(
                     "core.langgraph.nodes.commit_node.kg_queries", mock_kg_queries
                 ):
@@ -73,10 +81,8 @@ class TestCommitToGraph:
                         assert result["current_node"] == "commit_to_graph"
                         assert result["last_error"] is None
 
-                        # Verify services were called
-                        assert mock_knowledge_graph_service.persist_entities.called
-                        assert mock_kg_queries.add_kg_triples_batch_to_db.called
-                        assert mock_chapter_queries.save_chapter_data_to_db.called
+                        # Verify Neo4j execution
+                        assert mock_neo4j.execute_cypher_batch.called
 
     async def test_commit_handles_errors_gracefully(
         self,
@@ -86,15 +92,14 @@ class TestCommitToGraph:
         """Test that commit handles errors gracefully."""
         state = sample_state_with_extraction
 
-        # Mock service to raise exception
-        mock_knowledge_graph_service.persist_entities.side_effect = Exception(
-            "Database error"
-        )
-
         with patch(
-            "core.langgraph.nodes.commit_node.knowledge_graph_service",
-            mock_knowledge_graph_service,
-        ):
+            "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+        ) as mock_builder_class:
+            mock_builder = mock_builder_class.return_value
+            mock_builder.character_upsert_cypher.side_effect = Exception(
+                "Database error"
+            )
+
             with patch(
                 "core.langgraph.nodes.commit_node.check_entity_similarity",
                 new=AsyncMock(return_value=None),
@@ -253,14 +258,16 @@ class TestDeduplication:
         ) as mock_check:
             mock_check.return_value = None
 
-            with patch(
-                "core.langgraph.nodes.commit_node.knowledge_graph_service",
-                mock_knowledge_graph_service,
-            ):
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+
                 with patch(
-                    "core.langgraph.nodes.commit_node.chapter_queries",
-                    mock_chapter_queries,
-                ):
+                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+                ) as mock_builder_class:
+                    mock_builder = mock_builder_class.return_value
+                    mock_builder.character_upsert_cypher.return_value = ("query", {})
+                    mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+
                     with patch("core.langgraph.nodes.commit_node.kg_queries"):
                         result = await commit_to_graph(state)
 
@@ -282,14 +289,16 @@ class TestDeduplication:
         ) as mock_check:
             mock_check.return_value = None
 
-            with patch(
-                "core.langgraph.nodes.commit_node.knowledge_graph_service",
-                mock_knowledge_graph_service,
-            ):
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+
                 with patch(
-                    "core.langgraph.nodes.commit_node.chapter_queries",
-                    mock_chapter_queries,
-                ):
+                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+                ) as mock_builder_class:
+                    mock_builder = mock_builder_class.return_value
+                    mock_builder.character_upsert_cypher.return_value = ("query", {})
+                    mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+
                     with patch("core.langgraph.nodes.commit_node.kg_queries"):
                         result = await commit_to_graph(state)
 

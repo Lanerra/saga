@@ -67,9 +67,7 @@ class GlobalOutlineSchema(BaseModel):
     thematic_progression: str = Field(
         description="How the theme develops throughout the story"
     )
-    pacing_notes: str = Field(
-        default="", description="Notes on pacing and structure"
-    )
+    pacing_notes: str = Field(default="", description="Notes on pacing and structure")
 
     @field_validator("act_count")
     @classmethod
@@ -80,7 +78,9 @@ class GlobalOutlineSchema(BaseModel):
 
     @field_validator("acts")
     @classmethod
-    def validate_acts_match_count(cls, acts: list[ActOutline], info) -> list[ActOutline]:
+    def validate_acts_match_count(
+        cls, acts: list[ActOutline], info
+    ) -> list[ActOutline]:
         if info.data.get("act_count") and len(acts) != info.data["act_count"]:
             logger.warning(
                 "Acts count mismatch",
@@ -243,7 +243,9 @@ def _extract_json_from_response(response: str) -> str:
     return response
 
 
-def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: int) -> list[str]:
+def _validate_chapter_allocations(
+    outline: GlobalOutlineSchema, total_chapters: int
+) -> list[str]:
     """
     Validate that chapter allocations in acts are correct.
 

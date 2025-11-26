@@ -89,29 +89,15 @@ def _read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
     state = _make_state(tmp_path)
 
-    # Execute node
-    (
-        yaml.safe_load(
-            yaml.safe_dump(
-                {
-                    **(_awaitable := persist_initialization_files(state)),  # type: ignore[func-returns-value]
-                }
-            )
-        )
-        if False
-        else None
-    )  # pragma: no cover - placeholder to keep static analysers calm
-
-    # Actually run the async function properly using a minimal event loop
-    # without introducing extra runtime dependencies.
-    import asyncio
-
-    result_state: NarrativeState = asyncio.get_event_loop().run_until_complete(
-        persist_initialization_files(state)
-    )
+    # Actually run the async function properly
+    result_state: NarrativeState = await persist_initialization_files(state)
 
     # Sanity: state updated and no error
     assert result_state["last_error"] is None

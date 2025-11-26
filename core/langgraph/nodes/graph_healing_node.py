@@ -44,8 +44,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
     try:
         # Run the healing process
         results = await graph_healing_service.heal_graph(
-            current_chapter=current_chapter,
-            model=model
+            current_chapter=current_chapter, model=model
         )
 
         # Update healing history
@@ -82,7 +81,8 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             enriched=results["nodes_enriched"],
             merged=results["nodes_merged"],
             removed=results.get("nodes_removed", 0),
-            provisional_remaining=results.get("provisional_count", 0) - results["nodes_graduated"],
+            provisional_remaining=results.get("provisional_count", 0)
+            - results["nodes_graduated"],
         )
 
         return {
@@ -90,7 +90,8 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             "current_node": "heal_graph",
             "last_error": None,
             "last_healing_chapter": current_chapter,
-            "provisional_count": results.get("provisional_count", 0) - results["nodes_graduated"],
+            "provisional_count": results.get("provisional_count", 0)
+            - results["nodes_graduated"],
             "nodes_graduated": total_graduated,
             "nodes_merged": total_merged,
             "nodes_enriched": total_enriched,
@@ -103,11 +104,12 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
 
     except Exception as e:
         import traceback
+
         logger.error(
             "heal_graph: Error during graph healing",
             chapter=current_chapter,
             error=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
         )
 
         # Don't fail the workflow for healing errors

@@ -927,38 +927,7 @@ async def add_kg_triples_batch_to_db(
             logger.warning(
                 f"Neo4j (Batch): Empty subject name or predicate after stripping: {triple_dict}"
             )
-            validation_stats["total"] += 1
-            validation_stats["rejected"] += 1
             continue
-
-        # Apply constraint validation if enabled
-        validation_stats["total"] += 1
-        validation_result = (
-            validation_results[i] if constraint_validation_enabled else None
-        )
-
-        if constraint_validation_enabled and validation_result:
-            # Check if relationship should be accepted based on validation
-            if not should_accept_relationship(validation_result):
-                logger.warning(
-                    f"Rejecting relationship due to constraint violation: "
-                    f"{subject_type}:{subject_name} | {predicate_clean} | "
-                    f"{'Literal' if triple_dict.get('is_literal_object') else object_entity_info.get('type', 'Unknown')}. "
-                    f"Errors: {validation_result.errors}"
-                )
-                validation_stats["rejected"] += 1
-                continue
-
-            # Use the validated predicate (may have been corrected)
-            if validation_result.validated_relationship != predicate_clean:
-                logger.info(
-                    f"Constraint validation corrected predicate: "
-                    f"{predicate_clean} -> {validation_result.validated_relationship}"
-                )
-                predicate_clean = validation_result.validated_relationship
-                validation_stats["corrected"] += 1
-
-        validation_stats["accepted"] += 1
 
         subject_labels_cypher = _get_cypher_labels(subject_type)
 
@@ -1182,17 +1151,9 @@ async def add_kg_triples_batch_to_db(
     try:
         await neo4j_manager.execute_cypher_batch(statements_with_params)
 
-        # Log validation statistics
-        if constraint_validation_enabled:
-            logger.info(
-                f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements. "
-                f"Constraint validation stats: {validation_stats['accepted']}/{validation_stats['total']} accepted, "
-                f"{validation_stats['corrected']} corrected, {validation_stats['rejected']} rejected."
-            )
-        else:
-            logger.info(
-                f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements."
-            )
+        logger.info(
+            f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements."
+        )
     except Exception as e:
         # Log first few problematic params for debugging, if any
         first_few_params_str = (

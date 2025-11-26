@@ -148,7 +148,9 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
                     description=f"Overall quality score ({avg_quality:.2f}) below threshold ({min_quality_threshold})",
                     conflicting_chapters=[state.get("current_chapter", 1)],
                     severity="major",
-                    suggested_fix=scores.get("feedback", "Improve prose quality and coherence"),
+                    suggested_fix=scores.get(
+                        "feedback", "Improve prose quality and coherence"
+                    ),
                 )
             )
 
@@ -208,19 +210,21 @@ def _build_quality_evaluation_prompt(
     if len(draft_text) > max_text_length:
         half_length = max_text_length // 2
         draft_text = (
-            draft_text[:half_length] +
-            "\n\n[... middle section truncated for evaluation ...]\n\n" +
-            draft_text[-half_length:]
+            draft_text[:half_length]
+            + "\n\n[... middle section truncated for evaluation ...]\n\n"
+            + draft_text[-half_length:]
         )
 
     # Format previous summaries
     summary_context = ""
     if previous_summaries:
         recent_summaries = previous_summaries[-3:]  # Last 3 chapters
-        summary_context = "\n".join([
-            f"Chapter {chapter_number - len(recent_summaries) + i}: {s}"
-            for i, s in enumerate(recent_summaries)
-        ])
+        summary_context = "\n".join(
+            [
+                f"Chapter {chapter_number - len(recent_summaries) + i}: {s}"
+                for i, s in enumerate(recent_summaries)
+            ]
+        )
 
     # Format chapter outline
     outline_context = ""
@@ -301,7 +305,7 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
     # Try to extract JSON from the response
     try:
         # Look for JSON block in the response
-        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
         if json_match:
             json_str = json_match.group()
             scores = json.loads(json_str)
@@ -515,7 +519,10 @@ async def _check_timeline(
                                     description=f"Timeline issue: '{event_desc}' references time '{event_time}' "
                                     f"which conflicts with '{existing_desc}' at '{existing_time}' "
                                     f"from chapter {existing_chapter}",
-                                    conflicting_chapters=[existing_chapter, current_chapter],
+                                    conflicting_chapters=[
+                                        existing_chapter,
+                                        current_chapter,
+                                    ],
                                     severity="major",
                                     suggested_fix="Adjust temporal references to maintain consistency",
                                 )
@@ -544,10 +551,28 @@ def _events_are_related(event1: str, event2: str) -> bool:
     Simple heuristic: events are related if they share significant words.
     """
     # Extract significant words (> 4 chars, not common words)
-    common_words = {"that", "this", "with", "from", "have", "were", "been", "they", "their"}
+    common_words = {
+        "that",
+        "this",
+        "with",
+        "from",
+        "have",
+        "were",
+        "been",
+        "they",
+        "their",
+    }
 
-    words1 = {w.lower() for w in event1.split() if len(w) > 4 and w.lower() not in common_words}
-    words2 = {w.lower() for w in event2.split() if len(w) > 4 and w.lower() not in common_words}
+    words1 = {
+        w.lower()
+        for w in event1.split()
+        if len(w) > 4 and w.lower() not in common_words
+    }
+    words2 = {
+        w.lower()
+        for w in event2.split()
+        if len(w) > 4 and w.lower() not in common_words
+    }
 
     overlap = words1 & words2
     return len(overlap) >= 2
@@ -644,10 +669,14 @@ async def _check_world_rules(
             contradictions.append(
                 Contradiction(
                     type="world_rule",
-                    description=violation.get("description", "World rule violation detected"),
+                    description=violation.get(
+                        "description", "World rule violation detected"
+                    ),
                     conflicting_chapters=[current_chapter],
                     severity=violation.get("severity", "major"),
-                    suggested_fix=violation.get("fix", "Revise to comply with world rules"),
+                    suggested_fix=violation.get(
+                        "fix", "Revise to comply with world rules"
+                    ),
                 )
             )
 
@@ -711,7 +740,7 @@ def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
     """Parse rule violations from LLM response."""
     try:
         # Find JSON array in response
-        json_match = re.search(r'\[.*\]', response, re.DOTALL)
+        json_match = re.search(r"\[.*\]", response, re.DOTALL)
         if json_match:
             violations = json.loads(json_match.group())
             if isinstance(violations, list):
@@ -772,7 +801,9 @@ async def _check_character_locations(
         # Get current location name
         current_loc_name = None
         if current_location:
-            current_loc_name = current_location.get("name") or current_location.get("neo4j_id")
+            current_loc_name = current_location.get("name") or current_location.get(
+                "neo4j_id"
+            )
 
         # Check for impossible location changes
         for char in extracted_characters:
@@ -868,7 +899,10 @@ async def _check_relationship_evolution(
                                     description=f"{source} and {target}: {description} "
                                     f"from '{prev_type}' to '{rel_type}' without sufficient development "
                                     f"(only {chapters_between} chapters since chapter {prev_chapter})",
-                                    conflicting_chapters=[prev_chapter, current_chapter],
+                                    conflicting_chapters=[
+                                        prev_chapter,
+                                        current_chapter,
+                                    ],
                                     severity="minor",
                                     suggested_fix=f"Add intermediate scenes showing the {description}",
                                 )

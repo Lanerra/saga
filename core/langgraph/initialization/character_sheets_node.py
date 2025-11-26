@@ -20,7 +20,9 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 logger = structlog.get_logger(__name__)
 
 
-def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, any]:
+def _parse_character_sheet_response(
+    response: str, character_name: str
+) -> dict[str, any]:
     """
     Parse the structured character sheet response into CharacterProfile-compatible format.
 
@@ -91,10 +93,14 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         elif current_section == "status" and line_stripped.startswith("STATUS:"):
             parsed["status"] = line_stripped.replace("STATUS:", "").strip()
 
-        elif current_section == "motivations" and line_stripped.startswith("MOTIVATIONS:"):
+        elif current_section == "motivations" and line_stripped.startswith(
+            "MOTIVATIONS:"
+        ):
             parsed["motivations"] = line_stripped.replace("MOTIVATIONS:", "").strip()
 
-        elif current_section == "background" and line_stripped.startswith("BACKGROUND:"):
+        elif current_section == "background" and line_stripped.startswith(
+            "BACKGROUND:"
+        ):
             parsed["background"] = line_stripped.replace("BACKGROUND:", "").strip()
 
         elif current_section == "skills" and line_stripped.startswith("SKILL:"):
@@ -102,7 +108,9 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
             if skill:
                 parsed["skills"].append(skill)
 
-        elif current_section == "relationships" and line_stripped.startswith("RELATIONSHIP:"):
+        elif current_section == "relationships" and line_stripped.startswith(
+            "RELATIONSHIP:"
+        ):
             # Format: RELATIONSHIP: [name] | [type] | [description]
             rel_content = line_stripped.replace("RELATIONSHIP:", "").strip()
             parts = [p.strip() for p in rel_content.split("|")]
@@ -115,8 +123,12 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
                     "description": rel_desc,
                 }
 
-        elif current_section == "internal_conflict" and line_stripped.startswith("INTERNAL_CONFLICT:"):
-            parsed["internal_conflict"] = line_stripped.replace("INTERNAL_CONFLICT:", "").strip()
+        elif current_section == "internal_conflict" and line_stripped.startswith(
+            "INTERNAL_CONFLICT:"
+        ):
+            parsed["internal_conflict"] = line_stripped.replace(
+                "INTERNAL_CONFLICT:", ""
+            ).strip()
 
     # Combine description lines
     parsed["description"] = " ".join(description_lines)
@@ -130,7 +142,10 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         # Use raw response as description
         parsed["description"] = response
         # Try to extract traits from text
-        trait_matches = re.findall(r'\b(brave|cunning|loyal|ambitious|cautious|intelligent|stubborn|compassionate|ruthless|wise)\b', response.lower())
+        trait_matches = re.findall(
+            r"\b(brave|cunning|loyal|ambitious|cautious|intelligent|stubborn|compassionate|ruthless|wise)\b",
+            response.lower(),
+        )
         parsed["traits"] = list(set(trait_matches))[:7]
 
     return parsed

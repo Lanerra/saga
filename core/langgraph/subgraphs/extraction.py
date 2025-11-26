@@ -3,11 +3,11 @@ import structlog
 from langgraph.graph import END, StateGraph
 
 from core.langgraph.nodes.extraction_nodes import (
-    extract_characters,
-    extract_locations,
-    extract_events,
-    extract_relationships,
     consolidate_extraction,
+    extract_characters,
+    extract_events,
+    extract_locations,
+    extract_relationships,
 )
 from core.langgraph.state import NarrativeState
 

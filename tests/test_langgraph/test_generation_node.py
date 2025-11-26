@@ -257,6 +257,11 @@ class TestGenerateChapter:
         """Test generation includes previous chapter summaries."""
         state = {**sample_generation_state}
         state["current_chapter"] = 3
+        state["chapter_outlines"] = {
+            1: {"plot_point": "Ch1"},
+            2: {"plot_point": "Ch2"},
+            3: {"plot_point": "Ch3"},
+        }
         state["previous_chapter_summaries"] = [
             "Chapter 1: The hero set out on their journey.",
             "Chapter 2: The hero met their mentor.",

@@ -19,20 +19,20 @@ if TYPE_CHECKING:  # pragma: no cover - for type hints only
 def normalize_entity_name(text: str) -> str:
     """
     Clean and normalize an entity name.
-    
+
     1. Removes parenthetical content (e.g. "Name (description)" -> "Name")
     2. Normalizes smart quotes to straight quotes
     3. Strips whitespace
     """
     if not isinstance(text, str):
         return str(text) if text is not None else ""
-        
+
     # Remove parenthetical content
-    text = re.sub(r'\s*\(.*?\)', '', text)
-    
+    text = re.sub(r"\s*\(.*?\)", "", text)
+
     # Normalize smart quotes
-    text = text.replace('’', "'").replace('‘', "'").replace('“', '"').replace('”', '"')
-    
+    text = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+
     return text.strip()
 
 
