@@ -18,6 +18,13 @@ from pydantic import BaseModel, Field
 # Import existing SAGA models for compatibility
 from models.kg_models import CharacterProfile, WorldItem
 
+# Import TypedDict structures for proper type annotations
+from models.agent_models import (
+    EvaluationResult,
+    PatchInstruction,
+    SceneDetail,
+)
+
 # Import settings for model configuration
 from config.settings import settings
 
@@ -224,18 +231,18 @@ class NarrativeState(TypedDict, total=False):
     kg_facts_block: str | None  # Compatible with ContextSnapshot
 
     # =========================================================================
-    # Chapter Planning (compatible with existing SceneDetail structure)
+    # Chapter Planning (properly typed with SceneDetail TypedDict)
     # =========================================================================
-    chapter_plan: list[dict[str, Any]] | None  # List of SceneDetail dicts
+    chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
     plot_point_focus: str | None
     current_scene_index: int  # Index of the scene currently being processed
     scene_drafts: list[str]  # List of generated text for each scene
 
     # =========================================================================
-    # Revision State (compatible with existing evaluation workflow)
+    # Revision State (properly typed with TypedDict structures)
     # =========================================================================
-    evaluation_result: dict[str, Any] | None  # EvaluationResult structure
-    patch_instructions: list[dict[str, Any]] | None  # PatchInstruction list
+    evaluation_result: EvaluationResult | None  # EvaluationResult TypedDict
+    patch_instructions: list[PatchInstruction] | None  # List of PatchInstruction TypedDicts
 
     # =========================================================================
     # World Building Context
