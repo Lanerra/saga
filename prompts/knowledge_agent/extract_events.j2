@@ -10,20 +10,49 @@ Your task is to extract SIGNIFICANT events from the provided chapter text.
 - Current Chapter: {{ chapter_number }}
 
 **Extraction Rules:**
-1. **Focus on Plot Points**: Extract major plot beats, battles, revelations, and turning points.
-2. **Granularity**: Do not extract every single action. Focus on summary-level events.
-3. **Naming**: Give events descriptive names (e.g., "The Battle of X", "Discovery of Y").
+1. **Focus on Significant Story Elements**: Extract plot beats, character development, world revelations, battles, and turning points.
+2. **Use SPECIFIC Event Types** - DO NOT use generic "Event". Instead use:
+   - **DevelopmentEvent**: Character development moments, choices, revelations that change a character
+     - Example: "Sarah chooses vengeance over mercy", "Marcus learns of his true heritage"
+   - **WorldElaborationEvent**: Moments that reveal/expand world lore, magic systems, or setting mechanics
+     - Example: "Revelation of the Three Sources of Magic", "Discovery of the Ancient Prophecy"
+   - **PlotPoint**: Major story beats, turning points, narrative milestones
+     - Example: "The Heist Begins", "The Hero's First Encounter with the Mentor"
+   - **Event**: Only for generic historical events, battles, ceremonies that don't fit above
+     - Example: "The Battle of Waterloo", "The Royal Coronation"
+3. **Granularity**: Do not extract every single action. Focus on summary-level events.
+4. **Naming**: Give events descriptive names that capture their essence.
+5. **CRITICAL**: Prefer DevelopmentEvent and WorldElaborationEvent over generic Event!
 
 **Output Format:**
-Return a JSON object with a single key `world_updates` (using "Event" as the category).
+Return a JSON object with a single key `world_updates`.
+**CRITICAL**: Use SPECIFIC event types as category names.
 
 ```json
 {
   "world_updates": {
+    "DevelopmentEvent": {
+      "Elara's Choice to Betray the Council": {
+        "description": "Elara makes the pivotal choice to steal the artifact, marking her transformation from loyal student to rebel",
+        "key_elements": ["betrayal", "moral compromise", "character transformation"]
+      }
+    },
+    "WorldElaborationEvent": {
+      "Revelation of the Three Sources of Magic": {
+        "description": "The ancient text reveals that magic comes from three distinct sources: Life, Death, and Dream",
+        "key_elements": ["magic system expansion", "world mechanics", "lore revelation"]
+      }
+    },
+    "PlotPoint": {
+      "The Heist Begins": {
+        "description": "The story reaches its first major turning point as the heist operation launches",
+        "key_elements": ["story structure", "narrative milestone", "point of no return"]
+      }
+    },
     "Event": {
-      "EventName": {
-        "description": "What happened, who was involved, and the outcome.",
-        "key_elements": ["Participants", "Consequences"]
+      "The Battle at the Bridge": {
+        "description": "Major combat between the rebels and the imperial forces",
+        "key_elements": ["participants: Rebel Forces, Imperial Guard", "outcome: Strategic retreat"]
       }
     }
   }

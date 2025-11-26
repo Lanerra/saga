@@ -72,7 +72,7 @@ SAGA defines several Pydantic models and `TypedDict`s to structure data as it fl
 
 These models represent the structured output of the extraction subgraph.  They live in `core/langgraph/state.py` and are used by the extraction and commit nodes.
 
-- **`ExtractedEntity`** – Represents an entity identified in generated text.  Fields include `name`, `type` (one of `"character"`, `"location"`, `"event"` or `"object"`), a natural‑language `description`, the `first_appearance_chapter` and a dictionary of arbitrary `attributes`.
+- **`ExtractedEntity`** – Represents an entity identified in generated text.  Fields include `name`, `type` (a string accepting any valid node type from the ontology - see `docs/ontology.md` for the complete taxonomy), a natural‑language `description`, the `first_appearance_chapter` and a dictionary of arbitrary `attributes`. The type field now supports rich semantic classification including specialized types like `DevelopmentEvent`, `PlotPoint`, `WorldElaborationEvent`, `Artifact`, `Settlement`, `Faction`, etc., instead of being limited to just four generic types.
 - **`ExtractedRelationship`** – Represents a relationship between two entities.  It stores the `source_name` and `target_name`, the `relationship_type`, a `description`, the chapter where it was found and a confidence score.
 
 ### Contradictions and Revision Models
@@ -86,10 +86,27 @@ Validation nodes use specialized models to capture narrative inconsistencies and
 
 ### Narrative Planning Models
 
-The generation subgraph relies on planning structures defined in `models/agent_models.py`.
+The generation and initialization subgraphs rely on planning structures defined in multiple modules.
+
+#### Scene Planning (`models/agent_models.py`)
 
 - **`SceneDetail`** – A `TypedDict` that plans a single scene.  It captures the scene number, summary, characters involved, key dialogue points, setting details, focus elements and metadata such as scene type, pacing and character arcs.
-- **`ContextSnapshot`** – Defined in `models/narrative_state.py`, this class stores a frozen snapshot of context for retrieval: the chapter number, plot point focus, chapter plan (list of `SceneDetail` objects), hybrid context string, KG facts block and a map of recent chapters.
+
+#### Story Structure Models (`core/langgraph/initialization/global_outline_node.py`)
+
+- **`ActOutline`** – A Pydantic `BaseModel` representing a single act in the story structure. Fields include `act_number` (1-5), `title`, `summary`, `key_events` (list of major events), `chapters_start` and `chapters_end`. Includes field validators to ensure act numbers are between 1 and 5.
+
+- **`CharacterArc`** – A Pydantic `BaseModel` tracking character progression throughout the story. Fields include `character_name`, `starting_state`, `ending_state` and `key_moments` (list of transformation moments). Used to plan character development across the narrative arc.
+
+- **`GlobalOutlineSchema`** – A Pydantic `BaseModel` representing the complete story outline. Fields include:
+  - `act_count` (3, 4, or 5)
+  - `acts` (list of `ActOutline` objects)
+  - `inciting_incident`, `midpoint`, `climax`, `resolution`
+  - `character_arcs` (list of `CharacterArc` objects)
+  - `thematic_progression`
+  - `pacing_notes`
+
+  Includes comprehensive validators to ensure act count matches the number of acts provided and that chapter allocations are correct.
 
 ### User Input Models
 

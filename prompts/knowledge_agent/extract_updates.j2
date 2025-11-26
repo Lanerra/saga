@@ -20,13 +20,25 @@ You are a knowledge graph extractor for an autonomous novel writing system taske
 - **Available Relationship Types:** {{ available_relationship_types | join(', ') }}
 
 **Enhanced Entity Type Selection Guide:**
-Choose the node type that best fits the entity. Avoid generic types like "Entity".
+Choose the MOST SPECIFIC node type that accurately describes the entity. Use the following decision process:
+
+1. **Read the ontology guidance below carefully** before extracting
+2. **Classify each entity** using the most specific type that applies
+3. **Use specialized types** (DevelopmentEvent, PlotPoint, Trait, WorldElaborationEvent) when appropriate
+4. **Avoid generic types** like "Entity" or overusing "Object" when more specific types apply
+
+**CRITICAL: Special Node Types You MUST Use:**
+- **DevelopmentEvent**: Character development moments, choices, revelations that change a character
+- **WorldElaborationEvent**: Moments that reveal/expand world lore, magic systems, or setting mechanics
+- **PlotPoint**: Major story beats, turning points, or narrative milestones
+- **Trait**: Character traits that are thematically important or have relationships with other entities
 
 **IMPORTANT FILTERING RULES:**
 - DO NOT create entities for: colors, sounds, lights, feelings, descriptive adjectives, temporary states
 - DO NOT create entities for: atmospheric descriptions, sensory details, metaphors, or literary devices
-- FOCUS ON: concrete characters, objects, locations, organizations, and major story concepts only
+- FOCUS ON: concrete characters, objects, locations, organizations, and major story concepts
 - Only extract entities that are NAMED or have significant story impact beyond the current scene
+- ALWAYS prefer the most specific node type over generic ones
 
 **Living Beings:**
 - Character: Main story characters (active participants)
@@ -130,7 +142,9 @@ Choose the node type that best fits the entity. Avoid generic types like "Entity
 **Instructions for Output:**
 - Your entire response MUST be a single, valid JSON object.
 - The JSON object must have three top-level keys: `character_updates`, `world_updates`, and `kg_triples`.
-- For `world_updates`: Each category should contain items as keys, and each item should have properties like `description`, `goals`, `rules`, etc. Do NOT create items named "elaborations" or "elaboration" - these should be properties within actual items.
+- For `world_updates`: **The category name MUST be the specific node type from the ontology** (e.g., "DevelopmentEvent", "PlotPoint", "Artifact", "Faction", etc.). Each category contains items with properties like `description`, `goals`, `rules`, etc.
+- **CRITICAL**: Use specific node types as category names - NOT generic categories like "Event" when "DevelopmentEvent" or "WorldElaborationEvent" is more appropriate
+- Do NOT create items named "elaborations" or "elaboration" - these should be properties within actual items.
 - For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
 
 **Relationship Selection Guidelines:**
@@ -188,6 +202,7 @@ Choose semantically appropriate relationships that make sense for the entity typ
 
 Return a single JSON object with three keys: `character_updates`, `world_updates`, `kg_triples`
 
+**EXAMPLE showing proper use of specific node types:**
 ```json
 {
   "character_updates": {
@@ -201,21 +216,52 @@ Return a single JSON object with three keys: `character_updates`, `world_updates
     }
   },
   "world_updates": {
-    "CategoryName": {
-      "ItemName": {
-        "description": "What this element is and why it matters"
+    "DevelopmentEvent": {
+      "Elara's Choice to Betray the Council": {
+        "description": "Elara makes the pivotal choice to steal the artifact and betray her mentor, marking her transformation from loyal student to rebel",
+        "key_elements": ["betrayal", "moral compromise", "character transformation"]
+      }
+    },
+    "PlotPoint": {
+      "The Heist Begins": {
+        "description": "The story reaches its first major turning point as the heist operation launches"
+      }
+    },
+    "Artifact": {
+      "Starfall Map": {
+        "description": "Ancient star chart rumored to show the location of the First City",
+        "rules": ["Can only be read under moonlight"],
+        "key_elements": ["magical properties", "historical significance"]
+      }
+    },
+    "Location": {
+      "Sunken Library": {
+        "description": "Ancient underwater repository of forbidden knowledge"
+      }
+    },
+    "Faction": {
+      "The Shadow Council": {
+        "description": "Secret organization manipulating events from behind the scenes",
+        "goals": ["Control the Starfall Map", "Prevent the prophecy"]
       }
     }
   },
   "kg_triples": [
     "Character:Elara | LOCATED_IN | Location:Sunken Library",
     "Character:Elara | SEEKS | Artifact:Starfall Map",
-    "Location:Sunken Library | CONTAINS | Document:Ancient Scrolls"
+    "DevelopmentEvent:Elara's Choice to Betray the Council | DEVELOPED_IN_CHAPTER | Chapter:5",
+    "PlotPoint:The Heist Begins | INVOLVES | Character:Elara",
+    "Location:Sunken Library | CONTAINS | Artifact:Starfall Map",
+    "Faction:The Shadow Council | SEEKS | Artifact:Starfall Map"
   ]
 }
 ```
 
 **Quality Check Before Output:**
+- Did I use SPECIFIC node types instead of generic ones? → Check "DevelopmentEvent", "PlotPoint", "Artifact", etc. instead of just "Event" or "Object"
+- Did I extract character development moments as "DevelopmentEvent"? → These are critical!
+- Did I extract world lore revelations as "WorldElaborationEvent"? → These are critical!
+- Did I extract story turning points as "PlotPoint"? → These are critical!
 - Did I prefer proper nouns over common nouns? → Proper nouns are higher quality
 - Did I extract any atmospheric/emotional/temporary entities? → Remove them
 - For proper nouns (capitalized names): 1+ mention is sufficient
