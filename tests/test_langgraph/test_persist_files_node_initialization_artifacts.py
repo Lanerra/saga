@@ -1,7 +1,7 @@
 # tests/test_langgraph/test_persist_files_node_initialization_artifacts.py
-import asyncio
 from pathlib import Path
 
+import pytest
 import yaml
 
 from core.langgraph.initialization.persist_files_node import (
@@ -36,16 +36,11 @@ def _minimal_state(tmp_path: Path) -> NarrativeState:
     return state
 
 
-def _run_persist(state: NarrativeState) -> NarrativeState:
-    # Run async node without introducing new dependencies.
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(persist_initialization_files(state))
-
-
-def test_saga_yaml_created_with_paths_and_metadata(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_saga_yaml_created_with_paths_and_metadata(tmp_path: Path) -> None:
     state = _minimal_state(tmp_path)
 
-    result_state = _run_persist(state)
+    result_state = await persist_initialization_files(state)
 
     # Node should report success
     assert result_state["last_error"] is None
@@ -78,10 +73,11 @@ def test_saga_yaml_created_with_paths_and_metadata(tmp_path: Path) -> None:
     assert paths.get("exports") == "exports/"
 
 
-def test_world_rules_and_history_stubs_when_missing(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_world_rules_and_history_stubs_when_missing(tmp_path: Path) -> None:
     state = _minimal_state(tmp_path)
 
-    _run_persist(state)
+    await persist_initialization_files(state)
 
     project_dir = Path(state["project_dir"])
 
@@ -113,7 +109,8 @@ def test_world_rules_and_history_stubs_when_missing(tmp_path: Path) -> None:
     assert history_data["note"], "Expected non-empty note in world/history.yaml stub"
 
 
-def test_world_rules_and_history_populated_when_present(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_world_rules_and_history_populated_when_present(tmp_path: Path) -> None:
     """Optional coverage: ensure provided rules/history surface into YAML."""
     state = _minimal_state(tmp_path)
 
@@ -131,7 +128,7 @@ def test_world_rules_and_history_populated_when_present(tmp_path: Path) -> None:
         },
     ]
 
-    _run_persist(state)
+    await persist_initialization_files(state)
 
     project_dir = Path(state["project_dir"])
 

@@ -71,37 +71,37 @@ class TestMapCategoryToType:
 
     def test_map_location_categories(self):
         """Test mapping location-related categories."""
-        assert _map_category_to_type("location") == "location"
-        assert _map_category_to_type("place") == "location"
-        assert _map_category_to_type("settlement") == "location"
-        assert _map_category_to_type("region") == "location"
-        assert _map_category_to_type("structure") == "location"
+        assert _map_category_to_type("location") == "Location"
+        assert _map_category_to_type("place") == "Location"
+        assert _map_category_to_type("settlement") == "Settlement"
+        assert _map_category_to_type("region") == "Region"
+        assert _map_category_to_type("structure") == "Structure"
 
     def test_map_event_categories(self):
         """Test mapping event-related categories."""
-        assert _map_category_to_type("event") == "event"
-        assert _map_category_to_type("ceremony") == "event"
-        assert _map_category_to_type("battle") == "event"
-        assert _map_category_to_type("incident") == "event"
+        assert _map_category_to_type("event") == "Event"
+        assert _map_category_to_type("ceremony") == "Event"
+        assert _map_category_to_type("battle") == "Event"
+        assert _map_category_to_type("incident") == "Event"
 
     def test_map_character_categories(self):
         """Test mapping character-related categories."""
-        assert _map_category_to_type("character") == "character"
-        assert _map_category_to_type("person") == "character"
-        assert _map_category_to_type("creature") == "character"
+        assert _map_category_to_type("character") == "Character"
+        assert _map_category_to_type("person") == "Person"
+        assert _map_category_to_type("creature") == "Creature"
 
     def test_map_default_to_object(self):
         """Test that unknown categories default to object."""
-        assert _map_category_to_type("artifact") == "object"
-        assert _map_category_to_type("item") == "object"
-        assert _map_category_to_type("weapon") == "object"
-        assert _map_category_to_type("unknown_category") == "object"
+        assert _map_category_to_type("artifact") == "Artifact"
+        assert _map_category_to_type("item") == "Item"
+        assert _map_category_to_type("weapon") == "Object"
+        assert _map_category_to_type("unknown_category") == "Object"
 
     def test_map_case_insensitive(self):
         """Test that category mapping is case insensitive."""
-        assert _map_category_to_type("LOCATION") == "location"
-        assert _map_category_to_type("Location") == "location"
-        assert _map_category_to_type("EVENT") == "event"
+        assert _map_category_to_type("LOCATION") == "Location"
+        assert _map_category_to_type("Location") == "Location"
+        assert _map_category_to_type("EVENT") == "Event"
 
 
 @pytest.mark.asyncio
@@ -277,7 +277,7 @@ class TestExtractEntities:
         state = sample_initial_state
         state["draft_text"] = "Test chapter text..."
         state["current_chapter"] = 3
-        state["extraction_model"] = "test-extraction-model"
+        state["medium_model"] = "test-extraction-model"
 
         mock_llm_service.async_call_llm.return_value = (
             sample_llm_extraction_response,

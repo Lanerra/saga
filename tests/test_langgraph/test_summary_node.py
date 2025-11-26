@@ -58,7 +58,11 @@ async def _run_summarize_chapter(
 
     # Ensure node updated state as expected
     assert new_state["current_node"] == "summarize"
-    assert new_state["previous_chapter_summaries"]
+    # Check that summary was added (list is not empty)
+    assert new_state.get(
+        "previous_chapter_summaries"
+    ), "Summary list should not be empty"
+    # Verify the last summary matches
     assert new_state["previous_chapter_summaries"][-1] == summary_text
 
     # Return path to generated summary file
@@ -93,8 +97,8 @@ def test_summary_file_written_with_front_matter_and_body(tmp_path: Path) -> None
     meta = yaml.safe_load(front_matter_raw)
     assert isinstance(meta, dict)
     assert meta.get("chapter") == 1
-    assert isinstance(meta.get("generated_at"), str)
-    assert meta.get("generated_at"), "generated_at should be non-empty string"
+    # generated_at might be parsed as datetime object by yaml.safe_load
+    assert meta.get("generated_at"), "generated_at should be present"
 
     # Title is optional; no strict assertion needed here.
 

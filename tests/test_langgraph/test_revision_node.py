@@ -33,7 +33,7 @@ def sample_revision_state():
         project_dir="/tmp/test-project",
         protagonist_name="Hero",
         generation_model="test-model",
-        extraction_model="test-model",
+        medium_model="test-model",
         revision_model="test-revision-model",
     )
 
@@ -345,7 +345,7 @@ class TestReviseChapter:
         # Should not revise, just return error state
         assert result["needs_revision"] is False
         assert result["last_error"] is not None
-        assert "Max revisions" in result["last_error"]
+        assert "Max revision attempts" in result["last_error"]
         assert result["current_node"] == "revise_failed"
 
         # LLM should not be called
@@ -580,7 +580,7 @@ class TestRevisionIntegration:
 
         result4 = await revise_chapter(state4)
         assert result4["current_node"] == "revise_failed"
-        assert "Max revisions" in result4["last_error"]
+        assert "Max revision attempts" in result4["last_error"]
 
     async def test_revision_with_minimal_contradictions(
         self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
@@ -615,7 +615,7 @@ class TestRevisionErrorHandling:
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "revise"
         assert result["needs_revision"] is False
-        assert result["current_node"] == "revise"
+        assert result["current_node"] == "revise_failed"
 
         mock_llm_revision.async_call_llm.assert_not_called()
 

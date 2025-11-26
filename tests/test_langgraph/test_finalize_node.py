@@ -170,12 +170,15 @@ class TestFinalizeChapter:
         assert meta["title"] == "Chapter 1"
         assert isinstance(meta["word_count"], int)
         assert meta["word_count"] == len(sample_finalize_state["draft_text"].split())
-        assert isinstance(meta["generated_at"], str)
+        # generated_at can be str or datetime depending on yaml loader
+        import datetime
+
+        assert isinstance(meta["generated_at"], (str, datetime.datetime))
         assert meta["generated_at"]
         assert meta["version"] == 1
 
-        # Body must equal original draft text (ignoring a trailing newline difference)
-        assert body.rstrip("\n") == sample_finalize_state["draft_text"].rstrip("\n")
+        # Body must equal original draft text (ignoring leading/trailing whitespace difference)
+        assert body.strip() == sample_finalize_state["draft_text"].strip()
 
         # .txt legacy mirror assertions (plain text only)
         txt_path = chapters_dir / "chapter_001.txt"

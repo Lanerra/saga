@@ -44,25 +44,34 @@ class TestPhase1Workflow:
 
         # Mock all external dependencies
         with patch("core.langgraph.nodes.extraction_node.llm_service") as mock_llm:
-            with patch(
-                "core.langgraph.nodes.commit_node.knowledge_graph_service"
-            ) as mock_kg:
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+                mock_neo4j.fetch_all_characters_by_names = AsyncMock(return_value=[])
+                mock_neo4j.execute_read_query = AsyncMock(return_value=[])
+
                 with patch(
-                    "core.langgraph.nodes.commit_node.kg_queries"
-                ) as mock_kg_queries:
+                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+                ) as mock_builder_class:
+                    mock_builder = mock_builder_class.return_value
+                    mock_builder.character_upsert_cypher.return_value = ("query", {})
+                    mock_builder.world_item_upsert_cypher.return_value = ("query", {})
+
                     with patch(
-                        "core.langgraph.nodes.commit_node.chapter_queries"
-                    ) as mock_ch_queries:
+                        "core.langgraph.nodes.commit_node.kg_queries"
+                    ) as mock_kg_queries:
                         with patch(
                             "core.langgraph.nodes.commit_node.check_entity_similarity",
                             new=AsyncMock(return_value=None),
                         ):
+                            # Patch validation to avoid validation errors
                             with patch(
-                                "core.langgraph.nodes.validation_node.validate_batch_constraints"
-                            ) as mock_validate:
+                                "core.langgraph.nodes.validation_node._check_character_traits",
+                                new=AsyncMock(return_value=[]),
+                            ):
                                 with patch(
-                                    "core.langgraph.nodes.validation_node.neo4j_manager"
-                                ) as mock_neo4j:
+                                    "core.langgraph.nodes.validation_node._is_plot_stagnant",
+                                    return_value=False,
+                                ):
                                     # Setup LLM mock to return extraction results
                                     mock_llm.async_call_llm = AsyncMock(
                                         return_value=(
@@ -81,23 +90,9 @@ class TestPhase1Workflow:
                                         )
                                     )
 
-                                    # Setup validation mock to return valid results
-                                    mock_validate.return_value = []
-
-                                    # Setup Neo4j mock
-                                    mock_neo4j.fetch_all_characters_by_names = (
-                                        AsyncMock(return_value=[])
-                                    )
-
-                                    # Setup service mocks
-                                    mock_kg.persist_entities = AsyncMock(
-                                        return_value=None
-                                    )
+                                    # Setup KG query mock
                                     mock_kg_queries.add_kg_triples_batch_to_db = (
                                         AsyncMock(return_value=None)
-                                    )
-                                    mock_ch_queries.save_chapter_data_to_db = AsyncMock(
-                                        return_value=None
                                     )
 
                                     # Create and run workflow
@@ -131,7 +126,7 @@ class TestPhase1Workflow:
 
                                     # Verify services were called
                                     assert mock_llm.async_call_llm.called
-                                    assert mock_kg.persist_entities.called
+                                    assert mock_neo4j.execute_cypher_batch.called
 
     @pytest.mark.asyncio
     async def test_workflow_with_revision_loop(self):
@@ -154,50 +149,44 @@ class TestPhase1Workflow:
         state["max_iterations"] = 2  # Allow 2 revisions
 
         with patch("core.langgraph.nodes.extraction_node.llm_service") as mock_llm:
-            with patch(
-                "core.langgraph.nodes.commit_node.knowledge_graph_service"
-            ) as mock_kg:
-                with patch("core.langgraph.nodes.commit_node.kg_queries"):
-                    with patch("core.langgraph.nodes.commit_node.chapter_queries"):
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+                mock_neo4j.fetch_all_characters_by_names = AsyncMock(return_value=[])
+                # Mock read query for validation trait check
+                mock_neo4j.execute_read_query = AsyncMock(return_value=[])
+
+                with patch(
+                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+                ):
+                    with patch("core.langgraph.nodes.commit_node.kg_queries"):
                         with patch(
                             "core.langgraph.nodes.commit_node.check_entity_similarity",
                             new=AsyncMock(return_value=None),
                         ):
-                            with patch(
-                                "core.langgraph.nodes.validation_node.validate_batch_constraints"
-                            ) as mock_validate:
-                                with patch(
-                                    "core.langgraph.nodes.validation_node.neo4j_manager"
-                                ) as mock_neo4j:
-                                    # Setup mocks
-                                    mock_llm.async_call_llm = AsyncMock(
-                                        return_value=(
-                                            '{"character_updates": {}, "world_updates": {}}',
-                                            {"total_tokens": 10},
-                                        )
-                                    )
-                                    mock_validate.return_value = []
-                                    mock_neo4j.fetch_all_characters_by_names = (
-                                        AsyncMock(return_value=[])
-                                    )
-                                    mock_kg.persist_entities = AsyncMock(
-                                        return_value=None
-                                    )
+                            # Setup mocks
+                            mock_llm.async_call_llm = AsyncMock(
+                                return_value=(
+                                    '{"character_updates": {}, "world_updates": {}}',
+                                    {"total_tokens": 10},
+                                )
+                            )
 
-                                    # Create and run workflow
-                                    graph = create_phase1_graph(checkpointer=None)
+                            # Create and run workflow
+                            graph = create_phase1_graph(checkpointer=None)
 
-                                    result = await graph.ainvoke(
-                                        state,
-                                        config={
-                                            "configurable": {"thread_id": "test-2"}
-                                        },
-                                    )
+                            result = await graph.ainvoke(
+                                state,
+                                config={"configurable": {"thread_id": "test-2"}},
+                            )
 
-                                    # Verify revision was triggered
-                                    # Note: In Phase 1, revision is a placeholder that prevents infinite loop
-                                    # Full revision logic will be in Phase 2
-                                    assert result["iteration_count"] >= 0
+                            # Verify revision was triggered (stagnation causes revision)
+                            # Note: In Phase 1, revision is a placeholder that increments iteration_count
+                            # The count starts at 0, so it should be >= 0 (checking for existence is safer)
+                            assert result["iteration_count"] >= 0
+                            assert (
+                                result["current_node"] == "validate_consistency"
+                                or result.get("needs_revision") is True
+                            )
 
     @pytest.mark.asyncio
     async def test_workflow_max_iterations_limit(self):
@@ -219,46 +208,36 @@ class TestPhase1Workflow:
         state["max_iterations"] = 1  # Only allow 1 iteration
 
         with patch("core.langgraph.nodes.extraction_node.llm_service") as mock_llm:
-            with patch(
-                "core.langgraph.nodes.commit_node.knowledge_graph_service"
-            ) as mock_kg:
-                with patch("core.langgraph.nodes.commit_node.kg_queries"):
-                    with patch("core.langgraph.nodes.commit_node.chapter_queries"):
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+                mock_neo4j.execute_read_query = AsyncMock(return_value=[])
+                mock_neo4j.fetch_all_characters_by_names = AsyncMock(return_value=[])
+
+                with patch(
+                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+                ):
+                    with patch("core.langgraph.nodes.commit_node.kg_queries"):
                         with patch(
                             "core.langgraph.nodes.commit_node.check_entity_similarity",
                             new=AsyncMock(return_value=None),
                         ):
-                            with patch(
-                                "core.langgraph.nodes.validation_node.validate_batch_constraints"
-                            ):
-                                with patch(
-                                    "core.langgraph.nodes.validation_node.neo4j_manager"
-                                ) as mock_neo4j:
-                                    mock_llm.async_call_llm = AsyncMock(
-                                        return_value=(
-                                            '{"character_updates": {}, "world_updates": {}}',
-                                            {"total_tokens": 10},
-                                        )
-                                    )
-                                    mock_neo4j.fetch_all_characters_by_names = (
-                                        AsyncMock(return_value=[])
-                                    )
-                                    mock_kg.persist_entities = AsyncMock(
-                                        return_value=None
-                                    )
+                            mock_llm.async_call_llm = AsyncMock(
+                                return_value=(
+                                    '{"character_updates": {}, "world_updates": {}}',
+                                    {"total_tokens": 10},
+                                )
+                            )
 
-                                    graph = create_phase1_graph(checkpointer=None)
+                            graph = create_phase1_graph(checkpointer=None)
 
-                                    result = await graph.ainvoke(
-                                        state,
-                                        config={
-                                            "configurable": {"thread_id": "test-3"}
-                                        },
-                                    )
+                            result = await graph.ainvoke(
+                                state,
+                                config={"configurable": {"thread_id": "test-3"}},
+                            )
 
-                                    # Workflow should complete even if needs_revision=True
-                                    # because max_iterations was reached
-                                    assert result is not None
+                            # Workflow should complete even if needs_revision=True
+                            # because max_iterations was reached
+                            assert result is not None
 
     @pytest.mark.asyncio
     async def test_workflow_force_continue(self):
@@ -280,48 +259,36 @@ class TestPhase1Workflow:
         state["force_continue"] = True  # But this should bypass it
 
         with patch("core.langgraph.nodes.extraction_node.llm_service") as mock_llm:
-            with patch(
-                "core.langgraph.nodes.commit_node.knowledge_graph_service"
-            ) as mock_kg:
-                with patch("core.langgraph.nodes.commit_node.kg_queries"):
-                    with patch("core.langgraph.nodes.commit_node.chapter_queries"):
+            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                mock_neo4j.execute_cypher_batch = AsyncMock()
+                mock_neo4j.execute_read_query = AsyncMock(return_value=[])
+                mock_neo4j.fetch_all_characters_by_names = AsyncMock(return_value=[])
+
+                with patch(
+                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
+                ):
+                    with patch("core.langgraph.nodes.commit_node.kg_queries"):
                         with patch(
                             "core.langgraph.nodes.commit_node.check_entity_similarity",
                             new=AsyncMock(return_value=None),
                         ):
-                            with patch(
-                                "core.langgraph.nodes.validation_node.validate_batch_constraints"
-                            ):
-                                with patch(
-                                    "core.langgraph.nodes.validation_node.neo4j_manager"
-                                ) as mock_neo4j:
-                                    mock_llm.async_call_llm = AsyncMock(
-                                        return_value=(
-                                            '{"character_updates": {}, "world_updates": {}}',
-                                            {"total_tokens": 10},
-                                        )
-                                    )
-                                    mock_neo4j.fetch_all_characters_by_names = (
-                                        AsyncMock(return_value=[])
-                                    )
-                                    mock_kg.persist_entities = AsyncMock(
-                                        return_value=None
-                                    )
+                            mock_llm.async_call_llm = AsyncMock(
+                                return_value=(
+                                    '{"character_updates": {}, "world_updates": {}}',
+                                    {"total_tokens": 10},
+                                )
+                            )
 
-                                    graph = create_phase1_graph(checkpointer=None)
+                            graph = create_phase1_graph(checkpointer=None)
 
-                                    result = await graph.ainvoke(
-                                        state,
-                                        config={
-                                            "configurable": {"thread_id": "test-4"}
-                                        },
-                                    )
+                            result = await graph.ainvoke(
+                                state,
+                                config={"configurable": {"thread_id": "test-4"}},
+                            )
 
-                                    # Should complete without revision due to force_continue
-                                    assert result["force_continue"] is True
-                                    assert (
-                                        result["current_node"] == "validate_consistency"
-                                    )
+                            # Should complete without revision due to force_continue
+                            assert result["force_continue"] is True
+                            assert result["current_node"] == "validate_consistency"
 
 
 class TestWorkflowConditionalEdges:
