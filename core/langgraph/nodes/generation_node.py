@@ -274,7 +274,9 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         content_manager = ContentManager(state["project_dir"])
 
         # Get current version (for revision tracking)
-        current_version = content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
+        current_version = (
+            content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
+        )
 
         # Externalize draft_text to reduce state bloat
         draft_ref = content_manager.save_text(
@@ -285,20 +287,28 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         )
 
         # Externalize hybrid_context
-        hybrid_context_ref = content_manager.save_text(
-            hybrid_context_for_draft,
-            "hybrid_context",
-            f"chapter_{chapter_number}",
-            current_version,
-        ) if hybrid_context_for_draft else None
+        hybrid_context_ref = (
+            content_manager.save_text(
+                hybrid_context_for_draft,
+                "hybrid_context",
+                f"chapter_{chapter_number}",
+                current_version,
+            )
+            if hybrid_context_for_draft
+            else None
+        )
 
         # Externalize kg_facts_block
-        kg_facts_ref = content_manager.save_text(
-            kg_facts_block,
-            "kg_facts",
-            f"chapter_{chapter_number}",
-            current_version,
-        ) if kg_facts_block else None
+        kg_facts_ref = (
+            content_manager.save_text(
+                kg_facts_block,
+                "kg_facts",
+                f"chapter_{chapter_number}",
+                current_version,
+            )
+            if kg_facts_block
+            else None
+        )
 
         logger.info(
             "generate_chapter: content externalized",

@@ -1,6 +1,11 @@
 # core/langgraph/nodes/scene_generation_node.py
 import structlog
 
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_hybrid_context,
+    get_scene_drafts,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -13,6 +18,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     Draft a single scene.
     """
     logger.info("draft_scene: generating text")
+
+    # Initialize content manager
+    content_manager = ContentManager(state["project_dir"])
 
     chapter_number = state["current_chapter"]
     scene_index = state["current_scene_index"]
@@ -31,6 +39,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     scene_target = total_target // len(chapter_plan)
 
+    # Get hybrid context from content manager
+    hybrid_context = get_hybrid_context(state, content_manager) or ""
+
     prompt = render_prompt(
         "narrative_agent/draft_scene.j2",
         {
@@ -39,7 +50,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             "novel_genre": state["genre"],
             "novel_theme": state["theme"],
             "scene": current_scene,
-            "hybrid_context": state.get("hybrid_context", ""),
+            "hybrid_context": hybrid_context,
             "target_word_count": scene_target,
         },
     )
@@ -54,11 +65,23 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         )
 
         # Update state
-        current_drafts = state.get("scene_drafts", [])
+        current_drafts = get_scene_drafts(state, content_manager)
         new_drafts = current_drafts + [draft_text]
 
+        # Save updated scene drafts
+        current_version = (
+            content_manager.get_latest_version("scenes", f"chapter_{chapter_number}")
+            + 1
+        )
+        scene_drafts_ref = content_manager.save_list_of_texts(
+            new_drafts,
+            "scenes",
+            f"chapter_{chapter_number}",
+            version=current_version,
+        )
+
         return {
-            "scene_drafts": new_drafts,
+            "scene_drafts_ref": scene_drafts_ref,
             "current_scene_index": scene_index + 1,  # Increment for next loop
             "current_node": "draft_scene",
         }

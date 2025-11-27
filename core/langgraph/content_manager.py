@@ -18,10 +18,10 @@ Reference: docs/complexity-hotspots.md - "Externalize content from state"
 from __future__ import annotations
 
 import json
-import os
 import pickle
 from pathlib import Path
 from typing import Any, TypedDict
+
 
 # Type definitions for file references
 class ContentRef(TypedDict, total=False):
@@ -94,6 +94,7 @@ class ContentManager:
     def _compute_checksum(self, data: bytes) -> str:
         """Compute SHA256 checksum for data integrity."""
         import hashlib
+
         return hashlib.sha256(data).hexdigest()
 
     def save_text(
@@ -365,6 +366,7 @@ class ContentManager:
 
 # Convenience functions for common operations
 
+
 def save_draft(
     manager: ContentManager,
     draft_text: str,
@@ -460,6 +462,7 @@ def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float
 
 # Helper functions for content loading from external files (Phase 3: No fallback)
 
+
 def get_draft_text(state: dict, manager: ContentManager) -> str | None:
     """
     Get draft text from externalized content.
@@ -477,6 +480,7 @@ def get_draft_text(state: dict, manager: ContentManager) -> str | None:
         FileNotFoundError: If external file reference exists but file is missing
     """
     import structlog
+
     logger = structlog.get_logger(__name__)
 
     draft_ref = state.get("draft_ref")

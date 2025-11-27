@@ -15,7 +15,11 @@ Key Features:
 import structlog
 
 import config
-from core.langgraph.content_manager import ContentManager, get_previous_summaries
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_previous_summaries,
+    get_scene_drafts,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from core.text_processing_service import count_tokens, truncate_text_by_tokens
@@ -114,9 +118,10 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     # =========================================================================
     # 4. Previous Scenes in This Chapter (Token-Aware)
     # =========================================================================
-    if state.get("scene_drafts"):
+    scene_drafts = get_scene_drafts(state, content_manager)
+    if scene_drafts:
         previous_scenes_context = await _get_previous_scenes_context(
-            scene_drafts=state["scene_drafts"],
+            scene_drafts=scene_drafts,
             chapter_plan=chapter_plan,
             scene_index=scene_index,
             model_name=model_name,
@@ -162,8 +167,16 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
         components=len(hybrid_context_parts),
     )
 
+    # Save hybrid context to content manager
+    hybrid_context_ref = content_manager.save_text(
+        hybrid_context,
+        "hybrid_context",
+        f"chapter_{chapter_number}_scene_{scene_index}",
+        version=1,
+    )
+
     return {
-        "hybrid_context": hybrid_context,
+        "hybrid_context_ref": hybrid_context_ref,
         "current_node": "retrieve_context",
     }
 

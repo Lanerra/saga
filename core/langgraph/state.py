@@ -275,10 +275,14 @@ class NarrativeState(TypedDict, total=False):
     # Initialization Phase State (for initialization workflow)
     # =========================================================================
     # Externalized initialization content references
-    character_sheets_ref: ContentRef | None  # Reference to externalized character sheets
+    character_sheets_ref: (
+        ContentRef | None
+    )  # Reference to externalized character sheets
     global_outline_ref: ContentRef | None  # Reference to externalized global outline
     act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
-    chapter_outlines_ref: ContentRef | None  # Reference to externalized chapter outlines
+    chapter_outlines_ref: (
+        ContentRef | None
+    )  # Reference to externalized chapter outlines
 
     # Initialization state tracking
     initialization_complete: bool

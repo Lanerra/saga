@@ -20,7 +20,11 @@ from typing import Any
 import structlog
 
 import config
-from core.langgraph.content_manager import ContentManager, get_draft_text
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_draft_text,
+    get_hybrid_context,
+)
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
 from processing.text_deduplicator import TextDeduplicator
@@ -98,12 +102,15 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
 
     # Step 2: Build revision prompt
     try:
+        # Get hybrid context from content manager
+        hybrid_context = get_hybrid_context(state, content_manager)
+
         prompt = await _construct_revision_prompt(
             draft_text=draft_text,
             contradictions=state.get("contradictions", []),
             chapter_number=state["current_chapter"],
             plot_outline=state.get("plot_outline", {}),
-            hybrid_context=state.get("hybrid_context"),
+            hybrid_context=hybrid_context,
             novel_title=state["title"],
             novel_genre=state["genre"],
             protagonist_name=state.get(
@@ -232,9 +239,23 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
                 is_from_flawed_draft=is_from_flawed_draft,
             )
 
+        # Save revised draft to content manager
+        current_version = (
+            content_manager.get_latest_version(
+                "draft", f"chapter_{state['current_chapter']}"
+            )
+            + 1
+        )
+        draft_ref = content_manager.save_text(
+            deduplicated_text,
+            "draft",
+            f"chapter_{state['current_chapter']}",
+            version=current_version,
+        )
+
         return {
             **state,
-            "draft_text": deduplicated_text,
+            "draft_ref": draft_ref,
             "draft_word_count": final_word_count,
             "is_from_flawed_draft": is_from_flawed_draft,
             "iteration_count": state["iteration_count"] + 1,

@@ -26,6 +26,12 @@ from langgraph.graph import END, StateGraph
 
 import config
 from core.db_manager import neo4j_manager
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_chapter_outlines,
+    get_draft_text,
+    get_previous_summaries,
+)
 from core.langgraph.nodes.validation_node import (
     validate_consistency as original_validate_consistency,
 )
@@ -79,7 +85,9 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         word_count=state.get("draft_word_count", 0),
     )
 
-    draft_text = state.get("draft_text")
+    content_manager = ContentManager(state["project_dir"])
+    draft_text = get_draft_text(state, content_manager)
+
     if not draft_text:
         logger.warning("evaluate_quality: no draft text to evaluate")
         return {
@@ -98,8 +106,8 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         chapter_number=state.get("current_chapter", 1),
         genre=state.get("genre", ""),
         theme=state.get("theme", ""),
-        previous_summaries=state.get("previous_chapter_summaries", []),
-        chapter_outline=state.get("chapter_outlines", {}).get(
+        previous_summaries=get_previous_summaries(state, content_manager),
+        chapter_outline=get_chapter_outlines(state, content_manager).get(
             state.get("current_chapter", 1), {}
         ),
     )
@@ -398,8 +406,11 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     contradictions.extend(timeline_contradictions)
 
     # Check 2: World rule violations
+    content_manager = ContentManager(state["project_dir"])
+    draft_text = get_draft_text(state, content_manager) or ""
+
     world_rule_contradictions = await _check_world_rules(
-        state.get("draft_text", ""),
+        draft_text,
         state.get("current_world_rules", []),
         current_chapter,
     )

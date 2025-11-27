@@ -10,6 +10,7 @@ from typing import Literal
 
 import structlog
 
+from core.langgraph.content_manager import ContentManager, get_chapter_outlines
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.embedding_node import generate_embedding
 from core.langgraph.nodes.extraction_node import extract_entities
@@ -529,7 +530,8 @@ def should_generate_chapter_outline(
         Next node name ("chapter_outline" or "generate")
     """
     current_chapter = state.get("current_chapter", 1)
-    chapter_outlines = state.get("chapter_outlines", {})
+    content_manager = ContentManager(state["project_dir"])
+    chapter_outlines = get_chapter_outlines(state, content_manager)
 
     if current_chapter not in chapter_outlines:
         logger.info(

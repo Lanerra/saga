@@ -21,7 +21,11 @@ from pathlib import Path
 import structlog
 
 from core.db_manager import neo4j_manager
-from core.langgraph.content_manager import ContentManager, get_draft_text
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_draft_text,
+    get_previous_summaries,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -152,7 +156,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
 
         # Step 6: Update state with summary
         # Keep rolling window of last 5 summaries
-        previous_summaries = list(state.get("previous_chapter_summaries", []))[-4:]
+        previous_summaries = list(get_previous_summaries(state, content_manager))[-4:]
         previous_summaries.append(summary)
 
         # Get current version (for revision tracking)

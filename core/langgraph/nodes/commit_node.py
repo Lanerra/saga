@@ -29,6 +29,11 @@ import numpy as np
 import structlog
 
 import config
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_draft_text,
+    load_embedding,
+)
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from data_access import chapter_queries, kg_queries
 from models.kg_models import CharacterProfile, WorldItem
@@ -138,12 +143,28 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             all_statements.extend(relationship_statements)
 
         # Step 4c: Collect chapter node statement
+        content_manager = ContentManager(state["project_dir"])
+        draft_text = get_draft_text(state, content_manager) or ""
+
+        # Get embedding from ref if available
+        embedding = None
+        if state.get("embedding_ref"):
+            try:
+                embedding = load_embedding(content_manager, state["embedding_ref"])
+            except Exception as e:
+                logger.warning(
+                    "commit_to_graph: failed to load embedding", error=str(e)
+                )
+        elif state.get("generated_embedding"):
+            # Fallback for backward compatibility or if not externalized yet
+            embedding = state.get("generated_embedding")
+
         chapter_statement = _build_chapter_node_statement(
             chapter_number=state["current_chapter"],
-            text=state.get("draft_text", ""),
+            text=draft_text,
             word_count=state.get("draft_word_count", 0),
             summary=None,
-            embedding=state.get("generated_embedding"),
+            embedding=embedding,
         )
         all_statements.append(chapter_statement)
 

@@ -15,7 +15,11 @@ from pathlib import Path
 
 import structlog
 
-from core.langgraph.content_manager import ContentManager, get_draft_text
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_draft_text,
+    get_previous_summaries,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.chapter_queries import save_chapter_data_to_db
@@ -115,7 +119,7 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     # Step 3: Save to Neo4j
     try:
         # Get summary from previous_chapter_summaries if available
-        summaries = state.get("previous_chapter_summaries", [])
+        summaries = get_previous_summaries(state, content_manager)
         current_summary = summaries[-1] if summaries else None
 
         await save_chapter_data_to_db(

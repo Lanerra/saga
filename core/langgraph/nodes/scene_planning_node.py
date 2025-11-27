@@ -3,6 +3,7 @@ import json
 
 import structlog
 
+from core.langgraph.content_manager import ContentManager, get_chapter_outlines
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.character_queries import get_all_character_names, sync_characters
@@ -149,7 +150,10 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     )
 
     chapter_number = state["current_chapter"]
-    chapter_outlines = state.get("chapter_outlines", {})
+
+    # Initialize content manager and get outlines
+    content_manager = ContentManager(state["project_dir"])
+    chapter_outlines = get_chapter_outlines(state, content_manager)
     outline = chapter_outlines.get(chapter_number)
 
     if not outline:
@@ -211,7 +215,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         return {
             "chapter_plan": scenes,
             "current_scene_index": 0,
-            "scene_drafts": [],
+            "scene_drafts_ref": None,
             "current_node": "plan_scenes",
         }
 
