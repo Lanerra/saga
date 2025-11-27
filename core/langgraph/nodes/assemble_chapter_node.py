@@ -62,10 +62,8 @@ def assemble_chapter(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        "draft_text": full_text,  # Keep for backward compatibility
-        "draft_ref": draft_ref,  # NEW: File reference
-        "scene_drafts": scene_drafts,  # Keep for backward compatibility
-        "scene_drafts_ref": scene_drafts_ref,  # NEW: File reference
+        "draft_ref": draft_ref,
+        "scene_drafts_ref": scene_drafts_ref,
         "draft_word_count": word_count,
         "current_node": "assemble_chapter",
     }

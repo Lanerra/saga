@@ -11,7 +11,14 @@ from __future__ import annotations
 
 import structlog
 
-from core.langgraph.content_manager import ContentManager
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_act_outlines,
+    get_character_sheets,
+    get_chapter_outlines,
+    get_global_outline,
+    get_previous_summaries,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -48,8 +55,13 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
         title=state["title"],
     )
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get chapter outlines (prefers externalized content, falls back to in-state)
+    existing_outlines = get_chapter_outlines(state, content_manager)
+
     # Check if outline already exists
-    existing_outlines = state.get("chapter_outlines", {})
     if chapter_number in existing_outlines:
         logger.info(
             "generate_chapter_outline: outline already exists",
@@ -61,14 +73,18 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
             "initialization_step": f"chapter_outline_{chapter_number}_exists",
         }
 
+    # Get global outline and act outlines for validation
+    global_outline = get_global_outline(state, content_manager)
+    act_outlines = get_act_outlines(state, content_manager)
+
     # Validate inputs
-    if not state.get("global_outline"):
+    if not global_outline:
         logger.warning(
             "generate_chapter_outline: no global outline available, "
             "generating with limited context"
         )
 
-    if not state.get("act_outlines"):
+    if not act_outlines:
         logger.warning(
             "generate_chapter_outline: no act outlines available, "
             "generating with limited context"
@@ -106,9 +122,6 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
         act=act_number,
     )
 
-    # Initialize content manager for external storage
-    content_manager = ContentManager(state["project_dir"])
-
     # Get current version (for revision tracking)
     current_version = content_manager.get_latest_version("chapter_outlines", "all") + 1
 
@@ -129,10 +142,7 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
 
     return {
         **state,
-        "chapter_outlines": updated_outlines,  # Keep for backward compatibility
-        "chapter_outlines_ref": chapter_outlines_ref,  # NEW: File reference
-        # Note: plot_outline is deprecated and no longer updated
-        # generation_node now reads from chapter_outlines directly
+        "chapter_outlines_ref": chapter_outlines_ref,
         "current_node": "chapter_outline",
         "last_error": None,
         "initialization_step": f"chapter_outline_{chapter_number}_complete",
@@ -155,11 +165,14 @@ async def _generate_single_chapter_outline(
     Returns:
         Dictionary containing chapter outline details or None on failure
     """
-    # Gather context
-    global_outline = state.get("global_outline", {})
-    act_outlines = state.get("act_outlines", {})
-    character_sheets = state.get("character_sheets", {})
-    previous_summaries = state.get("previous_chapter_summaries", [])
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Gather context (prefers externalized content, falls back to in-state)
+    global_outline = get_global_outline(state, content_manager) or {}
+    act_outlines = get_act_outlines(state, content_manager)
+    character_sheets = get_character_sheets(state, content_manager)
+    previous_summaries = get_previous_summaries(state, content_manager)
 
     # Get act outline if available
     act_outline = act_outlines.get(act_number, {})
@@ -251,7 +264,10 @@ def _determine_act_for_chapter(state: NarrativeState, chapter_number: int) -> in
         Act number (1-indexed)
     """
     total_chapters = state.get("total_chapters", 20)
-    global_outline = state.get("global_outline", {})
+
+    # Initialize content manager and get global outline
+    content_manager = ContentManager(state["project_dir"])
+    global_outline = get_global_outline(state, content_manager) or {}
     act_count = global_outline.get("act_count", 3)
 
     chapters_per_act = total_chapters / act_count

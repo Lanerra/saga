@@ -258,8 +258,7 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
 
     return {
         **state,
-        "character_sheets": character_sheets,  # Keep for backward compatibility
-        "character_sheets_ref": character_sheets_ref,  # NEW: File reference
+        "character_sheets_ref": character_sheets_ref,
         "current_node": "character_sheets",
         "last_error": None,
         "initialization_step": "character_sheets_complete",

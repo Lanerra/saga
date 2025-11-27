@@ -89,8 +89,8 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
         logger.info(
             "mark_initialization_complete: initialization phase finished",
             title=state["title"],
-            characters=len(state.get("character_sheets", {})),
-            acts=len(state.get("act_outlines", {})),
+            has_character_sheets_ref=bool(state.get("character_sheets_ref")),
+            has_act_outlines_ref=bool(state.get("act_outlines_ref")),
         )
         return {
             **state,

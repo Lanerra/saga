@@ -26,6 +26,12 @@ from pathlib import Path
 import structlog
 import yaml
 
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_act_outlines,
+    get_character_sheets,
+    get_global_outline,
+)
 from core.langgraph.state import NarrativeState
 from utils.file_io import write_yaml_file
 
@@ -119,18 +125,23 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
 
     project_dir = Path(state["project_dir"])
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get character sheets, global outline, and act outlines (from external files)
+    character_sheets = get_character_sheets(state, content_manager)
+    global_outline = get_global_outline(state, content_manager)
+    act_outlines = get_act_outlines(state, content_manager)
+
     try:
         # Create directory structure
         _create_directory_structure(project_dir)
 
         # Write character files
-        character_sheets = state.get("character_sheets", {})
         if character_sheets:
             _write_character_files(project_dir, character_sheets)
 
         # Write outline files
-        global_outline = state.get("global_outline")
-        act_outlines = state.get("act_outlines", {})
         if global_outline or act_outlines:
             _write_outline_files(project_dir, global_outline, act_outlines, state)
 

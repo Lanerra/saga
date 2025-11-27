@@ -309,16 +309,13 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
         return {
             **state,
-            "draft_text": deduplicated_text,  # Keep for backward compatibility
-            "draft_ref": draft_ref,  # NEW: File reference
+            "draft_ref": draft_ref,
             "draft_word_count": final_word_count,
             "is_from_flawed_draft": is_from_flawed_draft,
             "current_node": "generate",
             "last_error": None,
-            "hybrid_context": hybrid_context_for_draft,  # Keep for backward compatibility
-            "hybrid_context_ref": hybrid_context_ref,  # NEW: File reference
-            "kg_facts_block": kg_facts_block,  # Keep for backward compatibility
-            "kg_facts_ref": kg_facts_ref,  # NEW: File reference
+            "hybrid_context_ref": hybrid_context_ref,
+            "kg_facts_ref": kg_facts_ref,
         }
 
     except Exception as e:

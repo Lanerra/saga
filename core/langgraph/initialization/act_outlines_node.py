@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import structlog
 
-from core.langgraph.content_manager import ContentManager
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_character_sheets,
+    get_global_outline,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -43,8 +47,13 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         title=state["title"],
     )
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get global outline (prefers externalized content, falls back to in-state)
+    global_outline = get_global_outline(state, content_manager)
+
     # Validate inputs
-    global_outline = state.get("global_outline")
     if not global_outline:
         error_msg = "No global outline available for act outline generation"
         logger.error("generate_act_outlines: missing global outline")
@@ -100,9 +109,6 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         act_count=len(act_outlines),
     )
 
-    # Initialize content manager for external storage
-    content_manager = ContentManager(state["project_dir"])
-
     # Externalize act_outlines to reduce state bloat
     act_outlines_ref = content_manager.save_json(
         act_outlines,
@@ -118,8 +124,7 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
 
     return {
         **state,
-        "act_outlines": act_outlines,  # Keep for backward compatibility
-        "act_outlines_ref": act_outlines_ref,  # NEW: File reference
+        "act_outlines_ref": act_outlines_ref,
         "current_node": "act_outlines",
         "last_error": None,
         "initialization_step": "act_outlines_complete",
@@ -144,8 +149,12 @@ async def _generate_single_act_outline(
     Returns:
         Dictionary containing act outline details or None on failure
     """
-    global_outline = state.get("global_outline", {})
-    character_sheets = state.get("character_sheets", {})
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get global outline and character sheets
+    global_outline = get_global_outline(state, content_manager) or {}
+    character_sheets = get_character_sheets(state, content_manager)
 
     # Determine act role in story structure
     act_role = _get_act_role(act_number, total_acts)

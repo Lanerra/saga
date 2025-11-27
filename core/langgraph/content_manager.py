@@ -458,11 +458,13 @@ def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float
     return manager.load_binary(ref)
 
 
-# Helper functions for safe content loading with fallback to in-state content
+# Helper functions for content loading from external files (Phase 3: No fallback)
 
 def get_draft_text(state: dict, manager: ContentManager) -> str | None:
     """
-    Get draft text, preferring externalized content with fallback to in-state.
+    Get draft text from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -470,29 +472,25 @@ def get_draft_text(state: dict, manager: ContentManager) -> str | None:
 
     Returns:
         Draft text or None if not available
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
     import structlog
     logger = structlog.get_logger(__name__)
 
-    # Try externalized content first
     draft_ref = state.get("draft_ref")
-    if draft_ref:
-        try:
-            return manager.load_text(draft_ref)
-        except Exception as e:
-            logger.warning(
-                "get_draft_text: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=draft_ref,
-            )
+    if not draft_ref:
+        return None
 
-    # Fall back to in-state content
-    return state.get("draft_text")
+    return manager.load_text(draft_ref)
 
 
 def get_scene_drafts(state: dict, manager: ContentManager) -> list[str]:
     """
-    Get scene drafts, preferring externalized content with fallback to in-state.
+    Get scene drafts from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -500,29 +498,22 @@ def get_scene_drafts(state: dict, manager: ContentManager) -> list[str]:
 
     Returns:
         List of scene draft texts (empty list if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
-    import structlog
-    logger = structlog.get_logger(__name__)
-
-    # Try externalized content first
     scene_drafts_ref = state.get("scene_drafts_ref")
-    if scene_drafts_ref:
-        try:
-            return manager.load_list_of_texts(scene_drafts_ref)
-        except Exception as e:
-            logger.warning(
-                "get_scene_drafts: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=scene_drafts_ref,
-            )
+    if not scene_drafts_ref:
+        return []
 
-    # Fall back to in-state content
-    return state.get("scene_drafts", [])
+    return manager.load_list_of_texts(scene_drafts_ref)
 
 
 def get_previous_summaries(state: dict, manager: ContentManager) -> list[str]:
     """
-    Get previous chapter summaries, preferring externalized content with fallback.
+    Get previous chapter summaries from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -530,29 +521,22 @@ def get_previous_summaries(state: dict, manager: ContentManager) -> list[str]:
 
     Returns:
         List of summary texts (empty list if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
-    import structlog
-    logger = structlog.get_logger(__name__)
-
-    # Try externalized content first
     summaries_ref = state.get("summaries_ref")
-    if summaries_ref:
-        try:
-            return manager.load_list_of_texts(summaries_ref)
-        except Exception as e:
-            logger.warning(
-                "get_previous_summaries: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=summaries_ref,
-            )
+    if not summaries_ref:
+        return []
 
-    # Fall back to in-state content
-    return state.get("previous_chapter_summaries", [])
+    return manager.load_list_of_texts(summaries_ref)
 
 
 def get_hybrid_context(state: dict, manager: ContentManager) -> str | None:
     """
-    Get hybrid context, preferring externalized content with fallback to in-state.
+    Get hybrid context from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -560,29 +544,22 @@ def get_hybrid_context(state: dict, manager: ContentManager) -> str | None:
 
     Returns:
         Hybrid context text or None if not available
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
-    import structlog
-    logger = structlog.get_logger(__name__)
-
-    # Try externalized content first
     hybrid_context_ref = state.get("hybrid_context_ref")
-    if hybrid_context_ref:
-        try:
-            return manager.load_text(hybrid_context_ref)
-        except Exception as e:
-            logger.warning(
-                "get_hybrid_context: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=hybrid_context_ref,
-            )
+    if not hybrid_context_ref:
+        return None
 
-    # Fall back to in-state content
-    return state.get("hybrid_context")
+    return manager.load_text(hybrid_context_ref)
 
 
 def get_character_sheets(state: dict, manager: ContentManager) -> dict[str, dict]:
     """
-    Get character sheets, preferring externalized content with fallback to in-state.
+    Get character sheets from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -590,29 +567,22 @@ def get_character_sheets(state: dict, manager: ContentManager) -> dict[str, dict
 
     Returns:
         Character sheets dict (empty dict if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
-    import structlog
-    logger = structlog.get_logger(__name__)
-
-    # Try externalized content first
     character_sheets_ref = state.get("character_sheets_ref")
-    if character_sheets_ref:
-        try:
-            return manager.load_json(character_sheets_ref)
-        except Exception as e:
-            logger.warning(
-                "get_character_sheets: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=character_sheets_ref,
-            )
+    if not character_sheets_ref:
+        return {}
 
-    # Fall back to in-state content
-    return state.get("character_sheets", {})
+    return manager.load_json(character_sheets_ref)
 
 
 def get_chapter_outlines(state: dict, manager: ContentManager) -> dict[int, dict]:
     """
-    Get chapter outlines, preferring externalized content with fallback to in-state.
+    Get chapter outlines from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -620,31 +590,24 @@ def get_chapter_outlines(state: dict, manager: ContentManager) -> dict[int, dict
 
     Returns:
         Chapter outlines dict (empty dict if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
-    import structlog
-    logger = structlog.get_logger(__name__)
-
-    # Try externalized content first
     chapter_outlines_ref = state.get("chapter_outlines_ref")
-    if chapter_outlines_ref:
-        try:
-            data = manager.load_json(chapter_outlines_ref)
-            # Convert string keys to int keys if needed
-            return {int(k): v for k, v in data.items()}
-        except Exception as e:
-            logger.warning(
-                "get_chapter_outlines: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=chapter_outlines_ref,
-            )
+    if not chapter_outlines_ref:
+        return {}
 
-    # Fall back to in-state content
-    return state.get("chapter_outlines", {})
+    data = manager.load_json(chapter_outlines_ref)
+    # Convert string keys to int keys if needed
+    return {int(k): v for k, v in data.items()}
 
 
 def get_global_outline(state: dict, manager: ContentManager) -> dict | None:
     """
-    Get global outline, preferring externalized content with fallback to in-state.
+    Get global outline from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -652,29 +615,22 @@ def get_global_outline(state: dict, manager: ContentManager) -> dict | None:
 
     Returns:
         Global outline dict or None if not available
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
-    import structlog
-    logger = structlog.get_logger(__name__)
-
-    # Try externalized content first
     global_outline_ref = state.get("global_outline_ref")
-    if global_outline_ref:
-        try:
-            return manager.load_json(global_outline_ref)
-        except Exception as e:
-            logger.warning(
-                "get_global_outline: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=global_outline_ref,
-            )
+    if not global_outline_ref:
+        return None
 
-    # Fall back to in-state content
-    return state.get("global_outline")
+    return manager.load_json(global_outline_ref)
 
 
 def get_act_outlines(state: dict, manager: ContentManager) -> dict[int, dict]:
     """
-    Get act outlines, preferring externalized content with fallback to in-state.
+    Get act outlines from externalized content.
+
+    Phase 3: No fallback to in-state content. External files are required.
 
     Args:
         state: NarrativeState dict
@@ -682,26 +638,17 @@ def get_act_outlines(state: dict, manager: ContentManager) -> dict[int, dict]:
 
     Returns:
         Act outlines dict (empty dict if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
     """
-    import structlog
-    logger = structlog.get_logger(__name__)
-
-    # Try externalized content first
     act_outlines_ref = state.get("act_outlines_ref")
-    if act_outlines_ref:
-        try:
-            data = manager.load_json(act_outlines_ref)
-            # Convert string keys to int keys if needed
-            return {int(k): v for k, v in data.items()}
-        except Exception as e:
-            logger.warning(
-                "get_act_outlines: failed to load from external file, falling back to state",
-                error=str(e),
-                ref=act_outlines_ref,
-            )
+    if not act_outlines_ref:
+        return {}
 
-    # Fall back to in-state content
-    return state.get("act_outlines", {})
+    data = manager.load_json(act_outlines_ref)
+    # Convert string keys to int keys if needed
+    return {int(k): v for k, v in data.items()}
 
 
 __all__ = [

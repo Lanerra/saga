@@ -92,8 +92,7 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
 
         return {
             **state,
-            "generated_embedding": embedding_list,  # Keep for backward compatibility
-            "embedding_ref": embedding_ref,  # NEW: File reference
+            "embedding_ref": embedding_ref,
             "current_node": "generate_embedding",
         }
 

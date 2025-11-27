@@ -177,8 +177,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
 
         return {
             **state,
-            "previous_chapter_summaries": previous_summaries,  # Keep for backward compatibility
-            "summaries_ref": summaries_ref,  # NEW: File reference
+            "summaries_ref": summaries_ref,
             "current_node": "summarize",
         }
 

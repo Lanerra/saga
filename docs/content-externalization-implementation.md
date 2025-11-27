@@ -145,12 +145,45 @@ This implementation follows a **three-phase migration approach**:
    - Log warnings when fallback occurs for debugging
    - Graceful degradation ensures no workflow interruption
 
-### Phase 3: Remove In-State Storage (Future Work)
+### Phase 3: Remove In-State Storage (COMPLETE)
 
 - Remove deprecated in-state content fields
 - All code uses external file references
 - State becomes truly minimal
-- **Status**: ⏳ Not started
+- **Status**: ✅ Complete
+
+**Changes Made**:
+
+1. **Removed Deprecated Fields from State** (`core/langgraph/state.py`):
+   - Removed: `draft_text`, `scene_drafts`, `generated_embedding`
+   - Removed: `previous_chapter_summaries`, `hybrid_context`, `kg_facts_block`
+   - Removed: `quality_feedback`, `character_sheets`, `global_outline`
+   - Removed: `act_outlines`, `chapter_outlines`
+   - Only `*_ref` fields remain
+
+2. **Updated Writer Nodes** (no longer populate deprecated fields):
+   - `generation_node.py` - only writes refs
+   - `assemble_chapter_node.py` - only writes refs
+   - `summary_node.py` - only writes refs
+   - `embedding_node.py` - only writes refs
+   - All initialization nodes - only write refs
+
+3. **Updated Consumer Nodes** (use helper functions):
+   - `extraction_node.py`, `extraction_nodes.py` - use `get_draft_text()`
+   - `revision_node.py`, `finalize_node.py` - use `get_draft_text()`
+   - `generation_node.py` - use `get_chapter_outlines()`, `get_previous_summaries()`
+   - All initialization nodes - use helper functions for reading dependencies
+   - `commit_init_node.py`, `persist_files_node.py` - use helper functions
+
+4. **Updated Helper Functions** (`core/langgraph/content_manager.py`):
+   - Removed fallback logic from all `get_*()` functions
+   - Now REQUIRE external files (no fallback to in-state)
+   - Return None/empty on missing ref, raise FileNotFoundError on missing file
+   - Updated docstrings to reflect Phase 3 behavior
+
+5. **Fixed Edge Cases**:
+   - Updated workflow logging to check for `*_ref` fields instead of deprecated fields
+   - Fixed `_determine_act_for_chapter()` to use helper function
 
 ## File Organization
 
@@ -217,6 +250,36 @@ python3 -m py_compile core/langgraph/nodes/revision_node.py  # ✅ Pass
 python3 -m py_compile core/langgraph/nodes/summary_node.py  # ✅ Pass
 python3 -m py_compile core/langgraph/nodes/finalize_node.py  # ✅ Pass
 python3 -m py_compile core/langgraph/nodes/generation_node.py  # ✅ Pass
+```
+
+### Phase 3 Testing
+```bash
+# State schema
+python3 -m py_compile core/langgraph/state.py  # ✅ Pass
+
+# Content manager
+python3 -m py_compile core/langgraph/content_manager.py  # ✅ Pass
+
+# Writer nodes
+python3 -m py_compile core/langgraph/nodes/generation_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/assemble_chapter_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/summary_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/embedding_node.py  # ✅ Pass
+
+# Initialization nodes
+python3 -m py_compile core/langgraph/initialization/character_sheets_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/initialization/global_outline_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/initialization/act_outlines_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/initialization/chapter_outline_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/initialization/commit_init_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/initialization/persist_files_node.py  # ✅ Pass
+
+# Extraction nodes
+python3 -m py_compile core/langgraph/nodes/extraction_nodes.py  # ✅ Pass
+
+# Workflow files
+python3 -m py_compile core/langgraph/workflow.py  # ✅ Pass
+python3 -m py_compile core/langgraph/initialization/workflow.py  # ✅ Pass
 ```
 
 ## Performance Impact

@@ -13,6 +13,11 @@ import structlog
 
 import config
 from core.knowledge_graph_service import knowledge_graph_service
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_character_sheets,
+    get_global_outline,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from models.kg_models import CharacterProfile, WorldItem
@@ -42,14 +47,18 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
     Returns:
         Updated state with initialization data committed to graph
     """
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get character sheets and global outline (from external files)
+    character_sheets = get_character_sheets(state, content_manager)
+    global_outline = get_global_outline(state, content_manager)
+
     logger.info(
         "commit_initialization_to_graph: starting initialization data commit",
-        characters=len(state.get("character_sheets", {})),
-        has_global_outline=bool(state.get("global_outline")),
+        characters=len(character_sheets),
+        has_global_outline=bool(global_outline),
     )
-
-    character_sheets = state.get("character_sheets", {})
-    global_outline = state.get("global_outline")
 
     if not character_sheets:
         logger.warning("commit_initialization_to_graph: no character sheets to commit")

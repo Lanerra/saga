@@ -13,6 +13,7 @@ from typing import Any
 import structlog
 
 import config
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.nodes.extraction_node import (
     _map_category_to_type,
     _parse_extraction_json,
@@ -36,7 +37,11 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     """
     logger.info("extract_characters: starting")
 
-    if not state.get("draft_text"):
+    # Initialize content manager and get draft text
+    content_manager = ContentManager(state["project_dir"])
+    draft_text = get_draft_text(state, content_manager)
+
+    if not draft_text:
         return {"character_updates": []}
 
     prompt = render_prompt(
@@ -49,7 +54,7 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
-            "chapter_text": state["draft_text"],
+            "chapter_text": draft_text,
         },
     )
 
@@ -102,7 +107,11 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     """
     logger.info("extract_locations: starting")
 
-    if not state.get("draft_text"):
+    # Initialize content manager and get draft text
+    content_manager = ContentManager(state["project_dir"])
+    draft_text = get_draft_text(state, content_manager)
+
+    if not draft_text:
         return {"location_updates": []}
 
     prompt = render_prompt(
@@ -115,7 +124,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
-            "chapter_text": state["draft_text"],
+            "chapter_text": draft_text,
         },
     )
 
@@ -189,7 +198,11 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     """
     logger.info("extract_events: starting")
 
-    if not state.get("draft_text"):
+    # Initialize content manager and get draft text
+    content_manager = ContentManager(state["project_dir"])
+    draft_text = get_draft_text(state, content_manager)
+
+    if not draft_text:
         return {"event_updates": []}
 
     prompt = render_prompt(
@@ -202,7 +215,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
-            "chapter_text": state["draft_text"],
+            "chapter_text": draft_text,
         },
     )
 
@@ -271,7 +284,11 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     """
     logger.info("extract_relationships: starting")
 
-    if not state.get("draft_text"):
+    # Initialize content manager and get draft text
+    content_manager = ContentManager(state["project_dir"])
+    draft_text = get_draft_text(state, content_manager)
+
+    if not draft_text:
         return {"relationship_updates": []}
 
     prompt = render_prompt(
@@ -284,7 +301,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             "chapter_number": state["current_chapter"],
             "novel_title": state["title"],
             "novel_genre": state["genre"],
-            "chapter_text": state["draft_text"],
+            "chapter_text": draft_text,
         },
     )
 
