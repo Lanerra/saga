@@ -14,6 +14,7 @@ import re
 import structlog
 from pydantic import BaseModel, Field, field_validator
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -172,9 +173,26 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             acts=global_outline.get("act_count", 0),
         )
 
+        # Initialize content manager for external storage
+        content_manager = ContentManager(state["project_dir"])
+
+        # Externalize global_outline to reduce state bloat
+        global_outline_ref = content_manager.save_json(
+            global_outline,
+            "global_outline",
+            "main",
+            version=1,
+        )
+
+        logger.info(
+            "generate_global_outline: content externalized",
+            size=global_outline_ref["size_bytes"],
+        )
+
         return {
             **state,
-            "global_outline": global_outline,
+            "global_outline": global_outline,  # Keep for backward compatibility
+            "global_outline_ref": global_outline_ref,  # NEW: File reference
             "current_node": "global_outline",
             "last_error": None,
             "initialization_step": "global_outline_complete",

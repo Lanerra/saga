@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import structlog
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -99,9 +100,26 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         act_count=len(act_outlines),
     )
 
+    # Initialize content manager for external storage
+    content_manager = ContentManager(state["project_dir"])
+
+    # Externalize act_outlines to reduce state bloat
+    act_outlines_ref = content_manager.save_json(
+        act_outlines,
+        "act_outlines",
+        "all",
+        version=1,
+    )
+
+    logger.info(
+        "generate_act_outlines: content externalized",
+        size=act_outlines_ref["size_bytes"],
+    )
+
     return {
         **state,
-        "act_outlines": act_outlines,
+        "act_outlines": act_outlines,  # Keep for backward compatibility
+        "act_outlines_ref": act_outlines_ref,  # NEW: File reference
         "current_node": "act_outlines",
         "last_error": None,
         "initialization_step": "act_outlines_complete",

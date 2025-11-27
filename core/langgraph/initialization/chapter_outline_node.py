@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import structlog
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -105,9 +106,31 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
         act=act_number,
     )
 
+    # Initialize content manager for external storage
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get current version (for revision tracking)
+    current_version = content_manager.get_latest_version("chapter_outlines", "all") + 1
+
+    # Externalize chapter_outlines to reduce state bloat
+    chapter_outlines_ref = content_manager.save_json(
+        updated_outlines,
+        "chapter_outlines",
+        "all",
+        current_version,
+    )
+
+    logger.info(
+        "generate_chapter_outline: content externalized",
+        chapter=chapter_number,
+        version=current_version,
+        size=chapter_outlines_ref["size_bytes"],
+    )
+
     return {
         **state,
-        "chapter_outlines": updated_outlines,
+        "chapter_outlines": updated_outlines,  # Keep for backward compatibility
+        "chapter_outlines_ref": chapter_outlines_ref,  # NEW: File reference
         # Note: plot_outline is deprecated and no longer updated
         # generation_node now reads from chapter_outlines directly
         "current_node": "chapter_outline",

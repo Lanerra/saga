@@ -28,6 +28,13 @@ from models.agent_models import (
 # Import existing SAGA models for compatibility
 from models.kg_models import CharacterProfile, WorldItem
 
+# Import ContentRef for externalized content
+try:
+    from core.langgraph.content_manager import ContentRef
+except ImportError:
+    # Fallback for when content_manager is not available
+    ContentRef = dict  # type: ignore
+
 
 class ExtractedEntity(BaseModel):
     """
@@ -142,15 +149,25 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     active_characters: list[CharacterProfile]  # Reuses existing model
     current_location: dict[str, Any] | None
+    # DEPRECATED: Use summaries_ref instead to reduce state bloat
     previous_chapter_summaries: list[str]
     key_events: list[dict[str, Any]]
+
+    # NEW: Externalized context references
+    summaries_ref: ContentRef | None  # Reference to externalized summaries
 
     # =========================================================================
     # Generated Content (current chapter)
     # =========================================================================
+    # DEPRECATED: Use draft_ref instead to reduce state bloat
     draft_text: str | None
     draft_word_count: int
+    # DEPRECATED: Use embedding_ref instead to reduce state bloat
     generated_embedding: list[float] | None
+
+    # NEW: Externalized content references (preferred over in-state content)
+    draft_ref: ContentRef | None  # Reference to externalized draft text
+    embedding_ref: ContentRef | None  # Reference to externalized embedding
 
     # =========================================================================
     # Entity Extraction Results (NEW: centralized extraction state)
@@ -182,7 +199,11 @@ class NarrativeState(TypedDict, total=False):
     plot_advancement_score: float | None  # 0.0-1.0 score for plot advancement
     pacing_score: float | None  # 0.0-1.0 score for narrative pacing
     tone_consistency_score: float | None  # 0.0-1.0 score for tone consistency
+    # DEPRECATED: Use quality_feedback_ref instead to reduce state bloat
     quality_feedback: str | None  # Detailed feedback from quality evaluation
+
+    # NEW: Externalized quality feedback reference
+    quality_feedback_ref: ContentRef | None  # Reference to externalized feedback
 
     # =========================================================================
     # Model Configuration
@@ -223,8 +244,14 @@ class NarrativeState(TypedDict, total=False):
     # Context Management (maintains compatibility with existing context system)
     # =========================================================================
     context_epoch: int  # Compatible with NarrativeState.context_epoch
+    # DEPRECATED: Use hybrid_context_ref instead to reduce state bloat
     hybrid_context: str | None  # Compatible with ContextSnapshot
+    # DEPRECATED: Use kg_facts_ref instead to reduce state bloat
     kg_facts_block: str | None  # Compatible with ContextSnapshot
+
+    # NEW: Externalized context references
+    hybrid_context_ref: ContentRef | None  # Reference to externalized hybrid context
+    kg_facts_ref: ContentRef | None  # Reference to externalized KG facts
 
     # =========================================================================
     # Chapter Planning (properly typed with SceneDetail TypedDict)
@@ -232,7 +259,11 @@ class NarrativeState(TypedDict, total=False):
     chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
     plot_point_focus: str | None
     current_scene_index: int  # Index of the scene currently being processed
+    # DEPRECATED: Use scene_drafts_ref instead to reduce state bloat
     scene_drafts: list[str]  # List of generated text for each scene
+
+    # NEW: Externalized scene drafts reference
+    scene_drafts_ref: ContentRef | None  # Reference to externalized scene drafts
 
     # =========================================================================
     # Revision State (properly typed with TypedDict structures)
@@ -257,19 +288,29 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Initialization Phase State (for initialization workflow)
     # =========================================================================
+    # DEPRECATED: Use character_sheets_ref instead to reduce state bloat
     # Character sheets generated during initialization
     character_sheets: dict[str, dict[str, Any]]  # character_name -> character_sheet
 
+    # DEPRECATED: Use global_outline_ref instead to reduce state bloat
     # Global outline generated during initialization
     global_outline: dict[str, Any] | None
 
+    # DEPRECATED: Use act_outlines_ref instead to reduce state bloat
     # Act outlines generated during initialization
     act_outlines: dict[int, dict[str, Any]]  # act_number -> act_outline
 
+    # DEPRECATED: Use chapter_outlines_ref instead to reduce state bloat
     # Chapter outlines (generated on-demand or pre-generated) - CANONICAL SOURCE
     # This is the primary source of truth for chapter outlines.
     # Schema per chapter: {chapter, act, scene_description, key_beats, plot_point, ...}
     chapter_outlines: dict[int, dict[str, Any]]  # chapter_number -> chapter_outline
+
+    # NEW: Externalized initialization content references
+    character_sheets_ref: ContentRef | None  # Reference to externalized character sheets
+    global_outline_ref: ContentRef | None  # Reference to externalized global outline
+    act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
+    chapter_outlines_ref: ContentRef | None  # Reference to externalized chapter outlines
 
     # Initialization state tracking
     initialization_complete: bool
@@ -365,6 +406,18 @@ def create_initial_state(
         "draft_text": None,
         "draft_word_count": 0,
         "generated_embedding": None,
+        # Externalized content references
+        "draft_ref": None,
+        "embedding_ref": None,
+        "summaries_ref": None,
+        "scene_drafts_ref": None,
+        "hybrid_context_ref": None,
+        "kg_facts_ref": None,
+        "quality_feedback_ref": None,
+        "character_sheets_ref": None,
+        "global_outline_ref": None,
+        "act_outlines_ref": None,
+        "chapter_outlines_ref": None,
         # Entity extraction
         "extracted_entities": {},
         "extracted_relationships": [],

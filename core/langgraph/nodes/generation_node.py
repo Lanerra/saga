@@ -20,6 +20,7 @@ from __future__ import annotations
 import structlog
 
 import config
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.graph_context import get_key_events
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -262,15 +263,55 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
                 is_from_flawed_draft=False,
             )
 
+        # Initialize content manager for external storage
+        content_manager = ContentManager(state["project_dir"])
+
+        # Get current version (for revision tracking)
+        current_version = content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
+
+        # Externalize draft_text to reduce state bloat
+        draft_ref = content_manager.save_text(
+            deduplicated_text,
+            "draft",
+            f"chapter_{chapter_number}",
+            current_version,
+        )
+
+        # Externalize hybrid_context
+        hybrid_context_ref = content_manager.save_text(
+            hybrid_context_for_draft,
+            "hybrid_context",
+            f"chapter_{chapter_number}",
+            current_version,
+        ) if hybrid_context_for_draft else None
+
+        # Externalize kg_facts_block
+        kg_facts_ref = content_manager.save_text(
+            kg_facts_block,
+            "kg_facts",
+            f"chapter_{chapter_number}",
+            current_version,
+        ) if kg_facts_block else None
+
+        logger.info(
+            "generate_chapter: content externalized",
+            chapter=chapter_number,
+            version=current_version,
+            draft_size=draft_ref["size_bytes"],
+        )
+
         return {
             **state,
-            "draft_text": deduplicated_text,
+            "draft_text": deduplicated_text,  # Keep for backward compatibility
+            "draft_ref": draft_ref,  # NEW: File reference
             "draft_word_count": final_word_count,
             "is_from_flawed_draft": is_from_flawed_draft,
             "current_node": "generate",
             "last_error": None,
-            "hybrid_context": hybrid_context_for_draft,  # Store for potential reuse
-            "kg_facts_block": kg_facts_block,  # Store for potential reuse
+            "hybrid_context": hybrid_context_for_draft,  # Keep for backward compatibility
+            "hybrid_context_ref": hybrid_context_ref,  # NEW: File reference
+            "kg_facts_block": kg_facts_block,  # Keep for backward compatibility
+            "kg_facts_ref": kg_facts_ref,  # NEW: File reference
         }
 
     except Exception as e:
