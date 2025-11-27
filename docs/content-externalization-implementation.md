@@ -113,12 +113,37 @@ This implementation follows a **three-phase migration approach**:
 - New `*_ref` fields available for forward-looking code
 - **Status**: ✅ Complete
 
-### Phase 2: Update Consumers (Future Work)
+### Phase 2: Update Consumers (Current Implementation)
 
 - Update nodes that READ content to prefer external files
 - Fall back to in-state fields if external files unavailable
 - Gradual migration of consumer code
-- **Status**: ⏳ Not started
+- **Status**: ✅ Complete
+
+**Changes Made**:
+
+1. **Added Helper Functions** (`core/langgraph/content_manager.py`):
+   - `get_draft_text()` - Safely loads draft text with fallback
+   - `get_scene_drafts()` - Safely loads scene drafts with fallback
+   - `get_previous_summaries()` - Safely loads summaries with fallback
+   - `get_hybrid_context()` - Safely loads hybrid context with fallback
+   - `get_character_sheets()` - Safely loads character sheets with fallback
+   - `get_chapter_outlines()` - Safely loads chapter outlines with fallback
+   - `get_global_outline()` - Safely loads global outline with fallback
+   - `get_act_outlines()` - Safely loads act outlines with fallback
+
+2. **Updated Consumer Nodes**:
+   - `extraction_node.py` - Now reads `draft_text` from external files first
+   - `revision_node.py` - Now reads `draft_text` from external files first
+   - `summary_node.py` - Now reads `draft_text` from external files first
+   - `finalize_node.py` - Now reads `draft_text` from external files first
+   - `generation_node.py` - Now reads `chapter_outlines` and `previous_summaries` from external files first
+
+3. **Fallback Behavior**:
+   - All helper functions try external file first
+   - On failure (file not found, error loading), fall back to in-state content
+   - Log warnings when fallback occurs for debugging
+   - Graceful degradation ensures no workflow interruption
 
 ### Phase 3: Remove In-State Storage (Future Work)
 
@@ -173,11 +198,25 @@ All changes are **fully backward compatible**:
 
 All modified files have been compile-checked and pass Python syntax validation:
 
+### Phase 1 Testing
 ```bash
 python3 -m py_compile core/langgraph/content_manager.py  # ✅ Pass
 python3 -m py_compile core/langgraph/state.py  # ✅ Pass
 python3 -m py_compile core/langgraph/nodes/*.py  # ✅ Pass
 python3 -m py_compile core/langgraph/initialization/*.py  # ✅ Pass
+```
+
+### Phase 2 Testing
+```bash
+# ContentManager helper functions
+python3 -m py_compile core/langgraph/content_manager.py  # ✅ Pass
+
+# Consumer nodes
+python3 -m py_compile core/langgraph/nodes/extraction_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/revision_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/summary_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/finalize_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/generation_node.py  # ✅ Pass
 ```
 
 ## Performance Impact

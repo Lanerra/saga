@@ -15,6 +15,7 @@ Key Features:
 import structlog
 
 import config
+from core.langgraph.content_manager import ContentManager, get_previous_summaries
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from core.text_processing_service import count_tokens, truncate_text_by_tokens
@@ -56,6 +57,9 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
         Updated state with hybrid_context populated
     """
     logger.info("retrieve_context: fetching scene-specific context")
+
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
 
     chapter_number = state["current_chapter"]
     scene_index = state["current_scene_index"]
@@ -99,9 +103,11 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     # =========================================================================
     # 3. Previous Chapter Summaries
     # =========================================================================
-    if state.get("previous_chapter_summaries"):
+    # Get summaries (prefers externalized content, falls back to in-state)
+    previous_summaries = get_previous_summaries(state, content_manager)
+    if previous_summaries:
         summaries_text = "\n\n**Recent Chapter Summaries:**\n"
-        for summary in state["previous_chapter_summaries"][-3:]:
+        for summary in previous_summaries[-3:]:
             summaries_text += f"\n{summary}"
         hybrid_context_parts.append(summaries_text)
 

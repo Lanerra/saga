@@ -20,7 +20,11 @@ from __future__ import annotations
 import structlog
 
 import config
-from core.langgraph.content_manager import ContentManager
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_chapter_outlines,
+    get_previous_summaries,
+)
 from core.langgraph.graph_context import get_key_events
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -59,21 +63,23 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         model=state["generation_model"],
     )
 
-    # Validate we have the necessary inputs
-    # Prefer chapter_outlines (canonical) over plot_outline (deprecated)
-    chapter_outlines = state.get("chapter_outlines")
-    plot_outline = state.get("plot_outline")
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
 
-    # Check for deprecated plot_outline usage
-    if plot_outline and not chapter_outlines:
-        logger.warning(
-            "generate_chapter: using deprecated plot_outline field. "
-            "Please migrate to chapter_outlines. "
-            "plot_outline will be removed in SAGA v3.0",
-            deprecation=True,
-        )
-        # Use plot_outline as fallback
-        chapter_outlines = plot_outline
+    # Get chapter outlines (prefers externalized content, falls back to in-state)
+    chapter_outlines = get_chapter_outlines(state, content_manager)
+
+    # Check for deprecated plot_outline usage as ultimate fallback
+    if not chapter_outlines:
+        plot_outline = state.get("plot_outline")
+        if plot_outline:
+            logger.warning(
+                "generate_chapter: using deprecated plot_outline field. "
+                "Please migrate to chapter_outlines. "
+                "plot_outline will be removed in SAGA v3.0",
+                deprecation=True,
+            )
+            chapter_outlines = plot_outline
 
     if not chapter_outlines:
         error_msg = "No chapter outlines available for generation"
@@ -140,10 +146,11 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     if kg_facts_block:
         hybrid_context_parts.append(kg_facts_block)
 
-    # Add previous chapter summaries
-    if state.get("previous_chapter_summaries"):
+    # Add previous chapter summaries (uses externalized content with fallback)
+    previous_summaries = get_previous_summaries(state, content_manager)
+    if previous_summaries:
         summaries_text = "\n\n**Recent Chapter Summaries:**\n"
-        for summary in state["previous_chapter_summaries"][-3:]:
+        for summary in previous_summaries[-3:]:
             summaries_text += f"\n{summary}"
         hybrid_context_parts.append(summaries_text)
 
