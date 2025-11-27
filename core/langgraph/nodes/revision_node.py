@@ -20,6 +20,7 @@ from typing import Any
 import structlog
 
 import config
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
 from processing.text_deduplicator import TextDeduplicator
@@ -77,8 +78,14 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "revise_failed",
         }
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get draft text (prefers externalized content, falls back to in-state)
+    draft_text = get_draft_text(state, content_manager)
+
     # Validate we have text to revise
-    if not state.get("draft_text"):
+    if not draft_text:
         error_msg = "No draft text available for revision"
         logger.error("revise_chapter: fatal error", error=error_msg)
         return {
@@ -92,7 +99,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
     # Step 2: Build revision prompt
     try:
         prompt = await _construct_revision_prompt(
-            draft_text=state["draft_text"],
+            draft_text=draft_text,
             contradictions=state.get("contradictions", []),
             chapter_number=state["current_chapter"],
             plot_outline=state.get("plot_outline", {}),

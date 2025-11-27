@@ -25,6 +25,7 @@ from typing import Any
 import structlog
 
 import config
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.state import (
     ExtractedEntity,
     ExtractedRelationship,
@@ -67,8 +68,14 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
         word_count=state.get("draft_word_count", 0),
     )
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get draft text (prefers externalized content, falls back to in-state)
+    draft_text = get_draft_text(state, content_manager)
+
     # Validate we have text to extract from
-    if not state.get("draft_text"):
+    if not draft_text:
         error_msg = "No draft text available for entity extraction"
         logger.error("extract_entities: fatal error", error=error_msg)
         return {
@@ -84,7 +91,7 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
     # Call LLM to extract structured updates
     raw_text, usage = await _llm_extract_updates(
         plot_outline=state.get("plot_outline", {}),
-        chapter_text=state["draft_text"],
+        chapter_text=draft_text,
         chapter_number=state["current_chapter"],
         title=state["title"],
         genre=state["genre"],

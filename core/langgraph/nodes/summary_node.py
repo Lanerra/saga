@@ -21,6 +21,7 @@ from pathlib import Path
 import structlog
 
 from core.db_manager import neo4j_manager
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -57,8 +58,14 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         chapter=state["current_chapter"],
     )
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get draft text (prefers externalized content, falls back to in-state)
+    draft_text = get_draft_text(state, content_manager)
+
     # Validate we have text to summarize
-    if not state.get("draft_text"):
+    if not draft_text:
         logger.warning("summarize_chapter: no draft text to summarize")
         return {
             **state,
@@ -70,7 +77,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         "knowledge_agent/chapter_summary.j2",
         {
             "chapter_number": state["current_chapter"],
-            "chapter_text": state["draft_text"],
+            "chapter_text": draft_text,
         },
     )
 
@@ -148,15 +155,29 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         previous_summaries = list(state.get("previous_chapter_summaries", []))[-4:]
         previous_summaries.append(summary)
 
+        # Get current version (for revision tracking)
+        # Note: content_manager already initialized earlier in the function
+        current_version = content_manager.get_latest_version("summaries", "all") + 1
+
+        # Externalize previous_chapter_summaries to reduce state bloat
+        summaries_ref = content_manager.save_list_of_texts(
+            previous_summaries,
+            "summaries",
+            "all",
+            current_version,
+        )
+
         logger.info(
             "summarize_chapter: complete",
             chapter=state["current_chapter"],
             total_summaries_in_state=len(previous_summaries),
+            summaries_externalized=True,
+            size=summaries_ref["size_bytes"],
         )
 
         return {
             **state,
-            "previous_chapter_summaries": previous_summaries,
+            "summaries_ref": summaries_ref,
             "current_node": "summarize",
         }
 

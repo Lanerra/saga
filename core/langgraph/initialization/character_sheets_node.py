@@ -13,6 +13,7 @@ import re
 
 import structlog
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -239,9 +240,25 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
         characters=list(character_sheets.keys()),
     )
 
+    # Initialize content manager for external storage
+    content_manager = ContentManager(state["project_dir"])
+
+    # Externalize character_sheets to reduce state bloat
+    character_sheets_ref = content_manager.save_json(
+        character_sheets,
+        "character_sheets",
+        "all",
+        version=1,
+    )
+
+    logger.info(
+        "generate_character_sheets: content externalized",
+        size=character_sheets_ref["size_bytes"],
+    )
+
     return {
         **state,
-        "character_sheets": character_sheets,
+        "character_sheets_ref": character_sheets_ref,
         "current_node": "character_sheets",
         "last_error": None,
         "initialization_step": "character_sheets_complete",

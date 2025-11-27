@@ -20,6 +20,11 @@ from __future__ import annotations
 import structlog
 
 import config
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_chapter_outlines,
+    get_previous_summaries,
+)
 from core.langgraph.graph_context import get_key_events
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -58,21 +63,23 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         model=state["generation_model"],
     )
 
-    # Validate we have the necessary inputs
-    # Prefer chapter_outlines (canonical) over plot_outline (deprecated)
-    chapter_outlines = state.get("chapter_outlines")
-    plot_outline = state.get("plot_outline")
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
 
-    # Check for deprecated plot_outline usage
-    if plot_outline and not chapter_outlines:
-        logger.warning(
-            "generate_chapter: using deprecated plot_outline field. "
-            "Please migrate to chapter_outlines. "
-            "plot_outline will be removed in SAGA v3.0",
-            deprecation=True,
-        )
-        # Use plot_outline as fallback
-        chapter_outlines = plot_outline
+    # Get chapter outlines (prefers externalized content, falls back to in-state)
+    chapter_outlines = get_chapter_outlines(state, content_manager)
+
+    # Check for deprecated plot_outline usage as ultimate fallback
+    if not chapter_outlines:
+        plot_outline = state.get("plot_outline")
+        if plot_outline:
+            logger.warning(
+                "generate_chapter: using deprecated plot_outline field. "
+                "Please migrate to chapter_outlines. "
+                "plot_outline will be removed in SAGA v3.0",
+                deprecation=True,
+            )
+            chapter_outlines = plot_outline
 
     if not chapter_outlines:
         error_msg = "No chapter outlines available for generation"
@@ -139,10 +146,11 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     if kg_facts_block:
         hybrid_context_parts.append(kg_facts_block)
 
-    # Add previous chapter summaries
-    if state.get("previous_chapter_summaries"):
+    # Add previous chapter summaries (uses externalized content with fallback)
+    previous_summaries = get_previous_summaries(state, content_manager)
+    if previous_summaries:
         summaries_text = "\n\n**Recent Chapter Summaries:**\n"
-        for summary in state["previous_chapter_summaries"][-3:]:
+        for summary in previous_summaries[-3:]:
             summaries_text += f"\n{summary}"
         hybrid_context_parts.append(summaries_text)
 
@@ -262,15 +270,52 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
                 is_from_flawed_draft=False,
             )
 
+        # Initialize content manager for external storage
+        content_manager = ContentManager(state["project_dir"])
+
+        # Get current version (for revision tracking)
+        current_version = content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
+
+        # Externalize draft_text to reduce state bloat
+        draft_ref = content_manager.save_text(
+            deduplicated_text,
+            "draft",
+            f"chapter_{chapter_number}",
+            current_version,
+        )
+
+        # Externalize hybrid_context
+        hybrid_context_ref = content_manager.save_text(
+            hybrid_context_for_draft,
+            "hybrid_context",
+            f"chapter_{chapter_number}",
+            current_version,
+        ) if hybrid_context_for_draft else None
+
+        # Externalize kg_facts_block
+        kg_facts_ref = content_manager.save_text(
+            kg_facts_block,
+            "kg_facts",
+            f"chapter_{chapter_number}",
+            current_version,
+        ) if kg_facts_block else None
+
+        logger.info(
+            "generate_chapter: content externalized",
+            chapter=chapter_number,
+            version=current_version,
+            draft_size=draft_ref["size_bytes"],
+        )
+
         return {
             **state,
-            "draft_text": deduplicated_text,
+            "draft_ref": draft_ref,
             "draft_word_count": final_word_count,
             "is_from_flawed_draft": is_from_flawed_draft,
             "current_node": "generate",
             "last_error": None,
-            "hybrid_context": hybrid_context_for_draft,  # Store for potential reuse
-            "kg_facts_block": kg_facts_block,  # Store for potential reuse
+            "hybrid_context_ref": hybrid_context_ref,
+            "kg_facts_ref": kg_facts_ref,
         }
 
     except Exception as e:

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import structlog
 
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.chapter_queries import save_chapter_data_to_db
@@ -55,8 +56,14 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         chapter=state["current_chapter"],
     )
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get draft text (prefers externalized content, falls back to in-state)
+    draft_text = get_draft_text(state, content_manager)
+
     # Validate we have text to finalize
-    if not state.get("draft_text"):
+    if not draft_text:
         error_msg = "No draft text available for finalization"
         logger.error("finalize_chapter: fatal error", error=error_msg)
         return {
@@ -68,7 +75,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     chapter_number = state["current_chapter"]
-    draft_text = state["draft_text"]
 
     # Step 1: Save to filesystem
     try:

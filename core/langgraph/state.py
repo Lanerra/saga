@@ -28,6 +28,13 @@ from models.agent_models import (
 # Import existing SAGA models for compatibility
 from models.kg_models import CharacterProfile, WorldItem
 
+# Import ContentRef for externalized content
+try:
+    from core.langgraph.content_manager import ContentRef
+except ImportError:
+    # Fallback for when content_manager is not available
+    ContentRef = dict  # type: ignore
+
 
 class ExtractedEntity(BaseModel):
     """
@@ -142,15 +149,19 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     active_characters: list[CharacterProfile]  # Reuses existing model
     current_location: dict[str, Any] | None
-    previous_chapter_summaries: list[str]
     key_events: list[dict[str, Any]]
+
+    # Externalized context references
+    summaries_ref: ContentRef | None  # Reference to externalized summaries
 
     # =========================================================================
     # Generated Content (current chapter)
     # =========================================================================
-    draft_text: str | None
     draft_word_count: int
-    generated_embedding: list[float] | None
+
+    # Externalized content references
+    draft_ref: ContentRef | None  # Reference to externalized draft text
+    embedding_ref: ContentRef | None  # Reference to externalized embedding
 
     # =========================================================================
     # Entity Extraction Results (NEW: centralized extraction state)
@@ -175,14 +186,16 @@ class NarrativeState(TypedDict, total=False):
     )
 
     # =========================================================================
-    # Quality Metrics (NEW: LLM-evaluated quality scores)
+    # Quality Metrics (LLM-evaluated quality scores)
     # =========================================================================
     coherence_score: float | None  # 0.0-1.0 score for narrative coherence
     prose_quality_score: float | None  # 0.0-1.0 score for prose quality
     plot_advancement_score: float | None  # 0.0-1.0 score for plot advancement
     pacing_score: float | None  # 0.0-1.0 score for narrative pacing
     tone_consistency_score: float | None  # 0.0-1.0 score for tone consistency
-    quality_feedback: str | None  # Detailed feedback from quality evaluation
+
+    # Externalized quality feedback reference
+    quality_feedback_ref: ContentRef | None  # Reference to externalized feedback
 
     # =========================================================================
     # Model Configuration
@@ -223,8 +236,10 @@ class NarrativeState(TypedDict, total=False):
     # Context Management (maintains compatibility with existing context system)
     # =========================================================================
     context_epoch: int  # Compatible with NarrativeState.context_epoch
-    hybrid_context: str | None  # Compatible with ContextSnapshot
-    kg_facts_block: str | None  # Compatible with ContextSnapshot
+
+    # Externalized context references
+    hybrid_context_ref: ContentRef | None  # Reference to externalized hybrid context
+    kg_facts_ref: ContentRef | None  # Reference to externalized KG facts
 
     # =========================================================================
     # Chapter Planning (properly typed with SceneDetail TypedDict)
@@ -232,7 +247,9 @@ class NarrativeState(TypedDict, total=False):
     chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
     plot_point_focus: str | None
     current_scene_index: int  # Index of the scene currently being processed
-    scene_drafts: list[str]  # List of generated text for each scene
+
+    # Externalized scene drafts reference
+    scene_drafts_ref: ContentRef | None  # Reference to externalized scene drafts
 
     # =========================================================================
     # Revision State (properly typed with TypedDict structures)
@@ -257,19 +274,11 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Initialization Phase State (for initialization workflow)
     # =========================================================================
-    # Character sheets generated during initialization
-    character_sheets: dict[str, dict[str, Any]]  # character_name -> character_sheet
-
-    # Global outline generated during initialization
-    global_outline: dict[str, Any] | None
-
-    # Act outlines generated during initialization
-    act_outlines: dict[int, dict[str, Any]]  # act_number -> act_outline
-
-    # Chapter outlines (generated on-demand or pre-generated) - CANONICAL SOURCE
-    # This is the primary source of truth for chapter outlines.
-    # Schema per chapter: {chapter, act, scene_description, key_beats, plot_point, ...}
-    chapter_outlines: dict[int, dict[str, Any]]  # chapter_number -> chapter_outline
+    # Externalized initialization content references
+    character_sheets_ref: ContentRef | None  # Reference to externalized character sheets
+    global_outline_ref: ContentRef | None  # Reference to externalized global outline
+    act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
+    chapter_outlines_ref: ContentRef | None  # Reference to externalized chapter outlines
 
     # Initialization state tracking
     initialization_complete: bool
@@ -359,12 +368,21 @@ def create_initial_state(
         # Active context (initially empty)
         "active_characters": [],
         "current_location": None,
-        "previous_chapter_summaries": [],
         "key_events": [],
         # Generated content
-        "draft_text": None,
         "draft_word_count": 0,
-        "generated_embedding": None,
+        # Externalized content references
+        "draft_ref": None,
+        "embedding_ref": None,
+        "summaries_ref": None,
+        "scene_drafts_ref": None,
+        "hybrid_context_ref": None,
+        "kg_facts_ref": None,
+        "quality_feedback_ref": None,
+        "character_sheets_ref": None,
+        "global_outline_ref": None,
+        "act_outlines_ref": None,
+        "chapter_outlines_ref": None,
         # Entity extraction
         "extracted_entities": {},
         "extracted_relationships": [],
@@ -404,13 +422,10 @@ def create_initial_state(
         "summaries_dir": os.path.join(project_dir, "summaries"),
         # Context management
         "context_epoch": 0,
-        "hybrid_context": None,
-        "kg_facts_block": None,
         # Chapter planning
         "chapter_plan": None,
         "plot_point_focus": None,
         "current_scene_index": 0,
-        "scene_drafts": [],
         # Revision state
         "evaluation_result": None,
         "patch_instructions": None,
@@ -421,10 +436,6 @@ def create_initial_state(
         "protagonist_name": protagonist_name,
         "protagonist_profile": None,
         # Initialization phase
-        "character_sheets": {},
-        "global_outline": None,
-        "act_outlines": {},
-        "chapter_outlines": {},
         "initialization_complete": False,
         "initialization_step": None,
         # Graph healing

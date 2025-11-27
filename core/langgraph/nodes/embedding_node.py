@@ -9,6 +9,7 @@ semantic search and context retrieval.
 import numpy as np
 import structlog
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 
@@ -67,15 +68,31 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
         else:
             embedding_list = list(embedding)
 
+        # Initialize content manager for external storage
+        content_manager = ContentManager(state["project_dir"])
+
+        # Get current version (for revision tracking)
+        current_version = content_manager.get_latest_version("embedding", f"chapter_{chapter_num}") + 1
+
+        # Externalize generated_embedding to reduce state bloat
+        embedding_ref = content_manager.save_binary(
+            embedding_list,
+            "embedding",
+            f"chapter_{chapter_num}",
+            current_version,
+        )
+
         logger.info(
-            "generate_embedding: successfully generated embedding",
+            "generate_embedding: successfully generated and externalized embedding",
             chapter=chapter_num,
             dimensions=len(embedding_list),
+            version=current_version,
+            size=embedding_ref["size_bytes"],
         )
 
         return {
             **state,
-            "generated_embedding": embedding_list,
+            "embedding_ref": embedding_ref,
             "current_node": "generate_embedding",
         }
 

@@ -14,6 +14,7 @@ import re
 import structlog
 from pydantic import BaseModel, Field, field_validator
 
+from core.langgraph.content_manager import ContentManager, get_character_sheets
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -116,15 +117,21 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
         total_chapters=state.get("total_chapters", 0),
     )
 
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get character sheets (prefers externalized content, falls back to in-state)
+    character_sheets = get_character_sheets(state, content_manager)
+
     # Validate inputs
-    if not state.get("character_sheets"):
+    if not character_sheets:
         logger.warning(
             "generate_global_outline: no character sheets available, "
             "generating without character context"
         )
 
     # Build character context for outline generation
-    character_context = _build_character_context(state)
+    character_context = _build_character_context_from_sheets(character_sheets)
 
     # Step 1: Generate global outline
     prompt = render_prompt(
@@ -138,7 +145,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             "total_chapters": state.get("total_chapters", 20),
             "protagonist_name": state.get("protagonist_name", ""),
             "character_context": character_context,
-            "character_names": list(state.get("character_sheets", {}).keys()),
+            "character_names": list(character_sheets.keys()),
         },
     )
 
@@ -172,9 +179,22 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             acts=global_outline.get("act_count", 0),
         )
 
+        # Externalize global_outline to reduce state bloat
+        global_outline_ref = content_manager.save_json(
+            global_outline,
+            "global_outline",
+            "main",
+            version=1,
+        )
+
+        logger.info(
+            "generate_global_outline: content externalized",
+            size=global_outline_ref["size_bytes"],
+        )
+
         return {
             **state,
-            "global_outline": global_outline,
+            "global_outline_ref": global_outline_ref,
             "current_node": "global_outline",
             "last_error": None,
             "initialization_step": "global_outline_complete",
@@ -195,17 +215,16 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
         }
 
 
-def _build_character_context(state: NarrativeState) -> str:
+def _build_character_context_from_sheets(character_sheets: dict) -> str:
     """
     Build a concise character context string for outline generation.
 
     Args:
-        state: Current narrative state with character sheets
+        character_sheets: Character sheets dictionary
 
     Returns:
         Formatted string summarizing main characters
     """
-    character_sheets = state.get("character_sheets", {})
     if not character_sheets:
         return "No characters defined yet."
 
