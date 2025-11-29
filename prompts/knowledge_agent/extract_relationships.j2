@@ -30,19 +30,17 @@ Your task is to extract SEMANTIC RELATIONSHIPS between entities in the provided 
 - **NO Adjectives**: Do NOT create nodes for "Dead", "Alive", "Awake", "Asleep".
 - **NO Intangible Objects**: Objects MUST be physical items you can hold.
 
-**Output Format:**
-Return a JSON object with a single key `kg_triples`.
-The value is a list of strings in the format: "SubjectType:SubjectName | PREDICATE | ObjectType:ObjectName"
+**Required Information:**
 
-```json
-{
-  "kg_triples": [
-    "Character:Elara | LOCATED_IN | Location:Sunken Library",
-    "Character:Elara | DISCOVERS | Artifact:Starfall Map",
-    "Faction:The Order | HUNTS | Character:Elara"
-  ]
-}
-```
+Provide a list of relationship triples. Each triple must be a string in the format:
+"SubjectType:SubjectName | PREDICATE | ObjectType:ObjectName"
+
+Examples:
+- "Character:Elara | LOCATED_IN | Location:Sunken Library"
+- "Character:Elara | DISCOVERS | Artifact:Starfall Map"
+- "Faction:The Order | HUNTS | Character:Elara"
+
+*Note: The system enforces the output structure. Focus on extracting accurate and significant relationships.*
 
 **Chapter {{ chapter_number }} Text:**
 ```text

@@ -20,6 +20,7 @@ import structlog
 
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
+from prompts.grammar_loader import load_grammar
 
 logger = structlog.get_logger(__name__)
 
@@ -169,32 +170,29 @@ Current known attributes:
 Chapter summaries mentioning this entity:
 {summaries_text}
 
-Provide a JSON object with the following fields (only include fields where you have reasonable confidence):
-{{
-    "inferred_description": "string - improved description if current is Unknown or incomplete",
-    "inferred_traits": ["list", "of", "personality", "traits"],
-    "inferred_role": "character's role in the story",
-    "confidence": 0.0-1.0
-}}
+Provide the following information (only include fields where you have reasonable confidence):
+1. **inferred_description**: string - improved description if current is Unknown or incomplete
+2. **inferred_traits**: list of strings - personality traits
+3. **inferred_role**: string - character's role in the story
+4. **confidence**: float (0.0-1.0) - confidence in these inferences
 
-Return ONLY the JSON object, no other text."""
+*Note: The system enforces the output structure. Focus on inferring accurate attributes.*"""
 
         try:
-            response = await llm_service.async_call_llm(
+            # Load healing grammar
+            grammar_content = load_grammar("healing")
+            # Load the grammar content directly as it already defines the correct root
+            grammar = grammar_content
+
+            response_text, _ = await llm_service.async_call_llm(
                 prompt=prompt,
                 model=model,
                 temperature=0.3,
                 max_tokens=512,
+                grammar=grammar,
             )
 
-            # Parse JSON response
-            json_str = response.strip()
-            if json_str.startswith("```"):
-                json_str = json_str.split("```")[1]
-                if json_str.startswith("json"):
-                    json_str = json_str[4:]
-
-            enriched = json.loads(json_str)
+            enriched = json.loads(response_text)
 
             logger.info(
                 "Enriched node from context",

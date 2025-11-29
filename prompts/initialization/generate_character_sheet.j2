@@ -20,51 +20,20 @@
 
 ## Task
 
-Create a detailed character sheet for {{ character_name }} in the following STRUCTURED FORMAT.
-This format will be parsed programmatically, so follow it exactly.
+Create a detailed character sheet for {{ character_name }}.
 
----
+## Required Structure
 
-## CHARACTER SHEET: {{ character_name }}
+The output must be a JSON object containing the following information:
 
-### DESCRIPTION
-Write a comprehensive description of the character (200-300 words) covering physical appearance, personality, and background.
+1. **name**: The character's name ("{{ character_name }}")
+2. **description**: Comprehensive description (200-300 words) covering physical appearance, personality, and background.
+3. **traits**: List of 5-7 key personality traits.
+4. **status**: "Active"
+5. **motivations**: What drives this character? What do they want? (1-2 sentences)
+6. **background**: Brief history and important life events (1-2 sentences)
+7. **skills**: List of 3-5 key skills or abilities.
+8. **relationships**: Dictionary mapping other character names to relationship descriptions.
+9. **internal_conflict**: What internal struggle will they face? (1 sentence)
 
-### TRAITS
-List 5-7 key personality traits (one per line, no bullets or dashes):
-TRAIT: [trait name]
-
-### STATUS
-Current status of the character:
-STATUS: Active
-
-### MOTIVATIONS
-What drives this character? What do they want? (1-2 sentences)
-MOTIVATIONS: [their core motivation]
-
-### BACKGROUND
-Brief history and important life events (1-2 sentences)
-BACKGROUND: [their background]
-
-### SKILLS
-List 3-5 key skills or abilities (one per line):
-SKILL: [skill name]
-
-{% if other_characters %}
-### RELATIONSHIPS
-How do they relate to other main characters? (one per line)
-Format: RELATIONSHIP: [other character name] | [relationship type] | [brief description]
-Relationship types: ALLY, RIVAL, FAMILY, FRIEND, ENEMY, MENTOR, STUDENT, ROMANTIC, COLLEAGUE
-{% endif %}
-
-{% if is_protagonist %}
-### INTERNAL_CONFLICT
-What internal struggle will they face? (1 sentence)
-INTERNAL_CONFLICT: [their internal conflict]
-{% endif %}
-
----
-
-Begin the character sheet now, following the exact format above:
-
-## CHARACTER SHEET: {{ character_name }}
+*Ensure the relationships map uses the names of the other characters provided above where applicable.*

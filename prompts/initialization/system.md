@@ -45,7 +45,7 @@ Generate story foundations that are detailed enough to guide consistent narrativ
 
 **Format Requirements**:
 - Respond with well-structured prose organized by clear sections
-- Use markdown formatting (headings, lists, bold) for clarity
+- Use markdown formatting (headings, lists, bold) for clarity, *unless a structured format like JSON is specifically requested*
 - Write complete sentences; avoid bullet points for narrative descriptions
 - No placeholders, brackets, or meta-discussion
 - Output only the requested content

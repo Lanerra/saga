@@ -27,40 +27,17 @@ Your task is to extract DETAILED location and world-building information from th
 4. **Prefer Proper Nouns**: Prioritize named locations (e.g., "The Sunken Library", "Sector 7").
 5. **Skip Atmospheric Details**: Do not extract "shadows", "light", "weather" unless they are magical/anomalous entities.
 
-**Output Format:**
-Return a JSON object with a single key `world_updates`.
+**Required Information:**
+
+Organize extracted entities by type (Settlement, Structure, Artifact, Faction, etc.).
+For each entity, provide:
+1. **Description**: Detailed description.
+2. **Rules/Goals**: Any known rules (for places) or goals (for factions).
+3. **Key Elements**: Significant details or properties.
+
 **CRITICAL**: Use SPECIFIC node types as category names, not generic "Location".
 
-```json
-{
-  "world_updates": {
-    "Settlement": {
-      "The Hidden Village": {
-        "description": "Secret community hidden in the mountains",
-        "rules": ["No outsiders allowed"],
-        "key_elements": ["ancient architecture", "magical wards"]
-      }
-    },
-    "Structure": {
-      "The Great Library": {
-        "description": "Massive stone building housing ancient knowledge"
-      }
-    },
-    "Artifact": {
-      "The Starfall Map": {
-        "description": "Ancient star chart with magical properties",
-        "key_elements": ["can only be read under moonlight"]
-      }
-    },
-    "Faction": {
-      "The Shadow Council": {
-        "description": "Secret organization manipulating events",
-        "goals": ["Control the artifact", "Prevent the prophecy"]
-      }
-    }
-  }
-}
-```
+*Note: The system enforces the output structure. Focus on extracting accurate and detailed information.*
 
 **Chapter {{ chapter_number }} Text:**
 ```text

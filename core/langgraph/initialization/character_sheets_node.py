@@ -16,6 +16,7 @@ import structlog
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -26,14 +27,18 @@ def _parse_character_sheet_response(
 ) -> dict[str, any]:
     """
     Parse the structured character sheet response into CharacterProfile-compatible format.
+    Refactored to handle JSON response enforced by GBNF grammar.
 
     Args:
-        response: Raw LLM response with structured character data
+        response: Raw LLM response with structured character data (JSON)
         character_name: Name of the character
 
     Returns:
         Dictionary with CharacterProfile-compatible fields
     """
+    import json
+
+    # Defaults
     parsed = {
         "name": character_name,
         "description": "",
@@ -46,108 +51,42 @@ def _parse_character_sheet_response(
         "internal_conflict": "",
     }
 
-    lines = response.split("\n")
-    current_section = None
-    description_lines = []
+    try:
+        # Clean potential markdown
+        cleaned_response = response.strip()
+        if cleaned_response.startswith("```json"):
+            cleaned_response = cleaned_response[7:]
+        if cleaned_response.endswith("```"):
+            cleaned_response = cleaned_response[:-3]
 
-    for line in lines:
-        line_stripped = line.strip()
+        data = json.loads(cleaned_response)
 
-        # Detect section headers
-        if line_stripped.startswith("### DESCRIPTION"):
-            current_section = "description"
-            continue
-        elif line_stripped.startswith("### TRAITS"):
-            current_section = "traits"
-            continue
-        elif line_stripped.startswith("### STATUS"):
-            current_section = "status"
-            continue
-        elif line_stripped.startswith("### MOTIVATIONS"):
-            current_section = "motivations"
-            continue
-        elif line_stripped.startswith("### BACKGROUND"):
-            current_section = "background"
-            continue
-        elif line_stripped.startswith("### SKILLS"):
-            current_section = "skills"
-            continue
-        elif line_stripped.startswith("### RELATIONSHIPS"):
-            current_section = "relationships"
-            continue
-        elif line_stripped.startswith("### INTERNAL_CONFLICT"):
-            current_section = "internal_conflict"
-            continue
-        elif line_stripped.startswith("###"):
-            current_section = None
-            continue
+        # Merge data into defaults
+        parsed.update(data)
 
-        # Parse content based on current section
-        if current_section == "description" and line_stripped:
-            description_lines.append(line_stripped)
+        # Ensure name matches requested character if not provided or empty
+        if not parsed.get("name"):
+            parsed["name"] = character_name
 
-        elif current_section == "traits" and line_stripped.startswith("TRAIT:"):
-            trait = line_stripped.replace("TRAIT:", "").strip()
-            if trait:
-                parsed["traits"].append(trait)
-
-        elif current_section == "status" and line_stripped.startswith("STATUS:"):
-            parsed["status"] = line_stripped.replace("STATUS:", "").strip()
-
-        elif current_section == "motivations" and line_stripped.startswith(
-            "MOTIVATIONS:"
-        ):
-            parsed["motivations"] = line_stripped.replace("MOTIVATIONS:", "").strip()
-
-        elif current_section == "background" and line_stripped.startswith(
-            "BACKGROUND:"
-        ):
-            parsed["background"] = line_stripped.replace("BACKGROUND:", "").strip()
-
-        elif current_section == "skills" and line_stripped.startswith("SKILL:"):
-            skill = line_stripped.replace("SKILL:", "").strip()
-            if skill:
-                parsed["skills"].append(skill)
-
-        elif current_section == "relationships" and line_stripped.startswith(
-            "RELATIONSHIP:"
-        ):
-            # Format: RELATIONSHIP: [name] | [type] | [description]
-            rel_content = line_stripped.replace("RELATIONSHIP:", "").strip()
-            parts = [p.strip() for p in rel_content.split("|")]
-            if len(parts) >= 2:
-                target_name = parts[0]
-                rel_type = parts[1].upper()
-                rel_desc = parts[2] if len(parts) > 2 else ""
-                parsed["relationships"][target_name] = {
-                    "type": rel_type,
-                    "description": rel_desc,
+        # Transform relationships if needed to internal structure
+        structured_relationships = {}
+        if isinstance(parsed.get("relationships"), dict):
+            for target, desc in parsed["relationships"].items():
+                # Try to extract type from description if possible, or default
+                structured_relationships[target] = {
+                    "type": "ASSOCIATE",  # Default
+                    "description": desc,
                 }
+            parsed["relationships"] = structured_relationships
 
-        elif current_section == "internal_conflict" and line_stripped.startswith(
-            "INTERNAL_CONFLICT:"
-        ):
-            parsed["internal_conflict"] = line_stripped.replace(
-                "INTERNAL_CONFLICT:", ""
-            ).strip()
-
-    # Combine description lines
-    parsed["description"] = " ".join(description_lines)
-
-    # Fallback: if parsing failed, extract what we can from raw text
-    if not parsed["description"] and not parsed["traits"]:
+    except json.JSONDecodeError as e:
         logger.warning(
-            "_parse_character_sheet_response: structured parsing failed, using fallback",
+            "_parse_character_sheet_response: JSON parsing failed",
             character=character_name,
+            error=str(e),
         )
-        # Use raw response as description
+        # Fallback to description = raw response
         parsed["description"] = response
-        # Try to extract traits from text
-        trait_matches = re.findall(
-            r"\b(brave|cunning|loyal|ambitious|cautious|intelligent|stubborn|compassionate|ruthless|wise)\b",
-            response.lower(),
-        )
-        parsed["traits"] = list(set(trait_matches))[:7]
 
     return parsed
 
@@ -366,6 +305,12 @@ async def _generate_character_sheet(
         },
     )
 
+    # Load and configure grammar
+    grammar = load_grammar("initialization")
+    # Enforce character_sheet as root by replacing the default root
+    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
+    grammar = f"root ::= character_sheet\n{grammar}"
+
     try:
         response, usage = await llm_service.async_call_llm(
             model_name=state["large_model"],
@@ -375,6 +320,7 @@ async def _generate_character_sheet(
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),
+            grammar=grammar,
         )
 
         if not response:

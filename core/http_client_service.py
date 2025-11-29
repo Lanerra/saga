@@ -264,6 +264,7 @@ class CompletionHTTPClient:
         messages: list[dict[str, str]],
         temperature: float,
         max_tokens: int,
+        grammar: str | None = None,
         **kwargs,
     ) -> dict[str, Any]:
         """
@@ -274,6 +275,7 @@ class CompletionHTTPClient:
             messages: Conversation messages
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
+            grammar: Optional GBNF grammar string for constrained generation
             **kwargs: Additional completion parameters
 
         Returns:
@@ -288,6 +290,9 @@ class CompletionHTTPClient:
             "stream": False,
             **kwargs,
         }
+
+        if grammar:
+            payload["grammar"] = grammar
 
         headers = {
             "Authorization": f"Bearer {config.OPENAI_API_KEY}",

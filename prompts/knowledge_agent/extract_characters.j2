@@ -15,23 +15,15 @@ Your task is to extract DETAILED character information from the provided chapter
 3. **Significant Common Nouns**: Only extract unnamed characters if they are mentioned 3+ times AND play a significant role.
 4. **Skip Minor Mentions**: Ignore background crowds or incidental mentions.
 
-**Output Format:**
-Return a JSON object with a single key `character_updates`.
+**Required Information:**
 
-```json
-{
-  "character_updates": {
-    "CharacterName": {
-      "description": "Detailed description of appearance, personality, and role in this chapter.",
-      "traits": ["trait1", "trait2", "specific skill"],
-      "status": "Current physical/emotional state (e.g., 'wounded', 'elated')",
-      "relationships": {
-        "OtherCharacterName": "Brief description of interaction/relationship in this chapter"
-      }
-    }
-  }
-}
-```
+For each extracted character, provide:
+1. **Description**: Detailed description of appearance, personality, and role in this chapter.
+2. **Traits**: List of specific traits or skills.
+3. **Status**: Current physical/emotional state (e.g., 'wounded', 'elated').
+4. **Relationships**: Dictionary of interactions with other characters in this chapter.
+
+*Note: The system enforces the output structure. Focus on extracting accurate and detailed information.*
 
 **Chapter {{ chapter_number }} Text:**
 ```text

@@ -24,40 +24,16 @@ Your task is to extract SIGNIFICANT events from the provided chapter text.
 4. **Naming**: Give events descriptive names that capture their essence.
 5. **CRITICAL**: Prefer DevelopmentEvent and WorldElaborationEvent over generic Event!
 
-**Output Format:**
-Return a JSON object with a single key `world_updates`.
+**Required Information:**
+
+Organize extracted events by type (DevelopmentEvent, WorldElaborationEvent, PlotPoint, Event).
+For each event, provide:
+1. **Description**: Detailed description of the event.
+2. **Key Elements**: Important details, consequences, or themes associated with the event.
+
 **CRITICAL**: Use SPECIFIC event types as category names.
 
-```json
-{
-  "world_updates": {
-    "DevelopmentEvent": {
-      "Elara's Choice to Betray the Council": {
-        "description": "Elara makes the pivotal choice to steal the artifact, marking her transformation from loyal student to rebel",
-        "key_elements": ["betrayal", "moral compromise", "character transformation"]
-      }
-    },
-    "WorldElaborationEvent": {
-      "Revelation of the Three Sources of Magic": {
-        "description": "The ancient text reveals that magic comes from three distinct sources: Life, Death, and Dream",
-        "key_elements": ["magic system expansion", "world mechanics", "lore revelation"]
-      }
-    },
-    "PlotPoint": {
-      "The Heist Begins": {
-        "description": "The story reaches its first major turning point as the heist operation launches",
-        "key_elements": ["story structure", "narrative milestone", "point of no return"]
-      }
-    },
-    "Event": {
-      "The Battle at the Bridge": {
-        "description": "Major combat between the rebels and the imperial forces",
-        "key_elements": ["participants: Rebel Forces, Imperial Guard", "outcome: Strategic retreat"]
-      }
-    }
-  }
-}
-```
+*Note: The system enforces the output structure. Focus on extracting accurate and detailed information.*
 
 **Chapter {{ chapter_number }} Text:**
 ```text

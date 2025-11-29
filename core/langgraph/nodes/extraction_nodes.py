@@ -8,6 +8,7 @@ to extract characters, locations, events, and relationships.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import structlog
@@ -16,7 +17,6 @@ import config
 from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.nodes.extraction_node import (
     _map_category_to_type,
-    _parse_extraction_json,
 )
 from core.langgraph.state import (
     ExtractedEntity,
@@ -25,7 +25,7 @@ from core.langgraph.state import (
 )
 from core.llm_interface_refactored import llm_service
 from processing.entity_deduplication import generate_entity_id
-from processing.parsing_utils import parse_llm_triples
+from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -59,6 +59,11 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     )
 
     try:
+        # Load grammar for character extraction
+        grammar_content = load_grammar("extraction")
+        # Prepend root rule for character extraction
+        grammar = f"root ::= character_extraction\n{grammar_content}"
+
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],
             prompt=prompt,
@@ -66,9 +71,15 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
+            grammar=grammar,
         )
 
-        data = await _parse_extraction_json(raw_text, state["current_chapter"])
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.error("extract_characters: failed to parse JSON", raw_text=raw_text)
+            return {"character_updates": []}
+
         if not data:
             return {"character_updates": []}
 
@@ -129,6 +140,11 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     )
 
     try:
+        # Load grammar for world extraction
+        grammar_content = load_grammar("extraction")
+        # Prepend root rule for world extraction
+        grammar = f"root ::= world_extraction\n{grammar_content}"
+
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],
             prompt=prompt,
@@ -136,9 +152,15 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
+            grammar=grammar,
         )
 
-        data = await _parse_extraction_json(raw_text, state["current_chapter"])
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.error("extract_locations: failed to parse JSON", raw_text=raw_text)
+            return {"location_updates": []}
+
         if not data:
             return {"location_updates": []}
 
@@ -220,6 +242,11 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     )
 
     try:
+        # Load grammar for world extraction (includes events)
+        grammar_content = load_grammar("extraction")
+        # Prepend root rule for world extraction
+        grammar = f"root ::= world_extraction\n{grammar_content}"
+
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],
             prompt=prompt,
@@ -227,9 +254,15 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
+            grammar=grammar,
         )
 
-        data = await _parse_extraction_json(raw_text, state["current_chapter"])
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.error("extract_events: failed to parse JSON", raw_text=raw_text)
+            return {"event_updates": []}
+
         if not data:
             return {"event_updates": []}
 
@@ -306,6 +339,11 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     )
 
     try:
+        # Load grammar for relationship extraction
+        grammar_content = load_grammar("extraction")
+        # Prepend root rule for relationship extraction
+        grammar = f"root ::= relationship_extraction\n{grammar_content}"
+
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],
             prompt=prompt,
@@ -313,36 +351,49 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
+            grammar=grammar,
         )
 
-        data = await _parse_extraction_json(raw_text, state["current_chapter"])
+        try:
+            data = json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.error(
+                "extract_relationships: failed to parse JSON", raw_text=raw_text
+            )
+            return {"relationship_updates": []}
+
         if not data:
             return {"relationship_updates": []}
 
         relationships = []
         kg_triples_list = data.get("kg_triples", [])
 
-        if isinstance(kg_triples_list, list):
-            kg_triples_text = "\n".join([str(t) for t in kg_triples_list])
-        else:
-            kg_triples_text = str(kg_triples_list)
+        if not isinstance(kg_triples_list, list):
+            logger.warning(
+                "extract_relationships: kg_triples is not a list", raw_data=data
+            )
+            return {"relationship_updates": []}
 
-        parsed_triples = parse_llm_triples(kg_triples_text)
+        for triple in kg_triples_list:
+            if not isinstance(triple, dict):
+                continue
 
-        for triple in parsed_triples:
             subject = triple.get("subject", "")
             predicate = triple.get("predicate", "RELATES_TO")
             object_entity = triple.get("object_entity", "")
-            object_literal = triple.get("object_literal", "")
-            target = object_entity if object_entity else object_literal
 
+            # Note: Grammar doesn't support object_literal in triple_object, only object_entity
+            # triple_object ::= "{" ws "\"subject\"" ws ":" ws json_string "," ws "\"predicate\"" ws ":" ws json_string "," ws "\"object_entity\"" ws ":" ws json_string "," ws "\"description\"" ws ":" ws json_string ws "}"
+
+            # Handle edge cases where values might be dicts despite grammar (though grammar enforces strings)
+            # Keeping safe casting just in case
             if isinstance(subject, dict):
                 subject = subject.get("name", str(subject))
-            if isinstance(target, dict):
-                target = target.get("name", str(target))
+            if isinstance(object_entity, dict):
+                object_entity = object_entity.get("name", str(object_entity))
 
             subject = str(subject) if subject else ""
-            target = str(target) if target else ""
+            target = str(object_entity) if object_entity else ""
 
             if subject and target and predicate:
                 relationships.append(

@@ -367,6 +367,7 @@ class CompletionService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
+        grammar: str | None = None,
         *,
         system_prompt: str | None = None,
         **kwargs,
@@ -412,6 +413,7 @@ class CompletionService:
                 messages,
                 effective_temperature,
                 effective_max_tokens,
+                grammar=grammar,
                 **kwargs,
             )
 
@@ -438,6 +440,7 @@ class CompletionService:
                         messages,
                         effective_temperature,
                         effective_max_tokens,
+                        grammar=grammar,
                         **kwargs,
                     )
 
@@ -569,6 +572,7 @@ class RefactoredLLMService:
         allow_fallback: bool = False,
         stream_to_disk: bool = False,
         auto_clean_response: bool = True,
+        grammar: str | None = None,
         *,
         system_prompt: str | None = None,
         **kwargs,
@@ -585,6 +589,7 @@ class RefactoredLLMService:
             max_tokens,
             allow_fallback,
             auto_clean_response,
+            grammar=grammar,
             system_prompt=system_prompt,
             **kwargs,
         )
