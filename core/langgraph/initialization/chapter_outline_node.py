@@ -21,7 +21,10 @@ from core.langgraph.content_manager import (
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+import re
+import json
 
 logger = structlog.get_logger(__name__)
 
@@ -213,6 +216,12 @@ async def _generate_single_chapter_outline(
         },
     )
 
+    # Load and configure grammar
+    grammar = load_grammar("initialization")
+    # Enforce chapter_outline as root by replacing the default root
+    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
+    grammar = f"root ::= chapter_outline\n{grammar}"
+
     try:
         response, usage = await llm_service.async_call_llm(
             model_name=state["large_model"],
@@ -222,6 +231,7 @@ async def _generate_single_chapter_outline(
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),
+            grammar=grammar,
         )
 
         if not response or not response.strip():
@@ -317,38 +327,58 @@ def _parse_chapter_outline(
     Returns:
         Dictionary containing structured chapter outline
     """
-    # Simple parsing - extract key sections
-    # In production, could use more sophisticated parsing or JSON mode
-
-    lines = response.split("\n")
     scene_description = ""
     key_beats = []
     plot_point = ""
 
-    # Try to extract sections
-    current_section = None
-    for line in lines:
-        line_lower = line.lower().strip()
+    try:
+        # Clean potential markdown
+        cleaned_response = response.strip()
+        if cleaned_response.startswith("```json"):
+            cleaned_response = cleaned_response[7:]
+        if cleaned_response.endswith("```"):
+            cleaned_response = cleaned_response[:-3]
+        
+        # Try to parse as JSON first
+        data = json.loads(cleaned_response)
+        
+        scene_description = data.get("scene_description", "")
+        key_beats = data.get("key_beats", [])
+        plot_point = data.get("plot_point", "")
+        
+    except json.JSONDecodeError:
+        logger.warning(
+            "_parse_chapter_outline: JSON parsing failed, falling back to text parsing",
+            chapter=chapter_number
+        )
+        
+        # Fallback to text parsing
+        lines = response.split("\n")
+        
+        # Try to extract sections
+        current_section = None
+        for line in lines:
+            line_lower = line.lower().strip()
 
-        if "scene" in line_lower or "summary" in line_lower:
-            current_section = "scene"
-        elif "beat" in line_lower or "event" in line_lower:
-            current_section = "beats"
-        elif "plot point" in line_lower or "focus" in line_lower:
-            current_section = "plot"
-        elif line.strip():
-            if current_section == "scene" and not scene_description:
-                scene_description = line.strip()
-            elif current_section == "beats" and line.strip().startswith(
-                ("-", "*", "•")
-            ):
-                key_beats.append(line.strip().lstrip("-*• "))
-            elif current_section == "plot" and not plot_point:
-                plot_point = line.strip()
+            if "scene" in line_lower or "summary" in line_lower:
+                current_section = "scene"
+            elif "beat" in line_lower or "event" in line_lower:
+                current_section = "beats"
+            elif "plot point" in line_lower or "focus" in line_lower:
+                current_section = "plot"
+            elif line.strip():
+                if current_section == "scene" and not scene_description:
+                    scene_description = line.strip()
+                elif current_section == "beats" and line.strip().startswith(
+                    ("-", "*", "•")
+                ):
+                    key_beats.append(line.strip().lstrip("-*• "))
+                elif current_section == "plot" and not plot_point:
+                    plot_point = line.strip()
 
-    # Fallback: use full response as scene description
-    if not scene_description:
-        scene_description = response[:500]
+        # Fallback: use full response as scene description
+        if not scene_description:
+            scene_description = response[:500]
 
     chapter_outline = {
         "chapter_number": chapter_number,

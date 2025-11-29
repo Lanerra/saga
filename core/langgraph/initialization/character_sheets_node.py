@@ -309,6 +309,7 @@ async def _generate_character_sheet(
     grammar = load_grammar("initialization")
     # Enforce character_sheet as root by replacing the default root
     grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
+    # Be sure to include the replaced root at the top
     grammar = f"root ::= character_sheet\n{grammar}"
 
     try:
