@@ -220,7 +220,7 @@ async def _generate_single_chapter_outline(
     grammar = load_grammar("initialization")
     # Enforce chapter_outline as root by replacing the default root
     grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
-    grammar = f"root ::= chapter_outline\n{grammar}"
+    grammar = f"root ::= chapter-outline\n{grammar}"
 
     try:
         response, usage = await llm_service.async_call_llm(

@@ -9,6 +9,7 @@ to extract characters, locations, events, and relationships.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import structlog
@@ -62,7 +63,10 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
         # Load grammar for character extraction
         grammar_content = load_grammar("extraction")
         # Prepend root rule for character extraction
-        grammar = f"root ::= character_extraction\n{grammar_content}"
+        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
+        grammar = f"root ::= character-extraction\n{grammar}"
+
+        logger.debug("extract_characters: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],
@@ -143,7 +147,10 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         # Load grammar for world extraction
         grammar_content = load_grammar("extraction")
         # Prepend root rule for world extraction
-        grammar = f"root ::= world_extraction\n{grammar_content}"
+        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
+        grammar = f"root ::= world-extraction\n{grammar}"
+
+        logger.debug("extract_events: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],
@@ -245,7 +252,10 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         # Load grammar for world extraction (includes events)
         grammar_content = load_grammar("extraction")
         # Prepend root rule for world extraction
-        grammar = f"root ::= world_extraction\n{grammar_content}"
+        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
+        grammar = f"root ::= world-extraction\n{grammar}"
+
+        logger.debug("extract_locations: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],
@@ -342,7 +352,10 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         # Load grammar for relationship extraction
         grammar_content = load_grammar("extraction")
         # Prepend root rule for relationship extraction
-        grammar = f"root ::= relationship_extraction\n{grammar_content}"
+        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
+        grammar = f"root ::= relationship-extraction\n{grammar}"
+
+        logger.debug("extract_relationships: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
             model_name=state["medium_model"],

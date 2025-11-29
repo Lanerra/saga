@@ -154,7 +154,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     grammar = load_grammar("initialization")
     # Enforce global_outline as root by replacing the default root
     grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
-    grammar = f"root ::= global_outline\n{grammar}"
+    grammar = f"root ::= global-outline\n{grammar}"
 
     try:
         response, usage = await llm_service.async_call_llm(

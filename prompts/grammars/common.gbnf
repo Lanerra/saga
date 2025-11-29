@@ -1,24 +1,24 @@
-root ::= json_object
+root ::= json-object
 
 # JSON Primitives
-json_value ::= json_object | json_array | json_string | json_number | json_bool | json_null
+json-value ::= json-object | json-array | json-string | json-number | json-bool | json-null
 
-json_object ::= "{" ws (json_member ("," ws json_member)*)? ws "}"
-json_member ::= json_string ws ":" ws json_value
+json-object ::= "{" ws (json-member ("," ws json-member)*)? ws "}"
+json-member ::= json-string ws ":" ws json-value
 
-json_array ::= "[" ws (json_value ("," ws json_value)*)? ws "]"
+json-array ::= "[" ws (json-value ("," ws json-value)*)? ws "]"
 
-json_string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )* "\""
-json_number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
-json_bool ::= "true" | "false"
-json_null ::= "null"
+json-string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )* "\""
+json-number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+json-bool ::= "true" | "false"
+json-null ::= "null"
 
 ws ::= [ \t\n\r]*
 
 # Common specialized string types
-non_empty_string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )+ "\""
-identifier_string ::= "\"" [a-zA-Z_][a-zA-Z0-9_]* "\""
+non-empty-string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )+ "\""
+identifier-string ::= "\"" [a-zA-Z_][a-zA-Z0-9_]* "\""
 
 # Common lists
-string_list ::= "[" ws (json_string ("," ws json_string)*)? ws "]"
-non_empty_string_list ::= "[" ws json_string ("," ws json_string)* ws "]"
+string-list ::= "[" ws (json-string ("," ws json-string)*)? ws "]"
+non-empty-string-list ::= "[" ws json-string ("," ws json-string)* ws "]"

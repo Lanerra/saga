@@ -1,38 +1,38 @@
 # Extraction Grammars
 # Includes: Character, Location (World), Event, Relationship Extraction
 
-root ::= character_extraction | world_extraction | relationship_extraction
+root ::= character-extraction | world-extraction | relationship-extraction
 
 # 1. Character Extraction
-character_extraction ::= "{" ws "\"character_updates\"" ws ":" ws character_map ws "}"
-character_map ::= "{" ws (character_entry ("," ws character_entry)*)? ws "}"
-character_entry ::= json_string ws ":" ws character_details
-character_details ::= "{" ws "\"description\"" ws ":" ws json_string "," ws "\"traits\"" ws ":" ws string_list "," ws "\"status\"" ws ":" ws json_string "," ws "\"relationships\"" ws ":" ws relationship_map ws "}"
+character-extraction ::= "{" ws "\"character_updates\"" ws ":" ws character-map ws "}"
+character-map ::= "{" ws (character-entry ("," ws character-entry)*)? ws "}"
+character-entry ::= json-string ws ":" ws character-details
+character-details ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws string-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"relationships\"" ws ":" ws relationship-map ws "}"
 
 # 2. World Extraction (Locations, Events)
-world_extraction ::= "{" ws "\"world_updates\"" ws ":" ws category_map ws "}"
-category_map ::= "{" ws (category_entry ("," ws category_entry)*)? ws "}"
-category_entry ::= json_string ws ":" ws entity_map
-entity_map ::= "{" ws (entity_entry ("," ws entity_entry)*)? ws "}"
-entity_entry ::= json_string ws ":" ws entity_details
-entity_details ::= "{" ws "\"description\"" ws ":" ws json_string "," ws "\"goals\"" ws ":" ws string_list "," ws "\"rules\"" ws ":" ws string_list "," ws "\"key_elements\"" ws ":" ws string_list ws "}"
+world-extraction ::= "{" ws "\"world_updates\"" ws ":" ws category-map ws "}"
+category-map ::= "{" ws (category-entry ("," ws category-entry)*)? ws "}"
+category-entry ::= json-string ws ":" ws entity-map
+entity-map ::= "{" ws (entity-entry ("," ws entity-entry)*)? ws "}"
+entity-entry ::= json-string ws ":" ws entity-details
+entity-details ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"goals\"" ws ":" ws string-list "," ws "\"rules\"" ws ":" ws string-list "," ws "\"key_elements\"" ws ":" ws string-list ws "}"
 
 # 3. Relationship Extraction (Triples)
-relationship_extraction ::= "{" ws "\"kg_triples\"" ws ":" ws triple_list ws "}"
-triple_list ::= "[" ws (triple_object ("," ws triple_object)*)? ws "]"
-triple_object ::= "{" ws "\"subject\"" ws ":" ws json_string "," ws "\"predicate\"" ws ":" ws json_string "," ws "\"object_entity\"" ws ":" ws json_string "," ws "\"description\"" ws ":" ws json_string ws "}"
+relationship-extraction ::= "{" ws "\"kg_triples\"" ws ":" ws triple-list ws "}"
+triple-list ::= "[" ws (triple-object ("," ws triple-object)*)? ws "]"
+triple-object ::= "{" ws "\"subject\"" ws ":" ws json-string "," ws "\"predicate\"" ws ":" ws json-string "," ws "\"object_entity\"" ws ":" ws json-string "," ws "\"description\"" ws ":" ws json-string ws "}"
 
 # --- Common Definitions ---
-relationship_map ::= "{" ws (relationship_entry ("," ws relationship_entry)*)? ws "}"
-relationship_entry ::= json_string ws ":" ws json_string
+relationship-map ::= "{" ws (relationship-entry ("," ws relationship-entry)*)? ws "}"
+relationship-entry ::= json-string ws ":" ws json-string
 
-json_value ::= json_object | json_array | json_string | json_number | json_bool | json_null
-json_object ::= "{" ws (json_member ("," ws json_member)*)? ws "}"
-json_member ::= json_string ws ":" ws json_value
-json_array ::= "[" ws (json_value ("," ws json_value)*)? ws "]"
-json_string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )* "\""
-json_number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
-json_bool ::= "true" | "false"
-json_null ::= "null"
+json-value ::= json-object | json-array | json-string | json-number | json-bool | json-null
+json-object ::= "{" ws (json-member ("," ws json-member)*)? ws "}"
+json-member ::= json-string ws ":" ws json-value
+json-array ::= "[" ws (json-value ("," ws json-value)*)? ws "]"
+json-string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )* "\""
+json-number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+json-bool ::= "true" | "false"
+json-null ::= "null"
 ws ::= [ \t\n\r]*
-string_list ::= "[" ws (json_string ("," ws json_string)*)? ws "]"
+string-list ::= "[" ws (json-string ("," ws json-string)*)? ws "]"

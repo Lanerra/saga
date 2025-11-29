@@ -1,19 +1,19 @@
 # Healing Grammars
 # Includes: Node Enrichment
 
-root ::= node_enrichment
+root ::= node-enrichment
 
 # 1. Node Enrichment
-node_enrichment ::= "{" ws "\"inferred_description\"" ws ":" ws json_string "," ws "\"inferred_traits\"" ws ":" ws string_list "," ws "\"inferred_role\"" ws ":" ws json_string "," ws "\"confidence\"" ws ":" ws json_number ws "}"
+node-enrichment ::= "{" ws "\"inferred_description\"" ws ":" ws json-string "," ws "\"inferred_traits\"" ws ":" ws string-list "," ws "\"inferred_role\"" ws ":" ws json-string "," ws "\"confidence\"" ws ":" ws json-number ws "}"
 
 # --- Common Definitions ---
-json_value ::= json_object | json_array | json_string | json_number | json_bool | json_null
-json_object ::= "{" ws (json_member ("," ws json_member)*)? ws "}"
-json_member ::= json_string ws ":" ws json_value
-json_array ::= "[" ws (json_value ("," ws json_value)*)? ws "]"
-json_string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )* "\""
-json_number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
-json_bool ::= "true" | "false"
-json_null ::= "null"
+json-value ::= json-object | json-array | json-string | json-number | json-bool | json-null
+json-object ::= "{" ws (json-member ("," ws json-member)*)? ws "}"
+json-member ::= json-string ws ":" ws json-value
+json-array ::= "[" ws (json-value ("," ws json-value)*)? ws "]"
+json-string ::= "\"" ( [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) )* "\""
+json-number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+json-bool ::= "true" | "false"
+json-null ::= "null"
 ws ::= [ \t\n\r]*
-string_list ::= "[" ws (json_string ("," ws json_string)*)? ws "]"
+string-list ::= "[" ws (json-string ("," ws json-string)*)? ws "]"

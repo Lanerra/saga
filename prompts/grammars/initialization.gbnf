@@ -1,25 +1,25 @@
 # Initialization Grammars
 # Includes: Global Outline, Character List, Character Sheet, Chapter Outline
 
-root ::= global_outline | character_list | character_sheet | chapter_outline
+root ::= global-outline | character-list | character-sheet | chapter-outline
 
 # 1. Global Outline
-global_outline ::= "{" ws "\"act_count\"" ws ":" ws json_number "," ws "\"acts\"" ws ":" ws act_list "," ws "\"inciting_incident\"" ws ":" ws json_string "," ws "\"midpoint\"" ws ":" ws json_string "," ws "\"climax\"" ws ":" ws json_string "," ws "\"resolution\"" ws ":" ws json_string "," ws "\"character_arcs\"" ws ":" ws char_arc_list "," ws "\"thematic_progression\"" ws ":" ws json_string "," ws "\"pacing_notes\"" ws ":" ws json_string ws "}"
+global-outline ::= "{" ws "\"act_count\"" ws ":" ws json-number "," ws "\"acts\"" ws ":" ws act-list "," ws "\"inciting_incident\"" ws ":" ws json-string "," ws "\"midpoint\"" ws ":" ws json-string "," ws "\"climax\"" ws ":" ws json-string "," ws "\"resolution\"" ws ":" ws json-string "," ws "\"character_arcs\"" ws ":" ws char-arc-list "," ws "\"thematic_progression\"" ws ":" ws json-string "," ws "\"pacing_notes\"" ws ":" ws json-string ws "}"
 
-act_list ::= "[" ws (act_object ("," ws act_object)*)? ws "]"
-act_object ::= "{" ws "\"number\"" ws ":" ws json_number "," ws "\"description\"" ws ":" ws json_string "," ws "\"chapters\"" ws ":" ws json_number ws "}"
+act-list ::= "[" ws (act-object ("," ws act-object)*)? ws "]"
+act-object ::= "{" ws "\"act_number\"" ws ":" ws json-number "," ws "\"title\"" ws ":" ws json-string "," ws "\"summary\"" ws ":" ws json-string "," ws "\"key_events\"" ws ":" ws string-list "," ws "\"chapters_start\"" ws ":" ws json-number "," ws "\"chapters_end\"" ws ":" ws json-number ws "}"
 
-char_arc_list ::= "[" ws (char_arc_object ("," ws char_arc_object)*)? ws "]"
-char_arc_object ::= "{" ws "\"name\"" ws ":" ws json_string "," ws "\"arc\"" ws ":" ws json_string ws "}"
+char-arc-list ::= "[" ws (char-arc-object ("," ws char-arc-object)*)? ws "]"
+char-arc-object ::= "{" ws "\"character_name\"" ws ":" ws json-string "," ws "\"starting_state\"" ws ":" ws json-string "," ws "\"ending_state\"" ws ":" ws json-string "," ws "\"key_moments\"" ws ":" ws string-list ws "}"
 
 # 2. Character List
-character_list ::= string_list
+character-list ::= string-list
 
 # 3. Character Sheet (CharacterProfile)
-character_sheet ::= "{" ws "\"name\"" ws ":" ws json_string "," ws "\"description\"" ws ":" ws json_string "," ws "\"traits\"" ws ":" ws string_list "," ws "\"status\"" ws ":" ws json_string "," ws "\"motivations\"" ws ":" ws json_string "," ws "\"background\"" ws ":" ws json_string "," ws "\"skills\"" ws ":" ws string_list "," ws "\"relationships\"" ws ":" ws relationship_map "," ws "\"internal_conflict\"" ws ":" ws json_string ws "}"
+character-sheet ::= "{" ws "\"name\"" ws ":" ws json-string "," ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws string-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"motivations\"" ws ":" ws json-string "," ws "\"background\"" ws ":" ws json-string "," ws "\"skills\"" ws ":" ws string-list "," ws "\"relationships\"" ws ":" ws relationship-map "," ws "\"internal_conflict\"" ws ":" ws json-string ws "}"
 
-relationship_map ::= "{" ws (relationship_entry ("," ws relationship_entry)*)? ws "}"
-relationship_entry ::= json_string ws ":" ws json_string
+relationship-map ::= "{" ws (relationship-entry ("," ws relationship-entry)*)? ws "}"
+relationship-entry ::= json-string ws ":" ws json-string
 
 # 4. Chapter Outline
-chapter_outline ::= "{" ws "\"scene_description\"" ws ":" ws json_string "," ws "\"key_beats\"" ws ":" ws string_list "," ws "\"plot_point\"" ws ":" ws json_string ws "}"
+chapter-outline ::= "{" ws "\"scene_description\"" ws ":" ws json-string "," ws "\"key_beats\"" ws ":" ws string-list "," ws "\"plot_point\"" ws ":" ws json-string ws "}"
