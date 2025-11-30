@@ -32,6 +32,8 @@ import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
+    get_extracted_entities,
+    get_extracted_relationships,
     load_embedding,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
@@ -75,18 +77,37 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     Returns:
         Updated state with current_node set to "commit_to_graph"
     """
+    # Initialize content manager to read externalized content
+    content_manager = ContentManager(state["project_dir"])
+
+    # Get extraction results from externalized content
+    extracted = get_extracted_entities(state, content_manager)
+
+    # Convert dicts to ExtractedEntity objects if needed
+    char_entities_raw = extracted.get("characters", [])
+    char_entities = [
+        ExtractedEntity(**e) if isinstance(e, dict) else e for e in char_entities_raw
+    ]
+
+    world_entities_raw = extracted.get("world_items", [])
+    world_entities = [
+        ExtractedEntity(**e) if isinstance(e, dict) else e for e in world_entities_raw
+    ]
+
+    # Convert dicts to ExtractedRelationship objects if needed
+    relationships_raw = get_extracted_relationships(state, content_manager)
+    relationships = [
+        ExtractedRelationship(**r) if isinstance(r, dict) else r
+        for r in relationships_raw
+    ]
+
     logger.info(
         "commit_to_graph",
         chapter=state["current_chapter"],
-        characters=len(state.get("extracted_entities", {}).get("characters", [])),
-        world_items=len(state.get("extracted_entities", {}).get("world_items", [])),
-        relationships=len(state.get("extracted_relationships", [])),
+        characters=len(char_entities),
+        world_items=len(world_entities),
+        relationships=len(relationships),
     )
-
-    extracted = state.get("extracted_entities", {})
-    char_entities = extracted.get("characters", [])
-    world_entities = extracted.get("world_items", [])
-    relationships = state.get("extracted_relationships", [])
 
     # Track mappings for deduplication
     char_mappings: dict[str, str] = {}  # new_name -> existing_name (or same)

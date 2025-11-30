@@ -3,7 +3,11 @@ import json
 
 import structlog
 
-from core.langgraph.content_manager import ContentManager, get_chapter_outlines
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_chapter_outlines,
+    save_chapter_plan,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.character_queries import get_all_character_names, sync_characters
@@ -212,8 +216,35 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         # This creates stub profiles for any new characters the LLM introduced
         await _ensure_scene_characters_exist(scenes, chapter_number)
 
+        # Externalize chapter_plan to reduce state bloat
+        content_manager = ContentManager(state["project_dir"])
+
+        # Get current version for this chapter's plan
+        current_version = (
+            content_manager.get_latest_version(
+                "chapter_plan", f"chapter_{chapter_number}"
+            )
+            + 1
+        )
+
+        # Save chapter plan to external file
+        chapter_plan_ref = save_chapter_plan(
+            content_manager,
+            scenes,
+            chapter_number,
+            current_version,
+        )
+
+        logger.info(
+            "plan_scenes: chapter plan externalized",
+            chapter=chapter_number,
+            version=current_version,
+            plan_size=chapter_plan_ref["size_bytes"],
+        )
+
         return {
             "chapter_plan": scenes,
+            "chapter_plan_ref": chapter_plan_ref,
             "current_scene_index": 0,
             "scene_drafts_ref": None,
             "current_node": "plan_scenes",

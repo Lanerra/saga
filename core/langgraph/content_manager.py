@@ -460,6 +460,80 @@ def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float
     return manager.load_binary(ref)
 
 
+def save_extracted_entities(
+    manager: ContentManager,
+    entities: dict[str, list[dict[str, Any]]],
+    chapter: int,
+    version: int = 1,
+) -> ContentRef:
+    """Save extracted entities for a chapter."""
+    return manager.save_json(
+        entities, "extracted_entities", f"chapter_{chapter}", version
+    )
+
+
+def load_extracted_entities(
+    manager: ContentManager, ref: ContentRef | str
+) -> dict[str, list[dict[str, Any]]]:
+    """Load extracted entities for a chapter."""
+    return manager.load_json(ref)
+
+
+def save_extracted_relationships(
+    manager: ContentManager,
+    relationships: list[dict[str, Any]],
+    chapter: int,
+    version: int = 1,
+) -> ContentRef:
+    """Save extracted relationships for a chapter."""
+    return manager.save_json(
+        relationships, "extracted_relationships", f"chapter_{chapter}", version
+    )
+
+
+def load_extracted_relationships(
+    manager: ContentManager, ref: ContentRef | str
+) -> list[dict[str, Any]]:
+    """Load extracted relationships for a chapter."""
+    return manager.load_json(ref)
+
+
+def save_active_characters(
+    manager: ContentManager,
+    characters: list[dict[str, Any]],
+    chapter: int,
+    version: int = 1,
+) -> ContentRef:
+    """Save active characters for a chapter."""
+    return manager.save_json(
+        characters, "active_characters", f"chapter_{chapter}", version
+    )
+
+
+def load_active_characters(
+    manager: ContentManager, ref: ContentRef | str
+) -> list[dict[str, Any]]:
+    """Load active characters for a chapter."""
+    return manager.load_json(ref)
+
+
+def save_chapter_plan(
+    manager: ContentManager,
+    plan: list[dict[str, Any]],
+    chapter: int,
+    version: int = 1,
+) -> ContentRef:
+    """Save chapter plan (scene details) for a chapter."""
+    return manager.save_json(plan, "chapter_plan", f"chapter_{chapter}", version)
+
+
+def load_chapter_plan(
+    manager: ContentManager, ref: ContentRef | str
+) -> list[dict[str, Any]]:
+    """Load chapter plan for a chapter."""
+    return manager.load_json(ref)
+
+
 # Helper functions for content loading from external files (Phase 3: No fallback)
 
 
@@ -662,6 +736,98 @@ def get_act_outlines(state: dict, manager: ContentManager) -> dict[int, dict]:
     return {int(k): v for k, v in data.items()}
 
 
+def get_extracted_entities(
+    state: dict, manager: ContentManager
+) -> dict[str, list[dict[str, Any]]]:
+    """
+    Get extracted entities from externalized content.
+
+    Args:
+        state: NarrativeState dict
+        manager: ContentManager instance
+
+    Returns:
+        Extracted entities dict (empty dict if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
+    """
+    entities_ref = state.get("extracted_entities_ref")
+    if not entities_ref:
+        # Fallback to in-state content if ref not available
+        return state.get("extracted_entities", {})
+
+    return manager.load_json(entities_ref)
+
+
+def get_extracted_relationships(
+    state: dict, manager: ContentManager
+) -> list[dict[str, Any]]:
+    """
+    Get extracted relationships from externalized content.
+
+    Args:
+        state: NarrativeState dict
+        manager: ContentManager instance
+
+    Returns:
+        List of extracted relationships (empty list if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
+    """
+    relationships_ref = state.get("extracted_relationships_ref")
+    if not relationships_ref:
+        # Fallback to in-state content if ref not available
+        return state.get("extracted_relationships", [])
+
+    return manager.load_json(relationships_ref)
+
+
+def get_active_characters(state: dict, manager: ContentManager) -> list[dict[str, Any]]:
+    """
+    Get active characters from externalized content.
+
+    Args:
+        state: NarrativeState dict
+        manager: ContentManager instance
+
+    Returns:
+        List of active character profiles (empty list if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
+    """
+    characters_ref = state.get("active_characters_ref")
+    if not characters_ref:
+        # Fallback to in-state content if ref not available
+        return state.get("active_characters", [])
+
+    return manager.load_json(characters_ref)
+
+
+def get_chapter_plan(state: dict, manager: ContentManager) -> list[dict[str, Any]]:
+    """
+    Get chapter plan from externalized content.
+
+    Args:
+        state: NarrativeState dict
+        manager: ContentManager instance
+
+    Returns:
+        List of scene details (empty list if not available)
+
+    Raises:
+        FileNotFoundError: If external file reference exists but file is missing
+    """
+    plan_ref = state.get("chapter_plan_ref")
+    if not plan_ref:
+        # Fallback to in-state content if ref not available
+        return state.get("chapter_plan") or []
+
+    return manager.load_json(plan_ref)
+
+
 __all__ = [
     "ContentRef",
     "ContentManager",
@@ -677,6 +843,14 @@ __all__ = [
     "load_summaries",
     "save_embedding",
     "load_embedding",
+    "save_extracted_entities",
+    "load_extracted_entities",
+    "save_extracted_relationships",
+    "load_extracted_relationships",
+    "save_active_characters",
+    "load_active_characters",
+    "save_chapter_plan",
+    "load_chapter_plan",
     # Phase 2: Safe content getters with fallback
     "get_draft_text",
     "get_scene_drafts",
@@ -686,4 +860,8 @@ __all__ = [
     "get_chapter_outlines",
     "get_global_outline",
     "get_act_outlines",
+    "get_extracted_entities",
+    "get_extracted_relationships",
+    "get_active_characters",
+    "get_chapter_plan",
 ]

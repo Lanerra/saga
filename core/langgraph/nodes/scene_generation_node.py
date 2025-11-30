@@ -3,6 +3,7 @@ import structlog
 
 from core.langgraph.content_manager import (
     ContentManager,
+    get_chapter_plan,
     get_hybrid_context,
     get_scene_drafts,
 )
@@ -24,7 +25,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     chapter_number = state["current_chapter"]
     scene_index = state["current_scene_index"]
-    chapter_plan = state.get("chapter_plan")
+
+    # Get chapter plan from externalized content
+    chapter_plan = get_chapter_plan(state, content_manager)
 
     if not chapter_plan or scene_index >= len(chapter_plan):
         logger.error("draft_scene: invalid scene index", index=scene_index)
