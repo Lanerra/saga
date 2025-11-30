@@ -125,7 +125,7 @@ for end_pos in range(len(json_text), 0, -100):  # Step by 100 chars
 
 ## ARCHITECTURAL CONCERNS
 
-### 6. **Content Externalization Not Complete**
+### 6. **Content Externalization Not Complete** - DONE
 
 **Location: `core/langgraph/content_manager.py`**
 
@@ -205,7 +205,7 @@ The `else` branch should be unreachable, but if it executes, it raises a generic
 
 ## WORKFLOW & LANGGRAPH SPECIFIC
 
-### 10. **Parallel Extraction Coordination**
+### 10. **Parallel Extraction Coordination** - NOT NEEDED, MOVED TO SEQUENTIAL
 
 **Location: `core/langgraph/subgraphs/extraction.py`**
 
@@ -499,16 +499,14 @@ Despite the issues above, several things are well-done:
 1. **Fix all silent exception swallowing** - Add logging at minimum - DONE
 2. **Document relationship validation removal** - Is this intentional?
 3. **Add state factory function** - Ensure consistent initialization - DONE
-4. **Test parallel extraction** - Verify no race conditions - NO LONGER NEEDED, MOVED TO SEQUENTIAL
-5. **Add model validation at startup** - Fail fast if models missing
-6. **Document error recovery** - What to do when things break
+4. **Add model validation at startup** - Fail fast if models missing
+5. **Document error recovery** - What to do when things break
 
 ### HIGH PRIORITY:
 1. **Complete content externalization** - Move extracted_entities to external storage - DONE
 2. **Standardize state access patterns** - Use .get() everywhere or ensure initialization
 3. **Add monitoring/metrics** - Cache hit rates, query latencies, token usage
 4. **Review JSON repair logic** - Consider failing explicitly instead of truncating
-5. **Add connection pooling** - For concurrent DB access
 
 ### MEDIUM PRIORITY:
 1. **Remove deprecated code** - Clean up plot_outline
