@@ -69,18 +69,6 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     # Get chapter outlines (prefers externalized content, falls back to in-state)
     chapter_outlines = get_chapter_outlines(state, content_manager)
 
-    # Check for deprecated plot_outline usage as ultimate fallback
-    if not chapter_outlines:
-        plot_outline = state.get("plot_outline")
-        if plot_outline:
-            logger.warning(
-                "generate_chapter: using deprecated plot_outline field. "
-                "Please migrate to chapter_outlines. "
-                "plot_outline will be removed in SAGA v3.0",
-                deprecation=True,
-            )
-            chapter_outlines = plot_outline
-
     if not chapter_outlines:
         error_msg = "No chapter outlines available for generation"
         logger.error("generate_chapter: fatal error", error=error_msg)

@@ -188,13 +188,6 @@ class NarrativeState(TypedDict, total=False):
     current_act: int
 
     # =========================================================================
-    # Plot Outline - DEPRECATED
-    # =========================================================================
-    # DEPRECATED: Use chapter_outlines instead (see Initialization Phase State below)
-    # This field is kept for backward compatibility and will be removed in v3.0
-    plot_outline: dict[int, dict[str, Any]]
-
-    # =========================================================================
     # Active Context (for prompt construction)
     # =========================================================================
     active_characters: list[CharacterProfile]  # Reuses existing model
