@@ -26,13 +26,12 @@ async def test_extraction_subgraph():
     )
     state["current_chapter"] = 1
 
-    # Mock LLM responses
+    # Mock LLM responses (note: LLM still returns character_updates, world_updates in JSON,
+    # but extraction nodes transform these to extracted_entities/extracted_relationships)
     mock_char_response = '{"character_updates": {"Elara": {"description": "A brave hero", "traits": ["brave"], "status": "active"}}}'
     mock_loc_response = '{"world_updates": {"Location": {"Sunken Library": {"description": "A dusty old library"}}}}'
     mock_event_response = '{"world_updates": {"Event": {"Discovery": {"description": "Elara finds the map"}}}}'
-    mock_rel_response = (
-        '{"kg_triples": ["Character:Elara | LOCATED_IN | Location:Sunken Library"]}'
-    )
+    mock_rel_response = '{"kg_triples": [{"subject": "Elara", "predicate": "LOCATED_IN", "object_entity": "Sunken Library", "description": "Elara is in the library"}]}'
 
     with patch("core.llm_interface_refactored.llm_service.async_call_llm") as mock_llm:
         # Configure mock to return different responses based on prompt content

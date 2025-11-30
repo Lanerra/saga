@@ -35,6 +35,9 @@ logger = structlog.get_logger(__name__)
 async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     """
     Extract character details from the chapter text.
+
+    Returns updates to extracted_entities["characters"] which will be merged
+    by the merge_extracted_entities reducer.
     """
     logger.info("extract_characters: starting")
 
@@ -43,7 +46,7 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
-        return {"character_updates": []}
+        return {"extracted_entities": {"characters": []}}
 
     prompt = render_prompt(
         "knowledge_agent/extract_characters.j2",
@@ -82,10 +85,10 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
             logger.error("extract_characters: failed to parse JSON", raw_text=raw_text)
-            return {"character_updates": []}
+            return {"extracted_entities": {"characters": []}}
 
         if not data:
-            return {"character_updates": []}
+            return {"extracted_entities": {"characters": []}}
 
         # Process character updates into ExtractedEntity objects
         char_updates = []
@@ -109,16 +112,19 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
                     )
                 )
 
-        return {"character_updates": char_updates}
+        return {"extracted_entities": {"characters": char_updates}}
 
     except Exception as e:
         logger.error("extract_characters: failed", error=str(e))
-        return {"character_updates": []}
+        return {"extracted_entities": {"characters": []}}
 
 
 async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     """
     Extract location details from the chapter text.
+
+    Returns updates to extracted_entities["world_items"] which will be merged
+    by the merge_extracted_entities reducer.
     """
     logger.info("extract_locations: starting")
 
@@ -127,7 +133,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
-        return {"location_updates": []}
+        return {"extracted_entities": {"world_items": []}}
 
     prompt = render_prompt(
         "knowledge_agent/extract_locations.j2",
@@ -166,10 +172,10 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
             logger.error("extract_locations: failed to parse JSON", raw_text=raw_text)
-            return {"location_updates": []}
+            return {"extracted_entities": {"world_items": []}}
 
         if not data:
-            return {"location_updates": []}
+            return {"extracted_entities": {"world_items": []}}
 
         # Process world updates into ExtractedEntity objects
         world_updates = []
@@ -214,16 +220,19 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                                 )
                             )
 
-        return {"location_updates": world_updates}
+        return {"extracted_entities": {"world_items": world_updates}}
 
     except Exception as e:
         logger.error("extract_locations: failed", error=str(e))
-        return {"location_updates": []}
+        return {"extracted_entities": {"world_items": []}}
 
 
 async def extract_events(state: NarrativeState) -> dict[str, Any]:
     """
     Extract significant events from the chapter text.
+
+    Returns updates to extracted_entities["world_items"] which will be merged
+    by the merge_extracted_entities reducer.
     """
     logger.info("extract_events: starting")
 
@@ -232,7 +241,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
-        return {"event_updates": []}
+        return {"extracted_entities": {"world_items": []}}
 
     prompt = render_prompt(
         "knowledge_agent/extract_events.j2",
@@ -271,10 +280,10 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
             logger.error("extract_events: failed to parse JSON", raw_text=raw_text)
-            return {"event_updates": []}
+            return {"extracted_entities": {"world_items": []}}
 
         if not data:
-            return {"event_updates": []}
+            return {"extracted_entities": {"world_items": []}}
 
         event_updates = []
         raw_updates = data.get("world_updates", {})
@@ -314,16 +323,19 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                             )
                         )
 
-        return {"event_updates": event_updates}
+        return {"extracted_entities": {"world_items": event_updates}}
 
     except Exception as e:
         logger.error("extract_events: failed", error=str(e))
-        return {"event_updates": []}
+        return {"extracted_entities": {"world_items": []}}
 
 
 async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     """
     Extract relationships between entities.
+
+    Returns updates to extracted_relationships which will be merged
+    by the merge_extracted_relationships reducer.
     """
     logger.info("extract_relationships: starting")
 
@@ -332,7 +344,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
-        return {"relationship_updates": []}
+        return {"extracted_relationships": []}
 
     prompt = render_prompt(
         "knowledge_agent/extract_relationships.j2",
@@ -373,10 +385,10 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             logger.error(
                 "extract_relationships: failed to parse JSON", raw_text=raw_text
             )
-            return {"relationship_updates": []}
+            return {"extracted_relationships": []}
 
         if not data:
-            return {"relationship_updates": []}
+            return {"extracted_relationships": []}
 
         relationships = []
         kg_triples_list = data.get("kg_triples", [])
@@ -385,7 +397,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             logger.warning(
                 "extract_relationships: kg_triples is not a list", raw_data=data
             )
-            return {"relationship_updates": []}
+            return {"extracted_relationships": []}
 
         for triple in kg_triples_list:
             if not isinstance(triple, dict):
@@ -420,52 +432,31 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                     )
                 )
 
-        return {"relationship_updates": relationships}
+        return {"extracted_relationships": relationships}
 
     except Exception as e:
         logger.error("extract_relationships: failed", error=str(e))
-        return {"relationship_updates": []}
+        return {"extracted_relationships": []}
 
 
 def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     """
-    Merge results from parallel extractions.
+    Finalize extraction after parallel nodes complete.
 
-    This node expects the state to have been updated with partial results
-    from the parallel branches. However, since LangGraph parallel branches
-    return separate state updates that are merged, we need to handle
-    how LangGraph merges them.
+    With the reducer-based approach, parallel extraction results are automatically
+    merged by merge_extracted_entities and merge_extracted_relationships reducers.
+    This node simply marks the extraction phase as complete.
 
-    In LangGraph, if multiple nodes return updates to the same key, the behavior
-    depends on the reducer. If we return different keys from each node,
-    they will all be present in the state passed to this node.
+    Note: The actual merging happens automatically via LangGraph reducers on
+    the extracted_entities and extracted_relationships fields.
     """
-    logger.info("consolidate_extraction: merging results")
-
-    # Collect all updates
-    # Note: In a real parallel execution, the state passed here would contain
-    # the merged results of the parallel branches if they wrote to different keys.
-    # We'll assume the parallel nodes return dicts that get merged into the state.
-
-    char_updates = state.get("character_updates", [])
-    location_updates = state.get("location_updates", [])
-    event_updates = state.get("event_updates", [])
-    relationship_updates = state.get("relationship_updates", [])
-
-    # Combine world items (locations + events)
-    world_items = location_updates + event_updates
-
-    extracted_entities = {
-        "characters": char_updates,
-        "world_items": world_items,
-    }
-
-    # Clean up temporary keys
-    # (We can't easily remove keys in TypedDict state, but we can ignore them)
+    logger.info(
+        "consolidate_extraction: extraction complete",
+        characters=len(state.get("extracted_entities", {}).get("characters", [])),
+        world_items=len(state.get("extracted_entities", {}).get("world_items", [])),
+        relationships=len(state.get("extracted_relationships", [])),
+    )
 
     return {
-        **state,
-        "extracted_entities": extracted_entities,
-        "extracted_relationships": relationship_updates,
         "current_node": "consolidate_extraction",
     }

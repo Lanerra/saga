@@ -7,11 +7,30 @@ designed to minimize disruption to existing SAGA code while enabling
 the migration to LangGraph architecture.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.1.1
+
+State Field Organization:
+- Metadata: Immutable project configuration
+- Progress: Current position in the narrative
+- Content: Generated text and drafts (mostly externalized via ContentRef)
+- Extraction: Entities and relationships extracted from text
+- Validation: Quality scores and contradiction detection
+- Models: LLM model configuration
+- Workflow: Control flow and iteration tracking
+- Error Handling: Error state and recovery
+- Filesystem: Directory paths
+- Context: Dynamic context for generation
+- Planning: Chapter and scene planning
+- Revision: Revision state and feedback
+- World Building: World items and rules
+- Characters: Protagonist and character profiles
+- Initialization: Initialization workflow state
+- Graph Healing: Provisional node enrichment and merging
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+import operator
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -100,6 +119,53 @@ class Contradiction(BaseModel):
         validate_assignment = True
 
 
+# ============================================================================= # Reducer Functions for Parallel State Updates
+# =============================================================================
+
+
+def merge_extracted_entities(
+    left: dict[str, list[ExtractedEntity]], right: dict[str, list[ExtractedEntity]]
+) -> dict[str, list[ExtractedEntity]]:
+    """
+    Reducer for merging extracted_entities from parallel extraction nodes.
+
+    During parallel extraction, multiple nodes may return updates to extracted_entities.
+    This reducer ensures all updates are properly merged by category.
+
+    Args:
+        left: Existing extracted_entities dict
+        right: New extracted_entities dict from a parallel node
+
+    Returns:
+        Merged dict with all entities combined by category
+    """
+    result = dict(left) if left else {}
+
+    for category, entities in (right or {}).items():
+        if category in result:
+            result[category] = result[category] + entities
+        else:
+            result[category] = entities
+
+    return result
+
+
+def merge_extracted_relationships(
+    left: list[ExtractedRelationship], right: list[ExtractedRelationship]
+) -> list[ExtractedRelationship]:
+    """
+    Reducer for merging extracted_relationships from parallel extraction nodes.
+
+    Args:
+        left: Existing relationships list
+        right: New relationships from a parallel node
+
+    Returns:
+        Combined list of all relationships
+    """
+    return (left or []) + (right or [])
+
+
 class NarrativeState(TypedDict, total=False):
     """
     LangGraph state for SAGA narrative generation workflow.
@@ -108,11 +174,42 @@ class NarrativeState(TypedDict, total=False):
     This schema is designed to align with existing SAGA data structures
     to minimize migration disruption.
 
-    Migration Strategy:
-    - Preserves existing field names where possible (e.g., plot_outline)
-    - Maintains compatibility with CharacterProfile and WorldItem models
-    - Adds new fields for entity extraction and validation workflows
-    - Uses Optional types for flexibility during gradual migration
+    ## State Update Patterns
+
+    ### Reducer-Based Parallel Updates
+    Some fields use custom reducer functions to merge parallel updates:
+    - `extracted_entities`: Uses merge_extracted_entities reducer
+    - `extracted_relationships`: Uses merge_extracted_relationships reducer
+
+    When parallel extraction nodes return updates to these fields, the reducers
+    automatically merge them. This eliminates the need for temporary fields and
+    explicit consolidation logic.
+
+    ### Content Externalization
+    Large content fields are externalized via ContentRef to avoid bloating the
+    SQLite checkpoint database:
+    - `draft_ref`: Reference to externalized draft text
+    - `embedding_ref`: Reference to externalized embeddings
+    - `scene_drafts_ref`: Reference to externalized scene drafts
+    - And other `*_ref` fields
+
+    ### Field Categories
+    Fields are organized into logical categories (see module docstring):
+    - Metadata: Immutable project configuration (project_id, genre, etc.)
+    - Progress: Current position (current_chapter, current_act)
+    - Content: Generated text (externalized via ContentRef)
+    - Extraction: Entities and relationships from text
+    - Validation: Quality scores and contradiction detection
+    - Models: LLM model configuration
+    - Workflow: Control flow and iteration tracking
+    - Error Handling: Error state and recovery
+    - And more (see individual sections below)
+
+    ## Type Safety Notes
+    This TypedDict uses `total=False`, making all fields technically optional.
+    However, the `create_initial_state` factory function initializes all required
+    fields with sensible defaults. Some fields are truly optional (e.g., error fields),
+    while others should always be present after initialization.
     """
 
     # =========================================================================
@@ -164,16 +261,21 @@ class NarrativeState(TypedDict, total=False):
     embedding_ref: ContentRef | None  # Reference to externalized embedding
 
     # =========================================================================
-    # Entity Extraction Results (NEW: centralized extraction state)
+    # Entity Extraction Results
     # =========================================================================
-    extracted_entities: dict[str, list[ExtractedEntity]]
-    extracted_relationships: list[ExtractedRelationship]
-
-    # Temporary keys for parallel extraction
-    character_updates: list[ExtractedEntity]
-    location_updates: list[ExtractedEntity]
-    event_updates: list[ExtractedEntity]
-    relationship_updates: list[ExtractedRelationship]
+    # These fields use custom reducers to merge parallel extraction results.
+    # Parallel extraction nodes can return updates to these fields, and the
+    # reducer functions will automatically merge them.
+    #
+    # Example: If extract_characters returns {"extracted_entities": {"characters": [...]}}
+    # and extract_locations returns {"extracted_entities": {"world_items": [...]}},
+    # the merge_extracted_entities reducer combines them into a single dict.
+    extracted_entities: Annotated[
+        dict[str, list[ExtractedEntity]], merge_extracted_entities
+    ]
+    extracted_relationships: Annotated[
+        list[ExtractedRelationship], merge_extracted_relationships
+    ]
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)
@@ -193,9 +295,7 @@ class NarrativeState(TypedDict, total=False):
     plot_advancement_score: float | None  # 0.0-1.0 score for plot advancement
     pacing_score: float | None  # 0.0-1.0 score for narrative pacing
     tone_consistency_score: float | None  # 0.0-1.0 score for tone consistency
-
-    # Externalized quality feedback reference
-    quality_feedback_ref: ContentRef | None  # Reference to externalized feedback
+    quality_feedback: str | None  # Free-form feedback summarizing strengths/weaknesses
 
     # =========================================================================
     # Model Configuration
@@ -382,7 +482,6 @@ def create_initial_state(
         "scene_drafts_ref": None,
         "hybrid_context_ref": None,
         "kg_facts_ref": None,
-        "quality_feedback_ref": None,
         "character_sheets_ref": None,
         "global_outline_ref": None,
         "act_outlines_ref": None,
@@ -464,4 +563,6 @@ __all__ = [
     "ExtractedRelationship",
     "Contradiction",
     "create_initial_state",
+    "merge_extracted_entities",
+    "merge_extracted_relationships",
 ]
