@@ -29,8 +29,7 @@ State Field Organization:
 
 from __future__ import annotations
 
-import operator
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -119,51 +118,6 @@ class Contradiction(BaseModel):
         validate_assignment = True
 
 
-# ============================================================================= # Reducer Functions for Parallel State Updates
-# =============================================================================
-
-
-def merge_extracted_entities(
-    left: dict[str, list[ExtractedEntity]], right: dict[str, list[ExtractedEntity]]
-) -> dict[str, list[ExtractedEntity]]:
-    """
-    Reducer for merging extracted_entities from parallel extraction nodes.
-
-    During parallel extraction, multiple nodes may return updates to extracted_entities.
-    This reducer ensures all updates are properly merged by category.
-
-    Args:
-        left: Existing extracted_entities dict
-        right: New extracted_entities dict from a parallel node
-
-    Returns:
-        Merged dict with all entities combined by category
-    """
-    result = dict(left) if left else {}
-
-    for category, entities in (right or {}).items():
-        if category in result:
-            result[category] = result[category] + entities
-        else:
-            result[category] = entities
-
-    return result
-
-
-def merge_extracted_relationships(
-    left: list[ExtractedRelationship], right: list[ExtractedRelationship]
-) -> list[ExtractedRelationship]:
-    """
-    Reducer for merging extracted_relationships from parallel extraction nodes.
-
-    Args:
-        left: Existing relationships list
-        right: New relationships from a parallel node
-
-    Returns:
-        Combined list of all relationships
-    """
-    return (left or []) + (right or [])
 
 
 class NarrativeState(TypedDict, total=False):
@@ -176,14 +130,15 @@ class NarrativeState(TypedDict, total=False):
 
     ## State Update Patterns
 
-    ### Reducer-Based Parallel Updates
-    Some fields use custom reducer functions to merge parallel updates:
-    - `extracted_entities`: Uses merge_extracted_entities reducer
-    - `extracted_relationships`: Uses merge_extracted_relationships reducer
+    ### Sequential Extraction
+    Extraction runs sequentially without reducers:
+    1. `extract_characters`: CLEARS extraction state, extracts characters
+    2. `extract_locations`: APPENDS locations to world_items
+    3. `extract_events`: APPENDS events to world_items
+    4. `extract_relationships`: Sets relationships
 
-    When parallel extraction nodes return updates to these fields, the reducers
-    automatically merge them. This eliminates the need for temporary fields and
-    explicit consolidation logic.
+    This sequential approach prevents cross-chapter accumulation that occurred
+    with reducer-based parallel extraction.
 
     ### Content Externalization
     Large content fields are externalized via ContentRef to avoid bloating the
@@ -263,25 +218,15 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Entity Extraction Results
     # =========================================================================
-    # These fields use custom reducers to merge parallel extraction results.
-    # Parallel extraction nodes can return updates to these fields, and the
-    # reducer functions will automatically merge them.
+    # Sequential extraction (no reducers needed):
+    # - extract_characters: Clears and populates extracted_entities["characters"]
+    # - extract_locations: Appends to extracted_entities["world_items"]
+    # - extract_events: Appends to extracted_entities["world_items"]
+    # - extract_relationships: Populates extracted_relationships
     #
-    # Example: If extract_characters returns {"extracted_entities": {"characters": [...]}}
-    # and extract_locations returns {"extracted_entities": {"world_items": [...]}},
-    # the merge_extracted_entities reducer combines them into a single dict.
-    #
-    # CRITICAL: These reducers ACCUMULATE values across workflow iterations!
-    # The extraction subgraph MUST clear these fields at the start of each
-    # extraction cycle (in extract_router) to prevent exponential growth across
-    # chapters and revision loops. Without clearing, extracted entities from
-    # previous chapters/iterations will be re-merged, causing massive duplication.
-    extracted_entities: Annotated[
-        dict[str, list[ExtractedEntity]], merge_extracted_entities
-    ]
-    extracted_relationships: Annotated[
-        list[ExtractedRelationship], merge_extracted_relationships
-    ]
+    # Each extraction cycle starts fresh by clearing these fields in the first node.
+    extracted_entities: dict[str, list[ExtractedEntity]]
+    extracted_relationships: list[ExtractedRelationship]
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)
@@ -569,6 +514,4 @@ __all__ = [
     "ExtractedRelationship",
     "Contradiction",
     "create_initial_state",
-    "merge_extracted_entities",
-    "merge_extracted_relationships",
 ]

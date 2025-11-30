@@ -36,17 +36,20 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     """
     Extract character details from the chapter text.
 
-    Returns updates to extracted_entities["characters"] which will be merged
-    by the merge_extracted_entities reducer.
+    FIRST node in sequential extraction - CLEARS previous extraction state.
     """
-    logger.info("extract_characters: starting")
+    logger.info("extract_characters: starting (clearing previous extraction state)")
 
     # Initialize content manager and get draft text
     content_manager = ContentManager(state["project_dir"])
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
-        return {"extracted_entities": {"characters": []}}
+        # Clear state even if no draft
+        return {
+            "extracted_entities": {"characters": [], "world_items": []},
+            "extracted_relationships": [],
+        }
 
     prompt = render_prompt(
         "knowledge_agent/extract_characters.j2",
@@ -85,10 +88,16 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
             logger.error("extract_characters: failed to parse JSON", raw_text=raw_text)
-            return {"extracted_entities": {"characters": []}}
+            return {
+                "extracted_entities": {"characters": [], "world_items": []},
+                "extracted_relationships": [],
+            }
 
         if not data:
-            return {"extracted_entities": {"characters": []}}
+            return {
+                "extracted_entities": {"characters": [], "world_items": []},
+                "extracted_relationships": [],
+            }
 
         # Process character updates into ExtractedEntity objects
         char_updates = []
@@ -112,19 +121,25 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
                     )
                 )
 
-        return {"extracted_entities": {"characters": char_updates}}
+        # Clear extraction state and set characters
+        return {
+            "extracted_entities": {"characters": char_updates, "world_items": []},
+            "extracted_relationships": [],
+        }
 
     except Exception as e:
         logger.error("extract_characters: failed", error=str(e))
-        return {"extracted_entities": {"characters": []}}
+        return {
+            "extracted_entities": {"characters": [], "world_items": []},
+            "extracted_relationships": [],
+        }
 
 
 async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     """
     Extract location details from the chapter text.
 
-    Returns updates to extracted_entities["world_items"] which will be merged
-    by the merge_extracted_entities reducer.
+    APPENDS to world_items (sequential extraction).
     """
     logger.info("extract_locations: starting")
 
@@ -132,8 +147,11 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     content_manager = ContentManager(state["project_dir"])
     draft_text = get_draft_text(state, content_manager)
 
+    # Get existing world_items to append to
+    existing_world_items = state.get("extracted_entities", {}).get("world_items", [])
+
     if not draft_text:
-        return {"extracted_entities": {"world_items": []}}
+        return {}
 
     prompt = render_prompt(
         "knowledge_agent/extract_locations.j2",
@@ -172,10 +190,10 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
             logger.error("extract_locations: failed to parse JSON", raw_text=raw_text)
-            return {"extracted_entities": {"world_items": []}}
+            return {}
 
         if not data:
-            return {"extracted_entities": {"world_items": []}}
+            return {}
 
         # Process world updates into ExtractedEntity objects
         world_updates = []
@@ -220,19 +238,19 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                                 )
                             )
 
-        return {"extracted_entities": {"world_items": world_updates}}
+        # Append to existing world_items
+        return {"extracted_entities": {"world_items": existing_world_items + world_updates}}
 
     except Exception as e:
         logger.error("extract_locations: failed", error=str(e))
-        return {"extracted_entities": {"world_items": []}}
+        return {}
 
 
 async def extract_events(state: NarrativeState) -> dict[str, Any]:
     """
     Extract significant events from the chapter text.
 
-    Returns updates to extracted_entities["world_items"] which will be merged
-    by the merge_extracted_entities reducer.
+    APPENDS to world_items (sequential extraction).
     """
     logger.info("extract_events: starting")
 
@@ -240,8 +258,11 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     content_manager = ContentManager(state["project_dir"])
     draft_text = get_draft_text(state, content_manager)
 
+    # Get existing world_items to append to
+    existing_world_items = state.get("extracted_entities", {}).get("world_items", [])
+
     if not draft_text:
-        return {"extracted_entities": {"world_items": []}}
+        return {}
 
     prompt = render_prompt(
         "knowledge_agent/extract_events.j2",
@@ -280,10 +301,10 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
             logger.error("extract_events: failed to parse JSON", raw_text=raw_text)
-            return {"extracted_entities": {"world_items": []}}
+            return {}
 
         if not data:
-            return {"extracted_entities": {"world_items": []}}
+            return {}
 
         event_updates = []
         raw_updates = data.get("world_updates", {})
@@ -323,19 +344,19 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                             )
                         )
 
-        return {"extracted_entities": {"world_items": event_updates}}
+        # Append to existing world_items
+        return {"extracted_entities": {"world_items": existing_world_items + event_updates}}
 
     except Exception as e:
         logger.error("extract_events: failed", error=str(e))
-        return {"extracted_entities": {"world_items": []}}
+        return {}
 
 
 async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     """
     Extract relationships between entities.
 
-    Returns updates to extracted_relationships which will be merged
-    by the merge_extracted_relationships reducer.
+    Sets extracted_relationships (sequential extraction).
     """
     logger.info("extract_relationships: starting")
 

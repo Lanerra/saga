@@ -78,7 +78,9 @@ async def test_extraction_clears_previous_state():
     Test that extraction properly clears previous state to prevent accumulation.
 
     This verifies the fix for the issue where tens of thousands of entities
-    were being accumulated across chapters due to reducer-based merging.
+    were being accumulated across chapters.
+
+    Uses SEQUENTIAL extraction instead of parallel with reducers.
     """
     workflow = create_extraction_subgraph()
     state = create_initial_state(
@@ -153,13 +155,14 @@ async def test_extraction_clears_previous_state():
 
         mock_llm.side_effect = side_effect
 
-        # Run workflow
+        # Run workflow (now sequential - extract_characters clears state first)
         result = await workflow.ainvoke(state)
 
         # Verify that ONLY the new entities are present (old ones were cleared)
         entities = result["extracted_entities"]
 
         # Should have exactly 1 character (NewCharacter), not 2
+        # extract_characters clears the state as the FIRST node
         assert len(entities.get("characters", [])) == 1
         assert entities["characters"][0].name == "NewCharacter"
 
