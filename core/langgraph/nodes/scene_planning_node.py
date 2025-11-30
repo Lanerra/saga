@@ -220,9 +220,12 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         content_manager = ContentManager(state["project_dir"])
 
         # Get current version for this chapter's plan
-        current_version = content_manager.get_latest_version(
-            "chapter_plan", f"chapter_{chapter_number}"
-        ) + 1
+        current_version = (
+            content_manager.get_latest_version(
+                "chapter_plan", f"chapter_{chapter_number}"
+            )
+            + 1
+        )
 
         # Save chapter plan to external file
         chapter_plan_ref = save_chapter_plan(

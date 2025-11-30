@@ -467,7 +467,9 @@ def save_extracted_entities(
     version: int = 1,
 ) -> ContentRef:
     """Save extracted entities for a chapter."""
-    return manager.save_json(entities, "extracted_entities", f"chapter_{chapter}", version)
+    return manager.save_json(
+        entities, "extracted_entities", f"chapter_{chapter}", version
+    )
 
 
 def load_extracted_entities(
@@ -484,7 +486,9 @@ def save_extracted_relationships(
     version: int = 1,
 ) -> ContentRef:
     """Save extracted relationships for a chapter."""
-    return manager.save_json(relationships, "extracted_relationships", f"chapter_{chapter}", version)
+    return manager.save_json(
+        relationships, "extracted_relationships", f"chapter_{chapter}", version
+    )
 
 
 def load_extracted_relationships(
@@ -501,7 +505,9 @@ def save_active_characters(
     version: int = 1,
 ) -> ContentRef:
     """Save active characters for a chapter."""
-    return manager.save_json(characters, "active_characters", f"chapter_{chapter}", version)
+    return manager.save_json(
+        characters, "active_characters", f"chapter_{chapter}", version
+    )
 
 
 def load_active_characters(

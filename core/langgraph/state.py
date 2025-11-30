@@ -203,7 +203,9 @@ class NarrativeState(TypedDict, total=False):
 
     # Externalized context references
     summaries_ref: ContentRef | None  # Reference to externalized summaries
-    active_characters_ref: ContentRef | None  # Reference to externalized active characters
+    active_characters_ref: (
+        ContentRef | None
+    )  # Reference to externalized active characters
 
     # =========================================================================
     # Generated Content (current chapter)
@@ -228,8 +230,12 @@ class NarrativeState(TypedDict, total=False):
     extracted_relationships: list[ExtractedRelationship]
 
     # Externalized extraction references (to reduce state bloat)
-    extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities
-    extracted_relationships_ref: ContentRef | None  # Reference to externalized extracted relationships
+    extracted_entities_ref: (
+        ContentRef | None
+    )  # Reference to externalized extracted entities
+    extracted_relationships_ref: (
+        ContentRef | None
+    )  # Reference to externalized extracted relationships
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)

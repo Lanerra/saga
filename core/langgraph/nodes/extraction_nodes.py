@@ -497,22 +497,36 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     chapter_number = state["current_chapter"]
 
     # Get current version for this chapter's extractions
-    current_version = content_manager.get_latest_version(
-        "extracted_entities", f"chapter_{chapter_number}"
-    ) + 1
+    current_version = (
+        content_manager.get_latest_version(
+            "extracted_entities", f"chapter_{chapter_number}"
+        )
+        + 1
+    )
 
     # Serialize ExtractedEntity and ExtractedRelationship objects to dicts
     extracted_entities = state.get("extracted_entities", {})
     entities_dict = {
-        "characters": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("characters", [])],
-        "world_items": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("world_items", [])],
+        "characters": [
+            e.model_dump() if hasattr(e, "model_dump") else e
+            for e in extracted_entities.get("characters", [])
+        ],
+        "world_items": [
+            e.model_dump() if hasattr(e, "model_dump") else e
+            for e in extracted_entities.get("world_items", [])
+        ],
     }
 
     relationships = state.get("extracted_relationships", [])
-    relationships_list = [r.model_dump() if hasattr(r, "model_dump") else r for r in relationships]
+    relationships_list = [
+        r.model_dump() if hasattr(r, "model_dump") else r for r in relationships
+    ]
 
     # Save to external files
-    from core.langgraph.content_manager import save_extracted_entities, save_extracted_relationships
+    from core.langgraph.content_manager import (
+        save_extracted_entities,
+        save_extracted_relationships,
+    )
 
     entities_ref = save_extracted_entities(
         content_manager,

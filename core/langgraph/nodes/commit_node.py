@@ -86,14 +86,12 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     # Convert dicts to ExtractedEntity objects if needed
     char_entities_raw = extracted.get("characters", [])
     char_entities = [
-        ExtractedEntity(**e) if isinstance(e, dict) else e
-        for e in char_entities_raw
+        ExtractedEntity(**e) if isinstance(e, dict) else e for e in char_entities_raw
     ]
 
     world_entities_raw = extracted.get("world_items", [])
     world_entities = [
-        ExtractedEntity(**e) if isinstance(e, dict) else e
-        for e in world_entities_raw
+        ExtractedEntity(**e) if isinstance(e, dict) else e for e in world_entities_raw
     ]
 
     # Convert dicts to ExtractedRelationship objects if needed
