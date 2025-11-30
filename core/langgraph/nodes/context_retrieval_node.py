@@ -64,10 +64,10 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     logger.info("retrieve_context: fetching scene-specific context")
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
-    chapter_number = state["current_chapter"]
-    scene_index = state["current_scene_index"]
+    chapter_number = state.get("current_chapter", 1)
+    scene_index = state.get("current_scene_index", 0)
 
     # Get chapter plan from externalized content
     chapter_plan = get_chapter_plan(state, content_manager)

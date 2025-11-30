@@ -150,13 +150,14 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     Break the chapter into scenes based on the outline.
     """
     logger.info(
-        "plan_scenes: planning scenes for chapter", chapter=state["current_chapter"]
+        "plan_scenes: planning scenes for chapter",
+        chapter=state.get("current_chapter", 1),
     )
 
-    chapter_number = state["current_chapter"]
+    chapter_number = state.get("current_chapter", 1)
 
     # Initialize content manager and get outlines
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     chapter_outlines = get_chapter_outlines(state, content_manager)
     outline = chapter_outlines.get(chapter_number)
 
@@ -177,9 +178,9 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     prompt = render_prompt(
         "narrative_agent/plan_scenes.j2",
         {
-            "novel_title": state["title"],
-            "novel_genre": state["genre"],
-            "novel_theme": state["theme"],
+            "novel_title": state.get("title", ""),
+            "novel_genre": state.get("genre", ""),
+            "novel_theme": state.get("theme", ""),
             "chapter_number": chapter_number,
             "outline": outline,
             "num_scenes": num_scenes,
@@ -188,7 +189,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
 
     try:
         response, _ = await llm_service.async_call_llm(
-            model_name=state["large_model"],
+            model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
             max_tokens=2000,
@@ -217,7 +218,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         await _ensure_scene_characters_exist(scenes, chapter_number)
 
         # Externalize chapter_plan to reduce state bloat
-        content_manager = ContentManager(state["project_dir"])
+        content_manager = ContentManager(state.get("project_dir", ""))
 
         # Get current version for this chapter's plan
         current_version = (

@@ -59,12 +59,12 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "generate_chapter: starting generation",
-        chapter=state["current_chapter"],
-        model=state["generation_model"],
+        chapter=state.get("current_chapter", 1),
+        model=state.get("generation_model", ""),
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get chapter outlines (prefers externalized content, falls back to in-state)
     chapter_outlines = get_chapter_outlines(state, content_manager)
@@ -92,7 +92,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "generate",
         }
 
-    chapter_number = state["current_chapter"]
+    chapter_number = state.get("current_chapter", 1)
 
     # Validate chapter exists in outline
     if chapter_number not in chapter_outlines:
@@ -168,14 +168,14 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         chapter_number=chapter_number,
         plot_point_focus=plot_point_focus,
         hybrid_context=hybrid_context_for_draft,
-        novel_title=state["title"],
-        novel_genre=state["genre"],
+        novel_title=state.get("title", ""),
+        novel_genre=state.get("genre", ""),
         novel_theme=state.get("theme", ""),
         protagonist_name=state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
     )
 
     # Step 4: Calculate token budget
-    model_name = state["narrative_model"]
+    model_name = state.get("narrative_model", "")
     prompt_tokens = llm_service.count_tokens(prompt, model_name)
 
     # Calculate max tokens for generation
@@ -271,7 +271,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
             )
 
         # Initialize content manager for external storage
-        content_manager = ContentManager(state["project_dir"])
+        content_manager = ContentManager(state.get("project_dir", ""))
 
         # Get current version (for revision tracking)
         current_version = (

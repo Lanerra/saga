@@ -21,10 +21,10 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     logger.info("draft_scene: generating text")
 
     # Initialize content manager
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
-    chapter_number = state["current_chapter"]
-    scene_index = state["current_scene_index"]
+    chapter_number = state.get("current_chapter", 1)
+    scene_index = state.get("current_scene_index", 0)
 
     # Get chapter plan from externalized content
     chapter_plan = get_chapter_plan(state, content_manager)
@@ -38,7 +38,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     # Calculate target word count for this scene
     total_target = 3000  # Default chapter length
     if state.get("target_word_count") and state.get("total_chapters"):
-        total_target = state["target_word_count"] // state["total_chapters"]
+        total_target = state.get("target_word_count", 0) // state.get(
+            "total_chapters", 0
+        )
 
     scene_target = total_target // len(chapter_plan)
 
@@ -49,9 +51,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         "narrative_agent/draft_scene.j2",
         {
             "chapter_number": chapter_number,
-            "novel_title": state["title"],
-            "novel_genre": state["genre"],
-            "novel_theme": state["theme"],
+            "novel_title": state.get("title", ""),
+            "novel_genre": state.get("genre", ""),
+            "novel_theme": state.get("theme", ""),
             "scene": current_scene,
             "hybrid_context": hybrid_context,
             "target_word_count": scene_target,
@@ -60,7 +62,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     try:
         draft_text, _ = await llm_service.async_call_llm(
-            model_name=state["narrative_model"],
+            model_name=state.get("narrative_model", ""),
             prompt=prompt,
             temperature=0.7,
             max_tokens=4000,  # Allow enough for a full scene

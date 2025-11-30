@@ -57,11 +57,11 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "finalize_chapter: starting finalization",
-        chapter=state["current_chapter"],
+        chapter=state.get("current_chapter", 1),
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get draft text (prefers externalized content, falls back to in-state)
     draft_text = get_draft_text(state, content_manager)
@@ -78,7 +78,7 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "finalize",
         }
 
-    chapter_number = state["current_chapter"]
+    chapter_number = state.get("current_chapter", 1)
 
     # Step 1: Save to filesystem
     try:

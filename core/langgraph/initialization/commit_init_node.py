@@ -48,7 +48,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         Updated state with initialization data committed to graph
     """
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get character sheets and global outline (from external files)
     character_sheets = get_character_sheets(state, content_manager)
@@ -69,7 +69,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         if character_sheets:
             character_profiles = await _parse_character_sheets_to_profiles(
                 character_sheets,
-                model_name=state["medium_model"],
+                model_name=state.get("medium_model", ""),
             )
 
         # Step 2: Extract world items from outlines
@@ -78,7 +78,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             world_items = await _extract_world_items_from_outline(
                 global_outline,
                 state.get("setting", ""),
-                model_name=state["medium_model"],
+                model_name=state.get("medium_model", ""),
             )
 
         # Step 3: Commit to Neo4j using existing persistence layer

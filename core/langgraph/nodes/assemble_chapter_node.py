@@ -14,7 +14,7 @@ def assemble_chapter(state: NarrativeState) -> NarrativeState:
     logger.info("assemble_chapter: finalizing chapter draft")
 
     # Initialize content manager for external storage
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     scene_drafts = get_scene_drafts(state, content_manager)
 
@@ -33,7 +33,7 @@ def assemble_chapter(state: NarrativeState) -> NarrativeState:
 
     logger.info("assemble_chapter: assembled chapter", word_count=word_count)
 
-    chapter_number = state["current_chapter"]
+    chapter_number = state.get("current_chapter", 1)
 
     # Get current version (for revision tracking)
     current_version = (

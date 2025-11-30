@@ -54,7 +54,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "validate_consistency",
-        chapter=state["current_chapter"],
+        chapter=state.get("current_chapter", 1),
         relationships=len(state.get("extracted_relationships", [])),
         characters=len(state.get("extracted_entities", {}).get("characters", [])),
     )
@@ -65,7 +65,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # Validates semantic correctness (e.g., prevents "Character FRIENDS_WITH Location")
     relationship_contradictions = await _validate_relationships(
         state.get("extracted_relationships", []),
-        state["current_chapter"],
+        state.get("current_chapter", 1),
         state.get("extracted_entities"),
     )
     contradictions.extend(relationship_contradictions)
@@ -74,7 +74,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # NEW FUNCTIONALITY: Checks for contradictory character traits
     trait_contradictions = await _check_character_traits(
         state.get("extracted_entities", {}).get("characters", []),
-        state["current_chapter"],
+        state.get("current_chapter", 1),
     )
     contradictions.extend(trait_contradictions)
 
@@ -85,7 +85,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
             Contradiction(
                 type="plot_stagnation",
                 description="Chapter does not significantly advance plot",
-                conflicting_chapters=[state["current_chapter"]],
+                conflicting_chapters=[state.get("current_chapter", 1)],
                 severity="major",
                 suggested_fix="Introduce conflict, decision, or revelation",
             )
@@ -173,8 +173,12 @@ async def _validate_relationships(
     # Validate each relationship
     for rel in relationships:
         # Get entity types
-        source_type = entity_type_map.get(rel.source_name, "Character")  # Default to Character
-        target_type = entity_type_map.get(rel.target_name, "Character")  # Default to Character
+        source_type = entity_type_map.get(
+            rel.source_name, "Character"
+        )  # Default to Character
+        target_type = entity_type_map.get(
+            rel.target_name, "Character"
+        )  # Default to Character
 
         # Validate the relationship (use flexible mode for creative writing)
         is_valid, errors, warnings = validator.validate(
@@ -203,8 +207,8 @@ async def _validate_relationships(
                     f"Errors: {'; '.join(errors)}",
                     conflicting_chapters=[chapter],
                     severity=severity,
-                    suggested_fix=f"Use a semantically appropriate relationship type, or "
-                    f"verify entity types are correct. See docs/ontology.md for guidance.",
+                    suggested_fix="Use a semantically appropriate relationship type, or "
+                    "verify entity types are correct. See docs/ontology.md for guidance.",
                 )
             )
 

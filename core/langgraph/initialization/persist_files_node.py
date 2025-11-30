@@ -120,13 +120,13 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "persist_initialization_files: writing initialization data to disk",
-        project_dir=state["project_dir"],
+        project_dir=state.get("project_dir", ""),
     )
 
-    project_dir = Path(state["project_dir"])
+    project_dir = Path(state.get("project_dir", ""))
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get character sheets, global outline, and act outlines (from external files)
     character_sheets = get_character_sheets(state, content_manager)
@@ -332,8 +332,8 @@ def _write_outline_files(
 
     # Write structure.yaml
     structure_data = {
-        "title": state["title"],
-        "genre": state["genre"],
+        "title": state.get("title", ""),
+        "genre": state.get("genre", ""),
         "theme": state.get("theme", ""),
         "setting": state.get("setting", ""),
         "total_chapters": state.get("total_chapters", 20),

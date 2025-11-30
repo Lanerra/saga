@@ -41,7 +41,7 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     logger.info("extract_characters: starting (clearing previous extraction state)")
 
     # Initialize content manager and get draft text
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
@@ -58,9 +58,9 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
             "protagonist": state.get(
                 "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
             ),
-            "chapter_number": state["current_chapter"],
-            "novel_title": state["title"],
-            "novel_genre": state["genre"],
+            "chapter_number": state.get("current_chapter", 1),
+            "novel_title": state.get("title", ""),
+            "novel_genre": state.get("genre", ""),
             "chapter_text": draft_text,
         },
     )
@@ -75,7 +75,7 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_characters: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["medium_model"],
+            model_name=state.get("medium_model", ""),
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
@@ -116,7 +116,7 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
                         name=name,
                         type="Character",  # Capitalized to match ontology node types
                         description=info.get("description", ""),
-                        first_appearance_chapter=state["current_chapter"],
+                        first_appearance_chapter=state.get("current_chapter", 1),
                         attributes=attributes,
                     )
                 )
@@ -144,7 +144,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     logger.info("extract_locations: starting")
 
     # Initialize content manager and get draft text
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
 
     # Get existing world_items to append to
@@ -162,9 +162,9 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             "protagonist": state.get(
                 "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
             ),
-            "chapter_number": state["current_chapter"],
-            "novel_title": state["title"],
-            "novel_genre": state["genre"],
+            "chapter_number": state.get("current_chapter", 1),
+            "novel_title": state.get("title", ""),
+            "novel_genre": state.get("genre", ""),
             "chapter_text": draft_text,
         },
     )
@@ -179,7 +179,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_events: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["medium_model"],
+            model_name=state.get("medium_model", ""),
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
@@ -220,7 +220,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                         # Only process non-events here (events handled by extract_events)
                         if entity_type not in event_related_types:
                             item_id = generate_entity_id(
-                                name, category, state["current_chapter"]
+                                name, category, state.get("current_chapter", 1)
                             )
                             attributes = {
                                 "category": category,
@@ -235,7 +235,9 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                                     name=name,
                                     type=entity_type,
                                     description=info.get("description", ""),
-                                    first_appearance_chapter=state["current_chapter"],
+                                    first_appearance_chapter=state.get(
+                                        "current_chapter", 1
+                                    ),
                                     attributes=attributes,
                                 )
                             )
@@ -262,7 +264,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     logger.info("extract_events: starting")
 
     # Initialize content manager and get draft text
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
 
     # Get existing world_items to append to
@@ -280,9 +282,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             "protagonist": state.get(
                 "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
             ),
-            "chapter_number": state["current_chapter"],
-            "novel_title": state["title"],
-            "novel_genre": state["genre"],
+            "chapter_number": state.get("current_chapter", 1),
+            "novel_title": state.get("title", ""),
+            "novel_genre": state.get("genre", ""),
             "chapter_text": draft_text,
         },
     )
@@ -297,7 +299,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_locations: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["medium_model"],
+            model_name=state.get("medium_model", ""),
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
@@ -335,7 +337,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 for name, info in items.items():
                     if isinstance(info, dict):
                         item_id = generate_entity_id(
-                            name, category, state["current_chapter"]
+                            name, category, state.get("current_chapter", 1)
                         )
                         attributes = {
                             "category": category,
@@ -348,7 +350,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                                 name=name,
                                 type=mapped_type,  # Use the specific type from mapping
                                 description=info.get("description", ""),
-                                first_appearance_chapter=state["current_chapter"],
+                                first_appearance_chapter=state.get(
+                                    "current_chapter", 1
+                                ),
                                 attributes=attributes,
                             )
                         )
@@ -375,7 +379,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     logger.info("extract_relationships: starting")
 
     # Initialize content manager and get draft text
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
@@ -388,9 +392,9 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             "protagonist": state.get(
                 "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
             ),
-            "chapter_number": state["current_chapter"],
-            "novel_title": state["title"],
-            "novel_genre": state["genre"],
+            "chapter_number": state.get("current_chapter", 1),
+            "novel_title": state.get("title", ""),
+            "novel_genre": state.get("genre", ""),
             "chapter_text": draft_text,
         },
     )
@@ -405,7 +409,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_relationships: using grammar", grammar_head=grammar[:100])
 
         raw_text, _ = await llm_service.async_call_llm(
-            model_name=state["medium_model"],
+            model_name=state.get("medium_model", ""),
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
@@ -462,7 +466,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                         target_name=target,
                         relationship_type=predicate,
                         description=triple.get("description", ""),
-                        chapter=state["current_chapter"],
+                        chapter=state.get("current_chapter", 1),
                         confidence=0.8,
                     )
                 )
@@ -493,8 +497,8 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     )
 
     # Externalize extracted entities and relationships to reduce state bloat
-    content_manager = ContentManager(state["project_dir"])
-    chapter_number = state["current_chapter"]
+    content_manager = ContentManager(state.get("project_dir", ""))
+    chapter_number = state.get("current_chapter", 1)
 
     # Get current version for this chapter's extractions
     current_version = (
