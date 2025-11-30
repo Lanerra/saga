@@ -148,6 +148,7 @@ CHARACTER_SOCIAL_RELATIONSHIPS = {
     "FAMILY_OF",  # Blood or adopted family
     "ROMANTIC_WITH",  # Romantic involvement
     "MENTOR_TO",  # Teaching/guidance relationship
+    "TEACHES",  # Instruction/education relationship
     "STUDENT_OF",  # Learning relationship (inverse of mentor)
     "WORKS_FOR",  # Employment/service
     "LEADS",  # Authority/command
@@ -220,6 +221,7 @@ ORGANIZATIONAL_RELATIONSHIPS = {
     "REPRESENTS",  # Representative role
     "OPPOSES",  # Organizational opposition
     "ALLIED_WITH",  # Organizational alliance
+    "WORKS_AS",  # Employment role or position
 }
 
 # Physical/Structural Relationships
@@ -275,6 +277,9 @@ INFORMATION_RELATIONSHIPS = {
     "RECORDS",  # Recording or documenting information
     "PRESERVES",  # Preservation or archival relationship
     "HAS_METADATA",  # Contains metadata or descriptive information
+    "DISCOVERS",  # Discovery of information, objects, or entities
+    "REVEALS",  # Disclosure or revelation of information
+    "IDENTIFIES",  # Recognition or identification of entities
 }
 
 # Usage and Accessibility Relationships
@@ -287,6 +292,7 @@ USAGE_RELATIONSHIPS = {
 # Communication and Display Relationships
 COMMUNICATION_RELATIONSHIPS = {
     "DISPLAYS",  # Display or presentation of information
+    "SHOWS",  # Demonstration or exhibition of information/objects
     "SPOKEN_BY",  # Communication originating from sentient beings
     "EMITS",  # Emission of energy, sound, or information
 }
@@ -296,6 +302,11 @@ OPERATIONAL_RELATIONSHIPS = {
     "EMPLOYS",  # Employment or hiring relationship
     "CONTROLS",  # Control or management relationship
     "REQUIRES",  # Dependency or requirement relationship
+    "RUNS",  # Execution or operation of systems/processes
+    "OPERATES",  # Operation or piloting of vehicles/systems
+    "FLIES",  # Piloting or operating aircraft/spacecraft
+    "SEALS",  # Securing, closing, or protecting
+    "PULLS",  # Extraction, retrieval, or accessing data/objects
 }
 
 # Enhanced Temporal and State Relationships
@@ -421,9 +432,18 @@ RELATIONSHIP_NORMALIZATIONS = {
     "destroys": "DESTROYED_BY",
     "ruins": "DESTROYED_BY",
     # New relationship normalizations
-    "shows": "DISPLAYS",
     "presents": "DISPLAYS",
-    "reveals": "DISPLAYS",
+    "shows": "SHOWS",
+    "demonstrates": "SHOWS",
+    "exhibits": "SHOWS",
+    "reveals": "REVEALS",
+    "discloses": "REVEALS",
+    "discovers": "DISCOVERS",
+    "finds": "DISCOVERS",
+    "uncovers": "DISCOVERS",
+    "identifies": "IDENTIFIES",
+    "recognizes": "IDENTIFIES",
+    "detects": "IDENTIFIES",
     "said_by": "SPOKEN_BY",
     "uttered_by": "SPOKEN_BY",
     "voiced_by": "SPOKEN_BY",
@@ -433,7 +453,22 @@ RELATIONSHIP_NORMALIZATIONS = {
     "hires": "EMPLOYS",
     "takes_on": "EMPLOYS",
     # 'manages' canonicalized above to LEADS
-    "operates": "CONTROLS",
+    "operates": "OPERATES",
+    "pilots": "FLIES",
+    "navigates": "FLIES",
+    "runs": "RUNS",
+    "executes": "RUNS",
+    "seals": "SEALS",
+    "secures": "SEALS",
+    "closes": "SEALS",
+    "pulls": "PULLS",
+    "extracts": "PULLS",
+    "retrieves": "PULLS",
+    "teaches": "TEACHES",
+    "instructs": "TEACHES",
+    "educates": "TEACHES",
+    "works_as": "WORKS_AS",
+    "serves_as": "WORKS_AS",
     # 'commands' canonicalized above to LEADS
     "needs": "REQUIRES",
     "depends_on": "REQUIRES",

@@ -7,8 +7,14 @@ against the knowledge graph and established narrative rules.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.4.1
 
-NOTE: Relationship constraint validation has been removed. See commit:
-"refactor: remove entire relationship constraint system"
+Validation Checks:
+1. Relationship semantic validation - ensures relationships make sense for entity types
+2. Character trait consistency - detects contradictory character traits
+3. Plot stagnation - ensures chapters advance the narrative
+
+The relationship validation system uses flexible semantic rules defined in
+core/relationship_validation.py to prevent obviously nonsensical relationships
+while maintaining creative flexibility.
 """
 
 from __future__ import annotations
@@ -56,14 +62,13 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     contradictions: list[Contradiction] = []
 
     # Check 1: Validate all extracted relationships
-    # NOTE: Relationship constraint validation disabled (system removed)
-    # All relationships are now accepted for creative writing flexibility
-    # relationship_contradictions = await _validate_relationships(
-    #     state.get("extracted_relationships", []),
-    #     state["current_chapter"],
-    #     state.get("extracted_entities"),
-    # )
-    # contradictions.extend(relationship_contradictions)
+    # Validates semantic correctness (e.g., prevents "Character FRIENDS_WITH Location")
+    relationship_contradictions = await _validate_relationships(
+        state.get("extracted_relationships", []),
+        state["current_chapter"],
+        state.get("extracted_entities"),
+    )
+    contradictions.extend(relationship_contradictions)
 
     # Check 2: Character trait consistency
     # NEW FUNCTIONALITY: Checks for contradictory character traits
@@ -123,11 +128,16 @@ async def _validate_relationships(
     extracted_entities: dict[str, list[ExtractedEntity]] | None = None,
 ) -> list[Contradiction]:
     """
-    Validate extracted relationships.
+    Validate extracted relationships for semantic correctness.
 
-    NOTE: Relationship constraint system has been removed. This function
-    no longer performs semantic validation and returns no contradictions.
-    Relationships are accepted as-is for creative writing flexibility.
+    This function checks that relationships make semantic sense given the
+    entity types involved. It validates:
+    1. Relationship types are recognized
+    2. Entity types are valid
+    3. Relationship type is compatible with entity types
+
+    The validation is designed to be flexible for creative writing while
+    preventing obviously nonsensical relationships (e.g., "Character FRIENDS_WITH Location").
 
     Args:
         relationships: List of ExtractedRelationship instances
@@ -135,16 +145,76 @@ async def _validate_relationships(
         extracted_entities: Dict with "characters" and "world_items" lists for type lookup
 
     Returns:
-        Empty list (no contradictions - all relationships accepted)
+        List of Contradiction instances for invalid relationships
     """
-    # Constraint system removed - accept all relationships for creative writing
-    # Original validation logic removed as part of constraint system removal
-    # See commit: refactor: remove entire relationship constraint system
-    #
-    # Rationale: SAGA is a creative writing tool where rigid semantic
-    # constraints inhibit storytelling. The constraint system was disabled
-    # by default and provided no value in production.
-    return []
+    from core.relationship_validation import get_relationship_validator
+
+    if not relationships:
+        return []
+
+    contradictions = []
+    validator = get_relationship_validator()
+
+    # Build entity type lookup from extracted entities
+    entity_type_map = {}
+    if extracted_entities:
+        # Add characters
+        for char in extracted_entities.get("characters", []):
+            entity_type_map[char.name] = char.type
+
+        # Add world items (locations, objects, events, etc.)
+        for item in extracted_entities.get("world_items", []):
+            entity_type_map[item.name] = item.type
+
+        # Add events if they're tracked separately
+        for event in extracted_entities.get("events", []):
+            entity_type_map[event.name] = event.type
+
+    # Validate each relationship
+    for rel in relationships:
+        # Get entity types
+        source_type = entity_type_map.get(rel.source_name, "Character")  # Default to Character
+        target_type = entity_type_map.get(rel.target_name, "Character")  # Default to Character
+
+        # Validate the relationship (use flexible mode for creative writing)
+        is_valid, errors, warnings = validator.validate(
+            relationship_type=rel.relationship_type,
+            source_name=rel.source_name,
+            source_type=source_type,
+            target_name=rel.target_name,
+            target_type=target_type,
+            severity_mode="flexible",
+        )
+
+        # Only create contradictions for actual errors (not warnings)
+        if not is_valid:
+            # Determine severity based on error type
+            severity = "major"  # Default severity
+
+            # If the relationship type is completely unknown, it's critical
+            if "Unknown relationship type" in errors[0] if errors else "":
+                severity = "critical"
+
+            contradictions.append(
+                Contradiction(
+                    type="invalid_relationship",
+                    description=f"Invalid relationship: {rel.source_name}({source_type}) "
+                    f"-[{rel.relationship_type}]-> {rel.target_name}({target_type}). "
+                    f"Errors: {'; '.join(errors)}",
+                    conflicting_chapters=[chapter],
+                    severity=severity,
+                    suggested_fix=f"Use a semantically appropriate relationship type, or "
+                    f"verify entity types are correct. See docs/ontology.md for guidance.",
+                )
+            )
+
+    logger.debug(
+        "_validate_relationships: relationship validation complete",
+        total_relationships=len(relationships),
+        invalid_relationships=len(contradictions),
+    )
+
+    return contradictions
 
 
 async def _check_character_traits(

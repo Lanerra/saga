@@ -1,259 +1,42 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
+**Role:** Knowledge Graph Extractor. **Goal:** Extract ONLY narrative-essential entities.
+**Hard Constraints:**
+1. **Prefer Proper Nouns**. For common nouns, only extract if mentioned 3+ times AND stable.
+2. **Skip** atmospheric details, weather, feelings, transitional moments.
+3. **When in doubt, DO NOT extract.**
 
-CRITICAL EXTRACTION RULES (Hard Constraints):
-1. **PREFER PROPER NOUNS** - Named entities like "Elara", "Sunken Library", "Order of the Flame"
-2. For common nouns, only extract if mentioned 3+ times AND has stable referent
-3. Skip ALL: atmospheric details, feelings, sounds, lights, weather, transitional moments
-4. Skip descriptive concepts—only extract concepts that could have their own Wikipedia page
-5. When in doubt, DON'T extract
+**Context:** {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }} | Ch: {{ chapter_number }}
+**Labels:** {{ available_node_labels | join(', ') }} | **Relationships:** {{ available_relationship_types | join(', ') }}
 
-You are a knowledge graph extractor for an autonomous novel writing system tasked. Extract ONLY entities essential to the narrative—skip atmospheric details, temporary states, and descriptive elements.
+**Entity Ontology (Select MOST SPECIFIC Type):**
+*   **Living:** `Character` (Active), `Person` (Passive), `Creature`, `Spirit`, `Deity`.
+*   **Object:** `Artifact` (Special/Magical), `Relic` (Sacred), `Document`, `Object` (Generic).
+*   **Location:** `Settlement`, `Structure` (Building), `Room`, `Region`, `Landmark`, `Path`, `Territory`.
+*   **Org:** `Faction` (Political/Agenda), `Guild`, `House` (Noble), `Order`, `Council`, `Organization`.
+*   **Event:** `DevelopmentEvent` (Char Growth), `WorldElaborationEvent` (Lore), `PlotPoint` (Story Beat), `Event`, `Era`, `Moment`.
+*   **System:** `Magic`, `Technology`, `Religion`, `Culture`, `Law`, `Tradition`.
+*   **Info:** `Lore` (Myth), `Secret`, `Knowledge`, `Rumor`.
+*   **Trait:** `Trait` (Personality), `Attribute` (Stat), `Reputation`.
+*   **Other:** `Story` (Nested), `Concept`, `Symbol`, `Resource`, `Currency`.
 
-**Novel Details:**
-- Title: {{ novel_title }}
-- Genre: {{ novel_genre }}
-- Protagonist: {{ protagonist }}
-- Current Chapter: {{ chapter_number }}
+**Mapping Rules:**
+*   Shops/Prisons → `Structure`. Armies → `Faction`. Dreams → `Moment`.
+*   **CRITICAL:** Extract character growth as `DevelopmentEvent` and lore reveals as `WorldElaborationEvent`.
 
-**Canonical Schema Information (Your output MUST conform to this):**
-- **Available Node Labels:** {{ available_node_labels | join(', ') }}
-- **Available Relationship Types:** {{ available_relationship_types | join(', ') }}
+**Output Format (JSON Only):**
+Keys: `character_updates`, `world_updates`, `kg_triples`.
+*   `world_updates` keys MUST be specific node types (e.g., "Artifact", "Faction").
+*   `kg_triples`: List of strings "SubjectType:Name | PREDICATE | ObjectType:Name".
 
-**Enhanced Entity Type Selection Guide:**
-Choose the MOST SPECIFIC node type that accurately describes the entity. Use the following decision process:
-
-1. **Read the ontology guidance below carefully** before extracting
-2. **Classify each entity** using the most specific type that applies
-3. **Use specialized types** (DevelopmentEvent, PlotPoint, Trait, WorldElaborationEvent) when appropriate
-4. **Avoid generic types** like "Entity" or overusing "Object" when more specific types apply
-
-**CRITICAL: Special Node Types You MUST Use:**
-- **DevelopmentEvent**: Character development moments, choices, revelations that change a character
-- **WorldElaborationEvent**: Moments that reveal/expand world lore, magic systems, or setting mechanics
-- **PlotPoint**: Major story beats, turning points, or narrative milestones
-- **Trait**: Character traits that are thematically important or have relationships with other entities
-
-**IMPORTANT FILTERING RULES:**
-- DO NOT create entities for: colors, sounds, lights, feelings, descriptive adjectives, temporary states
-- DO NOT create entities for: atmospheric descriptions, sensory details, metaphors, or literary devices
-- FOCUS ON: concrete characters, objects, locations, organizations, and major story concepts
-- Only extract entities that are NAMED or have significant story impact beyond the current scene
-- ALWAYS prefer the most specific node type over generic ones
-
-**Living Beings:**
-- Character: Main story characters (active participants)
-- Person: Historical figures, mentioned people, inactive individuals
-- Creature: Animals, monsters, non-human beings
-- Spirit: Ghosts, ethereal beings, supernatural entities
-- Deity: Gods, divine beings, worshipped entities
-
-**Physical Objects & Items:**
-- Object: General physical items, tools, weapons
-- Artifact: Special/magical/historical objects of significance
-- Document: Books, scrolls, letters, written records
-- Item: General items (synonym for Object)
-- Relic: Ancient/sacred objects with historical importance
-
-**Places & Locations:**
-- Location: General places
-- Structure: Buildings, constructions, man-made locations
-- Settlement: Cities, towns, villages
-- Region: Large geographical areas, territories
-- Landmark: Notable geographical features
-- Room: Interior spaces within structures
-- Path: Roads, routes, passages, connections
-- Territory: Claimed/controlled areas
-
-**Resources & Materials:**
-- Resource: Materials, natural resources, commodities
-- Currency: Money, trade systems, units of value
-- Trade: Economic relationships, trade routes
-- Food: Consumable resources, sustenance
-- Material: Building materials, crafting components
-- Energy: Power sources, magical energy, fuel
-
-**Abstract Concepts (Use Sparingly - Only for Major Story Elements):**
-- Concept: Major philosophical ideas central to the plot (NOT emotions or descriptive concepts)
-- Law: Important rules, regulations, natural laws that drive story events
-- Tradition: Significant cultural practices that affect characters or plot
-- Language: Named languages, dialects important to worldbuilding
-- Symbol: Specific named symbols with story significance (NOT general descriptions)
-- Story: Important tales, legends referenced by characters
-- Song: Named songs, ballads with cultural significance
-- Dream: Prophetic dreams or visions that affect the plot
-- Memory: Specific named memories crucial to character development
-- Skill: Named abilities, specific competencies with story impact
-
-**Information & Knowledge:**
-- Lore: Myths, legends, historical knowledge
-- Knowledge: Specific knowledge, information, data
-- Secret: Hidden information, classified knowledge
-- Rumor: Unconfirmed information, gossip
-- News: Current information, recent events
-- Message: Communications, signals, transmissions
-- Record: Official records, documentation
-- ValueNode: Literal values, data
-
-**Organizations & Groups:**
-- Faction: Political groups, organizations with agendas
-- Organization: Generic organizations, institutions
-- Guild: Professional organizations, trade groups
-- House: Noble houses, family organizations
-- Order: Religious or knightly orders
-- Council: Governing bodies, decision-making groups
-- Role: Positions, titles, functions within organizations
-- Rank: Hierarchical positions, military ranks
-
-**Systems & Frameworks:**
-- System: General systems, frameworks
-- Magic: Magical systems, schools of magic
-- Technology: Technological systems, innovations
-- Religion: Religious systems, belief structures
-- Culture: Cultural systems, ways of life
-- Government: Governing systems, political structures
-- Education: Learning systems, schools, curricula
-- Economy: Economic systems, trade networks
-
-**Time & Events:**
-- Event: Historical events, battles, ceremonies
-- Era: Time periods, ages, epochs
-- Timeline: Temporal sequences, chronologies
-- DevelopmentEvent: Character development events
-- WorldElaborationEvent: World expansion events
-- Season: Natural cycles, recurring periods
-- Moment: Specific points in time, instances
-- Chapter: Chapter entities
-
-**Character Qualities & Attributes:**
-- Trait: Character traits, personality aspects
-- Attribute: Physical or mental attributes
-- Quality: Characteristics, properties
-- Reputation: Social standing, renown
-- Status: Current state, condition
-
-**Containers & Collections:**
-- WorldContainer: Containers for world elements
-- PlotPoint: Plot/story points
-- Collection: Groups of related items
-- Archive: Storage of documents/information
-- Treasury: Storage of valuable resources
-- Library: Collection of documents/knowledge
-
-**Instructions for Output:**
-- Your entire response MUST be a single, valid JSON object.
-- The JSON object must have three top-level keys: `character_updates`, `world_updates`, and `kg_triples`.
-- For `world_updates`: **The category name MUST be the specific node type from the ontology** (e.g., "DevelopmentEvent", "PlotPoint", "Artifact", "Faction", etc.). Each category contains items with properties like `description`, `goals`, `rules`, etc.
-- **CRITICAL**: Use specific node types as category names - NOT generic categories like "Event" when "DevelopmentEvent" or "WorldElaborationEvent" is more appropriate
-- Do NOT create items named "elaborations" or "elaboration" - these should be properties within actual items.
-- For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
-
-**Relationship Selection Guidelines:**
-Choose semantically appropriate relationships that make sense for the entity types involved.
-
-**Emotional & Social (require sentient beings):**
-- LOVES, HATES, FEARS, RESPECTS - Only conscious entities can have emotions
-- FAMILY_OF, FRIEND_OF, ENEMY_OF, ALLY_OF - Social relationships between sentient beings
-- ROMANTIC_WITH - Romance between sentient beings
-
-**Spatial & Physical:**
-- LOCATED_IN, LOCATED_AT - Physical entities in physical spaces
-- CONTAINS - Containers holding objects (not characters containing characters)
-- NEAR, ADJACENT_TO - Proximity relationships
-
-**Ownership & Creation:**
-- OWNS, POSSESSES - Sentient beings owning/possessing objects (never other people)
-- CREATED_BY - Objects/structures created by makers
-
-**Hierarchical & Authority:**
-- LEADS, WORKS_FOR, SERVES - Authority relationships between sentient beings
-- MENTOR_TO, STUDENT_OF - Learning relationships
-
-**Cognitive (require consciousness):**
-- BELIEVES, REALIZES, REMEMBERS, UNDERSTANDS - Mental states and knowledge
-
-**Organizational:**
-- MEMBER_OF, LEADER_OF - Group membership and leadership
-
-**Temporal & Causal:**
-- CAUSES, PREVENTS, ENABLES, TRIGGERS - Causal relationships
-- OCCURRED_IN - Events happening at times/places
-
-**Information & Communication:**
-- RECORDS, PRESERVES - Information storage relationships
-- DISPLAYS, EMITS - Presentation or emission of information
-- SPEAKS, SPOKEN_BY - Language communication relationships
-
-**System & Resource:**
-- POWERED_BY, CONSUMES, PRODUCES - Energy and resource relationships
-- TEACHES, PRACTICES - Knowledge and skill relationships
-- TRADES_WITH, GOVERNS - Economic and political relationships
-
-**Enhanced Relationships (specific to entity types):**
-- WIELDS - Characters actively using objects/tools
-- CRAFTED_BY - Objects created by conscious beings or organizations
-- FORGED_FROM - Material composition relationships
-- HOLDS_RANK - Characters holding specific positions
-- CELEBRATES - Cultural/religious ceremonial relationships
-- ENCHANTED_BY - Magical enhancement relationships
-- BORDERS - Geographical boundary relationships
-- REVEALS, CONCEALS - Information disclosure relationships
-
-**Output Format (Valid JSON Only):**
-
-Return a single JSON object with three keys: `character_updates`, `world_updates`, `kg_triples`
-
-**EXAMPLE showing proper use of specific node types:**
+**Example:**
 ```json
 {
-  "character_updates": {
-    "CharacterName": {
-      "description": "Brief description focusing on new information from this chapter",
-      "traits": ["trait1", "trait2"],
-      "status": "current state",
-      "relationships": {
-        "OtherCharacter": "nature of relationship"
-      }
-    }
-  },
+  "character_updates": { "Elara": { "description": "Steals the gem.", "status": "Rogue" } },
   "world_updates": {
-    "DevelopmentEvent": {
-      "Elara's Choice to Betray the Council": {
-        "description": "Elara makes the pivotal choice to steal the artifact and betray her mentor, marking her transformation from loyal student to rebel",
-        "key_elements": ["betrayal", "moral compromise", "character transformation"]
-      }
-    },
-    "PlotPoint": {
-      "The Heist Begins": {
-        "description": "The story reaches its first major turning point as the heist operation launches"
-      }
-    },
-    "Artifact": {
-      "Starfall Map": {
-        "description": "Ancient star chart rumored to show the location of the First City",
-        "rules": ["Can only be read under moonlight"],
-        "key_elements": ["magical properties", "historical significance"]
-      }
-    },
-    "Location": {
-      "Sunken Library": {
-        "description": "Ancient underwater repository of forbidden knowledge"
-      }
-    },
-    "Faction": {
-      "The Shadow Council": {
-        "description": "Secret organization manipulating events from behind the scenes",
-        "goals": ["Control the Starfall Map", "Prevent the prophecy"]
-      }
-    }
+    "Artifact": { "Sunstone": { "description": "Ancient glowing gem." } },
+    "PlotPoint": { "The Heist": { "description": "Elara betrays the Order." } }
   },
-  "kg_triples": [
-    "Character:Elara | LOCATED_IN | Location:Sunken Library",
-    "Character:Elara | SEEKS | Artifact:Starfall Map",
-    "DevelopmentEvent:Elara's Choice to Betray the Council | DEVELOPED_IN_CHAPTER | Chapter:5",
-    "PlotPoint:The Heist Begins | INVOLVES | Character:Elara",
-    "Location:Sunken Library | CONTAINS | Artifact:Starfall Map",
-    "Faction:The Shadow Council | SEEKS | Artifact:Starfall Map"
-  ]
+  "kg_triples": ["Character:Elara | ACQUIRED | Artifact:Sunstone", "PlotPoint:The Heist | INVOLVES | Character:Elara"]
 }
 ```
 
@@ -269,19 +52,6 @@ Return a single JSON object with three keys: `character_updates`, `world_updates
 - Could a future chapter reference this entity? → If no, remove
 - Is each triple's direction correct (subject acts on object)? → Fix if needed
 
-**Examples of Proper vs Common Noun Extraction:**
-✓ EXTRACT: "Character:Alice" (proper noun, named character)
-✓ EXTRACT: "Location:Sunken Library" (proper noun, specific place)
-✓ EXTRACT: "Artifact:Starfall Map" (proper noun, named artifact)
-✓ EXTRACT: "Faction:Order of the Flame" (proper noun, named organization)
-✓ EXTRACT (if 3+ mentions): "Faction:the rebellion" (common noun but significant)
-✗ SKIP: "the girl" (use character's name instead if available)
-✗ SKIP: "the artifact" (wait until it's named or track by proper name if it has one)
-✗ SKIP: "the sword" (unless mentioned 3+ times with stable referent)
-
-**Chapter {{ chapter_number }} Text to Analyze:**
+**Chapter {{ chapter_number }} Text:**
 ```text
 {{ chapter_text }}
-```
-
-**Extract only essential narrative elements. When uncertain, skip it.**
