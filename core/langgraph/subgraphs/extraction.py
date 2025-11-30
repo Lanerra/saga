@@ -1,4 +1,6 @@
 # core/langgraph/subgraphs/extraction.py
+from typing import Any
+
 import structlog
 from langgraph.graph import END, StateGraph
 
@@ -14,12 +16,26 @@ from core.langgraph.state import NarrativeState
 logger = structlog.get_logger(__name__)
 
 
-def extract_router(state: NarrativeState) -> NarrativeState:
+def extract_router(state: NarrativeState) -> dict[str, Any]:
     """
     Prepare inputs for parallel extraction.
+
+    CRITICAL: Clears extracted_entities and extracted_relationships before each
+    extraction cycle to prevent accumulation across chapters and revision loops.
+
+    The reducer-based merge approach accumulates values, so we must explicitly
+    clear them at the start of each extraction to avoid exponential growth.
     """
-    logger.info("extract_router: preparing for parallel extraction")
-    return state
+    logger.info(
+        "extract_router: clearing previous extraction state",
+        chapter=state.get("current_chapter", "?"),
+    )
+
+    return {
+        "extracted_entities": {},
+        "extracted_relationships": [],
+        "current_node": "extract_router",
+    }
 
 
 def create_extraction_subgraph() -> StateGraph:

@@ -70,3 +70,104 @@ async def test_extraction_subgraph():
         assert len(result["extracted_relationships"]) == 1
         assert result["extracted_relationships"][0].source_name == "Elara"
         assert result["extracted_relationships"][0].target_name == "Sunken Library"
+
+
+@pytest.mark.asyncio
+async def test_extraction_clears_previous_state():
+    """
+    Test that extraction properly clears previous state to prevent accumulation.
+
+    This verifies the fix for the issue where tens of thousands of entities
+    were being accumulated across chapters due to reducer-based merging.
+    """
+    workflow = create_extraction_subgraph()
+    state = create_initial_state(
+        project_id="test_project",
+        title="Test Novel",
+        genre="Fantasy",
+        theme="Heroism",
+        setting="A magical world",
+        target_word_count=50000,
+        total_chapters=10,
+        project_dir="/tmp/test_project",
+        protagonist_name="Test Hero",
+    )
+
+    # Simulate having leftover extraction state from a previous chapter
+    from core.langgraph.state import ExtractedEntity, ExtractedRelationship
+
+    state["extracted_entities"] = {
+        "characters": [
+            ExtractedEntity(
+                name="OldCharacter",
+                type="Character",
+                description="From previous chapter",
+                first_appearance_chapter=1,
+                attributes={},
+            )
+        ],
+        "world_items": [
+            ExtractedEntity(
+                name="OldLocation",
+                type="Location",
+                description="From previous chapter",
+                first_appearance_chapter=1,
+                attributes={},
+            )
+        ],
+    }
+    state["extracted_relationships"] = [
+        ExtractedRelationship(
+            source_name="OldCharacter",
+            target_name="OldLocation",
+            relationship_type="LOCATED_IN",
+            description="Old relationship",
+            chapter=1,
+            confidence=0.8,
+        )
+    ]
+
+    # Set up for new chapter extraction
+    state["draft_text"] = "New character arrives at new location."
+    state["current_chapter"] = 2
+
+    # Mock LLM to return new entities
+    mock_char_response = '{"character_updates": {"NewCharacter": {"description": "A new hero", "traits": ["brave"], "status": "active"}}}'
+    mock_loc_response = '{"world_updates": {"Location": {"NewLocation": {"description": "A new place"}}}}'
+    mock_event_response = '{"world_updates": {}}'
+    mock_rel_response = '{"kg_triples": [{"subject": "NewCharacter", "predicate": "LOCATED_IN", "object_entity": "NewLocation", "description": "New relationship"}]}'
+
+    with patch("core.llm_interface_refactored.llm_service.async_call_llm") as mock_llm:
+
+        async def side_effect(*args, **kwargs):
+            prompt = kwargs.get("prompt", "")
+            if "specialized character extraction agent" in prompt:
+                return mock_char_response, None
+            elif "specialized location extraction agent" in prompt:
+                return mock_loc_response, None
+            elif "specialized event extraction agent" in prompt:
+                return mock_event_response, None
+            elif "specialized relationship extraction agent" in prompt:
+                return mock_rel_response, None
+            return "{}", None
+
+        mock_llm.side_effect = side_effect
+
+        # Run workflow
+        result = await workflow.ainvoke(state)
+
+        # Verify that ONLY the new entities are present (old ones were cleared)
+        entities = result["extracted_entities"]
+
+        # Should have exactly 1 character (NewCharacter), not 2
+        assert len(entities.get("characters", [])) == 1
+        assert entities["characters"][0].name == "NewCharacter"
+
+        # Should have exactly 1 world item (NewLocation), not 2
+        assert len(entities.get("world_items", [])) == 1
+        assert entities["world_items"][0].name == "NewLocation"
+
+        # Should have exactly 1 relationship, not 2
+        assert len(result["extracted_relationships"]) == 1
+        assert result["extracted_relationships"][0].source_name == "NewCharacter"
+        assert result["extracted_relationships"][0].target_name == "NewLocation"

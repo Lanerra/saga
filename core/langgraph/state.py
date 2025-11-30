@@ -270,6 +270,12 @@ class NarrativeState(TypedDict, total=False):
     # Example: If extract_characters returns {"extracted_entities": {"characters": [...]}}
     # and extract_locations returns {"extracted_entities": {"world_items": [...]}},
     # the merge_extracted_entities reducer combines them into a single dict.
+    #
+    # CRITICAL: These reducers ACCUMULATE values across workflow iterations!
+    # The extraction subgraph MUST clear these fields at the start of each
+    # extraction cycle (in extract_router) to prevent exponential growth across
+    # chapters and revision loops. Without clearing, extracted entities from
+    # previous chapters/iterations will be re-merged, causing massive duplication.
     extracted_entities: Annotated[
         dict[str, list[ExtractedEntity]], merge_extracted_entities
     ]
