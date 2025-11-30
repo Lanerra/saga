@@ -50,17 +50,17 @@ def sample_revision_state(tmp_path):
 
     state["draft_ref"] = draft_ref
 
-    # Add plot outline
-    state["plot_outline"] = {
+    # Add chapter outlines via content manager
+    chapter_outlines = {
         1: {
             "plot_point": "The hero begins their journey",
             "chapter_summary": "Introduction to the protagonist",
-        },
-        "title": "Test Novel",
-        "genre": "Fantasy",
-        "theme": "Adventure",
-        "protagonist_name": "Hero",
+        }
     }
+    chapter_outlines_ref = content_manager.save_json(
+        chapter_outlines, "chapter_outlines", "all", 1
+    )
+    state["chapter_outlines_ref"] = chapter_outlines_ref
 
     # Add contradictions
     state["contradictions"] = [

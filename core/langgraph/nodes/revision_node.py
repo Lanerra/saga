@@ -22,6 +22,7 @@ import structlog
 import config
 from core.langgraph.content_manager import (
     ContentManager,
+    get_chapter_outlines,
     get_draft_text,
     get_hybrid_context,
 )
@@ -105,11 +106,14 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         # Get hybrid context from content manager
         hybrid_context = get_hybrid_context(state, content_manager)
 
+        # Get chapter outlines from content manager
+        chapter_outlines = get_chapter_outlines(state, content_manager)
+
         prompt = await _construct_revision_prompt(
             draft_text=draft_text,
             contradictions=state.get("contradictions", []),
             chapter_number=state.get("current_chapter", 1),
-            plot_outline=state.get("plot_outline", {}),
+            chapter_outlines=chapter_outlines,
             hybrid_context=hybrid_context,
             novel_title=state.get("title", ""),
             novel_genre=state.get("genre", ""),
@@ -287,7 +291,7 @@ async def _construct_revision_prompt(
     draft_text: str,
     contradictions: list[Contradiction],
     chapter_number: int,
-    plot_outline: dict[str, Any],
+    chapter_outlines: dict[int, dict[str, Any]],
     hybrid_context: str | None,
     novel_title: str,
     novel_genre: str,
@@ -305,7 +309,7 @@ async def _construct_revision_prompt(
         draft_text: Current chapter text to revise
         contradictions: List of Contradiction objects from validation
         chapter_number: Chapter number being revised
-        plot_outline: Plot outline dictionary
+        chapter_outlines: Chapter outlines dictionary from content manager
         hybrid_context: Combined context from KG and previous chapters
         novel_title: Title of the novel
         novel_genre: Genre of the novel
@@ -318,7 +322,7 @@ async def _construct_revision_prompt(
     revision_reason = _format_contradictions_for_prompt(contradictions)
 
     # Get chapter focus/plot point if available
-    chapter_outline = plot_outline.get(chapter_number, {})
+    chapter_outline = chapter_outlines.get(chapter_number, {})
     if isinstance(chapter_outline, dict):
         plot_point_focus = chapter_outline.get("plot_point", "")
     else:
@@ -336,7 +340,7 @@ Please ensure your revision stays true to this plot point while addressing all i
     if not hybrid_context:
         try:
             kg_facts = await get_reliable_kg_facts_for_drafting_prompt(
-                plot_outline, chapter_number, None
+                chapter_outlines, chapter_number, None
             )
             hybrid_context = kg_facts if kg_facts else "No previous context available."
         except Exception as e:
