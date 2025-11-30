@@ -3,7 +3,11 @@ import json
 
 import structlog
 
-from core.langgraph.content_manager import ContentManager, get_chapter_outlines
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_chapter_outlines,
+    save_chapter_plan,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.character_queries import get_all_character_names, sync_characters
@@ -213,8 +217,6 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         await _ensure_scene_characters_exist(scenes, chapter_number)
 
         # Externalize chapter_plan to reduce state bloat
-        from core.langgraph.content_manager import ContentManager, save_chapter_plan
-
         content_manager = ContentManager(state["project_dir"])
 
         # Get current version for this chapter's plan
