@@ -68,12 +68,20 @@ async def sync_characters(
         # Invalidate caches related to characters
         try:
             get_character_profile_by_name.cache_clear()  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to clear cache for get_character_profile_by_name",
+                error=str(e),
+                exc_info=True,
+            )
         try:
             get_all_character_names.cache_clear()  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to clear cache for get_all_character_names",
+                error=str(e),
+                exc_info=True,
+            )
         return True
     except Exception as exc:  # pragma: no cover - log and return failure
         logger.error(
@@ -299,8 +307,13 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                 if isinstance(rel_detail, dict) and "chapter_added" in rel_detail:
                     try:
                         chapter_added_val = int(rel_detail["chapter_added"])
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as e:
+                        logger.warning(
+                            "Failed to convert chapter_added to int, using default",
+                            value=rel_detail.get("chapter_added"),
+                            default=config.KG_PREPOPULATION_CHAPTER_NUM,
+                            error=str(e),
+                        )
                 rel_cypher_props["chapter_added"] = chapter_added_val
 
                 if isinstance(rel_detail, str) and rel_detail.strip():

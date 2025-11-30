@@ -5,8 +5,12 @@ import asyncio
 import time
 from typing import Any
 
+import structlog
+
 import config
 from core.llm_interface_refactored import llm_service
+
+logger = structlog.get_logger(__name__)
 
 try:
     from rich.console import Console, Group
@@ -150,5 +154,8 @@ class RichDisplayManager:
         # Force a refresh to keep the live panel anchored and updated
         try:
             self.live.refresh()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "Failed to refresh Rich live display",
+                error=str(e),
+            )
