@@ -439,8 +439,12 @@ def parse_llm_triples(
                 config, "ENABLE_STATUS_IS_ALIAS", True
             ):
                 pred_norm = "HAS_STATUS"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Failed to check ENABLE_STATUS_IS_ALIAS config, using default behavior",
+                predicate=pred_norm,
+                error=str(e),
+            )
 
         predicate_str = pred_norm  # Normalize predicate
 

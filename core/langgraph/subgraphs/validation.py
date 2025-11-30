@@ -367,8 +367,13 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
             try:
                 value = float(match.group(1))
                 fallback_scores[key] = max(0.0, min(1.0, value))
-            except ValueError:
-                pass
+            except ValueError as e:
+                logger.warning(
+                    "Failed to parse quality score from regex match",
+                    key=key,
+                    matched_text=match.group(1),
+                    error=str(e),
+                )
 
     return fallback_scores
 
@@ -756,8 +761,16 @@ def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
             violations = json.loads(json_match.group())
             if isinstance(violations, list):
                 return violations
-    except (json.JSONDecodeError, AttributeError):
-        pass
+    except json.JSONDecodeError as e:
+        logger.warning(
+            "Failed to parse rule violations JSON from LLM response",
+            error=str(e),
+        )
+    except AttributeError as e:
+        logger.warning(
+            "Failed to extract rule violations from LLM response (regex failure)",
+            error=str(e),
+        )
 
     return []
 

@@ -86,8 +86,12 @@ async def find_semantically_closest_segment(
         max_concurrent = max(
             1, int(getattr(config.settings, "MAX_CONCURRENT_LLM_CALLS", 4))
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            "Failed to read MAX_CONCURRENT_LLM_CALLS from config, using default",
+            default=max_concurrent,
+            error=str(e),
+        )
 
     semaphore = asyncio.Semaphore(max_concurrent)
 

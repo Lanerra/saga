@@ -513,8 +513,12 @@ def _attempt_json_repair(text: str, chapter_number: int) -> dict[str, Any] | Non
         data = json.loads(repaired)
         if isinstance(data, dict):
             return data
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        logger.debug(
+            "JSON repair strategy 1 failed (bracket closing)",
+            chapter=chapter_number,
+            error=str(e),
+        )
 
     # Strategy 2: Find and extract the main JSON object
     # Look for the opening brace and try to find as much valid JSON as possible
@@ -555,8 +559,12 @@ def _attempt_json_repair(text: str, chapter_number: int) -> dict[str, Any] | Non
     if char_match:
         try:
             result["character_updates"] = json.loads(char_match.group(1))
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug(
+                "Failed to parse character_updates from partial extraction",
+                chapter=chapter_number,
+                error=str(e),
+            )
 
     # Try to extract kg_triples
     triples_match = re.search(r'"kg_triples"\s*:\s*\[(.*?)\]', text, re.DOTALL)
