@@ -44,11 +44,11 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "generate_act_outlines: starting act outline generation",
-        title=state["title"],
+        title=state.get("title", ""),
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get global outline (prefers externalized content, falls back to in-state)
     global_outline = get_global_outline(state, content_manager)
@@ -150,7 +150,7 @@ async def _generate_single_act_outline(
         Dictionary containing act outline details or None on failure
     """
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get global outline and character sheets
     global_outline = get_global_outline(state, content_manager) or {}
@@ -166,8 +166,8 @@ async def _generate_single_act_outline(
     prompt = render_prompt(
         "initialization/generate_act_outline.j2",
         {
-            "title": state["title"],
-            "genre": state["genre"],
+            "title": state.get("title", ""),
+            "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
             "setting": state.get("setting", ""),
             "act_number": act_number,
@@ -182,7 +182,7 @@ async def _generate_single_act_outline(
 
     try:
         response, usage = await llm_service.async_call_llm(
-            model_name=state["large_model"],
+            model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
             max_tokens=3000,

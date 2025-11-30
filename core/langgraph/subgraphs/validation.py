@@ -85,7 +85,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         word_count=state.get("draft_word_count", 0),
     )
 
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
 
     if not draft_text:
@@ -411,7 +411,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     contradictions.extend(timeline_contradictions)
 
     # Check 2: World rule violations
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager) or ""
 
     world_rule_contradictions = await _check_world_rules(

@@ -530,7 +530,7 @@ def should_generate_chapter_outline(
         Next node name ("chapter_outline" or "generate")
     """
     current_chapter = state.get("current_chapter", 1)
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     chapter_outlines = get_chapter_outlines(state, content_manager)
 
     if current_chapter not in chapter_outlines:

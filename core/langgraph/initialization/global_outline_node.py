@@ -114,12 +114,12 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "generate_global_outline: starting outline generation",
-        title=state["title"],
+        title=state.get("title", ""),
         total_chapters=state.get("total_chapters", 0),
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get character sheets (prefers externalized content, falls back to in-state)
     character_sheets = get_character_sheets(state, content_manager)
@@ -138,8 +138,8 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     prompt = render_prompt(
         "initialization/generate_global_outline.j2",
         {
-            "title": state["title"],
-            "genre": state["genre"],
+            "title": state.get("title", ""),
+            "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
             "setting": state.get("setting", ""),
             "target_word_count": state.get("target_word_count", 80000),
@@ -158,7 +158,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
 
     try:
         response, usage = await llm_service.async_call_llm(
-            model_name=state["large_model"],
+            model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
             max_tokens=4000,

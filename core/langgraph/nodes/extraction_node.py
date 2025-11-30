@@ -64,12 +64,12 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "extract_entities",
-        chapter=state["current_chapter"],
+        chapter=state.get("current_chapter", 1),
         word_count=state.get("draft_word_count", 0),
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get draft text (prefers externalized content, falls back to in-state)
     draft_text = get_draft_text(state, content_manager)
@@ -92,18 +92,18 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
     raw_text, usage = await _llm_extract_updates(
         plot_outline=state.get("plot_outline", {}),
         chapter_text=draft_text,
-        chapter_number=state["current_chapter"],
-        title=state["title"],
-        genre=state["genre"],
+        chapter_number=state.get("current_chapter", 1),
+        title=state.get("title", ""),
+        genre=state.get("genre", ""),
         protagonist_name=state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
-        extraction_model=state["medium_model"],
+        extraction_model=state.get("medium_model", ""),
     )
 
     # Handle extraction failure
     if not raw_text or not raw_text.strip():
         logger.warning(
             "extract_entities: LLM extraction returned no text",
-            chapter=state["current_chapter"],
+            chapter=state.get("current_chapter", 1),
         )
         return {
             **state,
@@ -117,7 +117,7 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
     try:
         char_updates, world_updates, relationships = await _extract_updates_as_models(
             raw_text=raw_text,
-            chapter_number=state["current_chapter"],
+            chapter_number=state.get("current_chapter", 1),
         )
 
         logger.info(
@@ -146,7 +146,7 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
         logger.error(
             "extract_entities: fatal error",
             error=error_msg,
-            chapter=state["current_chapter"],
+            chapter=state.get("current_chapter", 1),
             exc_info=True,
         )
         return {

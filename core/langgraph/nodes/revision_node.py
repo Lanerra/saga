@@ -60,18 +60,18 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "revise_chapter: starting revision",
-        chapter=state["current_chapter"],
-        iteration=state["iteration_count"],
+        chapter=state.get("current_chapter", 1),
+        iteration=state.get("iteration_count", 0),
         contradictions=len(state.get("contradictions", [])),
     )
 
     # Step 1: Check iteration limit
-    if state["iteration_count"] >= state["max_iterations"]:
-        error_msg = f"Max revision attempts ({state['max_iterations']}) reached"
+    if state.get("iteration_count", 0) >= state.get("max_iterations", 3):
+        error_msg = f"Max revision attempts ({state.get('max_iterations', 3)}) reached"
         logger.error(
             "revise_chapter: iteration limit exceeded",
-            iterations=state["iteration_count"],
-            max_iterations=state["max_iterations"],
+            iterations=state.get("iteration_count", 0),
+            max_iterations=state.get("max_iterations", 3),
         )
         return {
             **state,
@@ -83,7 +83,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get draft text (prefers externalized content, falls back to in-state)
     draft_text = get_draft_text(state, content_manager)
@@ -108,11 +108,11 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         prompt = await _construct_revision_prompt(
             draft_text=draft_text,
             contradictions=state.get("contradictions", []),
-            chapter_number=state["current_chapter"],
+            chapter_number=state.get("current_chapter", 1),
             plot_outline=state.get("plot_outline", {}),
             hybrid_context=hybrid_context,
-            novel_title=state["title"],
-            novel_genre=state["genre"],
+            novel_title=state.get("title", ""),
+            novel_genre=state.get("genre", ""),
             protagonist_name=state.get(
                 "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
             ),
@@ -133,7 +133,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         }
 
     # Step 3: Calculate token budget
-    model_name = state["revision_model"]
+    model_name = state.get("revision_model", "")
     prompt_tokens = llm_service.count_tokens(prompt, model_name)
 
     max_context = getattr(config, "MAX_CONTEXT_TOKENS", 128000)
@@ -162,9 +162,9 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
     # Step 4: Call revision model (lower temperature for consistency)
     logger.info(
         "revise_chapter: calling LLM for revision",
-        chapter=state["current_chapter"],
+        chapter=state.get("current_chapter", 1),
         model=model_name,
-        iteration=state["iteration_count"] + 1,
+        iteration=state.get("iteration_count", 0) + 1,
         max_tokens=max_gen_tokens,
     )
 
@@ -187,7 +187,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         if not revised_text or not revised_text.strip():
             logger.error(
                 "revise_chapter: LLM returned empty text",
-                chapter=state["current_chapter"],
+                chapter=state.get("current_chapter", 1),
             )
             return {
                 **state,
@@ -200,8 +200,8 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
 
         logger.info(
             "revise_chapter: revision complete",
-            chapter=state["current_chapter"],
-            iteration=state["iteration_count"] + 1,
+            chapter=state.get("current_chapter", 1),
+            iteration=state.get("iteration_count", 0) + 1,
             word_count=word_count,
             tokens_used=usage.get("total_tokens", 0) if usage else 0,
         )
@@ -222,8 +222,8 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             final_word_count = len(deduplicated_text.split())
             logger.info(
                 "revise_chapter: deduplication applied",
-                chapter=state["current_chapter"],
-                iteration=state["iteration_count"] + 1,
+                chapter=state.get("current_chapter", 1),
+                iteration=state.get("iteration_count", 0) + 1,
                 chars_removed=removed_chars,
                 original_words=word_count,
                 final_words=final_word_count,
@@ -234,22 +234,22 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             final_word_count = word_count
             logger.info(
                 "revise_chapter: no duplicates detected",
-                chapter=state["current_chapter"],
-                iteration=state["iteration_count"] + 1,
+                chapter=state.get("current_chapter", 1),
+                iteration=state.get("iteration_count", 0) + 1,
                 is_from_flawed_draft=is_from_flawed_draft,
             )
 
         # Save revised draft to content manager
         current_version = (
             content_manager.get_latest_version(
-                "draft", f"chapter_{state['current_chapter']}"
+                "draft", f"chapter_{state.get('current_chapter', 1)}"
             )
             + 1
         )
         draft_ref = content_manager.save_text(
             deduplicated_text,
             "draft",
-            f"chapter_{state['current_chapter']}",
+            f"chapter_{state.get('current_chapter', 1)}",
             version=current_version,
         )
 
@@ -258,7 +258,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "draft_ref": draft_ref,
             "draft_word_count": final_word_count,
             "is_from_flawed_draft": is_from_flawed_draft,
-            "iteration_count": state["iteration_count"] + 1,
+            "iteration_count": state.get("iteration_count", 0) + 1,
             "contradictions": [],  # Will be re-validated
             "needs_revision": False,  # Reset flag, will be set again by validation if needed
             "current_node": "revise",
@@ -270,7 +270,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         logger.error(
             "revise_chapter: fatal error",
             error=error_msg,
-            chapter=state["current_chapter"],
+            chapter=state.get("current_chapter", 1),
             exc_info=True,
         )
         return {

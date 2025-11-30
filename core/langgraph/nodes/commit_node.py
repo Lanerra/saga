@@ -78,7 +78,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         Updated state with current_node set to "commit_to_graph"
     """
     # Initialize content manager to read externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get extraction results from externalized content
     extracted = get_extracted_entities(state, content_manager)
@@ -103,7 +103,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
     logger.info(
         "commit_to_graph",
-        chapter=state["current_chapter"],
+        chapter=state.get("current_chapter", 1),
         characters=len(char_entities),
         world_items=len(world_entities),
         relationships=len(relationships),
@@ -117,7 +117,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         # Step 1: Deduplicate characters (READ operations)
         for char in char_entities:
             deduplicated_name = await _deduplicate_character(
-                char.name, char.description, state["current_chapter"]
+                char.name, char.description, state.get("current_chapter", 1)
             )
             char_mappings[char.name] = deduplicated_name
 
@@ -127,16 +127,16 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 item.name,
                 item.attributes.get("category", ""),
                 item.description,
-                state["current_chapter"],
+                state.get("current_chapter", 1),
             )
             world_mappings[item.name] = deduplicated_id
 
         # Step 3: Convert ExtractedEntity to CharacterProfile/WorldItem models
         character_models = _convert_to_character_profiles(
-            char_entities, char_mappings, state["current_chapter"]
+            char_entities, char_mappings, state.get("current_chapter", 1)
         )
         world_item_models = _convert_to_world_items(
-            world_entities, world_mappings, state["current_chapter"]
+            world_entities, world_mappings, state.get("current_chapter", 1)
         )
 
         # Step 4-6: Collect ALL Cypher statements for single transaction
@@ -146,7 +146,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         # Step 4a: Collect entity persistence statements
         if character_models or world_item_models:
             entity_statements = await _build_entity_persistence_statements(
-                character_models, world_item_models, state["current_chapter"]
+                character_models, world_item_models, state.get("current_chapter", 1)
             )
             all_statements.extend(entity_statements)
 
@@ -158,20 +158,20 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 world_entities,
                 char_mappings,
                 world_mappings,
-                state["current_chapter"],
+                state.get("current_chapter", 1),
                 is_from_flawed_draft=state.get("is_from_flawed_draft", False),
             )
             all_statements.extend(relationship_statements)
 
         # Step 4c: Collect chapter node statement
-        content_manager = ContentManager(state["project_dir"])
+        content_manager = ContentManager(state.get("project_dir", ""))
         draft_text = get_draft_text(state, content_manager) or ""
 
         # Get embedding from ref if available
         embedding = None
         if state.get("embedding_ref"):
             try:
-                embedding = load_embedding(content_manager, state["embedding_ref"])
+                embedding = load_embedding(content_manager, state.get("embedding_ref", None))
             except Exception as e:
                 logger.warning(
                     "commit_to_graph: failed to load embedding", error=str(e)
@@ -181,7 +181,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             embedding = state.get("generated_embedding")
 
         chapter_statement = _build_chapter_node_statement(
-            chapter_number=state["current_chapter"],
+            chapter_number=state.get("current_chapter", 1),
             text=draft_text,
             word_count=state.get("draft_word_count", 0),
             summary=None,
@@ -198,7 +198,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
             logger.info(
                 "commit_to_graph: successfully committed to knowledge graph in single transaction",
-                chapter=state["current_chapter"],
+                chapter=state.get("current_chapter", 1),
                 characters=len(character_models),
                 world_items=len(world_item_models),
                 relationships=len(relationships),
@@ -216,7 +216,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         logger.error(
             "commit_to_graph: error during commit",
             error=str(e),
-            chapter=state["current_chapter"],
+            chapter=state.get("current_chapter", 1),
             exc_info=True,
         )
         return {

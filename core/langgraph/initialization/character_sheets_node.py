@@ -112,8 +112,8 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "generate_character_sheets: starting character sheet generation",
-        title=state["title"],
-        genre=state["genre"],
+        title=state.get("title", ""),
+        genre=state.get("genre", ""),
     )
 
     # Validate inputs
@@ -180,7 +180,7 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
     )
 
     # Initialize content manager for external storage
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Externalize character_sheets to reduce state bloat
     character_sheets_ref = content_manager.save_json(
@@ -217,8 +217,8 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
     prompt = render_prompt(
         "initialization/generate_character_list.j2",
         {
-            "title": state["title"],
-            "genre": state["genre"],
+            "title": state.get("title", ""),
+            "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
             "setting": state.get("setting", ""),
             "protagonist_name": state.get("protagonist_name", ""),
@@ -227,7 +227,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
     try:
         response, _ = await llm_service.async_call_llm(
-            model_name=state["large_model"],
+            model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
             max_tokens=1000,
@@ -295,8 +295,8 @@ async def _generate_character_sheet(
     prompt = render_prompt(
         "initialization/generate_character_sheet.j2",
         {
-            "title": state["title"],
-            "genre": state["genre"],
+            "title": state.get("title", ""),
+            "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
             "setting": state.get("setting", ""),
             "character_name": character_name,
@@ -314,7 +314,7 @@ async def _generate_character_sheet(
 
     try:
         response, usage = await llm_service.async_call_llm(
-            model_name=state["large_model"],
+            model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
             max_tokens=2000,

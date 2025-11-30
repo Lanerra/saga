@@ -56,11 +56,11 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
     logger.info(
         "generate_chapter_outline: starting chapter outline generation",
         chapter=chapter_number,
-        title=state["title"],
+        title=state.get("title", ""),
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get chapter outlines (prefers externalized content, falls back to in-state)
     existing_outlines = get_chapter_outlines(state, content_manager)
@@ -170,7 +170,7 @@ async def _generate_single_chapter_outline(
         Dictionary containing chapter outline details or None on failure
     """
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Gather context (prefers externalized content, falls back to in-state)
     global_outline = get_global_outline(state, content_manager) or {}
@@ -201,8 +201,8 @@ async def _generate_single_chapter_outline(
     prompt = render_prompt(
         "initialization/generate_chapter_outline.j2",
         {
-            "title": state["title"],
-            "genre": state["genre"],
+            "title": state.get("title", ""),
+            "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
             "setting": state.get("setting", ""),
             "chapter_number": chapter_number,
@@ -225,7 +225,7 @@ async def _generate_single_chapter_outline(
 
     try:
         response, usage = await llm_service.async_call_llm(
-            model_name=state["large_model"],
+            model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
             max_tokens=2000,
@@ -277,7 +277,7 @@ def _determine_act_for_chapter(state: NarrativeState, chapter_number: int) -> in
     total_chapters = state.get("total_chapters", 20)
 
     # Initialize content manager and get global outline
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     global_outline = get_global_outline(state, content_manager) or {}
     act_count = global_outline.get("act_count", 3)
 

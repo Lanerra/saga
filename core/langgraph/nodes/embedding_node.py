@@ -29,7 +29,7 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
     Returns:
         Updated state with generated_embedding
     """
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
     chapter_num = state.get("current_chapter")
 
@@ -70,7 +70,7 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
             embedding_list = list(embedding)
 
         # Initialize content manager for external storage
-        content_manager = ContentManager(state["project_dir"])
+        content_manager = ContentManager(state.get("project_dir", ""))
 
         # Get current version (for revision tracking)
         current_version = (

@@ -59,11 +59,11 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     """
     logger.info(
         "summarize_chapter: starting summarization",
-        chapter=state["current_chapter"],
+        chapter=state.get("current_chapter", 1),
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state["project_dir"])
+    content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get draft text (prefers externalized content, falls back to in-state)
     draft_text = get_draft_text(state, content_manager)
@@ -80,7 +80,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     prompt = render_prompt(
         "knowledge_agent/chapter_summary.j2",
         {
-            "chapter_number": state["current_chapter"],
+            "chapter_number": state.get("current_chapter", 1),
             "chapter_text": draft_text,
         },
     )
@@ -88,13 +88,13 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     # Step 2: Generate summary using fast extraction model
     logger.info(
         "summarize_chapter: calling LLM for summary",
-        chapter=state["current_chapter"],
-        model=state["extraction_model"],
+        chapter=state.get("current_chapter", 1),
+        model=state.get("extraction_model", ""),
     )
 
     try:
         summary_text, usage = await llm_service.async_call_llm(
-            model_name=state["small_model"],  # Use fast model
+            model_name=state.get("small_model", ""),  # Use fast model
             prompt=prompt,
             temperature=0.3,  # Low temperature for consistency
             max_tokens=200,  # Short summary
@@ -107,7 +107,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         if not summary_text or not summary_text.strip():
             logger.error(
                 "summarize_chapter: LLM returned empty summary",
-                chapter=state["current_chapter"],
+                chapter=state.get("current_chapter", 1),
             )
             # Continue without summary rather than fail
             return {
@@ -121,7 +121,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         if not summary:
             logger.warning(
                 "summarize_chapter: failed to parse summary, using raw text",
-                chapter=state["current_chapter"],
+                chapter=state.get("current_chapter", 1),
                 raw_text=summary_text[:100],
             )
             # Use first few sentences of raw text as fallback
@@ -129,13 +129,13 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
 
         logger.info(
             "summarize_chapter: summary generated",
-            chapter=state["current_chapter"],
+            chapter=state.get("current_chapter", 1),
             summary_length=len(summary),
         )
 
         # Step 4: Persist to Neo4j
         await _save_summary_to_neo4j(
-            chapter_number=state["current_chapter"],
+            chapter_number=state.get("current_chapter", 1),
             summary=summary,
         )
 
@@ -173,7 +173,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
 
         logger.info(
             "summarize_chapter: complete",
-            chapter=state["current_chapter"],
+            chapter=state.get("current_chapter", 1),
             total_summaries_in_state=len(previous_summaries),
             summaries_externalized=True,
             size=summaries_ref["size_bytes"],
@@ -188,7 +188,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     except Exception as e:
         logger.error(
             "summarize_chapter: exception during summarization",
-            chapter=state["current_chapter"],
+            chapter=state.get("current_chapter", 1),
             error=str(e),
             exc_info=True,
         )
