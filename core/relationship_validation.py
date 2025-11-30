@@ -25,19 +25,11 @@ from typing import Literal
 import structlog
 
 from models.kg_constants import (
-    ABILITY_RELATIONSHIPS,
     CHARACTER_EMOTIONAL_RELATIONSHIPS,
     CHARACTER_SOCIAL_RELATIONSHIPS,
     NODE_LABELS,
-    ORGANIZATIONAL_RELATIONSHIPS,
-    PHYSICAL_RELATIONSHIPS,
-    PLOT_CAUSAL_RELATIONSHIPS,
-    POSSESSION_RELATIONSHIPS,
     RELATIONSHIP_TYPES,
-    SPATIAL_TEMPORAL_RELATIONSHIPS,
     STATUS_RELATIONSHIPS,
-    STRUCTURAL_RELATIONSHIPS,
-    THEMATIC_RELATIONSHIPS,
 )
 
 logger = structlog.get_logger(__name__)
@@ -220,9 +212,12 @@ VALIDATION_RULES = [
     RelationshipValidationRule(
         relationship_types={"LOCATED_IN", "LOCATED_AT"},
         valid_source_types="ANY",  # Anything can be located somewhere
-        valid_target_types=LOCATION_TYPES | PHYSICAL_OBJECT_TYPES | ORGANIZATION_TYPES,
+        valid_target_types=LOCATION_TYPES
+        | PHYSICAL_OBJECT_TYPES
+        | ORGANIZATION_TYPES
+        | SENTIENT_TYPES,
         rule_name="spatial_containment",
-        rationale="Location relationships require a place or physical container as target",
+        rationale="Location relationships require a place, physical container, or entity as target",
     ),
     # Temporal relationships between events
     RelationshipValidationRule(
@@ -251,7 +246,10 @@ VALIDATION_RULES = [
     # Physical and informational containment
     RelationshipValidationRule(
         relationship_types={"CONTAINS", "PART_OF"},
-        valid_source_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES | EVENT_TYPES | ABSTRACT_TYPES,
+        valid_source_types=PHYSICAL_OBJECT_TYPES
+        | LOCATION_TYPES
+        | EVENT_TYPES
+        | ABSTRACT_TYPES,
         valid_target_types="ANY",  # Can contain physical objects, information, concepts, etc.
         rule_name="containment",
         rationale="Containment relationships allow physical, informational, and conceptual containers",
@@ -290,7 +288,9 @@ class RelationshipValidator:
         self.known_relationship_types = RELATIONSHIP_TYPES
         self.known_node_labels = NODE_LABELS
 
-    def validate_relationship_type(self, relationship_type: str) -> tuple[bool, str | None]:
+    def validate_relationship_type(
+        self, relationship_type: str
+    ) -> tuple[bool, str | None]:
         """
         Check if a relationship type is recognized.
 
@@ -397,7 +397,9 @@ class RelationshipValidator:
                 warnings.append(type_warning)
 
         # 2. Validate entity types
-        entities_valid, entity_warnings = self.validate_entity_types(source_type, target_type)
+        entities_valid, entity_warnings = self.validate_entity_types(
+            source_type, target_type
+        )
         if not entities_valid:
             if severity_mode == "strict":
                 errors.extend(entity_warnings)

@@ -171,7 +171,9 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         embedding = None
         if state.get("embedding_ref"):
             try:
-                embedding = load_embedding(content_manager, state.get("embedding_ref", None))
+                embedding = load_embedding(
+                    content_manager, state.get("embedding_ref", None)
+                )
             except Exception as e:
                 logger.warning(
                     "commit_to_graph: failed to load embedding", error=str(e)

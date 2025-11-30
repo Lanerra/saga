@@ -6,8 +6,6 @@ This module tests the semantic validation of relationships to ensure
 that relationships make sense given the entity types involved.
 """
 
-import pytest
-
 from core.relationship_validation import (
     RelationshipValidationRule,
     RelationshipValidator,
@@ -150,7 +148,9 @@ class TestRelationshipValidator:
     def test_validate_unknown_target_type(self):
         """Test validation with unknown target entity type."""
         validator = RelationshipValidator()
-        all_valid, warnings = validator.validate_entity_types("Character", "UnknownType")
+        all_valid, warnings = validator.validate_entity_types(
+            "Character", "UnknownType"
+        )
         assert all_valid is False
         assert len(warnings) == 1
         assert "UnknownType" in warnings[0]

@@ -38,7 +38,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     # Calculate target word count for this scene
     total_target = 3000  # Default chapter length
     if state.get("target_word_count") and state.get("total_chapters"):
-        total_target = state.get("target_word_count", 0) // state.get("total_chapters", 0)
+        total_target = state.get("target_word_count", 0) // state.get(
+            "total_chapters", 0
+        )
 
     scene_target = total_target // len(chapter_plan)
 

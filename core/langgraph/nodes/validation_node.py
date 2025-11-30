@@ -173,8 +173,12 @@ async def _validate_relationships(
     # Validate each relationship
     for rel in relationships:
         # Get entity types
-        source_type = entity_type_map.get(rel.source_name, "Character")  # Default to Character
-        target_type = entity_type_map.get(rel.target_name, "Character")  # Default to Character
+        source_type = entity_type_map.get(
+            rel.source_name, "Character"
+        )  # Default to Character
+        target_type = entity_type_map.get(
+            rel.target_name, "Character"
+        )  # Default to Character
 
         # Validate the relationship (use flexible mode for creative writing)
         is_valid, errors, warnings = validator.validate(
@@ -203,8 +207,8 @@ async def _validate_relationships(
                     f"Errors: {'; '.join(errors)}",
                     conflicting_chapters=[chapter],
                     severity=severity,
-                    suggested_fix=f"Use a semantically appropriate relationship type, or "
-                    f"verify entity types are correct. See docs/ontology.md for guidance.",
+                    suggested_fix="Use a semantically appropriate relationship type, or "
+                    "verify entity types are correct. See docs/ontology.md for guidance.",
                 )
             )
 

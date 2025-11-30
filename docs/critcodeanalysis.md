@@ -28,7 +28,7 @@ except Exception:
 
 ---
 
-### 2. **Relationship Validation System Completely Disabled**
+### 2. **Relationship Validation System Completely Disabled** - RESTORED
 
 **Location: `core/langgraph/nodes/validation_node.py:10, 38, 59-66`**
 
@@ -79,7 +79,7 @@ if not current_chapter_outline and state.get("plot_outline"):
 
 ---
 
-### 4. **State Access Pattern Inconsistency - KeyError Risk**
+### 4. **State Access Pattern Inconsistency - KeyError Risk** - DONE
 
 **Analysis:**
 - 160 instances of `state["key"]` (raises KeyError if missing)
@@ -497,7 +497,7 @@ Despite the issues above, several things are well-done:
 
 ### IMMEDIATE (Before Production):
 1. **Fix all silent exception swallowing** - Add logging at minimum - DONE
-2. **Document relationship validation removal** - Is this intentional?
+2. **Document relationship validation removal** - Is this intentional? - RESTORED
 3. **Add state factory function** - Ensure consistent initialization - DONE
 4. **Add model validation at startup** - Fail fast if models missing
 5. **Document error recovery** - What to do when things break

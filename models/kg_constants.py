@@ -208,8 +208,10 @@ POSSESSION_RELATIONSHIPS = {
     "INHERITED_FROM",  # Inheritance
     "STOLEN_FROM",  # Theft relationship
     "GIVEN_BY",  # Gift relationship
+    "GIVES",  # Active giving (inverse of GIVEN_BY)
     "FOUND_AT",  # Discovery location
     "LOST_AT",  # Loss location
+    "CONCEALS",  # Hiding or secreting an object
 }
 
 # Organizational Relationships
@@ -232,6 +234,7 @@ PHYSICAL_RELATIONSHIPS = {
     "BUILT_BY",  # Construction
     "DESTROYED_BY",  # Destruction
     "DAMAGED_BY",  # Partial destruction
+    "DAMAGES",  # Active damaging (inverse of DAMAGED_BY)
     "REPAIRED_BY",  # Restoration
     "OWNED_BY",  # Ownership (inverse of OWNS)
 }
@@ -295,6 +298,7 @@ COMMUNICATION_RELATIONSHIPS = {
     "SHOWS",  # Demonstration or exhibition of information/objects
     "SPOKEN_BY",  # Communication originating from sentient beings
     "EMITS",  # Emission of energy, sound, or information
+    "ALERTS",  # Warning or notifying
 }
 
 # Operational Relationships
@@ -431,6 +435,7 @@ RELATIONSHIP_NORMALIZATIONS = {
     "hinders": "PREVENTS",
     "destroys": "DESTROYED_BY",
     "ruins": "DESTROYED_BY",
+    "cuts": "DAMAGES",
     # New relationship normalizations
     "presents": "DISPLAYS",
     "shows": "SHOWS",
@@ -438,6 +443,8 @@ RELATIONSHIP_NORMALIZATIONS = {
     "exhibits": "SHOWS",
     "reveals": "REVEALS",
     "discloses": "REVEALS",
+    "decrypts": "REVEALS",
+    "reports": "REVEALS",
     "discovers": "DISCOVERS",
     "finds": "DISCOVERS",
     "uncovers": "DISCOVERS",
@@ -478,6 +485,9 @@ RELATIONSHIP_NORMALIZATIONS = {
     "joined_to": "LINKED_TO",
     # 'related_to' canonicalized above to FAMILY_OF
     "affiliated_with": "ASSOCIATED_WITH",
+    "alerts": "ALERTS",
+    "hands_over": "GIVES",
+    "hides": "CONCEALS",
     # Information relationship normalizations
     "documents": "RECORDS",
     "logs": "RECORDS",

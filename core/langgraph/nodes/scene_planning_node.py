@@ -150,7 +150,8 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     Break the chapter into scenes based on the outline.
     """
     logger.info(
-        "plan_scenes: planning scenes for chapter", chapter=state.get("current_chapter", 1)
+        "plan_scenes: planning scenes for chapter",
+        chapter=state.get("current_chapter", 1),
     )
 
     chapter_number = state.get("current_chapter", 1)

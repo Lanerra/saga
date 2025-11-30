@@ -235,7 +235,9 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                                     name=name,
                                     type=entity_type,
                                     description=info.get("description", ""),
-                                    first_appearance_chapter=state.get("current_chapter", 1),
+                                    first_appearance_chapter=state.get(
+                                        "current_chapter", 1
+                                    ),
                                     attributes=attributes,
                                 )
                             )
@@ -348,7 +350,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                                 name=name,
                                 type=mapped_type,  # Use the specific type from mapping
                                 description=info.get("description", ""),
-                                first_appearance_chapter=state.get("current_chapter", 1),
+                                first_appearance_chapter=state.get(
+                                    "current_chapter", 1
+                                ),
                                 attributes=attributes,
                             )
                         )
