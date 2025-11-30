@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.state import create_initial_state
 
@@ -20,6 +21,7 @@ from core.langgraph.state import create_initial_state
 @pytest.fixture
 def sample_finalize_state(tmp_path):
     """Sample state ready for finalization."""
+    project_dir = str(tmp_path / "test-project")
     state = create_initial_state(
         project_id="test-project",
         title="Test Novel",
@@ -28,19 +30,23 @@ def sample_finalize_state(tmp_path):
         setting="Medieval world",
         target_word_count=80000,
         total_chapters=20,
-        project_dir=str(tmp_path / "test-project"),
+        project_dir=project_dir,
         protagonist_name="Hero",
         generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )
 
-    # Add finalized chapter text
-    state["draft_text"] = """
+    # Add finalized chapter text via ContentManager
+    draft_text = """
     The hero completed their quest, returning to the village victorious.
     The villagers celebrated their bravery and the kingdom was saved.
     Peace was restored to the land.
     """
+    content_manager = ContentManager(project_dir)
+    draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+
+    state["draft_ref"] = draft_ref
     state["draft_word_count"] = 25
 
     # Set current chapter
@@ -62,10 +68,10 @@ def sample_finalize_state(tmp_path):
     state["iteration_count"] = 2
     state["needs_revision"] = False
 
-    # Add summary
-    state["previous_chapter_summaries"] = [
-        "The hero completed their quest and returned home victorious."
-    ]
+    # Add summary via ContentManager
+    summaries = ["The hero completed their quest and returned home victorious."]
+    summaries_ref = content_manager.save_list_of_texts(summaries, "summaries", "all", 1)
+    state["summaries_ref"] = summaries_ref
 
     return state
 
@@ -118,8 +124,13 @@ class TestFinalizeChapter:
         # Verify Neo4j save was called
         mock_save_chapter_data.assert_called_once()
         call_args = mock_save_chapter_data.call_args
+
+        # Helper to get draft text
+        cm = ContentManager(sample_finalize_state["project_dir"])
+        expected_text = get_draft_text(sample_finalize_state, cm)
+
         assert call_args.kwargs["chapter_number"] == 1
-        assert call_args.kwargs["text"] == sample_finalize_state["draft_text"]
+        assert call_args.kwargs["text"] == expected_text
         assert call_args.kwargs["is_provisional"] is False
 
     async def test_finalize_chapter_no_draft_text(
@@ -127,7 +138,7 @@ class TestFinalizeChapter:
     ):
         """Test finalization fails gracefully without draft text."""
         state = {**sample_finalize_state}
-        state["draft_text"] = None
+        state["draft_ref"] = None
 
         result = await finalize_chapter(state)
 
@@ -164,12 +175,15 @@ class TestFinalizeChapter:
 
         import yaml
 
+        cm = ContentManager(sample_finalize_state["project_dir"])
+        expected_text = get_draft_text(sample_finalize_state, cm)
+
         meta = yaml.safe_load(front_matter_raw)
         assert isinstance(meta, dict)
         assert meta["chapter"] == 1
         assert meta["title"] == "Chapter 1"
         assert isinstance(meta["word_count"], int)
-        assert meta["word_count"] == len(sample_finalize_state["draft_text"].split())
+        assert meta["word_count"] == len(expected_text.split())
         # generated_at can be str or datetime depending on yaml loader
         import datetime
 
@@ -178,14 +192,12 @@ class TestFinalizeChapter:
         assert meta["version"] == 1
 
         # Body must equal original draft text (ignoring leading/trailing whitespace difference)
-        assert body.strip() == sample_finalize_state["draft_text"].strip()
+        assert body.strip() == expected_text.strip()
 
         # .txt legacy mirror assertions (plain text only)
         txt_path = chapters_dir / "chapter_001.txt"
         assert txt_path.exists()
-        assert (
-            txt_path.read_text(encoding="utf-8") == sample_finalize_state["draft_text"]
-        )
+        assert txt_path.read_text(encoding="utf-8") == expected_text
 
     async def test_finalize_chapter_embedding_generation(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
@@ -193,10 +205,13 @@ class TestFinalizeChapter:
         """Test that embedding is generated for the chapter."""
         await finalize_chapter(sample_finalize_state)
 
+        cm = ContentManager(sample_finalize_state["project_dir"])
+        expected_text = get_draft_text(sample_finalize_state, cm)
+
         # Verify embedding was requested
         mock_llm_service.async_get_embedding.assert_called_once()
         call_args = mock_llm_service.async_get_embedding.call_args
-        assert call_args.args[0] == sample_finalize_state["draft_text"]
+        assert call_args.args[0] == expected_text
 
         # Verify embedding was passed to Neo4j
         neo4j_call_args = mock_save_chapter_data.call_args
@@ -244,17 +259,19 @@ class TestFinalizeChapter:
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
         """Test that filesystem failures don't block Neo4j save."""
-        # Make project_dir invalid to cause filesystem failure
-        state = {**sample_finalize_state}
-        state["project_dir"] = "/invalid/nonexistent/path"
 
-        result = await finalize_chapter(state)
+        with patch(
+            "core.langgraph.nodes.finalize_node._save_chapter_to_filesystem"
+        ) as mock_save_fs:
+            mock_save_fs.side_effect = Exception("Filesystem error")
 
-        # Should still succeed (Neo4j is source of truth)
-        assert result["last_error"] is None
+            result = await finalize_chapter(sample_finalize_state)
 
-        # Neo4j save should still be called
-        mock_save_chapter_data.assert_called_once()
+            # Should still succeed (Neo4j is source of truth)
+            assert result["last_error"] is None
+
+            # Neo4j save should still be called
+            mock_save_chapter_data.assert_called_once()
 
     async def test_finalize_chapter_clears_extracted_entities(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
@@ -329,7 +346,7 @@ class TestFinalizeChapter:
         result = await finalize_chapter(sample_finalize_state)
 
         # Draft text should still be available
-        assert result["draft_text"] == sample_finalize_state["draft_text"]
+        assert result["draft_ref"] == sample_finalize_state["draft_ref"]
         assert result["draft_word_count"] == sample_finalize_state["draft_word_count"]
 
     async def test_finalize_chapter_includes_summary(
@@ -342,14 +359,23 @@ class TestFinalizeChapter:
         call_args = mock_save_chapter_data.call_args
         summary = call_args.kwargs["summary"]
         assert summary is not None
-        assert summary == sample_finalize_state["previous_chapter_summaries"][-1]
+
+        cm = ContentManager(sample_finalize_state["project_dir"])
+        # We need to manually load summaries to verify
+        # But get_previous_summaries is used in node
+        # Let's rely on internal implementation correctness or verify logic:
+        # summary is last element of summaries_ref list
+        from core.langgraph.content_manager import get_previous_summaries
+
+        expected_summary = get_previous_summaries(sample_finalize_state, cm)[-1]
+        assert summary == expected_summary
 
     async def test_finalize_chapter_no_summary(
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
         """Test finalization works without summary."""
         state = {**sample_finalize_state}
-        state["previous_chapter_summaries"] = []
+        state["summaries_ref"] = None
 
         result = await finalize_chapter(state)
 
@@ -421,7 +447,7 @@ class TestFinalizeErrorHandling:
     ):
         """Test finalization with missing draft_text triggers fatal error."""
         state = {**sample_finalize_state}
-        state["draft_text"] = None
+        state["draft_ref"] = None
 
         result = await finalize_chapter(state)
 
@@ -438,8 +464,12 @@ class TestFinalizeErrorHandling:
         self, sample_finalize_state, mock_llm_service, mock_save_chapter_data
     ):
         """Test finalization with empty draft_text triggers fatal error."""
+        # Create empty draft file
+        cm = ContentManager(sample_finalize_state["project_dir"])
+        ref = cm.save_text("", "draft", "chapter_empty", 1)
+
         state = {**sample_finalize_state}
-        state["draft_text"] = ""
+        state["draft_ref"] = ref
 
         result = await finalize_chapter(state)
 
@@ -535,5 +565,6 @@ class TestFinalizeIntegration:
         assert result["extracted_relationships"] == []
         assert result["contradictions"] == []
 
-        # Summary should be available for next chapter
-        assert len(result["previous_chapter_summaries"]) > 0
+        # Summary ref should be preserved
+        assert result["summaries_ref"] is not None
+        # We can verify content if needed, but presence is enough for now

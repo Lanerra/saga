@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.state import create_initial_state
 from core.langgraph.subgraphs.generation import create_generation_subgraph
 
@@ -43,6 +44,7 @@ class TestGenerationSubgraph(unittest.TestCase):
                 graph = create_generation_subgraph()
 
                 # Create initial state
+                project_dir = "/tmp"
                 state = create_initial_state(
                     project_id="test",
                     title="Test Novel",
@@ -51,25 +53,32 @@ class TestGenerationSubgraph(unittest.TestCase):
                     setting="Lab",
                     target_word_count=1000,
                     total_chapters=1,
-                    project_dir="/tmp",
+                    project_dir=project_dir,
                     protagonist_name="Hero",
                 )
-                state["chapter_outlines"] = {
+
+                content_manager = ContentManager(project_dir)
+                chapter_outlines = {
                     1: {
                         "scene_description": "Test Chapter",
                         "key_beats": ["Beat 1", "Beat 2"],
                     }
                 }
+                ref = content_manager.save_json(
+                    chapter_outlines, "chapter_outlines", "all", 1
+                )
+                state["chapter_outlines_ref"] = ref
 
                 # Run graph
                 result = await graph.ainvoke(state)
 
                 # Verify results
+                draft_text = get_draft_text(result, content_manager)
                 self.assertEqual(
-                    result["draft_text"],
+                    draft_text,
                     "Draft for Scene 1\n\n# ***\n\nDraft for Scene 2",
                 )
-                self.assertEqual(len(result["scene_drafts"]), 2)
+                self.assertIsNotNone(result["scene_drafts_ref"])
                 self.assertEqual(result["current_scene_index"], 2)
 
                 # Verify calls

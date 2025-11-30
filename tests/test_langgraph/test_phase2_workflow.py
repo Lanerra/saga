@@ -59,49 +59,56 @@ def sample_phase2_state(tmp_path):
 @pytest.fixture
 def mock_all_nodes():
     """Mock all node functions for testing workflow routing."""
+    # Create mock nodes for subgraphs
+    mock_gen_node = lambda state: {
+        **state,
+        "draft_ref": {"path": "mock"},
+        "draft_word_count": 3,
+        "current_node": "generate",
+    }
+
+    mock_extract_node = lambda state: {
+        **state,
+        "extracted_entities": {"characters": []},
+        "extracted_relationships": [],
+        "current_node": "extract",
+    }
+
+    mock_validate_node = lambda state: {
+        **state,
+        "contradictions": [],
+        "needs_revision": False,
+        "current_node": "validate",
+    }
+
     with (
-        patch("core.langgraph.workflow.generate_chapter") as mock_generate,
-        patch("core.langgraph.workflow.extract_entities") as mock_extract,
+        patch(
+            "core.langgraph.subgraphs.generation.create_generation_subgraph",
+            return_value=mock_gen_node,
+        ) as mock_create_gen,
+        patch(
+            "core.langgraph.subgraphs.extraction.create_extraction_subgraph",
+            return_value=mock_extract_node,
+        ) as mock_create_extract,
+        patch(
+            "core.langgraph.subgraphs.validation.create_validation_subgraph",
+            return_value=mock_validate_node,
+        ) as mock_create_validate,
         patch("core.langgraph.workflow.commit_to_graph") as mock_commit,
-        patch("core.langgraph.workflow.validate_consistency") as mock_validate,
         patch("core.langgraph.workflow.revise_chapter") as mock_revise,
         patch("core.langgraph.workflow.summarize_chapter") as mock_summarize,
         patch("core.langgraph.workflow.finalize_chapter") as mock_finalize,
     ):
-        # Configure generate node
-        mock_generate.side_effect = lambda state: {
-            **state,
-            "draft_text": "Generated chapter text.",
-            "draft_word_count": 3,
-            "current_node": "generate",
-        }
-
-        # Configure extract node
-        mock_extract.side_effect = lambda state: {
-            **state,
-            "extracted_entities": {"characters": []},
-            "extracted_relationships": [],
-            "current_node": "extract",
-        }
-
         # Configure commit node
         mock_commit.side_effect = lambda state: {
             **state,
             "current_node": "commit",
         }
 
-        # Configure validate node (no contradictions)
-        mock_validate.side_effect = lambda state: {
-            **state,
-            "contradictions": [],
-            "needs_revision": False,
-            "current_node": "validate",
-        }
-
         # Configure revise node
         mock_revise.side_effect = lambda state: {
             **state,
-            "draft_text": "Revised chapter text.",
+            "draft_ref": {"path": "mock_revised"},
             "iteration_count": state.get("iteration_count", 0) + 1,
             "contradictions": [],
             "needs_revision": False,
@@ -111,7 +118,7 @@ def mock_all_nodes():
         # Configure summarize node
         mock_summarize.side_effect = lambda state: {
             **state,
-            "previous_chapter_summaries": ["Chapter summary"],
+            "summaries_ref": {"path": "mock_summaries"},
             "current_node": "summarize",
         }
 
@@ -127,10 +134,10 @@ def mock_all_nodes():
         }
 
         yield {
-            "generate": mock_generate,
-            "extract": mock_extract,
+            "generate": mock_create_gen,
+            "extract": mock_create_extract,
             "commit": mock_commit,
-            "validate": mock_validate,
+            "validate": mock_create_validate,
             "revise": mock_revise,
             "summarize": mock_summarize,
             "finalize": mock_finalize,
@@ -229,7 +236,7 @@ class TestPhase2Workflow:
 
         # Verify final state
         # assert result["current_node"] == "finalize"
-        # assert result["draft_text"] is not None
+        # assert result["draft_ref"] is not None
 
     @pytest.mark.skip(
         reason="Refactoring to use subgraphs changes how revision is triggered"
@@ -258,7 +265,8 @@ class TestPhase2Workflow:
         state["force_continue"] = True
 
         # Configure validate to request revision
-        mock_all_nodes["validate"].side_effect = lambda s: {
+        # We need to set return_value because mock_all_nodes["validate"] is the create_validation_subgraph factory
+        mock_all_nodes["validate"].return_value = lambda s: {
             **s,
             "contradictions": [
                 Contradiction(

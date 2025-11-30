@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.extraction_node import (
     _clean_llm_json,
     _map_category_to_type,
@@ -151,7 +152,7 @@ class TestExtractEntities:
     ):
         """Test extraction with no draft text."""
         state = sample_initial_state
-        state["draft_text"] = None
+        state["draft_ref"] = None
 
         result = await extract_entities(state)
 
@@ -167,7 +168,10 @@ class TestExtractEntities:
     ):
         """Test successful entity extraction."""
         state = sample_state_with_extraction
-        state["draft_text"] = "Alice and Bob traveled through the Dark Forest..."
+        draft_text = "Alice and Bob traveled through the Dark Forest..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_5", 1)
+        state["draft_ref"] = draft_ref
 
         # Mock LLM response
         mock_llm_service.async_call_llm.return_value = (
@@ -190,7 +194,10 @@ class TestExtractEntities:
     ):
         """Test extraction when LLM call fails."""
         state = sample_initial_state
-        state["draft_text"] = "Some text..."
+        draft_text = "Some text..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+        state["draft_ref"] = draft_ref
 
         # Mock LLM to raise exception
         mock_llm_service.async_call_llm.side_effect = Exception("LLM service error")
@@ -209,7 +216,10 @@ class TestExtractEntities:
     ):
         """Test extraction when LLM returns empty response."""
         state = sample_initial_state
-        state["draft_text"] = "Some text..."
+        draft_text = "Some text..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+        state["draft_ref"] = draft_ref
 
         # Mock LLM to return empty string
         mock_llm_service.async_call_llm.return_value = ("", None)
@@ -227,7 +237,10 @@ class TestExtractEntities:
     ):
         """Test that extraction properly updates state."""
         state = sample_initial_state
-        state["draft_text"] = "Alice and Bob..."
+        draft_text = "Alice and Bob..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_5", 1)
+        state["draft_ref"] = draft_ref
         state["current_chapter"] = 5
 
         mock_llm_service.async_call_llm.return_value = (
@@ -242,7 +255,7 @@ class TestExtractEntities:
 
             # State should preserve original fields
             assert result["current_chapter"] == 5
-            assert result["draft_text"] == "Alice and Bob..."
+            assert result["draft_ref"] == draft_ref
 
             # State should have new extraction results
             assert "extracted_entities" in result
@@ -253,7 +266,10 @@ class TestExtractEntities:
     ):
         """Test extraction with malformed JSON response."""
         state = sample_initial_state
-        state["draft_text"] = "Some text..."
+        draft_text = "Some text..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+        state["draft_ref"] = draft_ref
 
         # Mock LLM to return malformed JSON
         mock_llm_service.async_call_llm.return_value = (
@@ -275,7 +291,10 @@ class TestExtractEntities:
     ):
         """Test that extraction calls LLM with correct parameters."""
         state = sample_initial_state
-        state["draft_text"] = "Test chapter text..."
+        draft_text = "Test chapter text..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_3", 1)
+        state["draft_ref"] = draft_ref
         state["current_chapter"] = 3
         state["medium_model"] = "test-extraction-model"
 
@@ -308,7 +327,7 @@ class TestExtractionErrorHandling:
     ):
         """Test extraction with missing draft_text triggers fatal error."""
         state = sample_initial_state
-        state["draft_text"] = None
+        state["draft_ref"] = None
 
         result = await extract_entities(state)
 
@@ -325,7 +344,10 @@ class TestExtractionErrorHandling:
     ):
         """Test extraction with empty draft_text triggers fatal error."""
         state = sample_initial_state
-        state["draft_text"] = ""
+        content_manager = ContentManager(state["project_dir"])
+        # Save empty file
+        ref = content_manager.save_text("", "draft", "empty", 1)
+        state["draft_ref"] = ref
 
         result = await extract_entities(state)
 
@@ -339,7 +361,10 @@ class TestExtractionErrorHandling:
     ):
         """Test extraction with LLM exception returns empty response."""
         state = sample_initial_state
-        state["draft_text"] = "Some text..."
+        draft_text = "Some text..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+        state["draft_ref"] = draft_ref
 
         mock_llm_service.async_call_llm.side_effect = Exception(
             "Extraction service crashed"
@@ -361,7 +386,10 @@ class TestExtractionErrorHandling:
     ):
         """Test extraction with parsing exception triggers fatal error."""
         state = sample_initial_state
-        state["draft_text"] = "Some text..."
+        draft_text = "Some text..."
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+        state["draft_ref"] = draft_ref
 
         mock_llm_service.async_call_llm.return_value = (
             '{"valid": "json"}',

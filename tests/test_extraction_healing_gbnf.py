@@ -78,12 +78,13 @@ async def test_extract_characters_gbnf(
     # Verify LLM call used grammar
     call_kwargs = mock_llm_service.async_call_llm.call_args[1]
     assert "grammar" in call_kwargs
-    assert "root ::= character_extraction" in call_kwargs["grammar"]
+    assert "root ::= character-extraction" in call_kwargs["grammar"]
 
     # Verify result
-    assert "character_updates" in result
-    assert len(result["character_updates"]) == 1
-    assert result["character_updates"][0].name == "Hero"
+    assert "extracted_entities" in result
+    assert "characters" in result["extracted_entities"]
+    assert len(result["extracted_entities"]["characters"]) == 1
+    assert result["extracted_entities"]["characters"][0].name == "Hero"
 
 
 @pytest.mark.asyncio
@@ -113,12 +114,13 @@ async def test_extract_locations_gbnf(
     # Verify LLM call used grammar
     call_kwargs = mock_llm_service.async_call_llm.call_args[1]
     assert "grammar" in call_kwargs
-    assert "root ::= world_extraction" in call_kwargs["grammar"]
+    assert "root ::= world-extraction" in call_kwargs["grammar"]
 
     # Verify result
-    assert "location_updates" in result
-    assert len(result["location_updates"]) == 1
-    assert result["location_updates"][0].name == "Castle"
+    assert "extracted_entities" in result
+    assert "world_items" in result["extracted_entities"]
+    assert len(result["extracted_entities"]["world_items"]) == 1
+    assert result["extracted_entities"]["world_items"][0].name == "Castle"
 
 
 @pytest.mark.asyncio
@@ -143,12 +145,13 @@ async def test_extract_events_gbnf(
     # Verify LLM call used grammar
     call_kwargs = mock_llm_service.async_call_llm.call_args[1]
     assert "grammar" in call_kwargs
-    assert "root ::= world_extraction" in call_kwargs["grammar"]
+    assert "root ::= world-extraction" in call_kwargs["grammar"]
 
     # Verify result
-    assert "event_updates" in result
-    assert len(result["event_updates"]) == 1
-    assert result["event_updates"][0].name == "Battle"
+    assert "extracted_entities" in result
+    assert "world_items" in result["extracted_entities"]
+    assert len(result["extracted_entities"]["world_items"]) == 1
+    assert result["extracted_entities"]["world_items"][0].name == "Battle"
 
 
 @pytest.mark.asyncio
@@ -176,13 +179,13 @@ async def test_extract_relationships_gbnf(
     # Verify LLM call used grammar
     call_kwargs = mock_llm_service.async_call_llm.call_args[1]
     assert "grammar" in call_kwargs
-    assert "root ::= relationship_extraction" in call_kwargs["grammar"]
+    assert "root ::= relationship-extraction" in call_kwargs["grammar"]
 
     # Verify result
-    assert "relationship_updates" in result
-    assert len(result["relationship_updates"]) == 1
-    assert result["relationship_updates"][0].source_name == "Hero"
-    assert result["relationship_updates"][0].target_name == "Castle"
+    assert "extracted_relationships" in result
+    assert len(result["extracted_relationships"]) == 1
+    assert result["extracted_relationships"][0].source_name == "Hero"
+    assert result["extracted_relationships"][0].target_name == "Castle"
 
 
 @pytest.mark.asyncio

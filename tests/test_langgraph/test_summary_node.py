@@ -4,6 +4,7 @@ from pathlib import Path
 
 import yaml
 
+from core.langgraph.content_manager import ContentManager, get_previous_summaries
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.state import NarrativeState
 
@@ -18,13 +19,25 @@ async def _run_summarize_chapter(
     shim state where we directly call the internal behavior by constructing the
     expected summary response shape.
     """
+    project_dir = str(tmp_path)
+    content_manager = ContentManager(project_dir)
+
+    # Save draft text
+    draft_ref = content_manager.save_text(
+        "Chapter 1 draft text.", "draft", "chapter_1", 1
+    )
+
+    # Save summaries
+    sum_ref = content_manager.save_list_of_texts([], "summaries", "all", 1)
+
     # Build minimal state resembling NarrativeState where it matters.
     state: NarrativeState = {
-        "project_dir": str(tmp_path),
+        "project_dir": project_dir,
         "current_chapter": 1,
-        "draft_text": "Chapter 1 draft text.",
+        "draft_ref": draft_ref,
         "extraction_model": "test-model",
-        "previous_chapter_summaries": [],
+        "small_model": "test-model",
+        "summaries_ref": sum_ref,
     }
 
     # We monkeypatch by temporarily importing and overriding llm_service.async_call_llm.
@@ -58,12 +71,13 @@ async def _run_summarize_chapter(
 
     # Ensure node updated state as expected
     assert new_state["current_node"] == "summarize"
-    # Check that summary was added (list is not empty)
-    assert new_state.get(
-        "previous_chapter_summaries"
-    ), "Summary list should not be empty"
+
+    # Check that summary was added via content manager
+    summaries = get_previous_summaries(new_state, content_manager)
+    assert summaries, "Summary list should not be empty"
+
     # Verify the last summary matches
-    assert new_state["previous_chapter_summaries"][-1] == summary_text
+    assert summaries[-1] == summary_text
 
     # Return path to generated summary file
     return tmp_path / "summaries" / "chapter_001.md"

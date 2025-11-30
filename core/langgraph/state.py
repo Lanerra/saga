@@ -118,8 +118,6 @@ class Contradiction(BaseModel):
         validate_assignment = True
 
 
-
-
 class NarrativeState(TypedDict, total=False):
     """
     LangGraph state for SAGA narrative generation workflow.

@@ -148,7 +148,9 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     # Get existing world_items to append to
-    existing_world_items = state.get("extracted_entities", {}).get("world_items", [])
+    existing_entities = state.get("extracted_entities", {})
+    existing_world_items = existing_entities.get("world_items", [])
+    existing_characters = existing_entities.get("characters", [])
 
     if not draft_text:
         return {}
@@ -238,8 +240,13 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                                 )
                             )
 
-        # Append to existing world_items
-        return {"extracted_entities": {"world_items": existing_world_items + world_updates}}
+        # Append to existing world_items, preserving characters
+        return {
+            "extracted_entities": {
+                "characters": existing_characters,
+                "world_items": existing_world_items + world_updates,
+            }
+        }
 
     except Exception as e:
         logger.error("extract_locations: failed", error=str(e))
@@ -259,7 +266,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     # Get existing world_items to append to
-    existing_world_items = state.get("extracted_entities", {}).get("world_items", [])
+    existing_entities = state.get("extracted_entities", {})
+    existing_world_items = existing_entities.get("world_items", [])
+    existing_characters = existing_entities.get("characters", [])
 
     if not draft_text:
         return {}
@@ -344,8 +353,13 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                             )
                         )
 
-        # Append to existing world_items
-        return {"extracted_entities": {"world_items": existing_world_items + event_updates}}
+        # Append to existing world_items, preserving characters
+        return {
+            "extracted_entities": {
+                "characters": existing_characters,
+                "world_items": existing_world_items + event_updates,
+            }
+        }
 
     except Exception as e:
         logger.error("extract_events: failed", error=str(e))

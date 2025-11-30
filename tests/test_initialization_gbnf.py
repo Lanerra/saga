@@ -97,8 +97,8 @@ async def test_global_outline_gbnf_integration():
                 # Check grammar parameter
                 assert "grammar" in kwargs
                 grammar = kwargs["grammar"]
-                assert "root ::= global_outline" in grammar
-                assert "global_outline ::=" in grammar
+                assert "root ::= global-outline" in grammar
+                assert "global-outline ::=" in grammar
 
                 # Verify parsing
                 assert result_state["initialization_step"] == "global_outline_complete"
@@ -145,8 +145,8 @@ async def test_character_sheets_gbnf_integration():
             # Check grammar parameter
             assert "grammar" in kwargs
             grammar = kwargs["grammar"]
-            assert "root ::= character_sheet" in grammar
-            assert "character_sheet ::=" in grammar
+            assert "root ::= character-sheet" in grammar
+            assert "character-sheet ::=" in grammar
 
             # Verify parsing logic (unit test for parser)
             parsed = _parse_character_sheet_response(

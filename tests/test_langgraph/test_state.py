@@ -220,7 +220,7 @@ class TestCreateInitialState:
         assert state["current_act"] == 1
         assert state["plot_outline"] == {}
         assert state["active_characters"] == []
-        assert state["draft_text"] is None
+        assert state["draft_ref"] is None
         assert state["draft_word_count"] == 0
         assert state["extracted_entities"] == {}
         assert state["extracted_relationships"] == []
@@ -311,11 +311,11 @@ class TestCreateInitialState:
         # Active context
         assert "active_characters" in state
         assert "current_location" in state
-        assert "previous_chapter_summaries" in state
+        assert "summaries_ref" in state
         assert "key_events" in state
 
         # Generated content
-        assert "draft_text" in state
+        assert "draft_ref" in state
         assert "draft_word_count" in state
 
         # Entity extraction
@@ -353,7 +353,7 @@ class TestCreateInitialState:
 
         # Update values
         state["current_chapter"] = 5
-        state["draft_text"] = "Chapter 5 text..."
+        state["draft_ref"] = {"path": "chapter_5.txt"}
         state["contradictions"] = [
             Contradiction(
                 type="test",
@@ -364,5 +364,5 @@ class TestCreateInitialState:
         ]
 
         assert state["current_chapter"] == 5
-        assert state["draft_text"] == "Chapter 5 text..."
+        assert state["draft_ref"] == {"path": "chapter_5.txt"}
         assert len(state["contradictions"]) == 1

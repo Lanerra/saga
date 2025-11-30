@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import create_initial_state
 from core.langgraph.subgraphs.extraction import create_extraction_subgraph
 
@@ -10,6 +11,7 @@ from core.langgraph.subgraphs.extraction import create_extraction_subgraph
 async def test_extraction_subgraph():
     # Setup
     workflow = create_extraction_subgraph()
+    project_dir = "/tmp/test_project"
     state = create_initial_state(
         project_id="test_project",
         title="Test Novel",
@@ -18,12 +20,13 @@ async def test_extraction_subgraph():
         setting="A magical world",
         target_word_count=50000,
         total_chapters=10,
-        project_dir="/tmp/test_project",
+        project_dir=project_dir,
         protagonist_name="Test Hero",
     )
-    state["draft_text"] = (
-        "Elara walked into the Sunken Library. She found the Starfall Map."
-    )
+    draft_text = "Elara walked into the Sunken Library. She found the Starfall Map."
+    content_manager = ContentManager(project_dir)
+    draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+    state["draft_ref"] = draft_ref
     state["current_chapter"] = 1
 
     # Mock LLM responses (note: LLM still returns character_updates, world_updates in JSON,
@@ -83,6 +86,7 @@ async def test_extraction_clears_previous_state():
     Uses SEQUENTIAL extraction instead of parallel with reducers.
     """
     workflow = create_extraction_subgraph()
+    project_dir = "/tmp/test_project"
     state = create_initial_state(
         project_id="test_project",
         title="Test Novel",
@@ -91,7 +95,7 @@ async def test_extraction_clears_previous_state():
         setting="A magical world",
         target_word_count=50000,
         total_chapters=10,
-        project_dir="/tmp/test_project",
+        project_dir=project_dir,
         protagonist_name="Test Hero",
     )
 
@@ -130,7 +134,10 @@ async def test_extraction_clears_previous_state():
     ]
 
     # Set up for new chapter extraction
-    state["draft_text"] = "New character arrives at new location."
+    draft_text = "New character arrives at new location."
+    content_manager = ContentManager(project_dir)
+    draft_ref = content_manager.save_text(draft_text, "draft", "chapter_2", 1)
+    state["draft_ref"] = draft_ref
     state["current_chapter"] = 2
 
     # Mock LLM to return new entities

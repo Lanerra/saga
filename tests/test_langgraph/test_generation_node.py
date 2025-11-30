@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.nodes.generation_node import (
     _construct_generation_prompt,
     generate_chapter,
@@ -19,8 +20,9 @@ from core.langgraph.state import create_initial_state
 
 
 @pytest.fixture
-def sample_generation_state():
+def sample_generation_state(tmp_path):
     """Sample state ready for generation."""
+    project_dir = str(tmp_path / "test-project")
     state = create_initial_state(
         project_id="test-project",
         title="Test Novel",
@@ -29,15 +31,18 @@ def sample_generation_state():
         setting="Medieval world",
         target_word_count=80000,
         total_chapters=20,
-        project_dir="/tmp/test-project",
+        project_dir=project_dir,
         protagonist_name="Hero",
         generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )
 
-    # Add plot outline
-    state["plot_outline"] = {
+    # Save outlines via ContentManager so get_chapter_outlines works
+    content_manager = ContentManager(project_dir)
+
+    # Chapter outlines
+    chapter_outlines = {
         1: {
             "plot_point": "The hero begins their journey",
             "chapter_summary": "Introduction to the protagonist",
@@ -47,14 +52,22 @@ def sample_generation_state():
         "theme": "Adventure",
         "protagonist_name": "Hero",
     }
+    # Note: save_json expects identifier for filename.
+    # But get_chapter_outlines loads "chapter_outlines" type.
+    # Actually, get_chapter_outlines uses state["chapter_outlines_ref"].
+    # We should save it as "chapter_outlines" type.
+    ref = content_manager.save_json(chapter_outlines, "chapter_outlines", "all", 1)
+    state["chapter_outlines_ref"] = ref
 
     # Add plot point focus
     state["plot_point_focus"] = "The hero begins their journey"
 
     # Add some previous chapter summaries (for chapter 2+)
-    state["previous_chapter_summaries"] = [
+    summaries = [
         "Chapter 1: The hero discovered their destiny and set out from their village."
     ]
+    sum_ref = content_manager.save_list_of_texts(summaries, "summaries", "all", 1)
+    state["summaries_ref"] = sum_ref
 
     return state
 
@@ -159,8 +172,13 @@ class TestGenerateChapter:
         result = await generate_chapter(sample_generation_state)
 
         # Check that draft text was generated
-        assert result["draft_text"] is not None
-        assert len(result["draft_text"]) > 0
+        assert result["draft_ref"] is not None
+
+        # Verify text content
+        content_manager = ContentManager(sample_generation_state["project_dir"])
+        draft_text = get_draft_text(result, content_manager)
+        assert draft_text is not None
+        assert len(draft_text) > 0
 
         # Check word count was calculated
         assert result["draft_word_count"] > 0
@@ -179,6 +197,8 @@ class TestGenerateChapter:
     ):
         """Test generation fails gracefully without plot outline."""
         state = {**sample_generation_state}
+        # Clear references
+        state["chapter_outlines_ref"] = None
         state["plot_outline"] = None
 
         result = await generate_chapter(state)
@@ -201,7 +221,8 @@ class TestGenerateChapter:
         mock_context_builder["get_kg_facts"].assert_called_once()
 
         # Check that hybrid context was stored in state
-        assert result.get("hybrid_context") is not None
+        # hybrid_context is externalized to hybrid_context_ref
+        assert result.get("hybrid_context_ref") is not None
 
     async def test_generate_chapter_empty_llm_response(
         self, sample_generation_state, mock_context_builder
@@ -257,20 +278,23 @@ class TestGenerateChapter:
         """Test generation includes previous chapter summaries."""
         state = {**sample_generation_state}
         state["current_chapter"] = 3
-        state["chapter_outlines"] = {
+
+        # Need to ensure chapter 3 is in outlines
+        cm = ContentManager(state["project_dir"])
+        outlines = {
             1: {"plot_point": "Ch1"},
             2: {"plot_point": "Ch2"},
             3: {"plot_point": "Ch3"},
         }
-        state["previous_chapter_summaries"] = [
-            "Chapter 1: The hero set out on their journey.",
-            "Chapter 2: The hero met their mentor.",
-        ]
+        ref = cm.save_json(outlines, "chapter_outlines", "all", 2)
+        state["chapter_outlines_ref"] = ref
+
+        # Summaries already in state via sample_generation_state
 
         result = await generate_chapter(state)
 
         # Should succeed
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
         # Verify KG facts were fetched
@@ -287,7 +311,7 @@ class TestGenerateChapter:
         result = await generate_chapter(state)
 
         # Should still succeed by extracting from outline
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
     async def test_generate_chapter_word_count_calculation(
@@ -311,8 +335,8 @@ class TestGenerateChapter:
         """Test KG facts are stored in state for potential reuse."""
         result = await generate_chapter(sample_generation_state)
 
-        # Should store KG facts block
-        assert result.get("kg_facts_block") is not None
+        # Should store KG facts ref
+        assert result.get("kg_facts_ref") is not None
 
     async def test_generate_chapter_with_active_characters(
         self, sample_generation_state, mock_llm_generation, mock_context_builder
@@ -324,7 +348,7 @@ class TestGenerateChapter:
         result = await generate_chapter(state)
 
         # Should succeed
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
 
         # Verify KG facts were fetched
         mock_context_builder["get_kg_facts"].assert_called_once()
@@ -339,7 +363,7 @@ class TestGenerateChapter:
         result = await generate_chapter(state)
 
         # Should succeed
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
 
         # Verify KG facts were fetched
         mock_context_builder["get_kg_facts"].assert_called_once()
@@ -354,7 +378,7 @@ class TestGenerationErrorHandling:
     ):
         """Test generation with empty chapter_outlines triggers fatal error."""
         state = {**sample_generation_state}
-        state["chapter_outlines"] = None
+        state["chapter_outlines_ref"] = None
         state["plot_outline"] = None
 
         result = await generate_chapter(state)
@@ -373,7 +397,7 @@ class TestGenerationErrorHandling:
         """Test generation when current chapter is not in chapter_outlines."""
         state = {**sample_generation_state}
         state["current_chapter"] = 5
-        state["chapter_outlines"] = {1: {"plot_point": "Chapter 1"}}
+        # Outlines only have chapter 1 by default
         state["plot_outline"] = None
 
         result = await generate_chapter(state)
@@ -389,7 +413,7 @@ class TestGenerationErrorHandling:
     ):
         """Test that using plot_outline triggers deprecation warning."""
         state = {**sample_generation_state}
-        state["chapter_outlines"] = None
+        state["chapter_outlines_ref"] = None
         state["plot_outline"] = {
             1: {"plot_point": "Test point"},
             "title": "Test",
@@ -397,7 +421,7 @@ class TestGenerationErrorHandling:
 
         result = await generate_chapter(state)
 
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
     async def test_generate_chapter_prefers_chapter_outlines_over_plot_outline(
@@ -405,16 +429,14 @@ class TestGenerationErrorHandling:
     ):
         """Test that chapter_outlines is preferred over deprecated plot_outline."""
         state = {**sample_generation_state}
-        state["chapter_outlines"] = {
-            1: {"plot_point": "From chapter_outlines"},
-        }
+        # chapter_outlines already set in fixture (via ref)
         state["plot_outline"] = {
             1: {"plot_point": "From plot_outline"},
         }
 
         result = await generate_chapter(state)
 
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
 
@@ -430,12 +452,12 @@ class TestGenerationIntegration:
         result = await generate_chapter(sample_generation_state)
 
         # Verify all expected fields are updated
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["draft_word_count"] > 0
         assert result["current_node"] == "generate"
         assert result["last_error"] is None
-        assert result["hybrid_context"] is not None
-        assert result["kg_facts_block"] is not None
+        assert result["hybrid_context_ref"] is not None
+        assert result["kg_facts_ref"] is not None
 
         # Verify state carries forward from input
         assert result["current_chapter"] == sample_generation_state["current_chapter"]
@@ -443,9 +465,10 @@ class TestGenerationIntegration:
         assert result["genre"] == sample_generation_state["genre"]
 
     async def test_generation_with_minimal_state(
-        self, mock_llm_generation, mock_context_builder
+        self, mock_llm_generation, mock_context_builder, tmp_path
     ):
         """Test generation with minimal required state."""
+        project_dir = str(tmp_path / "minimal")
         minimal_state = create_initial_state(
             project_id="minimal-test",
             title="Minimal Novel",
@@ -454,21 +477,25 @@ class TestGenerationIntegration:
             setting="Space",
             target_word_count=50000,
             total_chapters=10,
-            project_dir="/tmp/minimal",
+            project_dir=project_dir,
             protagonist_name="Explorer",
         )
 
-        minimal_state["plot_outline"] = {
+        # Save outline
+        cm = ContentManager(project_dir)
+        outline = {
             1: {"plot_point": "First contact"},
             "title": "Minimal Novel",
             "genre": "Sci-Fi",
         }
+        ref = cm.save_json(outline, "chapter_outlines", "all", 1)
+        minimal_state["chapter_outlines_ref"] = ref
         minimal_state["plot_point_focus"] = "First contact"
 
         result = await generate_chapter(minimal_state)
 
         # Should still succeed with minimal state
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
 
@@ -497,7 +524,7 @@ class TestGenerationDeduplication:
             result = await generate_chapter(sample_generation_state)
 
             # Should have text
-            assert result["draft_text"] is not None
+            assert result["draft_ref"] is not None
             # Deduplication should have removed duplicate paragraph
             # The exact behavior depends on deduplicator settings
             assert result["last_error"] is None
@@ -518,7 +545,9 @@ class TestGenerationDeduplication:
             result = await generate_chapter(sample_generation_state)
 
             # Word count should reflect final deduplicated text
-            assert result["draft_word_count"] == len(result["draft_text"].split())
+            cm = ContentManager(sample_generation_state["project_dir"])
+            text = get_draft_text(result, cm)
+            assert result["draft_word_count"] == len(text.split())
 
     async def test_generate_chapter_no_duplicates_preserves_text(
         self, sample_generation_state, mock_llm_generation, mock_context_builder
@@ -539,8 +568,12 @@ class TestGenerationDeduplication:
             result = await generate_chapter(sample_generation_state)
 
             # Text should be preserved (deduplicator won't remove unique content)
-            assert result["draft_text"] is not None
-            assert len(result["draft_text"]) > 0
+            assert result["draft_ref"] is not None
+
+            cm = ContentManager(sample_generation_state["project_dir"])
+            text = get_draft_text(result, cm)
+
+            assert len(text) > 0
             assert result["last_error"] is None
 
 

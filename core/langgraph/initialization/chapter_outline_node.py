@@ -9,6 +9,9 @@ before generating each chapter.
 
 from __future__ import annotations
 
+import json
+import re
+
 import structlog
 
 from core.langgraph.content_manager import (
@@ -23,8 +26,6 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-import re
-import json
 
 logger = structlog.get_logger(__name__)
 
@@ -338,23 +339,23 @@ def _parse_chapter_outline(
             cleaned_response = cleaned_response[7:]
         if cleaned_response.endswith("```"):
             cleaned_response = cleaned_response[:-3]
-        
+
         # Try to parse as JSON first
         data = json.loads(cleaned_response)
-        
+
         scene_description = data.get("scene_description", "")
         key_beats = data.get("key_beats", [])
         plot_point = data.get("plot_point", "")
-        
+
     except json.JSONDecodeError:
         logger.warning(
             "_parse_chapter_outline: JSON parsing failed, falling back to text parsing",
-            chapter=chapter_number
+            chapter=chapter_number,
         )
-        
+
         # Fallback to text parsing
         lines = response.split("\n")
-        
+
         # Try to extract sections
         current_section = None
         for line in lines:

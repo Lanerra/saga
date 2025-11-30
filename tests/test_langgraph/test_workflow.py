@@ -13,6 +13,7 @@ from core.langgraph import (
     create_initial_state,
     create_phase1_graph,
 )
+from core.langgraph.content_manager import ContentManager
 
 
 class TestPhase1Workflow:
@@ -35,11 +36,13 @@ class TestPhase1Workflow:
         )
 
         # Add draft text to state (normally from generation node)
-        state["draft_text"] = """
+        draft_text = """
         The hero entered the ancient temple, where he met the wise sage Eldrin.
         Eldrin gave him a magical sword called Lightbringer.
         Together they decided to journey to the Mountain of Shadows.
         """
+        cm = ContentManager(state["project_dir"])
+        state["draft_ref"] = cm.save_text(draft_text, "draft", "chapter_1", 1)
         state["draft_word_count"] = 30
 
         # Mock all external dependencies
@@ -144,7 +147,8 @@ class TestPhase1Workflow:
         )
 
         # Add draft text with low word count (triggers stagnation)
-        state["draft_text"] = "Short chapter."
+        cm = ContentManager(state["project_dir"])
+        state["draft_ref"] = cm.save_text("Short chapter.", "draft", "chapter_1", 1)
         state["draft_word_count"] = 2  # Below 1500 word minimum
         state["max_iterations"] = 2  # Allow 2 revisions
 
@@ -203,7 +207,8 @@ class TestPhase1Workflow:
             protagonist_name="Hero",
         )
 
-        state["draft_text"] = "Short chapter."
+        cm = ContentManager(state["project_dir"])
+        state["draft_ref"] = cm.save_text("Short chapter.", "draft", "chapter_1", 1)
         state["draft_word_count"] = 2
         state["max_iterations"] = 1  # Only allow 1 iteration
 
@@ -254,7 +259,8 @@ class TestPhase1Workflow:
             protagonist_name="Hero",
         )
 
-        state["draft_text"] = "Short chapter."
+        cm = ContentManager(state["project_dir"])
+        state["draft_ref"] = cm.save_text("Short chapter.", "draft", "chapter_1", 1)
         state["draft_word_count"] = 2  # Would normally trigger revision
         state["force_continue"] = True  # But this should bypass it
 

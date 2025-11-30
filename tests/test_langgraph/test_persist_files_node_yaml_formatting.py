@@ -3,6 +3,7 @@ from pathlib import Path
 
 import yaml
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
@@ -42,6 +43,37 @@ def _make_state(tmp_path: Path) -> NarrativeState:
         "Explorers rarely return."
     )
 
+    content_manager = ContentManager(project_dir)
+
+    # Save character sheets
+    character_sheets = {
+        "Test Protagonist": {
+            "description": character_description,
+            "is_protagonist": True,
+        }
+    }
+    from core.langgraph.content_manager import save_character_sheets
+
+    char_ref = save_character_sheets(content_manager, character_sheets, 1)
+
+    # Save global outline
+    global_outline = {
+        "act_count": 3,
+        "structure_type": "3-act",
+        "raw_text": global_outline_text,
+    }
+    global_ref = content_manager.save_json(global_outline, "global_outline", "all", 1)
+
+    # Save act outlines
+    act_outlines = {
+        1: {
+            "act_role": "setup",
+            "chapters_in_act": 5,
+            "raw_text": act1_outline_text,
+        }
+    }
+    act_ref = content_manager.save_json(act_outlines, "act_outlines", "all", 1)
+
     # Minimal state; only fields needed by persist_initialization_files
     state: NarrativeState = {
         "project_dir": str(project_dir),
@@ -51,24 +83,9 @@ def _make_state(tmp_path: Path) -> NarrativeState:
         "setting": "Far future desert world",
         "total_chapters": 3,
         "target_word_count": 90000,
-        "character_sheets": {
-            "Test Protagonist": {
-                "description": character_description,
-                "is_protagonist": True,
-            }
-        },
-        "global_outline": {
-            "act_count": 3,
-            "structure_type": "3-act",
-            "raw_text": global_outline_text,
-        },
-        "act_outlines": {
-            1: {
-                "act_role": "setup",
-                "chapters_in_act": 5,
-                "raw_text": act1_outline_text,
-            }
-        },
+        "character_sheets_ref": char_ref,
+        "global_outline_ref": global_ref,
+        "act_outlines_ref": act_ref,
         "world_items": [
             type(
                 "WorldItemStub",

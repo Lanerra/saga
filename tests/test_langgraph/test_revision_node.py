@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.nodes.revision_node import (
     _construct_revision_prompt,
     _format_contradictions_for_prompt,
@@ -20,8 +21,9 @@ from core.langgraph.state import Contradiction, create_initial_state
 
 
 @pytest.fixture
-def sample_revision_state():
+def sample_revision_state(tmp_path):
     """Sample state ready for revision."""
+    project_dir = str(tmp_path / "test-project")
     state = create_initial_state(
         project_id="test-project",
         title="Test Novel",
@@ -30,19 +32,23 @@ def sample_revision_state():
         setting="Medieval world",
         target_word_count=80000,
         total_chapters=20,
-        project_dir="/tmp/test-project",
+        project_dir=project_dir,
         protagonist_name="Hero",
         generation_model="test-model",
         medium_model="test-model",
         revision_model="test-revision-model",
     )
 
-    # Add draft text that needs revision
-    state["draft_text"] = """
+    # Add draft text that needs revision via ContentManager
+    draft_text = """
     The hero walked through the dark forest. The trees were tall.
     Suddenly, a dragon appeared. The hero fought bravely.
     The dragon was defeated. The hero continued walking.
     """
+    content_manager = ContentManager(project_dir)
+    draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+
+    state["draft_ref"] = draft_ref
 
     # Add plot outline
     state["plot_outline"] = {
@@ -308,8 +314,12 @@ class TestReviseChapter:
         result = await revise_chapter(sample_revision_state)
 
         # Check that draft text was revised
-        assert result["draft_text"] != sample_revision_state["draft_text"]
-        assert len(result["draft_text"]) > 0
+        cm = ContentManager(sample_revision_state["project_dir"])
+        revised_text = get_draft_text(result, cm)
+        original_text = get_draft_text(sample_revision_state, cm)
+
+        assert revised_text != original_text
+        assert len(revised_text) > 0
 
         # Check word count was recalculated
         assert result["draft_word_count"] > 0
@@ -356,7 +366,7 @@ class TestReviseChapter:
     ):
         """Test revision fails gracefully without draft text."""
         state = {**sample_revision_state}
-        state["draft_text"] = None
+        state["draft_ref"] = None
 
         result = await revise_chapter(state)
 
@@ -497,7 +507,7 @@ class TestReviseChapter:
 
             # Should handle error gracefully and continue (no last_error)
             # Revision should succeed despite KG fetch failure
-            assert result["draft_text"] is not None
+            assert result["draft_ref"] is not None
             assert result["last_error"] is None  # Graceful degradation, not failure
 
 
@@ -513,7 +523,7 @@ class TestRevisionIntegration:
         result = await revise_chapter(sample_revision_state)
 
         # Verify all expected fields are updated
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["draft_word_count"] > 0
         assert result["iteration_count"] == 1
         assert result["contradictions"] == []
@@ -592,7 +602,7 @@ class TestRevisionIntegration:
         result = await revise_chapter(state)
 
         # Should still succeed with general quality improvement
-        assert result["draft_text"] is not None
+        assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
 
@@ -624,7 +634,7 @@ class TestRevisionErrorHandling:
     ):
         """Test revision with missing draft_text triggers fatal error."""
         state = {**sample_revision_state}
-        state["draft_text"] = None
+        state["draft_ref"] = None
 
         result = await revise_chapter(state)
 

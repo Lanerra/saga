@@ -136,7 +136,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     # Step 2: Construct hybrid context for the prompt
     # Use existing prompt data getter for KG facts
     kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
-        plot_outline, chapter_number, None
+        chapter_outlines, chapter_number, None
     )
 
     # Build hybrid context string combining KG facts and summaries

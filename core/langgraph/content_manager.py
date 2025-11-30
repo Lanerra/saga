@@ -603,8 +603,15 @@ def get_chapter_outlines(state: dict, manager: ContentManager) -> dict[int, dict
         return {}
 
     data = manager.load_json(chapter_outlines_ref)
-    # Convert string keys to int keys if needed
-    return {int(k): v for k, v in data.items()}
+    # Convert string keys to int keys if needed, skipping non-int keys
+    result = {}
+    for k, v in data.items():
+        try:
+            result[int(k)] = v
+        except (ValueError, TypeError):
+            # Skip non-integer keys (e.g. metadata)
+            pass
+    return result
 
 
 def get_global_outline(state: dict, manager: ContentManager) -> dict | None:
