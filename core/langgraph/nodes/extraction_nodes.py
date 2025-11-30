@@ -480,7 +480,7 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
 
     With the reducer-based approach, parallel extraction results are automatically
     merged by merge_extracted_entities and merge_extracted_relationships reducers.
-    This node simply marks the extraction phase as complete.
+    This node marks the extraction phase as complete and externalizes the results.
 
     Note: The actual merging happens automatically via LangGraph reducers on
     the extracted_entities and extracted_relationships fields.
@@ -492,6 +492,52 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
         relationships=len(state.get("extracted_relationships", [])),
     )
 
+    # Externalize extracted entities and relationships to reduce state bloat
+    content_manager = ContentManager(state["project_dir"])
+    chapter_number = state["current_chapter"]
+
+    # Get current version for this chapter's extractions
+    current_version = content_manager.get_latest_version(
+        "extracted_entities", f"chapter_{chapter_number}"
+    ) + 1
+
+    # Serialize ExtractedEntity and ExtractedRelationship objects to dicts
+    extracted_entities = state.get("extracted_entities", {})
+    entities_dict = {
+        "characters": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("characters", [])],
+        "world_items": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("world_items", [])],
+    }
+
+    relationships = state.get("extracted_relationships", [])
+    relationships_list = [r.model_dump() if hasattr(r, "model_dump") else r for r in relationships]
+
+    # Save to external files
+    from core.langgraph.content_manager import save_extracted_entities, save_extracted_relationships
+
+    entities_ref = save_extracted_entities(
+        content_manager,
+        entities_dict,
+        chapter_number,
+        current_version,
+    )
+
+    relationships_ref = save_extracted_relationships(
+        content_manager,
+        relationships_list,
+        chapter_number,
+        current_version,
+    )
+
+    logger.info(
+        "consolidate_extraction: content externalized",
+        chapter=chapter_number,
+        version=current_version,
+        entities_size=entities_ref["size_bytes"],
+        relationships_size=relationships_ref["size_bytes"],
+    )
+
     return {
+        "extracted_entities_ref": entities_ref,
+        "extracted_relationships_ref": relationships_ref,
         "current_node": "consolidate_extraction",
     }

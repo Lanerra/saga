@@ -17,6 +17,7 @@ import structlog
 import config
 from core.langgraph.content_manager import (
     ContentManager,
+    get_chapter_plan,
     get_previous_summaries,
     get_scene_drafts,
 )
@@ -67,7 +68,9 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
 
     chapter_number = state["current_chapter"]
     scene_index = state["current_scene_index"]
-    chapter_plan = state.get("chapter_plan")
+
+    # Get chapter plan from externalized content
+    chapter_plan = get_chapter_plan(state, content_manager)
 
     if not chapter_plan or scene_index >= len(chapter_plan):
         logger.error("retrieve_context: invalid scene index", index=scene_index)

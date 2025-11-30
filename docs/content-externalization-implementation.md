@@ -69,6 +69,10 @@ Added new `ContentRef` fields alongside existing content fields:
 | `global_outline` | `global_outline_ref` | Global outline |
 | `act_outlines` | `act_outlines_ref` | Act outlines |
 | `chapter_outlines` | `chapter_outlines_ref` | Chapter outlines |
+| `extracted_entities` | `extracted_entities_ref` | Extracted entities (characters, world_items) |
+| `extracted_relationships` | `extracted_relationships_ref` | Extracted relationships |
+| `active_characters` | `active_characters_ref` | Active character profiles |
+| `chapter_plan` | `chapter_plan_ref` | Scene planning details |
 
 ### 3. Node Updates
 
@@ -95,6 +99,30 @@ Added new `ContentRef` fields alongside existing content fields:
 - Externalize outlines and character sheets
 - Store references with versioning
 - Maintain backward compatibility
+
+#### Extraction Nodes
+
+**Updated Files**:
+- `core/langgraph/nodes/extraction_nodes.py` - Externalize `extracted_entities` and `extracted_relationships`
+- `core/langgraph/nodes/commit_node.py` - Read from externalized extraction data
+
+**Changes**:
+- `consolidate_extraction()` now saves extraction results to external files after all extraction is complete
+- Converts ExtractedEntity and ExtractedRelationship Pydantic models to dicts for serialization
+- `commit_node.py` reads from externalized files using `get_extracted_entities()` and `get_extracted_relationships()`
+- Converts loaded dicts back to Pydantic models for processing
+
+#### Scene Planning Nodes
+
+**Updated Files**:
+- `core/langgraph/nodes/scene_planning_node.py` - Externalize `chapter_plan`
+- `core/langgraph/nodes/scene_generation_node.py` - Read from externalized chapter plan
+- `core/langgraph/nodes/context_retrieval_node.py` - Read from externalized chapter plan
+
+**Changes**:
+- `plan_scenes()` saves chapter plan to external files after planning is complete
+- Consumer nodes read chapter plan using `get_chapter_plan()` helper function
+- Maintains backward compatibility with fallback to in-state content
 
 #### Other Nodes
 
@@ -216,6 +244,14 @@ project_root/
         chapter_1_v1.txt
       kg_facts/
         chapter_1_v1.txt
+      extracted_entities/
+        chapter_1_v1.json
+      extracted_relationships/
+        chapter_1_v1.json
+      active_characters/
+        chapter_1_v1.json
+      chapter_plan/
+        chapter_1_v1.json
 ```
 
 ## Backward Compatibility
@@ -276,10 +312,40 @@ python3 -m py_compile core/langgraph/initialization/persist_files_node.py  # ✅
 
 # Extraction nodes
 python3 -m py_compile core/langgraph/nodes/extraction_nodes.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/commit_node.py  # ✅ Pass
+
+# Scene planning nodes
+python3 -m py_compile core/langgraph/nodes/scene_planning_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/scene_generation_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/context_retrieval_node.py  # ✅ Pass
 
 # Workflow files
 python3 -m py_compile core/langgraph/workflow.py  # ✅ Pass
 python3 -m py_compile core/langgraph/initialization/workflow.py  # ✅ Pass
+```
+
+### Phase 4: Complete Externalization (NEW)
+
+- Externalize remaining state bloat fields identified in `docs/complexity-hotspots.md`
+- Fields externalized: `extracted_entities`, `extracted_relationships`, `active_characters`, `chapter_plan`
+- **Status**: ✅ Complete
+
+**Testing**:
+```bash
+# State schema with new ContentRef fields
+python3 -m py_compile core/langgraph/state.py  # ✅ Pass
+
+# Content manager with new helper functions
+python3 -m py_compile core/langgraph/content_manager.py  # ✅ Pass
+
+# Extraction nodes - writer and consumer
+python3 -m py_compile core/langgraph/nodes/extraction_nodes.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/commit_node.py  # ✅ Pass
+
+# Scene planning nodes - writer and consumers
+python3 -m py_compile core/langgraph/nodes/scene_planning_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/scene_generation_node.py  # ✅ Pass
+python3 -m py_compile core/langgraph/nodes/context_retrieval_node.py  # ✅ Pass
 ```
 
 ## Performance Impact

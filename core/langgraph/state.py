@@ -203,6 +203,7 @@ class NarrativeState(TypedDict, total=False):
 
     # Externalized context references
     summaries_ref: ContentRef | None  # Reference to externalized summaries
+    active_characters_ref: ContentRef | None  # Reference to externalized active characters
 
     # =========================================================================
     # Generated Content (current chapter)
@@ -225,6 +226,10 @@ class NarrativeState(TypedDict, total=False):
     # Each extraction cycle starts fresh by clearing these fields in the first node.
     extracted_entities: dict[str, list[ExtractedEntity]]
     extracted_relationships: list[ExtractedRelationship]
+
+    # Externalized extraction references (to reduce state bloat)
+    extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities
+    extracted_relationships_ref: ContentRef | None  # Reference to externalized extracted relationships
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)
@@ -299,6 +304,7 @@ class NarrativeState(TypedDict, total=False):
 
     # Externalized scene drafts reference
     scene_drafts_ref: ContentRef | None  # Reference to externalized scene drafts
+    chapter_plan_ref: ContentRef | None  # Reference to externalized chapter plan
 
     # =========================================================================
     # Revision State (properly typed with TypedDict structures)
@@ -435,6 +441,10 @@ def create_initial_state(
         "global_outline_ref": None,
         "act_outlines_ref": None,
         "chapter_outlines_ref": None,
+        "extracted_entities_ref": None,
+        "extracted_relationships_ref": None,
+        "active_characters_ref": None,
+        "chapter_plan_ref": None,
         # Entity extraction
         "extracted_entities": {},
         "extracted_relationships": [],
