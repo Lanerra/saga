@@ -248,13 +248,13 @@ VALIDATION_RULES = [
         rule_name="ownership",
         rationale="Ownership requires a sentient being or organization owning a physical entity",
     ),
-    # Physical containment
+    # Physical and informational containment
     RelationshipValidationRule(
         relationship_types={"CONTAINS", "PART_OF"},
-        valid_source_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES,
-        valid_target_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES,
-        rule_name="physical_containment",
-        rationale="Physical containment relationships require physical entities or locations",
+        valid_source_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES | EVENT_TYPES | ABSTRACT_TYPES,
+        valid_target_types="ANY",  # Can contain physical objects, information, concepts, etc.
+        rule_name="containment",
+        rationale="Containment relationships allow physical, informational, and conceptual containers",
     ),
     # Ability/Trait relationships
     RelationshipValidationRule(
