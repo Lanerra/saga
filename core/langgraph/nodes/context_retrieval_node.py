@@ -17,6 +17,7 @@ import structlog
 import config
 from core.langgraph.content_manager import (
     ContentManager,
+    get_chapter_outlines,
     get_chapter_plan,
     get_previous_summaries,
     get_scene_drafts,
@@ -79,6 +80,9 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     current_scene = chapter_plan[scene_index]
     model_name = state.get("narrative_model", config.NARRATIVE_MODEL)
 
+    # Get chapter outlines from content manager
+    chapter_outlines = get_chapter_outlines(state, content_manager)
+
     # Build context components
     hybrid_context_parts = []
 
@@ -88,7 +92,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     character_context = await _get_scene_character_context(
         current_scene=current_scene,
         chapter_number=chapter_number,
-        plot_outline=state.get("plot_outline", {}),
+        chapter_outlines=chapter_outlines,
         model_name=model_name,
     )
     if character_context:
@@ -100,7 +104,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     kg_facts_block = await _get_scene_specific_kg_facts(
         current_scene=current_scene,
         chapter_number=chapter_number,
-        plot_outline=state.get("plot_outline", {}),
+        chapter_outlines=chapter_outlines,
         chapter_plan=chapter_plan,
         model_name=model_name,
     )
@@ -187,7 +191,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
 async def _get_scene_character_context(
     current_scene: dict,
     chapter_number: int,
-    plot_outline: dict,
+    chapter_outlines: dict[int, dict],
     model_name: str,
 ) -> str | None:
     """
@@ -196,7 +200,7 @@ async def _get_scene_character_context(
     Args:
         current_scene: Scene dict with 'characters' or 'characters_involved' field
         chapter_number: Current chapter number for filtering
-        plot_outline: Plot outline for protagonist info
+        chapter_outlines: Chapter outlines dictionary from content manager
         model_name: Model name for token counting
 
     Returns:
@@ -293,7 +297,7 @@ def _extract_scene_characters(scene: dict) -> list[str]:
 async def _get_scene_specific_kg_facts(
     current_scene: dict,
     chapter_number: int,
-    plot_outline: dict,
+    chapter_outlines: dict[int, dict],
     chapter_plan: list,
     model_name: str,
 ) -> str | None:
@@ -308,7 +312,7 @@ async def _get_scene_specific_kg_facts(
     Args:
         current_scene: Current scene definition
         chapter_number: Current chapter number
-        plot_outline: Plot outline for context
+        chapter_outlines: Chapter outlines dictionary from content manager
         chapter_plan: Full chapter plan (list of scenes)
         model_name: Model name for token counting
 
@@ -326,12 +330,16 @@ async def _get_scene_specific_kg_facts(
 
     try:
         # Get KG facts with scene-specific filtering
+        # Import config to get protagonist_name
+        protagonist_name = getattr(config, "DEFAULT_PROTAGONIST_NAME", "Protagonist")
+
         kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
-            plot_outline=plot_outline,
+            chapter_outlines=chapter_outlines,
             chapter_number=chapter_number,
             chapter_plan=[
                 scene_detail
             ],  # Pass only current scene for focused filtering
+            protagonist_name=protagonist_name,
         )
 
         if kg_facts_block and "No specific reliable KG facts" not in kg_facts_block:

@@ -195,11 +195,10 @@ class TestGenerateChapter:
     async def test_generate_chapter_no_outline(
         self, sample_generation_state, mock_llm_generation, mock_context_builder
     ):
-        """Test generation fails gracefully without plot outline."""
+        """Test generation fails gracefully without chapter outlines."""
         state = {**sample_generation_state}
-        # Clear references
+        # Clear chapter outlines reference
         state["chapter_outlines_ref"] = None
-        state["plot_outline"] = None
 
         result = await generate_chapter(state)
 
@@ -408,35 +407,6 @@ class TestGenerationErrorHandling:
 
         mock_llm_generation.async_call_llm.assert_not_called()
 
-    async def test_generate_chapter_deprecation_warning_for_plot_outline(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
-        """Test that using plot_outline triggers deprecation warning."""
-        state = {**sample_generation_state}
-        state["chapter_outlines_ref"] = None
-        state["plot_outline"] = {
-            1: {"plot_point": "Test point"},
-            "title": "Test",
-        }
-
-        result = await generate_chapter(state)
-
-        assert result["draft_ref"] is not None
-        assert result["last_error"] is None
-
-    async def test_generate_chapter_prefers_chapter_outlines_over_plot_outline(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
-        """Test that chapter_outlines is preferred over deprecated plot_outline."""
-        state = {**sample_generation_state}
-        # chapter_outlines already set in fixture (via ref)
-        state["plot_outline"] = {
-            1: {"plot_point": "From plot_outline"},
-        }
-
-        result = await generate_chapter(state)
-
-        assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
 

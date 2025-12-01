@@ -25,7 +25,11 @@ from typing import Any
 import structlog
 
 import config
-from core.langgraph.content_manager import ContentManager, get_draft_text
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_chapter_outlines,
+    get_draft_text,
+)
 from core.langgraph.state import (
     ExtractedEntity,
     ExtractedRelationship,
@@ -88,9 +92,12 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
             "current_node": "extract_entities",
         }
 
+    # Get chapter outlines from content manager
+    chapter_outlines = get_chapter_outlines(state, content_manager)
+
     # Call LLM to extract structured updates
     raw_text, usage = await _llm_extract_updates(
-        plot_outline=state.get("plot_outline", {}),
+        chapter_outlines=chapter_outlines,
         chapter_text=draft_text,
         chapter_number=state.get("current_chapter", 1),
         title=state.get("title", ""),
@@ -162,7 +169,7 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
 
 async def _llm_extract_updates(
     *,
-    plot_outline: dict[str, Any],
+    chapter_outlines: dict[int, dict[str, Any]],
     chapter_text: str,
     chapter_number: int,
     title: str,
@@ -181,7 +188,7 @@ async def _llm_extract_updates(
     - Return results in structured JSON format
 
     Args:
-        plot_outline: Plot information for context
+        chapter_outlines: Chapter outlines dictionary from content manager
         chapter_text: The chapter text to analyze
         chapter_number: Current chapter number
         title: Novel title

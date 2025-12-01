@@ -218,7 +218,6 @@ class TestCreateInitialState:
         # Check defaults
         assert state["current_chapter"] == 1
         assert state["current_act"] == 1
-        assert state["plot_outline"] == {}
         assert state["active_characters"] == []
         assert state["draft_ref"] is None
         assert state["draft_word_count"] == 0
@@ -304,9 +303,6 @@ class TestCreateInitialState:
 
         # Neo4j connection
         assert "neo4j_conn" in state
-
-        # Outline
-        assert "plot_outline" in state
 
         # Active context
         assert "active_characters" in state

@@ -117,17 +117,15 @@ class RichDisplayManager:
 
     def update(
         self,
-        plot_outline: dict[str, Any] | None = None,
+        novel_title: str | None = None,
         chapter_num: int | None = None,
         step: str | None = None,
         run_start_time: float | None = None,
     ) -> None:
         if not (self.live and self.group):
             return
-        if plot_outline is not None:
-            self.status_text_novel_title.plain = (
-                f"Novel: {plot_outline.get('title', 'N/A')}"
-            )
+        if novel_title is not None:
+            self.status_text_novel_title.plain = f"Novel: {novel_title}"
         if chapter_num is not None:
             self.status_text_current_chapter.plain = f"Current Chapter: {chapter_num}"
         if step is not None:

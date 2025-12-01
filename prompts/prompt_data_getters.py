@@ -449,23 +449,33 @@ async def get_filtered_world_data_for_prompt_plain_text(
 
 
 async def get_reliable_kg_facts_for_drafting_prompt(
-    plot_outline: dict[str, Any],
-    chapter_number: int,
+    chapter_outlines: dict[int, dict[str, Any]] | None = None,
+    chapter_number: int = 1,
     chapter_plan: list[SceneDetail] | None = None,
     max_facts_per_char: int = 2,
     max_total_facts: int = 7,
     snapshot: Any | None = None,
+    protagonist_name: str | None = None,
 ) -> str:
     """
     Gather reliable KG facts for drafting prompts by combining novel-level info
     and character-specific data from the knowledge graph.
 
     This function orchestrates the collection of contextually relevant facts by:
-    1. Discovering characters of interest from plot outline and chapter plans
+    1. Discovering characters of interest from chapter plans
     2. Applying protagonist-proximity filtering to focus on connected characters
     3. Gathering novel-level information (theme, central conflict)
     4. Collecting character-specific facts (status, location, relationships)
     5. Assembling the results into a formatted prompt snippet
+
+    Args:
+        chapter_outlines: Chapter outlines dictionary (unused, kept for backward compatibility)
+        chapter_number: Current chapter number
+        chapter_plan: List of scene details for the chapter
+        max_facts_per_char: Maximum facts to gather per character
+        max_total_facts: Maximum total facts to include
+        snapshot: Optional context snapshot for caching
+        protagonist_name: Name of the protagonist (defaults to config value if not provided)
     """
     _ensure_cache_is_scoped_to_chapter(chapter_number)
 
@@ -488,13 +498,14 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     )
 
     facts_for_prompt_list: list[str] = []
-    protagonist_name = plot_outline.get(
-        "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
-    )
+
+    # Use provided protagonist_name or fall back to config default
+    if protagonist_name is None:
+        protagonist_name = config.DEFAULT_PROTAGONIST_NAME
 
     # Step 1: Discover characters of interest
     characters_of_interest = await _discover_characters_of_interest(
-        plot_outline, chapter_plan, chapter_number
+        protagonist_name, chapter_plan, chapter_number
     )
 
     # Step 2: Apply protagonist-proximity filtering
@@ -530,18 +541,25 @@ async def get_reliable_kg_facts_for_drafting_prompt(
 # Native list-based prompt data getters for improved performance
 async def get_character_state_snippet_for_prompt(
     character_profiles: list[CharacterProfile],
-    plot_outline: dict[str, Any],
+    protagonist_name: str | None = None,
     current_chapter_num_for_filtering: int | None = None,
 ) -> str:
     """
     Native version that works directly with list[CharacterProfile].
     Creates a concise plain text string of key character states for prompts.
+
+    Args:
+        character_profiles: List of character profiles to process
+        protagonist_name: Name of the protagonist (defaults to config value if not provided)
+        current_chapter_num_for_filtering: Optional chapter number for filtering
     """
     _ensure_cache_is_scoped_to_chapter(current_chapter_num_for_filtering)
     text_output_lines_list: list[str] = []
     char_names_to_process: list[str] = []
 
-    protagonist_name = plot_outline.get("protagonist_name")
+    # Use provided protagonist_name or fall back to config default
+    if protagonist_name is None:
+        protagonist_name = config.DEFAULT_PROTAGONIST_NAME
 
     # Use protagonist priority
     if protagonist_name:
@@ -632,15 +650,21 @@ async def get_character_state_snippet_for_prompt(
 
 # Helper functions for KG facts gathering - extracted from get_reliable_kg_facts_for_drafting_prompt
 async def _discover_characters_of_interest(
-    plot_outline: dict[str, Any],
+    protagonist_name: str,
     chapter_plan: list[SceneDetail] | None,
     chapter_number: int,
 ) -> set[str]:
-    """Discover characters of interest from plot outline and chapter plan."""
-    protagonist_name = plot_outline.get(
-        "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
-    )
+    """
+    Discover characters of interest from protagonist and chapter plan.
 
+    Args:
+        protagonist_name: Name of the protagonist
+        chapter_plan: List of scene details for the chapter
+        chapter_number: Current chapter number
+
+    Returns:
+        Set of character names of interest
+    """
     # Start with protagonist-centric filtering
     characters_of_interest: set[str] = (
         {protagonist_name}

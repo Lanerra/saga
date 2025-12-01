@@ -39,15 +39,20 @@ def sample_phase2_state(tmp_path):
         revision_model="test-model",
     )
 
-    # Add plot outline
-    state["plot_outline"] = {
+    # Add chapter outlines via content manager
+    from core.langgraph.content_manager import ContentManager
+
+    content_manager = ContentManager(str(tmp_path / "test-project"))
+    chapter_outlines = {
         1: {
             "plot_point": "The hero begins their journey",
             "chapter_summary": "Introduction",
-        },
-        "title": "Test Novel",
-        "genre": "Fantasy",
+        }
     }
+    chapter_outlines_ref = content_manager.save_json(
+        chapter_outlines, "chapter_outlines", "all", 1
+    )
+    state["chapter_outlines_ref"] = chapter_outlines_ref
 
     # Set current chapter
     state["current_chapter"] = 1

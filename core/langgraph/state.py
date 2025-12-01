@@ -421,8 +421,6 @@ def create_initial_state(
         "current_act": 1,
         # Neo4j connection (will be set by workflow)
         "neo4j_conn": None,
-        # Outline (will be populated by planning node)
-        "plot_outline": {},
         # Active context (initially empty)
         "active_characters": [],
         "current_location": None,
