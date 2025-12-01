@@ -52,7 +52,7 @@ except Exception:
 
 ---
 
-### 3. **Deprecated Code Still Active - Technical Debt**
+### 3. **Deprecated Code Still Active - Technical Debt** - DONE
 
 **Location: `core/langgraph/state.py:141-145`**
 ```python
@@ -365,7 +365,7 @@ The `async_llm_context` manages batch embedding, but:
 
 ---
 
-### 18. **Database Query Patterns**
+### 18. **Database Query Patterns** - RESOLVED WITH SEQUENTIAL EXTRACTION
 
 **Location: `data_access/kg_queries.py:1733`**
 
@@ -509,7 +509,7 @@ Despite the issues above, several things are well-done:
 4. **Review JSON repair logic** - Consider failing explicitly instead of truncating
 
 ### MEDIUM PRIORITY:
-1. **Remove deprecated code** - Clean up plot_outline
+1. **Remove deprecated code** - Clean up plot_outline - DONE
 2. **Add fsync to critical writes** - Ensure durability
 3. **Standardize logging** - Remove stdlib_logging entirely
 4. **Add path validation** - Strengthen content_manager security
