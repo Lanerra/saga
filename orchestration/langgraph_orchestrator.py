@@ -150,8 +150,8 @@ class LangGraphOrchestrator:
             genre=config.CONFIGURED_GENRE,
             theme=config.CONFIGURED_THEME or "",
             setting=config.CONFIGURED_SETTING_DESCRIPTION or "",
-            target_word_count=80000,  # Default, can be loaded from plot_outline
-            total_chapters=20,  # Default, can be loaded from plot_outline
+            target_word_count=80000,  # Default, could be loaded from user configuration
+            total_chapters=20,  # Default, could be loaded from user configuration
             project_dir=str(self.project_dir),
             protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
             # Model Mapping
@@ -345,14 +345,12 @@ class LangGraphOrchestrator:
         step_description = self._get_step_description(node_name, initialization_step)
 
         # Update Rich display with current progress
-        # Note: plot_outline may not be in state_update during initialization
-        plot_outline = None
+        novel_title = None
         if isinstance(state_update, dict) and state_update.get("title"):
-            # Construct minimal plot outline for display
-            plot_outline = {"title": state_update.get("title", "Novel Generation")}
+            novel_title = state_update.get("title", "Novel Generation")
 
         self.display.update(
-            plot_outline=plot_outline,
+            novel_title=novel_title,
             chapter_num=chapter_number,
             step=step_description,
             run_start_time=self.run_start_time,

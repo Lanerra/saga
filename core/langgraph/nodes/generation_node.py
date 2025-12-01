@@ -124,7 +124,10 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     # Step 2: Construct hybrid context for the prompt
     # Use existing prompt data getter for KG facts
     kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
-        chapter_outlines, chapter_number, None
+        chapter_outlines=chapter_outlines,
+        chapter_number=chapter_number,
+        chapter_plan=None,
+        protagonist_name=state.get("protagonist_name"),
     )
 
     # Build hybrid context string combining KG facts and summaries

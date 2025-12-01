@@ -340,7 +340,10 @@ Please ensure your revision stays true to this plot point while addressing all i
     if not hybrid_context:
         try:
             kg_facts = await get_reliable_kg_facts_for_drafting_prompt(
-                chapter_outlines, chapter_number, None
+                chapter_outlines=chapter_outlines,
+                chapter_number=chapter_number,
+                chapter_plan=None,
+                protagonist_name=protagonist_name,
             )
             hybrid_context = kg_facts if kg_facts else "No previous context available."
         except Exception as e:

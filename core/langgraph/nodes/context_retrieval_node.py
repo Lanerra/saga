@@ -330,12 +330,16 @@ async def _get_scene_specific_kg_facts(
 
     try:
         # Get KG facts with scene-specific filtering
+        # Import config to get protagonist_name
+        protagonist_name = getattr(config, "DEFAULT_PROTAGONIST_NAME", "Protagonist")
+
         kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
-            plot_outline=chapter_outlines,
+            chapter_outlines=chapter_outlines,
             chapter_number=chapter_number,
             chapter_plan=[
                 scene_detail
             ],  # Pass only current scene for focused filtering
+            protagonist_name=protagonist_name,
         )
 
         if kg_facts_block and "No specific reliable KG facts" not in kg_facts_block:
