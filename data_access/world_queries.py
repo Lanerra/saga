@@ -3,7 +3,7 @@ import hashlib
 from typing import Any
 
 import structlog
-from async_lru import alru_cache  # type: ignore
+from async_lru import alru_cache  # type: ignore[import-untyped]
 
 import config
 import utils

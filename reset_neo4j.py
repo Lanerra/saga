@@ -98,9 +98,10 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
             for attempt in range(1, max_retries + 1):
                 try:
                     logger.info(f"Delete attempt {attempt}/{max_retries}")
+                    assert neo4j_manager_instance.driver is not None
                     async with neo4j_manager_instance.driver.session(
                         database=config.NEO4J_DATABASE
-                    ) as session:  # type: ignore
+                    ) as session:
                         result = await session.run(
                             "MATCH (n) DETACH DELETE n RETURN count(n) as deleted_nodes_total"
                         )
@@ -111,7 +112,7 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
                         logger.info(f"  Total {nodes_deleted_total} nodes deleted.")
                     async with neo4j_manager_instance.driver.session(
                         database=config.NEO4J_DATABASE
-                    ) as session:  # type: ignore
+                    ) as session:
                         rv = await session.run(
                             "MATCH (n) RETURN count(n) as remaining_nodes"
                         )
@@ -143,9 +144,10 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
 
         # Drop constraints
         logger.info("Attempting to drop ALL user‑defined constraints...")
+        assert neo4j_manager_instance.driver is not None
         async with neo4j_manager_instance.driver.session(
             database=config.NEO4J_DATABASE
-        ) as session:  # type: ignore
+        ) as session:
             constraints_result = await session.run("SHOW CONSTRAINTS YIELD name")
             constraints_to_drop = [
                 record["name"]
@@ -167,7 +169,7 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
                             f"      Dropped constraint '{constraint_name}' (or it didn't exist)."
                         )
                     except Exception as e_constraint:
-                        if tx and not tx.closed():  # type: ignore
+                        if tx and not tx.closed():  # type: ignore[union-attr]
                             await tx.rollback()
                         logger.warning(
                             f"   Note: Could not drop constraint '{constraint_name}': {e_constraint}"
@@ -177,9 +179,10 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
         logger.info(
             "Attempting to drop ALL user‑defined indexes (excluding system indexes if identifiable)..."
         )
+        assert neo4j_manager_instance.driver is not None
         async with neo4j_manager_instance.driver.session(
             database=config.NEO4J_DATABASE
-        ) as session:  # type: ignore
+        ) as session:
             indexes_result = await session.run("SHOW INDEXES YIELD name, type")
             indexes_to_drop_info = await indexes_result.data()
             if not indexes_to_drop_info:
@@ -204,7 +207,7 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
                                 f"      Dropped index '{index_name}' (or it didn't exist)."
                             )
                         except Exception as e_index:
-                            if tx and not tx.closed():  # type: ignore
+                            if tx and not tx.closed():  # type: ignore[union-attr]
                                 await tx.rollback()
                             logger.warning(
                                 f"   Note: Could not drop index '{index_name}': {e_index}"

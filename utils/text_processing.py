@@ -6,9 +6,9 @@ import structlog
 
 # Optional imports. We keep them out of module import path to avoid hard deps.
 try:  # pragma: no cover - optional dependency
-    from rapidfuzz.fuzz import partial_ratio_alignment  # type: ignore
+    from rapidfuzz.fuzz import partial_ratio_alignment
 except Exception:  # pragma: no cover - if rapidfuzz missing
-    partial_ratio_alignment = None  # type: ignore
+    partial_ratio_alignment = None  # type: ignore[assignment]
 
 logger = structlog.get_logger(__name__)
 
@@ -142,7 +142,7 @@ class SpaCyModelManager:
         if self._nlp is not None:
             return
         try:  # import spacy lazily
-            import spacy  # type: ignore
+            import spacy
         except Exception:
             logger.error(
                 "spaCy library not installed. Install with: pip install spacy. "
@@ -163,7 +163,7 @@ class SpaCyModelManager:
             model_name = "en_core_web_sm"
 
         try:
-            self._nlp = spacy.load(model_name)  # type: ignore[name-defined]
+            self._nlp = spacy.load(model_name)
             logger.info("spaCy model '%s' loaded.", model_name)
         except OSError:
             logger.error(

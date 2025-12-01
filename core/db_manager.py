@@ -4,11 +4,8 @@ from typing import Any
 
 import numpy as np
 import structlog
-from neo4j import (  # type: ignore
-    GraphDatabase,
-    ManagedTransaction,
-)
-from neo4j.exceptions import ServiceUnavailable  # type: ignore
+from neo4j import Driver, GraphDatabase, ManagedTransaction
+from neo4j.exceptions import ServiceUnavailable
 
 import config
 from core.exceptions import (
@@ -35,7 +32,7 @@ class Neo4jManagerSingleton:
             return
 
         self.logger = structlog.get_logger(__name__)
-        self.driver: GraphDatabase.driver | None = None  # type: ignore
+        self.driver: Driver | None = None
         # Cache of property keys discovered via CALL db.propertyKeys()
         self._property_keys_cache: set[str] | None = None
         self._property_keys_cache_ts: float | None = None
@@ -128,7 +125,8 @@ class Neo4jManagerSingleton:
         self, query: str, parameters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
             return session.read_transaction(
                 self._sync_execute_query_tx, query, parameters
             )
@@ -137,7 +135,8 @@ class Neo4jManagerSingleton:
         self, query: str, parameters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
             return session.write_transaction(
                 self._sync_execute_query_tx, query, parameters
             )
@@ -150,7 +149,8 @@ class Neo4jManagerSingleton:
             return
 
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
             tx = session.begin_transaction()
             try:
                 for query, params in cypher_statements_with_params:
@@ -262,7 +262,8 @@ class Neo4jManagerSingleton:
 
         def _run_transaction():
             """Synchronous function to run in thread."""
-            with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+            assert self.driver is not None
+            with self.driver.session(database=config.NEO4J_DATABASE) as session:
                 tx = session.begin_transaction()
                 try:
                     result = transaction_func(tx, *args, **kwargs)
@@ -502,7 +503,8 @@ class Neo4jManagerSingleton:
     async def _execute_schema_batch(self, queries: list[str]) -> None:
         """Execute schema operations in isolation (no data writes)."""
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
             tx = session.begin_transaction()
             try:
                 for query in queries:
@@ -539,7 +541,7 @@ class Neo4jManagerSingleton:
                 f"Attempting to convert non-numpy array to list for Neo4j: {type(embedding)}"
             )
             if hasattr(embedding, "tolist"):
-                return embedding.tolist()  # type: ignore
+                return embedding.tolist()  # type: ignore[union-attr]
             self.logger.error(
                 f"Cannot convert type {type(embedding)} to list for Neo4j."
             )

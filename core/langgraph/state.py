@@ -47,11 +47,7 @@ from models.agent_models import (
 from models.kg_models import CharacterProfile, WorldItem
 
 # Import ContentRef for externalized content
-try:
-    from core.langgraph.content_manager import ContentRef
-except ImportError:
-    # Fallback for when content_manager is not available
-    ContentRef = dict  # type: ignore
+from core.langgraph.content_manager import ContentRef
 
 
 class ExtractedEntity(BaseModel):

@@ -3,8 +3,8 @@ import hashlib
 from typing import Any
 
 import structlog
-from async_lru import alru_cache  # type: ignore
-from neo4j.exceptions import ServiceUnavailable  # type: ignore
+from async_lru import alru_cache  # type: ignore[import-untyped]
+from neo4j.exceptions import ServiceUnavailable
 
 import config
 import utils
