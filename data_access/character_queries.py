@@ -3,8 +3,8 @@ import hashlib
 from typing import Any
 
 import structlog
-from async_lru import alru_cache  # type: ignore
-from neo4j.exceptions import ServiceUnavailable  # type: ignore
+from async_lru import alru_cache  # type: ignore[import-untyped]
+from neo4j.exceptions import ServiceUnavailable
 
 import config
 import utils
@@ -15,7 +15,6 @@ from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
 from .cypher_builders.character_cypher import (
     TRAIT_NAME_TO_CANONICAL,
-    generate_character_node_cypher,
 )
 from .cypher_builders.native_builders import NativeCypherBuilder
 
@@ -31,66 +30,6 @@ def resolve_character_name(name: str) -> str:
 
 
 logger = structlog.get_logger(__name__)
-
-
-async def sync_characters(
-    profiles: dict[str, CharacterProfile],
-    chapter_number: int,
-    full_sync: bool = False,
-) -> bool:
-    # DEPRECATION: This dict-based signature is maintained for backward compatibility.
-    # Prefer the native model version in this module (accepts list[CharacterProfile]).
-    """Persist character data to Neo4j."""
-    # Validate all profiles before syncing
-    for name, profile in profiles.items():
-        errors = validate_kg_object(profile)
-        if errors:
-            logger.warning(f"Invalid CharacterProfile for '{name}': {errors}")
-
-    if full_sync:
-        profile_dicts = {k: v.to_dict() for k, v in profiles.items()}
-        return await sync_full_state_from_object_to_db(profile_dicts)
-
-    statements: list[tuple[str, dict[str, Any]]] = []
-    for profile in profiles.values():
-        statements.extend(generate_character_node_cypher(profile, chapter_number))
-
-    try:
-        if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
-        logger.info(
-            "Persisted %d character updates for chapter %d.",
-            len(profiles),
-            chapter_number,
-        )
-        for profile in profiles.values():
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(profile.name)] = profile.name
-        # Invalidate caches related to characters
-        try:
-            get_character_profile_by_name.cache_clear()  # type: ignore[attr-defined]
-        except Exception as e:
-            logger.warning(
-                "Failed to clear cache for get_character_profile_by_name",
-                error=str(e),
-                exc_info=True,
-            )
-        try:
-            get_all_character_names.cache_clear()  # type: ignore[attr-defined]
-        except Exception as e:
-            logger.warning(
-                "Failed to clear cache for get_all_character_names",
-                error=str(e),
-                exc_info=True,
-            )
-        return True
-    except Exception as exc:  # pragma: no cover - log and return failure
-        logger.error(
-            "Error persisting character updates for chapter %d: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return False
 
 
 async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bool:
@@ -298,7 +237,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                     continue
 
                 rel_type_str = "RELATED_TO"
-                rel_cypher_props = {
+                rel_cypher_props: dict[str, Any] = {
                     "source_profile_managed": True,
                     "confidence": 1.0,
                 }
@@ -709,7 +648,7 @@ async def get_character_profiles() -> list[CharacterProfile]:
 
         for record in results:
             if record and record.get("c"):
-                char = CharacterProfile.from_db_record(record)
+                char = CharacterProfile.from_dict_record(record)
                 characters.append(char)
 
         logger.info("Fetched %d characters using native models", len(characters))
@@ -757,7 +696,7 @@ async def get_characters_for_chapter_context_native(
         characters = []
         for record in results:
             if record and record.get("c"):
-                char = CharacterProfile.from_db_record(record)
+                char = CharacterProfile.from_dict_record(record)
                 characters.append(char)
 
         logger.debug(

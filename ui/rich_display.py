@@ -22,7 +22,8 @@ try:
 except Exception:  # pragma: no cover - fallback when Rich isn't installed
     RICH_AVAILABLE = False
 
-    class Live:  # type: ignore
+    # Fallback stub classes when rich is not installed
+    class Live:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
@@ -32,15 +33,15 @@ except Exception:  # pragma: no cover - fallback when Rich isn't installed
         def stop(self) -> None:  # pragma: no cover - noop fallback
             pass
 
-    class Text:  # type: ignore
+    class Text:  # type: ignore[no-redef]
         def __init__(self, initial_text: str = "") -> None:
             self.plain = initial_text
 
-    class Group:  # type: ignore
+    class Group:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-    class Panel:  # type: ignore
+    class Panel:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 

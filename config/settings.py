@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging as stdlib_logging
 import os
+from collections.abc import MutableMapping
+from typing import Any
 
 import structlog
 from dotenv import load_dotenv
@@ -248,11 +250,23 @@ settings = SagaSettings()
 
 # --- Reconstruct objects for backward compatibility ---
 class ModelsCompat:
-    pass
+    LARGE: str
+    MEDIUM: str
+    SMALL: str
+    NARRATOR: str
 
 
 class TempsCompat:
-    pass
+    INITIAL_SETUP: float
+    DRAFTING: float
+    REVISION: float
+    PLANNING: float
+    EVALUATION: float
+    CONSISTENCY_CHECK: float
+    KG_EXTRACTION: float
+    SUMMARY: float
+    PATCH: float
+    DEFAULT: float
 
 
 Models = ModelsCompat()
@@ -311,7 +325,9 @@ structlog.configure(
 
 
 # Filter internal structlog fields
-def filter_internal_keys(logger, name, event_dict):
+def filter_internal_keys(
+    logger: Any, name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     """Remove internal structlog fields from event dict."""
     keys_to_remove = [k for k in event_dict.keys() if k.startswith("_")]
     for key in keys_to_remove:
@@ -320,7 +336,9 @@ def filter_internal_keys(logger, name, event_dict):
 
 
 # Simple human-readable formatter for structlog (with Rich markup for console)
-def simple_log_format_rich(logger, name, event_dict):
+def simple_log_format_rich(
+    logger: Any, name: str, event_dict: MutableMapping[str, Any]
+) -> str:
     """Simple human-readable log formatter with Rich markup for console output."""
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
@@ -374,7 +392,9 @@ def simple_log_format_rich(logger, name, event_dict):
 
 
 # Simple human-readable formatter for structlog (plain text for files)
-def simple_log_format_plain(logger, name, event_dict):
+def simple_log_format_plain(
+    logger: Any, name: str, event_dict: MutableMapping[str, Any]
+) -> str:
     """Simple human-readable log formatter without markup for file output."""
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
@@ -466,7 +486,7 @@ rich_formatter = structlog.stdlib.ProcessorFormatter(
     ],
 )
 
-handler = stdlib_logging.StreamHandler()
+handler: stdlib_logging.Handler = stdlib_logging.StreamHandler()
 if settings.LOG_FILE:
     handler = stdlib_logging.FileHandler(
         os.path.join(settings.BASE_OUTPUT_DIR, settings.LOG_FILE)

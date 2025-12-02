@@ -16,7 +16,7 @@ from core.relationship_validation import (
 class TestRelationshipValidationRule:
     """Tests for RelationshipValidationRule class."""
 
-    def test_rule_validation_pass(self):
+    def test_rule_validation_pass(self) -> None:
         """Test that a rule validates correctly when constraints are met."""
         rule = RelationshipValidationRule(
             relationship_types={"FRIEND_OF"},
@@ -30,7 +30,7 @@ class TestRelationshipValidationRule:
         assert is_valid is True
         assert error is None
 
-    def test_rule_validation_fail_source(self):
+    def test_rule_validation_fail_source(self) -> None:
         """Test that a rule fails when source type is invalid."""
         rule = RelationshipValidationRule(
             relationship_types={"FRIEND_OF"},
@@ -46,7 +46,7 @@ class TestRelationshipValidationRule:
         assert "Location" in error
         assert "source" in error.lower()
 
-    def test_rule_validation_fail_target(self):
+    def test_rule_validation_fail_target(self) -> None:
         """Test that a rule fails when target type is invalid."""
         rule = RelationshipValidationRule(
             relationship_types={"LOCATED_IN"},
@@ -62,7 +62,7 @@ class TestRelationshipValidationRule:
         assert "Character" in error
         assert "target" in error.lower()
 
-    def test_rule_validation_any_source(self):
+    def test_rule_validation_any_source(self) -> None:
         """Test that a rule with ANY source accepts all source types."""
         rule = RelationshipValidationRule(
             relationship_types={"LOCATED_IN"},
@@ -79,7 +79,7 @@ class TestRelationshipValidationRule:
         is_valid, _ = rule.validate("LOCATED_IN", "Object", "Location")
         assert is_valid is True
 
-    def test_rule_validation_any_target(self):
+    def test_rule_validation_any_target(self) -> None:
         """Test that a rule with ANY target accepts all target types."""
         rule = RelationshipValidationRule(
             relationship_types={"LOVES"},
@@ -96,7 +96,7 @@ class TestRelationshipValidationRule:
         is_valid, _ = rule.validate("LOVES", "Character", "Location")
         assert is_valid is True
 
-    def test_rule_ignores_unrelated_relationship(self):
+    def test_rule_ignores_unrelated_relationship(self) -> None:
         """Test that a rule ignores relationship types it doesn't handle."""
         rule = RelationshipValidationRule(
             relationship_types={"FRIEND_OF"},
@@ -115,14 +115,14 @@ class TestRelationshipValidationRule:
 class TestRelationshipValidator:
     """Tests for RelationshipValidator class."""
 
-    def test_validate_known_relationship_type(self):
+    def test_validate_known_relationship_type(self) -> None:
         """Test validation of a known relationship type."""
         validator = RelationshipValidator()
         is_valid, warning = validator.validate_relationship_type("FRIEND_OF")
         assert is_valid is True
         assert warning is None
 
-    def test_validate_unknown_relationship_type(self):
+    def test_validate_unknown_relationship_type(self) -> None:
         """Test validation of an unknown relationship type."""
         validator = RelationshipValidator()
         is_valid, warning = validator.validate_relationship_type("UNKNOWN_TYPE")
@@ -130,14 +130,14 @@ class TestRelationshipValidator:
         assert warning is not None
         assert "Unknown relationship type" in warning
 
-    def test_validate_known_entity_types(self):
+    def test_validate_known_entity_types(self) -> None:
         """Test validation of known entity types."""
         validator = RelationshipValidator()
         all_valid, warnings = validator.validate_entity_types("Character", "Location")
         assert all_valid is True
         assert len(warnings) == 0
 
-    def test_validate_unknown_source_type(self):
+    def test_validate_unknown_source_type(self) -> None:
         """Test validation with unknown source entity type."""
         validator = RelationshipValidator()
         all_valid, warnings = validator.validate_entity_types("UnknownType", "Location")
@@ -145,7 +145,7 @@ class TestRelationshipValidator:
         assert len(warnings) == 1
         assert "UnknownType" in warnings[0]
 
-    def test_validate_unknown_target_type(self):
+    def test_validate_unknown_target_type(self) -> None:
         """Test validation with unknown target entity type."""
         validator = RelationshipValidator()
         all_valid, warnings = validator.validate_entity_types(
@@ -155,7 +155,7 @@ class TestRelationshipValidator:
         assert len(warnings) == 1
         assert "UnknownType" in warnings[0]
 
-    def test_validate_social_relationship_valid(self):
+    def test_validate_social_relationship_valid(self) -> None:
         """Test validation of a valid social relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -169,7 +169,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_social_relationship_invalid(self):
+    def test_validate_social_relationship_invalid(self) -> None:
         """Test validation of an invalid social relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -184,7 +184,7 @@ class TestRelationshipValidator:
         assert len(errors) > 0
         assert "Structure" in errors[0]
 
-    def test_validate_emotional_relationship_valid(self):
+    def test_validate_emotional_relationship_valid(self) -> None:
         """Test validation of a valid emotional relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -198,7 +198,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_emotional_relationship_valid_any_target(self):
+    def test_validate_emotional_relationship_valid_any_target(self) -> None:
         """Test that emotional relationships can target any entity type."""
         validator = RelationshipValidator()
         # Characters can love objects, places, etc.
@@ -213,7 +213,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_spatial_relationship_valid(self):
+    def test_validate_spatial_relationship_valid(self) -> None:
         """Test validation of a valid spatial relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -227,7 +227,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_spatial_relationship_invalid(self):
+    def test_validate_spatial_relationship_invalid(self) -> None:
         """Test validation of an invalid spatial relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -241,7 +241,7 @@ class TestRelationshipValidator:
         assert is_valid is False
         assert len(errors) > 0
 
-    def test_validate_organizational_membership_valid(self):
+    def test_validate_organizational_membership_valid(self) -> None:
         """Test validation of a valid organizational membership."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -255,7 +255,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_organizational_membership_invalid(self):
+    def test_validate_organizational_membership_invalid(self) -> None:
         """Test validation of an invalid organizational membership."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -270,7 +270,7 @@ class TestRelationshipValidator:
         assert len(errors) > 0
         assert "Artifact" in errors[0]
 
-    def test_validate_ownership_valid(self):
+    def test_validate_ownership_valid(self) -> None:
         """Test validation of a valid ownership relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -284,7 +284,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_ownership_invalid(self):
+    def test_validate_ownership_invalid(self) -> None:
         """Test validation of an invalid ownership relationship."""
         validator = RelationshipValidator()
         # Abstract concepts can't own physical objects
@@ -299,7 +299,7 @@ class TestRelationshipValidator:
         assert is_valid is False
         assert len(errors) > 0
 
-    def test_validate_temporal_relationship_valid(self):
+    def test_validate_temporal_relationship_valid(self) -> None:
         """Test validation of a valid temporal relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -313,7 +313,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_temporal_relationship_invalid(self):
+    def test_validate_temporal_relationship_invalid(self) -> None:
         """Test validation of an invalid temporal relationship."""
         validator = RelationshipValidator()
         # Characters can't happen before/after things
@@ -328,7 +328,7 @@ class TestRelationshipValidator:
         assert is_valid is False
         assert len(errors) > 0
 
-    def test_validate_ability_trait_valid(self):
+    def test_validate_ability_trait_valid(self) -> None:
         """Test validation of a valid ability/trait relationship."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -342,7 +342,7 @@ class TestRelationshipValidator:
         assert is_valid is True
         assert len(errors) == 0
 
-    def test_validate_ability_trait_invalid(self):
+    def test_validate_ability_trait_invalid(self) -> None:
         """Test validation of an invalid ability/trait relationship."""
         validator = RelationshipValidator()
         # Locations can't have character traits
@@ -357,7 +357,7 @@ class TestRelationshipValidator:
         assert is_valid is False
         assert len(errors) > 0
 
-    def test_validate_flexible_mode_unknown_type(self):
+    def test_validate_flexible_mode_unknown_type(self) -> None:
         """Test that flexible mode allows unknown types with warnings."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -373,7 +373,7 @@ class TestRelationshipValidator:
         assert len(errors) == 0
         assert len(warnings) > 0
 
-    def test_validate_strict_mode_unknown_type(self):
+    def test_validate_strict_mode_unknown_type(self) -> None:
         """Test that strict mode rejects unknown types."""
         validator = RelationshipValidator()
         is_valid, errors, warnings = validator.validate(
@@ -392,13 +392,13 @@ class TestRelationshipValidator:
 class TestGetRelationshipValidator:
     """Tests for get_relationship_validator function."""
 
-    def test_get_validator_singleton(self):
+    def test_get_validator_singleton(self) -> None:
         """Test that get_relationship_validator returns the same instance."""
         validator1 = get_relationship_validator()
         validator2 = get_relationship_validator()
         assert validator1 is validator2
 
-    def test_get_validator_returns_validator(self):
+    def test_get_validator_returns_validator(self) -> None:
         """Test that get_relationship_validator returns a RelationshipValidator."""
         validator = get_relationship_validator()
         assert isinstance(validator, RelationshipValidator)
@@ -407,7 +407,7 @@ class TestGetRelationshipValidator:
 class TestComplexValidationScenarios:
     """Tests for complex real-world validation scenarios."""
 
-    def test_character_in_multiple_organizations(self):
+    def test_character_in_multiple_organizations(self) -> None:
         """Test that a character can be in multiple organizations."""
         validator = RelationshipValidator()
 
@@ -423,7 +423,7 @@ class TestComplexValidationScenarios:
         assert is_valid1 is True
         assert is_valid2 is True
 
-    def test_character_owns_artifact_located_in_structure(self):
+    def test_character_owns_artifact_located_in_structure(self) -> None:
         """Test a chain of valid relationships."""
         validator = RelationshipValidator()
 
@@ -439,7 +439,7 @@ class TestComplexValidationScenarios:
         assert is_valid1 is True
         assert is_valid2 is True
 
-    def test_deity_worshipped_by_culture(self):
+    def test_deity_worshipped_by_culture(self) -> None:
         """Test that deities can have organizational/cultural relationships."""
         validator = RelationshipValidator()
 
@@ -450,7 +450,7 @@ class TestComplexValidationScenarios:
 
         assert is_valid is True
 
-    def test_event_chain(self):
+    def test_event_chain(self) -> None:
         """Test a sequence of temporal events."""
         validator = RelationshipValidator()
 
@@ -471,7 +471,7 @@ class TestComplexValidationScenarios:
         assert is_valid1 is True
         assert is_valid2 is True
 
-    def test_creature_as_character(self):
+    def test_creature_as_character(self) -> None:
         """Test that sentient creatures can have social relationships."""
         validator = RelationshipValidator()
 
@@ -482,7 +482,7 @@ class TestComplexValidationScenarios:
 
         assert is_valid is True
 
-    def test_spirit_emotional_relationships(self):
+    def test_spirit_emotional_relationships(self) -> None:
         """Test that spirits can have emotional relationships."""
         validator = RelationshipValidator()
 

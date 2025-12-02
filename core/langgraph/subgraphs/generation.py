@@ -2,7 +2,7 @@
 from typing import Literal
 
 import structlog
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, StateGraph  # type: ignore
 
 from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.context_retrieval_node import retrieve_context

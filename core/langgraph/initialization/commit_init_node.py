@@ -9,6 +9,8 @@ and committing them to the knowledge graph.
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
 import config
@@ -204,7 +206,7 @@ async def _parse_character_sheets_to_profiles(
 
 async def _extract_structured_character_data(
     name: str, description: str, model_name: str | None = None
-) -> dict[str, any]:
+) -> dict[str, Any]:
     """
     Use LLM to extract structured data from character sheet description.
 
@@ -267,7 +269,7 @@ BACKGROUND: Brief history"""
         }
 
 
-def _parse_character_extraction_response(response: str) -> dict[str, any]:
+def _parse_character_extraction_response(response: str) -> dict[str, Any]:
     """
     Parse the LLM's structured character extraction response.
 

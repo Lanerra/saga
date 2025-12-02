@@ -22,6 +22,7 @@ not as part of the initialization workflow.
 """
 
 import structlog
+from langgraph.graph import END, StateGraph  # type: ignore
 
 from core.langgraph.initialization.act_outlines_node import generate_act_outlines
 from core.langgraph.initialization.character_sheets_node import (
@@ -35,7 +36,6 @@ from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
 from core.langgraph.state import NarrativeState
-from langgraph.graph import END, StateGraph
 
 logger = structlog.get_logger(__name__)
 

@@ -3,7 +3,7 @@ import hashlib
 from typing import Any
 
 import structlog
-from async_lru import alru_cache  # type: ignore
+from async_lru import alru_cache  # type: ignore[import-untyped]
 
 import config
 import utils
@@ -137,12 +137,17 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
             # Use the 'id' from item_details_value if present and valid, otherwise generate.
             # This aligns with how WorldItem.from_dict handles ID.
             we_id_str = ""
+            potential_id = (
+                item_details_value.get("id")
+                if isinstance(item_details_value, dict)
+                else None
+            )
             if (
                 isinstance(item_details_value, dict)
-                and isinstance(item_details_value.get("id"), str)
-                and item_details_value.get("id").strip()
+                and isinstance(potential_id, str)
+                and potential_id.strip()
             ):
-                we_id_str = item_details_value.get("id")
+                we_id_str = potential_id
             else:  # Fallback to old generation for consistency if 'id' isn't in the dict from DB.
                 # WorldItem.from_dict ensures 'id' is always there for objects from parsing.
                 # For data from DB via get_world_building_from_db, 'id' is popped but needs to be reconstructed for this check.
@@ -212,18 +217,16 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
             # ID should be taken from details_dict if present, otherwise generated.
             # This aligns with WorldItem.from_dict's ID handling.
             we_id_str = ""
-            if (
-                isinstance(details_dict.get("id"), str)
-                and details_dict.get("id").strip()
-            ):
-                we_id_str = details_dict.get("id")
+            details_id = details_dict.get("id")
+            if isinstance(details_id, str) and details_id.strip():
+                we_id_str = details_id
             # Validate and normalize all core fields
             category_str, item_name_str, we_id_str = utils.validate_world_item_fields(
                 category_str, item_name_str, we_id_str
             )
 
             # Prepare world item properties
-            we_node_props = {
+            we_node_props: dict[str, Any] = {
                 "id": we_id_str,
                 "name": item_name_str,  # This is the display name
                 "category": category_str,  # This is the display category
@@ -733,7 +736,7 @@ async def get_world_building() -> list[WorldItem]:
 
         for record in results:
             if record and record.get("w"):
-                item = WorldItem.from_db_record(record)
+                item = WorldItem.from_dict_record(record)
                 world_items.append(item)
 
         # Update name-to-id mapping for compatibility with callers
@@ -779,7 +782,7 @@ async def get_world_items_for_chapter_context_native(
         world_items = []
         for record in results:
             if record and record.get("w"):
-                item = WorldItem.from_db_record(record)
+                item = WorldItem.from_dict_record(record)
                 world_items.append(item)
 
         logger.debug(
@@ -798,50 +801,6 @@ async def get_world_items_for_chapter_context_native(
             exc_info=True,
         )
         return []
-
-
-@alru_cache(maxsize=128)
-async def get_world_item_by_id(item_id: str) -> WorldItem | None:
-    """Retrieve a single WorldItem from Neo4j by its ID or fall back to name."""
-    logger.info(f"Loading world item '{item_id}' from Neo4j...")
-
-    query = (
-        "MATCH (we:Entity {id: $id}) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)"
-        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) RETURN we"
-    )
-    results = await neo4j_manager.execute_read_query(query, {"id": item_id})
-    if not results or not results[0].get("we"):
-        alt_id = resolve_world_name(item_id)
-        if alt_id and alt_id != item_id:
-            results = await neo4j_manager.execute_read_query(query, {"id": alt_id})
-        if not results or not results[0].get("we"):
-            logger.warning(f"No world item found for ID '{item_id}'")
-            return None
-
-    world_element_node = results[0]["we"]
-    item_id_actual = world_element_node["id"]
-    item_category = world_element_node.get("category", "miscellaneous")
-    item_name = world_element_node["name"]
-
-    item_detail = dict(world_element_node)
-    item_detail["id"] = item_id_actual
-    return WorldItem.from_dict(item_category, item_name, item_detail)
-
-
-def get_world_item_by_name(
-    world_data: dict[str, dict[str, WorldItem]], name: str
-) -> WorldItem | None:
-    """Retrieve a WorldItem from cached data using a fuzzy name lookup."""
-    item_id = resolve_world_name(name)
-    if not item_id:
-        return None
-    for items in world_data.values():
-        if not isinstance(items, dict):
-            continue
-        for item in items.values():
-            if isinstance(item, WorldItem) and item.id == item_id:
-                return item
-    return None
 
 
 # Phase 1.2: Bootstrap Element Injection - New functions for bootstrap element discovery

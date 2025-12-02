@@ -874,7 +874,7 @@ async def add_kg_triples_batch_to_db(
     structured_triples_data: list[dict[str, Any]],
     chapter_number: int,
     is_from_flawed_draft: bool,
-):
+) -> None:
     if not structured_triples_data:
         logger.info("Neo4j: add_kg_triples_batch_to_db: No structured triples to add.")
         return
@@ -2065,8 +2065,6 @@ async def deduplicate_relationships() -> int:
 
 async def consolidate_similar_relationships() -> int:
     """Consolidate semantically similar relationships using the predefined taxonomy."""
-    import models.kg_constants
-
     # Get all relationship types currently in the database
     query_current = """
     MATCH ()-[r]->()
@@ -2083,7 +2081,7 @@ async def consolidate_similar_relationships() -> int:
         # Process each current relationship type
         for current_type in current_types:
             # Skip if already canonical
-            if current_type in models.kg_constants.RELATIONSHIP_TYPES:
+            if current_type in VALID_RELATIONSHIP_TYPES:
                 continue
 
             # Find canonical version
@@ -2281,9 +2279,16 @@ async def create_relationship_with_properties(
     }
 
     # Use existing batch infrastructure to create the relationship
+    # Ensure chapter_added is an integer
+    chapter_num = 0
+    try:
+        chapter_num = int(properties.get("chapter_added", 0))
+    except (ValueError, TypeError):
+        pass
+
     await add_kg_triples_batch_to_db(
         [triple_data],
-        chapter_number=properties.get("chapter_added", 0),
+        chapter_number=chapter_num,
         is_from_flawed_draft=False,
     )
 
@@ -2327,9 +2332,16 @@ async def create_typed_relationship_with_properties(
         "properties": default_props,
     }
 
+    # Ensure chapter_added is an integer
+    chapter_num = 0
+    try:
+        chapter_num = int(default_props.get("chapter_added", 0))
+    except (ValueError, TypeError):
+        pass
+
     await add_kg_triples_batch_to_db(
         [triple_data],
-        chapter_number=default_props.get("chapter_added", 0),
+        chapter_number=chapter_num,
         is_from_flawed_draft=False,
     )
 

@@ -40,8 +40,8 @@ def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | Non
     if not text:
         return {"type": None, "name": None}
 
-    name_part = text
-    type_part = None
+    name_part: str | None = text
+    type_part: str | None = None
 
     if ":" in text:
         # Case 1 & 2: Explicit separator
@@ -260,7 +260,7 @@ def _is_proper_noun(entity_name: str) -> bool:
 
 
 def _should_filter_entity(
-    entity_name: str, entity_type: str = None, mention_count: int = 1
+    entity_name: str | None, entity_type: str | None = None, mention_count: int = 1
 ) -> bool:
     """
     Filter out problematic entity names that create noise in the knowledge graph.
@@ -503,7 +503,9 @@ def parse_llm_triples(
 
         # Apply filtering to prevent problematic entities
         subject_name = subject_details.get("name")
-        if _should_filter_entity(subject_name, subject_details.get("type")):
+        if subject_name and _should_filter_entity(
+            subject_name, subject_details.get("type")
+        ):
             logger_func.info(
                 f"Line {line_num + 1}: Filtered out problematic subject entity: '{subject_name}'"
             )
@@ -512,7 +514,9 @@ def parse_llm_triples(
         # Filter object entity if it exists
         if not is_literal_object and object_entity_payload:
             object_name = object_entity_payload.get("name")
-            if _should_filter_entity(object_name, object_entity_payload.get("type")):
+            if object_name and _should_filter_entity(
+                object_name, object_entity_payload.get("type")
+            ):
                 logger_func.info(
                     f"Line {line_num + 1}: Filtered out problematic object entity: '{object_name}'"
                 )

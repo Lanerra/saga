@@ -186,7 +186,7 @@ Provide the following information (only include fields where you have reasonable
 
             response_text, _ = await llm_service.async_call_llm(
                 prompt=prompt,
-                model=model,
+                model_name=model,
                 temperature=0.3,
                 max_tokens=512,
                 grammar=grammar,
@@ -318,8 +318,10 @@ Provide the following information (only include fields where you have reasonable
 
                 # Embedding similarity
                 emb_sim = 0.0
-                if embeddings[i] is not None and embeddings[j] is not None:
-                    emb_sim = self._cosine_similarity(embeddings[i], embeddings[j])
+                emb1 = embeddings[i]
+                emb2 = embeddings[j]
+                if emb1 is not None and emb2 is not None:
+                    emb_sim = self._cosine_similarity(emb1, emb2)
 
                 # Combined score
                 combined = 0.4 * name_sim + 0.6 * emb_sim
@@ -660,7 +662,7 @@ Provide the following information (only include fields where you have reasonable
 
         Returns summary of healing actions.
         """
-        results = {
+        results: dict[str, Any] = {
             "chapter": current_chapter,
             "timestamp": datetime.now().isoformat(),
             "nodes_enriched": 0,

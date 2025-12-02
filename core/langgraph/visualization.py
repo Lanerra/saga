@@ -25,7 +25,7 @@ Usage:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import structlog
 
@@ -33,7 +33,7 @@ logger = structlog.get_logger(__name__)
 
 
 def visualize_workflow(
-    graph,
+    graph: Any,
     output_path: str | Path,
     format: Literal["mermaid", "png", "ascii"] = "mermaid",
     title: str | None = None,
@@ -86,7 +86,7 @@ def visualize_workflow(
     return output_path
 
 
-def _export_mermaid(graph, output_path: Path, title: str | None) -> None:
+def _export_mermaid(graph: Any, output_path: Path, title: str | None) -> None:
     """Export workflow as Mermaid diagram.
 
     Args:
@@ -121,7 +121,7 @@ def _export_mermaid(graph, output_path: Path, title: str | None) -> None:
         raise
 
 
-def _export_png(graph, output_path: Path, title: str | None) -> None:
+def _export_png(graph: Any, output_path: Path, title: str | None) -> None:
     """Export workflow as PNG image.
 
     Requires graphviz to be installed.
@@ -136,15 +136,10 @@ def _export_png(graph, output_path: Path, title: str | None) -> None:
     """
     try:
         # Try to use LangGraph's built-in PNG export via graphviz
-        from langchain_core.runnables.graph import CurveStyle, NodeColors
+        from langchain_core.runnables.graph import CurveStyle
 
         png_data = graph.get_graph().draw_mermaid_png(
             curve_style=CurveStyle.LINEAR,
-            node_colors=NodeColors(
-                start="#90EE90",  # Light green
-                end="#FFB6C6",  # Light red
-                default="#87CEEB",  # Sky blue
-            ),
         )
 
         # Write PNG data to file
@@ -172,7 +167,7 @@ def _export_png(graph, output_path: Path, title: str | None) -> None:
         raise
 
 
-def _export_ascii(graph, output_path: Path, title: str | None) -> None:
+def _export_ascii(graph: Any, output_path: Path, title: str | None) -> None:
     """Export workflow as ASCII text diagram.
 
     Creates a simple text representation of the workflow.
@@ -235,7 +230,7 @@ def _export_ascii(graph, output_path: Path, title: str | None) -> None:
         raise
 
 
-def print_workflow_summary(graph, title: str | None = None) -> None:
+def print_workflow_summary(graph: Any, title: str | None = None) -> None:
     """Print a summary of the workflow to console.
 
     Useful for quick debugging without creating files.

@@ -15,7 +15,7 @@ python_version = "3.12"
 ignore_missing_imports = false
 disallow_untyped_defs = true
 check_untyped_defs = true
-namespace_packages = true
+namespace_packages = false
 show_error_codes = true
 # Enable the Pydantic plugin for enhanced type checking
 plugins = ["pydantic.mypy"]

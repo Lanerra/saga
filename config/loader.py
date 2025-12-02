@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 # The settings module contains the ``SagaSettings`` class and the ``settings``
 # singleton instance.  Import it lazily inside the function so that reloading
 # works correctly when the function is called multiple times.
-def _import_settings_module():
+def _import_settings_module() -> Any:
     import config.settings as _settings_mod
 
     return _settings_mod
@@ -50,9 +50,7 @@ def reload_settings() -> bool:
         # 3️⃣ Update the ``config`` package globals.
         #    ``config.__init__`` imports ``settings`` as a name, so we need to
         #    replace that reference with the newly created instance.
-        from config import (
-            __init__ as config_pkg,  # pylint: disable=import-outside-toplevel
-        )
+        import config as config_pkg  # pylint: disable=import-outside-toplevel
 
         # Replace the ``settings`` object.
         config_pkg.settings = settings_mod.settings

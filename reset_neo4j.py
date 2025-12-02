@@ -32,7 +32,9 @@ logger = structlog.get_logger(__name__)
 neo4j_manager_instance = Neo4jManagerSingleton()
 
 
-async def reset_neo4j_database_async(uri, user, password, confirm=False):
+async def reset_neo4j_database_async(
+    uri: str | None, user: str | None, password: str | None, confirm: bool = False
+) -> bool:
     if not confirm:
         response = input(
             "⚠️ WARNING: This will delete ALL data, ALL user‑defined constraints, "
@@ -98,30 +100,27 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
             for attempt in range(1, max_retries + 1):
                 try:
                     logger.info(f"Delete attempt {attempt}/{max_retries}")
-                    async with neo4j_manager_instance.driver.session(
-                        database=config.NEO4J_DATABASE
-                    ) as session:  # type: ignore
-                        result = await session.run(
-                            "MATCH (n) DETACH DELETE n RETURN count(n) as deleted_nodes_total"
-                        )
-                        single_result = await result.single()
-                        nodes_deleted_total = single_result.get(
-                            "deleted_nodes_total", 0
-                        )
-                        logger.info(f"  Total {nodes_deleted_total} nodes deleted.")
-                    async with neo4j_manager_instance.driver.session(
-                        database=config.NEO4J_DATABASE
-                    ) as session:  # type: ignore
-                        rv = await session.run(
-                            "MATCH (n) RETURN count(n) as remaining_nodes"
-                        )
-                        rem_res = await rv.single()
-                        remaining = rem_res.get("remaining_nodes", 0)
-                        if remaining == 0:
-                            return True
-                        logger.warning(
-                            f"  {remaining} nodes still remain after deletion attempt {attempt}"
-                        )
+                    delete_result = await neo4j_manager_instance.execute_write_query(
+                        "MATCH (n) DETACH DELETE n RETURN count(n) as deleted_nodes_total"
+                    )
+                    nodes_deleted_total = (
+                        delete_result[0]["deleted_nodes_total"] if delete_result else 0
+                    )
+                    logger.info(f"  Total {nodes_deleted_total} nodes deleted.")
+
+                    remaining_result = await neo4j_manager_instance.execute_read_query(
+                        "MATCH (n) RETURN count(n) as remaining_nodes"
+                    )
+                    remaining = (
+                        remaining_result[0]["remaining_nodes"]
+                        if remaining_result
+                        else 0
+                    )
+                    if remaining == 0:
+                        return True
+                    logger.warning(
+                        f"  {remaining} nodes still remain after deletion attempt {attempt}"
+                    )
                     if attempt == max_retries:
                         return False
                     await asyncio.sleep(backoff)
@@ -143,76 +142,66 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
 
         # Drop constraints
         logger.info("Attempting to drop ALL user‑defined constraints...")
-        async with neo4j_manager_instance.driver.session(
-            database=config.NEO4J_DATABASE
-        ) as session:  # type: ignore
-            constraints_result = await session.run("SHOW CONSTRAINTS YIELD name")
-            constraints_to_drop = [
-                record["name"]
-                for record in await constraints_result.data()
-                if record["name"]
-            ]
-            if not constraints_to_drop:
-                logger.info("   No user‑defined constraints found to drop.")
-            else:
-                for constraint_name in constraints_to_drop:
-                    try:
-                        logger.info(
-                            f"   Attempting to drop constraint: {constraint_name}"
-                        )
-                        tx = await session.begin_transaction()
-                        await tx.run(f"DROP CONSTRAINT {constraint_name} IF EXISTS")
-                        await tx.commit()
-                        logger.info(
-                            f"      Dropped constraint '{constraint_name}' (or it didn't exist)."
-                        )
-                    except Exception as e_constraint:
-                        if tx and not tx.closed():  # type: ignore
-                            await tx.rollback()
-                        logger.warning(
-                            f"   Note: Could not drop constraint '{constraint_name}': {e_constraint}"
-                        )
+        constraints_result = await neo4j_manager_instance.execute_read_query(
+            "SHOW CONSTRAINTS YIELD name"
+        )
+        constraints_to_drop = [
+            record["name"] for record in constraints_result if record["name"]
+        ]
+        if not constraints_to_drop:
+            logger.info("   No user‑defined constraints found to drop.")
+        else:
+            for constraint_name in constraints_to_drop:
+                try:
+                    logger.info(f"   Attempting to drop constraint: {constraint_name}")
+                    await neo4j_manager_instance.execute_write_query(
+                        f"DROP CONSTRAINT {constraint_name} IF EXISTS"
+                    )
+                    logger.info(
+                        f"      Dropped constraint '{constraint_name}' (or it didn't exist)."
+                    )
+                except Exception as e_constraint:
+                    logger.warning(
+                        f"   Note: Could not drop constraint '{constraint_name}': {e_constraint}"
+                    )
 
         # Drop indexes
         logger.info(
             "Attempting to drop ALL user‑defined indexes (excluding system indexes if identifiable)..."
         )
-        async with neo4j_manager_instance.driver.session(
-            database=config.NEO4J_DATABASE
-        ) as session:  # type: ignore
-            indexes_result = await session.run("SHOW INDEXES YIELD name, type")
-            indexes_to_drop_info = await indexes_result.data()
-            if not indexes_to_drop_info:
-                logger.info("   No user‑defined indexes found to drop.")
-            else:
-                for index_info in indexes_to_drop_info:
-                    index_name = index_info.get("name")
-                    index_type = index_info.get("type", "").upper()
-                    if (
-                        index_name
-                        and "tokenLookup" not in index_name.lower()
-                        and "system" not in index_type.lower()
-                    ):
-                        try:
-                            logger.info(
-                                f"   Attempting to drop index: {index_name} (type: {index_type})"
-                            )
-                            tx = await session.begin_transaction()
-                            await tx.run(f"DROP INDEX {index_name} IF EXISTS")
-                            await tx.commit()
-                            logger.info(
-                                f"      Dropped index '{index_name}' (or it didn't exist)."
-                            )
-                        except Exception as e_index:
-                            if tx and not tx.closed():  # type: ignore
-                                await tx.rollback()
-                            logger.warning(
-                                f"   Note: Could not drop index '{index_name}': {e_index}"
-                            )
-                    elif index_name:
+        indexes_result = await neo4j_manager_instance.execute_read_query(
+            "SHOW INDEXES YIELD name, type"
+        )
+        indexes_to_drop_info = indexes_result
+        if not indexes_to_drop_info:
+            logger.info("   No user‑defined indexes found to drop.")
+        else:
+            for index_info in indexes_to_drop_info:
+                index_name = index_info.get("name")
+                index_type = index_info.get("type", "").upper()
+                if (
+                    index_name
+                    and "tokenLookup" not in index_name.lower()
+                    and "system" not in index_type.lower()
+                ):
+                    try:
                         logger.info(
-                            f"   Skipping potential system/lookup index: {index_name} (type: {index_type})"
+                            f"   Attempting to drop index: {index_name} (type: {index_type})"
                         )
+                        await neo4j_manager_instance.execute_write_query(
+                            f"DROP INDEX {index_name} IF EXISTS"
+                        )
+                        logger.info(
+                            f"      Dropped index '{index_name}' (or it didn't exist)."
+                        )
+                    except Exception as e_index:
+                        logger.warning(
+                            f"   Note: Could not drop index '{index_name}': {e_index}"
+                        )
+                elif index_name:
+                    logger.info(
+                        f"   Skipping potential system/lookup index: {index_name} (type: {index_type})"
+                    )
 
         # Migration script
         elapsed_time = time.time() - start_time
@@ -224,13 +213,13 @@ async def reset_neo4j_database_async(uri, user, password, confirm=False):
         )
         if migration_script.exists():
             try:
-                result = subprocess.run(
+                migration_result = subprocess.run(
                     [sys.executable, str(migration_script)],
                     capture_output=True,
                     text=True,
                     check=True,
                 )
-                logger.info(f"Migration output: {result.stdout}")
+                logger.info(f"Migration output: {migration_result.stdout}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Migration failed: {e.stderr}")
         else:

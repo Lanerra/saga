@@ -22,7 +22,7 @@ import re
 from typing import Any
 
 import structlog
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, StateGraph  # type: ignore
 
 import config
 from core.db_manager import neo4j_manager

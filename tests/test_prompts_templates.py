@@ -11,7 +11,7 @@ from jinja2 import (
 import prompts.prompt_renderer as pr
 
 
-def test_renderer_uses_strict_undefined(monkeypatch):
+def test_renderer_uses_strict_undefined(monkeypatch: pytest.MonkeyPatch) -> None:
     # Use the module's env and verify missing var raises
     env = Environment(
         loader=DictLoader({"tpl.j2": "Hello {{ missing }}"}),
@@ -22,7 +22,7 @@ def test_renderer_uses_strict_undefined(monkeypatch):
         pr.render_prompt("tpl.j2", {})
 
 
-def test_draft_scene_outputs_text_only(monkeypatch):
+def test_draft_scene_outputs_text_only(monkeypatch: pytest.MonkeyPatch) -> None:
     # Ensure no header is enforced by template header block
     env = Environment(
         loader=DictLoader(

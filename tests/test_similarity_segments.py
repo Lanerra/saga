@@ -1,4 +1,5 @@
 # tests/test_similarity_segments.py
+
 import numpy as np
 import pytest
 
@@ -6,14 +7,16 @@ from utils import similarity
 
 
 @pytest.mark.asyncio
-async def test_find_semantically_closest_segment_basic(monkeypatch):
+async def test_find_semantically_closest_segment_basic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     embeddings = {
         "query": np.array([1.0, 0.0], dtype=np.float32),
         "aaa": np.array([0.0, 1.0], dtype=np.float32),
         "bbb": np.array([0.5, 0.5], dtype=np.float32),
     }
 
-    async def fake_embed(text: str):
+    async def fake_embed(text: str) -> np.ndarray | None:
         return embeddings[text]
 
     monkeypatch.setattr(similarity.llm_service, "async_get_embedding", fake_embed)
@@ -28,8 +31,10 @@ async def test_find_semantically_closest_segment_basic(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_find_semantically_closest_segment_no_segments(monkeypatch):
-    async def fake_embed(text: str):
+async def test_find_semantically_closest_segment_no_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_embed(text: str) -> np.ndarray | None:
         return np.array([1.0], dtype=np.float32)
 
     monkeypatch.setattr(similarity.llm_service, "async_get_embedding", fake_embed)
@@ -40,8 +45,10 @@ async def test_find_semantically_closest_segment_no_segments(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_find_semantically_closest_segment_query_embedding_none(monkeypatch):
-    async def fake_embed(text: str):
+async def test_find_semantically_closest_segment_query_embedding_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_embed(text: str) -> np.ndarray | None:
         return None
 
     monkeypatch.setattr(similarity.llm_service, "async_get_embedding", fake_embed)

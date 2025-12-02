@@ -282,7 +282,7 @@ class RelationshipValidator:
     and customized.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the relationship validator."""
         self.rules = VALIDATION_RULES
         self.known_relationship_types = RELATIONSHIP_TYPES

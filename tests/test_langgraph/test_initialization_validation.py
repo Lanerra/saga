@@ -57,8 +57,8 @@ def test_validate_initialization_artifacts_reports_missing(tmp_path: Path) -> No
 @pytest.mark.asyncio
 async def test_load_or_create_state_logs_missing_initialization_artifacts(
     tmp_path: Path,
-    monkeypatch,
-    caplog,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     Verify that _load_or_create_state emits a warning when initialization
@@ -89,7 +89,7 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
 
     from data_access import character_queries as character_queries_module
 
-    async def _fake_get_character_profiles():
+    async def _fake_get_character_profiles() -> list[dict[str, str]]:
         # Simulate no characters; initialization_complete should be False
         return []
 
@@ -137,8 +137,8 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
 @pytest.mark.asyncio
 async def test_load_or_create_state_no_warning_when_artifacts_complete(
     tmp_path: Path,
-    monkeypatch,
-    caplog,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
     Verify that no incomplete-artifacts warning is logged when all artifacts exist.
@@ -170,7 +170,7 @@ async def test_load_or_create_state_no_warning_when_artifacts_complete(
 
     from data_access import character_queries as character_queries_module
 
-    async def _fake_get_character_profiles():
+    async def _fake_get_character_profiles() -> list[dict[str, str]]:
         # Simulate characters exist so initialization_complete will be True
         return [{"name": "Hero"}]
 

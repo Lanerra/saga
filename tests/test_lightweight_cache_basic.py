@@ -19,7 +19,7 @@ from core.lightweight_cache import (
 )
 
 
-def test_basic_cache_operations():
+def test_basic_cache_operations() -> None:
     """Test basic cache operations."""
     print("Testing basic cache operations...")
 

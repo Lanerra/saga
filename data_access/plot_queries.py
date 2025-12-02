@@ -302,7 +302,7 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
     next_seq = (max_seq or 0) + 1
     pp_id = f"pp_{novel_id}_{next_seq}"
 
-    statements = [
+    statements: list[tuple[str, dict[str, Any]]] = [
         (
             """
         MERGE (pp:Entity {id: $pp_id})

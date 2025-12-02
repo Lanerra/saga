@@ -13,7 +13,7 @@ from core.llm_interface_refactored import create_llm_service
 from prompts.grammar_loader import load_grammar
 
 
-async def test_grammar_loader():
+async def test_grammar_loader() -> None:
     print("\n--- Testing Grammar Loader ---")
     try:
         # Test loading initialization grammar (which should include common)
@@ -55,7 +55,7 @@ async def test_grammar_loader():
         traceback.print_exc()
 
 
-async def test_service_propagation():
+async def test_service_propagation() -> None:
     print("\n--- Testing Service Parameter Propagation ---")
 
     # Create service
@@ -74,7 +74,7 @@ async def test_service_propagation():
         "usage": {"total_tokens": 10},
     }
     mock_post_json.return_value = mock_response
-    http_client.post_json = mock_post_json
+    http_client.post_json = mock_post_json  # type: ignore
 
     test_grammar = 'root ::= "test"'
 
@@ -104,7 +104,7 @@ async def test_service_propagation():
     await http_client.aclose()
 
 
-async def main():
+async def main() -> None:
     await test_grammar_loader()
     await test_service_propagation()
 

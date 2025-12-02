@@ -265,7 +265,7 @@ class CompletionHTTPClient:
         temperature: float,
         max_tokens: int,
         grammar: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """
         Get completion from OpenAI-compatible API.
