@@ -375,12 +375,19 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     Extract relationships between entities.
 
     Sets extracted_relationships (sequential extraction).
+    Also creates ExtractedEntity objects for entities found in relationships
+    that weren't already extracted, preserving their type information.
     """
     logger.info("extract_relationships: starting")
 
     # Initialize content manager and get draft text
     content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
+
+    # Get existing entities to check if we need to create new ones
+    existing_entities = state.get("extracted_entities", {})
+    existing_characters = existing_entities.get("characters", [])
+    existing_world_items = existing_entities.get("world_items", [])
 
     if not draft_text:
         return {"extracted_relationships": []}
@@ -438,6 +445,24 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             )
             return {"extracted_relationships": []}
 
+        # Import parsing utility
+        from processing.parsing_utils import _get_entity_type_and_name_from_text
+
+        # Track entities found in relationships to create ExtractedEntity objects
+        # Map: entity_name -> entity_type
+        relationship_entities = {}
+
+        # Build set of already extracted entity names for quick lookup
+        existing_entity_names = set()
+        for e in existing_characters:
+            name = e.name if hasattr(e, "name") else e.get("name", "")
+            if name:
+                existing_entity_names.add(name)
+        for e in existing_world_items:
+            name = e.name if hasattr(e, "name") else e.get("name", "")
+            if name:
+                existing_entity_names.add(name)
+
         for triple in kg_triples_list:
             if not isinstance(triple, dict):
                 continue
@@ -459,6 +484,28 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             subject = str(subject) if subject else ""
             target = str(object_entity) if object_entity else ""
 
+            # Parse "Type:Name" format from subject and object
+            # The prompt asks for format like "Character:Elara" or "Location:Sunken Library"
+            # We need to extract the name and type separately
+            subject_type = None
+            target_type = None
+
+            if ":" in subject:
+                subject_parsed = _get_entity_type_and_name_from_text(subject)
+                subject_type = subject_parsed.get("type")
+                subject = subject_parsed.get("name") or subject
+
+            if ":" in target:
+                target_parsed = _get_entity_type_and_name_from_text(target)
+                target_type = target_parsed.get("type")
+                target = target_parsed.get("name") or target
+
+            # Track entity types for entities not already extracted
+            if subject and subject_type and subject not in existing_entity_names:
+                relationship_entities[subject] = subject_type
+            if target and target_type and target not in existing_entity_names:
+                relationship_entities[target] = target_type
+
             if subject and target and predicate:
                 relationships.append(
                     ExtractedRelationship(
@@ -471,7 +518,42 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                     )
                 )
 
-        return {"extracted_relationships": relationships}
+        # Create ExtractedEntity objects for entities found in relationships
+        # but not already in the extraction results
+        new_entities_from_relationships = []
+        for entity_name, entity_type in relationship_entities.items():
+            # Determine if this is a character or world item
+            is_character = entity_type == "Character"
+
+            entity = ExtractedEntity(
+                name=entity_name,
+                type=entity_type,
+                description=f"Entity mentioned in relationships. Type: {entity_type}",
+                first_appearance_chapter=state.get("current_chapter", 1),
+                attributes={"category": entity_type.lower()} if not is_character else {},
+            )
+            new_entities_from_relationships.append((entity, is_character))
+
+        # Add new entities to the appropriate lists
+        new_characters = [e for e, is_char in new_entities_from_relationships if is_char]
+        new_world_items = [
+            e for e, is_char in new_entities_from_relationships if not is_char
+        ]
+
+        logger.info(
+            "extract_relationships: created entities from relationship parsing",
+            new_characters=len(new_characters),
+            new_world_items=len(new_world_items),
+            total_relationships=len(relationships),
+        )
+
+        return {
+            "extracted_relationships": relationships,
+            "extracted_entities": {
+                "characters": existing_characters + new_characters,
+                "world_items": existing_world_items + new_world_items,
+            },
+        }
 
     except Exception as e:
         logger.error("extract_relationships: failed", error=str(e))
