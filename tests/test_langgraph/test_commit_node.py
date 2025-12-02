@@ -123,9 +123,9 @@ class TestConvertToCharacterProfiles:
                 description="A brave warrior",
                 first_appearance_chapter=1,
                 attributes={
-                    "brave": "",
-                    "loyal": "",
+                    "traits": ["brave", "loyal", "determined"],
                     "status": "alive",
+                    "relationships": {"Bob": {"type": "FRIEND", "description": "Close friend"}},
                 },
             ),
         ]
@@ -137,6 +137,9 @@ class TestConvertToCharacterProfiles:
         assert profiles[0].name == "Alice"
         assert profiles[0].description == "A brave warrior"
         assert profiles[0].created_chapter == 1
+        assert profiles[0].traits == ["brave", "loyal", "determined"]
+        assert profiles[0].status == "alive"
+        assert "Bob" in profiles[0].relationships
 
     def test_convert_with_deduplication_mapping(self):
         """Test conversion applies deduplication mappings."""
@@ -160,6 +163,28 @@ class TestConvertToCharacterProfiles:
         """Test converting empty entity list."""
         profiles = _convert_to_character_profiles([], {}, 1)
         assert profiles == []
+
+    def test_convert_character_with_no_traits(self):
+        """Test converting character without traits attribute defaults to empty list."""
+        entities = [
+            ExtractedEntity(
+                name="Bob",
+                type="character",
+                description="A mysterious figure",
+                first_appearance_chapter=2,
+                attributes={
+                    "status": "Unknown",
+                },
+            ),
+        ]
+
+        name_mappings = {"Bob": "Bob"}
+        profiles = _convert_to_character_profiles(entities, name_mappings, 2)
+
+        assert len(profiles) == 1
+        assert profiles[0].name == "Bob"
+        assert profiles[0].traits == []  # Should default to empty list
+        assert profiles[0].status == "Unknown"
 
 
 class TestConvertToWorldItems:
