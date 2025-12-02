@@ -515,6 +515,8 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                         description=triple.get("description", ""),
                         chapter=state.get("current_chapter", 1),
                         confidence=0.8,
+                        source_type=subject_type,
+                        target_type=target_type,
                     )
                 )
 

@@ -85,6 +85,8 @@ class ExtractedRelationship(BaseModel):
     description: str
     chapter: int
     confidence: float = 0.8
+    source_type: str | None = None
+    target_type: str | None = None
 
     class Config:
         """Pydantic configuration."""
