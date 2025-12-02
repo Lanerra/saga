@@ -32,15 +32,19 @@ Your task is to extract SEMANTIC RELATIONSHIPS between entities in the provided 
 
 **Required Information:**
 
-Provide a list of relationship triples. Each triple must be a string in the format:
-"SubjectType:SubjectName | PREDICATE | ObjectType:ObjectName"
+Extract relationship triples with the following JSON structure:
+- subject: The name of the entity that is the source of the relationship
+- predicate: The relationship type (use uppercase with underscores, e.g., LOCATED_IN, DISCOVERS, HUNTS)
+- object_entity: The name of the entity that is the target of the relationship
+- description: A brief description of the relationship context
 
-Examples:
-- "Character:Elara | LOCATED_IN | Location:Sunken Library"
-- "Character:Elara | DISCOVERS | Artifact:Starfall Map"
-- "Faction:The Order | HUNTS | Character:Elara"
+Examples of entity names to use:
+- For characters: Use their names directly (e.g., "Elara", "Talia Ren")
+- For locations: Use place names directly (e.g., "Sunken Library", "Coolant Chamber")
+- For objects/artifacts: Use the object name (e.g., "Starfall Map", "Control Panel")
+- For factions/organizations: Use the faction name (e.g., "The Order")
 
-*Note: The system enforces the output structure. Focus on extracting accurate and significant relationships.*
+The system will infer entity types from previous extraction steps. Focus on extracting accurate entity names and meaningful relationships.
 
 **Chapter {{ chapter_number }} Text:**
 ```text

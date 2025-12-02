@@ -543,8 +543,12 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         logger.info(
             "extract_relationships: created entities from relationship parsing",
             new_characters=len(new_characters),
+            new_characters_list=[(e.name, e.type) for e in new_characters],
             new_world_items=len(new_world_items),
+            new_world_items_list=[(e.name, e.type) for e in new_world_items],
             total_relationships=len(relationships),
+            existing_characters_count=len(existing_characters),
+            existing_world_items_count=len(existing_world_items),
         )
 
         return {

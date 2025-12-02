@@ -715,6 +715,12 @@ async def _build_relationship_statements(
         entity_type_map[entity.name] = entity.type
         entity_category_map[entity.name] = entity.attributes.get("category", "")
 
+    logger.debug(
+        "_build_relationship_statements: entity type map",
+        entity_count=len(entity_type_map),
+        entity_types=list(entity_type_map.items())[:10],  # Log first 10 for debugging
+    )
+
     # Helper to create subject/object dict with type info
     def _make_entity_dict(name: str, original_name: str) -> dict[str, str]:
         entity_type = entity_type_map.get(original_name, "Object")
