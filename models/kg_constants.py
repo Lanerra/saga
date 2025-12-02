@@ -278,11 +278,11 @@ THEMATIC_RELATIONSHIPS = {
 # Ability/Trait Relationships
 ABILITY_RELATIONSHIPS = {
     "HAS_ABILITY",  # Possesses skill/power
-    "HAS_TRAIT",  # Character trait
+    "HAS_TRAIT",  # Character trait (connects to Trait nodes)
     "HAS_GOAL",  # Motivation/objective
     "HAS_RULE",  # Governing principle
     "HAS_KEY_ELEMENT",  # Important component
-    "HAS_TRAIT_ASPECT",  # Trait detail
+    # "HAS_TRAIT_ASPECT",  # Deprecated: Use HAS_TRAIT instead
     "SKILLED_IN",  # Competency
     "WEAK_IN",  # Deficiency
 }

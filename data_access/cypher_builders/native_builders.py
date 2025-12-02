@@ -33,17 +33,36 @@ class NativeCypherBuilder:
         cypher = """
         MERGE (c:Character:Entity {name: $name})
         SET c.description = $description,
-            c.traits = $traits,
             c.status = $status,
             c.id = CASE WHEN c.id IS NULL OR c.id = '' THEN $id ELSE c.id END,
-            c.created_chapter = CASE 
-                WHEN c.created_chapter IS NULL THEN $created_chapter 
-                ELSE c.created_chapter 
+            c.created_chapter = CASE
+                WHEN c.created_chapter IS NULL THEN $created_chapter
+                ELSE c.created_chapter
             END,
             c.is_provisional = $is_provisional,
             c.chapter_last_updated = $chapter_number,
             c.last_updated = timestamp()
-        
+
+        // Handle traits as separate Trait nodes with HAS_TRAIT relationships
+        WITH c
+        OPTIONAL MATCH (c)-[old_ht:HAS_TRAIT]->(old_t:Trait)
+        DELETE old_ht
+
+        WITH c
+        FOREACH (trait_name IN $trait_data |
+            MERGE (t:Trait:Entity {name: trait_name})
+            ON CREATE SET
+                t.description = '',
+                t.created_at = timestamp(),
+                t.created_chapter = $chapter_number
+            MERGE (c)-[ht:HAS_TRAIT]->(t)
+            ON CREATE SET
+                ht.chapter_added = $chapter_number,
+                ht.last_updated = timestamp()
+            ON MATCH SET
+                ht.last_updated = timestamp()
+        )
+
         // Handle relationships as separate merge operations
         WITH c
         UNWIND $relationship_data AS rel_data
@@ -57,8 +76,7 @@ class NativeCypherBuilder:
                 other.created_chapter = $chapter_number,
                 other.id = randomUUID(),
                 other.description = 'Character created from relationship. Details to be developed.',
-                other.status = 'Unknown',
-                other.traits = []
+                other.status = 'Unknown'
 
             MERGE (c)-[r:RELATIONSHIP {type: rel_data.rel_type}]->(other)
             SET r.description = rel_data.description,
@@ -93,10 +111,13 @@ class NativeCypherBuilder:
                 }
             )
 
+        # Process traits - filter out empty strings
+        trait_data = [t.strip() for t in char.traits if t and t.strip()]
+
         params = {
             "name": char.name,
             "description": char.description,
-            "traits": char.traits,  # Direct field access - no dict conversion
+            "trait_data": trait_data,  # List of trait names for UNWIND
             "status": char.status,
             # Stable deterministic ID for characters (assigned once)
             "id": generate_entity_id(
@@ -205,17 +226,36 @@ class NativeCypherBuilder:
             w.goals = $goals,
             w.rules = $rules,
             w.key_elements = $key_elements,
-            w.traits = $traits,
-            w.created_chapter = CASE 
-                WHEN w.created_chapter IS NULL THEN $created_chapter 
-                ELSE w.created_chapter 
+            w.created_chapter = CASE
+                WHEN w.created_chapter IS NULL THEN $created_chapter
+                ELSE w.created_chapter
             END,
             w.is_provisional = $is_provisional,
             w.chapter_last_updated = $chapter_number,
             w.last_updated = timestamp(),
             w += $additional_props
         SET w{labels_clause}
-        
+
+        // Handle traits as separate Trait nodes with HAS_TRAIT relationships
+        WITH w
+        OPTIONAL MATCH (w)-[old_ht:HAS_TRAIT]->(old_t:Trait)
+        DELETE old_ht
+
+        WITH w
+        FOREACH (trait_name IN $trait_data |
+            MERGE (t:Trait:Entity {{name: trait_name}})
+            ON CREATE SET
+                t.description = '',
+                t.created_at = timestamp(),
+                t.created_chapter = $chapter_number
+            MERGE (w)-[ht:HAS_TRAIT]->(t)
+            ON CREATE SET
+                ht.chapter_added = $chapter_number,
+                ht.last_updated = timestamp()
+            ON MATCH SET
+                ht.last_updated = timestamp()
+        )
+
         // Handle relationships as separate merge operations
         WITH w
         UNWIND $relationship_data AS rel_data
@@ -263,6 +303,9 @@ class NativeCypherBuilder:
                 }
             )
 
+        # Process traits - filter out empty strings
+        trait_data = [t.strip() for t in item.traits if t and t.strip()]
+
         params = {
             "id": item.id,
             "name": item.name,
@@ -271,7 +314,7 @@ class NativeCypherBuilder:
             "goals": item.goals,  # Direct field access
             "rules": item.rules,
             "key_elements": item.key_elements,
-            "traits": item.traits,
+            "trait_data": trait_data,  # List of trait names for FOREACH
             "created_chapter": item.created_chapter or chapter_number,
             "is_provisional": item.is_provisional,
             "chapter_number": chapter_number,
@@ -313,16 +356,22 @@ class NativeCypherBuilder:
         cypher = f"""
         MATCH (c:Character:Entity)
         WHERE {where_clause}
-        
+
         // Optionally collect relationships (match any type; use r.type property for semantics)
+        // Exclude HAS_TRAIT relationships as those are collected separately
         OPTIONAL MATCH (c)-[r]->(other:Entity)
-        
-        RETURN c, 
-               collect({{
+        WHERE NOT type(r) = 'HAS_TRAIT'
+
+        // Collect traits from HAS_TRAIT relationships to Trait nodes
+        OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
+
+        RETURN c,
+               collect(DISTINCT {{
                    target_name: other.name,
                    type: coalesce(r.type, ''),
                    description: coalesce(r.description, '')
-               }}) as relationships
+               }}) as relationships,
+               collect(DISTINCT t.name) as traits
         ORDER BY c.name
         """
 
@@ -361,7 +410,11 @@ class NativeCypherBuilder:
         MATCH (w:Entity)
         WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
           AND {where_clause}
-        RETURN w
+
+        // Collect traits from HAS_TRAIT relationships to Trait nodes
+        OPTIONAL MATCH (w)-[:HAS_TRAIT]->(t:Trait)
+
+        RETURN w, collect(DISTINCT t.name) as traits
         ORDER BY w.category, w.name
         """
 

@@ -317,12 +317,11 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                 )
             )
 
-            # Reconcile list properties (goals, rules, key_elements, traits) as ValueNode relationships
+            # Reconcile list properties (goals, rules, key_elements) as ValueNode relationships
             list_prop_map = {
                 "goals": "HAS_GOAL",
                 "rules": "HAS_RULE",
                 "key_elements": "HAS_KEY_ELEMENT",
-                "traits": "HAS_TRAIT_ASPECT",
             }
             for list_prop_key, rel_name_internal in list_prop_map.items():
                 current_prop_values: set[str] = {
@@ -364,6 +363,46 @@ async def sync_full_state_from_object_to_db(world_data: dict[str, Any]) -> bool:
                             },
                         )
                     )
+
+            # Handle traits separately as Trait nodes (not ValueNodes)
+            current_traits: set[str] = {
+                str(v).strip()
+                for v in details_dict.get("traits", [])
+                if isinstance(v, str) and str(v).strip()
+            }
+
+            # Delete old trait relationships
+            statements.append(
+                (
+                    """
+                MATCH (we:Object:Entity {id: $we_id_val})-[r:HAS_TRAIT]->(t:Trait:Entity)
+                WHERE NOT t.name IN $current_traits_list
+                DELETE r
+                """,
+                    {
+                        "we_id_val": we_id_str,
+                        "current_traits_list": list(current_traits),
+                    },
+                )
+            )
+
+            # Create/ensure trait relationships
+            if current_traits:
+                statements.append(
+                    (
+                        """
+                    MATCH (we:Object:Entity {id: $we_id_val})
+                    UNWIND $current_traits_list AS trait_name
+                    MERGE (t:Trait:Entity {name: trait_name})
+                       ON CREATE SET t.created_ts = timestamp(), t.description = ''
+                    MERGE (we)-[:HAS_TRAIT]->(t)
+                    """,
+                        {
+                            "we_id_val": we_id_str,
+                            "current_traits_list": list(current_traits),
+                        },
+                    )
+                )
 
             # Reconcile WorldElaborationEvents
             statements.append(
@@ -527,11 +566,11 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
     else:
         item_detail["is_provisional"] = False
 
+    # Fetch list properties (goals, rules, key_elements) from ValueNodes
     list_prop_map = {
         "goals": "HAS_GOAL",
         "rules": "HAS_RULE",
         "key_elements": "HAS_KEY_ELEMENT",
-        "traits": "HAS_TRAIT_ASPECT",
     }
     for list_prop_key, rel_name_internal in list_prop_map.items():
         list_values_query = f"""
@@ -550,6 +589,24 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
                 if res_item and res_item.get("item_value") is not None
             ]
         )
+
+    # Fetch traits from Trait nodes (not ValueNodes)
+    traits_query = """
+    MATCH (:Entity {id: $we_id_param})-[:HAS_TRAIT]->(t:Trait:Entity)
+    RETURN t.name AS trait_name
+    ORDER BY t.name ASC
+    """
+    traits_res = await neo4j_manager.execute_read_query(
+        traits_query,
+        {"we_id_param": item_id},
+    )
+    item_detail["traits"] = sorted(
+        [
+            res_item["trait_name"]
+            for res_item in traits_res
+            if res_item and res_item.get("trait_name") is not None
+        ]
+    )
 
     elab_query = f"""
     MATCH (:Entity {{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent:Entity)
