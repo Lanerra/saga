@@ -55,15 +55,33 @@ async def check_entity_similarity(
         threshold = config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD
 
         if entity_type == "character":
+            # Enhanced query with first name matching
+            # Extracts first name from existing character names and checks for match
             similarity_query = """
             MATCH (c:Character:Entity)
+            WITH c,
+                 // Extract first name (everything before first space, or full name if no space)
+                 CASE
+                   WHEN c.name CONTAINS ' '
+                   THEN split(c.name, ' ')[0]
+                   ELSE c.name
+                 END as first_name
+            WITH c, first_name,
+                 // Check if query is exactly the first name (case-insensitive)
+                 // Give first name matches high similarity (0.95) to ensure deduplication
+                 CASE
+                   WHEN toLower(first_name) = toLower($name)
+                   THEN 0.95
+                   ELSE apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name))
+                 END as computed_similarity
             WHERE c.name = $name OR
                   toLower(c.name) = toLower($name) OR
-                  apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) > $threshold
+                  toLower(first_name) = toLower($name) OR
+                  computed_similarity > $threshold
             RETURN c.name as existing_name,
                    labels(c) as existing_labels,
                    c.description as existing_description,
-                   apoc.text.levenshteinSimilarity(toLower(c.name), toLower($name)) as similarity
+                   computed_similarity as similarity
             ORDER BY similarity DESC
             LIMIT 1
             """
@@ -93,11 +111,19 @@ async def check_entity_similarity(
             similar_entity = result[0]
             similarity_score = similar_entity.get("similarity", 0.0)
 
+            # Check if this is a first name match (similarity = 0.95)
+            is_first_name_match = (
+                entity_type == "character"
+                and similarity_score == 0.95
+                and similar_entity["existing_name"].split()[0].lower() == name.lower()
+            )
+
             # Log the similarity check
-            logger.debug(
+            match_type = "first name match" if is_first_name_match else "similarity match"
+            logger.info(
                 f"Entity similarity check for '{name}' (type: {entity_type}): "
-                f"Found similar entity '{similar_entity['existing_name']}' "
-                f"with similarity {similarity_score:.2f}"
+                f"Found {match_type} with '{similar_entity['existing_name']}' "
+                f"(similarity: {similarity_score:.2f})"
             )
 
             # Return the similar entity info
