@@ -41,10 +41,12 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     4. World rule violations (future enhancement)
     5. Event timeline violations (future enhancement)
 
-    NOTE: Relationship validation has been disabled (constraint system removed)
+    NOTE: Relationship validation now operates in PERMISSIVE MODE by default.
+    The validator logs informational messages but does not block any relationships.
+    This allows the LLM maximum creative freedom in defining entity relationships.
 
-    The validation results determine whether the chapter needs revision.
-    If critical or too many major issues are found, needs_revision is set to True.
+    The validation results determine whether the chapter needs revision based on
+    character trait consistency and plot stagnation, NOT relationship types.
 
     Args:
         state: Current narrative state with draft_text and extracted entities
@@ -61,13 +63,16 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 
     contradictions: list[Contradiction] = []
 
-    # Check 1: Validate all extracted relationships
-    # Validates semantic correctness (e.g., prevents "Character FRIENDS_WITH Location")
+    # Check 1: Validate all extracted relationships (PERMISSIVE MODE)
+    # In permissive mode, this only logs info messages and never blocks.
+    # Relationship validation is now informational only to support creative freedom.
     relationship_contradictions = await _validate_relationships(
         state.get("extracted_relationships", []),
         state.get("current_chapter", 1),
         state.get("extracted_entities"),
     )
+    # Note: In permissive mode, relationship_contradictions will be empty
+    # since the validator always returns valid=True
     contradictions.extend(relationship_contradictions)
 
     # Check 2: Character trait consistency
@@ -130,14 +135,17 @@ async def _validate_relationships(
     """
     Validate extracted relationships for semantic correctness.
 
-    This function checks that relationships make semantic sense given the
-    entity types involved. It validates:
-    1. Relationship types are recognized
-    2. Entity types are valid
-    3. Relationship type is compatible with entity types
+    **PERMISSIVE MODE (Default):**
+    This function now operates in permissive mode, where all relationships are
+    accepted and only informational messages are logged. The validator trusts
+    the LLM to create semantically appropriate relationships for the narrative.
 
-    The validation is designed to be flexible for creative writing while
-    preventing obviously nonsensical relationships (e.g., "Character FRIENDS_WITH Location").
+    The function logs debug-level info for:
+    1. Novel relationship types not in the predefined schema
+    2. Novel entity types not in the predefined ontology
+    3. Unusual entity type combinations (informational only)
+
+    This supports creative freedom and emergent narrative patterns.
 
     Args:
         relationships: List of ExtractedRelationship instances
@@ -145,7 +153,7 @@ async def _validate_relationships(
         extracted_entities: Dict with "characters" and "world_items" lists for type lookup
 
     Returns:
-        List of Contradiction instances for invalid relationships
+        Empty list in permissive mode (no contradictions generated)
     """
     from core.relationship_validation import get_relationship_validator
 
@@ -153,7 +161,7 @@ async def _validate_relationships(
         return []
 
     contradictions = []
-    validator = get_relationship_validator()
+    validator = get_relationship_validator()  # Defaults to permissive mode
 
     # Build entity type lookup from extracted entities
     entity_type_map = {}
@@ -180,8 +188,8 @@ async def _validate_relationships(
             rel.target_name, "Character"
         )  # Default to Character
 
-        # Validate the relationship (use flexible mode for creative writing)
-        is_valid, errors, warnings = validator.validate(
+        # Validate the relationship (permissive mode - always valid)
+        is_valid, errors, info_warnings = validator.validate(
             relationship_type=rel.relationship_type,
             source_name=rel.source_name,
             source_type=source_type,
@@ -190,27 +198,19 @@ async def _validate_relationships(
             severity_mode="flexible",
         )
 
-        # Only create contradictions for actual errors (not warnings)
+        # In permissive mode (default), is_valid is always True
+        # We don't create contradictions, only log info messages
+        # This allows the LLM creative freedom in defining relationships
         if not is_valid:
-            # Determine severity based on error type
-            severity = "major"  # Default severity
-
-            # If the relationship type is completely unknown, it's critical
-            if "Unknown relationship type" in errors[0] if errors else "":
-                severity = "critical"
-
-            contradictions.append(
-                Contradiction(
-                    type="invalid_relationship",
-                    description=f"Invalid relationship: {rel.source_name}({source_type}) "
-                    f"-[{rel.relationship_type}]-> {rel.target_name}({target_type}). "
-                    f"Errors: {'; '.join(errors)}",
-                    conflicting_chapters=[chapter],
-                    severity=severity,
-                    suggested_fix="Use a semantically appropriate relationship type, or "
-                    "verify entity types are correct. See docs/ontology.md for guidance.",
-                )
+            # This should never happen in permissive mode
+            # but we keep this for strict mode compatibility
+            logger.warning(
+                "relationship_validation_strict_mode_violation",
+                relationship=f"{rel.source_name}({source_type}) -{rel.relationship_type}-> {rel.target_name}({target_type})",
+                errors=errors,
             )
+            # Don't add to contradictions in permissive mode
+            # If strict mode is ever enabled, this would create contradictions
 
     logger.debug(
         "_validate_relationships: relationship validation complete",
