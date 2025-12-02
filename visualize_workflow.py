@@ -17,6 +17,7 @@ Usage:
 import argparse
 import sys
 from pathlib import Path
+from typing import Any, Literal, cast
 
 import structlog
 
@@ -30,7 +31,7 @@ from core.langgraph.workflow import (
 logger = structlog.get_logger(__name__)
 
 
-def main():
+def main() -> None:
     """Main CLI entry point for workflow visualization."""
     parser = argparse.ArgumentParser(
         description="Visualize LangGraph workflows for SAGA",
@@ -152,7 +153,8 @@ def _generate_all_workflows(output_dir: str, format_override: str | None) -> Non
         print(f"  • {name:8s} → {output_file.name}")
 
         graph = factory()
-        visualize_workflow(graph, output_file, format=format_to_use, title=title)
+        fmt = cast(Literal["mermaid", "png", "ascii"], format_to_use)
+        visualize_workflow(graph, output_file, format=fmt, title=title)
 
     print(f"\n✓ Generated {len(workflows)} workflow visualizations")
 
@@ -192,7 +194,8 @@ def _generate_single(workflow: str, output: str, format_override: str | None) ->
     title = _get_title(workflow)
 
     # Generate visualization
-    result_path = visualize_workflow(graph, output, format=format_to_use, title=title)
+    fmt = cast(Literal["mermaid", "png", "ascii"], format_to_use)
+    result_path = visualize_workflow(graph, output, format=fmt, title=title)
 
     print(f"✓ Visualization created: {result_path}")
 
@@ -208,7 +211,7 @@ def _print_summary(workflow: str) -> None:
     print_workflow_summary(graph, title=title)
 
 
-def _create_graph(workflow: str):
+def _create_graph(workflow: str) -> Any:
     """Create a workflow graph.
 
     Args:

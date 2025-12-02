@@ -4,6 +4,7 @@ import sys
 import unittest
 
 from processing.parsing_utils import (
+    _get_entity_type_and_name_from_text,
     _is_proper_noun,
     _should_filter_entity,
     parse_llm_triples,
@@ -11,7 +12,7 @@ from processing.parsing_utils import (
 
 
 class TestRdfTripleParsing(unittest.TestCase):
-    def test_parse_simple_turtle(self):
+    def test_parse_simple_turtle(self) -> None:
         triple_input = """
         Jax | hasAlias | J.X.
         Jax | livesIn | Hourglass Curios
@@ -82,11 +83,11 @@ class TestRdfTripleParsing(unittest.TestCase):
         if lila_type_triple:
             self.assertEqual(lila_type_triple["object_literal"], "Character")
 
-    def test_empty_input(self):
+    def test_empty_input(self) -> None:
         parsed_triples = parse_llm_triples("")
         self.assertEqual(len(parsed_triples), 0)
 
-    def test_invalid_turtle(self):
+    def test_invalid_turtle(self) -> None:
         invalid_turtle = r"char:Jax prop:hasAlias 'J.X.'"
         parsed_triples = parse_llm_triples(invalid_turtle)
         self.assertEqual(len(parsed_triples), 0)
@@ -95,7 +96,7 @@ class TestRdfTripleParsing(unittest.TestCase):
 class TestProperNounDetection(unittest.TestCase):
     """Test proper noun detection for entity filtering."""
 
-    def test_clear_proper_nouns(self):
+    def test_clear_proper_nouns(self) -> None:
         """Test obviously proper noun cases."""
         self.assertTrue(_is_proper_noun("Alice"))
         self.assertTrue(_is_proper_noun("Elara Moonwhisper"))
@@ -103,7 +104,7 @@ class TestProperNounDetection(unittest.TestCase):
         self.assertTrue(_is_proper_noun("Order of the Flame"))
         self.assertTrue(_is_proper_noun("Starfall Map"))
 
-    def test_clear_common_nouns(self):
+    def test_clear_common_nouns(self) -> None:
         """Test obviously common noun cases."""
         self.assertFalse(_is_proper_noun("the girl"))
         self.assertFalse(_is_proper_noun("the artifact"))
@@ -111,7 +112,7 @@ class TestProperNounDetection(unittest.TestCase):
         self.assertFalse(_is_proper_noun("the rebellion"))
         self.assertFalse(_is_proper_noun("a mysterious stranger"))
 
-    def test_mixed_case_titles(self):
+    def test_mixed_case_titles(self) -> None:
         """Test titles with articles and prepositions."""
         self.assertTrue(_is_proper_noun("Council of Elders"))
         self.assertTrue(_is_proper_noun("Library of Alexandria"))
@@ -119,18 +120,18 @@ class TestProperNounDetection(unittest.TestCase):
         # "the" at start with only 1-2 words is filtered
         self.assertFalse(_is_proper_noun("the Council"))
 
-    def test_edge_cases(self):
+    def test_edge_cases(self) -> None:
         """Test edge cases."""
         self.assertFalse(_is_proper_noun(""))
         self.assertFalse(_is_proper_noun("   "))
         self.assertFalse(_is_proper_noun("the"))
 
-    def test_all_lowercase(self):
+    def test_all_lowercase(self) -> None:
         """Test all lowercase strings."""
         self.assertFalse(_is_proper_noun("ancient artifact"))
         self.assertFalse(_is_proper_noun("old hermit"))
 
-    def test_mixed_capitalization(self):
+    def test_mixed_capitalization(self) -> None:
         """Test partially capitalized strings."""
         # 60% threshold: "Alice in Wonderland" has 2/3 significant words capitalized
         self.assertTrue(_is_proper_noun("Alice in Wonderland"))
@@ -141,7 +142,7 @@ class TestProperNounDetection(unittest.TestCase):
 class TestEntityFiltering(unittest.TestCase):
     """Test entity filtering with proper noun preference."""
 
-    def test_proper_noun_single_mention(self):
+    def test_proper_noun_single_mention(self) -> None:
         """Proper nouns should pass with just 1 mention."""
         self.assertFalse(
             _should_filter_entity("Alice", entity_type="Character", mention_count=1)
@@ -152,7 +153,7 @@ class TestEntityFiltering(unittest.TestCase):
             )
         )
 
-    def test_common_noun_single_mention(self):
+    def test_common_noun_single_mention(self) -> None:
         """Common nouns should be filtered with only 1 mention."""
         self.assertTrue(
             _should_filter_entity("the girl", entity_type="Character", mention_count=1)
@@ -161,7 +162,7 @@ class TestEntityFiltering(unittest.TestCase):
             _should_filter_entity("the artifact", entity_type="Object", mention_count=1)
         )
 
-    def test_common_noun_three_mentions(self):
+    def test_common_noun_three_mentions(self) -> None:
         """Common nouns should pass with 3+ mentions."""
         self.assertFalse(
             _should_filter_entity(
@@ -174,7 +175,7 @@ class TestEntityFiltering(unittest.TestCase):
             )
         )
 
-    def test_common_noun_two_mentions(self):
+    def test_common_noun_two_mentions(self) -> None:
         """Common nouns should still be filtered with only 2 mentions."""
         self.assertTrue(
             _should_filter_entity(
@@ -182,7 +183,7 @@ class TestEntityFiltering(unittest.TestCase):
             )
         )
 
-    def test_blacklisted_entities(self):
+    def test_blacklisted_entities(self) -> None:
         """Blacklisted patterns should always be filtered."""
         # Even with high mention count and as "proper noun"
         self.assertTrue(
@@ -197,18 +198,18 @@ class TestEntityFiltering(unittest.TestCase):
             _should_filter_entity("the moment", entity_type="Moment", mention_count=3)
         )
 
-    def test_very_short_names(self):
+    def test_very_short_names(self) -> None:
         """Very short names should be filtered."""
         self.assertTrue(_should_filter_entity("he", mention_count=10))
         self.assertTrue(_should_filter_entity("it", mention_count=10))
         self.assertTrue(_should_filter_entity("a", mention_count=10))
 
-    def test_descriptive_adjectives(self):
+    def test_descriptive_adjectives(self) -> None:
         """Pure adjectives should be filtered."""
         self.assertTrue(_should_filter_entity("beautiful", mention_count=5))
         self.assertTrue(_should_filter_entity("dark", mention_count=3))
 
-    def test_empty_names(self):
+    def test_empty_names(self) -> None:
         """Empty or None names should be filtered."""
         self.assertTrue(_should_filter_entity(""))
         self.assertTrue(_should_filter_entity(None))
@@ -218,7 +219,7 @@ class TestEntityFiltering(unittest.TestCase):
 class TestProperNounPreferenceInTriples(unittest.TestCase):
     """Test proper noun preference in actual triple parsing."""
 
-    def test_proper_noun_entities_extracted(self):
+    def test_proper_noun_entities_extracted(self) -> None:
         """Proper noun entities should be extracted from triples."""
         triple_input = """
         Character:Alice | LOVES | Character:Bob
@@ -238,10 +239,12 @@ class TestProperNounPreferenceInTriples(unittest.TestCase):
             ),
             None,
         )
+        # mypy check
+        assert alice_loves is not None
         self.assertIsNotNone(alice_loves)
         self.assertEqual(alice_loves["object_entity"]["name"], "Bob")
 
-    def test_blacklisted_entities_filtered_from_triples(self):
+    def test_blacklisted_entities_filtered_from_triples(self) -> None:
         """Blacklisted entities should be filtered even in triples."""
         triple_input = """
         Character:Alice | FEELS | Emotion:fear
@@ -261,45 +264,47 @@ class TestProperNounPreferenceInTriples(unittest.TestCase):
 
 
 class TestEntityParsingHeuristics(unittest.TestCase):
-    def test_standard_colon_format(self):
+    def test_standard_colon_format(self) -> None:
         """Test 'Type: Name' format."""
         result = _get_entity_type_and_name_from_text("Character: Alice")
         self.assertEqual(result["type"], "Character")
         self.assertEqual(result["name"], "Alice")
 
-    def test_missing_colon_known_type(self):
+    def test_missing_colon_known_type(self) -> None:
         """Test 'Type Name' format where Type is a known entity type."""
         result = _get_entity_type_and_name_from_text("Character Alice")
         self.assertEqual(result["type"], "Character")
         self.assertEqual(result["name"], "Alice")
 
-    def test_missing_colon_unknown_type(self):
+    def test_missing_colon_unknown_type(self) -> None:
         """Test 'Word Name' where Word is NOT a known type."""
         result = _get_entity_type_and_name_from_text("Alice Bob")
         self.assertIsNone(result["type"])
         self.assertEqual(result["name"], "Alice Bob")
 
-    def test_colon_with_empty_name(self):
+    def test_colon_with_empty_name(self) -> None:
         """Test 'Type: ' format."""
         result = _get_entity_type_and_name_from_text("Location: ")
         self.assertEqual(result["type"], "Location")
         self.assertIsNone(result["name"])
 
-    def test_just_type_name(self):
+    def test_just_type_name(self) -> None:
         """Test 'Type' single word where it is a known entity type."""
         result = _get_entity_type_and_name_from_text("Character")
         self.assertEqual(result["type"], "Character")
         self.assertIsNone(result["name"])
 
-    def test_whitespace_handling(self):
+    def test_whitespace_handling(self) -> None:
         """Test robust whitespace handling."""
         result = _get_entity_type_and_name_from_text("  Location  :  The Void  ")
         self.assertEqual(result["type"], "Location")
         self.assertEqual(result["name"], "The Void")
 
-    def test_case_insensitive_type_match(self):
+    def test_case_insensitive_type_match(self) -> None:
         """Test that we detect types even if lowercase in 'Type Name' format."""
         result = _get_entity_type_and_name_from_text("character Bob")
+        # mypy check
+        assert result["type"] is not None
         self.assertIsNotNone(result["type"])
         self.assertEqual(result["type"].lower(), "character")
         self.assertEqual(result["name"], "Bob")
@@ -308,7 +313,7 @@ class TestEntityParsingHeuristics(unittest.TestCase):
 class TestObjectDetection(unittest.TestCase):
     """Test object entity vs literal detection in parse_llm_triples."""
 
-    def test_standard_colon_entity(self):
+    def test_standard_colon_entity(self) -> None:
         """Test 'Type: Name' format in object position."""
         input_text = "Character:Alice | LOVES | Character:Bob"
         parsed = parse_llm_triples(input_text)
@@ -318,7 +323,7 @@ class TestObjectDetection(unittest.TestCase):
         self.assertEqual(parsed[0]["object_entity"]["type"], "Character")
         self.assertEqual(parsed[0]["object_entity"]["name"], "Bob")
 
-    def test_missing_colon_known_type_entity(self):
+    def test_missing_colon_known_type_entity(self) -> None:
         """Test 'Type Name' format in object position with known type."""
         # Character is a known type
         input_text = "Character:Alice | LOVES | Character Bob"
@@ -329,7 +334,7 @@ class TestObjectDetection(unittest.TestCase):
         self.assertEqual(parsed[0]["object_entity"]["type"], "Character")
         self.assertEqual(parsed[0]["object_entity"]["name"], "Bob")
 
-    def test_literal_string(self):
+    def test_literal_string(self) -> None:
         """Test literal string that shouldn't be parsed as entity."""
         input_text = "Character:Alice | HAS_STATUS | Happy and healthy"
         parsed = parse_llm_triples(input_text)
@@ -337,7 +342,7 @@ class TestObjectDetection(unittest.TestCase):
         self.assertTrue(parsed[0]["is_literal_object"])
         self.assertEqual(parsed[0]["object_literal"], "Happy and healthy")
 
-    def test_unknown_type_prefix_is_literal(self):
+    def test_unknown_type_prefix_is_literal(self) -> None:
         """Test 'UnknownType Name' should be treated as literal if type is unknown."""
         # 'Strange' is not a known node label
         input_text = "Character:Alice | HAS_TRAIT | Strange Behavior"
@@ -346,7 +351,7 @@ class TestObjectDetection(unittest.TestCase):
         self.assertTrue(parsed[0]["is_literal_object"])
         self.assertEqual(parsed[0]["object_literal"], "Strange Behavior")
 
-    def test_single_word_name_is_literal(self):
+    def test_single_word_name_is_literal(self) -> None:
         """Test single word in object position defaults to literal."""
         # "Bob" alone should be a literal unless specified as Character:Bob
         input_text = "Character:Alice | KNOWS | Bob"
@@ -355,7 +360,7 @@ class TestObjectDetection(unittest.TestCase):
         self.assertTrue(parsed[0]["is_literal_object"])
         self.assertEqual(parsed[0]["object_literal"], "Bob")
 
-    def test_single_known_type_is_literal(self):
+    def test_single_known_type_is_literal(self) -> None:
         """Test single known type word in object position is literal."""
         # "Character" alone in object position is ambiguous but likely a value/literal
         # e.g. "Alice | TYPE | Character" -> Character is a literal value for TYPE
@@ -365,8 +370,6 @@ class TestObjectDetection(unittest.TestCase):
         self.assertTrue(parsed[0]["is_literal_object"])
         self.assertEqual(parsed[0]["object_literal"], "Character")
 
-
-from processing.parsing_utils import _get_entity_type_and_name_from_text
 
 if __name__ == "__main__":
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)

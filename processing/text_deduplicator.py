@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
+from typing import cast
 
 import numpy as np
 import structlog
@@ -92,7 +93,7 @@ class TextDeduplicator:
                     batch_indices, batch_results, strict=False
                 ):
                     if not isinstance(result, Exception):
-                        embeddings[batch_idx] = result
+                        embeddings[batch_idx] = cast(np.ndarray | None, result)
 
             keepers: list[int] = []
             for idx in iteration_range:

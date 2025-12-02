@@ -553,7 +553,7 @@ def _attempt_json_repair(text: str, chapter_number: int) -> dict[str, Any] | Non
             continue
 
     # Strategy 3: Try to extract individual sections
-    result = {
+    result: dict[str, Any] = {
         "character_updates": {},
         "world_updates": {},
         "kg_triples": [],

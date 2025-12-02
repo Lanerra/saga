@@ -12,6 +12,7 @@ for chapter persistence and finalization.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import structlog
 
@@ -175,7 +176,7 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         word_count=state.get("draft_word_count", 0),
     )
 
-    return cleaned_state
+    return cast(NarrativeState, cleaned_state)
 
 
 async def _save_chapter_to_filesystem(

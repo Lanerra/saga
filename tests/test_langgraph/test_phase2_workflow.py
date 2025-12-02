@@ -7,11 +7,12 @@ Tests the complete narrative generation workflow including all Phase 2 nodes.
 Migration Reference: docs/phase2_migration_plan.md - Step 2.5
 """
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from core.langgraph.state import Contradiction, create_initial_state
+from core.langgraph.state import Contradiction, NarrativeState, create_initial_state
 from core.langgraph.workflow import (
     create_phase2_graph,
     handle_fatal_error,
@@ -22,7 +23,7 @@ from core.langgraph.workflow import (
 
 
 @pytest.fixture
-def sample_phase2_state(tmp_path):
+def sample_phase2_state(tmp_path: Any) -> NarrativeState:
     """Sample state ready for Phase 2 workflow."""
     state = create_initial_state(
         project_id="test-project",
@@ -62,7 +63,7 @@ def sample_phase2_state(tmp_path):
 
 
 @pytest.fixture
-def mock_all_nodes():
+def mock_all_nodes() -> Any:
     """Mock all node functions for testing workflow routing."""
     # Create mock nodes for subgraphs
     mock_gen_node = lambda state: {
@@ -152,9 +153,11 @@ def mock_all_nodes():
 class TestShouldReviseOrContinue:
     """Tests for should_revise_or_continue routing function."""
 
-    def test_route_to_summarize_when_no_revision_needed(self):
+    def test_route_to_summarize_when_no_revision_needed(self) -> None:
         """Test routing to summarize when needs_revision is False."""
-        state = {
+        # Using type ignore or creating partial dict because create_initial_state creates full structure
+        # but here we test with minimal required fields for the function
+        state: Any = {
             "needs_revision": False,
             "iteration_count": 0,
             "max_iterations": 3,
@@ -164,9 +167,9 @@ class TestShouldReviseOrContinue:
         result = should_revise_or_continue(state)
         assert result == "summarize"
 
-    def test_route_to_revise_when_revision_needed(self):
+    def test_route_to_revise_when_revision_needed(self) -> None:
         """Test routing to revise when needs_revision is True."""
-        state = {
+        state: Any = {
             "needs_revision": True,
             "iteration_count": 0,
             "max_iterations": 3,
@@ -176,9 +179,9 @@ class TestShouldReviseOrContinue:
         result = should_revise_or_continue(state)
         assert result == "revise"
 
-    def test_route_to_summarize_when_max_iterations_reached(self):
+    def test_route_to_summarize_when_max_iterations_reached(self) -> None:
         """Test routing to summarize when max iterations reached."""
-        state = {
+        state: Any = {
             "needs_revision": True,
             "iteration_count": 3,
             "max_iterations": 3,
@@ -188,9 +191,9 @@ class TestShouldReviseOrContinue:
         result = should_revise_or_continue(state)
         assert result == "summarize"
 
-    def test_route_to_summarize_when_force_continue(self):
+    def test_route_to_summarize_when_force_continue(self) -> None:
         """Test routing to summarize when force_continue is enabled."""
-        state = {
+        state: Any = {
             "needs_revision": True,
             "iteration_count": 0,
             "max_iterations": 3,
@@ -200,9 +203,9 @@ class TestShouldReviseOrContinue:
         result = should_revise_or_continue(state)
         assert result == "summarize"
 
-    def test_route_to_revise_under_max_iterations(self):
+    def test_route_to_revise_under_max_iterations(self) -> None:
         """Test routing to revise when under max iterations."""
-        state = {
+        state: Any = {
             "needs_revision": True,
             "iteration_count": 1,
             "max_iterations": 3,
@@ -218,8 +221,8 @@ class TestPhase2Workflow:
     """Tests for complete Phase 2 workflow."""
 
     async def test_workflow_successful_path_no_revision(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test successful workflow without any revisions."""
         # Create workflow
         graph = create_phase2_graph()
@@ -247,8 +250,8 @@ class TestPhase2Workflow:
         reason="Refactoring to use subgraphs changes how revision is triggered"
     )
     async def test_workflow_with_single_revision(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow with one revision cycle."""
         pass
 
@@ -256,14 +259,14 @@ class TestPhase2Workflow:
         reason="Refactoring to use subgraphs changes how revision is triggered"
     )
     async def test_workflow_max_iterations_enforcement(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test that max iterations are enforced."""
         pass
 
     async def test_workflow_force_continue_skips_revision(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test that force_continue skips revision."""
         # Set force_continue
         state = {**sample_phase2_state}
@@ -300,8 +303,8 @@ class TestPhase2Workflow:
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes execution tracking")
     async def test_workflow_node_execution_order(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test that nodes execute in correct order."""
         pass
 
@@ -311,8 +314,8 @@ class TestPhase2Workflow:
         "This test needs refactoring to use async context manager properly."
     )
     async def test_workflow_with_checkpointing(
-        self, sample_phase2_state, mock_all_nodes, tmp_path
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any
+    ) -> None:
         """Test workflow with checkpointing enabled."""
         from core.langgraph.workflow import create_checkpointer
 
@@ -337,8 +340,8 @@ class TestPhase2Workflow:
         reason="Refactoring to use subgraphs changes state field preservation"
     )
     async def test_workflow_preserves_state_through_nodes(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test that state is properly preserved through all nodes."""
         pass
 
@@ -346,8 +349,8 @@ class TestPhase2Workflow:
         reason="Refactoring to use subgraphs changes how revision is triggered"
     )
     async def test_workflow_multiple_revision_cycles(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow with multiple revision cycles."""
         pass
 
@@ -358,15 +361,15 @@ class TestPhase2Integration:
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes state fields")
     async def test_complete_chapter_generation_workflow(
-        self, sample_phase2_state, mock_all_nodes, tmp_path
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any
+    ) -> None:
         """Test complete end-to-end chapter generation."""
         pass
 
     @pytest.mark.skip(
         reason="Refactoring to use subgraphs changes graph structure validation"
     )
-    async def test_workflow_graph_structure(self):
+    async def test_workflow_graph_structure(self) -> None:
         """Test that Phase 2 graph has correct structure."""
         pass
 
@@ -374,9 +377,9 @@ class TestPhase2Integration:
 class TestErrorRoutingFunctions:
     """Tests for error routing conditional edge functions (P1.3)."""
 
-    def test_should_handle_error_routes_to_error_on_fatal_error(self):
+    def test_should_handle_error_routes_to_error_on_fatal_error(self) -> None:
         """Test should_handle_error routes to error when has_fatal_error is True."""
-        state = {
+        state: Any = {
             "has_fatal_error": True,
             "last_error": "Test error",
             "error_node": "generate",
@@ -385,9 +388,9 @@ class TestErrorRoutingFunctions:
         result = should_handle_error(state)
         assert result == "error"
 
-    def test_should_handle_error_routes_to_continue_when_no_error(self):
+    def test_should_handle_error_routes_to_continue_when_no_error(self) -> None:
         """Test should_handle_error routes to continue when has_fatal_error is False."""
-        state = {
+        state: Any = {
             "has_fatal_error": False,
             "last_error": None,
             "error_node": None,
@@ -396,16 +399,16 @@ class TestErrorRoutingFunctions:
         result = should_handle_error(state)
         assert result == "continue"
 
-    def test_should_handle_error_routes_to_continue_when_error_missing(self):
+    def test_should_handle_error_routes_to_continue_when_error_missing(self) -> None:
         """Test should_handle_error routes to continue when has_fatal_error is missing."""
-        state = {}
+        state: Any = {}
 
         result = should_handle_error(state)
         assert result == "continue"
 
-    def test_should_revise_or_handle_error_prioritizes_fatal_error(self):
+    def test_should_revise_or_handle_error_prioritizes_fatal_error(self) -> None:
         """Test should_revise_or_handle_error prioritizes fatal error over revision."""
-        state = {
+        state: Any = {
             "has_fatal_error": True,
             "needs_revision": True,
             "last_error": "Fatal error",
@@ -414,9 +417,9 @@ class TestErrorRoutingFunctions:
         result = should_revise_or_handle_error(state)
         assert result == "error"
 
-    def test_should_revise_or_handle_error_routes_to_revise_when_needed(self):
+    def test_should_revise_or_handle_error_routes_to_revise_when_needed(self) -> None:
         """Test should_revise_or_handle_error routes to revise when needs_revision is True."""
-        state = {
+        state: Any = {
             "has_fatal_error": False,
             "needs_revision": True,
         }
@@ -424,9 +427,11 @@ class TestErrorRoutingFunctions:
         result = should_revise_or_handle_error(state)
         assert result == "revise"
 
-    def test_should_revise_or_handle_error_routes_to_continue_when_no_issues(self):
+    def test_should_revise_or_handle_error_routes_to_continue_when_no_issues(
+        self,
+    ) -> None:
         """Test should_revise_or_handle_error routes to continue when no errors or revision needed."""
-        state = {
+        state: Any = {
             "has_fatal_error": False,
             "needs_revision": False,
         }
@@ -434,9 +439,9 @@ class TestErrorRoutingFunctions:
         result = should_revise_or_handle_error(state)
         assert result == "continue"
 
-    def test_handle_fatal_error_sets_error_handler_node(self):
+    def test_handle_fatal_error_sets_error_handler_node(self) -> None:
         """Test handle_fatal_error node sets current_node to error_handler."""
-        state = {
+        state: Any = {
             "has_fatal_error": True,
             "last_error": "Test fatal error",
             "error_node": "generate",
@@ -457,42 +462,42 @@ class TestWorkflowErrorHandling:
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
     async def test_workflow_routes_to_error_handler_on_generation_failure(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow routes to error_handler when generation fails."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
     async def test_workflow_routes_to_error_handler_on_extraction_failure(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow routes to error_handler when extraction fails."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
     async def test_workflow_routes_to_error_handler_on_validation_failure(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow routes to error_handler when validation triggers fatal error."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
     async def test_workflow_routes_to_error_handler_on_revision_failure(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow routes to error_handler when revision fails."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes call expectations")
     async def test_workflow_completes_successfully_without_errors(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow completes when no fatal errors occur."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
     async def test_workflow_stops_at_first_fatal_error(
-        self, sample_phase2_state, mock_all_nodes
-    ):
+        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
+    ) -> None:
         """Test workflow stops execution at first fatal error encountered."""
         pass

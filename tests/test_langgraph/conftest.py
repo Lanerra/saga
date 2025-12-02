@@ -6,7 +6,8 @@ This module provides common fixtures, mocks, and test data for testing
 the LangGraph migration Phase 1 components.
 """
 
-from unittest.mock import AsyncMock, patch
+from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -14,13 +15,14 @@ from core.langgraph.state import (
     Contradiction,
     ExtractedEntity,
     ExtractedRelationship,
+    NarrativeState,
     create_initial_state,
 )
 from models.kg_models import CharacterProfile, WorldItem
 
 
 @pytest.fixture
-def sample_extracted_entity():
+def sample_extracted_entity() -> ExtractedEntity:
     """Sample ExtractedEntity for testing."""
     return ExtractedEntity(
         name="Test Character",
@@ -36,7 +38,7 @@ def sample_extracted_entity():
 
 
 @pytest.fixture
-def sample_extracted_relationship():
+def sample_extracted_relationship() -> ExtractedRelationship:
     """Sample ExtractedRelationship for testing."""
     return ExtractedRelationship(
         source_name="Alice",
@@ -49,7 +51,7 @@ def sample_extracted_relationship():
 
 
 @pytest.fixture
-def sample_contradiction():
+def sample_contradiction() -> Contradiction:
     """Sample Contradiction for testing."""
     return Contradiction(
         type="character_trait",
@@ -61,7 +63,7 @@ def sample_contradiction():
 
 
 @pytest.fixture
-def sample_character_profile():
+def sample_character_profile() -> CharacterProfile:
     """Sample CharacterProfile for testing."""
     return CharacterProfile(
         name="Test Hero",
@@ -76,7 +78,7 @@ def sample_character_profile():
 
 
 @pytest.fixture
-def sample_world_item():
+def sample_world_item() -> WorldItem:
     """Sample WorldItem for testing."""
     return WorldItem(
         id="location_001",
@@ -94,7 +96,7 @@ def sample_world_item():
 
 
 @pytest.fixture
-def sample_initial_state():
+def sample_initial_state() -> NarrativeState:
     """Sample initial NarrativeState for testing."""
     return create_initial_state(
         project_id="test-project",
@@ -113,7 +115,7 @@ def sample_initial_state():
 
 
 @pytest.fixture
-def sample_state_with_extraction():
+def sample_state_with_extraction() -> NarrativeState:
     """Sample state with extracted entities and relationships."""
     state = create_initial_state(
         project_id="test-project",
@@ -176,7 +178,7 @@ def sample_state_with_extraction():
 
 
 @pytest.fixture
-def mock_neo4j_manager():
+def mock_neo4j_manager() -> Generator[MagicMock, None, None]:
     """Mock Neo4j manager for testing."""
     with patch("core.db_manager.neo4j_manager") as mock:
         mock.execute_read_query = AsyncMock(return_value=[])
@@ -186,7 +188,7 @@ def mock_neo4j_manager():
 
 
 @pytest.fixture
-def mock_llm_service():
+def mock_llm_service() -> Generator[MagicMock, None, None]:
     """Mock LLM service for testing."""
     with patch("core.llm_interface_refactored.llm_service") as mock:
         mock.async_call_llm = AsyncMock(
@@ -199,7 +201,7 @@ def mock_llm_service():
 
 
 @pytest.fixture
-def mock_knowledge_graph_service():
+def mock_knowledge_graph_service() -> Generator[MagicMock, None, None]:
     """Mock knowledge graph service for testing."""
     with patch("core.knowledge_graph_service.knowledge_graph_service") as mock:
         mock.persist_entities = AsyncMock(return_value=True)
@@ -207,7 +209,7 @@ def mock_knowledge_graph_service():
 
 
 @pytest.fixture
-def mock_character_queries():
+def mock_character_queries() -> Generator[MagicMock, None, None]:
     """Mock character queries for testing."""
     with patch("data_access.character_queries") as mock:
         mock.get_character_profile_by_name = AsyncMock(return_value=None)
@@ -216,7 +218,7 @@ def mock_character_queries():
 
 
 @pytest.fixture
-def mock_world_queries():
+def mock_world_queries() -> Generator[MagicMock, None, None]:
     """Mock world queries for testing."""
     with patch("data_access.world_queries") as mock:
         mock.get_world_items_for_chapter_context_native = AsyncMock(return_value=[])
@@ -224,7 +226,7 @@ def mock_world_queries():
 
 
 @pytest.fixture
-def mock_chapter_queries():
+def mock_chapter_queries() -> Generator[MagicMock, None, None]:
     """Mock chapter queries for testing."""
     with patch("data_access.chapter_queries") as mock:
         mock.get_chapter_content_batch_native = AsyncMock(return_value={})
@@ -233,7 +235,7 @@ def mock_chapter_queries():
 
 
 @pytest.fixture
-def mock_kg_queries():
+def mock_kg_queries() -> Generator[MagicMock, None, None]:
     """Mock kg queries for testing."""
     with patch("data_access.kg_queries") as mock:
         mock.add_kg_triples_batch_to_db = AsyncMock(return_value=None)
@@ -241,7 +243,7 @@ def mock_kg_queries():
 
 
 @pytest.fixture
-def mock_entity_deduplication():
+def mock_entity_deduplication() -> Generator[MagicMock, None, None]:
     """Mock entity deduplication functions."""
     with patch("processing.entity_deduplication.check_entity_similarity") as mock_check:
         mock_check.return_value = AsyncMock(return_value=None)
@@ -249,7 +251,7 @@ def mock_entity_deduplication():
 
 
 @pytest.fixture
-def sample_llm_extraction_response():
+def sample_llm_extraction_response() -> str:
     """Sample LLM extraction response in JSON format."""
     return """{
         "character_updates": {

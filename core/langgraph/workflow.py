@@ -6,9 +6,11 @@ This module wires together all nodes into complete workflow graphs
 with conditional edges, revision loops, and checkpointing.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 import structlog
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
+from langgraph.graph import END, StateGraph  # type: ignore
 
 from core.langgraph.content_manager import ContentManager, get_chapter_outlines
 from core.langgraph.nodes.commit_node import commit_to_graph
@@ -20,8 +22,6 @@ from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.nodes.validation_node import validate_consistency
 from core.langgraph.state import NarrativeState
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph import END, StateGraph
 
 logger = structlog.get_logger(__name__)
 
@@ -79,7 +79,7 @@ def should_revise(state: NarrativeState) -> Literal["revise", "end"]:
     return "end"
 
 
-def create_phase1_graph(checkpointer=None) -> StateGraph:
+def create_phase1_graph(checkpointer: Any | None = None) -> StateGraph:
     """
     Create Phase 1 LangGraph workflow.
 
@@ -336,7 +336,7 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
     }
 
 
-def create_phase2_graph(checkpointer=None) -> StateGraph:
+def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     """
     Create Phase 2 LangGraph workflow (COMPLETE).
 
@@ -565,7 +565,7 @@ def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
     init_step = state.get("initialization_step", "")
 
     # Check for failure indicators
-    if last_error or "failed" in init_step.lower():
+    if last_error or (init_step and "failed" in init_step.lower()):
         logger.error(
             "should_continue_init: initialization failed, halting workflow",
             error=last_error,
@@ -613,7 +613,7 @@ def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"
         return "generate"
 
 
-def create_full_workflow_graph(checkpointer=None) -> StateGraph:
+def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     """
     Create complete workflow with initialization and generation phases.
 

@@ -36,6 +36,9 @@ from pydantic import BaseModel, Field
 # Import settings for model configuration
 from config.settings import settings
 
+# Import ContentRef for externalized content
+from core.langgraph.content_manager import ContentRef
+
 # Import TypedDict structures for proper type annotations
 from models.agent_models import (
     EvaluationResult,
@@ -45,9 +48,6 @@ from models.agent_models import (
 
 # Import existing SAGA models for compatibility
 from models.kg_models import CharacterProfile, WorldItem
-
-# Import ContentRef for externalized content
-from core.langgraph.content_manager import ContentRef
 
 
 class ExtractedEntity(BaseModel):
@@ -204,6 +204,8 @@ class NarrativeState(TypedDict, total=False):
     # Externalized content references
     draft_ref: ContentRef | None  # Reference to externalized draft text
     embedding_ref: ContentRef | None  # Reference to externalized embedding
+    draft_text: str | None  # Inline draft text (for non-externalized usage or tests)
+    generated_embedding: list[float] | None  # Inline embedding (before externalization)
 
     # =========================================================================
     # Entity Extraction Results
@@ -271,6 +273,8 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     last_error: str | None
     has_fatal_error: bool  # True if workflow should stop due to unrecoverable error
+    workflow_failed: bool  # Overall workflow failure status
+    failure_reason: str | None  # Reason for overall workflow failure
     error_node: str | None  # Which node encountered the fatal error
     retry_count: int
 
@@ -334,6 +338,12 @@ class NarrativeState(TypedDict, total=False):
         ContentRef | None
     )  # Reference to externalized chapter outlines
 
+    # Inline initialization artifacts (for tests or before persistence)
+    character_sheets: dict[str, Any] | None
+    global_outline: str | dict[str, Any] | None
+    act_outlines: dict[str, Any] | None
+    world_history: str | None
+
     # Initialization state tracking
     initialization_complete: bool
     initialization_step: str | None  # Current initialization step
@@ -350,6 +360,7 @@ class NarrativeState(TypedDict, total=False):
     nodes_graduated: int  # Count of nodes graduated from provisional status
     nodes_merged: int  # Count of nodes merged in this session
     nodes_enriched: int  # Count of nodes enriched in this session
+    nodes_removed: int  # Count of nodes removed during healing
 
 
 # Type alias for improved readability in node signatures
@@ -469,6 +480,8 @@ def create_initial_state(
         # Error handling
         "last_error": None,
         "has_fatal_error": False,
+        "workflow_failed": False,
+        "failure_reason": None,
         "error_node": None,
         "retry_count": 0,
         # Filesystem paths

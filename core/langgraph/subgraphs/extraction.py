@@ -1,6 +1,6 @@
 # core/langgraph/subgraphs/extraction.py
 import structlog
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, StateGraph  # type: ignore
 
 from core.langgraph.nodes.extraction_nodes import (
     consolidate_extraction,

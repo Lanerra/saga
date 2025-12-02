@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -48,19 +49,13 @@ class CharacterProfile(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
-        """Construct directly from Neo4j record - no dict conversion."""
+    def from_dict_record(cls, record: Mapping[str, Any]) -> CharacterProfile:
+        """Construct directly from dictionary record."""
         node = record["c"]  # Assuming 'c' is the character node alias
 
         # Extract relationships if available
         relationships = {}
-        rels = (
-            record.get("relationships")
-            if hasattr(record, "get")
-            else record.get("relationships")
-            if isinstance(record, dict)
-            else None
-        )
+        rels = record.get("relationships")
         if rels:
             for rel in rels:
                 if rel and rel.get("target_name"):
@@ -69,30 +64,36 @@ class CharacterProfile(BaseModel):
                         "description": rel.get("description", ""),
                     }
 
-        node_dict = dict(node)
+        # Node is already a dict if coming from db_manager
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             name=node_dict.get("name", ""),
             description=node_dict.get("description", ""),
             traits=node_dict.get("traits", []),
             status=node_dict.get("status", "Unknown"),
             relationships=relationships,
-            created_chapter=node.get("created_chapter", 0),
-            is_provisional=node.get("is_provisional", False),
+            created_chapter=node_dict.get("created_chapter", 0),
+            is_provisional=node_dict.get("is_provisional", False),
             updates={},  # Will be populated as needed
         )
 
     @classmethod
-    def from_db_node(cls, node: neo4j.Node) -> CharacterProfile:
-        """Construct directly from Neo4j node - no dict conversion."""
-        node_dict = dict(node)
+    def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
+        """Construct directly from Neo4j record - no dict conversion. (Legacy/Direct driver)"""
+        return cls.from_dict_record(record)
+
+    @classmethod
+    def from_db_node(cls, node: Any) -> CharacterProfile:
+        """Construct directly from Neo4j node/dict - no dict conversion."""
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             name=node_dict.get("name", ""),
             description=node_dict.get("description", ""),
             traits=node_dict.get("traits", []),
             status=node_dict.get("status", "Unknown"),
             relationships={},  # Relationships handled separately
-            created_chapter=node.get("created_chapter", 0),
-            is_provisional=node.get("is_provisional", False),
+            created_chapter=node_dict.get("created_chapter", 0),
+            is_provisional=node_dict.get("is_provisional", False),
             updates={},
         )
 
@@ -206,8 +207,8 @@ class WorldItem(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: neo4j.Record) -> WorldItem:
-        """Construct directly from Neo4j record - no dict conversion."""
+    def from_dict_record(cls, record: Mapping[str, Any]) -> WorldItem:
+        """Construct directly from dictionary record."""
         # Try both 'w' and 'we' node aliases for compatibility
         node = record.get("w") or record.get("we")
         if not node:
@@ -236,13 +237,7 @@ class WorldItem(BaseModel):
 
         # Extract relationships if available
         relationships = {}
-        rels = (
-            record.get("relationships")
-            if hasattr(record, "get")
-            else record.get("relationships")
-            if isinstance(record, dict)
-            else None
-        )
+        rels = record.get("relationships")
         if rels:
             for rel in rels:
                 if rel and rel.get("target_name"):
@@ -251,7 +246,7 @@ class WorldItem(BaseModel):
                         "description": rel.get("description", ""),
                     }
 
-        node_dict = dict(node)
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
@@ -274,8 +269,13 @@ class WorldItem(BaseModel):
         )
 
     @classmethod
-    def from_db_node(cls, node: neo4j.Node) -> WorldItem:
-        """Construct directly from Neo4j node - no dict conversion."""
+    def from_db_record(cls, record: neo4j.Record) -> WorldItem:
+        """Construct directly from Neo4j record - no dict conversion."""
+        return cls.from_dict_record(record)
+
+    @classmethod
+    def from_db_node(cls, node: Any) -> WorldItem:
+        """Construct directly from Neo4j node/dict - no dict conversion."""
 
         # Define core fields that shouldn't go into additional_properties
         core_fields = {
@@ -298,7 +298,7 @@ class WorldItem(BaseModel):
             node, core_fields
         )
 
-        node_dict = dict(node)
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),

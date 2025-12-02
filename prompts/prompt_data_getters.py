@@ -71,8 +71,9 @@ async def _cached_character_info(
     """Cache character database queries to avoid redundant lookups."""
     cache_key = f"char_info_{char_name}_{chapter_limit}"
     if cache_key not in _context_cache:
+        limit_val = chapter_limit if chapter_limit is not None else 1000
         result = await character_queries.get_character_info_for_snippet_from_db(
-            char_name, chapter_limit
+            char_name, limit_val
         )
         _context_cache[cache_key] = result
     return _context_cache[cache_key]
@@ -569,10 +570,8 @@ async def get_character_state_snippet_for_prompt(
     for char_profile in character_profiles:
         if char_profile.name != protagonist_name:
             char_names_to_process.append(char_profile.name)
-        if (
-            len(char_names_to_process)
-            >= config.PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET
-        ):
+        max_chars = getattr(config, "PLANNING_CONTEXT_MAX_CHARACTERS_IN_SNIPPET", 5)
+        if len(char_names_to_process) >= max_chars:
             break
 
     # Build character profiles from the list
@@ -867,6 +866,7 @@ async def _gather_character_facts(
         # Process relationships
         if (
             not isinstance(relationships_result, Exception)
+            and isinstance(relationships_result, list)
             and facts_for_this_char < max_facts_per_char
             and len(facts_list) < max_total_facts
         ):

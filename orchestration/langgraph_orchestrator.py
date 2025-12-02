@@ -37,7 +37,7 @@ class LangGraphOrchestrator:
     - Resume capability
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         logger.info("Initializing LangGraph Orchestrator...")
         # Use settings.BASE_OUTPUT_DIR which is the Pydantic field
         self.project_dir = Path(config.settings.BASE_OUTPUT_DIR)
@@ -49,7 +49,7 @@ class LangGraphOrchestrator:
 
         logger.info("LangGraph Orchestrator initialized.")
 
-    async def run_novel_generation_loop(self):
+    async def run_novel_generation_loop(self) -> None:
         """
         Main entry point for LangGraph-based generation.
 
@@ -100,7 +100,7 @@ class LangGraphOrchestrator:
             # Stop Rich display
             await self.display.stop()
 
-    async def _ensure_neo4j_connection(self):
+    async def _ensure_neo4j_connection(self) -> None:
         """Ensure Neo4j connection is established."""
         logger.info("Connecting to Neo4j...")
         await neo4j_manager.connect()
@@ -371,7 +371,7 @@ class LangGraphOrchestrator:
         if node_name == "validate" or node_name == "validate_consistency":
             contradictions = state_update.get("contradictions", [])
             if contradictions:
-                severity_counts = {}
+                severity_counts: dict[str, int] = {}
                 for c in contradictions:
                     # Contradiction is a Pydantic model, not a dict
                     # Access severity as an attribute

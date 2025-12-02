@@ -24,7 +24,7 @@ class TripleProcessor:
     core validation logic.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the triple processor."""
         self._processing_stats = {
             "total_triples_processed": 0,
@@ -203,7 +203,7 @@ class TripleProcessor:
             else 0,
         }
 
-    def reset_statistics(self):
+    def reset_statistics(self) -> None:
         """Reset processing statistics (useful for testing)."""
         self._processing_stats = {
             "total_triples_processed": 0,

@@ -29,7 +29,7 @@ async def save_chapter_data_to_db(
     summary: str | None,
     embedding_array: np.ndarray | None,
     is_provisional: bool = False,
-):
+) -> None:
     if chapter_number <= 0:
         logger.error(
             f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}."
@@ -206,7 +206,9 @@ async def find_similar_chapters_in_db(
 
 # Native context functions for performance optimization
 async def find_semantic_context_native(
-    query_embedding: np.ndarray, current_chapter_number: int, limit: int = None
+    query_embedding: np.ndarray,
+    current_chapter_number: int,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Native version of semantic context retrieval using single optimized query.

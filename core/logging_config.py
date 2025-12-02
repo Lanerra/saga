@@ -17,12 +17,12 @@ try:
 except Exception:
     RICH_AVAILABLE = False
 
-    class RichHandler(stdlib_logging.Handler):
+    class RichHandler(stdlib_logging.Handler):  # type: ignore[no-redef]
         def emit(self, record: stdlib_logging.LogRecord) -> None:
             stdlib_logging.getLogger(__name__).handle(record)
 
 
-def setup_saga_logging():
+def setup_saga_logging() -> None:
     """
     Setup SAGA logging infrastructure with Rich console output and file rotation.
 
@@ -49,9 +49,10 @@ def setup_saga_logging():
         root_logger.info("Simple logging mode enabled: console only.")
     elif config.LOG_FILE:
         try:
-            log_path = os.path.join(
-                config.settings.BASE_OUTPUT_DIR, config.settings.LOG_FILE
-            )
+            log_file = config.settings.LOG_FILE
+            if log_file is None:
+                raise ValueError("LOG_FILE is None but config.LOG_FILE was truthy")
+            log_path = os.path.join(config.settings.BASE_OUTPUT_DIR, log_file)
             os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
             file_handler = stdlib_logging.handlers.RotatingFileHandler(
                 log_path,

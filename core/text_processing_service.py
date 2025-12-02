@@ -32,7 +32,7 @@ class TokenizerService:
     with proper fallback mechanisms.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the tokenizer service."""
         self._tokenizer_cache: dict[str, tiktoken.Encoding] = {}
         self._stats = {
@@ -235,7 +235,7 @@ class ResponseCleaningService:
     unwanted content from LLM outputs.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the response cleaning service."""
         self._stats = {
             "responses_cleaned": 0,
@@ -264,7 +264,7 @@ class ResponseCleaningService:
 
     def _compile_cleaning_patterns(self) -> dict[str, list[re.Pattern]]:
         """Pre-compile regex patterns for better performance."""
-        patterns = {
+        patterns: dict[str, list[re.Pattern]] = {
             "think_blocks": [],
             "think_self_closing": [],
             "think_opening": [],
@@ -454,7 +454,7 @@ class TextProcessingService:
     combining tokenization and cleaning functionality.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the text processing service with all sub-services."""
         self.tokenizer = TokenizerService()
         self.response_cleaner = ResponseCleaningService()

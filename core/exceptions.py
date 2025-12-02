@@ -47,7 +47,7 @@ class ConfigurationError(SAGACoreError):
     """Errors related to system configuration."""
 
 
-def create_error_context(**kwargs) -> dict[str, Any]:
+def create_error_context(**kwargs: Any) -> dict[str, Any]:
     """
     Helper function to create standardized error context dictionaries.
 
@@ -61,7 +61,7 @@ def create_error_context(**kwargs) -> dict[str, Any]:
 
 
 def handle_database_error(
-    operation: str, original_error: Exception, **context
+    operation: str, original_error: Exception, **context: Any
 ) -> DatabaseError:
     """
     Convert generic exceptions to standardized database errors.
@@ -96,7 +96,7 @@ def handle_database_error(
 
 
 def handle_llm_error(
-    operation: str, original_error: Exception, **context
+    operation: str, original_error: Exception, **context: Any
 ) -> LLMServiceError:
     """
     Convert generic exceptions to standardized LLM service errors.

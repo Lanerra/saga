@@ -25,6 +25,8 @@ Source Code Ported From:
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import structlog
 
@@ -714,7 +716,7 @@ async def _build_relationship_statements(
         entity_category_map[entity.name] = entity.attributes.get("category", "")
 
     # Helper to create subject/object dict with type info
-    def _make_entity_dict(name: str, original_name: str) -> dict:
+    def _make_entity_dict(name: str, original_name: str) -> dict[str, str]:
         entity_type = entity_type_map.get(original_name, "Object")
         entity_category = entity_category_map.get(original_name, "")
 
@@ -741,7 +743,7 @@ async def _build_relationship_statements(
         }
 
     # Convert to triple format
-    structured_triples = []
+    structured_triples: list[dict[str, Any]] = []
 
     for rel in relationships:
         source_name = char_mappings.get(rel.source_name, rel.source_name)
@@ -773,8 +775,14 @@ async def _build_relationship_statements(
             predicate = triple["predicate"]
             obj = triple["object_entity"]
 
+            # Explicit casting for mypy
+            if not isinstance(subject, dict) or not isinstance(obj, dict):
+                continue
+
             subject_name = subject["name"]
             subject_type = subject["type"]
+            if not isinstance(predicate, str):
+                predicate = str(predicate)
             predicate_clean = predicate.strip().upper().replace(" ", "_")
             object_name = obj["name"]
             object_type = obj["type"]

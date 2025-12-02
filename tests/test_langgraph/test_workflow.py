@@ -20,7 +20,7 @@ class TestPhase1Workflow:
     """End-to-end workflow tests."""
 
     @pytest.mark.asyncio
-    async def test_workflow_successful_path(self):
+    async def test_workflow_successful_path(self) -> None:
         """Test successful workflow execution: extract → commit → validate → end."""
         # Create initial state with draft text
         state = create_initial_state(
@@ -132,7 +132,7 @@ class TestPhase1Workflow:
                                     assert mock_neo4j.execute_cypher_batch.called
 
     @pytest.mark.asyncio
-    async def test_workflow_with_revision_loop(self):
+    async def test_workflow_with_revision_loop(self) -> None:
         """Test workflow with revision: extract → commit → validate → revise → extract."""
         state = create_initial_state(
             project_id="test-revision",
@@ -193,7 +193,7 @@ class TestPhase1Workflow:
                             )
 
     @pytest.mark.asyncio
-    async def test_workflow_max_iterations_limit(self):
+    async def test_workflow_max_iterations_limit(self) -> None:
         """Test workflow respects max_iterations limit."""
         state = create_initial_state(
             project_id="test-max-iter",
@@ -245,7 +245,7 @@ class TestPhase1Workflow:
                             assert result is not None
 
     @pytest.mark.asyncio
-    async def test_workflow_force_continue(self):
+    async def test_workflow_force_continue(self) -> None:
         """Test workflow with force_continue flag bypasses revision."""
         state = create_initial_state(
             project_id="test-force",
@@ -300,7 +300,7 @@ class TestPhase1Workflow:
 class TestWorkflowConditionalEdges:
     """Tests for conditional edge routing logic."""
 
-    def test_should_revise_when_needed(self):
+    def test_should_revise_when_needed(self) -> None:
         """Test should_revise returns 'revise' when needs_revision=True."""
         from core.langgraph.workflow import should_revise
 
@@ -314,7 +314,7 @@ class TestWorkflowConditionalEdges:
         result = should_revise(state)
         assert result == "revise"
 
-    def test_should_revise_when_max_iterations_reached(self):
+    def test_should_revise_when_max_iterations_reached(self) -> None:
         """Test should_revise returns 'end' when max iterations reached."""
         from core.langgraph.workflow import should_revise
 
@@ -328,7 +328,7 @@ class TestWorkflowConditionalEdges:
         result = should_revise(state)
         assert result == "end"
 
-    def test_should_revise_when_force_continue(self):
+    def test_should_revise_when_force_continue(self) -> None:
         """Test should_revise returns 'end' when force_continue=True."""
         from core.langgraph.workflow import should_revise
 
@@ -342,7 +342,7 @@ class TestWorkflowConditionalEdges:
         result = should_revise(state)
         assert result == "end"
 
-    def test_should_revise_when_not_needed(self):
+    def test_should_revise_when_not_needed(self) -> None:
         """Test should_revise returns 'end' when needs_revision=False."""
         from core.langgraph.workflow import should_revise
 
@@ -357,10 +357,13 @@ class TestWorkflowConditionalEdges:
         assert result == "end"
 
 
+from typing import Any
+
+
 class TestCheckpointer:
     """Tests for checkpoint configuration."""
 
-    def test_create_checkpointer(self, tmp_path):
+    def test_create_checkpointer(self, tmp_path: Any) -> None:
         """Test checkpointer creation."""
         from core.langgraph.workflow import create_checkpointer
 
@@ -373,7 +376,7 @@ class TestCheckpointer:
 
         assert os.path.exists(tmp_path)
 
-    def test_graph_with_checkpointing(self, tmp_path):
+    def test_graph_with_checkpointing(self, tmp_path: Any) -> None:
         """Test graph creation with checkpointing enabled."""
         from core.langgraph.workflow import create_checkpointer, create_phase1_graph
 
@@ -383,7 +386,7 @@ class TestCheckpointer:
 
         assert graph is not None
 
-    def test_graph_without_checkpointing(self):
+    def test_graph_without_checkpointing(self) -> None:
         """Test graph creation without checkpointing."""
         from core.langgraph.workflow import create_phase1_graph
 

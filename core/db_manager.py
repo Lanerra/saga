@@ -19,15 +19,16 @@ logger = structlog.get_logger(__name__)
 
 
 class Neo4jManagerSingleton:
-    _instance = None
+    _instance: 'Neo4jManagerSingleton' = None  # type: ignore
+    _initialized_flag: bool
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> 'Neo4jManagerSingleton':
         if not cls._instance:
             cls._instance = super().__new__(cls)
             cls._instance._initialized_flag = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if self._initialized_flag:
             return
 
@@ -41,7 +42,7 @@ class Neo4jManagerSingleton:
             "Neo4jManagerSingleton initialized. Call connect() to establish connection."
         )
 
-    async def connect(self):
+    async def connect(self) -> None:
         """Establish a synchronous Neo4j driver and verify connectivity."""
         # Close any existing driver first (mirrors previous async behavior)
         if self.driver:
@@ -79,7 +80,7 @@ class Neo4jManagerSingleton:
             self.driver = None
             raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the synchronous driver."""
         if self.driver:
             try:
@@ -94,7 +95,7 @@ class Neo4jManagerSingleton:
         else:
             self.logger.info("No active Neo4j driver to close (driver was None).")
 
-    async def _ensure_connected(self):
+    async def _ensure_connected(self) -> None:
         if self.driver is None:
             self.logger.info("Driver is None, attempting to connect.")
             await self.connect()
@@ -119,7 +120,7 @@ class Neo4jManagerSingleton:
     ) -> list[dict[str, Any]]:
         self.logger.debug(f"Executing Cypher query: {query} with params: {parameters}")
         result_cursor = tx.run(query, parameters)
-        return list(result_cursor)
+        return [dict(record) for record in result_cursor]
 
     def _sync_execute_read_query(
         self, query: str, parameters: dict[str, Any] | None = None
@@ -143,7 +144,7 @@ class Neo4jManagerSingleton:
 
     def _sync_execute_cypher_batch(
         self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
-    ):
+    ) -> None:
         if not cypher_statements_with_params:
             self.logger.info("execute_cypher_batch: No statements to execute.")
             return
@@ -183,7 +184,7 @@ class Neo4jManagerSingleton:
                     },
                 ) from e
 
-    def _ensure_connected_sync(self):
+    def _ensure_connected_sync(self) -> None:
         """Synchronous counterpart of _ensure_connected for thread helpers."""
         if self.driver is None:
             # This should only be called from within a thread where we
@@ -214,18 +215,18 @@ class Neo4jManagerSingleton:
 
     async def execute_cypher_batch(
         self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
-    ):
+    ) -> None:
         await self._ensure_connected()
-        return await asyncio.to_thread(
+        await asyncio.to_thread(
             self._sync_execute_cypher_batch, cypher_statements_with_params
         )
 
     async def execute_in_transaction(
         self,
-        transaction_func,
-        *args,
-        **kwargs,
-    ):
+        transaction_func: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
         """
         Execute a function within a Neo4j transaction with automatic rollback on errors.
 
@@ -260,7 +261,7 @@ class Neo4jManagerSingleton:
         """
         await self._ensure_connected()
 
-        def _run_transaction():
+        def _run_transaction() -> Any:
             """Synchronous function to run in thread."""
             assert self.driver is not None
             with self.driver.session(database=config.NEO4J_DATABASE) as session:
@@ -541,12 +542,18 @@ class Neo4jManagerSingleton:
                 f"Attempting to convert non-numpy array to list for Neo4j: {type(embedding)}"
             )
             if hasattr(embedding, "tolist"):
-                return embedding.tolist()  # type: ignore[union-attr]
+                result = embedding.tolist()  # type: ignore[union-attr]
+                if isinstance(result, list):
+                    return result
             self.logger.error(
                 f"Cannot convert type {type(embedding)} to list for Neo4j."
             )
             return None
-        return embedding.astype(np.float32).tolist()
+        result = embedding.astype(np.float32).tolist()
+        if isinstance(result, list):
+            return result
+        # If it's a scalar (0-d array), tolist() returns a scalar
+        return [result]
 
     def list_to_embedding(
         self, embedding_list: list[float | int] | None

@@ -39,7 +39,7 @@ class BootstrapContentValidator:
     the content generated during bootstrap and the configuration values used at runtime.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = structlog.get_logger(__name__)
 
     def validate_plot_outline_consistency(

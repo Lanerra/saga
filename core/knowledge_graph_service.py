@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
 class KnowledgeGraphService:
     """Single service handling all KG operations with native models"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.cypher_builder = NativeCypherBuilder()
 
     async def persist_entities(
@@ -75,7 +75,7 @@ class KnowledgeGraphService:
             return False
 
     async def fetch_characters(
-        self, filters: dict[str, Any] = None
+        self, filters: dict[str, Any] | None = None
     ) -> list[CharacterProfile]:
         """
         Fetch characters directly as models without dict conversion.
@@ -99,7 +99,7 @@ class KnowledgeGraphService:
 
             for record in results:
                 if record and record.get("c"):
-                    char = CharacterProfile.from_db_record(record)
+                    char = CharacterProfile.from_dict_record(record)
                     characters.append(char)
 
             logger.debug("Fetched %d characters using native models", len(characters))
@@ -110,7 +110,7 @@ class KnowledgeGraphService:
             return []
 
     async def fetch_world_items(
-        self, filters: dict[str, Any] = None
+        self, filters: dict[str, Any] | None = None
     ) -> list[WorldItem]:
         """
         Fetch world items directly as models without dict conversion.
@@ -135,7 +135,7 @@ class KnowledgeGraphService:
 
             for record in results:
                 if record and record.get("w"):
-                    item = WorldItem.from_db_record(record)
+                    item = WorldItem.from_dict_record(record)
                     world_items.append(item)
 
             logger.debug("Fetched %d world items using native models", len(world_items))

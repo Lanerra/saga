@@ -283,7 +283,7 @@ class NativeCypherBuilder:
 
     @staticmethod
     def character_fetch_cypher(
-        filters: dict[str, Any] = None,
+        filters: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """
         Generate optimized Cypher for fetching characters with relationships.
@@ -330,7 +330,7 @@ class NativeCypherBuilder:
 
     @staticmethod
     def world_item_fetch_cypher(
-        filters: dict[str, Any] = None,
+        filters: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """
         Generate optimized Cypher for fetching world items.

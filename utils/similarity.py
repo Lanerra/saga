@@ -95,7 +95,7 @@ async def find_semantically_closest_segment(
 
     semaphore = asyncio.Semaphore(max_concurrent)
 
-    async def _embed_with_limit(text: str):
+    async def _embed_with_limit(text: str) -> np.ndarray | None:
         async with semaphore:
             return await llm_service.async_get_embedding(text)
 
@@ -113,7 +113,8 @@ async def find_semantically_closest_segment(
             )
             continue
 
-        seg_embedding = seg_embedding_or_exc
+        # We know it's np.ndarray here
+        seg_embedding: np.ndarray = seg_embedding_or_exc  # type: ignore[assignment]
         similarity = numpy_cosine_similarity(query_embedding, seg_embedding)
 
         if similarity > highest_similarity:

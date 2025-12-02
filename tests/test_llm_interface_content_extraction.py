@@ -1,14 +1,17 @@
 # tests/test_llm_interface_content_extraction.py
+from collections.abc import AsyncGenerator
+from typing import Any
+
 import pytest
 
 from core.llm_interface_refactored import CompletionService
 
 
 class _DummyCompletionClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.called = False
 
-    async def get_completion(self, *args, **kwargs):
+    async def get_completion(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         self.called = True
         # Simulate provider that returns reasoning_content instead of content
         return {
@@ -29,9 +32,11 @@ class _DummyCompletionClient:
             "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         }
 
-    async def get_streaming_completion(self, *args, **kwargs):
+    async def get_streaming_completion(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[dict[str, Any], None]:
         # Yield two chunks that stream reasoning_content in the delta
-        async def _gen():
+        async def _gen() -> AsyncGenerator[dict[str, Any], None]:
             yield {
                 "choices": [
                     {"delta": {"reasoning_content": "Hello "}, "finish_reason": None}
@@ -53,26 +58,26 @@ class _DummyTextProcessor:
         def clean_response(self, text: str) -> str:
             return text.strip()
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.response_cleaner = self._Cleaner()
 
-    def get_combined_statistics(self):
+    def get_combined_statistics(self) -> dict[str, Any]:
         return {}
 
 
 @pytest.mark.asyncio
-async def test_extracts_reasoning_content_when_missing_content():
-    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())
+async def test_extracts_reasoning_content_when_missing_content() -> None:
+    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
     text, usage = await svc.get_completion("model", "prompt")
     assert text == "Reasoned output JSON"
     assert usage and usage.get("total_tokens") == 3
 
 
 @pytest.mark.asyncio
-async def test_streaming_delta_reasoning_content_accumulates():
+async def test_streaming_delta_reasoning_content_accumulates() -> None:
     # Streaming API removed; skip if method not available
     if not hasattr(CompletionService, "get_streaming_completion"):
         pytest.skip("Streaming completion is not supported in the current API")
-    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())
-    text, usage = await svc.get_streaming_completion("model", "prompt")
+    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
+    text, usage = await svc.get_streaming_completion("model", "prompt")  # type: ignore
     assert text == "Hello World"

@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import json
 import pickle
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 
 # Type definitions for file references
@@ -412,7 +413,10 @@ def save_outline(
 
 def load_outline(manager: ContentManager, ref: ContentRef | str) -> dict[str, Any]:
     """Load an outline."""
-    return manager.load_json(ref)
+    data = manager.load_json(ref)
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected dict outline, got {type(data)}")
+    return data
 
 
 def save_character_sheets(
@@ -428,7 +432,10 @@ def load_character_sheets(
     manager: ContentManager, ref: ContentRef | str
 ) -> dict[str, dict[str, Any]]:
     """Load character sheets."""
-    return manager.load_json(ref)
+    data = manager.load_json(ref)
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected dict character sheets, got {type(data)}")
+    return cast(dict[str, dict[str, Any]], data)
 
 
 def save_summaries(
@@ -476,7 +483,10 @@ def load_extracted_entities(
     manager: ContentManager, ref: ContentRef | str
 ) -> dict[str, list[dict[str, Any]]]:
     """Load extracted entities for a chapter."""
-    return manager.load_json(ref)
+    data = manager.load_json(ref)
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected dict extracted entities, got {type(data)}")
+    return cast(dict[str, list[dict[str, Any]]], data)
 
 
 def save_extracted_relationships(
@@ -495,7 +505,10 @@ def load_extracted_relationships(
     manager: ContentManager, ref: ContentRef | str
 ) -> list[dict[str, Any]]:
     """Load extracted relationships for a chapter."""
-    return manager.load_json(ref)
+    data = manager.load_json(ref)
+    if not isinstance(data, list):
+        raise ValueError(f"Expected list extracted relationships, got {type(data)}")
+    return data
 
 
 def save_active_characters(
@@ -514,7 +527,10 @@ def load_active_characters(
     manager: ContentManager, ref: ContentRef | str
 ) -> list[dict[str, Any]]:
     """Load active characters for a chapter."""
-    return manager.load_json(ref)
+    data = manager.load_json(ref)
+    if not isinstance(data, list):
+        raise ValueError(f"Expected list active characters, got {type(data)}")
+    return data
 
 
 def save_chapter_plan(
@@ -531,13 +547,16 @@ def load_chapter_plan(
     manager: ContentManager, ref: ContentRef | str
 ) -> list[dict[str, Any]]:
     """Load chapter plan for a chapter."""
-    return manager.load_json(ref)
+    data = manager.load_json(ref)
+    if not isinstance(data, list):
+        raise ValueError(f"Expected list chapter plan, got {type(data)}")
+    return data
 
 
 # Helper functions for content loading from external files (Phase 3: No fallback)
 
 
-def get_draft_text(state: dict, manager: ContentManager) -> str | None:
+def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str | None:
     """
     Get draft text from externalized content.
 
@@ -564,7 +583,7 @@ def get_draft_text(state: dict, manager: ContentManager) -> str | None:
     return manager.load_text(draft_ref)
 
 
-def get_scene_drafts(state: dict, manager: ContentManager) -> list[str]:
+def get_scene_drafts(state: Mapping[str, Any], manager: ContentManager) -> list[str]:
     """
     Get scene drafts from externalized content.
 
@@ -587,7 +606,9 @@ def get_scene_drafts(state: dict, manager: ContentManager) -> list[str]:
     return manager.load_list_of_texts(scene_drafts_ref)
 
 
-def get_previous_summaries(state: dict, manager: ContentManager) -> list[str]:
+def get_previous_summaries(
+    state: Mapping[str, Any], manager: ContentManager
+) -> list[str]:
     """
     Get previous chapter summaries from externalized content.
 
@@ -610,7 +631,7 @@ def get_previous_summaries(state: dict, manager: ContentManager) -> list[str]:
     return manager.load_list_of_texts(summaries_ref)
 
 
-def get_hybrid_context(state: dict, manager: ContentManager) -> str | None:
+def get_hybrid_context(state: Mapping[str, Any], manager: ContentManager) -> str | None:
     """
     Get hybrid context from externalized content.
 
@@ -633,7 +654,9 @@ def get_hybrid_context(state: dict, manager: ContentManager) -> str | None:
     return manager.load_text(hybrid_context_ref)
 
 
-def get_character_sheets(state: dict, manager: ContentManager) -> dict[str, dict]:
+def get_character_sheets(
+    state: Mapping[str, Any], manager: ContentManager
+) -> dict[str, dict]:
     """
     Get character sheets from externalized content.
 
@@ -653,10 +676,15 @@ def get_character_sheets(state: dict, manager: ContentManager) -> dict[str, dict
     if not character_sheets_ref:
         return {}
 
-    return manager.load_json(character_sheets_ref)
+    data = manager.load_json(character_sheets_ref)
+    if not isinstance(data, dict):
+        return {}
+    return cast(dict[str, dict[str, Any]], data)
 
 
-def get_chapter_outlines(state: dict, manager: ContentManager) -> dict[int, dict]:
+def get_chapter_outlines(
+    state: Mapping[str, Any], manager: ContentManager
+) -> dict[int, dict]:
     """
     Get chapter outlines from externalized content.
 
@@ -679,16 +707,19 @@ def get_chapter_outlines(state: dict, manager: ContentManager) -> dict[int, dict
     data = manager.load_json(chapter_outlines_ref)
     # Convert string keys to int keys if needed, skipping non-int keys
     result = {}
-    for k, v in data.items():
-        try:
-            result[int(k)] = v
-        except (ValueError, TypeError):
-            # Skip non-integer keys (e.g. metadata)
-            pass
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                result[int(k)] = v
+            except (ValueError, TypeError):
+                # Skip non-integer keys (e.g. metadata)
+                pass
     return result
 
 
-def get_global_outline(state: dict, manager: ContentManager) -> dict | None:
+def get_global_outline(
+    state: Mapping[str, Any], manager: ContentManager
+) -> dict | None:
     """
     Get global outline from externalized content.
 
@@ -708,10 +739,15 @@ def get_global_outline(state: dict, manager: ContentManager) -> dict | None:
     if not global_outline_ref:
         return None
 
-    return manager.load_json(global_outline_ref)
+    data = manager.load_json(global_outline_ref)
+    if not isinstance(data, dict):
+        return None
+    return data
 
 
-def get_act_outlines(state: dict, manager: ContentManager) -> dict[int, dict]:
+def get_act_outlines(
+    state: Mapping[str, Any], manager: ContentManager
+) -> dict[int, dict]:
     """
     Get act outlines from externalized content.
 
@@ -733,11 +769,18 @@ def get_act_outlines(state: dict, manager: ContentManager) -> dict[int, dict]:
 
     data = manager.load_json(act_outlines_ref)
     # Convert string keys to int keys if needed
-    return {int(k): v for k, v in data.items()}
+    result = {}
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                result[int(k)] = v
+            except (ValueError, TypeError):
+                pass
+    return result
 
 
 def get_extracted_entities(
-    state: dict, manager: ContentManager
+    state: Mapping[str, Any], manager: ContentManager
 ) -> dict[str, list[dict[str, Any]]]:
     """
     Get extracted entities from externalized content.
@@ -757,11 +800,14 @@ def get_extracted_entities(
         # Fallback to in-state content if ref not available
         return state.get("extracted_entities", {})
 
-    return manager.load_json(entities_ref)
+    data = manager.load_json(entities_ref)
+    if not isinstance(data, dict):
+        return {}
+    return cast(dict[str, list[dict[str, Any]]], data)
 
 
 def get_extracted_relationships(
-    state: dict, manager: ContentManager
+    state: Mapping[str, Any], manager: ContentManager
 ) -> list[dict[str, Any]]:
     """
     Get extracted relationships from externalized content.
@@ -781,10 +827,15 @@ def get_extracted_relationships(
         # Fallback to in-state content if ref not available
         return state.get("extracted_relationships", [])
 
-    return manager.load_json(relationships_ref)
+    data = manager.load_json(relationships_ref)
+    if not isinstance(data, list):
+        return []
+    return data
 
 
-def get_active_characters(state: dict, manager: ContentManager) -> list[dict[str, Any]]:
+def get_active_characters(
+    state: Mapping[str, Any], manager: ContentManager
+) -> list[dict[str, Any]]:
     """
     Get active characters from externalized content.
 
@@ -803,10 +854,15 @@ def get_active_characters(state: dict, manager: ContentManager) -> list[dict[str
         # Fallback to in-state content if ref not available
         return state.get("active_characters", [])
 
-    return manager.load_json(characters_ref)
+    data = manager.load_json(characters_ref)
+    if not isinstance(data, list):
+        return []
+    return data
 
 
-def get_chapter_plan(state: dict, manager: ContentManager) -> list[dict[str, Any]]:
+def get_chapter_plan(
+    state: Mapping[str, Any], manager: ContentManager
+) -> list[dict[str, Any]]:
     """
     Get chapter plan from externalized content.
 
@@ -825,7 +881,10 @@ def get_chapter_plan(state: dict, manager: ContentManager) -> list[dict[str, Any
         # Fallback to in-state content if ref not available
         return state.get("chapter_plan") or []
 
-    return manager.load_json(plan_ref)
+    data = manager.load_json(plan_ref)
+    if not isinstance(data, list):
+        return []
+    return data
 
 
 __all__ = [

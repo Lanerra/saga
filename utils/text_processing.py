@@ -270,7 +270,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
         alignment = partial_ratio_alignment(
             cleaned_llm_quote_for_direct_search, doc_text
         )
-        if getattr(alignment, "score", 0.0) >= 85.0:
+        if alignment is not None and getattr(alignment, "score", 0.0) >= 85.0:
             match_start = alignment.dest_start
             match_end = alignment.dest_end
             for _sent_text, s_start, s_end in sentences:
