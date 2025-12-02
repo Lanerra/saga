@@ -531,6 +531,52 @@ class Neo4jManagerSingleton:
                 )
 
     # -------------------------------------------------------------------------
+    # Database maintenance methods
+    # -------------------------------------------------------------------------
+
+    async def cleanup_orphaned_traits(self) -> int:
+        """
+        Remove Trait nodes that have no incoming HAS_TRAIT relationships.
+
+        This cleanup removes orphaned Trait nodes that were created but are no longer
+        referenced by any Character or WorldItem nodes. This can happen when:
+        - Characters/WorldItems are deleted
+        - Traits are updated and old trait relationships are removed
+
+        Returns:
+            Number of orphaned Trait nodes deleted
+        """
+        query = """
+        MATCH (t:Trait:Entity)
+        WHERE NOT EXISTS(()-[:HAS_TRAIT]->(t))
+        WITH t, t.name AS trait_name
+        DELETE t
+        RETURN count(trait_name) AS deleted_count
+        """
+
+        try:
+            result = await self.execute_write_query(query)
+            deleted_count = result[0].get("deleted_count", 0) if result else 0
+
+            if deleted_count > 0:
+                self.logger.info(
+                    "cleanup_orphaned_traits: removed orphaned Trait nodes",
+                    deleted_count=deleted_count,
+                )
+            else:
+                self.logger.debug("cleanup_orphaned_traits: no orphaned Trait nodes found")
+
+            return deleted_count
+
+        except Exception as e:
+            self.logger.error(
+                "cleanup_orphaned_traits: error during cleanup",
+                error=str(e),
+                exc_info=True,
+            )
+            raise
+
+    # -------------------------------------------------------------------------
     # Helper methods for embeddings – unchanged
     # -------------------------------------------------------------------------
 

@@ -303,7 +303,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         (
             """
         MATCH (t:Trait:Entity)
-        WHERE NOT EXISTS((:Character:Entity)-[:HAS_TRAIT]->(t))
+        WHERE NOT EXISTS(()-[:HAS_TRAIT]->(t))
         DETACH DELETE t
         """,
             {},
