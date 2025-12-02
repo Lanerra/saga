@@ -64,12 +64,21 @@ class CharacterProfile(BaseModel):
                         "description": rel.get("description", ""),
                     }
 
+        # Extract traits from query result (HAS_TRAIT relationships)
+        # Fallback to node property for backward compatibility
+        traits = record.get("traits", [])
+        if not traits:
+            node_dict = node if isinstance(node, dict) else dict(node)
+            traits = node_dict.get("traits", [])
+        # Filter out None/empty values
+        traits = [t for t in traits if t]
+
         # Node is already a dict if coming from db_manager
         node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             name=node_dict.get("name", ""),
             description=node_dict.get("description", ""),
-            traits=node_dict.get("traits", []),
+            traits=traits,
             status=node_dict.get("status", "Unknown"),
             relationships=relationships,
             created_chapter=node_dict.get("created_chapter", 0),
@@ -246,6 +255,15 @@ class WorldItem(BaseModel):
                         "description": rel.get("description", ""),
                     }
 
+        # Extract traits from query result (HAS_TRAIT relationships)
+        # Fallback to node property for backward compatibility
+        traits = record.get("traits", [])
+        if not traits:
+            node_dict = node if isinstance(node, dict) else dict(node)
+            traits = Neo4jExtractor.safe_list_extract(node_dict.get("traits", []))
+        # Filter out None/empty values
+        traits = [t for t in traits if t]
+
         node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
@@ -259,7 +277,7 @@ class WorldItem(BaseModel):
             key_elements=Neo4jExtractor.safe_list_extract(
                 node_dict.get("key_elements", [])
             ),
-            traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
+            traits=traits,
             created_chapter=Neo4jExtractor.safe_int_extract(
                 node_dict.get("created_chapter", 0)
             ),

@@ -1414,8 +1414,8 @@ async def find_contradictory_trait_characters(
     all_findings = []
     for trait1, trait2 in contradictory_trait_pairs:
         query = """
-        MATCH (c:Character)-[:HAS_TRAIT_ASPECT]->(t1:Trait {name: $trait1_param}),
-              (c)-[:HAS_TRAIT_ASPECT]->(t2:Trait {name: $trait2_param})
+        MATCH (c:Character)-[:HAS_TRAIT]->(t1:Trait {name: $trait1_param}),
+              (c)-[:HAS_TRAIT]->(t2:Trait {name: $trait2_param})
         RETURN c.name AS character_name, t1.name AS trait1, t2.name AS trait2
         """
         params = {"trait1_param": trait1, "trait2_param": trait2}

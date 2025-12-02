@@ -262,10 +262,11 @@ async def _check_character_traits(
 
     try:
         for char in extracted_chars:
-            # Get established traits from Neo4j
+            # Get established traits from Neo4j (from HAS_TRAIT relationships)
             query = """
                 MATCH (c:Character {name: $name})
-                RETURN c.traits AS traits,
+                OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
+                RETURN collect(DISTINCT t.name) AS traits,
                        c.created_chapter AS first_chapter,
                        c.description AS description
                 LIMIT 1
@@ -275,7 +276,9 @@ async def _check_character_traits(
 
             if result and len(result) > 0:
                 existing = result[0]
-                established_traits = set(existing.get("traits", []))
+                # Filter out None/empty values
+                traits_list = existing.get("traits", [])
+                established_traits = set(t for t in traits_list if t)
 
                 # Extract traits from new attributes
                 # Attributes dict may contain traits as keys
