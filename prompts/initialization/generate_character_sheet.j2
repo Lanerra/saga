@@ -28,7 +28,7 @@ The output must be a JSON object containing the following information:
 
 1. **name**: The character's name ("{{ character_name }}")
 2. **description**: Comprehensive description (200-300 words) covering physical appearance, personality, and background.
-3. **traits**: List of 5-7 key personality traits.
+3. **traits**: List of 5-7 **single-word** personality traits (e.g., "brave", "cynical", "impulsive"). Each trait must be ONE WORD ONLY.
 4. **status**: "Active"
 5. **motivations**: What drives this character? What do they want? (1-2 sentences)
 6. **background**: Brief history and important life events (1-2 sentences)
@@ -37,3 +37,4 @@ The output must be a JSON object containing the following information:
 9. **internal_conflict**: What internal struggle will they face? (1 sentence)
 
 *Ensure the relationships map uses the names of the other characters provided above where applicable.*
+{{ existing_traits_hint }}

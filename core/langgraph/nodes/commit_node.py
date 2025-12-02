@@ -46,6 +46,7 @@ from processing.entity_deduplication import (
     generate_entity_id,
     should_merge_entities,
 )
+from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
 
@@ -361,8 +362,17 @@ def _convert_to_character_profiles(
         # Use deduplicated name
         final_name = name_mappings.get(entity.name, entity.name)
 
-        # Extract traits from attributes
-        traits = entity.attributes.get("traits", [])
+        # Extract and validate traits from attributes
+        raw_traits = entity.attributes.get("traits", [])
+        traits = validate_and_filter_traits(raw_traits)
+
+        if len(traits) != len(raw_traits):
+            logger.warning(
+                "_extract_character_profiles_from_entities: filtered invalid traits",
+                character=final_name,
+                original_count=len(raw_traits),
+                filtered_count=len(traits),
+            )
 
         # Extract status
         status = entity.attributes.get("status", "Unknown")
