@@ -74,21 +74,10 @@ docker-compose up -d
 # Run generation loop
 python main.py
 
-# Bootstrap world/characters/plot (standalone)
-python main.py --bootstrap
-python main.py --bootstrap --bootstrap-phase world  # or characters|plot
-python main.py --bootstrap --bootstrap-reset-kg     # destructive: wipes Neo4j first
-```
-
 ### Testing
 ```bash
 # Run all tests
 pytest
-
-# Run specific test markers
-pytest -m unit
-pytest -m integration
-pytest -m "not slow"
 
 # Run with coverage
 pytest --cov=. --cov-report=term-missing
@@ -116,10 +105,6 @@ python reset_neo4j.py
 
 # Visualize LangGraph workflow
 python visualize_workflow.py
-
-# Test initialization only
-python init_test.py              # full test
-python init_test_minimal.py      # minimal test
 ```
 
 ## Architecture Overview
