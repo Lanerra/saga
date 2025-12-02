@@ -6,7 +6,11 @@
 3. **When in doubt, DO NOT extract.**
 
 **Context:** {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }} | Ch: {{ chapter_number }}
-**Labels:** {{ available_node_labels | join(', ') }} | **Relationships:** {{ available_relationship_types | join(', ') }}
+
+**IMPORTANT - Creative Freedom:**
+You have complete freedom to create entity types and relationship types that best describe the narrative.
+Use specific, descriptive types that capture the semantic meaning. Create new relationship types as needed
+for the narrative context. The examples below are suggestions, not restrictions.
 
 **Entity Ontology (Select MOST SPECIFIC Type):**
 *   **Living:** `Character` (Active), `Person` (Passive), `Creature`, `Spirit`, `Deity`.
@@ -25,8 +29,10 @@
 
 **Output Format (JSON Only):**
 Keys: `character_updates`, `world_updates`, `kg_triples`.
-*   `world_updates` keys MUST be specific node types (e.g., "Artifact", "Faction").
+*   `world_updates` keys should be specific node types (e.g., "Artifact", "Faction", or custom types).
 *   `kg_triples`: List of strings "SubjectType:Name | PREDICATE | ObjectType:Name".
+*   **Relationship Types:** Use semantically precise predicates. Create custom relationship types as needed
+    (e.g., "HAUNTED_BY", "PROPHESIED_TO_DESTROY", "CONCEALS_TRUTH_ABOUT", etc.). The more specific, the better.
 
 **Example:**
 ```json
@@ -36,7 +42,11 @@ Keys: `character_updates`, `world_updates`, `kg_triples`.
     "Artifact": { "Sunstone": { "description": "Ancient glowing gem." } },
     "PlotPoint": { "The Heist": { "description": "Elara betrays the Order." } }
   },
-  "kg_triples": ["Character:Elara | ACQUIRED | Artifact:Sunstone", "PlotPoint:The Heist | INVOLVES | Character:Elara"]
+  "kg_triples": [
+    "Character:Elara | ACQUIRED | Artifact:Sunstone",
+    "PlotPoint:The Heist | INVOLVES | Character:Elara",
+    "Character:Elara | BETRAYS | Organization:The Order"
+  ]
 }
 ```
 

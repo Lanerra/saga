@@ -199,11 +199,13 @@ async def _llm_extract_updates(
     Returns:
         Tuple of (extracted_text, usage_stats)
     """
-    # Load available schema types for the prompt
-    from models.kg_constants import (
-        NODE_LABELS,
-        RELATIONSHIP_TYPES,
-    )
+    # NOTE: Removed whitelist of node labels and relationship types.
+    # The LLM is now free to create any relationships and entity types
+    # that are narratively appropriate. This supports creative flexibility
+    # and emergent patterns not anticipated in the schema.
+    #
+    # Common types are still documented in the prompt template as examples,
+    # but the LLM is not restricted to using only those types.
 
     prompt = render_prompt(
         "knowledge_agent/extract_updates.j2",
@@ -214,8 +216,8 @@ async def _llm_extract_updates(
             "novel_title": title,
             "novel_genre": genre,
             "chapter_text": chapter_text,
-            "available_node_labels": sorted(NODE_LABELS),
-            "available_relationship_types": sorted(RELATIONSHIP_TYPES),
+            # Removed: available_node_labels and available_relationship_types
+            # The LLM should create semantically appropriate types based on narrative context
         },
     )
 

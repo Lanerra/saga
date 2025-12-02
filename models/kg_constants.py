@@ -1,5 +1,23 @@
 # models/kg_constants.py
-"""Constants used for property names and the canonical schema in the knowledge graph."""
+"""
+Constants used for property names and the canonical schema in the knowledge graph.
+
+**IMPORTANT - PERMISSIVE MODE:**
+As of the LangGraph migration, SAGA now operates in PERMISSIVE MODE for entity types
+and relationships. The constants defined here serve as:
+
+1. **Suggestions and Examples** - Common patterns for LLMs to reference
+2. **Documentation** - A catalog of frequently used types in narratives
+3. **Analytics** - For tracking and analyzing emergent patterns
+
+They are **NOT** enforcement mechanisms. The LLM is free to create:
+- Novel entity types not listed in NODE_LABELS
+- Novel relationship types not listed in RELATIONSHIP_TYPES
+- Custom combinations appropriate for the narrative context
+
+This supports creative freedom, genre-specific conventions, and emergent patterns
+that weren't anticipated when designing the schema.
+"""
 
 # Relationship and node property names
 KG_REL_CHAPTER_ADDED = "chapter_added"
@@ -9,8 +27,11 @@ KG_IS_PROVISIONAL = "is_provisional"
 
 
 # --- Canonical Schema Definition ---
+# NOTE: These are SUGGESTED types, not required types.
+# LLMs can create custom types as needed for narrative context.
 
-# Set of known node labels used in the knowledge graph.
+# Set of commonly used node labels in the knowledge graph.
+# The LLM can create new node types beyond this set.
 NODE_LABELS = {
     # === CORE EXISTING TYPES ===
     "Entity",  # Base label - all nodes inherit this
@@ -126,6 +147,10 @@ NODE_LABELS = {
 
 
 # --- NARRATIVE-FOCUSED RELATIONSHIP TAXONOMY ---
+# NOTE: These are SUGGESTED relationship types, not required types.
+# The LLM can create custom relationship types as needed for narrative precision.
+# More specific relationship types (e.g., "HAUNTED_BY", "PROPHESIED_TO_DESTROY")
+# are encouraged over generic ones for richer semantic modeling.
 
 # Structural Relationships (SAGA system architecture)
 STRUCTURAL_RELATIONSHIPS = {
@@ -365,7 +390,9 @@ RELATIONSHIP_CATEGORIES = {
 }
 
 # Combine all relationship categories into a single set
-# This is the single source of truth for all valid relationship types
+# NOTE: This set contains commonly used relationship types, but is NOT exhaustive.
+# The LLM can and should create custom relationship types for narrative precision.
+# This set is used for reference and analytics, not enforcement.
 RELATIONSHIP_TYPES = set()
 for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)

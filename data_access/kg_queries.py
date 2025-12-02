@@ -22,6 +22,8 @@ logger = structlog.get_logger(__name__)
 _upgrade_logged = set()
 
 # Valid relationship types for narrative knowledge graphs - use canonical constants
+# NOTE: This is used for informational logging only, not enforcement.
+# In permissive mode, novel relationship types are allowed and encouraged.
 VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
 # Lookup table for canonical node labels to ensure consistent casing
