@@ -362,22 +362,13 @@ def _convert_to_character_profiles(
         final_name = name_mappings.get(entity.name, entity.name)
 
         # Extract traits from attributes
-        traits = [
-            k for k, v in entity.attributes.items() if isinstance(v, str) and not v
-        ]
-        if not traits:
-            # Try to extract from description or use empty list
-            traits = []
+        traits = entity.attributes.get("traits", [])
 
         # Extract status
         status = entity.attributes.get("status", "Unknown")
 
         # Extract relationships
-        relationships = {
-            k: v
-            for k, v in entity.attributes.items()
-            if isinstance(v, str) and v and k != "status"
-        }
+        relationships = entity.attributes.get("relationships", {})
 
         profiles.append(
             CharacterProfile(
