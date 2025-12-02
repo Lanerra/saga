@@ -715,9 +715,23 @@ async def _build_relationship_statements(
         entity_type_map[entity.name] = entity.type
         entity_category_map[entity.name] = entity.attributes.get("category", "")
 
+    logger.debug(
+        "_build_relationship_statements: entity type map",
+        entity_count=len(entity_type_map),
+        entity_types=list(entity_type_map.items())[:10],  # Log first 10 for debugging
+    )
+
     # Helper to create subject/object dict with type info
-    def _make_entity_dict(name: str, original_name: str) -> dict[str, str]:
-        entity_type = entity_type_map.get(original_name, "Object")
+    def _make_entity_dict(
+        name: str, original_name: str, explicit_type: str | None = None
+    ) -> dict[str, str]:
+        # Use explicit type if provided (from ExtractedRelationship.source_type/target_type)
+        # Otherwise fall back to entity_type_map lookup
+        if explicit_type:
+            entity_type = explicit_type
+        else:
+            entity_type = entity_type_map.get(original_name, "Object")
+
         entity_category = entity_category_map.get(original_name, "")
 
         # Map extraction types to Neo4j node types
@@ -752,10 +766,15 @@ async def _build_relationship_statements(
         if rel.target_name in world_mappings:
             target_name = world_mappings[rel.target_name]
 
+        # Use explicit types from relationship if available (from parsing "Type:Name" format)
+        # Otherwise _make_entity_dict will fall back to entity_type_map
+        source_type = getattr(rel, "source_type", None)
+        target_type = getattr(rel, "target_type", None)
+
         triple = {
-            "subject": _make_entity_dict(source_name, rel.source_name),
+            "subject": _make_entity_dict(source_name, rel.source_name, source_type),
             "predicate": rel.relationship_type,
-            "object_entity": _make_entity_dict(target_name, rel.target_name),
+            "object_entity": _make_entity_dict(target_name, rel.target_name, target_type),
             "is_literal_object": False,
             "description": rel.description,
             "confidence": rel.confidence,
