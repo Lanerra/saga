@@ -172,7 +172,7 @@ class EmbeddingService:
         self._stats["embeddings_requested"] += 1
 
         if not text or not isinstance(text, str) or not text.strip():
-            logger.warning("get_embedding: empty or invalid text provided")
+            logger.warning(f"get_embedding: empty or invalid text provided. Text repr: {repr(text)}")
             self._stats["embeddings_failed"] += 1
             return None
 

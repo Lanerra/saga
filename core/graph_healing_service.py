@@ -286,7 +286,7 @@ Provide the following information (only include fields where you have reasonable
         # Note: Removed n.is_active check as it's not a standard field
         query = """
             MATCH (n)
-            WHERE n.description IS NOT NULL
+            WHERE n.description IS NOT NULL AND n.description <> "" AND trim(n.description) <> ""
             RETURN
                 elementId(n) AS element_id,
                 n.name AS name,
