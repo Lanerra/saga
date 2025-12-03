@@ -241,7 +241,7 @@ def _build_character_context_from_sheets(character_sheets: dict) -> str:
         is_protag = sheet.get("is_protagonist", False)
         role = "Protagonist" if is_protag else "Main Character"
         # Truncate description to first 200 chars for context
-        desc = sheet.get("description", "")[:200]
+        desc = sheet.get("description", "")
         context_parts.append(f"**{name}** ({role}): {desc}...")
 
     return "\n\n".join(context_parts)

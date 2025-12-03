@@ -342,7 +342,7 @@ def _write_outline_files(
     }
 
     if global_outline:
-        raw = global_outline.get("raw_text", "")[:500] + "..."
+        raw = global_outline.get("raw_text", "") + "..."
         structure_data["global_outline"] = {
             "act_count": global_outline.get("act_count", 3),
             "structure_type": global_outline.get("structure_type", "3-act"),
@@ -353,7 +353,7 @@ def _write_outline_files(
     if act_outlines:
         structure_data["acts"] = {}
         for act_num, act_data in sorted(act_outlines.items()):
-            raw = act_data.get("raw_text", "")[:300] + "..."
+            raw = act_data.get("raw_text", "") + "..."
             structure_data["acts"][f"act_{act_num}"] = {
                 "act_number": act_num,
                 "role": act_data.get("act_role", ""),

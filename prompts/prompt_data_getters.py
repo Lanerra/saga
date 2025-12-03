@@ -797,10 +797,10 @@ async def _gather_character_facts(
         character_tasks.extend(
             [
                 kg_queries.get_most_recent_value_from_db(
-                    char_name, "status_is", kg_chapter_limit
+                    char_name, "STATUS_IS", kg_chapter_limit
                 ),
                 kg_queries.get_most_recent_value_from_db(
-                    char_name, "located_in", kg_chapter_limit
+                    char_name, "LOCATED_IN", kg_chapter_limit
                 ),
                 kg_queries.query_kg_from_db(
                     subject=char_name, chapter_limit=kg_chapter_limit

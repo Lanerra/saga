@@ -342,12 +342,11 @@ async def _extract_world_items_from_outline(
 Setting: {setting}
 
 Story Outline:
-{outline_text[:1500]}
+{outline_text}
 
 Identify and list:
 1. Important LOCATIONS (cities, buildings, regions)
 2. Important OBJECTS (artifacts, items, technology)
-3. Important CONCEPTS (magic systems, technologies, organizations)
 
 For each item, provide:
 - Name
@@ -358,8 +357,7 @@ Format each as: [CATEGORY] Name: Description
 
 Example:
 [Location] Seattle Public Library Ruins: Abandoned library now home to rogue AI
-[Object] Memory Implant: Device that allows AI to implant false memories
-[Concept] The Nexus: Central AI controlling all implanted humans"""
+[Object] Memory Implant: Device that allows AI to implant false memories"""
 
     try:
         model = model_name or config.NARRATIVE_MODEL
@@ -367,7 +365,7 @@ Example:
             model_name=model,
             prompt=prompt,
             temperature=0.5,
-            max_tokens=1000,
+            max_tokens=2000,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),

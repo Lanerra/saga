@@ -493,7 +493,7 @@ async def _summarize_scene_text(
 Scene Title: {scene_title}
 
 Scene Text:
-{scene_text[:4000]}  # Limit input to avoid overwhelming context
+{scene_text}  # Limit input to avoid overwhelming context
 
 Provide a concise summary (max 100 words):"""
 

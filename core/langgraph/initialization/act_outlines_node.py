@@ -174,7 +174,7 @@ async def _generate_single_act_outline(
             "total_acts": total_acts,
             "act_role": act_role,
             "chapters_in_act": chapters_in_act,
-            "global_outline": global_outline_text[:2000],  # Truncate if too long
+            "global_outline": global_outline_text,  # Truncate if too long
             "character_context": character_context,
             "protagonist_name": state.get("protagonist_name", ""),
         },
@@ -271,8 +271,7 @@ def _build_character_summary(character_sheets: dict[str, dict]) -> str:
         role = "Protagonist" if is_protag else "Character"
         # Get first sentence or 100 chars of description
         desc = sheet.get("description", "")
-        first_sentence = desc.split(".")[0] if desc else "No description"
-        summaries.append(f"- **{name}** ({role}): {first_sentence[:100]}")
+        summaries.append(f"- **{name}** ({role}): {desc}")
 
     return "\n".join(summaries)
 

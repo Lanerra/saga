@@ -122,7 +122,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             logger.warning(
                 "summarize_chapter: failed to parse summary, using raw text",
                 chapter=state.get("current_chapter", 1),
-                raw_text=summary_text[:100],
+                raw_text=summary_text,
             )
             # Use first few sentences of raw text as fallback
             summary = " ".join(summary_text.strip().split(".")[:3]) + "."
