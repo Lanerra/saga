@@ -113,13 +113,93 @@ def validate_world_item_fields(
     return category, name, item_id
 
 
+def is_single_word_trait(trait: str) -> bool:
+    """
+    Check if a trait is a valid single-word trait.
+
+    A valid single-word trait:
+    - Contains only letters, numbers, and hyphens (no spaces)
+    - Starts with a letter
+    - Is not empty
+
+    Args:
+        trait: The trait to validate
+
+    Returns:
+        True if the trait is a valid single-word trait, False otherwise
+    """
+    if not isinstance(trait, str) or not trait:
+        return False
+
+    # Remove quotes if present (from JSON)
+    trait = trait.strip('"').strip("'").strip()
+
+    # Check pattern: must start with letter, can contain letters, numbers, hyphens
+    pattern = r'^[a-zA-Z][a-zA-Z0-9-]*$'
+    return bool(re.match(pattern, trait)) and ' ' not in trait
+
+
 def normalize_trait_name(trait: str) -> str:
-    """Return a canonical representation of a trait name."""
+    """
+    Return a canonical representation of a trait name.
+
+    Enforces single-word trait requirement by:
+    1. Converting to lowercase
+    2. Removing spaces and replacing with hyphens (for multi-word traits)
+    3. Removing special characters except hyphens
+    4. Returning empty string if invalid
+
+    Args:
+        trait: The trait to normalize
+
+    Returns:
+        Normalized trait name or empty string if invalid
+    """
     if not isinstance(trait, str):
         trait = str(trait)
-    cleaned = re.sub(r"[^a-z0-9 ]", "", trait.strip().lower())
-    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    # Strip quotes and whitespace
+    cleaned = trait.strip('"').strip("'").strip().lower()
+
+    # Remove special characters except hyphens and spaces (temporarily)
+    cleaned = re.sub(r"[^a-z0-9 -]", "", cleaned)
+
+    # Replace multiple spaces with single hyphen
+    cleaned = re.sub(r"\s+", "-", cleaned)
+
+    # Remove leading/trailing hyphens
+    cleaned = cleaned.strip("-")
+
+    # Validate it's a single word (no spaces after normalization)
+    if not cleaned or not is_single_word_trait(cleaned):
+        return ""
+
     return cleaned
+
+
+def validate_and_filter_traits(traits: list[str]) -> list[str]:
+    """
+    Validate and filter a list of traits to ensure all are single-word.
+
+    Args:
+        traits: List of trait strings to validate
+
+    Returns:
+        List of valid, normalized, unique traits
+    """
+    if not isinstance(traits, list):
+        return []
+
+    valid_traits = []
+    seen = set()
+
+    for trait in traits:
+        normalized = normalize_trait_name(trait)
+        if normalized and normalized not in seen:
+            valid_traits.append(normalized)
+            seen.add(normalized)
+
+    return valid_traits
 
 
 class SpaCyModelManager:

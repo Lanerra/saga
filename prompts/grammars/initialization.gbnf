@@ -16,7 +16,7 @@ char-arc-object ::= "{" ws "\"character_name\"" ws ":" ws json-string "," ws "\"
 character-list ::= string-list
 
 # 3. Character Sheet (CharacterProfile)
-character-sheet ::= "{" ws "\"name\"" ws ":" ws json-string "," ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws string-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"motivations\"" ws ":" ws json-string "," ws "\"background\"" ws ":" ws json-string "," ws "\"skills\"" ws ":" ws string-list "," ws "\"relationships\"" ws ":" ws relationship-map "," ws "\"internal_conflict\"" ws ":" ws json-string ws "}"
+character-sheet ::= "{" ws "\"name\"" ws ":" ws json-string "," ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws trait-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"motivations\"" ws ":" ws json-string "," ws "\"background\"" ws ":" ws json-string "," ws "\"skills\"" ws ":" ws string-list "," ws "\"relationships\"" ws ":" ws relationship-map "," ws "\"internal_conflict\"" ws ":" ws json-string ws "}"
 
 relationship-map ::= "{" ws (relationship-entry ("," ws relationship-entry)*)? ws "}"
 relationship-entry ::= json-string ws ":" ws json-string

@@ -24,6 +24,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from models.kg_models import CharacterProfile, WorldItem
 from prompts.prompt_renderer import get_system_prompt
+from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
 
@@ -151,7 +152,17 @@ async def _parse_character_sheets_to_profiles(
 
     for name, sheet in character_sheets.items():
         # Check if we have pre-parsed structured data
-        traits = sheet.get("traits", [])
+        raw_traits = sheet.get("traits", [])
+        traits = validate_and_filter_traits(raw_traits)
+
+        if len(traits) != len(raw_traits):
+            logger.warning(
+                "_parse_character_sheets_to_profiles: filtered invalid traits",
+                character=name,
+                original_count=len(raw_traits),
+                filtered_count=len(traits),
+            )
+
         status = sheet.get("status", "Active")
         motivations = sheet.get("motivations", "")
         background = sheet.get("background", "")
@@ -170,7 +181,8 @@ async def _parse_character_sheets_to_profiles(
             structured_data = await _extract_structured_character_data(
                 name, description
             )
-            traits = structured_data.get("traits", [])
+            raw_extracted_traits = structured_data.get("traits", [])
+            traits = validate_and_filter_traits(raw_extracted_traits)
             status = structured_data.get("status", status)
             motivations = structured_data.get("motivations", motivations)
             background = structured_data.get("background", background)
@@ -227,7 +239,7 @@ Character Sheet:
 {description}
 
 Extract the following in a structured format:
-1. **Traits** (list 3-7 key personality traits)
+1. **Traits** (list 3-7 **single-word** personality traits, e.g., "brave", "cynical", "impulsive")
 2. **Status** (their current state: Active, Deceased, Missing, etc.)
 3. **Motivations** (what drives them, in 1-2 sentences)
 4. **Background** (brief summary of history, 1-2 sentences)

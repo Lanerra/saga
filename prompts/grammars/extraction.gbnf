@@ -7,7 +7,7 @@ root ::= character-extraction | world-extraction | relationship-extraction
 character-extraction ::= "{" ws "\"character_updates\"" ws ":" ws character-map ws "}"
 character-map ::= "{" ws (character-entry ("," ws character-entry)*)? ws "}"
 character-entry ::= json-string ws ":" ws character-details
-character-details ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws string-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"relationships\"" ws ":" ws relationship-map ws "}"
+character-details ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws trait-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"relationships\"" ws ":" ws relationship-map ws "}"
 
 # 2. World Extraction (Locations, Events)
 world-extraction ::= "{" ws "\"world_updates\"" ws ":" ws category-map ws "}"
@@ -36,3 +36,8 @@ json-bool ::= "true" | "false"
 json-null ::= "null"
 ws ::= [ \t\n\r]*
 string-list ::= "[" ws (json-string ("," ws json-string)*)? ws "]"
+
+# Trait-specific definitions
+# Single-word trait: alphanumeric only, no spaces or special characters (except hyphens for compound traits)
+single-word-trait ::= "\"" [a-zA-Z][a-zA-Z0-9-]* "\""
+trait-list ::= "[" ws (single-word-trait ("," ws single-word-trait)*)? ws "]"

@@ -28,6 +28,7 @@ from core.llm_interface_refactored import llm_service
 from processing.entity_deduplication import generate_entity_id
 from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
 
@@ -105,8 +106,12 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
 
         for name, info in raw_updates.items():
             if isinstance(info, dict):
+                # Validate and filter traits
+                raw_traits = info.get("traits", [])
+                validated_traits = validate_and_filter_traits(raw_traits)
+
                 attributes = {
-                    "traits": info.get("traits", []),
+                    "traits": validated_traits,
                     "status": info.get("status", "Unknown"),
                     "relationships": info.get("relationships", {}),
                 }

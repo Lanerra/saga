@@ -13,13 +13,46 @@ import re
 
 import structlog
 
+from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
+
+
+async def _get_existing_traits() -> list[str]:
+    """
+    Fetch existing trait names from the database to encourage reuse.
+
+    Returns:
+        List of existing trait names (normalized)
+    """
+    try:
+        query = """
+        MATCH (t:Trait:Entity)
+        RETURN DISTINCT t.name AS trait_name
+        ORDER BY trait_name
+        LIMIT 100
+        """
+        results = await neo4j_manager.execute_read_query(query)
+        if results:
+            traits = [r["trait_name"] for r in results if r.get("trait_name")]
+            logger.info(
+                "_get_existing_traits: fetched existing traits",
+                count=len(traits),
+            )
+            return traits
+        return []
+    except Exception as e:
+        logger.warning(
+            "_get_existing_traits: failed to fetch existing traits",
+            error=str(e),
+        )
+        return []
 
 
 def _parse_character_sheet_response(
@@ -67,6 +100,19 @@ def _parse_character_sheet_response(
         # Ensure name matches requested character if not provided or empty
         if not parsed.get("name"):
             parsed["name"] = character_name
+
+        # Validate and filter traits to ensure single-word format
+        raw_traits = parsed.get("traits", [])
+        parsed["traits"] = validate_and_filter_traits(raw_traits)
+
+        if len(parsed["traits"]) != len(raw_traits):
+            logger.warning(
+                "_parse_character_sheet_response: filtered invalid traits",
+                character=character_name,
+                original_count=len(raw_traits),
+                filtered_count=len(parsed["traits"]),
+                removed=set(raw_traits) - set(parsed["traits"]),
+            )
 
         # Transform relationships if needed to internal structure
         structured_relationships = {}
@@ -127,6 +173,10 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
             "initialization_step": "character_sheets_failed",
         }
 
+    # Step 0: Fetch existing traits to encourage reuse
+    logger.info("generate_character_sheets: fetching existing traits")
+    existing_traits = await _get_existing_traits()
+
     # Step 1: Generate list of main characters
     logger.info("generate_character_sheets: generating character list")
     character_list = await _generate_character_list(state)
@@ -153,6 +203,7 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
             state=state,
             character_name=character_name,
             other_characters=character_list,
+            existing_traits=existing_traits,
         )
 
         if sheet:
@@ -278,6 +329,7 @@ async def _generate_character_sheet(
     state: NarrativeState,
     character_name: str,
     other_characters: list[str],
+    existing_traits: list[str] | None = None,
 ) -> dict[str, any] | None:
     """
     Generate a detailed character sheet for a specific character.
@@ -286,11 +338,21 @@ async def _generate_character_sheet(
         state: Current narrative state
         character_name: Name of the character to generate sheet for
         other_characters: List of other main characters for context
+        existing_traits: List of existing traits in the database to encourage reuse
 
     Returns:
         Dictionary containing character sheet details or None on failure
     """
     is_protagonist = character_name == state.get("protagonist_name", "")
+
+    # Prepare existing traits hint for the prompt
+    existing_traits_hint = ""
+    if existing_traits:
+        traits_sample = existing_traits[:20]  # Limit to 20 examples
+        existing_traits_hint = (
+            f"\n\nExisting traits in the story (consider reusing to create interconnectedness): "
+            f"{', '.join(traits_sample)}"
+        )
 
     prompt = render_prompt(
         "initialization/generate_character_sheet.j2",
@@ -302,6 +364,7 @@ async def _generate_character_sheet(
             "character_name": character_name,
             "is_protagonist": is_protagonist,
             "other_characters": [c for c in other_characters if c != character_name],
+            "existing_traits_hint": existing_traits_hint,
         },
     )
 
