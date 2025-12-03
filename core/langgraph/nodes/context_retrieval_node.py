@@ -89,27 +89,53 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     # =========================================================================
     # 1. Scene-Specific Character Context
     # =========================================================================
-    character_context = await _get_scene_character_context(
-        current_scene=current_scene,
-        chapter_number=chapter_number,
-        chapter_outlines=chapter_outlines,
-        model_name=model_name,
-    )
-    if character_context:
-        hybrid_context_parts.append(character_context)
+    try:
+        character_context = await _get_scene_character_context(
+            current_scene=current_scene,
+            chapter_number=chapter_number,
+            chapter_outlines=chapter_outlines,
+            model_name=model_name,
+        )
+        if character_context:
+            hybrid_context_parts.append(character_context)
+    except Exception as e:
+        logger.error(
+            "retrieve_context: fatal error getting character profiles",
+            error=str(e),
+            exc_info=True,
+        )
+        return {
+            **state,
+            "has_fatal_error": True,
+            "last_error": f"Failed to retrieve character profiles: {str(e)}",
+            "error_node": "retrieve_context",
+        }
 
     # =========================================================================
     # 2. Scene-Specific KG Facts
     # =========================================================================
-    kg_facts_block = await _get_scene_specific_kg_facts(
-        current_scene=current_scene,
-        chapter_number=chapter_number,
-        chapter_outlines=chapter_outlines,
-        chapter_plan=chapter_plan,
-        model_name=model_name,
-    )
-    if kg_facts_block:
-        hybrid_context_parts.append(kg_facts_block)
+    try:
+        kg_facts_block = await _get_scene_specific_kg_facts(
+            current_scene=current_scene,
+            chapter_number=chapter_number,
+            chapter_outlines=chapter_outlines,
+            chapter_plan=chapter_plan,
+            model_name=model_name,
+        )
+        if kg_facts_block:
+            hybrid_context_parts.append(kg_facts_block)
+    except Exception as e:
+        logger.error(
+            "retrieve_context: fatal error getting KG facts",
+            error=str(e),
+            exc_info=True,
+        )
+        return {
+            **state,
+            "has_fatal_error": True,
+            "last_error": f"Failed to retrieve KG facts: {str(e)}",
+            "error_node": "retrieve_context",
+        }
 
     # =========================================================================
     # 3. Previous Chapter Summaries
@@ -218,36 +244,28 @@ async def _get_scene_character_context(
         characters=scene_characters,
     )
 
-    # Get filtered character profiles
-    try:
-        character_profiles_text = (
-            await get_filtered_character_profiles_for_prompt_plain_text(
-                character_names=scene_characters,
-                up_to_chapter_inclusive=chapter_number - 1
-                if chapter_number > 1
-                else config.KG_PREPOPULATION_CHAPTER_NUM,
-            )
+    # Get filtered character profiles - let exceptions propagate
+    character_profiles_text = (
+        await get_filtered_character_profiles_for_prompt_plain_text(
+            character_names=scene_characters,
+            up_to_chapter_inclusive=chapter_number - 1
+            if chapter_number > 1
+            else config.KG_PREPOPULATION_CHAPTER_NUM,
         )
+    )
 
-        if (
-            character_profiles_text
-            and character_profiles_text != "No character profiles available."
-        ):
-            # Truncate if exceeds budget
-            truncated = truncate_text_by_tokens(
-                text=character_profiles_text,
-                model_name=model_name,
-                max_tokens=CHARACTER_PROFILES_TOKEN_BUDGET,
-                truncation_marker="\n... (character profiles truncated for context budget)",
-            )
-            return f"**Scene Character Profiles:**\n{truncated}"
-
-    except Exception as e:
-        logger.error(
-            "retrieve_context: error getting character profiles",
-            error=str(e),
-            exc_info=True,
+    if (
+        character_profiles_text
+        and character_profiles_text != "No character profiles available."
+    ):
+        # Truncate if exceeds budget
+        truncated = truncate_text_by_tokens(
+            text=character_profiles_text,
+            model_name=model_name,
+            max_tokens=CHARACTER_PROFILES_TOKEN_BUDGET,
+            truncation_marker="\n... (character profiles truncated for context budget)",
         )
+        return f"**Scene Character Profiles:**\n{truncated}"
 
     return None
 
@@ -328,36 +346,28 @@ async def _get_scene_specific_kg_facts(
         **current_scene,
     }
 
-    try:
-        # Get KG facts with scene-specific filtering
-        # Import config to get protagonist_name
-        protagonist_name = getattr(config, "DEFAULT_PROTAGONIST_NAME", "Protagonist")
+    # Get KG facts with scene-specific filtering - let exceptions propagate
+    # Import config to get protagonist_name
+    protagonist_name = getattr(config, "DEFAULT_PROTAGONIST_NAME", "Protagonist")
 
-        kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
-            chapter_outlines=chapter_outlines,
-            chapter_number=chapter_number,
-            chapter_plan=[
-                scene_detail
-            ],  # Pass only current scene for focused filtering
-            protagonist_name=protagonist_name,
+    kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
+        chapter_outlines=chapter_outlines,
+        chapter_number=chapter_number,
+        chapter_plan=[
+            scene_detail
+        ],  # Pass only current scene for focused filtering
+        protagonist_name=protagonist_name,
+    )
+
+    if kg_facts_block and "No specific reliable KG facts" not in kg_facts_block:
+        # Truncate if exceeds budget
+        truncated = truncate_text_by_tokens(
+            text=kg_facts_block,
+            model_name=model_name,
+            max_tokens=KG_FACTS_TOKEN_BUDGET,
+            truncation_marker="\n... (KG facts truncated for context budget)",
         )
-
-        if kg_facts_block and "No specific reliable KG facts" not in kg_facts_block:
-            # Truncate if exceeds budget
-            truncated = truncate_text_by_tokens(
-                text=kg_facts_block,
-                model_name=model_name,
-                max_tokens=KG_FACTS_TOKEN_BUDGET,
-                truncation_marker="\n... (KG facts truncated for context budget)",
-            )
-            return truncated
-
-    except Exception as e:
-        logger.error(
-            "retrieve_context: error getting KG facts",
-            error=str(e),
-            exc_info=True,
-        )
+        return truncated
 
     return None
 
@@ -632,8 +642,8 @@ async def _get_scene_location_context(
                 )
 
     except Exception as e:
-        logger.debug(
-            "retrieve_context: could not get location context",
+        logger.warning(
+            "retrieve_context: non-fatal error getting location context, continuing without it",
             location=location_name,
             error=str(e),
         )
@@ -711,8 +721,8 @@ async def _get_semantic_context(
         )
 
     except Exception as e:
-        logger.error(
-            "retrieve_context: error getting semantic context",
+        logger.warning(
+            "retrieve_context: non-fatal error getting semantic context, continuing without it",
             error=str(e),
             exc_info=True,
         )
