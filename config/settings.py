@@ -59,6 +59,81 @@ async def _load_list_from_json_async(
         return default_if_missing
 
 
+class RelationshipNormalizationSettings(BaseSettings):
+    """
+    Settings for relationship type normalization.
+
+    Controls how SAGA maintains consistent relationship vocabulary while
+    allowing creative flexibility for genuinely novel relationships.
+    """
+
+    # Master toggle
+    ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(
+        default=True,
+        description="Enable relationship normalization system"
+    )
+
+    # Similarity thresholds
+    SIMILARITY_THRESHOLD: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Cosine similarity threshold for normalizing relationships"
+    )
+
+    SIMILARITY_THRESHOLD_AMBIGUOUS_MIN: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity for ambiguous cases requiring LLM review"
+    )
+
+    # Vocabulary management
+    MIN_USAGE_FOR_AUTHORITY: int = Field(
+        default=3,
+        ge=1,
+        description="Relationship must be used this many times before it's authoritative"
+    )
+
+    PRUNE_SINGLE_USE_AFTER_CHAPTERS: int = Field(
+        default=10,
+        ge=1,
+        description="Remove single-use relationships after this many chapters"
+    )
+
+    MAX_VOCABULARY_SIZE: int = Field(
+        default=100,
+        ge=10,
+        description="Maximum number of relationship types to maintain"
+    )
+
+    # Example retention
+    MAX_EXAMPLES_PER_RELATIONSHIP: int = Field(
+        default=5,
+        ge=1,
+        description="Maximum example descriptions to keep per relationship type"
+    )
+
+    # Advanced features
+    USE_LLM_DISAMBIGUATION: bool = Field(
+        default=False,
+        description="Use LLM to disambiguate ambiguous similarity cases"
+    )
+
+    NORMALIZE_CASE_VARIANTS: bool = Field(
+        default=True,
+        description="Treat case variations as identical (WORKS_WITH == works_with)"
+    )
+
+    NORMALIZE_PUNCTUATION_VARIANTS: bool = Field(
+        default=True,
+        description="Treat punctuation variations as identical (WORKS_WITH == WORKS-WITH)"
+    )
+
+    class Config:
+        env_prefix = "SAGA_REL_NORM_"
+
+
 class SagaSettings(BaseSettings):
     """Full configuration for the Saga system."""
 
@@ -211,6 +286,11 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
+
+    # Relationship Normalization
+    relationship_normalization: RelationshipNormalizationSettings = Field(
+        default_factory=RelationshipNormalizationSettings
+    )
 
     @model_validator(mode="after")
     def set_dynamic_model_defaults(self) -> SagaSettings:
