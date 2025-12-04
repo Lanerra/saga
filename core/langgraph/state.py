@@ -351,6 +351,14 @@ class NarrativeState(TypedDict, total=False):
     initialization_step: str | None  # Current initialization step
 
     # =========================================================================
+    # Relationship Vocabulary (for normalization)
+    # =========================================================================
+    relationship_vocabulary: dict[str, Any]  # Maps canonical_type -> RelationshipUsage dict
+    relationship_vocabulary_size: int  # Track vocabulary growth
+    relationships_normalized_this_chapter: int  # Monitoring metric
+    relationships_novel_this_chapter: int  # Monitoring metric
+
+    # =========================================================================
     # Graph Healing State (for provisional node enrichment and merging)
     # =========================================================================
     provisional_count: int  # Number of provisional nodes in the graph
@@ -508,6 +516,11 @@ def create_initial_state(
         # Initialization phase
         "initialization_complete": False,
         "initialization_step": None,
+        # Relationship normalization
+        "relationship_vocabulary": {},
+        "relationship_vocabulary_size": 0,
+        "relationships_normalized_this_chapter": 0,
+        "relationships_novel_this_chapter": 0,
         # Graph healing
         "provisional_count": 0,
         "last_healing_chapter": 0,
