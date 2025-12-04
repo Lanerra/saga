@@ -19,7 +19,7 @@ Usage:
     from core.langgraph import (
         NarrativeState,
         create_initial_state,
-        create_phase1_graph,
+        create_phase2_graph,
         create_checkpointer,
         visualize_workflow
     )
@@ -39,7 +39,7 @@ Usage:
 
     # Create and run workflow
     checkpointer = create_checkpointer("./checkpoints/my-novel.db")
-    graph = create_phase1_graph(checkpointer=checkpointer)
+    graph = create_phase2_graph(checkpointer=checkpointer)
 
     # Visualize workflow (for debugging)
     visualize_workflow(graph, "docs/workflow.md", format="mermaid")
@@ -51,7 +51,6 @@ Usage:
 from core.langgraph.graph_context import build_context_from_graph, get_key_events
 from core.langgraph.nodes import (
     commit_to_graph,
-    extract_entities,
     finalize_chapter,
     generate_chapter,
     revise_chapter,
@@ -72,9 +71,7 @@ from core.langgraph.visualization import (
 )
 from core.langgraph.workflow import (
     create_checkpointer,
-    create_phase1_graph,
     create_phase2_graph,
-    should_revise,
     should_revise_or_continue,
 )
 
@@ -86,11 +83,9 @@ __all__ = [
     "ExtractedRelationship",
     "Contradiction",
     "create_initial_state",
-    # Nodes (Phase 1)
-    "extract_entities",
+    # Nodes
     "commit_to_graph",
     "validate_consistency",
-    # Nodes (Phase 2)
     "generate_chapter",
     "revise_chapter",
     "summarize_chapter",
@@ -99,10 +94,8 @@ __all__ = [
     "build_context_from_graph",
     "get_key_events",
     # Workflow
-    "create_phase1_graph",
     "create_phase2_graph",
     "create_checkpointer",
-    "should_revise",
     "should_revise_or_continue",
     # Visualization
     "visualize_workflow",

@@ -26,7 +26,6 @@ Each node follows the LangGraph signature:
 """
 
 from core.langgraph.nodes.commit_node import commit_to_graph
-from core.langgraph.nodes.extraction_node import extract_entities
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.generation_node import generate_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
@@ -35,7 +34,6 @@ from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.nodes.validation_node import validate_consistency
 
 __all__ = [
-    "extract_entities",
     "commit_to_graph",
     "validate_consistency",
     "generate_chapter",
