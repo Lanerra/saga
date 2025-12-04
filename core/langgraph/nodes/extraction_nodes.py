@@ -8,6 +8,7 @@ to extract characters, locations, events, and relationships.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from typing import Any
@@ -153,7 +154,8 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     # Get existing world_items to append to
-    existing_entities = state.get("extracted_entities", {})
+    # Deep copy to avoid mutating original state
+    existing_entities = copy.deepcopy(state.get("extracted_entities", {}))
     existing_world_items = existing_entities.get("world_items", [])
     existing_characters = existing_entities.get("characters", [])
 
@@ -273,7 +275,8 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     # Get existing world_items to append to
-    existing_entities = state.get("extracted_entities", {})
+    # Deep copy to avoid mutating original state
+    existing_entities = copy.deepcopy(state.get("extracted_entities", {}))
     existing_world_items = existing_entities.get("world_items", [])
     existing_characters = existing_entities.get("characters", [])
 
@@ -390,7 +393,8 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     # Get existing entities to check if we need to create new ones
-    existing_entities = state.get("extracted_entities", {})
+    # Deep copy to avoid mutating original state
+    existing_entities = copy.deepcopy(state.get("extracted_entities", {}))
     existing_characters = existing_entities.get("characters", [])
     existing_world_items = existing_entities.get("world_items", [])
 
