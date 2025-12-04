@@ -23,6 +23,10 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 
 # Type definitions for file references
 class ContentRef(TypedDict, total=False):
@@ -833,6 +837,56 @@ def get_extracted_relationships(
     return data
 
 
+def set_extracted_relationships(
+    manager: ContentManager,
+    relationships: list[Any],
+    state: Mapping[str, Any],
+) -> None:
+    """
+    Save extracted relationships to externalized content.
+
+    This is used by normalize_relationships node to save normalized
+    relationships back to externalized storage.
+
+    Args:
+        manager: ContentManager instance
+        relationships: List of relationships to save (ExtractedRelationship objects)
+        state: Current state (for accessing current_chapter)
+    """
+    chapter = state.get("current_chapter", 1)
+
+    # Convert to dicts for JSON serialization
+    rel_dicts = []
+    for r in relationships:
+        # Handle both dict and object types
+        if isinstance(r, dict):
+            rel_dicts.append(r)
+        else:
+            # Convert ExtractedRelationship object to dict
+            rel_dicts.append(
+                {
+                    "source_name": r.source_name,
+                    "target_name": r.target_name,
+                    "relationship_type": r.relationship_type,
+                    "description": r.description,
+                    "chapter": r.chapter,
+                    "confidence": r.confidence,
+                    "source_type": getattr(r, "source_type", None),
+                    "target_type": getattr(r, "target_type", None),
+                }
+            )
+
+    # Save to content manager
+    ref = save_extracted_relationships(manager, rel_dicts, chapter)
+
+    logger.debug(
+        "Saved normalized relationships",
+        chapter=chapter,
+        count=len(relationships),
+        ref=ref.get("path") if isinstance(ref, dict) else None,
+    )
+
+
 def get_active_characters(
     state: Mapping[str, Any], manager: ContentManager
 ) -> list[dict[str, Any]]:
@@ -921,6 +975,7 @@ __all__ = [
     "get_act_outlines",
     "get_extracted_entities",
     "get_extracted_relationships",
+    "set_extracted_relationships",
     "get_active_characters",
     "get_chapter_plan",
 ]
