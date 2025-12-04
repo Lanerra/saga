@@ -451,7 +451,6 @@ class LangGraphOrchestrator:
             "generate": "Generating Chapter Text",
             "generate_chapter": "Generating Chapter Text",
             "extract": "Extracting Entities & Relationships",
-            "extract_entities": "Extracting Entities & Relationships",
             "commit": "Committing to Knowledge Graph",
             "commit_to_graph": "Committing to Knowledge Graph",
             "validate": "Validating Consistency",

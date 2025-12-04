@@ -24,7 +24,6 @@ import structlog
 from core.langgraph.visualization import print_workflow_summary, visualize_workflow
 from core.langgraph.workflow import (
     create_full_workflow_graph,
-    create_phase1_graph,
     create_phase2_graph,
 )
 
@@ -138,7 +137,6 @@ def _generate_all_workflows(output_dir: str, format_override: str | None) -> Non
     extension = _get_extension(format_to_use)
 
     workflows = {
-        "phase1": (create_phase1_graph, "Phase 1 Workflow (Extract, Commit, Validate)"),
         "phase2": (create_phase2_graph, "Phase 2 Workflow (Full Chapter Generation)"),
         "full": (
             create_full_workflow_graph,
@@ -163,7 +161,7 @@ def _generate_single(workflow: str, output: str, format_override: str | None) ->
     """Generate a single workflow visualization.
 
     Args:
-        workflow: Workflow type (phase1, phase2, full).
+        workflow: Workflow type (phase2, full).
         output: Output file path.
         format_override: Optional format override.
     """
@@ -204,7 +202,7 @@ def _print_summary(workflow: str) -> None:
     """Print workflow summary to console.
 
     Args:
-        workflow: Workflow type (phase1, phase2, full).
+        workflow: Workflow type (phase2, full).
     """
     graph = _create_graph(workflow)
     title = _get_title(workflow)
@@ -215,14 +213,12 @@ def _create_graph(workflow: str) -> Any:
     """Create a workflow graph.
 
     Args:
-        workflow: Workflow type (phase1, phase2, full).
+        workflow: Workflow type (phase2, full).
 
     Returns:
         Compiled LangGraph StateGraph.
     """
-    if workflow == "phase1":
-        return create_phase1_graph()
-    elif workflow == "phase2":
+    if workflow == "phase2":
         return create_phase2_graph()
     elif workflow == "full":
         return create_full_workflow_graph()
@@ -234,13 +230,12 @@ def _get_title(workflow: str) -> str:
     """Get title for a workflow.
 
     Args:
-        workflow: Workflow type (phase1, phase2, full).
+        workflow: Workflow type (phase2, full).
 
     Returns:
         Human-readable title.
     """
     titles = {
-        "phase1": "Phase 1 Workflow (Extract, Commit, Validate)",
         "phase2": "Phase 2 Workflow (Full Chapter Generation)",
         "full": "Full SAGA Workflow (Initialization + Generation)",
     }
