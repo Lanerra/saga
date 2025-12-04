@@ -17,6 +17,9 @@ from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.embedding_node import generate_embedding
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
+from core.langgraph.nodes.relationship_normalization_node import (
+    normalize_relationships,
+)
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.nodes.validation_node import validate_consistency
@@ -205,6 +208,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     This is the full narrative generation workflow including:
     - Generation: Create chapter from outline and context (SUBGRAPH)
     - Extraction: Extract entities and relationships (SUBGRAPH)
+    - Normalization: Normalize relationship types against vocabulary
     - Commitment: Deduplicate and commit to Neo4j
     - Validation: Check for contradictions and quality issues (SUBGRAPH)
     - Revision: Fix issues (conditional, with iteration limit)
@@ -212,7 +216,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     - Finalization: Persist to filesystem and Neo4j
 
     Workflow:
-        generate_subgraph → extract_subgraph → commit → validate_subgraph → {revise? revise → extract : summarize} → finalize → END
+        generate_subgraph → extract_subgraph → normalize_relationships → commit → validate_subgraph → {revise? revise → extract : summarize} → finalize → END
 
     Migration Reference: docs/phase2_migration_plan.md - Step 2.5
 
@@ -235,6 +239,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     # Add nodes (using subgraphs where applicable)
     workflow.add_node("generate", create_generation_subgraph())
     workflow.add_node("extract", create_extraction_subgraph())
+    workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
     workflow.add_node("revise", revise_chapter)
@@ -256,6 +261,16 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     # Add error checking after extract
     workflow.add_conditional_edges(
         "extract",
+        should_handle_error,
+        {
+            "error": "error_handler",
+            "continue": "normalize_relationships",
+        },
+    )
+
+    # Add error checking after normalize_relationships
+    workflow.add_conditional_edges(
+        "normalize_relationships",
         should_handle_error,
         {
             "error": "error_handler",
@@ -321,6 +336,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
         nodes=[
             "generate (subgraph)",
             "extract (subgraph)",
+            "normalize_relationships",
             "commit",
             "validate (subgraph)",
             "revise",
@@ -485,19 +501,20 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
        a. Generates chapter outline (on-demand)
        b. Generates chapter text
        c. Extracts entities
-       d. Commits to graph
-       e. Validates
-       f. Optionally revises
-       g. Summarizes and finalizes
+       d. Normalizes relationship types
+       e. Commits to graph
+       f. Validates
+       g. Optionally revises
+       h. Summarizes and finalizes
 
     Workflow:
         START → {init?}
                 ├─ initialize → [character_sheets → global_outline → act_outlines] → chapter_loop
                 └─ chapter_loop → {outline?}
                                   ├─ chapter_outline → generate
-                                  └─ generate → extract → commit → validate → {revise?}
-                                                                                 ├─ revise → extract
-                                                                                 └─ summarize → finalize → END
+                                  └─ generate → extract → normalize_relationships → commit → validate → {revise?}
+                                                                                                           ├─ revise → extract
+                                                                                                           └─ summarize → finalize → END
 
     Args:
         checkpointer: Optional checkpoint saver (SqliteSaver, PostgresSaver, etc.)
@@ -580,6 +597,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("generate", create_generation_subgraph())
     workflow.add_node("gen_embedding", generate_embedding)
     workflow.add_node("extract", create_extraction_subgraph())
+    workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
     workflow.add_node("revise", revise_chapter)
@@ -624,10 +642,11 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     # Generation flow
     # Run embedding generation and extraction after text generation
     # Ideally these could be parallel, but for now we sequence them
-    # generate -> gen_embedding -> extract -> commit
+    # generate -> gen_embedding -> extract -> normalize_relationships -> commit
     workflow.add_edge("generate", "gen_embedding")
     workflow.add_edge("gen_embedding", "extract")
-    workflow.add_edge("extract", "commit")
+    workflow.add_edge("extract", "normalize_relationships")
+    workflow.add_edge("normalize_relationships", "commit")
     workflow.add_edge("commit", "validate")
 
     # Conditional edge: validate → (revise or summarize)
@@ -653,7 +672,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=15,  # route + init_error + 6 init nodes + 7 generation nodes (including heal_graph)
+        total_nodes=16,  # route + init_error + 6 init + 8 generation (added normalize_relationships)
         entry_point="route",
     )
 
