@@ -219,7 +219,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
     except Exception as e:
         logger.error(
-            "commit_to_graph: error during commit",
+            "commit_to_graph: fatal error during commit",
             error=str(e),
             chapter=state.get("current_chapter", 1),
             exc_info=True,
@@ -228,6 +228,8 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             **state,
             "current_node": "commit_to_graph",
             "last_error": f"Commit to graph failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "commit",
         }
 
 

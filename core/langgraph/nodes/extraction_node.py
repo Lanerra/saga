@@ -106,10 +106,11 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
         extraction_model=state.get("medium_model", ""),
     )
 
-    # Handle extraction failure
+    # Handle extraction failure - fail fast
     if not raw_text or not raw_text.strip():
-        logger.warning(
-            "extract_entities: LLM extraction returned no text",
+        error_msg = "LLM extraction returned empty response"
+        logger.error(
+            "extract_entities: fatal error - LLM extraction returned no text",
             chapter=state.get("current_chapter", 1),
         )
         return {
@@ -117,7 +118,9 @@ async def extract_entities(state: NarrativeState) -> NarrativeState:
             "extracted_entities": {},
             "extracted_relationships": [],
             "current_node": "extract_entities",
-            "last_error": "LLM extraction returned empty response",
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "extract",
         }
 
     # Parse extraction results
@@ -221,25 +224,20 @@ async def _llm_extract_updates(
         },
     )
 
-    try:
-        text, usage = await llm_service.async_call_llm(
-            model_name=extraction_model,
-            prompt=prompt,
-            temperature=config.Temperatures.KG_EXTRACTION,
-            max_tokens=config.MAX_KG_TRIPLE_TOKENS,
-            allow_fallback=True,
-            stream_to_disk=False,
-            frequency_penalty=config.FREQUENCY_PENALTY_KG_EXTRACTION,
-            presence_penalty=config.PRESENCE_PENALTY_KG_EXTRACTION,
-            auto_clean_response=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-        )
-        return text, usage
-    except Exception as e:
-        logger.error(
-            "_llm_extract_updates: LLM call failed", error=str(e), exc_info=True
-        )
-        return "", None
+    # Let exceptions propagate - the caller will handle them with has_fatal_error
+    text, usage = await llm_service.async_call_llm(
+        model_name=extraction_model,
+        prompt=prompt,
+        temperature=config.Temperatures.KG_EXTRACTION,
+        max_tokens=config.MAX_KG_TRIPLE_TOKENS,
+        allow_fallback=True,
+        stream_to_disk=False,
+        frequency_penalty=config.FREQUENCY_PENALTY_KG_EXTRACTION,
+        presence_penalty=config.PRESENCE_PENALTY_KG_EXTRACTION,
+        auto_clean_response=True,
+        system_prompt=get_system_prompt("knowledge_agent"),
+    )
+    return text, usage
 
 
 async def _extract_updates_as_models(
@@ -420,12 +418,13 @@ async def _extract_updates_as_models(
 
     except Exception as e:
         logger.error(
-            "_extract_updates_as_models: error processing extraction data",
+            "_extract_updates_as_models: fatal error processing extraction data",
             error=str(e),
             chapter=chapter_number,
             exc_info=True,
         )
-        return [], [], []
+        # Re-raise exception - let the caller handle it with has_fatal_error
+        raise
 
 
 async def _parse_extraction_json(
