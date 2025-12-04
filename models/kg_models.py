@@ -354,3 +354,60 @@ class WorldItem(BaseModel):
             "additional_props": self.additional_properties,
             # Note: relationships handled separately
         }
+
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class RelationshipUsage:
+    """
+    Tracks usage of a relationship type in the narrative.
+
+    Used by relationship normalization to maintain consistent vocabulary
+    while allowing creative flexibility for genuinely novel relationships.
+    """
+    canonical_type: str  # The normalized form (e.g., "WORKS_WITH")
+    first_used_chapter: int  # When first introduced
+    usage_count: int  # How many times used across narrative
+    example_descriptions: list[str] = field(default_factory=list)  # Sample usage contexts
+    embedding: list[float] | None = None  # Cached embedding for fast comparison
+    synonyms: list[str] = field(default_factory=list)  # Variant forms normalized to this
+    last_used_chapter: int = 0  # Most recent usage
+
+    class Config:
+        """Pydantic configuration."""
+        frozen = False
+        validate_assignment = True
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "canonical_type": self.canonical_type,
+            "first_used_chapter": self.first_used_chapter,
+            "usage_count": self.usage_count,
+            "example_descriptions": self.example_descriptions,
+            "embedding": self.embedding,
+            "synonyms": self.synonyms,
+            "last_used_chapter": self.last_used_chapter,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RelationshipUsage":
+        """Create from dictionary (for deserialization)."""
+        return cls(
+            canonical_type=data["canonical_type"],
+            first_used_chapter=data["first_used_chapter"],
+            usage_count=data["usage_count"],
+            example_descriptions=data.get("example_descriptions", []),
+            embedding=data.get("embedding"),
+            synonyms=data.get("synonyms", []),
+            last_used_chapter=data.get("last_used_chapter", 0),
+        )
+
+
+__all__ = [
+    "CharacterProfile",
+    "WorldItem",
+    "RelationshipUsage",
+]
