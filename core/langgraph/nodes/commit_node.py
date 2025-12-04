@@ -1,10 +1,40 @@
 # core/langgraph/nodes/commit_node.py
 """
-Knowledge graph commit node with deduplication for LangGraph workflow.
+Knowledge graph commit node with two-phase deduplication for LangGraph workflow.
 
 This module contains the deduplication and Neo4j commit logic ported from
 processing/entity_deduplication.py and various data_access modules for use
 in the LangGraph-based narrative generation workflow.
+
+## Two-Phase Deduplication Architecture
+
+This module implements a two-phase deduplication strategy to prevent duplicate
+entities in the knowledge graph:
+
+### Phase 1: Name-Based Deduplication (BEFORE Relationships)
+- Runs during entity extraction
+- Uses Levenshtein similarity on entity names and descriptions
+- Catches obvious duplicates with high name similarity (threshold: 0.8+)
+- Fast and efficient for clear matches
+
+### Phase 2: Relationship-Based Deduplication (AFTER Relationships)
+- Runs AFTER relationships are committed to Neo4j
+- Uses relationship pattern similarity to identify duplicates
+- Catches borderline cases that Phase 1 missed
+- Example: "Alice" vs "Alice Chen" might not merge in Phase 1, but if both
+  have identical relationships with "Bob" and "Central Lab", they're clearly
+  the same person
+
+### Why Two Phases?
+
+The critical issue is that deduplication needs relationship context, but
+relationships can't be extracted until entities exist. The two-phase approach
+solves this by:
+1. Quick deduplication before relationships (Phase 1)
+2. Relationship-aware deduplication after relationships (Phase 2)
+
+This prevents knowledge graph bloat from false negatives (duplicates not merged)
+in long-form narratives where entity references may vary across chapters.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.2.1
 
@@ -15,6 +45,9 @@ Source Code Ported From:
   - prevent_character_duplication() (lines 163-200)
   - prevent_world_item_duplication() (lines 203-244)
   - generate_entity_id() (lines 18-36)
+  - [NEW] check_relationship_pattern_similarity()
+  - [NEW] find_relationship_based_duplicates()
+  - [NEW] merge_duplicate_entities()
 - data_access/kg_queries.py:
   - add_kg_triples_batch_to_db() (lines 1144+)
 - data_access/chapter_queries.py:
@@ -53,11 +86,11 @@ logger = structlog.get_logger(__name__)
 
 async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     """
-    Deduplicate entities and commit to Neo4j knowledge graph.
+    Deduplicate entities and commit to Neo4j knowledge graph using two-phase deduplication.
 
     This is the main LangGraph node function that orchestrates the commit process.
     It handles character deduplication, world item deduplication, entity persistence,
-    relationship creation, and chapter node creation.
+    relationship creation, chapter node creation, and relationship-based deduplication.
 
     PORTED FROM: Multiple sources
     - processing/entity_deduplication.py (deduplication logic)
@@ -66,19 +99,34 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     - data_access/chapter_queries.py (chapter node creation)
 
     Process Flow:
-    1. Deduplicate extracted characters (name matching, similarity)
-    2. Deduplicate extracted world items (category + name matching)
+    1. Phase 1 Deduplication: Deduplicate extracted characters (name matching, similarity)
+    2. Phase 1 Deduplication: Deduplicate extracted world items (category + name matching)
     3. Convert ExtractedEntity models to CharacterProfile/WorldItem models
     4. Persist entities to Neo4j using existing query layer
     5. Create relationships between entities (with validation)
     6. Create chapter node with metadata
-    7. Update state
+    7. Phase 2 Deduplication: Find and merge duplicates based on relationship patterns
+    8. Update state with merge statistics
+
+    ## Two-Phase Deduplication
+
+    Phase 1 (Steps 1-2): Name-based deduplication before relationships
+    - Fast, catches obvious duplicates
+    - Uses Levenshtein similarity on names
+
+    Phase 2 (Step 7): Relationship-based deduplication after relationships
+    - Catches borderline cases that Phase 1 missed
+    - Uses relationship pattern similarity (Jaccard similarity)
+    - Example: "Alice" and "Alice Chen" with identical relationships to
+      "Bob" and "Central Lab" are clearly the same person
 
     Args:
         state: Current narrative state with extracted_entities and extracted_relationships
 
     Returns:
-        Updated state with current_node set to "commit_to_graph"
+        Updated state with:
+        - current_node set to "commit_to_graph"
+        - phase2_deduplication_merges dict with merge counts
     """
     # Initialize content manager to read externalized content
     content_manager = ContentManager(state.get("project_dir", ""))
@@ -210,11 +258,19 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 total_statements=len(all_statements),
             )
 
+        # Step 6: Phase 2 Deduplication - Relationship-based duplicate detection
+        # This runs AFTER relationships are committed, so relationship context is available
+        # to help identify duplicates that were missed in Phase 1 (name-based deduplication)
+        phase2_merges = await _run_phase2_deduplication(
+            state.get("current_chapter", 1)
+        )
+
         return {
             **state,
             "current_node": "commit_to_graph",
             "last_error": None,
             "has_fatal_error": False,
+            "phase2_deduplication_merges": phase2_merges,
         }
 
     except Exception as e:
@@ -923,6 +979,120 @@ def _build_chapter_node_statement(
     )
 
     return (query, parameters)
+
+
+async def _run_phase2_deduplication(chapter: int) -> dict[str, int]:
+    """
+    Run Phase 2 deduplication using relationship patterns.
+
+    This function runs AFTER relationships are committed to Neo4j, allowing us to use
+    relationship context to identify duplicates that were missed in Phase 1 (name-based
+    deduplication).
+
+    Example failure case this addresses:
+    - Chapter 5 extracts "Alice" (young woman) and "Alice Chen" (protagonist)
+    - Phase 1 deduplication: Names are similar but not identical, borderline similarity
+    - Phase 2 deduplication: Both have relationships with "Bob" and "Central Lab",
+      so they're clearly the same person -> merge them
+
+    Args:
+        chapter: Current chapter number for logging
+
+    Returns:
+        Dict with merge counts: {"characters": N, "world_items": M}
+    """
+    try:
+        import config
+
+        # Check if Phase 2 deduplication is enabled
+        if not getattr(config, "ENABLE_PHASE2_DEDUPLICATION", False):
+            logger.debug(
+                "_run_phase2_deduplication: Phase 2 deduplication disabled in config",
+                chapter=chapter,
+            )
+            return {"characters": 0, "world_items": 0}
+
+        # Import Phase 2 functions
+        from processing.entity_deduplication import (
+            find_relationship_based_duplicates,
+            merge_duplicate_entities,
+        )
+
+        # Get configuration thresholds
+        name_threshold = getattr(config, "PHASE2_NAME_SIMILARITY_THRESHOLD", 0.6)
+        rel_threshold = getattr(config, "PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD", 0.7)
+
+        logger.info(
+            "_run_phase2_deduplication: starting Phase 2 deduplication",
+            chapter=chapter,
+            name_threshold=name_threshold,
+            rel_threshold=rel_threshold,
+        )
+
+        merge_counts = {"characters": 0, "world_items": 0}
+
+        # Phase 2 for characters
+        char_duplicates = await find_relationship_based_duplicates(
+            entity_type="character",
+            name_similarity_threshold=name_threshold,
+            relationship_similarity_threshold=rel_threshold,
+        )
+
+        for entity1, entity2, name_sim, rel_sim in char_duplicates:
+            success = await merge_duplicate_entities(
+                entity1, entity2, entity_type="character"
+            )
+            if success:
+                merge_counts["characters"] += 1
+                logger.info(
+                    "_run_phase2_deduplication: merged character duplicates",
+                    entity1=entity1,
+                    entity2=entity2,
+                    name_similarity=name_sim,
+                    relationship_similarity=rel_sim,
+                    chapter=chapter,
+                )
+
+        # Phase 2 for world items
+        world_duplicates = await find_relationship_based_duplicates(
+            entity_type="world_element",
+            name_similarity_threshold=name_threshold,
+            relationship_similarity_threshold=rel_threshold,
+        )
+
+        for entity1, entity2, name_sim, rel_sim in world_duplicates:
+            success = await merge_duplicate_entities(
+                entity1, entity2, entity_type="world_element"
+            )
+            if success:
+                merge_counts["world_items"] += 1
+                logger.info(
+                    "_run_phase2_deduplication: merged world item duplicates",
+                    entity1=entity1,
+                    entity2=entity2,
+                    name_similarity=name_sim,
+                    relationship_similarity=rel_sim,
+                    chapter=chapter,
+                )
+
+        logger.info(
+            "_run_phase2_deduplication: completed Phase 2 deduplication",
+            chapter=chapter,
+            character_merges=merge_counts["characters"],
+            world_item_merges=merge_counts["world_items"],
+        )
+
+        return merge_counts
+
+    except Exception as e:
+        logger.error(
+            "_run_phase2_deduplication: error during Phase 2 deduplication",
+            error=str(e),
+            chapter=chapter,
+            exc_info=True,
+        )
+        # Don't fail the commit if Phase 2 deduplication fails
+        return {"characters": 0, "world_items": 0}
 
 
 __all__ = ["commit_to_graph"]

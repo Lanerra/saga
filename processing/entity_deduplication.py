@@ -272,3 +272,372 @@ async def prevent_world_item_duplication(
         return similar_entity.get("existing_id")
 
     return None
+
+
+async def check_relationship_pattern_similarity(
+    entity1_name: str, entity2_name: str, entity_type: str = "character"
+) -> float:
+    """Check if two entities have similar relationship patterns.
+
+    This function compares the relationships of two entities to determine
+    if they likely represent the same real-world entity based on shared
+    relationship patterns.
+
+    Args:
+        entity1_name: Name of first entity
+        entity2_name: Name of second entity
+        entity_type: Type of entity ("character" or "world_element")
+
+    Returns:
+        Similarity score (0.0-1.0) based on relationship pattern overlap
+    """
+    try:
+        # Query relationships for both entities
+        if entity_type == "character":
+            query = """
+            MATCH (e1:Character:Entity {name: $name1})
+            OPTIONAL MATCH (e1)-[r1]->(target1)
+            WITH e1, collect(DISTINCT {type: type(r1), target: target1.name}) as rels1
+
+            MATCH (e2:Character:Entity {name: $name2})
+            OPTIONAL MATCH (e2)-[r2]->(target2)
+            WITH e1, rels1, e2, collect(DISTINCT {type: type(r2), target: target2.name}) as rels2
+
+            RETURN rels1, rels2
+            """
+        else:
+            query = """
+            MATCH (e1:Entity)
+            WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+              AND e1.name = $name1
+            OPTIONAL MATCH (e1)-[r1]->(target1)
+            WITH e1, collect(DISTINCT {type: type(r1), target: target1.name}) as rels1
+
+            MATCH (e2:Entity)
+            WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+              AND e2.name = $name2
+            OPTIONAL MATCH (e2)-[r2]->(target2)
+            WITH e1, rels1, e2, collect(DISTINCT {type: type(r2), target: target2.name}) as rels2
+
+            RETURN rels1, rels2
+            """
+
+        params = {"name1": entity1_name, "name2": entity2_name}
+        result = await neo4j_manager.execute_read_query(query, params)
+
+        if not result:
+            return 0.0
+
+        rels1 = result[0].get("rels1", [])
+        rels2 = result[0].get("rels2", [])
+
+        # Filter out None relationships (from OPTIONAL MATCH with no match)
+        rels1 = [r for r in rels1 if r.get("type") is not None]
+        rels2 = [r for r in rels2 if r.get("type") is not None]
+
+        # If either entity has no relationships, can't determine similarity
+        if not rels1 or not rels2:
+            return 0.0
+
+        # Calculate relationship pattern similarity
+        # Compare both relationship types and targets
+        rel1_patterns = {f"{r['type']}:{r['target']}" for r in rels1}
+        rel2_patterns = {f"{r['type']}:{r['target']}" for r in rels2}
+
+        # Jaccard similarity: intersection / union
+        if not rel1_patterns and not rel2_patterns:
+            return 0.0
+
+        intersection = len(rel1_patterns & rel2_patterns)
+        union = len(rel1_patterns | rel2_patterns)
+
+        similarity = intersection / union if union > 0 else 0.0
+
+        logger.debug(
+            f"Relationship pattern similarity for '{entity1_name}' vs '{entity2_name}': "
+            f"{similarity:.2f} ({intersection} common / {union} total patterns)"
+        )
+
+        return similarity
+
+    except Exception as e:
+        logger.error(
+            f"Error checking relationship pattern similarity for '{entity1_name}' vs '{entity2_name}': {e}",
+            exc_info=True,
+        )
+        return 0.0
+
+
+async def find_relationship_based_duplicates(
+    entity_type: str = "character",
+    name_similarity_threshold: float = 0.6,
+    relationship_similarity_threshold: float = 0.7,
+) -> list[tuple[str, str, float, float]]:
+    """Find potential duplicate entities based on relationship patterns.
+
+    This function identifies entities that:
+    1. Have moderately similar names (didn't merge in Phase 1)
+    2. Have highly similar relationship patterns
+
+    This is Phase 2 deduplication that runs AFTER relationships are extracted.
+
+    Args:
+        entity_type: Type of entity to check ("character" or "world_element")
+        name_similarity_threshold: Minimum name similarity to consider (should be lower than Phase 1)
+        relationship_similarity_threshold: Minimum relationship pattern similarity
+
+    Returns:
+        List of (entity1_name, entity2_name, name_similarity, relationship_similarity) tuples
+    """
+    try:
+        import config
+
+        # Check if Phase 2 deduplication is enabled
+        if not config.ENABLE_DUPLICATE_PREVENTION:
+            return []
+
+        # Query for pairs of entities with similar names
+        if entity_type == "character":
+            query = """
+            MATCH (e1:Character:Entity)
+            MATCH (e2:Character:Entity)
+            WHERE e1.name < e2.name  // Prevent duplicate pairs
+              AND e1.name <> e2.name  // Not exactly the same
+            WITH e1, e2,
+                 apoc.text.levenshteinSimilarity(toLower(e1.name), toLower(e2.name)) as name_sim
+            WHERE name_sim >= $name_threshold
+              AND name_sim < 0.8  // Exclude pairs that should have merged in Phase 1
+            RETURN e1.name as name1, e2.name as name2, name_sim
+            ORDER BY name_sim DESC
+            LIMIT 50  // Limit to prevent excessive processing
+            """
+        else:
+            query = """
+            MATCH (e1:Entity)
+            WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+            MATCH (e2:Entity)
+            WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+              AND e1.name < e2.name  // Prevent duplicate pairs
+              AND e1.name <> e2.name  // Not exactly the same
+            WITH e1, e2,
+                 apoc.text.levenshteinSimilarity(toLower(e1.name), toLower(e2.name)) as name_sim
+            WHERE name_sim >= $name_threshold
+              AND name_sim < 0.8  // Exclude pairs that should have merged in Phase 1
+            RETURN e1.name as name1, e2.name as name2, name_sim
+            ORDER BY name_sim DESC
+            LIMIT 50  // Limit to prevent excessive processing
+            """
+
+        params = {"name_threshold": name_similarity_threshold}
+        results = await neo4j_manager.execute_read_query(query, params)
+
+        if not results:
+            return []
+
+        # Check relationship patterns for each candidate pair
+        duplicate_pairs = []
+
+        for result in results:
+            name1 = result["name1"]
+            name2 = result["name2"]
+            name_sim = result["name_sim"]
+
+            # Check relationship pattern similarity
+            rel_sim = await check_relationship_pattern_similarity(name1, name2, entity_type)
+
+            if rel_sim >= relationship_similarity_threshold:
+                duplicate_pairs.append((name1, name2, name_sim, rel_sim))
+                logger.info(
+                    f"Found potential duplicate based on relationships: '{name1}' vs '{name2}' "
+                    f"(name_sim: {name_sim:.2f}, rel_sim: {rel_sim:.2f})"
+                )
+
+        return duplicate_pairs
+
+    except Exception as e:
+        logger.error(
+            f"Error finding relationship-based duplicates: {e}",
+            exc_info=True,
+        )
+        return []
+
+
+async def merge_duplicate_entities(
+    entity1_name: str,
+    entity2_name: str,
+    entity_type: str = "character",
+    keep_entity: str | None = None,
+) -> bool:
+    """Merge two duplicate entities into one.
+
+    This function:
+    1. Determines which entity to keep (canonical)
+    2. Transfers all relationships from duplicate to canonical
+    3. Merges properties
+    4. Deletes the duplicate entity
+
+    Args:
+        entity1_name: Name of first entity
+        entity2_name: Name of second entity
+        entity_type: Type of entity ("character" or "world_element")
+        keep_entity: Which entity to keep (entity1_name or entity2_name).
+                     If None, keeps the one that appears earlier (lower created_chapter)
+
+    Returns:
+        True if merge was successful, False otherwise
+    """
+    try:
+        # Determine which entity to keep
+        if keep_entity is None:
+            # Query to find which entity was created first
+            if entity_type == "character":
+                query = """
+                MATCH (e1:Character:Entity {name: $name1})
+                MATCH (e2:Character:Entity {name: $name2})
+                RETURN e1.name as name1,
+                       e2.name as name2,
+                       coalesce(e1.created_chapter, 999) as created1,
+                       coalesce(e2.created_chapter, 999) as created2
+                """
+            else:
+                query = """
+                MATCH (e1:Entity)
+                WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+                  AND e1.name = $name1
+                MATCH (e2:Entity)
+                WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+                  AND e2.name = $name2
+                RETURN e1.name as name1,
+                       e2.name as name2,
+                       coalesce(e1.created_chapter, 999) as created1,
+                       coalesce(e2.created_chapter, 999) as created2
+                """
+
+            params = {"name1": entity1_name, "name2": entity2_name}
+            result = await neo4j_manager.execute_read_query(query, params)
+
+            if not result:
+                logger.warning(
+                    f"Cannot merge entities '{entity1_name}' and '{entity2_name}': entities not found"
+                )
+                return False
+
+            # Keep the entity that was created first
+            canonical = (
+                entity1_name
+                if result[0]["created1"] <= result[0]["created2"]
+                else entity2_name
+            )
+            duplicate = entity2_name if canonical == entity1_name else entity1_name
+        else:
+            canonical = keep_entity
+            duplicate = entity2_name if keep_entity == entity1_name else entity1_name
+
+        # Merge the entities
+        if entity_type == "character":
+            merge_query = """
+            MATCH (canonical:Character:Entity {name: $canonical})
+            MATCH (duplicate:Character:Entity {name: $duplicate})
+
+            // Transfer all relationships from duplicate to canonical
+            // Incoming relationships
+            OPTIONAL MATCH (other)-[r_in]->(duplicate)
+            WHERE other <> canonical
+            WITH canonical, duplicate, collect({other: other, rel: r_in, type: type(r_in), props: properties(r_in)}) as incoming
+
+            // Outgoing relationships
+            OPTIONAL MATCH (duplicate)-[r_out]->(other)
+            WHERE other <> canonical
+            WITH canonical, duplicate, incoming, collect({other: other, rel: r_out, type: type(r_out), props: properties(r_out)}) as outgoing
+
+            // Create new relationships
+            FOREACH (rel IN incoming |
+                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
+                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
+                        MERGE (o)-[new_rel:GENERIC_REL]->(canonical)
+                        SET new_rel = rel.props
+                    )
+                )
+            )
+
+            FOREACH (rel IN outgoing |
+                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
+                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
+                        MERGE (canonical)-[new_rel:GENERIC_REL]->(o)
+                        SET new_rel = rel.props
+                    )
+                )
+            )
+
+            // Merge properties (keep canonical's properties, add any missing from duplicate)
+            SET canonical.deduplication_merged_from = coalesce(canonical.deduplication_merged_from, []) + [$duplicate],
+                canonical.last_updated = timestamp()
+
+            // Delete the duplicate and its relationships
+            DETACH DELETE duplicate
+
+            RETURN canonical.name as merged_name
+            """
+        else:
+            merge_query = """
+            MATCH (canonical:Entity)
+            WHERE (canonical:Object OR canonical:Artifact OR canonical:Location OR canonical:Document OR canonical:Item OR canonical:Relic)
+              AND canonical.name = $canonical
+            MATCH (duplicate:Entity)
+            WHERE (duplicate:Object OR duplicate:Artifact OR duplicate:Location OR duplicate:Document OR duplicate:Item OR duplicate:Relic)
+              AND duplicate.name = $duplicate
+
+            // Transfer all relationships from duplicate to canonical
+            // Incoming relationships
+            OPTIONAL MATCH (other)-[r_in]->(duplicate)
+            WHERE other <> canonical
+            WITH canonical, duplicate, collect({other: other, rel: r_in, type: type(r_in), props: properties(r_in)}) as incoming
+
+            // Outgoing relationships
+            OPTIONAL MATCH (duplicate)-[r_out]->(other)
+            WHERE other <> canonical
+            WITH canonical, duplicate, incoming, collect({other: other, rel: r_out, type: type(r_out), props: properties(r_out)}) as outgoing
+
+            // Create new relationships
+            FOREACH (rel IN incoming |
+                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
+                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
+                        MERGE (o)-[new_rel:GENERIC_REL]->(canonical)
+                        SET new_rel = rel.props
+                    )
+                )
+            )
+
+            FOREACH (rel IN outgoing |
+                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
+                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
+                        MERGE (canonical)-[new_rel:GENERIC_REL]->(o)
+                        SET new_rel = rel.props
+                    )
+                )
+            )
+
+            // Merge properties
+            SET canonical.deduplication_merged_from = coalesce(canonical.deduplication_merged_from, []) + [$duplicate],
+                canonical.last_updated = timestamp()
+
+            // Delete the duplicate and its relationships
+            DETACH DELETE duplicate
+
+            RETURN canonical.name as merged_name
+            """
+
+        params = {"canonical": canonical, "duplicate": duplicate}
+        await neo4j_manager.execute_write_query(merge_query, params)
+
+        logger.info(
+            f"Successfully merged duplicate entities: '{duplicate}' merged into '{canonical}'"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(
+            f"Error merging duplicate entities '{entity1_name}' and '{entity2_name}': {e}",
+            exc_info=True,
+        )
+        return False

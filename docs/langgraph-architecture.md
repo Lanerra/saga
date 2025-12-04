@@ -134,11 +134,32 @@ graph TD
 
 ## 5. Key Node Implementations
 
-### 5.1 `commit_to_graph` (Deduplication Logic)
-This node acts as the gatekeeper to Neo4j. It prevents database pollution by:
+### 5.1 `commit_to_graph` (Two-Phase Deduplication Logic)
+This node acts as the gatekeeper to Neo4j. It prevents database pollution using a two-phase deduplication strategy:
+
+**Phase 1: Name-Based Deduplication (BEFORE Relationships)**
 1.  **Fuzzy Matching**: Comparing extracted names (e.g., "Jon") against existing DB nodes ("Jonathan") using Levenshtein distance.
 2.  **ID Resolution**: Mapping extracted entities to persistent Neo4j IDs.
-3.  **Atomic Transactions**: executing all node/relationship creations in a single batch to ensure graph integrity.
+3.  **Fast Merging**: Catches obvious duplicates with high name similarity (threshold: 0.8+).
+
+**Phase 2: Relationship-Based Deduplication (AFTER Relationships)**
+1.  **Relationship Pattern Analysis**: After relationships are committed, identifies entities with similar names (0.6-0.8 similarity) that have identical relationship patterns.
+2.  **Jaccard Similarity**: Compares relationship types and targets to calculate pattern overlap.
+3.  **Context-Aware Merging**: Merges entities that are clearly the same based on relationship context.
+
+**Why Two Phases?**
+Deduplication needs relationship context, but relationships can't be extracted until entities exist. The two-phase approach solves this ordering problem:
+- Phase 1 catches obvious duplicates quickly
+- Phase 2 catches borderline cases that need relationship context
+
+**Example**: "Alice" vs "Alice Chen" might have borderline name similarity (0.75), but if both have identical relationships with "Bob" and "Central Lab", they're clearly the same person and will be merged in Phase 2.
+
+**Configuration**:
+- `ENABLE_PHASE2_DEDUPLICATION`: Enable/disable Phase 2 (default: True)
+- `PHASE2_NAME_SIMILARITY_THRESHOLD`: Name similarity threshold for Phase 2 candidates (default: 0.6)
+- `PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD`: Relationship pattern similarity for merging (default: 0.7)
+
+**Atomic Transactions**: All node/relationship creations execute in a single batch to ensure graph integrity.
 
 ### 5.2 `revise_chapter` (The Loop)
 If validation fails, this node:

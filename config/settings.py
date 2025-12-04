@@ -513,6 +513,17 @@ DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = (
     True  # Enable world item duplicate prevention
 )
 
+# Phase 2 Deduplication Settings (Relationship-based)
+# Phase 2 runs AFTER relationships are extracted, allowing relationship context
+# to be used for identifying duplicates that Phase 1 (name-based) missed
+ENABLE_PHASE2_DEDUPLICATION: bool = True  # Enable relationship-based deduplication
+PHASE2_NAME_SIMILARITY_THRESHOLD: float = (
+    0.6  # Name similarity threshold for Phase 2 (should be lower than Phase 1)
+)
+PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD: float = (
+    0.7  # Relationship pattern similarity threshold for merging
+)
+
 # Legacy Degradation Flags (non-breaking defaults)
 # Legacy WorldElement toggle removed; single typed-entity model is standard
 ENABLE_STATUS_IS_ALIAS: bool = True
