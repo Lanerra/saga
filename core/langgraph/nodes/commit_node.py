@@ -862,6 +862,14 @@ async def _build_relationship_statements(
             if not isinstance(predicate, str):
                 predicate = str(predicate)
             predicate_clean = predicate.strip().upper().replace(" ", "_")
+
+            if not predicate_clean:
+                logger.warning(
+                    "_build_relationship_statements: skipping relationship with empty predicate",
+                    triple=triple,
+                )
+                continue
+
             object_name = obj["name"]
             object_type = obj["type"]
 
@@ -872,6 +880,7 @@ async def _build_relationship_statements(
             object_labels = _get_cypher_labels(object_type)
 
             # Build relationship Cypher with proper ON CREATE SET for provisional nodes
+            # NOTE: We must use backticks around the relationship type to handle special characters
             query = f"""
             MERGE (subj{subject_labels} {{name: $subject_name}})
             ON CREATE SET
@@ -885,7 +894,7 @@ async def _build_relationship_statements(
                 obj.created_chapter = $chapter,
                 obj.description = 'Entity created from relationship extraction. Details to be developed.',
                 obj.created_at = timestamp()
-            MERGE (subj)-[r:{predicate_clean}]->(obj)
+            MERGE (subj)-[r:`{predicate_clean}`]->(obj)
             SET r.type = $rel_type,
                 r.chapter_added = $chapter,
                 r.is_provisional = $is_provisional,
