@@ -100,6 +100,11 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
             )
         )
 
+        # Check if novel (before updating vocabulary)
+        is_novel = False
+        if not was_normalized and normalized_type not in vocabulary:
+            is_novel = True
+
         # Update usage in vocabulary
         vocabulary = normalization_service.update_vocabulary_usage(
             vocabulary=vocabulary,
@@ -113,10 +118,8 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
         # Track metrics
         if was_normalized:
             normalized_count += 1
-        else:
-            # Check if truly novel (not just first occurrence of canonical form)
-            if normalized_type == original_type and normalized_type not in state.get("relationship_vocabulary", {}):
-                novel_count += 1
+        elif is_novel:
+            novel_count += 1
 
         # Create normalized relationship
         normalized_rel = ExtractedRelationship(

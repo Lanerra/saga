@@ -62,7 +62,7 @@ class RelationshipNormalizationService:
                 original=rel_type,
                 canonical=canonical_form,
             )
-            return canonical_form, False, 1.0
+            return canonical_form, rel_type != canonical_form, 1.0
 
         # Check for case/punctuation-only variants
         for vocab_type in vocabulary.keys():
