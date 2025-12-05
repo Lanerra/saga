@@ -78,9 +78,17 @@ class NativeCypherBuilder:
                 other.description = 'Character created from relationship. Details to be developed.',
                 other.status = 'Unknown'
 
-            MERGE (c)-[r:RELATIONSHIP {type: rel_data.rel_type}]->(other)
-            SET r.description = rel_data.description,
-                r.last_updated = timestamp()
+            // Use apoc.merge.relationship to create relationships with dynamic types
+            // This allows proper semantic relationship types (KNOWS, LOVES, etc.) instead of generic RELATIONSHIP
+            WITH c, other, rel_data
+            CALL apoc.merge.relationship(
+                c,
+                rel_data.rel_type,
+                {},  // No properties for matching (match by type only)
+                {description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number},  // Properties on create
+                {description: rel_data.description, last_updated: timestamp()},  // Properties on match
+                other
+            ) YIELD rel
 
             // Link provisional node to chapter for context retrieval
             WITH other
@@ -270,9 +278,17 @@ class NativeCypherBuilder:
                 other.id = randomUUID(),
                 other.description = 'Entity created from world item relationship. Details to be developed.'
 
-            MERGE (w)-[r:RELATIONSHIP {{type: rel_data.rel_type}}]->(other)
-            SET r.description = rel_data.description,
-                r.last_updated = timestamp()
+            // Use apoc.merge.relationship to create relationships with dynamic types
+            // This allows proper semantic relationship types (LOCATED_IN, PART_OF, etc.) instead of generic RELATIONSHIP
+            WITH w, other, rel_data
+            CALL apoc.merge.relationship(
+                w,
+                rel_data.rel_type,
+                {{}},  // No properties for matching (match by type only)
+                {{description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number}},  // Properties on create
+                {{description: rel_data.description, last_updated: timestamp()}},  // Properties on match
+                other
+            ) YIELD rel
 
             // Link provisional node to chapter for context retrieval
             WITH other
@@ -357,7 +373,7 @@ class NativeCypherBuilder:
         MATCH (c:Character:Entity)
         WHERE {where_clause}
 
-        // Optionally collect relationships (match any type; use r.type property for semantics)
+        // Optionally collect relationships (use actual relationship type)
         // Exclude HAS_TRAIT relationships as those are collected separately
         OPTIONAL MATCH (c)-[r]->(other:Entity)
         WHERE NOT type(r) = 'HAS_TRAIT'
@@ -368,7 +384,8 @@ class NativeCypherBuilder:
         RETURN c,
                collect(DISTINCT {{
                    target_name: other.name,
-                   type: coalesce(r.type, ''),
+                   // Use actual relationship type; fallback to r.type property for legacy RELATIONSHIP types
+                   type: CASE WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r)) ELSE type(r) END,
                    description: coalesce(r.description, '')
                }}) as relationships,
                collect(DISTINCT t.name) as traits
