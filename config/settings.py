@@ -90,19 +90,19 @@ class RelationshipNormalizationSettings(BaseSettings):
 
     # Vocabulary management
     MIN_USAGE_FOR_AUTHORITY: int = Field(
-        default=3,
+        default=5,
         ge=1,
         description="Relationship must be used this many times before it's authoritative"
     )
 
     PRUNE_SINGLE_USE_AFTER_CHAPTERS: int = Field(
-        default=10,
+        default=5,
         ge=1,
         description="Remove single-use relationships after this many chapters"
     )
 
     MAX_VOCABULARY_SIZE: int = Field(
-        default=100,
+        default=50,
         ge=10,
         description="Maximum number of relationship types to maintain"
     )
