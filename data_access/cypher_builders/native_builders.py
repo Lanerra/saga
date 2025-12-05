@@ -84,11 +84,12 @@ class NativeCypherBuilder:
             CALL apoc.merge.relationship(
                 c,
                 rel_data.rel_type,
-                {},  // No properties for matching (match by type only)
-                {description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number},  // Properties on create
-                other,
-                {description: rel_data.description, last_updated: timestamp()}  // Properties on match
+                {},
+                {description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number},
+                other
             ) YIELD rel
+            SET rel.description = rel_data.description,
+                rel.last_updated = timestamp()
 
             // Link provisional node to chapter for context retrieval
             WITH other
@@ -284,11 +285,12 @@ class NativeCypherBuilder:
             CALL apoc.merge.relationship(
                 w,
                 rel_data.rel_type,
-                {{}},  // No properties for matching (match by type only)
-                {{description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number}},  // Properties on create
-                other,
-                {{description: rel_data.description, last_updated: timestamp()}}  // Properties on match
+                {{}},
+                {{description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number}},
+                other
             ) YIELD rel
+            SET rel.description = rel_data.description,
+                rel.last_updated = timestamp()
 
             // Link provisional node to chapter for context retrieval
             WITH other
