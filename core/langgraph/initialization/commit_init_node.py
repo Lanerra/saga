@@ -256,7 +256,7 @@ BACKGROUND: Brief history"""
             model_name=model,
             prompt=prompt,
             temperature=0.3,  # Low temp for extraction
-            max_tokens=500,
+            max_tokens=1024,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),

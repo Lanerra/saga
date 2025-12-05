@@ -28,10 +28,10 @@ logger = structlog.get_logger(__name__)
 class GraphHealingService:
     """Service for healing and enriching the knowledge graph."""
 
-    CONFIDENCE_THRESHOLD = 0.5  # Lowered from 0.85 to make graduation achievable
+    CONFIDENCE_THRESHOLD = 0.6  # Lowered from 0.85 to make graduation achievable
     MERGE_SIMILARITY_THRESHOLD = 0.75
     AUTO_MERGE_THRESHOLD = 0.95
-    AGE_GRADUATION_CHAPTERS = 3  # Graduate nodes that survive this many chapters
+    AGE_GRADUATION_CHAPTERS = 5  # Graduate nodes that survive this many chapters
     ORPHAN_CLEANUP_CHAPTERS = 5  # Remove truly orphaned nodes after this many chapters
 
     async def identify_provisional_nodes(self) -> list[dict[str, Any]]:
@@ -188,7 +188,7 @@ Provide the following information (only include fields where you have reasonable
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
-                max_tokens=512,
+                max_tokens=1024,
                 grammar=grammar,
             )
 
