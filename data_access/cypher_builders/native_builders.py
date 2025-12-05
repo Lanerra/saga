@@ -86,8 +86,8 @@ class NativeCypherBuilder:
                 rel_data.rel_type,
                 {},  // No properties for matching (match by type only)
                 {description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number},  // Properties on create
-                {description: rel_data.description, last_updated: timestamp()},  // Properties on match
-                other
+                other,
+                {description: rel_data.description, last_updated: timestamp()}  // Properties on match
             ) YIELD rel
 
             // Link provisional node to chapter for context retrieval
@@ -286,8 +286,8 @@ class NativeCypherBuilder:
                 rel_data.rel_type,
                 {{}},  // No properties for matching (match by type only)
                 {{description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number}},  // Properties on create
-                {{description: rel_data.description, last_updated: timestamp()}},  // Properties on match
-                other
+                other,
+                {{description: rel_data.description, last_updated: timestamp()}}  // Properties on match
             ) YIELD rel
 
             // Link provisional node to chapter for context retrieval
