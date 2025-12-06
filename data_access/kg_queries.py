@@ -8,12 +8,12 @@ from async_lru import alru_cache
 
 import config
 from core.db_manager import neo4j_manager
-from core.schema_validator import validate_node_labels
+from core.schema_validator import schema_validator, validate_node_labels
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
-    NODE_LABELS,
     RELATIONSHIP_TYPES,
+    VALID_NODE_LABELS,
 )
 
 logger = structlog.get_logger(__name__)
@@ -27,17 +27,28 @@ _upgrade_logged = set()
 VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
 # Lookup table for canonical node labels to ensure consistent casing
-_CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
-_CANONICAL_NODE_LABEL_MAP.pop("worldelement", None)
+# Restrict to only the 9 VALID_NODE_LABELS plus supporting types
+_CANONICAL_NODE_LABEL_MAP: dict[str, str] = {
+    lbl.lower(): lbl for lbl in VALID_NODE_LABELS
+}
+_CANONICAL_NODE_LABEL_MAP["entity"] = "Entity"
+_CANONICAL_NODE_LABEL_MAP["novelinfo"] = "NovelInfo"
+_CANONICAL_NODE_LABEL_MAP["worldcontainer"] = "WorldContainer"
+_CANONICAL_NODE_LABEL_MAP["plotpoint"] = "PlotPoint"
+_CANONICAL_NODE_LABEL_MAP["valuenode"] = "ValueNode"
+_CANONICAL_NODE_LABEL_MAP["developmentevent"] = "DevelopmentEvent"
+_CANONICAL_NODE_LABEL_MAP["worldelaborationevent"] = "WorldElaborationEvent"
 
 
-# Preserve original static implementation for fallback
 def _infer_specific_node_type_static(
     name: str, category: str = "", fallback_type: str = "Entity"
 ) -> str:
     """
     Original static node type inference (preserved as fallback).
     Upgrades generic types like 'WorldElement' to specific types like 'Artifact', 'Location', etc.
+
+    DEPRECATED: This logic is largely superseded by schema_validator.validate_entity_type
+    but kept for emergency fallback.
     """
     name_lower = name.lower()
     category_lower = category.lower()
@@ -623,16 +634,39 @@ def _infer_specific_node_type(
     name: str, category: str = "", fallback_type: str = "Entity"
 ) -> str:
     """
-    Node type inference using static rules.
+    Node type inference using schema validator.
 
-    Simplified implementation for single-user deployment that directly uses
-    static inference without dynamic schema overhead.
+    Maps generic or ambiguous types to the 9 valid node labels.
     """
     if not name or not name.strip():
-        return fallback_type if fallback_type != "WorldElement" else "Entity"
+        return (
+            fallback_type if fallback_type not in ["WorldElement", "Entity"] else "Item"
+        )
 
-    # Direct static inference - no dynamic fallback needed
-    return _infer_specific_node_type_static(name, category, fallback_type)
+    # Use the schema validator to determine the correct type
+    # If the provided type is already valid, it will be returned.
+    # Otherwise, it attempts to map it based on category/name.
+
+    # First check if the fallback type is already a valid specific label
+    if fallback_type in VALID_NODE_LABELS:
+        return fallback_type
+
+    # Attempt to validate/normalize
+    is_valid, corrected_label, _ = schema_validator.validate_entity_type(fallback_type)
+    if is_valid and corrected_label:
+        return corrected_label
+
+    # If fallback type is generic, try to infer from category/name
+    # This is a wrapper around the logic in schema_validator or similar
+    # For now, we can use the existing static inference but map the result to valid labels
+    inferred = _infer_specific_node_type_static(name, category, fallback_type)
+
+    # Verify the inferred type is valid
+    if inferred in VALID_NODE_LABELS:
+        return inferred
+
+    # Final fallback mapping
+    return "Item" if fallback_type == "WorldElement" else "Entity"
 
 
 def _to_pascal_case(text: str) -> str:
@@ -781,42 +815,65 @@ async def normalize_existing_relationship_types() -> None:
 
 
 def _get_cypher_labels(entity_type: str | None) -> str:
-    """Helper to create a Cypher label string (e.g., :Character:Entity or :Person:Character:Entity)."""
+    """
+    Helper to create a Cypher label string.
+    STRICTLY enforces that the primary label is in VALID_NODE_LABELS (or is a supporting type).
+    """
+    entity_label_suffix = ":Entity"
 
-    entity_label_suffix = ":Entity"  # All nodes get this
-    specific_labels_parts: list[str] = []
+    if not entity_type or not entity_type.strip():
+        raise ValueError("Entity type must be provided")
 
-    if entity_type and entity_type.strip():
-        cleaned = re.sub(r"[^a-zA-Z0-9_\s]+", "", entity_type)
-        normalized_key = re.sub(r"[_\s]+", "", cleaned).lower()
+    cleaned = re.sub(r"[^a-zA-Z0-9_\s]+", "", entity_type)
+    normalized_key = re.sub(r"[_\s]+", "", cleaned).lower()
 
-        canonical = _CANONICAL_NODE_LABEL_MAP.get(normalized_key)
-        if canonical is None:
-            pascal = _to_pascal_case(cleaned)
-            canonical = _CANONICAL_NODE_LABEL_MAP.get(pascal.lower(), pascal)
+    canonical = _CANONICAL_NODE_LABEL_MAP.get(normalized_key)
 
-        if canonical and canonical != "Entity":
-            if canonical != "Character":
-                specific_labels_parts.append(f":{canonical}")
+    # If not found in map, try PascalCase conversion and check again
+    if canonical is None:
+        pascal = _to_pascal_case(cleaned)
+        canonical = _CANONICAL_NODE_LABEL_MAP.get(pascal.lower())
 
-            if cleaned.strip().lower() == "person" or canonical == "Character":
-                if ":Character" not in specific_labels_parts:
-                    specific_labels_parts.append(":Character")
+    # Critical Validation: If still not found or not in allowed set, raise error
+    # We allow a few supporting types like 'Entity' (though usually not primary), 'NovelInfo', etc.
+    supporting_types = {
+        "Entity",
+        "NovelInfo",
+        "WorldContainer",
+        "PlotPoint",
+        "ValueNode",
+        "DevelopmentEvent",
+        "WorldElaborationEvent",
+    }
 
-    # Order: :Character (if present), then other specific labels (e.g., :Person), then :Entity
-    # Remove duplicates and establish order
-    final_ordered_labels = []
-    if ":Character" in specific_labels_parts:
-        final_ordered_labels.append(":Character")
+    if not canonical:
+        # Attempt strict validation via schema_validator as last resort
+        is_valid, corrected, _ = schema_validator.validate_entity_type(entity_type)
+        if is_valid and corrected:
+            canonical = corrected
+        else:
+            # In strict mode, we do NOT allow arbitrary labels
+            raise ValueError(
+                f"Invalid node label '{entity_type}'. Must be one of {sorted(VALID_NODE_LABELS)}"
+            )
 
-    for label in specific_labels_parts:
-        if label not in final_ordered_labels:
-            final_ordered_labels.append(label)
+    if canonical not in VALID_NODE_LABELS and canonical not in supporting_types:
+        raise ValueError(
+            f"Invalid node label '{canonical}'. Must be one of {sorted(VALID_NODE_LABELS)}"
+        )
 
-    if not final_ordered_labels:
-        return entity_label_suffix  # Just ":Entity"
+    # Construct label string
+    # Primary label + :Entity
+    # e.g., :Character:Entity
+    if canonical == "Entity":
+        return ":Entity"
 
-    return "".join(final_ordered_labels) + entity_label_suffix
+    # For VALID_NODE_LABELS, always append :Entity for schema compatibility
+    # but ONLY if the label isn't already Entity or one of the system types that handle their own hierarchy
+    if canonical in VALID_NODE_LABELS:
+        return f":{canonical}{entity_label_suffix}"
+
+    return f":{canonical}"
 
 
 def _get_constraint_safe_merge(
@@ -832,12 +889,15 @@ def _get_constraint_safe_merge(
     """
     # Parse the labels to identify constraint-sensitive ones
     labels = [label.strip() for label in labels_cypher.split(":") if label.strip()]
-    constraint_labels = [
-        "Character",
+    # All VALID_NODE_LABELS now have constraints
+    constraint_labels = list(VALID_NODE_LABELS) + [
         "NovelInfo",
-        "Chapter",
-        "WorldElement",
-    ]  # Labels with uniqueness constraints
+        "WorldContainer",
+        "PlotPoint",
+        "ValueNode",
+        "DevelopmentEvent",
+        "WorldElaborationEvent",
+    ]
 
     # Find the first constraint-sensitive label to use in MERGE
     primary_label = None
@@ -910,20 +970,23 @@ async def add_kg_triples_batch_to_db(
         )  # This is a string like "Character", "WorldElement", etc.
         predicate_clean = str(predicate_str).strip().upper().replace(" ", "_")
 
-        # Enhanced Type Inference: Upgrade generic types to specific ones
-        if subject_type in ["WorldElement", "Entity"] and subject_name:
+        # Strict Type Validation & Inference
+        # We must ensure subject_type is one of VALID_NODE_LABELS
+        if subject_name:
             subject_category = subject_info.get("category", "")
-            upgraded_type = _infer_specific_node_type(
+            # Always run inference/validation to ensure compliance
+            validated_type = _infer_specific_node_type(
                 subject_name, subject_category, subject_type
             )
-            if upgraded_type != subject_type:
-                upgrade_key = f"{subject_name}:{subject_type}->{upgraded_type}"
+
+            if validated_type != subject_type:
+                upgrade_key = f"{subject_name}:{subject_type}->{validated_type}"
                 if upgrade_key not in _upgrade_logged:
                     logger.info(
-                        f"Type inference upgraded {subject_type} -> {upgraded_type} for '{subject_name}'"
+                        f"Type validation updated {subject_type} -> {validated_type} for '{subject_name}'"
                     )
                     _upgrade_logged.add(upgrade_key)
-                subject_type = upgraded_type
+                subject_type = validated_type
 
         if not all([subject_name, predicate_clean]):
             logger.warning(
@@ -1031,22 +1094,24 @@ async def add_kg_triples_batch_to_db(
                 )
                 continue
 
-            # Enhanced Type Inference for object as well
-            if object_type in ["WorldElement", "Entity"] and object_name:
+            # Strict Type Validation & Inference for object
+            if object_name:
                 object_category = object_entity_info.get("category", "")
-                upgraded_object_type = _infer_specific_node_type(
+                # Always run inference/validation
+                validated_object_type = _infer_specific_node_type(
                     object_name, object_category, object_type
                 )
-                if upgraded_object_type != object_type:
+
+                if validated_object_type != object_type:
                     upgrade_key = (
-                        f"object:{object_name}:{object_type}->{upgraded_object_type}"
+                        f"object:{object_name}:{object_type}->{validated_object_type}"
                     )
                     if upgrade_key not in _upgrade_logged:
                         logger.info(
-                            f"Type inference upgraded object {object_type} -> {upgraded_object_type} for '{object_name}'"
+                            f"Type validation updated object {object_type} -> {validated_object_type} for '{object_name}'"
                         )
                         _upgrade_logged.add(upgrade_key)
-                    object_type = upgraded_object_type
+                    object_type = validated_object_type
 
             object_labels_cypher = _get_cypher_labels(object_type)
             params["object_name_param"] = object_name

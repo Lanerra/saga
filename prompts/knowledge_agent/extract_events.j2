@@ -11,27 +11,25 @@ Your task is to extract SIGNIFICANT events from the provided chapter text.
 
 **Extraction Rules:**
 1. **Focus on Significant Story Elements**: Extract plot beats, character development, world revelations, battles, and turning points.
-2. **Use SPECIFIC Event Types** - DO NOT use generic "Event". Instead use:
-   - **DevelopmentEvent**: Character development moments, choices, revelations that change a character
-     - Example: "Sarah chooses vengeance over mercy", "Marcus learns of his true heritage"
-   - **WorldElaborationEvent**: Moments that reveal/expand world lore, magic systems, or setting mechanics
-     - Example: "Revelation of the Three Sources of Magic", "Discovery of the Ancient Prophecy"
-   - **PlotPoint**: Major story beats, turning points, narrative milestones
-     - Example: "The Heist Begins", "The Hero's First Encounter with the Mentor"
-   - **Event**: Only for generic historical events, battles, ceremonies that don't fit above
-     - Example: "The Battle of Waterloo", "The Royal Coronation"
-3. **Granularity**: Do not extract every single action. Focus on summary-level events.
-4. **Naming**: Give events descriptive names that capture their essence.
-5. **CRITICAL**: Prefer DevelopmentEvent and WorldElaborationEvent over generic Event!
+2. **Type Enforcement**: The `type` field MUST be "Event".
+3. **Use Category for Specifics**: Use the `category` field to specify the subtype.
+   - **Scene**: A specific scene or sequence of actions (e.g., "The Meeting at the Inn")
+   - **Flashback**: A scene occurring in the past (e.g., "Recall of the War")
+   - **Battle**: A combat encounter (e.g., "The Battle of Helm's Deep")
+   - **Conversation**: A significant dialogue (e.g., "The Argument with Father")
+   - **Travel**: Movement between locations (e.g., "The Journey to the Capital")
+   - **Ceremony**: Formal rituals or events (e.g., "The Coronation")
+4. **Granularity**: Do not extract every single action. Focus on summary-level events.
+5. **Naming**: Give events descriptive names that capture their essence.
 
 **Required Information:**
 
-Organize extracted events by type (DevelopmentEvent, WorldElaborationEvent, PlotPoint, Event).
-For each event, provide:
+For each extracted event, provide:
 1. **Description**: Detailed description of the event.
-2. **Key Elements**: Important details, consequences, or themes associated with the event.
+2. **Category**: Specific subtype (e.g., "Scene", "Battle", "Conversation").
+3. **Key Elements**: Important details, consequences, or themes associated with the event.
 
-**CRITICAL**: Use SPECIFIC event types as category names.
+**CRITICAL**: Use SPECIFIC categories, but the node LABEL/TYPE must be "Event".
 
 *Note: The system enforces the output structure. Focus on extracting accurate and detailed information.*
 

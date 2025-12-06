@@ -13,16 +13,16 @@ from core.exceptions import (
     DatabaseTransactionError,
     handle_database_error,
 )
-from models.kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
+from models.kg_constants import RELATIONSHIP_TYPES, VALID_NODE_LABELS
 
 logger = structlog.get_logger(__name__)
 
 
 class Neo4jManagerSingleton:
-    _instance: 'Neo4jManagerSingleton' = None  # type: ignore
+    _instance: "Neo4jManagerSingleton" = None  # type: ignore
     _initialized_flag: bool
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> 'Neo4jManagerSingleton':
+    def __new__(cls, *args: Any, **kwargs: Any) -> "Neo4jManagerSingleton":
         if not cls._instance:
             cls._instance = super().__new__(cls)
             cls._instance._initialized_flag = False
@@ -372,13 +372,19 @@ class Neo4jManagerSingleton:
 
         core_constraints_queries = [
             "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
-            "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
+            # Enforce schema constraints for the 9 valid node labels
+            "CREATE CONSTRAINT novel_title_unique IF NOT EXISTS FOR (n:Novel) REQUIRE n.title IS UNIQUE",
             "CREATE CONSTRAINT chapter_number_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.number IS UNIQUE",
             "CREATE CONSTRAINT character_name_unique IF NOT EXISTS FOR (char:Character) REQUIRE char.name IS UNIQUE",
-            # WorldElement unique id constraint is legacy; only create when enabled
-            # WorldElement legacy constraint removed
-            "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
+            "CREATE CONSTRAINT location_name_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.name IS UNIQUE",
+            "CREATE CONSTRAINT event_name_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.name IS UNIQUE",
+            "CREATE CONSTRAINT item_name_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.name IS UNIQUE",
+            "CREATE CONSTRAINT organization_name_unique IF NOT EXISTS FOR (o:Organization) REQUIRE o.name IS UNIQUE",
+            "CREATE CONSTRAINT concept_name_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.name IS UNIQUE",
             "CREATE CONSTRAINT trait_name_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.name IS UNIQUE",
+            # Support constraints
+            "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
             "CREATE CONSTRAINT plotPoint_id_unique IF NOT EXISTS FOR (pp:PlotPoint) REQUIRE pp.id IS UNIQUE",
             "CREATE CONSTRAINT valueNode_value_type_unique IF NOT EXISTS FOR (vn:ValueNode) REQUIRE (vn.value, vn.type) IS UNIQUE",
             "CREATE CONSTRAINT developmentEvent_id_unique IF NOT EXISTS FOR (dev:DevelopmentEvent) REQUIRE dev.id IS UNIQUE",
@@ -387,6 +393,8 @@ class Neo4jManagerSingleton:
 
         index_queries = [
             "CREATE INDEX entity_name_property_idx IF NOT EXISTS FOR (e:Entity) ON (e.name)",
+            "CREATE INDEX entity_category_idx IF NOT EXISTS FOR (e:Entity) ON (e.category)",
+            "CREATE INDEX entity_type_idx IF NOT EXISTS FOR (e:Entity) ON (e.type)",
             "CREATE INDEX entity_is_provisional_idx IF NOT EXISTS FOR (e:Entity) ON (e.is_provisional)",
             "CREATE INDEX entity_is_deleted_idx IF NOT EXISTS FOR (e:Entity) ON (e.is_deleted)",
             "CREATE INDEX plotPoint_sequence IF NOT EXISTS FOR (pp:PlotPoint) ON (pp.sequence)",
@@ -445,7 +453,7 @@ class Neo4jManagerSingleton:
             relationship_type_queries.append(query)
 
         node_label_queries = []
-        for label in NODE_LABELS:
+        for label in VALID_NODE_LABELS:
             query = f"CREATE (a:`{label}`) WITH a DELETE a"
             node_label_queries.append(query)
 
@@ -564,7 +572,9 @@ class Neo4jManagerSingleton:
                     deleted_count=deleted_count,
                 )
             else:
-                self.logger.debug("cleanup_orphaned_traits: no orphaned Trait nodes found")
+                self.logger.debug(
+                    "cleanup_orphaned_traits: no orphaned Trait nodes found"
+                )
 
             return deleted_count
 

@@ -1,13 +1,119 @@
 # core/schema_validator.py
-"""Schema validation utilities for the knowledge graph."""
+"""
+Schema validation utilities for the knowledge graph.
+
+Implements enforcement of the Node Label Schema, including:
+- Type validation against allowed labels
+- Label normalization (mapping variants to canonical types)
+- Category suggestions and validation
+"""
 
 from typing import Any
 
 import structlog
 
+from config import (
+    ENFORCE_SCHEMA_VALIDATION,
+    LOG_SCHEMA_VIOLATIONS,
+    NORMALIZE_COMMON_VARIANTS,
+)
+from models.kg_constants import (
+    LABEL_NORMALIZATION_MAP,
+    SUGGESTED_CATEGORIES,
+    VALID_NODE_LABELS,
+)
 from models.kg_models import CharacterProfile, WorldItem
 
 logger = structlog.get_logger(__name__)
+
+
+class SchemaValidationService:
+    """
+    Service for validating and normalizing entity types and categories
+    against the defined Node Label Schema.
+    """
+
+    def __init__(self):
+        self.enabled = ENFORCE_SCHEMA_VALIDATION
+        self.normalize_variants = NORMALIZE_COMMON_VARIANTS
+        self.log_violations = LOG_SCHEMA_VIOLATIONS
+
+    def validate_entity_type(self, type_name: str) -> tuple[bool, str, str | None]:
+        """
+        Validate and optionally normalize an entity type.
+
+        Args:
+            type_name: The entity type label to validate.
+
+        Returns:
+            Tuple containing:
+            - is_valid (bool): Whether the type is valid (after normalization if enabled).
+            - normalized_name (str): The normalized type name (or original if no change).
+            - error_msg (Optional[str]): Error message if invalid, else None.
+        """
+        if not self.enabled:
+            return True, type_name, None
+
+        if not type_name:
+            return False, type_name, "Entity type cannot be empty"
+
+        # Check exact match first
+        if type_name in VALID_NODE_LABELS:
+            return True, type_name, None
+
+        # Check normalization
+        if self.normalize_variants and type_name in LABEL_NORMALIZATION_MAP:
+            canonical = LABEL_NORMALIZATION_MAP[type_name]
+            if self.log_violations:
+                logger.info(
+                    "Normalizing entity type", original=type_name, normalized=canonical
+                )
+            return True, canonical, None
+
+        # If we get here, it's not a valid label
+        error_msg = (
+            f"Invalid entity type '{type_name}'. "
+            f"Must be one of: {', '.join(sorted(VALID_NODE_LABELS))}"
+        )
+
+        if self.log_violations:
+            logger.warning("Schema violation", error=error_msg, type_name=type_name)
+
+        return False, type_name, error_msg
+
+    def validate_category(
+        self, type_name: str, category: str
+    ) -> tuple[bool, str | None]:
+        """
+        Validate if a category is appropriate for the given entity type.
+        This is a soft validation (warning only) as categories are open-ended.
+
+        Args:
+            type_name: The entity type (should be normalized first).
+            category: The category to check.
+
+        Returns:
+            Tuple containing:
+            - is_known (bool): True if category is in the suggested list.
+            - suggestion_msg (Optional[str]): Message suggesting valid categories if unknown.
+        """
+        if not category or type_name not in SUGGESTED_CATEGORIES:
+            return True, None
+
+        suggested = SUGGESTED_CATEGORIES[type_name]
+        # Case-insensitive check
+        if any(c.lower() == category.lower() for c in suggested):
+            return True, None
+
+        msg = (
+            f"Category '{category}' is not in suggested list for {type_name}. "
+            f"Suggested: {', '.join(suggested)}"
+        )
+        return False, msg
+
+
+# Global instance
+schema_validator = SchemaValidationService()
 
 
 def validate_kg_object(obj: Any) -> list[str]:
@@ -83,6 +189,14 @@ def validate_kg_object(obj: Any) -> list[str]:
         if not isinstance(obj.additional_properties, dict):
             errors.append("WorldItem additional_properties must be a dict")
 
+        # Schema validation for WorldItem type
+        # World items usually default to "Item" but might be other things
+        # This check is soft unless we enforce strict typing on the model itself
+        if hasattr(obj, "type") and obj.type:
+            is_valid, normalized, err = schema_validator.validate_entity_type(obj.type)
+            if not is_valid:
+                errors.append(f"Invalid WorldItem type: {err}")
+
     else:
         errors.append(f"Unknown object type for validation: {type(obj)}")
 
@@ -104,6 +218,12 @@ def validate_node_labels(labels: list[str]) -> list[str]:
     for label in labels:
         if not isinstance(label, str) or not label.strip():
             errors.append("Node labels must be non-empty strings")
+
+        # Apply schema validation
+        is_valid, _, err = schema_validator.validate_entity_type(label)
+        if not is_valid and ENFORCE_SCHEMA_VALIDATION:
+            errors.append(f"Invalid label '{label}': {err}")
+
         elif not label[0].isupper():
             errors.append(f"Node label '{label}' should start with an uppercase letter")
         elif not label.isalnum():

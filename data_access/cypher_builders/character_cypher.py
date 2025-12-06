@@ -98,7 +98,9 @@ def generate_character_node_cypher(
                             """
                             MATCH (c:Character:Entity {name: $name})
                             MERGE (t:Trait:Entity {name: $trait_name})
-                                ON CREATE SET t.created_ts = timestamp()
+                                ON CREATE SET
+                                    t.created_ts = timestamp(),
+                                    t.type = 'Trait'
                             MERGE (c)-[:HAS_TRAIT]->(t)
                             """,
                             {
@@ -133,10 +135,12 @@ def generate_character_node_cypher(
                     MERGE (dev:Entity {id: $dev_event_id})
                         ON CREATE SET
                             dev:DevelopmentEvent,
+                            dev:Event,
                             dev = $props,
                             dev.created_ts = timestamp()
                         ON MATCH SET
                             dev:DevelopmentEvent,
+                            dev:Event,
                             dev = $props,
                             dev.updated_ts = timestamp()
                     MERGE (c)-[:DEVELOPED_IN_CHAPTER]->(dev)
@@ -183,14 +187,15 @@ def generate_character_node_cypher(
                     (
                         """
                         MATCH (c1:Character:Entity {name: $source_name})
-                        MERGE (c2:Entity {name: $target_name})
+                        // Auto-created entity needs a valid label. Default to Character since this is character_cypher.
+                        MERGE (c2:Character:Entity {name: $target_name})
                             ON CREATE SET
-                                c2:Entity,
                                 c2.description = (
                                     'Auto-created via relationship from '
                                     + $source_name
                                 ),
-                                c2.created_ts = timestamp()
+                                c2.created_ts = timestamp(),
+                                c2.is_provisional = true
 
                         MERGE (
                         c1

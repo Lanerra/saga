@@ -31,9 +31,9 @@ import structlog
 from models.kg_constants import (
     CHARACTER_EMOTIONAL_RELATIONSHIPS,
     CHARACTER_SOCIAL_RELATIONSHIPS,
-    NODE_LABELS,
     RELATIONSHIP_TYPES,
     STATUS_RELATIONSHIPS,
+    VALID_NODE_LABELS,
 )
 
 logger = structlog.get_logger(__name__)
@@ -313,7 +313,7 @@ class RelationshipValidator:
         """
         self.rules = VALIDATION_RULES
         self.known_relationship_types = RELATIONSHIP_TYPES
-        self.known_node_labels = NODE_LABELS
+        self.known_node_labels = VALID_NODE_LABELS
         self.enable_strict_mode = enable_strict_mode
 
     def validate_relationship_type(
@@ -408,17 +408,23 @@ class RelationshipValidator:
             # Optionally log if this is an unusual combination
             # but don't consider it an error
             for rule in self.rules:
-                is_valid, message = rule.validate(relationship_type, source_type, target_type)
+                is_valid, message = rule.validate(
+                    relationship_type, source_type, target_type
+                )
                 if not is_valid and message:
                     # Convert error to info message
-                    info_msg = message.replace("Invalid", "[INFO] Unusual").replace("Expected", "Typically")
+                    info_msg = message.replace("Invalid", "[INFO] Unusual").replace(
+                        "Expected", "Typically"
+                    )
                     info_messages.append(info_msg)
             return True, info_messages  # Always valid in permissive mode
         else:
             # Strict mode: apply all validation rules
             errors = []
             for rule in self.rules:
-                is_valid, error = rule.validate(relationship_type, source_type, target_type)
+                is_valid, error = rule.validate(
+                    relationship_type, source_type, target_type
+                )
                 if not is_valid and error:
                     errors.append(error)
             return len(errors) == 0, errors

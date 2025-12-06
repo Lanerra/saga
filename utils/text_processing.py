@@ -135,8 +135,8 @@ def is_single_word_trait(trait: str) -> bool:
     trait = trait.strip('"').strip("'").strip()
 
     # Check pattern: must start with letter, can contain letters, numbers, hyphens
-    pattern = r'^[a-zA-Z][a-zA-Z0-9-]*$'
-    return bool(re.match(pattern, trait)) and ' ' not in trait
+    pattern = r"^[a-zA-Z][a-zA-Z0-9-]*$"
+    return bool(re.match(pattern, trait)) and " " not in trait
 
 
 def normalize_trait_name(trait: str) -> str:

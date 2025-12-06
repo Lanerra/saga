@@ -20,6 +20,7 @@ class CharacterProfile(BaseModel):
     """Structured information about a character."""
 
     name: str
+    type: str = "Character"
     description: str = ""
     traits: list[str] = Field(default_factory=list)
     relationships: dict[str, Any] = Field(default_factory=dict)
@@ -125,6 +126,7 @@ class WorldItem(BaseModel):
     id: str
     category: str
     name: str
+    type: str = "Item"
     created_chapter: int = 0
     is_provisional: bool = False
     description: str = ""
@@ -367,16 +369,22 @@ class RelationshipUsage:
     Used by relationship normalization to maintain consistent vocabulary
     while allowing creative flexibility for genuinely novel relationships.
     """
+
     canonical_type: str  # The normalized form (e.g., "WORKS_WITH")
     first_used_chapter: int  # When first introduced
     usage_count: int  # How many times used across narrative
-    example_descriptions: list[str] = field(default_factory=list)  # Sample usage contexts
+    example_descriptions: list[str] = field(
+        default_factory=list
+    )  # Sample usage contexts
     embedding: list[float] | None = None  # Cached embedding for fast comparison
-    synonyms: list[str] = field(default_factory=list)  # Variant forms normalized to this
+    synonyms: list[str] = field(
+        default_factory=list
+    )  # Variant forms normalized to this
     last_used_chapter: int = 0  # Most recent usage
 
     class Config:
         """Pydantic configuration."""
+
         frozen = False
         validate_assignment = True
 
@@ -393,7 +401,7 @@ class RelationshipUsage:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "RelationshipUsage":
+    def from_dict(cls, data: dict[str, Any]) -> RelationshipUsage:
         """Create from dictionary (for deserialization)."""
         return cls(
             canonical_type=data["canonical_type"],

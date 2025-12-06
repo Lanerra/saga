@@ -59,6 +59,35 @@ async def _load_list_from_json_async(
         return default_if_missing
 
 
+class SchemaEnforcementSettings(BaseSettings):
+    """
+    Settings for node label schema enforcement.
+
+    Controls strictness of entity type validation and normalization.
+    """
+
+    ENFORCE_SCHEMA_VALIDATION: bool = Field(
+        default=True, description="Master toggle for schema validation"
+    )
+
+    REJECT_INVALID_ENTITIES: bool = Field(
+        default=False,
+        description="If True, entities with invalid types are rejected. If False, soft validation (warnings).",
+    )
+
+    NORMALIZE_COMMON_VARIANTS: bool = Field(
+        default=True,
+        description="Automatically map common variants (Person->Character) to canonical labels",
+    )
+
+    LOG_SCHEMA_VIOLATIONS: bool = Field(
+        default=True, description="Log detailed warnings when schema violations occur"
+    )
+
+    class Config:
+        env_prefix = "SAGA_SCHEMA_"
+
+
 class RelationshipNormalizationSettings(BaseSettings):
     """
     Settings for relationship type normalization.
@@ -69,8 +98,7 @@ class RelationshipNormalizationSettings(BaseSettings):
 
     # Master toggle
     ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(
-        default=True,
-        description="Enable relationship normalization system"
+        default=True, description="Enable relationship normalization system"
     )
 
     # Similarity thresholds
@@ -78,56 +106,55 @@ class RelationshipNormalizationSettings(BaseSettings):
         default=0.85,
         ge=0.0,
         le=1.0,
-        description="Cosine similarity threshold for normalizing relationships"
+        description="Cosine similarity threshold for normalizing relationships",
     )
 
     SIMILARITY_THRESHOLD_AMBIGUOUS_MIN: float = Field(
         default=0.75,
         ge=0.0,
         le=1.0,
-        description="Minimum similarity for ambiguous cases requiring LLM review"
+        description="Minimum similarity for ambiguous cases requiring LLM review",
     )
 
     # Vocabulary management
     MIN_USAGE_FOR_AUTHORITY: int = Field(
         default=5,
         ge=1,
-        description="Relationship must be used this many times before it's authoritative"
+        description="Relationship must be used this many times before it's authoritative",
     )
 
     PRUNE_SINGLE_USE_AFTER_CHAPTERS: int = Field(
         default=5,
         ge=1,
-        description="Remove single-use relationships after this many chapters"
+        description="Remove single-use relationships after this many chapters",
     )
 
     MAX_VOCABULARY_SIZE: int = Field(
         default=100,
         ge=10,
-        description="Maximum number of relationship types to maintain"
+        description="Maximum number of relationship types to maintain",
     )
 
     # Example retention
     MAX_EXAMPLES_PER_RELATIONSHIP: int = Field(
         default=5,
         ge=1,
-        description="Maximum example descriptions to keep per relationship type"
+        description="Maximum example descriptions to keep per relationship type",
     )
 
     # Advanced features
     USE_LLM_DISAMBIGUATION: bool = Field(
-        default=False,
-        description="Use LLM to disambiguate ambiguous similarity cases"
+        default=False, description="Use LLM to disambiguate ambiguous similarity cases"
     )
 
     NORMALIZE_CASE_VARIANTS: bool = Field(
         default=True,
-        description="Treat case variations as identical (WORKS_WITH == works_with)"
+        description="Treat case variations as identical (WORKS_WITH == works_with)",
     )
 
     NORMALIZE_PUNCTUATION_VARIANTS: bool = Field(
         default=True,
-        description="Treat punctuation variations as identical (WORKS_WITH == WORKS-WITH)"
+        description="Treat punctuation variations as identical (WORKS_WITH == WORKS-WITH)",
     )
 
     class Config:
@@ -290,6 +317,11 @@ class SagaSettings(BaseSettings):
     # Relationship Normalization
     relationship_normalization: RelationshipNormalizationSettings = Field(
         default_factory=RelationshipNormalizationSettings
+    )
+
+    # Schema Enforcement
+    schema_enforcement: SchemaEnforcementSettings = Field(
+        default_factory=SchemaEnforcementSettings
     )
 
     @model_validator(mode="after")

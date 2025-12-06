@@ -7,13 +7,13 @@ from typing import Any
 # from rdflib.namespace import RDF, RDFS # No longer needed for triples
 import structlog
 
-from models.kg_constants import NODE_LABELS
+from models.kg_constants import VALID_NODE_LABELS
 from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
 
 # Pre-compute normalized labels for case-insensitive matching
-_NORMALIZED_NODE_LABELS = {label.lower(): label for label in NODE_LABELS}
+_NORMALIZED_NODE_LABELS = {label.lower(): label for label in VALID_NODE_LABELS}
 
 
 class ParseError(Exception):

@@ -119,7 +119,9 @@ async def check_entity_similarity(
             )
 
             # Log the similarity check
-            match_type = "first name match" if is_first_name_match else "similarity match"
+            match_type = (
+                "first name match" if is_first_name_match else "similarity match"
+            )
             logger.info(
                 f"Entity similarity check for '{name}' (type: {entity_type}): "
                 f"Found {match_type} with '{similar_entity['existing_name']}' "
@@ -443,7 +445,9 @@ async def find_relationship_based_duplicates(
             name_sim = result["name_sim"]
 
             # Check relationship pattern similarity
-            rel_sim = await check_relationship_pattern_similarity(name1, name2, entity_type)
+            rel_sim = await check_relationship_pattern_similarity(
+                name1, name2, entity_type
+            )
 
             if rel_sim >= relationship_similarity_threshold:
                 duplicate_pairs.append((name1, name2, name_sim, rel_sim))

@@ -16,7 +16,6 @@ import structlog
 
 import config
 from core.llm_interface_refactored import llm_service
-from models.kg_models import RelationshipUsage
 from utils.similarity import numpy_cosine_similarity
 
 logger = structlog.get_logger(__name__)
@@ -151,9 +150,9 @@ class RelationshipNormalizationService:
         # Punctuation normalization
         if config.REL_NORM_NORMALIZE_PUNCTUATION_VARIANTS:
             # Replace hyphens, underscores, spaces with underscore
-            canonical = re.sub(r'[-\s]+', '_', canonical)
+            canonical = re.sub(r"[-\s]+", "_", canonical)
             # Remove other punctuation
-            canonical = re.sub(r'[^\w_]', '', canonical)
+            canonical = re.sub(r"[^\w_]", "", canonical)
 
         return canonical
 
@@ -340,7 +339,9 @@ Answer with EXACTLY one word: NORMALIZE or DISTINCT"""
                 "usage_count": 1,
                 "example_descriptions": [rel_description] if rel_description else [],
                 "embedding": None,  # Will be computed on next comparison
-                "synonyms": [original_type] if (was_normalized and original_type) else [],
+                "synonyms": [original_type]
+                if (was_normalized and original_type)
+                else [],
                 "last_used_chapter": current_chapter,
             }
 

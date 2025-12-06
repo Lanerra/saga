@@ -231,7 +231,7 @@ def _is_valid_type(type_name: str) -> bool:
     try:
         import models.kg_constants
 
-        return type_name in models.kg_constants.NODE_LABELS
+        return type_name in models.kg_constants.VALID_NODE_LABELS
     except ImportError:
         common_types = {
             "Character",

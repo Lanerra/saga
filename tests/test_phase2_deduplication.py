@@ -287,7 +287,9 @@ class TestMergeDuplicateEntities:
     async def test_handles_missing_entities(self):
         """Test handling when entities don't exist."""
         with patch("core.db_manager.neo4j_manager") as mock_neo4j:
-            mock_neo4j.execute_read_query = AsyncMock(return_value=[])  # No entities found
+            mock_neo4j.execute_read_query = AsyncMock(
+                return_value=[]
+            )  # No entities found
 
             success = await merge_duplicate_entities(
                 "NonExistent1", "NonExistent2", entity_type="character"
