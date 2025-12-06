@@ -12,12 +12,12 @@ logger = structlog.get_logger(__name__)
 async def ensure_novel_info() -> None:
     """Create the NovelInfo node if it does not exist."""
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
-    query = "MATCH (n:NovelInfo:Entity {id: $id}) RETURN n"
+    query = "MATCH (n:NovelInfo {id: $id}) RETURN n"
     result = await neo4j_manager.execute_read_query(query, {"id": novel_id})
     if not result or not result[0] or not result[0].get("n"):
         await neo4j_manager.execute_write_query(
             """
-            MERGE (n:NovelInfo:Entity {id: $id})
+            MERGE (n:NovelInfo {id: $id})
                 ON CREATE SET n.title = $title, n.created_ts = timestamp()
             """,
             {"id": novel_id, "title": config.DEFAULT_PLOT_OUTLINE_TITLE},
@@ -35,8 +35,8 @@ async def set_first_chapter_kg_hint(hint_text: str) -> bool:
     try:
         await neo4j_manager.execute_write_query(
             """
-            MERGE (ni:Entity {id: $id_val})
-            ON CREATE SET ni:NovelInfo, ni.created_ts = timestamp()
+            MERGE (ni:NovelInfo {id: $id_val})
+            ON CREATE SET ni.created_ts = timestamp()
             ON MATCH SET  ni:NovelInfo
             SET ni.first_chapter_kg_hint = $hint,
                 ni.updated_ts = timestamp()
@@ -57,7 +57,7 @@ async def get_first_chapter_kg_hint() -> str | None:
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     try:
         result = await neo4j_manager.execute_read_query(
-            "MATCH (ni:NovelInfo:Entity {id: $id}) RETURN ni.first_chapter_kg_hint AS hint",
+            "MATCH (ni:NovelInfo {id: $id}) RETURN ni.first_chapter_kg_hint AS hint",
             {"id": novel_id},
         )
         if result and result[0] and result[0].get("hint"):
@@ -95,9 +95,9 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     statements.append(
         (
             """
-        MERGE (ni:Entity {id: $id_val})
-        ON CREATE SET ni:NovelInfo, ni = $props, ni.created_ts = timestamp()
-        ON MATCH SET  ni:NovelInfo, ni = $props, ni.updated_ts = timestamp()
+        MERGE (ni:NovelInfo {id: $id_val})
+        ON CREATE SET ni = $props, ni.created_ts = timestamp()
+        ON MATCH SET  ni = $props, ni.updated_ts = timestamp()
         """,
             {"id_val": novel_id, "props": novel_props_for_set},
         )
@@ -114,7 +114,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     # Get existing PlotPoint IDs for this novel from DB to find orphans
     try:
         existing_pp_records = await neo4j_manager.execute_read_query(
-            "MATCH (:NovelInfo:Entity {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint:Entity) RETURN pp.id AS id",
+            "MATCH (:NovelInfo {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint) RETURN pp.id AS id",
             {"novel_id_param": novel_id},
         )
         existing_db_pp_ids: set[str] = {
@@ -133,7 +133,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
         statements.append(
             (
                 """
-            MATCH (pp:PlotPoint:Entity)
+            MATCH (pp:PlotPoint)
             WHERE pp.id IN $pp_ids_to_delete
             DETACH DELETE pp
             """,
@@ -179,9 +179,9 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
             statements.append(
                 (
                     """
-                MERGE (pp:Entity {id: $id_val})
-                ON CREATE SET pp:PlotPoint, pp = $props, pp.created_ts = timestamp()
-                ON MATCH SET  pp:PlotPoint, pp = $props, pp.updated_ts = timestamp()
+                MERGE (pp:PlotPoint {id: $id_val})
+                ON CREATE SET pp = $props, pp.created_ts = timestamp()
+                ON MATCH SET  pp = $props, pp.updated_ts = timestamp()
                 """,
                     {"id_val": pp_id, "props": pp_props},
                 )
@@ -190,8 +190,8 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
             statements.append(
                 (
                     """
-                MATCH (ni:NovelInfo:Entity {id: $novel_id_param})
-                MATCH (pp:PlotPoint:Entity {id: $pp_id_val})
+                MATCH (ni:NovelInfo {id: $novel_id_param})
+                MATCH (pp:PlotPoint {id: $pp_id_val})
                 MERGE (ni)-[:HAS_PLOT_POINT]->(pp)
                 """,
                     {"novel_id_param": novel_id, "pp_id_val": pp_id},
@@ -204,8 +204,8 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
                 statements.append(
                     (
                         """
-                    MATCH (prev_pp:PlotPoint:Entity {id: $prev_pp_id_val})
-                    MATCH (curr_pp:PlotPoint:Entity {id: $curr_pp_id_val})
+                    MATCH (prev_pp:PlotPoint {id: $prev_pp_id_val})
+                    MATCH (curr_pp:PlotPoint {id: $curr_pp_id_val})
                     // Remove any old NEXT_PLOT_POINT from prev_pp before creating new one to ensure linearity
                     OPTIONAL MATCH (prev_pp)-[old_next_rel:NEXT_PLOT_POINT]->(:PlotPoint)
                     WHERE old_next_rel IS NOT NULL
@@ -236,7 +236,7 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
     plot_data: dict[str, Any] = {}
 
     # Fetch NovelInfo node properties
-    novel_info_query = "MATCH (ni:NovelInfo:Entity {id: $novel_id_param}) RETURN ni"
+    novel_info_query = "MATCH (ni:NovelInfo {id: $novel_id_param}) RETURN ni"
     result_list = await neo4j_manager.execute_read_query(
         novel_info_query, {"novel_id_param": novel_id}
     )
@@ -255,7 +255,7 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
 
     # Fetch PlotPoints linked to this NovelInfo, ordered by sequence
     plot_points_query = """
-    MATCH (ni:NovelInfo:Entity {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint:Entity)
+    MATCH (ni:NovelInfo {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint)
     RETURN pp
     ORDER BY pp.sequence ASC
     """
@@ -294,7 +294,7 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     # Determine next sequence number
     query = (
-        "MATCH (:NovelInfo:Entity {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint:Entity) "
+        "MATCH (:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint) "
         "RETURN coalesce(max(pp.sequence), 0) AS max_seq"
     )
     result = await neo4j_manager.execute_read_query(query, {"novel_id": novel_id})
@@ -305,16 +305,16 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
     statements: list[tuple[str, dict[str, Any]]] = [
         (
             """
-        MERGE (pp:Entity {id: $pp_id})
-        ON CREATE SET pp:PlotPoint, pp.description = $desc, pp.sequence = $seq, pp.status = 'pending', pp.created_ts = timestamp()
-        ON MATCH SET  pp:PlotPoint, pp.description = $desc, pp.sequence = $seq, pp.updated_ts = timestamp()
+        MERGE (pp:PlotPoint {id: $pp_id})
+        ON CREATE SET pp.description = $desc, pp.sequence = $seq, pp.status = 'pending', pp.created_ts = timestamp()
+        ON MATCH SET  pp.description = $desc, pp.sequence = $seq, pp.updated_ts = timestamp()
         """,
             {"pp_id": pp_id, "desc": description, "seq": next_seq},
         ),
         (
             """
-        MATCH (ni:NovelInfo:Entity {id: $novel_id})
-        MATCH (pp:PlotPoint:Entity {id: $pp_id})
+        MATCH (ni:NovelInfo {id: $novel_id})
+        MATCH (pp:PlotPoint {id: $pp_id})
         MERGE (ni)-[:HAS_PLOT_POINT]->(pp)
         """,
             {"novel_id": novel_id, "pp_id": pp_id},
@@ -325,8 +325,8 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
         statements.append(
             (
                 """
-            MATCH (prev:PlotPoint:Entity {id: $prev_id})
-            MATCH (curr:PlotPoint:Entity {id: $pp_id})
+            MATCH (prev:PlotPoint {id: $prev_id})
+            MATCH (curr:PlotPoint {id: $pp_id})
             OPTIONAL MATCH (prev)-[r:NEXT_PLOT_POINT]->(:PlotPoint)
             DELETE r
             MERGE (prev)-[:NEXT_PLOT_POINT]->(curr)
@@ -342,7 +342,7 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
 async def plot_point_exists(description: str) -> bool:
     """Check if a plot point with the given description exists."""
     query = """
-    MATCH (pp:PlotPoint:Entity)
+    MATCH (pp:PlotPoint)
     WHERE toLower(pp.description) = toLower($desc)
     RETURN count(pp) AS cnt
     """
@@ -353,7 +353,7 @@ async def plot_point_exists(description: str) -> bool:
 async def get_last_plot_point_id() -> str | None:
     """Return the ID of the most recent PlotPoint."""
     query = """
-    MATCH (pp:PlotPoint:Entity)
+    MATCH (pp:PlotPoint)
     RETURN pp.id AS id
     ORDER BY pp.sequence DESC
     LIMIT 1

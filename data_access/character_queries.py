@@ -42,7 +42,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
 
     try:
         existing_char_records = await neo4j_manager.execute_read_query(
-            "MATCH (c:Character:Entity)"
+            "MATCH (c:Character)"
             " WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE"
             " RETURN c.name AS name"
         )
@@ -62,7 +62,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (c:Character:Entity)
+            MATCH (c:Character)
             WHERE c.name IN $char_names_to_delete
             SET c.is_deleted = TRUE
             """,
@@ -91,7 +91,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MERGE (c:Character:Entity {name: $char_name_val})
+            MERGE (c:Character {name: $char_name_val})
             ON CREATE SET
                 c += $props,
                 c.created_ts = timestamp()
@@ -106,8 +106,8 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (ni:NovelInfo:Entity {id: $novel_id_param})
-            MATCH (c:Character:Entity {name: $char_name_val})
+            MATCH (ni:NovelInfo {id: $novel_id_param})
+            MATCH (c:Character {name: $char_name_val})
             MERGE (ni)-[:HAS_CHARACTER]->(c)
             """,
                 {"novel_id_param": novel_id_param, "char_name_val": char_name},
@@ -125,7 +125,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (c:Character:Entity {name: $char_name_val})-[r:HAS_TRAIT]->(t:Trait:Entity)
+            MATCH (c:Character {name: $char_name_val})-[r:HAS_TRAIT]->(t:Trait)
             WHERE NOT t.name IN $current_traits_list
             DELETE r
             """,
@@ -140,9 +140,9 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
             statements.append(
                 (
                     """
-                MATCH (c:Character:Entity {name: $char_name_val})
+                MATCH (c:Character {name: $char_name_val})
                 UNWIND $current_traits_list AS trait_name_val
-                MERGE (t:Trait:Entity {name: trait_name_val})
+                MERGE (t:Trait {name: trait_name_val})
                     ON CREATE SET t.created_ts = timestamp()
                 MERGE (c)-[:HAS_TRAIT]->(t)
                 """,
@@ -156,7 +156,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (c:Character:Entity {name: $char_name_val})-[r:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
+            MATCH (c:Character {name: $char_name_val})-[r:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
             DETACH DELETE dev, r
             """,
                 {"char_name_val": char_name},
@@ -196,8 +196,8 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                     statements.append(
                         (
                             """
-                        MATCH (c:Character:Entity {name: $char_name_val})
-                        CREATE (dev:Entity:DevelopmentEvent)
+                        MATCH (c:Character {name: $char_name_val})
+                        CREATE (dev:DevelopmentEvent)
                         SET dev = $props, dev.created_ts = timestamp()
                         CREATE (c)-[:DEVELOPED_IN_CHAPTER]->(dev)
                         """,
@@ -219,7 +219,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         statements.append(
             (
                 """
-            MATCH (c1:Character:Entity {name: $char_name_val})-[r]->(c2:Entity)
+            MATCH (c1:Character {name: $char_name_val})-[r]->(c2)
             WHERE coalesce(r.source_profile_managed, false) = true AND NOT c2.name IN $target_chars_list
             DELETE r
             """,
@@ -280,8 +280,8 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
 
                 # Build Cypher with concrete relationship type; types can't be parameterized
                 query_rel_merge = f"""
-            MATCH (s:Character:Entity {{name: $subject_param}})
-            MERGE (o:Entity {{name: $object_param}})
+            MATCH (s:Character {{name: $subject_param}})
+            MERGE (o {{name: $object_param}})
                 ON CREATE SET o.description = 'Auto-created via relationship from ' + $subject_param, o.created_ts = timestamp(), o.updated_ts = timestamp()
             MERGE (s)-[r:`{rel_type_str}`]->(o)
             ON CREATE SET r = $props_param, r.created_ts = timestamp(), r.updated_ts = timestamp()
@@ -302,7 +302,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
     statements.append(
         (
             """
-        MATCH (t:Trait:Entity)
+        MATCH (t:Trait)
         WHERE NOT EXISTS(()-[:HAS_TRAIT]->(t))
         DETACH DELETE t
         """,
@@ -331,7 +331,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     logger.info(f"Loading character profile '{canonical_name}' from Neo4j...")
 
     query = (
-        "MATCH (c:Character:Entity {name: $name})"
+        "MATCH (c:Character {name: $name})"
         " WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE"
         " RETURN c"
     )
@@ -347,7 +347,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     profile.pop("updated_ts", None)
 
     traits_query = (
-        "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT]->(t:Trait:Entity)"
+        "MATCH (:Character {name: $char_name})-[:HAS_TRAIT]->(t:Trait)"
         " RETURN t.name AS trait_name"
     )
     trait_results = await neo4j_manager.execute_read_query(
@@ -358,7 +358,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     )
 
     rels_query = """
-        MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
+        MATCH (:Character {name: $char_name})-[r]->(target)
         WHERE coalesce(r.source_profile_managed, false) = true
         RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
     """
@@ -392,7 +392,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     profile["relationships"] = relationships
 
     dev_query = (
-        "MATCH (:Character:Entity {name: $char_name})-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)\n"
+        "MATCH (:Character {name: $char_name})-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)\n"
         f"RETURN dev.summary AS summary, dev.{KG_NODE_CHAPTER_UPDATED} AS chapter, dev.{KG_IS_PROVISIONAL} AS is_provisional, dev.id as dev_id\n"
         "ORDER BY dev.chapter_updated ASC"
     )
@@ -416,7 +416,7 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
 async def get_all_character_names() -> list[str]:
     """Return a list of all character names from Neo4j."""
     query = (
-        "MATCH (c:Character:Entity) "
+        "MATCH (c:Character) "
         "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE "
         "RETURN c.name AS name ORDER BY c.name"
     )
@@ -432,12 +432,12 @@ async def get_character_info_for_snippet_from_db(
 ) -> dict[str, Any] | None:
     canonical_name = resolve_character_name(char_name)
     query = """
-    MATCH (c:Character:Entity {name: $char_name_param})
+    MATCH (c:Character {name: $char_name_param})
     WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
     // Subquery to get the most recent non-provisional development event
     CALL (c) {
-        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
+        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
         WHERE dev.chapter_updated <= $chapter_limit_param
           AND (dev.is_provisional IS NULL OR dev.is_provisional = FALSE)
         RETURN dev AS dev_np
@@ -447,7 +447,7 @@ async def get_character_info_for_snippet_from_db(
 
     // Subquery to get the most recent provisional development event
     CALL (c) {
-        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
+        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
         WHERE dev.chapter_updated <= $chapter_limit_param
           AND dev.is_provisional = TRUE
         RETURN dev AS dev_p
@@ -460,11 +460,11 @@ async def get_character_info_for_snippet_from_db(
         RETURN (
             c.is_provisional = TRUE OR
             EXISTS {
-                MATCH (c)-[r]-(:Entity)
+                MATCH (c)-[r]-()
                 WHERE coalesce(r.is_provisional, FALSE) = TRUE AND coalesce(r.chapter_added, -1) <= $chapter_limit_param
             } OR
             EXISTS {
-                MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
+                MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
                 WHERE coalesce(dev.is_provisional, FALSE) = TRUE AND coalesce(dev.chapter_updated, -1) <= $chapter_limit_param
             }
         ) AS is_provisional_flag
@@ -674,14 +674,14 @@ async def get_characters_for_chapter_context_native(
     """
     try:
         query = """
-        MATCH (c:Character:Entity)-[:APPEARS_IN]->(ch:Chapter)
+        MATCH (c:Character)-[:APPEARS_IN]->(ch:Chapter)
         WHERE ch.number < $chapter_number
         WITH c, max(ch.number) as last_appearance
         ORDER BY last_appearance DESC
         LIMIT $limit
-        
-        OPTIONAL MATCH (c)-[r]->(other:Entity)
-        RETURN c, 
+
+        OPTIONAL MATCH (c)-[r]->(other)
+        RETURN c,
                collect({
                    target_name: other.name,
                    type: r.type,
