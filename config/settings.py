@@ -102,7 +102,7 @@ class RelationshipNormalizationSettings(BaseSettings):
     )
 
     MAX_VOCABULARY_SIZE: int = Field(
-        default=50,
+        default=100,
         ge=10,
         description="Maximum number of relationship types to maintain"
     )
