@@ -13,11 +13,13 @@ Your task is to extract SEMANTIC RELATIONSHIPS between entities in the provided 
 1. **Focus on Triples**: Extract Subject -> Predicate -> Object relationships.
 2. **Allowed Entity Types**:
    - **Character**: A named person or creature.
-   - **Location**: A physical place.
-   - **Event**: A specific occurrence or plot point.
-   - **Object**: A physical, tangible item (artifact, weapon, key item).
+   - **Location**: A physical place (Settlement, Structure, Room, Region, etc.).
+   - **Event**: A specific occurrence or plot point (Scene, Battle, Flashback, etc.).
+   - **Item**: A physical, tangible object (Artifact, Weapon, Key Item). Note: Use 'Item' label, not 'Object'.
+   - **Organization**: A group or faction (Guild, Order, Faction).
+   - **Concept**: A magical law, prophecy, or significant abstract force (ONLY if central to plot).
 3. **Negative Constraints (CRITICAL)**:
-   - **NO Abstract Concepts**: Do NOT create nodes for feelings, concepts, or atmospheric elements (e.g., "Silence", "Darkness", "Memory", "Voice", "Signal", "Shadow").
+   - **NO Abstract Concepts**: Do NOT create nodes for feelings, concepts, or atmospheric elements (e.g., "Silence", "Darkness", "Memory", "Voice", "Signal", "Shadow") unless they are magical entities.
    - **NO Adjectives/States**: Do NOT create nodes for states of being (e.g., "Dead", "Alive", "Not Gone", "Empty").
    - **NO Generic Nouns**: Do NOT create nodes for generic terms unless they are specific, named objects (e.g., avoid "The Room", "A Man", use specific names).
 4. **Valid Predicates**: Use standard predicates where possible (e.g., LOVES, HATES, LOCATED_IN, MEMBER_OF, OWNS, KILLS, BETRAYS).
@@ -28,7 +30,7 @@ Your task is to extract SEMANTIC RELATIONSHIPS between entities in the provided 
 - **NO Abstract Concepts**: Do NOT create nodes for "Memory", "Voice", "Signal", "Echo", "Shadow", "Silence", "Darkness".
 - **NO "Not" Entities**: Do NOT create nodes starting with "Not" (e.g., "Not Dead", "Not Gone").
 - **NO Adjectives**: Do NOT create nodes for "Dead", "Alive", "Awake", "Asleep".
-- **NO Intangible Objects**: Objects MUST be physical items you can hold.
+- **NO Intangible Objects**: Items MUST be physical objects you can hold.
 
 **Required Information:**
 
@@ -41,8 +43,8 @@ Extract relationship triples with the following JSON structure:
 Examples of entity names to use:
 - For characters: Use their names directly (e.g., "Elara", "Talia Ren")
 - For locations: Use place names directly (e.g., "Sunken Library", "Coolant Chamber")
-- For objects/artifacts: Use the object name (e.g., "Starfall Map", "Control Panel")
-- For factions/organizations: Use the faction name (e.g., "The Order")
+- For items: Use the item name (e.g., "Starfall Map", "Control Panel")
+- For organizations: Use the organization name (e.g., "The Order", "The Thieves Guild")
 
 The system will infer entity types from previous extraction steps. Focus on extracting accurate entity names and meaningful relationships.
 

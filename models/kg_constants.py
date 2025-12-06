@@ -32,119 +32,124 @@ KG_IS_PROVISIONAL = "is_provisional"
 
 # Set of commonly used node labels in the knowledge graph.
 # The LLM can create new node types beyond this set.
-NODE_LABELS = {
-    # === CORE EXISTING TYPES ===
-    "Entity",  # Base label - all nodes inherit this
-    "NovelInfo",  # Novel metadata
-    "Chapter",  # Chapter entities
-    # === PHYSICAL ENTITIES ===
-    # Living Beings
-    "Character",  # Main story characters (active participants)
-    "Person",  # Historical figures, mentioned people (inactive)
-    "Creature",  # Animals, monsters, non-human beings
-    "Spirit",  # Ghosts, ethereal beings, supernatural entities
-    "Deity",  # Gods, divine beings, worshipped entities
-    # Objects & Items
-    "Object",  # Physical items, tools, weapons
-    "Artifact",  # Special/magical/historical objects
-    "Document",  # Books, scrolls, letters, written records
-    "Item",  # General items (synonym for Object)
-    "Relic",  # Ancient/sacred objects
-    # Locations & Structures
-    "Location",  # General places
-    "Structure",  # Buildings, constructions, man-made locations
-    "Region",  # Large geographical areas, territories
-    "Landmark",  # Notable geographical features
-    "Territory",  # Claimed/controlled areas
-    "Path",  # Roads, routes, passages, connections
-    "Room",  # Interior spaces within structures
-    "Settlement",  # Cities, towns, villages
-    # === ABSTRACT ENTITIES ===
-    "Concept",  # Ideas, philosophies, abstract notions
-    "Law",  # Rules, regulations, natural laws, edicts
-    "Tradition",  # Cultural practices, customs, rituals
-    "Language",  # Languages, dialects, communication systems
-    "Symbol",  # Symbolic representations, emblems, signs
-    "Story",  # Tales, legends, narratives within the narrative
-    "Song",  # Music, ballads, cultural expressions
-    "Dream",  # Dreams, visions, prophecies
-    "Memory",  # Specific memories, recollections
-    "Emotion",  # Emotional states, feelings
-    "Skill",  # Abilities, talents, competencies
-    # === TEMPORAL ENTITIES ===
-    "Event",  # Historical events, battles, ceremonies
-    "Era",  # Time periods, ages, epochs
-    "Timeline",  # Temporal sequences, chronologies
-    "DevelopmentEvent",  # Character development events (existing)
-    "WorldElaborationEvent",  # World expansion events (existing)
-    "Season",  # Natural cycles, recurring periods
-    "Moment",  # Specific points in time, instances
-    # === ORGANIZATIONAL ENTITIES ===
-    "Faction",  # Political groups, organizations with agendas
-    "Organization",  # Generic organizations, institutions
-    "Role",  # Positions, titles, functions within organizations
-    "Rank",  # Hierarchical positions, military ranks
-    "Guild",  # Professional organizations, trade groups
-    "House",  # Noble houses, family organizations
-    "Order",  # Religious or knightly orders
-    "Council",  # Governing bodies, decision-making groups
-    # === SYSTEM ENTITIES ===
-    "System",  # General systems, frameworks
-    "Magic",  # Magical systems, schools of magic
-    "Technology",  # Technological systems, innovations
-    "Religion",  # Religious systems, belief structures
-    "Culture",  # Cultural systems, way of life
-    "Education",  # Learning systems, schools, curricula
-    "Government",  # Governing systems, political structures
-    "Economy",  # Economic systems, trade networks
-    # === RESOURCE ENTITIES ===
-    "Resource",  # Materials, natural resources, commodities
-    "Currency",  # Money, trade systems, units of value
-    "Trade",  # Economic relationships, trade routes
-    "Food",  # Consumable resources, sustenance
-    "Material",  # Building materials, crafting components
-    "Energy",  # Power sources, magical energy, fuel
-    # === INFORMATION ENTITIES ===
-    "Lore",  # Myths, legends, historical knowledge
-    "Knowledge",  # Specific knowledge, information, data
-    "Secret",  # Hidden information, classified knowledge
-    "Rumor",  # Unconfirmed information, gossip
-    "News",  # Current information, recent events
-    "Message",  # Communications, signals, transmissions
-    "Signal",  # Electronic/magical signals, transmissions
-    "ValueNode",  # Literal values, data (existing)
-    "Record",  # Official records, documentation
-    # === ACTION/EVENT ENTITIES ===
-    "Action",  # Specific actions, deeds, activities
-    "Reaction",  # Responses, reactions to events
-    "Change",  # Transformations, alterations
-    "Pattern",  # Behavioral patterns, recurring structures
-    # === PHYSICAL/SENSORY ENTITIES ===
-    "Sound",  # Auditory phenomena, noise, music
-    "Pollen",  # Biological particles, airborne substances
-    # === PURPOSE/INTENT ENTITIES ===
-    "Purpose",  # Intentions, goals, objectives
-    "Goal",  # Specific targets, aims, desired outcomes
-    "Outcome",  # Results, consequences, end states
-    # === RELATIONSHIP/ABSTRACT ===
-    "Relationship",  # Social/conceptual connections (meta)
-    # === QUALITY ENTITIES ===
-    "Trait",  # Character traits, personality aspects (existing)
-    "Attribute",  # Physical or mental attributes
-    "Quality",  # Characteristics, properties
-    "Reputation",  # Social standing, renown
-    "Status",  # Current state, condition
-    # === CONTAINER ENTITIES ===
-    "WorldContainer",  # Containers for world elements (existing)
-    "PlotPoint",  # Plot/story points (existing)
-    "Collection",  # Groups of related items
-    "Archive",  # Storage of documents/information
-    "Treasury",  # Storage of valuable resources
-    "Library",  # Collection of documents/knowledge
-    # === LEGACY SUPPORT (gated at runtime) ===
-    # "WorldElement",  # Legacy type - being phased out
+VALID_NODE_LABELS = {
+    "Character",
+    "Location",
+    "Event",
+    "Item",
+    "Organization",
+    "Concept",
+    "Trait",
+    "Chapter",
+    "Novel",
 }
 
+# Map common variations to the canonical labels
+LABEL_NORMALIZATION_MAP = {
+    "Person": "Character",
+    "Creature": "Character",
+    "Spirit": "Character",
+    "Deity": "Character",
+    "Human": "Character",
+    "NPC": "Character",
+    "Place": "Location",
+    "City": "Location",
+    "Town": "Location",
+    "Building": "Location",
+    "Region": "Location",
+    "Landmark": "Location",
+    "Room": "Location",
+    "Object": "Item",
+    "Artifact": "Item",
+    "Weapon": "Item",
+    "Tool": "Item",
+    "Device": "Item",
+    "Faction": "Organization",
+    "Group": "Organization",
+    "Guild": "Organization",
+    "Order": "Organization",
+    "Idea": "Concept",
+    "Philosophy": "Concept",
+    "Theme": "Concept",
+    "Skill": "Trait",
+    "Ability": "Trait",
+    "Quality": "Trait",
+    "Attribute": "Trait",
+    "Scene": "Event",
+    "Moment": "Event",
+    "Incident": "Event",
+    "Happening": "Event",
+}
+
+# Suggested categories for each valid label to guide the LLM
+SUGGESTED_CATEGORIES = {
+    "Character": [
+        "Protagonist",
+        "Antagonist",
+        "Supporting",
+        "Minor",
+        "Background",
+        "Historical",
+    ],
+    "Location": [
+        "City",
+        "Town",
+        "Village",
+        "Building",
+        "Room",
+        "Region",
+        "Planet",
+        "Landscape",
+        "Landmark",
+    ],
+    "Event": [
+        "Battle",
+        "Meeting",
+        "Journey",
+        "Ceremony",
+        "Discovery",
+        "Conflict",
+        "Conversation",
+        "Flashback",
+    ],
+    "Item": [
+        "Weapon",
+        "Tool",
+        "Clothing",
+        "Artifact",
+        "Document",
+        "Vehicle",
+        "Resource",
+        "Magical",
+    ],
+    "Organization": [
+        "Government",
+        "Military",
+        "Religious",
+        "Commercial",
+        "Criminal",
+        "Academic",
+        "Social",
+        "Family",
+    ],
+    "Concept": [
+        "Magic System",
+        "Technology",
+        "History",
+        "Culture",
+        "Religion",
+        "Philosophy",
+        "Law",
+    ],
+    "Trait": [
+        "Personality",
+        "Physical",
+        "Skill",
+        "Supernatural",
+        "Status",
+        "Background",
+    ],
+}
 
 # --- NARRATIVE-FOCUSED RELATIONSHIP TAXONOMY ---
 # NOTE: These are SUGGESTED relationship types, not required types.

@@ -58,7 +58,7 @@ async def check_entity_similarity(
             # Enhanced query with first name matching
             # Extracts first name from existing character names and checks for match
             similarity_query = """
-            MATCH (c:Character:Entity)
+            MATCH (c:Character)
             WITH c,
                  // Extract first name (everything before first space, or full name if no space)
                  CASE
@@ -88,12 +88,12 @@ async def check_entity_similarity(
             params = {"name": name, "threshold": threshold}
         else:
             similarity_query = """
-            MATCH (w:Entity)
+            MATCH (w)
             WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
               AND (w.name = $name OR
                    toLower(w.name) = toLower($name) OR
                    apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > $threshold)
-              AND ($category = '' OR w.category = $category)
+            AND ($category = '' OR w.category = $category)
             RETURN w.id as existing_id,
                    w.name as existing_name,
                    w.category as existing_category,
@@ -119,7 +119,9 @@ async def check_entity_similarity(
             )
 
             # Log the similarity check
-            match_type = "first name match" if is_first_name_match else "similarity match"
+            match_type = (
+                "first name match" if is_first_name_match else "similarity match"
+            )
             logger.info(
                 f"Entity similarity check for '{name}' (type: {entity_type}): "
                 f"Found {match_type} with '{similar_entity['existing_name']}' "
@@ -295,11 +297,11 @@ async def check_relationship_pattern_similarity(
         # Query relationships for both entities
         if entity_type == "character":
             query = """
-            MATCH (e1:Character:Entity {name: $name1})
+            MATCH (e1:Character {name: $name1})
             OPTIONAL MATCH (e1)-[r1]->(target1)
             WITH e1, collect(DISTINCT {type: type(r1), target: target1.name}) as rels1
 
-            MATCH (e2:Character:Entity {name: $name2})
+            MATCH (e2:Character {name: $name2})
             OPTIONAL MATCH (e2)-[r2]->(target2)
             WITH e1, rels1, e2, collect(DISTINCT {type: type(r2), target: target2.name}) as rels2
 
@@ -307,13 +309,13 @@ async def check_relationship_pattern_similarity(
             """
         else:
             query = """
-            MATCH (e1:Entity)
+            MATCH (e1)
             WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
               AND e1.name = $name1
             OPTIONAL MATCH (e1)-[r1]->(target1)
             WITH e1, collect(DISTINCT {type: type(r1), target: target1.name}) as rels1
 
-            MATCH (e2:Entity)
+            MATCH (e2)
             WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
               AND e2.name = $name2
             OPTIONAL MATCH (e2)-[r2]->(target2)
@@ -399,8 +401,8 @@ async def find_relationship_based_duplicates(
         # Query for pairs of entities with similar names
         if entity_type == "character":
             query = """
-            MATCH (e1:Character:Entity)
-            MATCH (e2:Character:Entity)
+            MATCH (e1:Character)
+            MATCH (e2:Character)
             WHERE e1.name < e2.name  // Prevent duplicate pairs
               AND e1.name <> e2.name  // Not exactly the same
             WITH e1, e2,
@@ -413,9 +415,9 @@ async def find_relationship_based_duplicates(
             """
         else:
             query = """
-            MATCH (e1:Entity)
+            MATCH (e1)
             WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
-            MATCH (e2:Entity)
+            MATCH (e2)
             WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
               AND e1.name < e2.name  // Prevent duplicate pairs
               AND e1.name <> e2.name  // Not exactly the same
@@ -443,7 +445,9 @@ async def find_relationship_based_duplicates(
             name_sim = result["name_sim"]
 
             # Check relationship pattern similarity
-            rel_sim = await check_relationship_pattern_similarity(name1, name2, entity_type)
+            rel_sim = await check_relationship_pattern_similarity(
+                name1, name2, entity_type
+            )
 
             if rel_sim >= relationship_similarity_threshold:
                 duplicate_pairs.append((name1, name2, name_sim, rel_sim))
@@ -492,8 +496,8 @@ async def merge_duplicate_entities(
             # Query to find which entity was created first
             if entity_type == "character":
                 query = """
-                MATCH (e1:Character:Entity {name: $name1})
-                MATCH (e2:Character:Entity {name: $name2})
+                MATCH (e1:Character {name: $name1})
+                MATCH (e2:Character {name: $name2})
                 RETURN e1.name as name1,
                        e2.name as name2,
                        coalesce(e1.created_chapter, 999) as created1,
@@ -501,10 +505,10 @@ async def merge_duplicate_entities(
                 """
             else:
                 query = """
-                MATCH (e1:Entity)
+                MATCH (e1)
                 WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
                   AND e1.name = $name1
-                MATCH (e2:Entity)
+                MATCH (e2)
                 WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
                   AND e2.name = $name2
                 RETURN e1.name as name1,
@@ -536,8 +540,8 @@ async def merge_duplicate_entities(
         # Merge the entities
         if entity_type == "character":
             merge_query = """
-            MATCH (canonical:Character:Entity {name: $canonical})
-            MATCH (duplicate:Character:Entity {name: $duplicate})
+            MATCH (canonical:Character {name: $canonical})
+            MATCH (duplicate:Character {name: $duplicate})
 
             // Transfer all relationships from duplicate to canonical
             // Incoming relationships
@@ -580,10 +584,10 @@ async def merge_duplicate_entities(
             """
         else:
             merge_query = """
-            MATCH (canonical:Entity)
+            MATCH (canonical)
             WHERE (canonical:Object OR canonical:Artifact OR canonical:Location OR canonical:Document OR canonical:Item OR canonical:Relic)
               AND canonical.name = $canonical
-            MATCH (duplicate:Entity)
+            MATCH (duplicate)
             WHERE (duplicate:Object OR duplicate:Artifact OR duplicate:Location OR duplicate:Document OR duplicate:Item OR duplicate:Relic)
               AND duplicate.name = $duplicate
 

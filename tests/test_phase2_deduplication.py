@@ -37,7 +37,7 @@ class TestRelationshipPatternSimilarity:
             }
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
             similarity = await check_relationship_pattern_similarity(
@@ -66,7 +66,7 @@ class TestRelationshipPatternSimilarity:
             }
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
             similarity = await check_relationship_pattern_similarity(
@@ -91,7 +91,7 @@ class TestRelationshipPatternSimilarity:
             }
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
             similarity = await check_relationship_pattern_similarity(
@@ -112,7 +112,7 @@ class TestRelationshipPatternSimilarity:
             }
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
             similarity = await check_relationship_pattern_similarity(
@@ -124,7 +124,7 @@ class TestRelationshipPatternSimilarity:
 
     async def test_handles_neo4j_errors_gracefully(self):
         """Test error handling when Neo4j query fails."""
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(
                 side_effect=Exception("Database connection failed")
             )
@@ -148,7 +148,7 @@ class TestFindRelationshipBasedDuplicates:
             {"name1": "Alice", "name2": "Alice Chen", "name_sim": 0.75},
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_name_query)
 
             with patch(
@@ -175,7 +175,7 @@ class TestFindRelationshipBasedDuplicates:
             {"name1": "Alice", "name2": "Alice Chen", "name_sim": 0.75},
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_name_query)
 
             with patch(
@@ -196,7 +196,7 @@ class TestFindRelationshipBasedDuplicates:
         # Pairs with name_sim >= 0.8 should be excluded (already handled by Phase 1)
         mock_name_query = []  # Query excludes name_sim >= 0.8
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_name_query)
 
             duplicates = await find_relationship_based_duplicates(
@@ -231,7 +231,7 @@ class TestMergeDuplicateEntities:
             }
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_created_query)
             mock_neo4j.execute_write_query = AsyncMock()
 
@@ -254,7 +254,7 @@ class TestMergeDuplicateEntities:
             }
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_created_query)
             mock_neo4j.execute_write_query = AsyncMock()
 
@@ -271,7 +271,7 @@ class TestMergeDuplicateEntities:
 
     async def test_respects_keep_entity_parameter(self):
         """Test that keep_entity parameter is respected."""
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_write_query = AsyncMock()
 
             success = await merge_duplicate_entities(
@@ -286,8 +286,10 @@ class TestMergeDuplicateEntities:
 
     async def test_handles_missing_entities(self):
         """Test handling when entities don't exist."""
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
-            mock_neo4j.execute_read_query = AsyncMock(return_value=[])  # No entities found
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
+            mock_neo4j.execute_read_query = AsyncMock(
+                return_value=[]
+            )  # No entities found
 
             success = await merge_duplicate_entities(
                 "NonExistent1", "NonExistent2", entity_type="character"
@@ -306,7 +308,7 @@ class TestMergeDuplicateEntities:
             }
         ]
 
-        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+        with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_created_query)
             mock_neo4j.execute_write_query = AsyncMock(
                 side_effect=Exception("Merge failed")

@@ -125,7 +125,9 @@ class TestConvertToCharacterProfiles:
                 attributes={
                     "traits": ["brave", "loyal", "determined"],
                     "status": "alive",
-                    "relationships": {"Bob": {"type": "FRIEND", "description": "Close friend"}},
+                    "relationships": {
+                        "Bob": {"type": "FRIEND", "description": "Close friend"}
+                    },
                 },
             ),
         ]

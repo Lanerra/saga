@@ -23,6 +23,7 @@ from core.langgraph.state import (
     NarrativeState,
 )
 from core.llm_interface_refactored import llm_service
+from core.schema_validator import schema_validator
 from processing.entity_deduplication import generate_entity_id
 from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -114,15 +115,27 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
                     "relationships": info.get("relationships", {}),
                 }
 
-                char_updates.append(
-                    ExtractedEntity(
-                        name=name,
-                        type="Character",  # Capitalized to match ontology node types
-                        description=info.get("description", ""),
-                        first_appearance_chapter=state.get("current_chapter", 1),
-                        attributes=attributes,
-                    )
+                # Validate entity type (Characters are always "Character")
+                is_valid, normalized_type, err = schema_validator.validate_entity_type(
+                    "Character"
                 )
+
+                if is_valid:
+                    char_updates.append(
+                        ExtractedEntity(
+                            name=name,
+                            type=normalized_type,
+                            description=info.get("description", ""),
+                            first_appearance_chapter=state.get("current_chapter", 1),
+                            attributes=attributes,
+                        )
+                    )
+                else:
+                    logger.warning(
+                        "extract_characters: invalid entity type",
+                        type="Character",
+                        error=err,
+                    )
 
         # Clear extraction state and set characters
         return {
@@ -221,8 +234,47 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                 for name, info in items.items():
                     if isinstance(info, dict):
                         entity_type = _map_category_to_type(category)
+
+                        # Validate entity type
+                        is_valid, normalized_type, err = (
+                            schema_validator.validate_entity_type(entity_type)
+                        )
+
+                        if not is_valid:
+                            if config.REJECT_INVALID_ENTITIES:
+                                logger.warning(
+                                    "extract_locations: rejecting invalid entity type",
+                                    type=entity_type,
+                                    name=name,
+                                    error=err,
+                                )
+                                continue
+                            else:
+                                # Fallback for soft validation
+                                logger.warning(
+                                    "extract_locations: soft validation failure",
+                                    type=entity_type,
+                                    name=name,
+                                    error=err,
+                                )
+
+                        # Use normalized type
+                        entity_type = normalized_type
+
                         # Only process non-events here (events handled by extract_events)
                         if entity_type not in event_related_types:
+                            # Validate category
+                            _, cat_msg = schema_validator.validate_category(
+                                entity_type, category
+                            )
+                            if cat_msg:
+                                logger.warning(
+                                    "extract_locations: category validation warning",
+                                    type=entity_type,
+                                    category=category,
+                                    message=cat_msg,
+                                )
+
                             item_id = generate_entity_id(
                                 name, category, state.get("current_chapter", 1)
                             )
@@ -338,9 +390,39 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
 
         for category, items in raw_updates.items():
             mapped_type = _map_category_to_type(category)
+
+            # Validate entity type
+            is_valid, normalized_type, err = schema_validator.validate_entity_type(
+                mapped_type
+            )
+
+            if not is_valid:
+                if config.REJECT_INVALID_ENTITIES:
+                    logger.warning(
+                        "extract_events: rejecting invalid entity type",
+                        type=mapped_type,
+                        category=category,
+                        error=err,
+                    )
+                    continue
+
+            mapped_type = normalized_type
+
             if mapped_type in event_related_types and isinstance(items, dict):
                 for name, info in items.items():
                     if isinstance(info, dict):
+                        # Validate category
+                        _, cat_msg = schema_validator.validate_category(
+                            mapped_type, category
+                        )
+                        if cat_msg:
+                            logger.warning(
+                                "extract_events: category validation warning",
+                                type=mapped_type,
+                                category=category,
+                                message=cat_msg,
+                            )
+
                         item_id = generate_entity_id(
                             name, category, state.get("current_chapter", 1)
                         )
@@ -498,12 +580,26 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
 
             if ":" in subject:
                 subject_parsed = _get_entity_type_and_name_from_text(subject)
-                subject_type = subject_parsed.get("type")
+                raw_type = subject_parsed.get("type")
+                if raw_type:
+                    is_valid, normalized, _ = schema_validator.validate_entity_type(
+                        raw_type
+                    )
+                    subject_type = normalized if is_valid else raw_type
+                else:
+                    subject_type = None
                 subject = subject_parsed.get("name") or subject
 
             if ":" in target:
                 target_parsed = _get_entity_type_and_name_from_text(target)
-                target_type = target_parsed.get("type")
+                raw_type = target_parsed.get("type")
+                if raw_type:
+                    is_valid, normalized, _ = schema_validator.validate_entity_type(
+                        raw_type
+                    )
+                    target_type = normalized if is_valid else raw_type
+                else:
+                    target_type = None
                 target = target_parsed.get("name") or target
 
             # Track entity types for entities not already extracted
@@ -533,17 +629,27 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             # Determine if this is a character or world item
             is_character = entity_type == "Character"
 
+            # Double check validation before creation
+            is_valid, normalized_type, err = schema_validator.validate_entity_type(
+                entity_type
+            )
+            final_type = (
+                normalized_type if is_valid else "Object"
+            )  # Fallback to Object if invalid
+
             entity = ExtractedEntity(
                 name=entity_name,
-                type=entity_type,
-                description=f"Entity mentioned in relationships. Type: {entity_type}",
+                type=final_type,
+                description=f"Entity mentioned in relationships. Type: {final_type}",
                 first_appearance_chapter=state.get("current_chapter", 1),
-                attributes={"category": entity_type.lower()} if not is_character else {},
+                attributes={"category": final_type.lower()} if not is_character else {},
             )
             new_entities_from_relationships.append((entity, is_character))
 
         # Add new entities to the appropriate lists
-        new_characters = [e for e, is_char in new_entities_from_relationships if is_char]
+        new_characters = [
+            e for e, is_char in new_entities_from_relationships if is_char
+        ]
         new_world_items = [
             e for e, is_char in new_entities_from_relationships if not is_char
         ]
@@ -669,12 +775,12 @@ def _map_category_to_type(category: str) -> str:
     Returns:
         A valid node type (preferably specific like "DevelopmentEvent", "PlotPoint", etc.)
     """
-    from models.kg_constants import NODE_LABELS
+    from models.kg_constants import VALID_NODE_LABELS
 
     # First, check if category is already a valid node label (case-insensitive match)
-    for node_label in NODE_LABELS:
+    for node_label in VALID_NODE_LABELS:
         if category.lower() == node_label.lower():
-            return node_label  # Return the canonical form from NODE_LABELS
+            return node_label  # Return the canonical form from VALID_NODE_LABELS
 
     # Fallback: Try to map using heuristics for backward compatibility
     category_lower = category.lower()

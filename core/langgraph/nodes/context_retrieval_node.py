@@ -353,9 +353,7 @@ async def _get_scene_specific_kg_facts(
     kg_facts_block = await get_reliable_kg_facts_for_drafting_prompt(
         chapter_outlines=chapter_outlines,
         chapter_number=chapter_number,
-        chapter_plan=[
-            scene_detail
-        ],  # Pass only current scene for focused filtering
+        chapter_plan=[scene_detail],  # Pass only current scene for focused filtering
         protagonist_name=protagonist_name,
     )
 

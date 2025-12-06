@@ -13,16 +13,16 @@ from core.exceptions import (
     DatabaseTransactionError,
     handle_database_error,
 )
-from models.kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
+from models.kg_constants import RELATIONSHIP_TYPES, VALID_NODE_LABELS
 
 logger = structlog.get_logger(__name__)
 
 
 class Neo4jManagerSingleton:
-    _instance: 'Neo4jManagerSingleton' = None  # type: ignore
+    _instance: "Neo4jManagerSingleton" = None  # type: ignore
     _initialized_flag: bool
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> 'Neo4jManagerSingleton':
+    def __new__(cls, *args: Any, **kwargs: Any) -> "Neo4jManagerSingleton":
         if not cls._instance:
             cls._instance = super().__new__(cls)
             cls._instance._initialized_flag = False
@@ -371,30 +371,56 @@ class Neo4jManagerSingleton:
         self.logger.info("Phase 1: Creating constraints and indexes...")
 
         core_constraints_queries = [
-            "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
-            "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
+            # Enforce schema constraints for the 9 valid node labels
+            # ID Unique Constraints
+            "CREATE CONSTRAINT novel_id_unique IF NOT EXISTS FOR (n:Novel) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT chapter_id_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.id IS UNIQUE",
+            "CREATE CONSTRAINT character_id_unique IF NOT EXISTS FOR (char:Character) REQUIRE char.id IS UNIQUE",
+            "CREATE CONSTRAINT location_id_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.id IS UNIQUE",
+            "CREATE CONSTRAINT event_id_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.id IS UNIQUE",
+            "CREATE CONSTRAINT item_id_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.id IS UNIQUE",
+            "CREATE CONSTRAINT organization_id_unique IF NOT EXISTS FOR (o:Organization) REQUIRE o.id IS UNIQUE",
+            "CREATE CONSTRAINT concept_id_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
+            "CREATE CONSTRAINT trait_id_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.id IS UNIQUE",
+            
+            # Name Unique Constraints (using name as key for lookup)
+            "CREATE CONSTRAINT novel_title_unique IF NOT EXISTS FOR (n:Novel) REQUIRE n.title IS UNIQUE",
             "CREATE CONSTRAINT chapter_number_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.number IS UNIQUE",
             "CREATE CONSTRAINT character_name_unique IF NOT EXISTS FOR (char:Character) REQUIRE char.name IS UNIQUE",
-            # WorldElement unique id constraint is legacy; only create when enabled
-            # WorldElement legacy constraint removed
-            "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
+            "CREATE CONSTRAINT location_name_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.name IS UNIQUE",
+            "CREATE CONSTRAINT event_name_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.name IS UNIQUE",
+            "CREATE CONSTRAINT item_name_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.name IS UNIQUE",
+            "CREATE CONSTRAINT organization_name_unique IF NOT EXISTS FOR (o:Organization) REQUIRE o.name IS UNIQUE",
+            "CREATE CONSTRAINT concept_name_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.name IS UNIQUE",
             "CREATE CONSTRAINT trait_name_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.name IS UNIQUE",
+            
+            # Support constraints
+            "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
             "CREATE CONSTRAINT plotPoint_id_unique IF NOT EXISTS FOR (pp:PlotPoint) REQUIRE pp.id IS UNIQUE",
             "CREATE CONSTRAINT valueNode_value_type_unique IF NOT EXISTS FOR (vn:ValueNode) REQUIRE (vn.value, vn.type) IS UNIQUE",
             "CREATE CONSTRAINT developmentEvent_id_unique IF NOT EXISTS FOR (dev:DevelopmentEvent) REQUIRE dev.id IS UNIQUE",
             "CREATE CONSTRAINT worldElaborationEvent_id_unique IF NOT EXISTS FOR (elab:WorldElaborationEvent) REQUIRE elab.id IS UNIQUE",
         ]
 
-        index_queries = [
-            "CREATE INDEX entity_name_property_idx IF NOT EXISTS FOR (e:Entity) ON (e.name)",
-            "CREATE INDEX entity_is_provisional_idx IF NOT EXISTS FOR (e:Entity) ON (e.is_provisional)",
-            "CREATE INDEX entity_is_deleted_idx IF NOT EXISTS FOR (e:Entity) ON (e.is_deleted)",
+        # Generate indexes for common properties across all valid entity types
+        index_queries = []
+        for label in ["Character", "Location", "Event", "Item", "Organization", "Concept", "Trait"]:
+            index_queries.extend([
+                f"CREATE INDEX {label.lower()}_name_idx IF NOT EXISTS FOR (n:{label}) ON (n.name)",
+                f"CREATE INDEX {label.lower()}_category_idx IF NOT EXISTS FOR (n:{label}) ON (n.category)",
+                f"CREATE INDEX {label.lower()}_type_idx IF NOT EXISTS FOR (n:{label}) ON (n.type)",
+                f"CREATE INDEX {label.lower()}_is_provisional_idx IF NOT EXISTS FOR (n:{label}) ON (n.is_provisional)",
+                f"CREATE INDEX {label.lower()}_is_deleted_idx IF NOT EXISTS FOR (n:{label}) ON (n.is_deleted)"
+            ])
+
+        # Additional specific indexes
+        index_queries.extend([
             "CREATE INDEX plotPoint_sequence IF NOT EXISTS FOR (pp:PlotPoint) ON (pp.sequence)",
             "CREATE INDEX developmentEvent_chapter_updated IF NOT EXISTS FOR (d:DevelopmentEvent) ON (d.chapter_updated)",
             "CREATE INDEX worldElaborationEvent_chapter_updated IF NOT EXISTS FOR (we:WorldElaborationEvent) ON (we.chapter_updated)",
-            # WorldElement legacy indexes removed
             "CREATE INDEX chapter_is_provisional IF NOT EXISTS FOR (c:`Chapter`) ON (c.is_provisional)",
-        ]
+        ])
 
         # Vector index creation – backticks required for map keys with dot
         # First, execute constraints and regular indexes in a batch.
@@ -445,30 +471,30 @@ class Neo4jManagerSingleton:
             relationship_type_queries.append(query)
 
         node_label_queries = []
-        for label in NODE_LABELS:
+        for label in VALID_NODE_LABELS:
             query = f"CREATE (a:`{label}`) WITH a DELETE a"
             node_label_queries.append(query)
 
         # Property-key warmup: create ephemeral nodes/rels with commonly used properties
         property_warmup_queries = [
             # Warm up node timestamp keys
-            "CREATE (e:__PropWarmup:Entity {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
+            "CREATE (e:__PropWarmup {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
             # Warm up CRITICAL common node properties (name, id, description, category, etc.)
             (
-                "CREATE (e:__PropWarmupNodeProps:Entity {name: '', id: '', description: '', "
+                "CREATE (e:__PropWarmupNodeProps {name: '', id: '', description: '', "
                 "source: '', is_provisional: false, category: '', summary: '', text: ''}) WITH e DELETE e"
             ),
             # Warm up ValueNode-specific properties
             "CREATE (v:__PropWarmupValueNode:ValueNode {value: ''}) WITH v DELETE v",
             # Warm up NovelInfo-specific properties
             (
-                "CREATE (ni:__PropWarmupNovelInfo:NovelInfo:Entity {id: '', theme: '', "
+                "CREATE (ni:__PropWarmupNovelInfo:NovelInfo {id: '', theme: '', "
                 "central_conflict: ''}) WITH ni DELETE ni"
             ),
             # Warm up typical relationship properties used across queries (ensure keys are registered)
             (
-                "CREATE (a:__PropWarmupA:Entity)-[r:__WARMUP_REL {chapter_added: 0, "
-                "confidence: 1.0, is_provisional: false, source_profile_managed: true, type: '', description: ''}]->(b:__PropWarmupB:Entity) "
+                "CREATE (a:__PropWarmupA)-[r:__WARMUP_REL {chapter_added: 0, "
+                "confidence: 1.0, is_provisional: false, source_profile_managed: true, type: '', description: ''}]->(b:__PropWarmupB) "
                 "WITH a,r,b DELETE r, a, b"
             ),
         ]
@@ -547,7 +573,7 @@ class Neo4jManagerSingleton:
             Number of orphaned Trait nodes deleted
         """
         query = """
-        MATCH (t:Trait:Entity)
+        MATCH (t:Trait)
         WHERE NOT EXISTS(()-[:HAS_TRAIT]->(t))
         WITH t, t.name AS trait_name
         DELETE t
@@ -564,7 +590,9 @@ class Neo4jManagerSingleton:
                     deleted_count=deleted_count,
                 )
             else:
-                self.logger.debug("cleanup_orphaned_traits: no orphaned Trait nodes found")
+                self.logger.debug(
+                    "cleanup_orphaned_traits: no orphaned Trait nodes found"
+                )
 
             return deleted_count
 

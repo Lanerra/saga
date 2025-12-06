@@ -31,13 +31,14 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Import settings for model configuration
 from config.settings import settings
 
 # Import ContentRef for externalized content
 from core.langgraph.content_manager import ContentRef
+from core.schema_validator import schema_validator
 
 # Import TypedDict structures for proper type annotations
 from models.agent_models import (
@@ -63,6 +64,23 @@ class ExtractedEntity(BaseModel):
     description: str
     first_appearance_chapter: int
     attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_entity_type(self) -> ExtractedEntity:
+        """Validate and normalize the entity type."""
+        # Use schema_validator to check if type needs normalization
+        # We access the raw attribute to avoid recursion if possible, but Pydantic handles this differently
+        current_type = self.type
+        is_valid, normalized_type, _ = schema_validator.validate_entity_type(
+            current_type
+        )
+
+        # Only update if the type has changed to avoid infinite recursion in validate_assignment=True models
+        if is_valid and normalized_type != current_type:
+            self.type = normalized_type
+
+        # If invalid, we keep original type but logging will have occurred in validator
+        return self
 
     class Config:
         """Pydantic configuration."""
@@ -353,7 +371,9 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Relationship Vocabulary (for normalization)
     # =========================================================================
-    relationship_vocabulary: dict[str, Any]  # Maps canonical_type -> RelationshipUsage dict
+    relationship_vocabulary: dict[
+        str, Any
+    ]  # Maps canonical_type -> RelationshipUsage dict
     relationship_vocabulary_size: int  # Track vocabulary growth
     relationships_normalized_this_chapter: int  # Monitoring metric
     relationships_novel_this_chapter: int  # Monitoring metric

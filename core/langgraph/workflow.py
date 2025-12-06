@@ -22,7 +22,6 @@ from core.langgraph.nodes.relationship_normalization_node import (
 )
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
-from core.langgraph.nodes.validation_node import validate_consistency
 from core.langgraph.state import NarrativeState
 
 logger = structlog.get_logger(__name__)

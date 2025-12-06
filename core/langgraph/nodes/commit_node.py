@@ -72,6 +72,7 @@ from core.langgraph.content_manager import (
     load_embedding,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
+from core.schema_validator import schema_validator
 from data_access import chapter_queries, kg_queries
 from models.kg_models import CharacterProfile, WorldItem
 from processing.entity_deduplication import (
@@ -261,9 +262,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         # Step 6: Phase 2 Deduplication - Relationship-based duplicate detection
         # This runs AFTER relationships are committed, so relationship context is available
         # to help identify duplicates that were missed in Phase 1 (name-based deduplication)
-        phase2_merges = await _run_phase2_deduplication(
-            state.get("current_chapter", 1)
-        )
+        phase2_merges = await _run_phase2_deduplication(state.get("current_chapter", 1))
 
         return {
             **state,
@@ -573,18 +572,25 @@ async def _create_relationships(
         # Map extraction types to Neo4j node types
         # The LLM now provides proper node type names (e.g., "DevelopmentEvent", "PlotPoint")
         # so we check if it's already capitalized. If not, apply legacy mapping.
-        if entity_type and entity_type[0].isupper():
-            # Already a proper node type from the ontology
-            neo4j_type = entity_type
-        else:
-            # Legacy lowercase type, apply mapping
-            type_mapping = {
-                "character": "Character",
-                "location": "Location",
-                "event": "Event",
-                "object": "Object",
-            }
-            neo4j_type = type_mapping.get(entity_type.lower(), "Object")
+        neo4j_type = "Object"
+
+        if entity_type:
+            # Validate and normalize
+            is_valid, normalized, _ = schema_validator.validate_entity_type(entity_type)
+            if is_valid:
+                neo4j_type = normalized
+            elif entity_type[0].isupper():
+                # Already a proper node type from the ontology
+                neo4j_type = entity_type
+            else:
+                # Legacy lowercase type, apply mapping
+                type_mapping = {
+                    "character": "Character",
+                    "location": "Location",
+                    "event": "Event",
+                    "object": "Object",
+                }
+                neo4j_type = type_mapping.get(entity_type.lower(), "Object")
 
         return {
             "name": name,
@@ -796,18 +802,25 @@ async def _build_relationship_statements(
         # Map extraction types to Neo4j node types
         # The LLM now provides proper node type names (e.g., "DevelopmentEvent", "PlotPoint")
         # so we check if it's already capitalized. If not, apply legacy mapping.
-        if entity_type and entity_type[0].isupper():
-            # Already a proper node type from the ontology
-            neo4j_type = entity_type
-        else:
-            # Legacy lowercase type, apply mapping
-            type_mapping = {
-                "character": "Character",
-                "location": "Location",
-                "event": "Event",
-                "object": "Object",
-            }
-            neo4j_type = type_mapping.get(entity_type.lower(), "Object")
+        neo4j_type = "Object"
+
+        if entity_type:
+            # Validate and normalize
+            is_valid, normalized, _ = schema_validator.validate_entity_type(entity_type)
+            if is_valid:
+                neo4j_type = normalized
+            elif entity_type[0].isupper():
+                # Already a proper node type from the ontology
+                neo4j_type = entity_type
+            else:
+                # Legacy lowercase type, apply mapping
+                type_mapping = {
+                    "character": "Character",
+                    "location": "Location",
+                    "event": "Event",
+                    "object": "Object",
+                }
+                neo4j_type = type_mapping.get(entity_type.lower(), "Object")
 
         return {
             "name": name,
@@ -833,7 +846,9 @@ async def _build_relationship_statements(
         triple = {
             "subject": _make_entity_dict(source_name, rel.source_name, source_type),
             "predicate": rel.relationship_type,
-            "object_entity": _make_entity_dict(target_name, rel.target_name, target_type),
+            "object_entity": _make_entity_dict(
+                target_name, rel.target_name, target_type
+            ),
             "is_literal_object": False,
             "description": rel.description,
             "confidence": rel.confidence,

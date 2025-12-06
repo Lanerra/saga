@@ -17,6 +17,7 @@ from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from core.schema_validator import schema_validator
 from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import validate_and_filter_traits
@@ -76,6 +77,7 @@ def _parse_character_sheet_response(
         "name": character_name,
         "description": "",
         "traits": [],
+        "type": "Character",  # Force type to "Character"
         "status": "Active",
         "motivations": "",
         "background": "",
@@ -124,6 +126,10 @@ def _parse_character_sheet_response(
                     "description": desc,
                 }
             parsed["relationships"] = structured_relationships
+
+        # Double check that we are using a valid type (should be 'Character')
+        is_valid, normalized, err = schema_validator.validate_entity_type("Character")
+        parsed["type"] = normalized if is_valid else "Character"
 
     except json.JSONDecodeError as e:
         logger.warning(

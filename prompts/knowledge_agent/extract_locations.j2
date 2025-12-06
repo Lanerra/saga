@@ -11,31 +11,26 @@ Your task is to extract DETAILED location and world-building information from th
 
 **Extraction Rules:**
 1. **Focus on Places**: Extract locations, structures, settlements, regions, and rooms.
-2. **Also Include**: Organizations (factions, guilds) and significant physical objects (artifacts, key items).
-3. **Use SPECIFIC Node Types** - DO NOT use generic "Location" or "Object". Instead use:
-   - **Settlement** for cities/towns/villages (e.g., "New York", "The Hidden Village")
-   - **Structure** for buildings (e.g., "The Tower of London", "The Observatory")
-   - **Region** for large geographical areas (e.g., "The Northern Wastes", "The Empire")
-   - **Landmark** for notable features (e.g., "Mount Everest", "The Great Waterfall")
-   - **Room** for interior spaces (e.g., "The Throne Room", "The Secret Lab")
-   - **Path** for routes/passages (e.g., "The Silk Road", "The Secret Tunnel")
-   - **Artifact** for magical/special objects (e.g., "The Sword of Destiny")
-   - **Faction** for political/military groups (e.g., "The Rebellion", "The Empire")
-   - **Guild** for trade organizations (e.g., "The Thieves Guild")
-   - **Order** for religious/knightly orders (e.g., "The Knights Templar")
-   - Only use generic "Location" if none of the above apply
+2. **Type Enforcement**: The `type` field MUST be "Location".
+3. **Use Category for Specifics**: Use the `category` field to specify the subtype.
+   - **Settlement**: Cities, towns, villages (e.g., "New York", "The Hidden Village")
+   - **Structure**: Buildings, towers, fortresses (e.g., "The Tower of London", "The Observatory")
+   - **Region**: Large geographical areas, kingdoms, wastelands (e.g., "The Northern Wastes", "The Empire")
+   - **Landmark**: Notable natural or man-made features (e.g., "Mount Everest", "The Great Waterfall")
+   - **Room**: Specific interior spaces (e.g., "The Throne Room", "The Secret Lab")
+   - **Path**: Roads, tunnels, trade routes (e.g., "The Silk Road", "The Secret Tunnel")
+   - **CelestialBody**: Planets, moons, stars (e.g., "Mars", "The Moon")
 4. **Prefer Proper Nouns**: Prioritize named locations (e.g., "The Sunken Library", "Sector 7").
 5. **Skip Atmospheric Details**: Do not extract "shadows", "light", "weather" unless they are magical/anomalous entities.
 
 **Required Information:**
 
-Organize extracted entities by type (Settlement, Structure, Artifact, Faction, etc.).
-For each entity, provide:
+For each extracted location, provide:
 1. **Description**: Detailed description.
-2. **Rules/Goals**: Any known rules (for places) or goals (for factions).
+2. **Category**: Specific subtype (e.g., "Settlement", "Structure", "Region").
 3. **Key Elements**: Significant details or properties.
 
-**CRITICAL**: Use SPECIFIC node types as category names, not generic "Location".
+**CRITICAL**: Use SPECIFIC categories, but the node LABEL/TYPE must be "Location".
 
 *Note: The system enforces the output structure. Focus on extracting accurate and detailed information.*
 

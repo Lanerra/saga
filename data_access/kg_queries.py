@@ -8,12 +8,12 @@ from async_lru import alru_cache
 
 import config
 from core.db_manager import neo4j_manager
-from core.schema_validator import validate_node_labels
+from core.schema_validator import schema_validator, validate_node_labels
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
-    NODE_LABELS,
     RELATIONSHIP_TYPES,
+    VALID_NODE_LABELS,
 )
 
 logger = structlog.get_logger(__name__)
@@ -27,17 +27,28 @@ _upgrade_logged = set()
 VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
 # Lookup table for canonical node labels to ensure consistent casing
-_CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in NODE_LABELS}
-_CANONICAL_NODE_LABEL_MAP.pop("worldelement", None)
+# Restrict to only the 9 VALID_NODE_LABELS plus supporting types
+_CANONICAL_NODE_LABEL_MAP: dict[str, str] = {
+    lbl.lower(): lbl for lbl in VALID_NODE_LABELS
+}
+_CANONICAL_NODE_LABEL_MAP["entity"] = "Entity"
+_CANONICAL_NODE_LABEL_MAP["novelinfo"] = "NovelInfo"
+_CANONICAL_NODE_LABEL_MAP["worldcontainer"] = "WorldContainer"
+_CANONICAL_NODE_LABEL_MAP["plotpoint"] = "PlotPoint"
+_CANONICAL_NODE_LABEL_MAP["valuenode"] = "ValueNode"
+_CANONICAL_NODE_LABEL_MAP["developmentevent"] = "DevelopmentEvent"
+_CANONICAL_NODE_LABEL_MAP["worldelaborationevent"] = "WorldElaborationEvent"
 
 
-# Preserve original static implementation for fallback
 def _infer_specific_node_type_static(
     name: str, category: str = "", fallback_type: str = "Entity"
 ) -> str:
     """
     Original static node type inference (preserved as fallback).
     Upgrades generic types like 'WorldElement' to specific types like 'Artifact', 'Location', etc.
+
+    DEPRECATED: This logic is largely superseded by schema_validator.validate_entity_type
+    but kept for emergency fallback.
     """
     name_lower = name.lower()
     category_lower = category.lower()
@@ -623,16 +634,39 @@ def _infer_specific_node_type(
     name: str, category: str = "", fallback_type: str = "Entity"
 ) -> str:
     """
-    Node type inference using static rules.
+    Node type inference using schema validator.
 
-    Simplified implementation for single-user deployment that directly uses
-    static inference without dynamic schema overhead.
+    Maps generic or ambiguous types to the 9 valid node labels.
     """
     if not name or not name.strip():
-        return fallback_type if fallback_type != "WorldElement" else "Entity"
+        return (
+            fallback_type if fallback_type not in ["WorldElement", "Entity"] else "Item"
+        )
 
-    # Direct static inference - no dynamic fallback needed
-    return _infer_specific_node_type_static(name, category, fallback_type)
+    # Use the schema validator to determine the correct type
+    # If the provided type is already valid, it will be returned.
+    # Otherwise, it attempts to map it based on category/name.
+
+    # First check if the fallback type is already a valid specific label
+    if fallback_type in VALID_NODE_LABELS:
+        return fallback_type
+
+    # Attempt to validate/normalize
+    is_valid, corrected_label, _ = schema_validator.validate_entity_type(fallback_type)
+    if is_valid and corrected_label:
+        return corrected_label
+
+    # If fallback type is generic, try to infer from category/name
+    # This is a wrapper around the logic in schema_validator or similar
+    # For now, we can use the existing static inference but map the result to valid labels
+    inferred = _infer_specific_node_type_static(name, category, fallback_type)
+
+    # Verify the inferred type is valid
+    if inferred in VALID_NODE_LABELS:
+        return inferred
+
+    # Final fallback mapping
+    return "Item" if fallback_type == "WorldElement" else "Entity"
 
 
 def _to_pascal_case(text: str) -> str:
@@ -781,42 +815,53 @@ async def normalize_existing_relationship_types() -> None:
 
 
 def _get_cypher_labels(entity_type: str | None) -> str:
-    """Helper to create a Cypher label string (e.g., :Character:Entity or :Person:Character:Entity)."""
+    """
+    Helper to create a Cypher label string.
+    STRICTLY enforces that the primary label is in VALID_NODE_LABELS (or is a supporting type).
+    """
+    if not entity_type or not entity_type.strip():
+        raise ValueError("Entity type must be provided")
 
-    entity_label_suffix = ":Entity"  # All nodes get this
-    specific_labels_parts: list[str] = []
+    cleaned = re.sub(r"[^a-zA-Z0-9_\s]+", "", entity_type)
+    normalized_key = re.sub(r"[_\s]+", "", cleaned).lower()
 
-    if entity_type and entity_type.strip():
-        cleaned = re.sub(r"[^a-zA-Z0-9_\s]+", "", entity_type)
-        normalized_key = re.sub(r"[_\s]+", "", cleaned).lower()
+    canonical = _CANONICAL_NODE_LABEL_MAP.get(normalized_key)
 
-        canonical = _CANONICAL_NODE_LABEL_MAP.get(normalized_key)
-        if canonical is None:
-            pascal = _to_pascal_case(cleaned)
-            canonical = _CANONICAL_NODE_LABEL_MAP.get(pascal.lower(), pascal)
+    # If not found in map, try PascalCase conversion and check again
+    if canonical is None:
+        pascal = _to_pascal_case(cleaned)
+        canonical = _CANONICAL_NODE_LABEL_MAP.get(pascal.lower())
 
-        if canonical and canonical != "Entity":
-            if canonical != "Character":
-                specific_labels_parts.append(f":{canonical}")
+    # Critical Validation: If still not found or not in allowed set, raise error
+    # We allow a few supporting types like 'Entity' (though usually not primary), 'NovelInfo', etc.
+    supporting_types = {
+        "Entity",
+        "NovelInfo",
+        "WorldContainer",
+        "PlotPoint",
+        "ValueNode",
+        "DevelopmentEvent",
+        "WorldElaborationEvent",
+    }
 
-            if cleaned.strip().lower() == "person" or canonical == "Character":
-                if ":Character" not in specific_labels_parts:
-                    specific_labels_parts.append(":Character")
+    if not canonical:
+        # Attempt strict validation via schema_validator as last resort
+        is_valid, corrected, _ = schema_validator.validate_entity_type(entity_type)
+        if is_valid and corrected:
+            canonical = corrected
+        else:
+            # In strict mode, we do NOT allow arbitrary labels
+            raise ValueError(
+                f"Invalid node label '{entity_type}'. Must be one of {sorted(VALID_NODE_LABELS)}"
+            )
 
-    # Order: :Character (if present), then other specific labels (e.g., :Person), then :Entity
-    # Remove duplicates and establish order
-    final_ordered_labels = []
-    if ":Character" in specific_labels_parts:
-        final_ordered_labels.append(":Character")
+    if canonical not in VALID_NODE_LABELS and canonical not in supporting_types:
+        raise ValueError(
+            f"Invalid node label '{canonical}'. Must be one of {sorted(VALID_NODE_LABELS)}"
+        )
 
-    for label in specific_labels_parts:
-        if label not in final_ordered_labels:
-            final_ordered_labels.append(label)
-
-    if not final_ordered_labels:
-        return entity_label_suffix  # Just ":Entity"
-
-    return "".join(final_ordered_labels) + entity_label_suffix
+    # Removed implicit inheritance of Entity label
+    return f":{canonical}"
 
 
 def _get_constraint_safe_merge(
@@ -832,24 +877,39 @@ def _get_constraint_safe_merge(
     """
     # Parse the labels to identify constraint-sensitive ones
     labels = [label.strip() for label in labels_cypher.split(":") if label.strip()]
-    constraint_labels = [
-        "Character",
+    # All VALID_NODE_LABELS now have constraints
+    constraint_labels = list(VALID_NODE_LABELS) + [
         "NovelInfo",
-        "Chapter",
-        "WorldElement",
-    ]  # Labels with uniqueness constraints
+        "WorldContainer",
+        "PlotPoint",
+        "ValueNode",
+        "DevelopmentEvent",
+        "WorldElaborationEvent",
+    ]
 
     # Find the first constraint-sensitive label to use in MERGE
     primary_label = None
     additional_labels: list[str] = []
 
-    # If we have a stable id to merge on, prefer the Entity label
-    # to align with the unique constraint on Entity.id
+    # If we have a stable id to merge on, search for a constraint label
     if id_param:
-        primary_label = "Entity"
-        additional_labels = [l for l in labels if l != "Entity"]
-        merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"
-        return merge_query, additional_labels
+        # Find valid primary label from constraints
+        for label in labels:
+            if label in constraint_labels:
+                primary_label = label
+                break
+        
+        if primary_label:
+            additional_labels = [l for l in labels if l != primary_label]
+            merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"
+            return merge_query, additional_labels
+        else:
+            # Fallback for when no known constraint label matches (should be rare)
+            # Use the first label as primary
+            primary_label = labels[0] if labels else "Entity"
+            additional_labels = labels[1:] if len(labels) > 1 else []
+            merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"
+            return merge_query, additional_labels
 
     for label in labels:
         if label in constraint_labels:
@@ -860,11 +920,10 @@ def _get_constraint_safe_merge(
         else:
             additional_labels.append(label)
 
-    # If no constraint-sensitive label found, use Entity as default
+    # If no constraint-sensitive label found, use first label or Entity
     if primary_label is None:
-        primary_label = "Entity"
-        # Remove Entity from additional labels if it's there
-        additional_labels = [l for l in additional_labels if l != "Entity"]
+        primary_label = labels[0] if labels else "Entity"
+        additional_labels = labels[1:] if len(labels) > 1 else []
 
     # Build the MERGE query with only the primary constraint label
     merge_query = f"MERGE ({create_ts_var}:{primary_label} {{name: ${name_param}}})"
@@ -910,20 +969,23 @@ async def add_kg_triples_batch_to_db(
         )  # This is a string like "Character", "WorldElement", etc.
         predicate_clean = str(predicate_str).strip().upper().replace(" ", "_")
 
-        # Enhanced Type Inference: Upgrade generic types to specific ones
-        if subject_type in ["WorldElement", "Entity"] and subject_name:
+        # Strict Type Validation & Inference
+        # We must ensure subject_type is one of VALID_NODE_LABELS
+        if subject_name:
             subject_category = subject_info.get("category", "")
-            upgraded_type = _infer_specific_node_type(
+            # Always run inference/validation to ensure compliance
+            validated_type = _infer_specific_node_type(
                 subject_name, subject_category, subject_type
             )
-            if upgraded_type != subject_type:
-                upgrade_key = f"{subject_name}:{subject_type}->{upgraded_type}"
+
+            if validated_type != subject_type:
+                upgrade_key = f"{subject_name}:{subject_type}->{validated_type}"
                 if upgrade_key not in _upgrade_logged:
                     logger.info(
-                        f"Type inference upgraded {subject_type} -> {upgraded_type} for '{subject_name}'"
+                        f"Type validation updated {subject_type} -> {validated_type} for '{subject_name}'"
                     )
                     _upgrade_logged.add(upgrade_key)
-                subject_type = upgraded_type
+                subject_type = validated_type
 
         if not all([subject_name, predicate_clean]):
             logger.warning(
@@ -1031,22 +1093,24 @@ async def add_kg_triples_batch_to_db(
                 )
                 continue
 
-            # Enhanced Type Inference for object as well
-            if object_type in ["WorldElement", "Entity"] and object_name:
+            # Strict Type Validation & Inference for object
+            if object_name:
                 object_category = object_entity_info.get("category", "")
-                upgraded_object_type = _infer_specific_node_type(
+                # Always run inference/validation
+                validated_object_type = _infer_specific_node_type(
                     object_name, object_category, object_type
                 )
-                if upgraded_object_type != object_type:
+
+                if validated_object_type != object_type:
                     upgrade_key = (
-                        f"object:{object_name}:{object_type}->{upgraded_object_type}"
+                        f"object:{object_name}:{object_type}->{validated_object_type}"
                     )
                     if upgrade_key not in _upgrade_logged:
                         logger.info(
-                            f"Type inference upgraded object {object_type} -> {upgraded_object_type} for '{object_name}'"
+                            f"Type validation updated object {object_type} -> {validated_object_type} for '{object_name}'"
                         )
                         _upgrade_logged.add(upgrade_key)
-                    object_type = upgraded_object_type
+                    object_type = validated_object_type
 
             object_labels_cypher = _get_cypher_labels(object_type)
             params["object_name_param"] = object_name
@@ -1181,14 +1245,15 @@ async def query_kg_from_db(
 ) -> list[dict[str, Any]]:
     conditions = []
     parameters: dict[str, Any] = {}
-    match_clause = "MATCH (s:Entity)-[r]->(o) "
+    # Removed generic :Entity constraint, now matching on any node
+    match_clause = "MATCH (s)-[r]->(o) "
 
     if subject is not None:
         conditions.append("s.name = $subject_param")
         parameters["subject_param"] = subject.strip()
     if predicate is not None:
         normalized_predicate = validate_relationship_type(predicate)
-        match_clause = f"MATCH (s:Entity)-[r:`{normalized_predicate}`]->(o) "
+        match_clause = f"MATCH (s)-[r:`{normalized_predicate}`]->(o) "
     if obj_val is not None:
         obj_val_stripped = obj_val.strip()
         conditions.append(
@@ -1267,7 +1332,7 @@ async def get_most_recent_value_from_db(
     conditions = []
     parameters: dict[str, Any] = {}
     normalized_predicate = validate_relationship_type(predicate)
-    match_clause = f"MATCH (s:Entity)-[r:`{normalized_predicate}`]->(o) "
+    match_clause = f"MATCH (s)-[r:`{normalized_predicate}`]->(o) "
 
     conditions.append("s.name = $subject_param")
     parameters["subject_param"] = subject.strip()
@@ -1335,7 +1400,7 @@ async def get_novel_info_property_from_db(property_key: str) -> Any | None:
         return None
 
     novel_id_param = config.MAIN_NOVEL_INFO_NODE_ID
-    query = f"MATCH (ni:NovelInfo:Entity {{id: $novel_id_param}}) RETURN ni.{property_key} AS value"
+    query = f"MATCH (ni:NovelInfo {{id: $novel_id_param}}) RETURN ni.{property_key} AS value"
     try:
         results = await neo4j_manager.execute_read_query(
             query, {"novel_id_param": novel_id_param}
@@ -1486,9 +1551,9 @@ async def find_candidate_duplicate_entities(
     # Description similarity is a simple Jaccard-overlap on tokenized, cleaned text
     query = """
     // ---------- Character pairs ----------
-    MATCH (e1:Character:Entity)
+    MATCH (e1:Character)
     WITH e1 WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
-    MATCH (e2:Character:Entity)
+    MATCH (e2:Character)
     WHERE elementId(e1) < elementId(e2)
       AND e2.name IS NOT NULL AND e2.id IS NOT NULL
     WITH e1, e2,
@@ -1535,10 +1600,10 @@ async def find_candidate_duplicate_entities(
     UNION
 
     // ---------- Typed Entity pairs (non-Character) ----------
-    MATCH (e1:Entity)
+    MATCH (e1)
     WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
     WITH e1 WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
-    MATCH (e2:Entity)
+    MATCH (e2)
     WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
       AND elementId(e1) < elementId(e2)
       AND e2.name IS NOT NULL AND e2.id IS NOT NULL
@@ -1605,7 +1670,7 @@ async def backfill_missing_entity_ids(max_updates: int = 1000) -> int:
     try:
         # Fetch candidate characters without IDs (limit to avoid huge batches)
         fetch_query = """
-        MATCH (c:Character:Entity)
+        MATCH (c:Character)
         WHERE c.id IS NULL OR c.id = ''
         RETURN c.name AS name, coalesce(c.created_chapter, 0) AS created_chapter
         LIMIT $limit
@@ -1636,7 +1701,7 @@ async def backfill_missing_entity_ids(max_updates: int = 1000) -> int:
 
         update_query = """
         UNWIND $items AS item
-        MATCH (c:Character:Entity {name: item.name})
+        MATCH (c:Character {name: item.name})
         WHERE c.id IS NULL OR c.id = ''
         SET c.id = item.id
         RETURN count(c) AS updated
@@ -2137,7 +2202,7 @@ async def fetch_unresolved_dynamic_relationships(
 ) -> list[dict[str, Any]]:
     """Fetch dynamic relationships lacking a specific type."""
     query = """
-    MATCH (s:Entity)-[r:DYNAMIC_REL]->(o:Entity)
+    MATCH (s)-[r:DYNAMIC_REL]->(o)
     WHERE r.type IS NULL OR r.type = 'UNKNOWN'
     RETURN elementId(r) AS rel_id,
            s.name AS subject,
@@ -2197,7 +2262,7 @@ async def get_shortest_path_length_between_entities(
         return None
 
     query = f"""
-    MATCH (a:Entity {{name: $name1}}), (b:Entity {{name: $name2}})
+    MATCH (a {{name: $name1}}), (b {{name: $name2}})
     MATCH p = shortestPath((a)-[*..{max_depth}]-(b))
     RETURN length(p) AS len
     """
@@ -2215,7 +2280,7 @@ async def get_shortest_path_length_between_entities(
 async def find_orphaned_bootstrap_elements() -> list[dict[str, Any]]:
     """Find bootstrap elements with no relationships."""
     query = """
-    MATCH (we:Entity)
+    MATCH (we)
     WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
       AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0)
       AND NOT (we)-[]->() AND NOT ()-[]->(we)
@@ -2275,8 +2340,8 @@ async def create_relationship_with_properties(
         "predicate": relationship_type.upper().strip(),
         "object_entity": {"name": object_name.strip()},
         "is_literal_object": False,
-        "subject_type": "Entity",  # Will be refined by validation
-        "object_type": "Entity",  # Will be refined by validation
+        "subject_type": "Item",  # Will be refined by validation, defaulting to Item instead of generic Entity
+        "object_type": "Item",  # Will be refined by validation, defaulting to Item instead of generic Entity
         "properties": default_props,
     }
 
@@ -2360,8 +2425,8 @@ async def create_contextual_relationship(
 ) -> None:
     """Create a contextual relationship between two elements with constraint validation."""
     # Get node types for validation
-    element1_type = element1.get("type", "Entity")
-    element2_type = element2.get("type", "Entity")
+    element1_type = element1.get("type", "Item")
+    element2_type = element2.get("type", "Item")
 
     # Validate the relationship using constraint system
     validated_relationship = await validate_single_relationship(

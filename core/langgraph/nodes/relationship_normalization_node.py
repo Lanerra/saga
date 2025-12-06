@@ -91,13 +91,15 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
         original_type = rel.relationship_type
 
         # Normalize relationship type
-        normalized_type, was_normalized, similarity = (
-            await normalization_service.normalize_relationship_type(
-                rel_type=original_type,
-                rel_description=rel.description,
-                vocabulary=vocabulary,
-                current_chapter=current_chapter,
-            )
+        (
+            normalized_type,
+            was_normalized,
+            similarity,
+        ) = await normalization_service.normalize_relationship_type(
+            rel_type=original_type,
+            rel_description=rel.description,
+            vocabulary=vocabulary,
+            current_chapter=current_chapter,
         )
 
         # Check if novel (before updating vocabulary)

@@ -31,7 +31,7 @@ class NativeCypherBuilder:
             Tuple of (cypher_query, parameters)
         """
         cypher = """
-        MERGE (c:Character:Entity {name: $name})
+        MERGE (c:Character {name: $name})
         SET c.description = $description,
             c.status = $status,
             c.id = CASE WHEN c.id IS NULL OR c.id = '' THEN $id ELSE c.id END,
@@ -50,7 +50,7 @@ class NativeCypherBuilder:
 
         WITH c
         FOREACH (trait_name IN $trait_data |
-            MERGE (t:Trait:Entity {name: trait_name})
+            MERGE (t:Trait {name: trait_name})
             ON CREATE SET
                 t.description = '',
                 t.created_at = timestamp(),
@@ -69,8 +69,8 @@ class NativeCypherBuilder:
         CALL (c, rel_data) {
             WITH c, rel_data
             // Use MERGE instead of MATCH to create provisional nodes if they don't exist
-            // Mark them as Character:Entity since they're related to a character
-            MERGE (other:Character:Entity {name: rel_data.target_name})
+            // Mark them as Character since they're related to a character
+            MERGE (other:Character {name: rel_data.target_name})
             ON CREATE SET
                 other.is_provisional = true,
                 other.created_chapter = $chapter_number,
@@ -160,75 +160,187 @@ class NativeCypherBuilder:
         # all values are primitive types that Neo4j can store
         flattened_additional_props = flatten_dict(item.additional_properties)
 
+        # STRICT SCHEMA ENFORCEMENT: Map generic categories to the 9 valid labels
+        # See docs/node-label-schema.md for the authoritative source
         def _classify_label(category: str, name: str) -> str:
             c = (category or "").strip().lower()
-            mapping = {
-                # Locations & structures
-                "location": "Location",
-                "place": "Location",
-                "region": "Region",
-                "territory": "Territory",
-                "landmark": "Landmark",
-                "path": "Path",
-                "road": "Path",
-                "room": "Room",
-                "settlement": "Settlement",
-                "city": "Settlement",
-                "town": "Settlement",
-                "village": "Settlement",
-                # Organizations
-                "faction": "Faction",
-                "organization": "Organization",
-                "guild": "Guild",
-                "house": "House",
-                "order": "Order",
-                "council": "Council",
-                # Objects & items
-                "object": "Object",
-                "item": "Item",
-                "artifact": "Artifact",
-                "relic": "Relic",
-                "document": "Document",
-                "book": "Document",
-                "scroll": "Document",
-                "letter": "Document",
-                # Systems
-                "system": "System",
-                "magic": "Magic",
-                "technology": "Technology",
-                "religion": "Religion",
-                "culture": "Culture",
-                "education": "Education",
-                "government": "Government",
-                "economy": "Economy",
-                # Resources
-                "resource": "Resource",
-                "material": "Material",
-                "food": "Food",
-                "currency": "Currency",
-                # Information
-                "lore": "Lore",
-                "knowledge": "Knowledge",
-                "secret": "Secret",
-                "rumor": "Rumor",
-                "news": "News",
-                "message": "Message",
-                "signal": "Signal",
-                "record": "Record",
-                "history": "History",
-            }
-            return mapping.get(c, "Object")
+
+            # Direct mapping for exact matches (fast path)
+            if c.title() in [
+                "Location",
+                "Event",
+                "Item",
+                "Organization",
+                "Concept",
+                "Trait",
+                "Character",
+                "Chapter",
+                "Novel",
+            ]:
+                return c.title()
+
+            # Mapping based on LABEL_NORMALIZATION_MAP in kg_constants
+            # LOCATION VARIANTS
+            if c in [
+                "place",
+                "site",
+                "area",
+                "region",
+                "settlement",
+                "landmark",
+                "room",
+                "structure",
+                "territory",
+                "city",
+                "town",
+                "village",
+                "path",
+                "road",
+                "planet",
+                "landscape",
+                "building",
+            ]:
+                return "Location"
+
+            # ITEM VARIANTS
+            if c in [
+                "object",
+                "thing",
+                "artifact",
+                "tool",
+                "weapon",
+                "document",
+                "relic",
+                "book",
+                "scroll",
+                "letter",
+                "device",
+                "vehicle",
+                "resource",
+                "material",
+                "food",
+                "clothing",
+                "currency",
+                "money",
+                "treasure",
+            ]:
+                return "Item"
+
+            # ORGANIZATION VARIANTS
+            if c in [
+                "faction",
+                "guild",
+                "group",
+                "order",
+                "house",
+                "council",
+                "family",
+                "government",
+                "military",
+                "religious",
+                "commercial",
+                "criminal",
+                "academic",
+                "social",
+                "army",
+                "company",
+            ]:
+                return "Organization"
+
+            # EVENT VARIANTS
+            if c in [
+                "happening",
+                "occurrence",
+                "incident",
+                "development",
+                "battle",
+                "meeting",
+                "journey",
+                "ceremony",
+                "discovery",
+                "conflict",
+                "conversation",
+                "flashback",
+                "scene",
+                "moment",
+            ]:
+                return "Event"
+
+            # CONCEPT VARIANTS
+            if c in [
+                "idea",
+                "philosophy",
+                "theme",
+                "law",
+                "tradition",
+                "system",
+                "magic",
+                "technology",
+                "religion",
+                "culture",
+                "history",
+                "lore",
+                "knowledge",
+                "secret",
+                "rumor",
+                "news",
+                "message",
+                "signal",
+                "record",
+                "education",
+                "economy",
+                "language",
+                "symbol",
+                "story",
+                "song",
+                "dream",
+                "memory",
+                "emotion",
+            ]:
+                return "Concept"
+
+            # TRAIT VARIANTS
+            if c in [
+                "skill",
+                "ability",
+                "quality",
+                "attribute",
+                "status",
+                "personality",
+                "physical",
+                "supernatural",
+                "background",
+            ]:
+                return "Trait"
+
+            # CHARACTER VARIANTS
+            if c in [
+                "person",
+                "people",
+                "creature",
+                "being",
+                "spirit",
+                "deity",
+                "human",
+                "npc",
+                "protagonist",
+                "antagonist",
+                "supporting",
+                "minor",
+                "historical",
+            ]:
+                return "Character"
+
+            # Default fallback for ambiguous items
+            return "Item"
 
         primary_label = _classify_label(item.category, item.name)
         # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
-        # Previous implementation used a comma which caused a syntax error before RETURN.
+        # Removed implicit Entity label inheritance
         labels_clause = f":{primary_label}"
-        # WorldElement legacy label removed – only use specific type + Entity
-        # Keep Entity label to ensure compatibility with queries expecting :Entity
-        labels_clause += ":Entity"
 
         cypher = f"""
-        MERGE (w:Entity {{id: $id}})
+        MERGE (w:{primary_label} {{id: $id}})
         SET w.name = $name,
             w.category = $category,
             w.description = $description,
@@ -252,7 +364,7 @@ class NativeCypherBuilder:
 
         WITH w
         FOREACH (trait_name IN $trait_data |
-            MERGE (t:Trait:Entity {{name: trait_name}})
+            MERGE (t:Trait {{name: trait_name}})
             ON CREATE SET
                 t.description = '',
                 t.created_at = timestamp(),
@@ -271,8 +383,8 @@ class NativeCypherBuilder:
         CALL (w, rel_data) {{
             WITH w, rel_data
             // Use MERGE instead of MATCH to create provisional nodes if they don't exist
-            // Use generic Entity label - will be updated during healing if needed
-            MERGE (other:Entity {{name: rel_data.target_name}})
+            // Use Item as default safe type instead of generic Entity
+            MERGE (other:Item {{name: rel_data.target_name}})
             ON CREATE SET
                 other.is_provisional = true,
                 other.created_chapter = $chapter_number,
@@ -372,7 +484,7 @@ class NativeCypherBuilder:
         where_clause = " AND ".join(where_clauses)
 
         cypher = f"""
-        MATCH (c:Character:Entity)
+        MATCH (c:Character)
         WHERE {where_clause}
 
         // Optionally collect relationships (use actual relationship type)
@@ -425,9 +537,11 @@ class NativeCypherBuilder:
 
         where_clause = " AND ".join(where_clauses)
 
+        # Updated to respect new schema - match all valid world element types
+        # Note: Character is handled by character_fetch_cypher
         cypher = f"""
-        MATCH (w:Entity)
-        WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
+        MATCH (w)
+        WHERE (w:Location OR w:Item OR w:Event OR w:Organization OR w:Concept)
           AND {where_clause}
 
         // Collect traits from HAS_TRAIT relationships to Trait nodes
