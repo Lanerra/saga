@@ -21,21 +21,20 @@ from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 @pytest.mark.parametrize(
     "entity_type, expected_labels",
     [
-        ("Character", ":Character:Entity"),
+        ("Character", ":Character"),
         (
             "character",
-            ":Character:Entity",
+            ":Character",
         ),  # Test case-insensitivity for "Character"
         (
             "Person",
-            ":Character:Entity",
+            ":Character",
         ),  # Person should get normalized to Character
         # "person" removed as lowercase types are rejected by strict schema validation
-        ("Location", ":Location:Entity"),
-        ("Event", ":Event:Entity"),
-        ("  Item ", ":Item:Entity"),  # Test stripping whitespace
+        ("Location", ":Location"),
+        ("Event", ":Event"),
+        ("  Item ", ":Item"),  # Test stripping whitespace
         # Removed complex and invalid types as they are now rejected by schema enforcement
-        ("Entity", ":Entity"),  # Explicit "Entity" type
         # Empty/None types are now rejected by strict schema validation
     ],
 )
@@ -45,9 +44,9 @@ def test_get_cypher_labels_various_types(entity_type, expected_labels):
 
 def test_get_cypher_labels_character_is_primary():
     # Ensure if type is "Character", it doesn't become :Character:Character:Entity
-    assert _get_cypher_labels("Character") == ":Character:Entity"
+    assert _get_cypher_labels("Character") == ":Character"
     # Ensure if type is "Person", it is normalized to Character
-    assert _get_cypher_labels("Person") == ":Character:Entity"
+    assert _get_cypher_labels("Person") == ":Character"
 
 
 # Mocking Neo4j interactions for add_kg_triples_batch_to_db and query_kg_from_db
@@ -138,8 +137,8 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
         if params.get("subject_name_param") == "Alice":
             # Accept either name-based merge or id-based merge (stable ids for Characters)
             assert (
-                "MERGE (s:Character:Entity {name: $subject_name_param})" in query
-                or "MERGE (s:Entity {id: $subject_id_param})" in query
+                "MERGE (s:Character {name: $subject_name_param})" in query
+                or "MERGE (s:Character {id: $subject_id_param})" in query
             )
             alice_statement_found = True
             break
@@ -153,18 +152,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
         if params.get("subject_name_param") == "Bob":
             # Normalization updates the type parameter, so we check for the normalized label
             # The MERGE will be on :Character (from normalized type)
-            # The exact string may vary based on constraint handling, but should definitely contain MERGE (s:Character:Entity ...
-            # or simply MERGE (s:Character ... if Entity is added later.
-            # Given the error output, we know the query contains:
-            # MERGE (s:Entity {id: $subject_id_param})
-            # ON CREATE SET ..., s.type = 'Character', ..., s:`Character`
-            # SET s:`Character`
-
-            # The current test logic expects "MERGE (s:Character" but the id-based path uses "MERGE (s:Entity {id...)"
-            # and applies labels via SET.
-
-            assert "MERGE (s:Character" in query or (
-                "MERGE (s:Entity" in query and "s:`Character`" in query
+            assert (
+                "MERGE (s:Character {name: $subject_name_param})" in query
+                or "MERGE (s:Character {id: $subject_id_param})" in query
             )
             bob_statement_found = True
             break
@@ -190,8 +180,8 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
         if params.get("object_name_param") == "Charles":
             # Accept either name-based merge with Character label or id-based merge for stable IDs
             assert (
-                "MERGE (o:Character:Entity {name: $object_name_param})" in query
-                or "MERGE (o:Entity {id: $object_id_param})" in query
+                "MERGE (o:Character {name: $object_name_param})" in query
+                or "MERGE (o:Character {id: $object_id_param})" in query
             )
             charles_statement_found = True
             break
@@ -205,11 +195,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
         if params.get("object_name_param") == "Diana":
             # Normalization updates the type parameter, so we check for the normalized label
             # The MERGE will be on :Character (from normalized type)
-            # Similarly, accommodate id-based merge logic
             assert (
                 ("MERGE (o:Character" in query and "$object_name_param" in query)
-                or ("MERGE (o:Entity" in query and "o:`Character`" in query)
-                or ("MERGE (o:Entity {id: $object_id_param})" in query)
+                or ("MERGE (o:Character {id: $object_id_param})" in query)
             )
             diana_statement_found = True
             break
@@ -314,7 +302,8 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
     # query_kg_from_db in current SAGA normalizes predicate internally and does not
     # pass it as a parameter; only subject is parameterized here.
     assert captured_query_params.get("subject_param") == "Alice"
-    assert "MATCH (s:Entity)-[r:" in captured_query_string
+    # assert "MATCH (s:Entity)-[r:" in captured_query_string # Removed Entity label requirement
+    assert "MATCH (s)-[r:" in captured_query_string
     # The test for _get_cypher_labels and add_kg_triples_batch_to_db already ensure Alice is a :Character.
     # So, if Neo4j has Alice as :Character, the query will work.
 
@@ -353,5 +342,6 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
     captured_query_string = ""
     captured_query_params = {}
     await query_kg_from_db(include_provisional=True)
-    assert "MATCH (s:Entity)-[r" in captured_query_string
+    # assert "MATCH (s:Entity)-[r" in captured_query_string # Removed Entity label requirement
+    assert "MATCH (s)-[r" in captured_query_string
     assert captured_query_params == {}

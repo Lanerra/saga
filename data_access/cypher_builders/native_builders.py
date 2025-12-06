@@ -31,7 +31,7 @@ class NativeCypherBuilder:
             Tuple of (cypher_query, parameters)
         """
         cypher = """
-        MERGE (c:Character:Entity {name: $name})
+        MERGE (c:Character {name: $name})
         SET c.description = $description,
             c.status = $status,
             c.id = CASE WHEN c.id IS NULL OR c.id = '' THEN $id ELSE c.id END,
@@ -50,7 +50,7 @@ class NativeCypherBuilder:
 
         WITH c
         FOREACH (trait_name IN $trait_data |
-            MERGE (t:Trait:Entity {name: trait_name})
+            MERGE (t:Trait {name: trait_name})
             ON CREATE SET
                 t.description = '',
                 t.created_at = timestamp(),
@@ -69,8 +69,8 @@ class NativeCypherBuilder:
         CALL (c, rel_data) {
             WITH c, rel_data
             // Use MERGE instead of MATCH to create provisional nodes if they don't exist
-            // Mark them as Character:Entity since they're related to a character
-            MERGE (other:Character:Entity {name: rel_data.target_name})
+            // Mark them as Character since they're related to a character
+            MERGE (other:Character {name: rel_data.target_name})
             ON CREATE SET
                 other.is_provisional = true,
                 other.created_chapter = $chapter_number,
@@ -336,11 +336,11 @@ class NativeCypherBuilder:
 
         primary_label = _classify_label(item.category, item.name)
         # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
-        # Ensure we always include :Entity for schema compatibility
-        labels_clause = f":{primary_label}:Entity"
+        # Removed implicit Entity label inheritance
+        labels_clause = f":{primary_label}"
 
         cypher = f"""
-        MERGE (w:Entity {{id: $id}})
+        MERGE (w:{primary_label} {{id: $id}})
         SET w.name = $name,
             w.category = $category,
             w.description = $description,
@@ -364,7 +364,7 @@ class NativeCypherBuilder:
 
         WITH w
         FOREACH (trait_name IN $trait_data |
-            MERGE (t:Trait:Entity {{name: trait_name}})
+            MERGE (t:Trait {{name: trait_name}})
             ON CREATE SET
                 t.description = '',
                 t.created_at = timestamp(),
@@ -383,8 +383,8 @@ class NativeCypherBuilder:
         CALL (w, rel_data) {{
             WITH w, rel_data
             // Use MERGE instead of MATCH to create provisional nodes if they don't exist
-            // Use Item:Entity as default safe type instead of generic Entity
-            MERGE (other:Item:Entity {{name: rel_data.target_name}})
+            // Use Item as default safe type instead of generic Entity
+            MERGE (other:Item {{name: rel_data.target_name}})
             ON CREATE SET
                 other.is_provisional = true,
                 other.created_chapter = $chapter_number,
@@ -484,7 +484,7 @@ class NativeCypherBuilder:
         where_clause = " AND ".join(where_clauses)
 
         cypher = f"""
-        MATCH (c:Character:Entity)
+        MATCH (c:Character)
         WHERE {where_clause}
 
         // Optionally collect relationships (use actual relationship type)
@@ -540,7 +540,7 @@ class NativeCypherBuilder:
         # Updated to respect new schema - match all valid world element types
         # Note: Character is handled by character_fetch_cypher
         cypher = f"""
-        MATCH (w:Entity)
+        MATCH (w)
         WHERE (w:Location OR w:Item OR w:Event OR w:Organization OR w:Concept)
           AND {where_clause}
 
