@@ -803,8 +803,8 @@ async def _check_character_locations(
     try:
         # Query recent character locations from Neo4j
         query = """
-            MATCH (c:Character)-[v:VISITED]->(l:Location)
-            WHERE v.chapter = $prev_chapter
+            MATCH (c:Character)-[v:LOCATED_IN]->(l:Location)
+            WHERE v.chapter_added = $prev_chapter
             RETURN c.name AS character, l.name AS location
         """
 
