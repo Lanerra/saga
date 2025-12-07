@@ -899,12 +899,14 @@ async def _build_relationship_statements(
             query = f"""
             MERGE (subj{subject_labels} {{name: $subject_name}})
             ON CREATE SET
+                subj.id = randomUUID(),
                 subj.is_provisional = true,
                 subj.created_chapter = $chapter,
                 subj.description = 'Entity created from relationship extraction. Details to be developed.',
                 subj.created_at = timestamp()
             MERGE (obj{object_labels} {{name: $object_name}})
             ON CREATE SET
+                obj.id = randomUUID(),
                 obj.is_provisional = true,
                 obj.created_chapter = $chapter,
                 obj.description = 'Entity created from relationship extraction. Details to be developed.',
