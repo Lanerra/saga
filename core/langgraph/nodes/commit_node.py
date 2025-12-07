@@ -910,8 +910,7 @@ async def _build_relationship_statements(
                 obj.description = 'Entity created from relationship extraction. Details to be developed.',
                 obj.created_at = timestamp()
             MERGE (subj)-[r:`{predicate_clean}`]->(obj)
-            SET r.type = $rel_type,
-                r.chapter_added = $chapter,
+            SET r.chapter_added = $chapter,
                 r.is_provisional = $is_provisional,
                 r.confidence = $confidence,
                 r.description = $description,
@@ -931,7 +930,6 @@ async def _build_relationship_statements(
             params = {
                 "subject_name": subject_name,
                 "object_name": object_name,
-                "rel_type": predicate_clean,
                 "chapter": chapter,
                 "is_provisional": is_from_flawed_draft,
                 "confidence": triple.get("confidence", 1.0),
