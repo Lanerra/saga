@@ -88,7 +88,7 @@ class KnowledgeGraphService:
         """
         try:
             query = """
-            MATCH (c:Character:Entity)
+            MATCH (c:Character)
             WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
             RETURN c
             ORDER BY c.name
@@ -123,7 +123,7 @@ class KnowledgeGraphService:
         """
         try:
             query = """
-            MATCH (w:Entity)
+            MATCH (w)
             WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
               AND (w.is_deleted IS NULL OR w.is_deleted = FALSE)
             RETURN w
@@ -163,7 +163,7 @@ class KnowledgeGraphService:
             # Single query to get both characters and world items with relevance
             query = """
             // Get characters that appeared in recent chapters
-            MATCH (c:Character:Entity)-[:APPEARS_IN]->(ch:Chapter)
+            MATCH (c:Character)-[:APPEARS_IN]->(ch:Chapter)
             WHERE ch.number < $chapter_number
             WITH c, max(ch.number) as last_appearance
             ORDER BY last_appearance DESC
@@ -171,8 +171,8 @@ class KnowledgeGraphService:
             
             WITH collect({type: 'character', node: c}) as character_nodes
             
-            // Get world items referenced in recent chapters  
-            MATCH (w:Entity)-[:REFERENCED_IN]->(ch:Chapter)
+            // Get world items referenced in recent chapters
+            MATCH (w)-[:REFERENCED_IN]->(ch:Chapter)
             WHERE ch.number < $chapter_number
             WITH character_nodes, w, max(ch.number) as last_reference
             ORDER BY last_reference DESC

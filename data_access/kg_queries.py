@@ -1069,7 +1069,7 @@ async def add_kg_triples_batch_to_db(
             {subject_merge}
                 ON CREATE SET {subject_create_sets}
             {subject_label_set_clause}
-            MERGE (o:Entity:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
+            MERGE (o:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
                 ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
 
             MERGE (s)-[r:`{predicate_clean}` {{id: $rel_id_param}}]->(o)

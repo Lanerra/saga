@@ -62,7 +62,7 @@ def generate_character_node_cypher(
     statements.append(
         (
             """
-            MERGE (c:Character:Entity {name: $name})
+            MERGE (c:Character {name: $name})
             ON CREATE SET
                 c += $props,
                 c.created_ts = timestamp()
@@ -78,8 +78,8 @@ def generate_character_node_cypher(
     statements.append(
         (
             """
-            MATCH (ni:NovelInfo:Entity {id: $novel_id})
-            MATCH (c:Character:Entity {name: $name})
+            MATCH (ni:NovelInfo {id: $novel_id})
+            MATCH (c:Character {name: $name})
             MERGE (ni)-[:HAS_CHARACTER]->(c)
             """,
             {"novel_id": config.MAIN_NOVEL_INFO_NODE_ID, "name": profile.name},
@@ -96,8 +96,8 @@ def generate_character_node_cypher(
                     statements.append(
                         (
                             """
-                            MATCH (c:Character:Entity {name: $name})
-                            MERGE (t:Trait:Entity {name: $trait_name})
+                            MATCH (c:Character {name: $name})
+                            MERGE (t:Trait {name: $trait_name})
                                 ON CREATE SET
                                     t.created_ts = timestamp(),
                                     t.type = 'Trait'
@@ -131,8 +131,8 @@ def generate_character_node_cypher(
             statements.append(
                 (
                     """
-                    MATCH (c:Character:Entity {name: $name})
-                    MERGE (dev:Entity {id: $dev_event_id})
+                    MATCH (c:Character {name: $name})
+                    MERGE (dev {id: $dev_event_id})
                         ON CREATE SET
                             dev:DevelopmentEvent,
                             dev:Event,
@@ -186,9 +186,9 @@ def generate_character_node_cypher(
                 statements.append(
                     (
                         """
-                        MATCH (c1:Character:Entity {name: $source_name})
+                        MATCH (c1:Character {name: $source_name})
                         // Auto-created entity needs a valid label. Default to Character since this is character_cypher.
-                        MERGE (c2:Character:Entity {name: $target_name})
+                        MERGE (c2:Character {name: $target_name})
                             ON CREATE SET
                                 c2.description = (
                                     'Auto-created via relationship from '

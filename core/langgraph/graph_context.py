@@ -322,7 +322,7 @@ async def _get_location_details(location_id: str) -> dict[str, Any] | None:
         Dictionary with location details or None if not found
     """
     query = """
-    MATCH (l:Entity)
+    MATCH (l)
     WHERE l.id = $loc_id
       AND (l:Location OR l:Structure OR l:Settlement OR l:Region)
     RETURN l.id AS id,

@@ -489,7 +489,7 @@ class NativeCypherBuilder:
 
         // Optionally collect relationships (use actual relationship type)
         // Exclude HAS_TRAIT relationships as those are collected separately
-        OPTIONAL MATCH (c)-[r]->(other:Entity)
+        OPTIONAL MATCH (c)-[r]->(other)
         WHERE NOT type(r) = 'HAS_TRAIT'
 
         // Collect traits from HAS_TRAIT relationships to Trait nodes

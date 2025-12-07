@@ -34,7 +34,7 @@ async def _get_existing_traits() -> list[str]:
     """
     try:
         query = """
-        MATCH (t:Trait:Entity)
+        MATCH (t:Trait)
         RETURN DISTINCT t.name AS trait_name
         ORDER BY trait_name
         LIMIT 100
