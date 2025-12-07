@@ -154,9 +154,36 @@ class Neo4jManagerSingleton:
         with self.driver.session(database=config.NEO4J_DATABASE) as session:
             tx = session.begin_transaction()
             try:
-                for query, params in cypher_statements_with_params:
+                for statement_index, (query, params) in enumerate(cypher_statements_with_params):
                     self.logger.debug(f"Batch Cypher: {query} with params {params}")
-                    tx.run(query, params)
+                    try:
+                        tx.run(query, params)
+                    except Exception as statement_error:
+                        error_code = getattr(statement_error, 'code', 'UNKNOWN')
+                        error_message = getattr(statement_error, 'message', str(statement_error))
+
+                        self.logger.error(
+                            "🔴 CONSTRAINT VALIDATION ERROR - Statement failed in batch",
+                            statement_index=statement_index,
+                            total_statements=len(cypher_statements_with_params),
+                            error_code=error_code,
+                            error_message=error_message,
+                            failing_query=query,
+                            failing_params=params,
+                            exc_info=True,
+                        )
+
+                        self.logger.error(
+                            f"🔍 FULL ERROR DETAILS:\n"
+                            f"  Error Code: {error_code}\n"
+                            f"  Error Message: {error_message}\n"
+                            f"  Statement Index: {statement_index + 1}/{len(cypher_statements_with_params)}\n"
+                            f"  Failing Query:\n{query}\n"
+                            f"  Parameters: {params}"
+                        )
+
+                        raise
+
                 tx.commit()
                 self.logger.info(
                     "Neo4j: Batch processed %d KG triple statements. Constraint validation stats: %d/%d accepted, %d corrected, %d rejected.",
@@ -167,9 +194,14 @@ class Neo4jManagerSingleton:
                     0,
                 )
             except Exception as e:
+                error_code = getattr(e, 'code', 'UNKNOWN')
+                error_message = getattr(e, 'message', str(e))
+
                 self.logger.error(
                     "Error in Cypher batch execution",
                     batch_size=len(cypher_statements_with_params),
+                    error_code=error_code,
+                    error_message=error_message,
                     error=str(e),
                     exc_info=True,
                 )
@@ -179,6 +211,8 @@ class Neo4jManagerSingleton:
                     "Batch Cypher execution failed",
                     details={
                         "batch_size": len(cypher_statements_with_params),
+                        "error_code": error_code,
+                        "error_message": error_message,
                         "original_error": str(e),
                         "operation": "batch_execution",
                     },

@@ -1450,7 +1450,7 @@ async def get_chapter_context_for_entity(
     WHERE chapter_num IS NOT NULL AND chapter_num > 0
 
     // Now fetch the chapter data
-    MATCH (c:{"Chapter"} {{number: chapter_num}})
+    MATCH (c:Chapter {{number: chapter_num}})
     RETURN c.number as chapter_number, c.summary as summary, c.text as text
     ORDER BY c.number DESC
     LIMIT 5 // Limit context to most recent 5 chapters
@@ -2158,18 +2158,20 @@ async def consolidate_similar_relationships() -> int:
             if current_type == canonical_type:
                 continue
 
-            # Consolidate relationships
-            consolidate_query = f"""
-            MATCH (s)-[r:{current_type}]->(o)
-            CREATE (s)-[new_r:{canonical_type}]->(o)
-            SET new_r = properties(r)
+            # Consolidate relationships using parameterized APOC call for safety
+            consolidate_query = """
+            MATCH (s)-[r]-(o)
+            WHERE type(r) = $current_type
+            WITH s, r, o, properties(r) AS rel_props
+            CALL apoc.create.relationship(s, $canonical_type, rel_props, o) YIELD rel
             DELETE r
-            RETURN count(*) AS consolidated
+            RETURN count(rel) AS consolidated
             """
 
             try:
                 consolidate_results = await neo4j_manager.execute_write_query(
-                    consolidate_query
+                    consolidate_query,
+                    {"current_type": current_type, "canonical_type": canonical_type}
                 )
                 count = (
                     consolidate_results[0].get("consolidated", 0)
@@ -2441,17 +2443,25 @@ async def create_contextual_relationship(
         )
         return
 
-    # Use the validated relationship type (may have been corrected)
-    query = f"""
+    # Use the validated relationship type with APOC for safety
+    query = """
     MATCH (e1), (e2)
     WHERE e1.id = $element1_id AND e2.id = $element2_id
-    MERGE (e1)-[r:{validated_relationship}]->(e2)
-    SET r.created_by = 'bootstrap_healing',
-        r.created_ts = timestamp(),
-        r.confidence = 0.6
+    CALL apoc.merge.relationship(
+        e1,
+        $relationship_type,
+        {},
+        {created_by: 'bootstrap_healing', created_ts: timestamp(), confidence: 0.6},
+        e2
+    ) YIELD rel
+    RETURN rel
     """
     try:
-        params = {"element1_id": element1.get("id"), "element2_id": element2.get("id")}
+        params = {
+            "element1_id": element1.get("id"),
+            "element2_id": element2.get("id"),
+            "relationship_type": validated_relationship
+        }
         await neo4j_manager.execute_write_query(query, params)
 
         if validated_relationship != relationship_type:

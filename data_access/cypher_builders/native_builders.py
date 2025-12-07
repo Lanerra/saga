@@ -355,7 +355,6 @@ class NativeCypherBuilder:
             w.chapter_last_updated = $chapter_number,
             w.last_updated = timestamp(),
             w += $additional_props
-        SET w{labels_clause}
 
         // Handle traits as separate Trait nodes with HAS_TRAIT relationships
         WITH w
