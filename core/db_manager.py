@@ -416,7 +416,7 @@ class Neo4jManagerSingleton:
             "CREATE CONSTRAINT organization_id_unique IF NOT EXISTS FOR (o:Organization) REQUIRE o.id IS UNIQUE",
             "CREATE CONSTRAINT concept_id_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
             "CREATE CONSTRAINT trait_id_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.id IS UNIQUE",
-            
+
             # Name Unique Constraints (using name as key for lookup)
             "CREATE CONSTRAINT novel_title_unique IF NOT EXISTS FOR (n:Novel) REQUIRE n.title IS UNIQUE",
             "CREATE CONSTRAINT chapter_number_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.number IS UNIQUE",
@@ -427,7 +427,7 @@ class Neo4jManagerSingleton:
             "CREATE CONSTRAINT organization_name_unique IF NOT EXISTS FOR (o:Organization) REQUIRE o.name IS UNIQUE",
             "CREATE CONSTRAINT concept_name_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.name IS UNIQUE",
             "CREATE CONSTRAINT trait_name_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.name IS UNIQUE",
-            
+
             # Support constraints
             "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
             "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",

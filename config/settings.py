@@ -14,7 +14,7 @@ from typing import Any
 
 import structlog
 from dotenv import load_dotenv
-from pydantic import Field, model_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
@@ -258,6 +258,14 @@ class SagaSettings(BaseSettings):
     MAX_SUMMARY_TOKENS: int = 8192
     MAX_KG_TRIPLE_TOKENS: int = 16384
     MAX_PREPOP_KG_TOKENS: int = 16384
+
+    # Quality Assurance Configuration
+    ENABLE_QA_CHECKS: bool = True
+    QA_CHECK_FREQUENCY: int = 3
+    QA_CHECK_CONTRADICTORY_TRAITS: bool = True
+    QA_CHECK_POST_MORTEM_ACTIVITY: bool = True
+    QA_DEDUPLICATE_RELATIONSHIPS: bool = True
+    QA_CONSOLIDATE_RELATIONSHIPS: bool = True
 
     # Knowledge Graph Entity Filtering (Proper Noun Preference)
     ENTITY_MENTION_THRESHOLD_PROPER_NOUN: int = 1

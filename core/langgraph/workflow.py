@@ -17,6 +17,7 @@ from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.embedding_node import generate_embedding
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
+from core.langgraph.nodes.quality_assurance_node import check_quality
 from core.langgraph.nodes.relationship_normalization_node import (
     normalize_relationships,
 )
@@ -245,6 +246,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)
     workflow.add_node("heal_graph", heal_graph)
+    workflow.add_node("check_quality", check_quality)
     workflow.add_node("error_handler", handle_fatal_error)
 
     # Add error checking after generate
@@ -603,6 +605,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("summarize", summarize_chapter)
     workflow.add_node("finalize", finalize_chapter)
     workflow.add_node("heal_graph", heal_graph)
+    workflow.add_node("check_quality", check_quality)
 
     # Conditional entry: route → (init or chapter_outline)
     workflow.add_conditional_edges(
@@ -661,10 +664,11 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     # Revision loop
     workflow.add_edge("revise", "extract")
 
-    # Finalization and graph healing
+    # Finalization, graph healing, and quality assurance
     workflow.add_edge("summarize", "finalize")
     workflow.add_edge("finalize", "heal_graph")
-    workflow.add_edge("heal_graph", END)
+    workflow.add_edge("heal_graph", "check_quality")
+    workflow.add_edge("check_quality", END)
 
     # Set entry point to routing node
     workflow.set_entry_point("route")

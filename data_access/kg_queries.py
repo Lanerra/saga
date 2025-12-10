@@ -813,7 +813,7 @@ def _get_constraint_safe_merge(
             if label in constraint_labels:
                 primary_label = label
                 break
-        
+
         if primary_label:
             additional_labels = [l for l in labels if l != primary_label]
             merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"

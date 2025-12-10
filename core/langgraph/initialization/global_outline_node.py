@@ -12,7 +12,7 @@ import json
 import re
 
 import structlog
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from core.langgraph.content_manager import ContentManager, get_character_sheets
 from core.langgraph.state import NarrativeState
