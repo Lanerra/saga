@@ -170,18 +170,17 @@ class NativeCypherBuilder:
                 "Location",
                 "Event",
                 "Item",
-                "Organization",
-                "Concept",
                 "Trait",
                 "Character",
                 "Chapter",
-                "Novel",
             ]:
                 return c.title()
 
             # Mapping based on LABEL_NORMALIZATION_MAP in kg_constants
             # LOCATION VARIANTS
             if c in [
+                "location",
+                "locations",
                 "place",
                 "site",
                 "area",
@@ -204,20 +203,36 @@ class NativeCypherBuilder:
 
             # ITEM VARIANTS
             if c in [
+                "item",
+                "items",
                 "object",
+                "objects",
                 "thing",
+                "things",
                 "artifact",
+                "artifacts",
                 "tool",
+                "tools",
                 "weapon",
+                "weapons",
                 "document",
+                "documents",
                 "relic",
+                "relics",
                 "book",
+                "books",
                 "scroll",
+                "scrolls",
                 "letter",
+                "letters",
                 "device",
+                "devices",
                 "vehicle",
+                "vehicles",
                 "resource",
+                "resources",
                 "material",
+                "materials",
                 "food",
                 "clothing",
                 "currency",
@@ -249,20 +264,36 @@ class NativeCypherBuilder:
 
             # EVENT VARIANTS
             if c in [
+                "event",
+                "events",
                 "happening",
+                "happenings",
                 "occurrence",
+                "occurrences",
                 "incident",
+                "incidents",
                 "development",
+                "developments",
                 "battle",
+                "battles",
                 "meeting",
+                "meetings",
                 "journey",
+                "journeys",
                 "ceremony",
+                "ceremonies",
                 "discovery",
+                "discoveries",
                 "conflict",
+                "conflicts",
                 "conversation",
+                "conversations",
                 "flashback",
+                "flashbacks",
                 "scene",
+                "scenes",
                 "moment",
+                "moments",
             ]:
                 return "Event"
 
@@ -340,21 +371,30 @@ class NativeCypherBuilder:
         labels_clause = f":{primary_label}"
 
         cypher = f"""
-        MERGE (w:{primary_label} {{id: $id}})
-        SET w.name = $name,
+        MERGE (w:{primary_label} {{name: $name}})
+        ON CREATE SET
+            w.id = $id,
             w.category = $category,
             w.description = $description,
             w.goals = $goals,
             w.rules = $rules,
             w.key_elements = $key_elements,
-            w.created_chapter = CASE
-                WHEN w.created_chapter IS NULL THEN $created_chapter
-                ELSE w.created_chapter
-            END,
+            w.created_chapter = $created_chapter,
             w.is_provisional = $is_provisional,
             w.chapter_last_updated = $chapter_number,
             w.last_updated = timestamp(),
-            w += $additional_props
+            w.created_at = timestamp()
+        ON MATCH SET
+            w.category = $category,
+            w.description = $description,
+            w.goals = $goals,
+            w.rules = $rules,
+            w.key_elements = $key_elements,
+            w.is_provisional = $is_provisional,
+            w.chapter_last_updated = $chapter_number,
+            w.last_updated = timestamp()
+        WITH w
+        SET w += $additional_props
 
         // Handle traits as separate Trait nodes with HAS_TRAIT relationships
         WITH w

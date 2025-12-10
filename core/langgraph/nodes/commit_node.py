@@ -174,7 +174,22 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             char_mappings[char.name] = deduplicated_name
 
         # Step 2: Deduplicate world items (READ operations)
+        # First pass: deduplicate within batch (same name = same id)
+        seen_names: dict[str, str] = {}  # name -> first assigned id
+
         for item in world_entities:
+            # Check if we've already seen this name in the batch
+            if item.name in seen_names:
+                # Reuse the id from the first occurrence
+                world_mappings[item.name] = seen_names[item.name]
+                logger.debug(
+                    "commit_to_graph: within-batch duplicate detected",
+                    name=item.name,
+                    reusing_id=seen_names[item.name],
+                )
+                continue
+
+            # First time seeing this name, check database for duplicates
             deduplicated_id = await _deduplicate_world_item(
                 item.name,
                 item.attributes.get("category", ""),
@@ -182,13 +197,18 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 state.get("current_chapter", 1),
             )
             world_mappings[item.name] = deduplicated_id
+            seen_names[item.name] = deduplicated_id
 
         # Step 3: Convert ExtractedEntity to CharacterProfile/WorldItem models
+        # Deduplicate entity lists to prevent creating duplicate models
+        unique_char_entities = _deduplicate_entity_list(char_entities)
+        unique_world_entities = _deduplicate_entity_list(world_entities)
+
         character_models = _convert_to_character_profiles(
-            char_entities, char_mappings, state.get("current_chapter", 1)
+            unique_char_entities, char_mappings, state.get("current_chapter", 1)
         )
         world_item_models = _convert_to_world_items(
-            world_entities, world_mappings, state.get("current_chapter", 1)
+            unique_world_entities, world_mappings, state.get("current_chapter", 1)
         )
 
         # Step 4-6: Collect ALL Cypher statements for single transaction
@@ -286,6 +306,44 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             "has_fatal_error": True,
             "error_node": "commit",
         }
+
+
+def _deduplicate_entity_list(entities: list[ExtractedEntity]) -> list[ExtractedEntity]:
+    """
+    Remove duplicate entities from a list based on name.
+
+    When multiple entities have the same name, keeps only the first occurrence.
+    This prevents within-batch duplicates from creating constraint violations.
+
+    Args:
+        entities: List of ExtractedEntity instances
+
+    Returns:
+        List with duplicate names removed (keeps first occurrence)
+    """
+    seen_names: set[str] = set()
+    unique_entities: list[ExtractedEntity] = []
+
+    for entity in entities:
+        if entity.name not in seen_names:
+            unique_entities.append(entity)
+            seen_names.add(entity.name)
+        else:
+            logger.debug(
+                "_deduplicate_entity_list: skipping duplicate",
+                name=entity.name,
+                type=entity.type,
+            )
+
+    if len(unique_entities) < len(entities):
+        logger.info(
+            "_deduplicate_entity_list: removed duplicates",
+            original_count=len(entities),
+            unique_count=len(unique_entities),
+            duplicates_removed=len(entities) - len(unique_entities),
+        )
+
+    return unique_entities
 
 
 async def _deduplicate_character(name: str, description: str, chapter: int) -> str:

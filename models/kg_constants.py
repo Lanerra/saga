@@ -36,6 +36,7 @@ VALID_NODE_LABELS = {
     "Character",
     "Location",
     "Event",
+    "Item",
     "Trait",
     "Chapter",
     "Novel",

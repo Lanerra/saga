@@ -108,10 +108,12 @@ async def async_llm_context(
         except Exception as cleanup_error:
             logger.error(f"Failed to cleanup HTTP client: {cleanup_error}")
 
-        # Handle cache management - requires cache service integration
+        # Handle cache management
         if clear_cache_on_exit:
-            # TODO: Implement proper cache clearing via cache service
-            pass
+            from core.lightweight_cache import clear_service_cache
+
+            clear_service_cache("llm_embedding")
+            logger.debug("Cleared llm_embedding cache on exit")
 
         # Log performance metrics
         try:

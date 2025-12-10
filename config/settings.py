@@ -271,6 +271,11 @@ class SagaSettings(BaseSettings):
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
+    # Phase 2 Deduplication (Relationship-Based)
+    ENABLE_PHASE2_DEDUPLICATION: bool = True
+    PHASE2_NAME_SIMILARITY_THRESHOLD: float = 0.6
+    PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD: float = 0.7
+
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
 
