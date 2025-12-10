@@ -536,8 +536,9 @@ def _convert_to_world_items(
         # Use deduplicated ID
         final_id = id_mappings.get(entity.name, entity.name)
 
-        # Extract category from attributes
-        category = entity.attributes.get("category", "object")
+        # Use the category from attributes (preserves specific type like "artifact", "document")
+        # The ExtractedEntity validator automatically stores the original type here before normalization
+        category = entity.attributes.get("category", entity.type.lower() if entity.type else "")
 
         # Extract structured fields
         goals = entity.attributes.get("goals", [])
@@ -1038,9 +1039,7 @@ def _build_chapter_node_statement(
 
     query = """
     MERGE (c:Chapter {number: $chapter_number_param})
-    SET c.text = $text_param,
-        c.raw_llm_output = $raw_llm_output_param,
-        c.summary = $summary_param,
+    SET c.summary = $summary_param,
         c.is_provisional = $is_provisional_param,
         c.embedding_vector = $embedding_vector_param,
         c.last_updated = timestamp()
@@ -1048,8 +1047,6 @@ def _build_chapter_node_statement(
 
     parameters = {
         "chapter_number_param": chapter_number,
-        "text_param": text,
-        "raw_llm_output_param": text,  # Same as text
         "summary_param": summary if summary is not None else "",
         "is_provisional_param": False,  # Finalized chapter
         "embedding_vector_param": embedding,

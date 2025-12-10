@@ -68,18 +68,19 @@ class ExtractedEntity(BaseModel):
     @model_validator(mode="after")
     def validate_entity_type(self) -> ExtractedEntity:
         """Validate and normalize the entity type."""
-        # Use schema_validator to check if type needs normalization
-        # We access the raw attribute to avoid recursion if possible, but Pydantic handles this differently
         current_type = self.type
         is_valid, normalized_type, _ = schema_validator.validate_entity_type(
             current_type
         )
 
-        # Only update if the type has changed to avoid infinite recursion in validate_assignment=True models
+        # Preserve the original specific type in attributes before normalization
         if is_valid and normalized_type != current_type:
+            if "original_type" not in self.attributes:
+                self.attributes["original_type"] = current_type
+            if "category" not in self.attributes:
+                self.attributes["category"] = current_type.lower()
             self.type = normalized_type
 
-        # If invalid, we keep original type but logging will have occurred in validator
         return self
 
     class Config:

@@ -40,17 +40,13 @@ async def save_chapter_data_to_db(
 
     query = """
     MERGE (c:Chapter {number: $chapter_number_param})
-    SET c.text = $text_param,
-        c.raw_llm_output = $raw_llm_output_param,
-        c.summary = $summary_param,
+    SET c.summary = $summary_param,
         c.is_provisional = $is_provisional_param,
         c.embedding_vector = $embedding_vector_param,
         c.last_updated = timestamp()
     """
     parameters = {
         "chapter_number_param": chapter_number,
-        "text_param": text,
-        "raw_llm_output_param": raw_llm_output,
         "summary_param": summary if summary is not None else "",
         "is_provisional_param": is_provisional,
         "embedding_vector_param": embedding_list,
@@ -72,7 +68,7 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
         return None
     query = """
     MATCH (c:Chapter {number: $chapter_number_param})
-    RETURN c.text AS text, c.raw_llm_output AS raw_llm_output, c.summary AS summary, c.is_provisional AS is_provisional
+    RETURN c.summary AS summary, c.is_provisional AS is_provisional
     """
     try:
         result = await neo4j_manager.execute_read_query(
@@ -81,10 +77,8 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
         if result and result[0]:
             logger.debug(f"Neo4j: Data found for chapter {chapter_number}.")
             return {
-                "text": result[0].get("text"),
                 "summary": result[0].get("summary"),
                 "is_provisional": result[0].get("is_provisional", False),
-                "raw_llm_output": result[0].get("raw_llm_output"),
             }
         logger.debug(f"Neo4j: No data found for chapter {chapter_number}.")
         return None
@@ -161,7 +155,6 @@ async def find_semantic_context_native(
     WITH collect({
         chapter_number: similar_c.number,
         summary: similar_c.summary,
-        text: similar_c.text,
         is_provisional: COALESCE(similar_c.is_provisional, false),
         score: score,
         context_type: 'similarity'
@@ -178,7 +171,6 @@ async def find_semantic_context_native(
            THEN [{
                chapter_number: prev_c.number,
                summary: prev_c.summary,
-               text: prev_c.text,
                is_provisional: COALESCE(prev_c.is_provisional, false),
                score: 0.999,
                context_type: 'immediate_previous'
@@ -242,7 +234,6 @@ async def get_chapter_content_batch_native(
     WHERE c.number IN $chapter_numbers
     RETURN c.number AS chapter_number,
            c.summary AS summary,
-           c.text AS text,
            c.is_provisional AS is_provisional
     ORDER BY c.number
     """
@@ -257,7 +248,6 @@ async def get_chapter_content_batch_native(
             chapter_num = record["chapter_number"]
             chapter_data[chapter_num] = {
                 "summary": record.get("summary"),
-                "text": record.get("text"),
                 "is_provisional": record.get("is_provisional", False),
             }
 
