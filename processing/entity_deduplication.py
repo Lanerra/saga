@@ -11,8 +11,43 @@ from typing import Any
 import structlog
 
 from core.db_manager import neo4j_manager
+from models.kg_constants import LABEL_NORMALIZATION_MAP
 
 logger = structlog.get_logger(__name__)
+
+
+def _normalize_category(category: str) -> str:
+    """Normalize category to a primary label (e.g. 'Region' -> 'Location')."""
+    if not category:
+        return "Item"  # Default fallback
+    
+    # Check exact match in map (case-insensitive keys handled by creating lower-case map?)
+    # LABEL_NORMALIZATION_MAP has Title Case keys.
+    # We should iterate or create a lower-case lookup.
+    
+    # Simple normalization similar to native_builders._classify_label
+    c = category.strip().title()
+    if c in LABEL_NORMALIZATION_MAP:
+        return LABEL_NORMALIZATION_MAP[c]
+        
+    # Check direct label names
+    if c in ["Location", "Event", "Item", "Character", "Trait", "Chapter", "Organization", "Concept"]:
+        return c
+        
+    # Common lower-case variants handling
+    c_lower = category.strip().lower()
+    
+    # Manual mappings matching native_builders logic (simplified)
+    if c_lower in ["locations", "place", "region", "area", "planet", "landscape"]:
+        return "Location"
+    if c_lower in ["items", "object", "artifact", "tool", "weapon"]:
+        return "Item"
+    if c_lower in ["events", "scene", "moment"]:
+        return "Event"
+    if c_lower in ["people", "person", "being"]:
+        return "Character"
+        
+    return "Item"  # Default
 
 
 def generate_entity_id(name: str, category: str, chapter: int) -> str:
@@ -87,13 +122,13 @@ async def check_entity_similarity(
             """
             params = {"name": name, "threshold": threshold}
         else:
+            # Relaxed query: Remove strict category check, fetch top matches to filter in Python
             similarity_query = """
             MATCH (w)
-            WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
+            WHERE (w:Location OR w:Item OR w:Event OR w:Organization OR w:Concept OR w:Object OR w:Artifact)
               AND (w.name = $name OR
                    toLower(w.name) = toLower($name) OR
                    apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > $threshold)
-            AND ($category = '' OR w.category = $category)
             RETURN w.id as existing_id,
                    w.name as existing_name,
                    w.category as existing_category,
@@ -101,14 +136,37 @@ async def check_entity_similarity(
                    w.description as existing_description,
                    apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) as similarity
             ORDER BY similarity DESC
-            LIMIT 1
+            LIMIT 5
             """
-            params = {"name": name, "category": category, "threshold": threshold}
+            params = {"name": name, "threshold": threshold}
 
-        result = await neo4j_manager.execute_read_query(similarity_query, params)
+        results = await neo4j_manager.execute_read_query(similarity_query, params)
 
-        if result:
-            similar_entity = result[0]
+        if not results:
+            return None
+
+        # Filter results for compatibility
+        target_label = _normalize_category(category) if entity_type != "character" else "Character"
+        
+        for similar_entity in results:
+            # Check compatibility for world elements
+            if entity_type != "character":
+                existing_cat = similar_entity.get("existing_category", "")
+                existing_labels = similar_entity.get("existing_labels", [])
+                
+                existing_label = _normalize_category(existing_cat)
+                
+                # Check if labels match OR if existing node has the target label
+                # This handles cases where 'Region' maps to 'Location'
+                is_compatible = (existing_label == target_label) or (target_label in existing_labels)
+                
+                if not is_compatible:
+                    logger.debug(
+                        f"Skipping incompatible match: '{similar_entity['existing_name']}' "
+                        f"(Category: {existing_cat}, Label: {existing_label}) != Target: {target_label}"
+                    )
+                    continue
+
             similarity_score = similar_entity.get("similarity", 0.0)
 
             # Check if this is a first name match (similarity = 0.95)

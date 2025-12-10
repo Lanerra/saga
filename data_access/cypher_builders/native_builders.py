@@ -370,10 +370,11 @@ class NativeCypherBuilder:
         # Removed implicit Entity label inheritance
         labels_clause = f":{primary_label}"
 
+        # MERGE by ID to ensure we match existing entities even if renamed
         cypher = f"""
-        MERGE (w:{primary_label} {{name: $name}})
+        MERGE (w:{primary_label} {{id: $id}})
         ON CREATE SET
-            w.id = $id,
+            w.name = $name,
             w.category = $category,
             w.description = $description,
             w.goals = $goals,
@@ -385,6 +386,7 @@ class NativeCypherBuilder:
             w.last_updated = timestamp(),
             w.created_at = timestamp()
         ON MATCH SET
+            w.name = $name,
             w.category = $category,
             w.description = $description,
             w.goals = $goals,
