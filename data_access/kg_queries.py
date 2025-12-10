@@ -857,7 +857,7 @@ async def add_kg_triples_batch_to_db(
 
     statements_with_params: list[tuple[str, dict[str, Any]]] = []
 
-    for i, triple_dict in enumerate(structured_triples_data):
+    for _i, triple_dict in enumerate(structured_triples_data):
         subject_info = triple_dict.get("subject")
         predicate_str = triple_dict.get("predicate")
 
@@ -1852,12 +1852,12 @@ async def promote_dynamic_relationships() -> int:
     # Step 2: Promote DYNAMIC_REL to typed relationships
     promotion_query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
-    WHERE r.type IS NOT NULL 
-      AND r.type <> 'UNKNOWN' 
+    WHERE r.type IS NOT NULL
+      AND r.type <> 'UNKNOWN'
       AND r.type <> 'DYNAMIC_REL'
       AND r.type IN $valid_types
     WITH s, r, o, r.type as rel_type, properties(r) as rel_props
-    
+
     // Create new typed relationship
     CALL apoc.create.relationship(
         s,
@@ -1865,8 +1865,8 @@ async def promote_dynamic_relationships() -> int:
         apoc.map.removeKey(rel_props, 'type'),
         o
     ) YIELD rel
-    
-    // Delete old dynamic relationship  
+
+    // Delete old dynamic relationship
     DELETE r
     RETURN count(rel) AS promoted
     """
@@ -1897,7 +1897,7 @@ async def _validate_and_correct_relationship_types() -> int:
     # Find all DYNAMIC_REL relationships with type properties
     validation_query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
-    WHERE r.type IS NOT NULL 
+    WHERE r.type IS NOT NULL
       AND r.type <> 'UNKNOWN'
       AND r.type <> 'DYNAMIC_REL'
     RETURN elementId(r) as rel_id, r.type as current_type

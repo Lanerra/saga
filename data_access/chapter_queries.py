@@ -157,7 +157,7 @@ async def find_semantic_context_native(
     CALL db.index.vector.queryNodes($index_name, $search_limit, $query_vector)
     YIELD node AS similar_c, score
     WHERE similar_c.number < $current_chapter
-    
+
     WITH collect({
         chapter_number: similar_c.number,
         summary: similar_c.summary,
@@ -166,15 +166,15 @@ async def find_semantic_context_native(
         score: score,
         context_type: 'similarity'
     }) AS similar_results
-    
+
     // Get immediate previous chapter if not in similarity results
     OPTIONAL MATCH (prev_c:Chapter {number: $prev_chapter_num})
     WHERE prev_c.number < $current_chapter
       AND NOT ANY(sr IN similar_results WHERE sr.chapter_number = $prev_chapter_num)
-    
+
     WITH similar_results,
-         CASE 
-           WHEN prev_c IS NOT NULL 
+         CASE
+           WHEN prev_c IS NOT NULL
            THEN [{
                chapter_number: prev_c.number,
                summary: prev_c.summary,
@@ -185,7 +185,7 @@ async def find_semantic_context_native(
            }]
            ELSE []
          END AS prev_result
-    
+
     RETURN similar_results + prev_result AS context_chapters
     """
 

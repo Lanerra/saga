@@ -24,7 +24,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     novel_props_for_set = {
         k: v
         for k, v in plot_data.items()
-        if not isinstance(v, (list, dict)) and v is not None and k != "id"
+        if not isinstance(v, list | dict) and v is not None and k != "id"
     }
     novel_props_for_set["id"] = novel_id  # Ensure id is part of properties for SET
 
@@ -101,7 +101,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
                 # Add any other simple properties from the dict
                 for k_pp, v_pp in point_desc_str_or_dict.items():
                     if (
-                        isinstance(v_pp, (str, int, float, bool))
+                        isinstance(v_pp, str | int | float | bool)
                         and k_pp not in pp_props
                     ):
                         pp_props[k_pp] = v_pp

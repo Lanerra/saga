@@ -29,7 +29,7 @@ def flatten_dict(
         if isinstance(v, dict):
             items.extend(flatten_dict(v, new_key, sep=sep).items())
         elif isinstance(v, list):
-            if any(isinstance(item, (dict, list)) for item in v):
+            if any(isinstance(item, dict | list) for item in v):
                 raise ValueError(f"Cannot flatten complex list at key '{new_key}'")
             for i, item in enumerate(v):
                 if item is not None:

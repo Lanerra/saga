@@ -368,7 +368,6 @@ class NativeCypherBuilder:
         primary_label = _classify_label(item.category, item.name)
         # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
         # Removed implicit Entity label inheritance
-        labels_clause = f":{primary_label}"
 
         # MERGE by ID to ensure we match existing entities even if renamed
         cypher = f"""

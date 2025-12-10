@@ -649,14 +649,14 @@ async def get_world_elements_for_snippet_from_db(
 
     OPTIONAL MATCH (we)-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent)
     WHERE elab.{KG_NODE_CHAPTER_UPDATED} <= $chapter_limit_param AND elab.{KG_IS_PROVISIONAL} = TRUE
-    
+
     WITH we, COLLECT(DISTINCT elab) AS provisional_elaborations_found
     WITH we, ( we.{KG_IS_PROVISIONAL} = TRUE OR size(provisional_elaborations_found) > 0 ) AS is_item_provisional_overall
-    
+
     RETURN we.name AS name,
-           we.description AS description, 
+           we.description AS description,
            is_item_provisional_overall AS is_provisional
-    ORDER BY we.name ASC 
+    ORDER BY we.name ASC
     LIMIT $item_limit_param
     """
     params = {

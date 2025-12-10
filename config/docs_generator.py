@@ -41,9 +41,9 @@ def _format_default(value: Any) -> str:
     """Represent a default value as a readable string for markdown."""
     if isinstance(value, str):
         return f'"{value}"'
-    if isinstance(value, (int, float, bool)):
+    if isinstance(value, int | float | bool):
         return str(value)
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return f"{list(value)}"
     # Fallback for other types
     return repr(value)

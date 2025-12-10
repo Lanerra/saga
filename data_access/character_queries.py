@@ -84,7 +84,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
         char_direct_props = {
             k: v
             for k, v in profile_dict.items()
-            if isinstance(v, (str, int, float, bool)) and k != "name"
+            if isinstance(v, str | int | float | bool) and k != "name"
         }
         char_direct_props["is_deleted"] = False
 
@@ -267,7 +267,7 @@ async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bo
                     )
                     for k_rel, v_rel in rel_detail.items():
                         if (
-                            isinstance(v_rel, (str, int, float, bool))
+                            isinstance(v_rel, str | int | float | bool)
                             and k_rel != "type"
                             and k_rel != "chapter_added"
                         ):

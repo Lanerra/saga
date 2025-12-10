@@ -168,18 +168,18 @@ class KnowledgeGraphService:
             WITH c, max(ch.number) as last_appearance
             ORDER BY last_appearance DESC
             LIMIT $character_limit
-            
+
             WITH collect({type: 'character', node: c}) as character_nodes
-            
+
             // Get world items referenced in recent chapters
             MATCH (w)-[:REFERENCED_IN]->(ch:Chapter)
             WHERE ch.number < $chapter_number
             WITH character_nodes, w, max(ch.number) as last_reference
             ORDER BY last_reference DESC
             LIMIT $world_item_limit
-            
+
             WITH character_nodes, collect({type: 'world', node: w}) as world_nodes
-            
+
             RETURN character_nodes + world_nodes as entities
             """
 
