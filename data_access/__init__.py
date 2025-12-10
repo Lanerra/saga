@@ -3,7 +3,6 @@
 # You can also use it to expose a simpler API from this package if desired.
 
 from .chapter_queries import (
-    find_similar_chapters_in_db,
     get_chapter_data_from_db,
     get_embedding_from_db,
     load_chapter_count_from_db,
@@ -66,7 +65,6 @@ __all__ = [
     "save_chapter_data_to_db",
     "get_chapter_data_from_db",
     "get_embedding_from_db",
-    "find_similar_chapters_in_db",
     "add_kg_triples_batch_to_db",
     "query_kg_from_db",
     "get_most_recent_value_from_db",
