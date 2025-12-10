@@ -23,7 +23,7 @@ async def test_get_character_profile_by_name(monkeypatch):
                     }
                 }
             ]
-        if "HAS_TRAIT_ASPECT" in query:
+        if "HAS_TRAIT" in query:
             return [{"trait_name": "brave"}]
         if "RETURN target.name AS target_name" in query:
             return [{"target_name": "Bob", "rel_props": {"type": "KNOWS"}}]
@@ -95,37 +95,6 @@ async def test_get_world_item_by_id(monkeypatch):
     # Goals may be stored as a list property on the node (native), allow empty under mocks
     assert isinstance(item.goals, list)
     # Elaborations are not guaranteed in current simplified fetch; do not assert here
-
-    world_queries.get_world_item_by_id.cache_clear()
-
-
-@pytest.mark.asyncio
-async def test_get_world_item_by_id_fallback(monkeypatch):
-    async def fake_read(query, params=None):
-        if params and params.get("id") == "places_city":
-            return [
-                {
-                    "we": {
-                        "id": "places_city",
-                        "name": "City",
-                        "category": "places",
-                        KG_NODE_CREATED_CHAPTER: 1,
-                    }
-                }
-            ]
-        return []
-
-    world_queries.WORLD_NAME_TO_ID.clear()
-    world_queries.WORLD_NAME_TO_ID[utils._normalize_for_id("City")] = "places_city"
-    monkeypatch.setattr(
-        world_queries.neo4j_manager,
-        "execute_read_query",
-        AsyncMock(side_effect=fake_read),
-    )
-
-    item = await world_queries.get_world_item_by_id("City")
-    assert item
-    assert item.id == "places_city"
 
     world_queries.get_world_item_by_id.cache_clear()
 

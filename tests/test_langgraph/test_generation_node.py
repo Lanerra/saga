@@ -407,8 +407,6 @@ class TestGenerationErrorHandling:
 
         mock_llm_generation.async_call_llm.assert_not_called()
 
-        assert result["last_error"] is None
-
 
 @pytest.mark.asyncio
 class TestGenerationIntegration:

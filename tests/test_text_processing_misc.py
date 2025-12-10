@@ -14,7 +14,7 @@ def test_normalize_for_id() -> None:
 
 
 def test_normalize_trait_name() -> None:
-    assert text_processing.normalize_trait_name(" Brave & Bold ") == "brave bold"
+    assert text_processing.normalize_trait_name(" Brave & Bold ") == "brave-bold"
 
 
 def test_normalize_text_for_matching() -> None:

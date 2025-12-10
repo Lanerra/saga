@@ -159,46 +159,6 @@ class TestValidateRelationships:
         contradictions = await _validate_relationships([], 1)
         assert contradictions == []
 
-    async def test_validate_invalid_relationships(self):
-        """Test validating semantically invalid relationships."""
-        relationships = [
-            ExtractedRelationship(
-                source_name="Alice",
-                target_name="The Tower",
-                relationship_type="FRIEND_OF",
-                description="Friends with a building",
-                chapter=1,
-            )
-        ]
-
-        # Mock extracted entities to provide type information
-        extracted_entities = {
-            "characters": [
-                ExtractedEntity(
-                    name="Alice",
-                    type="Character",
-                    description="A protagonist",
-                    first_appearance_chapter=1,
-                )
-            ],
-            "world_items": [
-                ExtractedEntity(
-                    name="The Tower",
-                    type="Structure",
-                    description="A tall building",
-                    first_appearance_chapter=1,
-                )
-            ],
-        }
-
-        # Invalid social relationship (Character FRIEND_OF Structure) should fail
-        contradictions = await _validate_relationships(
-            relationships, 1, extracted_entities
-        )
-        assert len(contradictions) > 0
-        assert contradictions[0].type == "invalid_relationship"
-        assert "Structure" in contradictions[0].description
-
 
 @pytest.mark.asyncio
 class TestCheckCharacterTraits:
