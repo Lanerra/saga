@@ -10,10 +10,8 @@ Licensed under the Apache License, Version 2.0
 
 import asyncio
 import hashlib
-import os
-import tempfile
-from collections.abc import AsyncGenerator, Generator
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import numpy as np
@@ -33,32 +31,6 @@ from core.lightweight_cache import (
 from core.text_processing_service import TextProcessingService
 
 logger = structlog.get_logger(__name__)
-
-
-@contextmanager
-def secure_temp_file(
-    suffix: str = ".tmp", text: bool = True
-) -> Generator[str, None, None]:
-    """
-    Context manager for secure temporary file handling.
-    Guarantees cleanup even if exceptions occur.
-    """
-    temp_fd = None
-    temp_path = None
-    try:
-        temp_fd, temp_path = tempfile.mkstemp(suffix=suffix, text=text)
-        os.close(temp_fd)  # Close the file descriptor immediately
-        yield temp_path
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-                logger.debug(f"Cleaned up temporary file: {temp_path}")
-            except Exception as cleanup_error:
-                logger.error(
-                    f"Failed to cleanup temporary file {temp_path}: {cleanup_error}"
-                )
-
 
 @asynccontextmanager
 async def async_llm_context(
@@ -612,14 +584,6 @@ class RefactoredLLMService:
         REFACTORED: Simple delegation to embedding service.
         """
         return await self._embedding_service.get_embeddings_batch(texts, batch_size)
-
-    def clean_model_response(self, text: str) -> str:
-        """
-        Clean LLM response text.
-
-        REFACTORED: Simple delegation to text processing service.
-        """
-        return self._text_processor.response_cleaner.clean_response(text)
 
     def count_tokens(self, text: str, model_name: str) -> int:
         """

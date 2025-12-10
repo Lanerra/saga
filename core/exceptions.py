@@ -42,11 +42,6 @@ class ValidationError(SAGACoreError):
 class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
 
-
-class ConfigurationError(SAGACoreError):
-    """Errors related to system configuration."""
-
-
 def create_error_context(**kwargs: Any) -> dict[str, Any]:
     """
     Helper function to create standardized error context dictionaries.
@@ -93,29 +88,3 @@ def handle_database_error(
         return DatabaseError(
             f"Database error during {operation}", details=error_details
         )
-
-
-def handle_llm_error(
-    operation: str, original_error: Exception, **context: Any
-) -> LLMServiceError:
-    """
-    Convert generic exceptions to standardized LLM service errors.
-
-    Args:
-        operation: Description of the LLM operation that failed
-        original_error: The original exception that was caught
-        **context: Additional context information
-
-    Returns:
-        LLMServiceError instance
-    """
-    error_details = create_error_context(
-        operation=operation,
-        original_error=str(original_error),
-        error_type=type(original_error).__name__,
-        **context,
-    )
-
-    return LLMServiceError(
-        f"LLM service error during {operation}", details=error_details
-    )

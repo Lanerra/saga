@@ -15,11 +15,6 @@ logger = structlog.get_logger(__name__)
 # Pre-compute normalized labels for case-insensitive matching
 _NORMALIZED_NODE_LABELS = {label.lower(): label for label in VALID_NODE_LABELS}
 
-
-class ParseError(Exception):
-    """Custom exception for parsing errors (unused)."""
-
-
 # --- New RDF Triple Parsing using rdflib ---
 # Modified to be a custom plain-text triple parser
 

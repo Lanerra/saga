@@ -35,14 +35,6 @@ class ActOutline(BaseModel):
     chapters_start: int = Field(description="First chapter number in this act")
     chapters_end: int = Field(description="Last chapter number in this act")
 
-    @field_validator("act_number")
-    @classmethod
-    def validate_act_number(cls, value: int) -> int:
-        if value < 1 or value > 5:
-            raise ValueError("Act number must be between 1 and 5")
-        return value
-
-
 class CharacterArc(BaseModel):
     """Character arc progression throughout the story."""
 
@@ -70,27 +62,6 @@ class GlobalOutlineSchema(BaseModel):
         description="How the theme develops throughout the story"
     )
     pacing_notes: str = Field(default="", description="Notes on pacing and structure")
-
-    @field_validator("act_count")
-    @classmethod
-    def validate_act_count(cls, value: int) -> int:
-        if value not in [3, 4, 5]:
-            raise ValueError("Act count must be 3, 4, or 5")
-        return value
-
-    @field_validator("acts")
-    @classmethod
-    def validate_acts_match_count(
-        cls, acts: list[ActOutline], info
-    ) -> list[ActOutline]:
-        if info.data.get("act_count") and len(acts) != info.data["act_count"]:
-            logger.warning(
-                "Acts count mismatch",
-                expected=info.data["act_count"],
-                actual=len(acts),
-            )
-        return acts
-
 
 async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     """

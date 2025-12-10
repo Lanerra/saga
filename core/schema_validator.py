@@ -233,17 +233,6 @@ def validate_node_labels(labels: list[str]) -> list[str]:
 
     return errors
 
-
-def validate_character_profile(profile: CharacterProfile) -> list[str]:
-    """
-    Validate a CharacterProfile object.
-
-    Returns a list of validation errors. Empty list means valid.
-    """
-    # Use centralized validation logic to eliminate code duplication
-    return validate_kg_object(profile)
-
-
 def validate_world_item(item: WorldItem) -> list[str]:
     """
     Validate a WorldItem object.

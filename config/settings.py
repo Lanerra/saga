@@ -329,36 +329,6 @@ class SagaSettings(BaseSettings):
         default_factory=SchemaEnforcementSettings
     )
 
-    @model_validator(mode="after")
-    def set_dynamic_model_defaults(self) -> SagaSettings:
-        # Optional FAST profile for consumer laptops: lower budgets to avoid timeouts.
-        # Activate with FAST_PROFILE=true (case-insensitive).
-        fast = os.getenv("FAST_PROFILE", "false").lower() in {"1", "true", "yes", "on"}
-        if fast:
-            object.__setattr__(
-                self, "MAX_CONTEXT_TOKENS", min(self.MAX_CONTEXT_TOKENS, 8192)
-            )
-            object.__setattr__(
-                self, "MAX_GENERATION_TOKENS", min(self.MAX_GENERATION_TOKENS, 2048)
-            )
-            # Slightly reduce planning and patch windows to match
-            object.__setattr__(
-                self,
-                "MAX_PLANNING_TOKENS",
-                min(getattr(self, "MAX_PLANNING_TOKENS", 16384), 8192),
-            )
-            object.__setattr__(
-                self,
-                "MAX_KG_TRIPLE_TOKENS",
-                min(getattr(self, "MAX_KG_TRIPLE_TOKENS", 8192), 4096),
-            )
-            object.__setattr__(
-                self,
-                "MAX_PREPOP_KG_TOKENS",
-                min(getattr(self, "MAX_PREPOP_KG_TOKENS", 16384), 8192),
-            )
-        return self
-
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
 
