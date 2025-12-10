@@ -13,13 +13,13 @@ from core.schema_validator import validate_kg_object
 from models import CharacterProfile
 from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
-from .cypher_builders.character_cypher import (
-    TRAIT_NAME_TO_CANONICAL,
-)
 from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Mapping from normalized character names to canonical display names
 CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
+
+# Mapping from normalized trait names to canonical display names
+TRAIT_NAME_TO_CANONICAL: dict[str, str] = {}
 
 
 def resolve_character_name(name: str) -> str:
@@ -412,7 +412,6 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
     return CharacterProfile.from_dict(name, profile)
 
 
-@alru_cache(maxsize=128)
 async def get_all_character_names() -> list[str]:
     """Return a list of all character names from Neo4j."""
     query = (
@@ -424,6 +423,7 @@ async def get_all_character_names() -> list[str]:
     return [record["name"] for record in results if record.get("name")]
 
 
+@alru_cache(maxsize=128)
 # NOTE: Legacy get_character_profiles_from_db() removed. Use get_character_profiles().
 
 

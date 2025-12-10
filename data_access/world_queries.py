@@ -633,23 +633,6 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
 
 
 @alru_cache(maxsize=128)
-async def get_all_world_item_ids_by_category() -> dict[str, list[str]]:
-    """Return all world item IDs grouped by category."""
-    query = (
-        "MATCH (we) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic) "
-        "AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) "
-        "RETURN we.category AS category, we.id AS id"
-    )
-    results = await neo4j_manager.execute_read_query(query)
-    mapping: dict[str, list[str]] = {}
-    for record in results:
-        category = record.get("category")
-        item_id = record.get("id")
-        if category and item_id:
-            mapping.setdefault(category, []).append(item_id)
-    return mapping
-
-
 ## NOTE: Legacy get_world_building_from_db() removed. Use get_world_building().
 
 ## NOTE: The above legacy function remains for backward compatibility of external callers.

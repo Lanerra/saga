@@ -20,13 +20,10 @@ from .character_queries import (
 )
 from .kg_queries import (
     add_kg_triples_batch_to_db,
-    fetch_unresolved_dynamic_relationships,
     get_most_recent_value_from_db,
     get_novel_info_property_from_db,
     get_shortest_path_length_between_entities,
-    normalize_existing_relationship_types,
     query_kg_from_db,
-    update_dynamic_relationship_type,
 )
 from .plot_queries import (
     append_plot_point,
@@ -72,10 +69,7 @@ __all__ = [
     "find_similar_chapters_in_db",
     "add_kg_triples_batch_to_db",
     "query_kg_from_db",
-    "normalize_existing_relationship_types",
     "get_most_recent_value_from_db",
     "get_novel_info_property_from_db",
-    "fetch_unresolved_dynamic_relationships",
-    "update_dynamic_relationship_type",
     "get_shortest_path_length_between_entities",
 ]
