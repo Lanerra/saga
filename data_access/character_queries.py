@@ -218,10 +218,6 @@ async def get_all_character_names() -> list[str]:
     return [record["name"] for record in results if record.get("name")]
 
 
-@alru_cache(maxsize=128)
-# NOTE: Legacy get_character_profiles_from_db() removed. Use get_character_profiles().
-
-
 def _process_snippet_result(record: dict[str, Any]) -> dict[str, Any]:
     """Process snippet query result into standardized format."""
     dev_events = record.get("dev_events", [])
