@@ -181,16 +181,6 @@ class HTTPClientService:
             else 0,
         }
 
-    def reset_statistics(self) -> None:
-        """Reset statistics (useful for testing)."""
-        self._stats = {
-            "total_requests": 0,
-            "successful_requests": 0,
-            "failed_requests": 0,
-            "retry_attempts": 0,
-        }
-        self.request_count = 0
-
 
 class EmbeddingHTTPClient:
     """

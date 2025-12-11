@@ -622,35 +622,6 @@ Provide the following information (only include fields where you have reasonable
 
         return results
 
-    async def link_provisional_to_chapter(
-        self, element_id: str, chapter_number: int
-    ) -> bool:
-        """
-        Create a MENTIONED_IN relationship from a provisional node to its chapter.
-
-        This helps with context retrieval for enrichment.
-        """
-        query = """
-            MATCH (n), (c:Chapter {number: $chapter_number})
-            WHERE elementId(n) = $element_id
-            MERGE (n)-[r:MENTIONED_IN]->(c)
-            SET r.created_at = timestamp()
-            RETURN n.name AS name
-        """
-        try:
-            results = await neo4j_manager.execute_write_query(
-                query, {"element_id": element_id, "chapter_number": chapter_number}
-            )
-            return bool(results)
-        except Exception as e:
-            logger.warning(
-                "Failed to link node to chapter",
-                element_id=element_id,
-                chapter=chapter_number,
-                error=str(e),
-            )
-            return False
-
     async def heal_graph(self, current_chapter: int, model: str) -> dict[str, Any]:
         """
         Main entry point for graph healing.
