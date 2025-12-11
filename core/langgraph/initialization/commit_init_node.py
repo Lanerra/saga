@@ -14,7 +14,7 @@ from typing import Any
 import structlog
 
 import config
-from core.knowledge_graph_service import knowledge_graph_service
+from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
     get_character_sheets,
@@ -22,6 +22,7 @@ from core.langgraph.content_manager import (
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
 from prompts.prompt_renderer import get_system_prompt
 from utils.text_processing import validate_and_filter_traits
@@ -84,17 +85,19 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
                 model_name=state.get("medium_model", ""),
             )
 
-        # Step 3: Commit to Neo4j using existing persistence layer
+        # Step 3: Commit to Neo4j using direct batch approach
         if character_profiles or world_items:
-            success = await knowledge_graph_service.persist_entities(
+            statements = _build_entity_persistence_statements(
                 character_profiles,
                 world_items,
                 chapter_number=0,  # Initialization entities exist before any chapters
             )
 
-            if not success:
-                logger.warning(
-                    "commit_initialization_to_graph: persistence returned failure flag"
+            if statements:
+                await neo4j_manager.execute_cypher_batch(statements)
+                logger.debug(
+                    "commit_initialization_to_graph: executed batch",
+                    total_statements=len(statements),
                 )
 
         logger.info(
@@ -446,6 +449,47 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     )
 
     return items
+
+
+def _build_entity_persistence_statements(
+    characters: list[CharacterProfile],
+    world_items: list[WorldItem],
+    chapter_number: int,
+) -> list[tuple[str, dict]]:
+    """
+    Build Cypher statements for entity persistence without executing them.
+
+    This uses the same approach as commit_node.py, building statements
+    that will be executed in a single batch transaction for atomicity.
+
+    Args:
+        characters: List of CharacterProfile models
+        world_items: List of WorldItem models
+        chapter_number: Current chapter for tracking (0 for initialization)
+
+    Returns:
+        List of (cypher_query, parameters) tuples
+    """
+    statements: list[tuple[str, dict]] = []
+
+    cypher_builder = NativeCypherBuilder()
+
+    for char in characters:
+        cypher, params = cypher_builder.character_upsert_cypher(char, chapter_number)
+        statements.append((cypher, params))
+
+    for item in world_items:
+        cypher, params = cypher_builder.world_item_upsert_cypher(item, chapter_number)
+        statements.append((cypher, params))
+
+    logger.info(
+        "_build_entity_persistence_statements: built statements",
+        characters=len(characters),
+        world_items=len(world_items),
+        total_statements=len(statements),
+    )
+
+    return statements
 
 
 __all__ = ["commit_initialization_to_graph"]

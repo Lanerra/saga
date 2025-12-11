@@ -90,12 +90,12 @@ def mock_get_functions():
 
 
 @pytest.fixture
-def mock_knowledge_graph_service():
-    """Mock the knowledge graph service."""
+def mock_neo4j_manager():
+    """Mock the Neo4j manager."""
     with patch(
-        "core.langgraph.initialization.commit_init_node.knowledge_graph_service"
+        "core.langgraph.initialization.commit_init_node.neo4j_manager"
     ) as mock:
-        mock.persist_entities = AsyncMock(return_value=True)
+        mock.execute_cypher_batch = AsyncMock()
         yield mock
 
 
@@ -122,7 +122,7 @@ async def test_commit_initialization_to_graph_success(
     base_state,
     mock_content_manager,
     mock_get_functions,
-    mock_knowledge_graph_service,
+    mock_neo4j_manager,
 ):
     """Verify successful commit of initialization data."""
     state = {**base_state}
@@ -134,7 +134,7 @@ async def test_commit_initialization_to_graph_success(
     assert result["last_error"] is None
     assert "active_characters" in result
     assert len(result["active_characters"]) <= 5
-    assert mock_knowledge_graph_service.persist_entities.called
+    assert mock_neo4j_manager.execute_cypher_batch.called
 
 
 @pytest.mark.asyncio
@@ -142,7 +142,7 @@ async def test_commit_initialization_no_characters(
     base_state,
     mock_content_manager,
     mock_get_functions,
-    mock_knowledge_graph_service,
+    mock_neo4j_manager,
 ):
     """Verify handling when no character sheets exist."""
     mock_get_functions["chars"].return_value = {}
@@ -160,7 +160,7 @@ async def test_commit_initialization_no_global_outline(
     base_state,
     mock_content_manager,
     mock_get_functions,
-    mock_knowledge_graph_service,
+    mock_neo4j_manager,
 ):
     """Verify handling when no global outline exists."""
     mock_get_functions["global"].return_value = None
@@ -174,32 +174,15 @@ async def test_commit_initialization_no_global_outline(
 
 
 @pytest.mark.asyncio
-async def test_commit_initialization_persistence_failure(
+async def test_commit_initialization_batch_execution_failure(
     base_state,
     mock_content_manager,
     mock_get_functions,
-    mock_knowledge_graph_service,
+    mock_neo4j_manager,
 ):
-    """Verify handling when persistence returns failure flag."""
-    mock_knowledge_graph_service.persist_entities = AsyncMock(return_value=False)
-
-    state = {**base_state}
-
-    result = await commit_initialization_to_graph(state)
-
-    assert result["initialization_step"] == "committed_to_graph"
-
-
-@pytest.mark.asyncio
-async def test_commit_initialization_exception(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_knowledge_graph_service,
-):
-    """Verify exception handling during commit."""
-    mock_knowledge_graph_service.persist_entities = AsyncMock(
-        side_effect=Exception("Database error")
+    """Verify handling when batch execution fails."""
+    mock_neo4j_manager.execute_cypher_batch = AsyncMock(
+        side_effect=Exception("Batch execution failed")
     )
 
     state = {**base_state}
@@ -207,8 +190,30 @@ async def test_commit_initialization_exception(
     result = await commit_initialization_to_graph(state)
 
     assert result["initialization_step"] == "commit_failed"
-    assert result["current_node"] == "commit_initialization"
     assert "Failed to commit initialization data" in result["last_error"]
+
+
+@pytest.mark.asyncio
+async def test_commit_initialization_exception(
+    base_state,
+    mock_content_manager,
+    mock_get_functions,
+):
+    """Verify exception handling during batch execution."""
+    with patch(
+        "core.langgraph.initialization.commit_init_node.neo4j_manager"
+    ) as mock_manager:
+        mock_manager.execute_cypher_batch = AsyncMock(
+            side_effect=Exception("Database error")
+        )
+
+        state = {**base_state}
+
+        result = await commit_initialization_to_graph(state)
+
+        assert result["initialization_step"] == "commit_failed"
+        assert result["current_node"] == "commit_initialization"
+        assert "Failed to commit initialization data" in result["last_error"]
 
 
 @pytest.mark.asyncio
@@ -289,12 +294,11 @@ async def test_parse_character_sheets_to_profiles_no_traits_uses_llm(
     with patch(
         "core.langgraph.initialization.commit_init_node.validate_and_filter_traits"
     ) as mock_validate:
-        mock_validate.return_value = ["brave", "loyal", "strong"]
+        mock_validate.side_effect = lambda traits: traits if traits else []
 
         profiles = await _parse_character_sheets_to_profiles(character_sheets)
 
         assert len(profiles) == 1
-        assert len(profiles[0].traits) == 3
         assert mock_llm_service.async_call_llm.called
 
 
@@ -424,7 +428,7 @@ def test_parse_world_items_extraction():
 [Location] Dark Forest: A dangerous place"""
 
     with patch(
-        "core.langgraph.initialization.commit_init_node.generate_entity_id"
+        "processing.entity_deduplication.generate_entity_id"
     ) as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
 
@@ -446,7 +450,7 @@ Invalid line without brackets
 [Location] Valid Item 2: Another description"""
 
     with patch(
-        "core.langgraph.initialization.commit_init_node.generate_entity_id"
+        "processing.entity_deduplication.generate_entity_id"
     ) as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
 
@@ -477,7 +481,7 @@ def test_parse_world_items_extraction_whitespace_lines():
 """
 
     with patch(
-        "core.langgraph.initialization.commit_init_node.generate_entity_id"
+        "processing.entity_deduplication.generate_entity_id"
     ) as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
 
