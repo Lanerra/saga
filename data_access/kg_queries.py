@@ -40,594 +40,72 @@ _CANONICAL_NODE_LABEL_MAP["developmentevent"] = "DevelopmentEvent"
 _CANONICAL_NODE_LABEL_MAP["worldelaborationevent"] = "WorldElaborationEvent"
 
 
-def _infer_specific_node_type_static(
-    name: str, category: str = "", fallback_type: str = "Entity"
-) -> str:
+def _infer_from_category_simple(category: str, name: str) -> str:
     """
-    Original static node type inference (preserved as fallback).
-    Upgrades generic types like 'WorldElement' to specific types like 'Artifact', 'Location', etc.
+    Lightweight category-based type inference using existing schema constants.
 
-    DEPRECATED: This logic is largely superseded by schema_validator.validate_entity_type
-    but kept for emergency fallback.
+    Replaces the deprecated 588-line heuristic function with a simpler approach
+    that leverages LABEL_NORMALIZATION_MAP and SUGGESTED_CATEGORIES from kg_constants.
+
+    Args:
+        category: The category string to infer from
+        name: The entity name (for logging purposes)
+
+    Returns:
+        A valid node label from VALID_NODE_LABELS, or "Item" as fallback
     """
-    name_lower = name.lower()
-    category_lower = category.lower()
+    from models.kg_constants import LABEL_NORMALIZATION_MAP, SUGGESTED_CATEGORIES
 
-    # Living beings - check name patterns
-    if any(
-        term in name_lower
-        for term in [
-            "king",
-            "queen",
-            "lord",
-            "lady",
-            "prince",
-            "princess",
-            "duke",
-            "duchess",
-            "baron",
-            "earl",
-            "knight",
-            "sir",
-            "master",
-            "apprentice",
-            "guard",
-            "soldier",
-            "captain",
-            "general",
-            "warrior",
-            "hero",
-            "villain",
-            "mage",
-            "wizard",
-            "witch",
-            "priest",
-            "sage",
-            "scholar",
-            "merchant",
-            "trader",
-            "blacksmith",
-            "farmer",
-            "hunter",
-        ]
-    ):
-        return "Character"
+    if not category or not category.strip():
+        logger.debug(f"No category provided for entity '{name}', defaulting to 'Item'")
+        return "Item"
 
-    if any(term in name_lower for term in ["god", "goddess", "deity", "divine"]):
-        return "Deity"
+    category_stripped = category.strip()
 
-    if any(
-        term in name_lower
-        for term in ["spirit", "ghost", "phantom", "wraith", "spectre", "soul"]
-    ):
-        return "Spirit"
+    # Try exact match in LABEL_NORMALIZATION_MAP
+    if category_stripped in LABEL_NORMALIZATION_MAP:
+        result = LABEL_NORMALIZATION_MAP[category_stripped]
+        logger.debug(f"Mapped category '{category}' to '{result}' for entity '{name}'")
+        return result
 
-    if any(
-        term in name_lower
-        for term in [
-            "dragon",
-            "beast",
-            "monster",
-            "creature",
-            "wolf",
-            "bear",
-            "lion",
-            "eagle",
-            "serpent",
-            "snake",
-            "spider",
-            "demon",
-        ]
-    ):
-        return "Creature"
-
-    # Locations and structures
-    if any(
-        term in name_lower
-        for term in [
-            "castle",
-            "tower",
-            "fortress",
-            "palace",
-            "manor",
-            "hall",
-            "temple",
-            "church",
-            "cathedral",
-            "monastery",
-            "house",
-            "building",
-            "bridge",
-            "gate",
-            "wall",
-            "keep",
-        ]
-    ):
-        return "Structure"
-
-    if any(
-        term in name_lower
-        for term in [
-            "city",
-            "town",
-            "village",
-            "settlement",
-            "hamlet",
-            "capital",
-            "metropolis",
-        ]
-    ):
-        return "Settlement"
-
-    if any(
-        term in name_lower
-        for term in [
-            "forest",
-            "mountain",
-            "river",
-            "lake",
-            "sea",
-            "ocean",
-            "desert",
-            "valley",
-            "plain",
-            "hill",
-            "peak",
-            "realm",
-            "kingdom",
-            "empire",
-            "land",
-            "territory",
-            "region",
-            "continent",
-            "island",
-            "cave",
-            "cavern",
-        ]
-    ):
-        return (
-            "Location"
-            if any(
-                term in name_lower
-                for term in [
-                    "forest",
-                    "mountain",
-                    "river",
-                    "lake",
-                    "sea",
-                    "ocean",
-                    "desert",
-                    "valley",
-                    "plain",
-                    "hill",
-                    "peak",
-                    "cave",
-                    "cavern",
-                ]
+    # Try case-insensitive match in LABEL_NORMALIZATION_MAP
+    category_lower = category_stripped.lower()
+    for key, value in LABEL_NORMALIZATION_MAP.items():
+        if key.lower() == category_lower:
+            logger.debug(
+                f"Mapped category '{category}' (case-insensitive) to '{value}' for entity '{name}'"
             )
-            else "Region"
-        )
+            return value
 
-    if any(
-        term in name_lower
-        for term in ["road", "path", "route", "trail", "passage", "corridor", "tunnel"]
-    ):
-        return "Path"
-
-    if any(
-        term in name_lower
-        for term in [
-            "room",
-            "chamber",
-            "quarters",
-            "hall",
-            "parlor",
-            "study",
-            "library",
-            "kitchen",
-            "bedroom",
-            "attic",
-            "cellar",
-            "dungeon",
-        ]
-    ):
-        return "Room"
-
-    # Objects and items
-    if any(
-        term in name_lower
-        for term in [
-            "sword",
-            "blade",
-            "dagger",
-            "knife",
-            "axe",
-            "mace",
-            "hammer",
-            "bow",
-            "arrow",
-            "spear",
-            "lance",
-            "shield",
-            "armor",
-            "helmet",
-            "weapon",
-            "tool",
-            "staff",
-            "rod",
-            "wand",
-        ]
-    ):
-        # Check if it's magical/special
-        if any(
-            term in name_lower
-            for term in [
-                "magic",
-                "magical",
-                "enchanted",
-                "cursed",
-                "ancient",
-                "legendary",
-                "divine",
-                "sacred",
-                "holy",
-                "blessed",
-                "artifact",
-                "relic",
-            ]
-        ):
-            return "Artifact"
-        return "Object"
-
-    if any(
-        term in name_lower
-        for term in [
-            "book",
-            "scroll",
-            "tome",
-            "grimoire",
-            "manual",
-            "journal",
-            "diary",
-            "letter",
-            "document",
-            "manuscript",
-            "note",
-            "parchment",
-            "text",
-        ]
-    ):
-        return "Document"
-
-    if any(
-        term in name_lower
-        for term in [
-            "ring",
-            "crown",
-            "amulet",
-            "pendant",
-            "necklace",
-            "bracelet",
-            "orb",
-            "crystal",
-            "gem",
-            "stone",
-            "jewel",
-            "treasure",
-            "artifact",
-            "relic",
-        ]
-    ):
-        return (
-            "Artifact"
-            if any(
-                term in name_lower
-                for term in [
-                    "magic",
-                    "magical",
-                    "ancient",
-                    "legendary",
-                    "divine",
-                    "sacred",
-                    "artifact",
-                    "relic",
-                ]
+    # Reverse lookup in SUGGESTED_CATEGORIES
+    for label, suggested_cats in SUGGESTED_CATEGORIES.items():
+        if category_stripped in suggested_cats:
+            logger.debug(
+                f"Found category '{category}' in suggested categories for '{label}' (entity: '{name}')"
             )
-            else "Object"
-        )
+            return label
+        # Case-insensitive check
+        for cat in suggested_cats:
+            if isinstance(cat, str) and cat.lower() == category_lower:
+                logger.debug(
+                    f"Found category '{category}' (case-insensitive) in suggested categories for '{label}' (entity: '{name}')"
+                )
+                return label
 
-    if any(
-        term in name_lower
-        for term in [
-            "gold",
-            "silver",
-            "copper",
-            "coin",
-            "money",
-            "currency",
-            "payment",
-            "tribute",
-            "tax",
-        ]
-    ):
-        return "Currency"
-
-    if any(
-        term in name_lower
-        for term in [
-            "wood",
-            "stone",
-            "metal",
-            "iron",
-            "steel",
-            "bronze",
-            "material",
-            "ore",
-            "resource",
-            "supply",
-            "fuel",
-            "food",
-            "water",
-            "grain",
-            "bread",
-            "meat",
-        ]
-    ):
-        return (
-            "Resource"
-            if not any(
-                term in name_lower
-                for term in [
-                    "food",
-                    "water",
-                    "grain",
-                    "bread",
-                    "meat",
-                    "wine",
-                    "ale",
-                    "beer",
-                ]
+    # Final fallback: check if category contains any valid label name
+    for valid_label in VALID_NODE_LABELS:
+        if valid_label.lower() in category_lower:
+            logger.debug(
+                f"Category '{category}' contains label '{valid_label}', using it for entity '{name}'"
             )
-            else "Food"
-        )
+            return valid_label
 
-    # Organizations
-    if any(
-        term in name_lower
-        for term in [
-            "guild",
-            "order",
-            "brotherhood",
-            "sisterhood",
-            "council",
-            "court",
-            "assembly",
-            "faction",
-            "clan",
-            "tribe",
-            "house",
-            "family",
-            "dynasty",
-            "organization",
-            "group",
-            "band",
-            "company",
-            "army",
-            "legion",
-            "guard",
-        ]
-    ):
-        if any(term in name_lower for term in ["guild"]):
-            return "Guild"
-        elif any(term in name_lower for term in ["order", "brotherhood", "sisterhood"]):
-            return "Order"
-        elif any(term in name_lower for term in ["council", "court", "assembly"]):
-            return "Council"
-        elif any(term in name_lower for term in ["house", "family", "dynasty"]):
-            return "House"
-        else:
-            return "Faction"
-
-    # Abstract concepts
-    if any(
-        term in name_lower
-        for term in [
-            "magic",
-            "spell",
-            "enchantment",
-            "curse",
-            "blessing",
-            "power",
-            "ability",
-            "skill",
-            "talent",
-            "gift",
-            "knowledge",
-            "wisdom",
-            "lore",
-            "legend",
-            "myth",
-            "story",
-            "tale",
-            "prophecy",
-            "vision",
-            "dream",
-            "memory",
-            "tradition",
-            "custom",
-            "ritual",
-            "ceremony",
-            "law",
-            "rule",
-            "code",
-            "principle",
-        ]
-    ):
-        if any(
-            term in name_lower
-            for term in ["magic", "spell", "enchantment", "curse", "blessing", "power"]
-        ):
-            return "Magic"
-        elif any(term in name_lower for term in ["skill", "talent", "gift", "ability"]):
-            return "Skill"
-        elif any(
-            term in name_lower
-            for term in ["knowledge", "wisdom", "lore", "legend", "myth"]
-        ):
-            return "Lore"
-        elif any(term in name_lower for term in ["story", "tale"]):
-            return "Story"
-        elif any(term in name_lower for term in ["prophecy", "vision", "dream"]):
-            return "Dream"
-        elif any(term in name_lower for term in ["memory"]):
-            return "Memory"
-        elif any(
-            term in name_lower for term in ["tradition", "custom", "ritual", "ceremony"]
-        ):
-            return "Tradition"
-        elif any(term in name_lower for term in ["law", "rule", "code", "principle"]):
-            return "Law"
-        else:
-            return "Concept"
-
-    # Systems
-    if any(
-        term in name_lower
-        for term in ["religion", "faith", "belief", "worship", "church", "cult"]
-    ):
-        return "Religion"
-
-    if any(
-        term in name_lower
-        for term in ["culture", "society", "civilization", "people", "folk"]
-    ):
-        return "Culture"
-
-    if any(
-        term in name_lower
-        for term in [
-            "government",
-            "kingdom",
-            "empire",
-            "republic",
-            "democracy",
-            "monarchy",
-            "dictatorship",
-        ]
-    ):
-        return "Government"
-
-    if any(
-        term in name_lower
-        for term in [
-            "technology",
-            "invention",
-            "device",
-            "machine",
-            "engine",
-            "apparatus",
-        ]
-    ):
-        return "Technology"
-
-    # Use category information if available (expanded mapping)
-    if category_lower:
-        if any(
-            term in category_lower
-            for term in ["character", "person", "people", "npc", "hero", "villain"]
-        ):
-            return "Character"
-        elif any(
-            term in category_lower
-            for term in [
-                "location",
-                "place",
-                "city",
-                "town",
-                "village",
-                "region",
-                "territory",
-                "landmark",
-                "path",
-                "room",
-                "settlement",
-            ]
-        ):
-            return "Location"
-        elif any(
-            term in category_lower
-            for term in [
-                "object",
-                "item",
-                "thing",
-                "artifact",
-                "relic",
-                "weapon",
-                "armor",
-                "tool",
-            ]
-        ):
-            return "Object"
-        elif any(
-            term in category_lower for term in ["organization", "faction", "group"]
-        ):
-            return "Faction"
-        elif any(
-            term in category_lower
-            for term in [
-                "concept",
-                "idea",
-                "abstract",
-                "law",
-                "tradition",
-                "language",
-                "symbol",
-                "story",
-                "song",
-                "dream",
-                "memory",
-                "emotion",
-                "skill",
-            ]
-        ):
-            return "Concept"
-        elif any(term in category_lower for term in ["event", "happening"]):
-            return "Event"
-        elif any(term in category_lower for term in ["system"]):
-            return "System"
-
-    # Name-based heuristics for common types
-    if (
-        name_lower.endswith(" temple")
-        or name_lower.endswith(" hall")
-        or name_lower.endswith(" keep")
-    ):
-        return "Structure"
-    if name_lower.startswith("the ") and any(
-        term in name_lower for term in [" inn", " tavern", " bar", " guild", " order"]
-    ):
-        return "Structure"
-    if any(term in name_lower for term in ["district", "ward", "quarter"]):
-        return "Region"
-    if any(
-        term in name_lower
-        for term in ["empire", "kingdom", "duchy", "republic", "union"]
-    ):
-        return "Organization"
-    if any(term in name_lower for term in ["university", "academy", "school"]):
-        return "Education"
-    if any(term in name_lower for term in ["church", "temple", "cult"]):
-        return "Religion"
-    if any(
-        term in name_lower
-        for term in ["sword", "bow", "axe", "shield", "armor", "ring", "amulet"]
-    ):
-        return "Artifact"
-    if any(term in name_lower for term in ["road", "path", "bridge"]):
-        return "Path"
-
-    # Return fallback if no specific type inferred
-    return fallback_type if fallback_type != "WorldElement" else "Object"
+    # Ultimate fallback
+    logger.warning(
+        f"Could not infer type from category '{category}' for entity '{name}'. "
+        f"Defaulting to 'Item'. Consider adding category mapping to LABEL_NORMALIZATION_MAP."
+    )
+    return "Item"
 
 
 def _infer_specific_node_type(
@@ -656,17 +134,19 @@ def _infer_specific_node_type(
     if is_valid and corrected_label:
         return corrected_label
 
-    # If fallback type is generic, try to infer from category/name
-    # This is a wrapper around the logic in schema_validator or similar
-    # For now, we can use the existing static inference but map the result to valid labels
-    inferred = _infer_specific_node_type_static(name, category, fallback_type)
+    # If fallback type is generic, try to infer from category using schema constants
+    inferred = _infer_from_category_simple(category, name)
 
-    # Verify the inferred type is valid
+    # Verify the inferred type is valid (should always be, but check to be safe)
     if inferred in VALID_NODE_LABELS:
         return inferred
 
-    # Final fallback mapping
-    return "Item" if fallback_type == "WorldElement" else "Entity"
+    # Final fallback mapping (should never reach here with the new function)
+    logger.warning(
+        f"Type inference returned invalid label '{inferred}' for entity '{name}'. "
+        f"Falling back to 'Item'."
+    )
+    return "Item" if fallback_type == "WorldElement" else "Item"
 
 
 def _to_pascal_case(text: str) -> str:
@@ -692,10 +172,100 @@ def validate_relationship_type(proposed_type: str) -> str:
     return proposed_type.strip().upper().replace(" ", "_")
 
 
-def normalize_relationship_type(rel_type: str) -> str:
-    """Return a canonical representation of a relationship type using predefined taxonomy."""
-    # Use the enhanced validator which handles all the normalization logic
-    return validate_relationship_type(rel_type)
+async def normalize_and_deduplicate_relationships() -> dict[str, int]:
+    """
+    Comprehensive relationship normalization and deduplication workflow.
+
+    This function consolidates multiple relationship maintenance operations:
+    1. Validates and corrects relationship type names
+    2. Consolidates non-canonical types to canonical forms
+    3. Deduplicates exact duplicate relationships
+    4. Promotes DYNAMIC_REL relationships to proper typed relationships
+
+    Returns:
+        Dict with counts: {
+            'validated': int,
+            'consolidated': int,
+            'deduplicated': int,
+            'promoted': int,
+            'total': int
+        }
+    """
+    if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
+        logger.info(
+            "Relationship normalization disabled - skipping all relationship maintenance"
+        )
+        return {
+            'validated': 0,
+            'consolidated': 0,
+            'deduplicated': 0,
+            'promoted': 0,
+            'total': 0
+        }
+
+    counts = {
+        'validated': 0,
+        'consolidated': 0,
+        'deduplicated': 0,
+        'promoted': 0,
+        'total': 0
+    }
+
+    try:
+        logger.info("Starting comprehensive relationship normalization workflow")
+
+        counts['validated'] = await _validate_and_correct_relationship_types()
+        logger.info(f"✓ Validated {counts['validated']} relationship types")
+
+        counts['consolidated'] = await consolidate_similar_relationships()
+        logger.info(f"✓ Consolidated {counts['consolidated']} relationships to canonical forms")
+
+        counts['deduplicated'] = await deduplicate_relationships()
+        logger.info(f"✓ Deduplicated {counts['deduplicated']} duplicate relationships")
+
+        promotion_query = """
+        MATCH (s)-[r:DYNAMIC_REL]->(o)
+        WHERE r.type IS NOT NULL
+          AND r.type <> 'UNKNOWN'
+          AND r.type <> 'DYNAMIC_REL'
+          AND r.type IN $valid_types
+        WITH s, r, o, r.type as rel_type, properties(r) as rel_props
+
+        CALL apoc.create.relationship(
+            s,
+            rel_type,
+            apoc.map.removeKey(rel_props, 'type'),
+            o
+        ) YIELD rel
+
+        DELETE r
+        RETURN count(rel) AS promoted
+        """
+
+        valid_types = list(VALID_RELATIONSHIP_TYPES)
+        results = await neo4j_manager.execute_write_query(
+            promotion_query, {"valid_types": valid_types}
+        )
+        counts['promoted'] = results[0].get("promoted", 0) if results else 0
+        logger.info(f"✓ Promoted {counts['promoted']} DYNAMIC_REL relationships to typed relationships")
+
+        counts['total'] = sum(counts.values()) - counts['total']
+
+        logger.info(
+            f"Relationship normalization complete: {counts['total']} total changes "
+            f"(validated={counts['validated']}, consolidated={counts['consolidated']}, "
+            f"deduplicated={counts['deduplicated']}, promoted={counts['promoted']})"
+        )
+
+        return counts
+
+    except Exception as exc:
+        logger.error(
+            f"Relationship normalization workflow failed: {exc}",
+            exc_info=True
+        )
+        return counts
+
 
 async def normalize_existing_relationship_types() -> None:
     """Normalize all stored relationship types to canonical form."""
@@ -711,7 +281,7 @@ async def normalize_existing_relationship_types() -> None:
         current = record.get("t")
         if not current:
             continue
-        normalized = normalize_relationship_type(str(current))
+        normalized = validate_relationship_type(str(current))
         if normalized != current:
             statements.append(
                 (
@@ -1988,7 +1558,7 @@ async def consolidate_similar_relationships() -> int:
                 continue
 
             # Find canonical version
-            canonical_type = normalize_relationship_type(current_type)
+            canonical_type = validate_relationship_type(current_type)
 
             # Skip if no change needed
             if current_type == canonical_type:
