@@ -14,9 +14,6 @@ from .character_queries import (
     resolve_character_name,
     sync_characters,
 )
-from .character_queries import (
-    sync_full_state_from_object_to_db as sync_characters_full_state_from_object_to_db,
-)
 from .kg_queries import (
     add_kg_triples_batch_to_db,
     get_most_recent_value_from_db,
@@ -49,7 +46,6 @@ __all__ = [
     "append_plot_point",
     "plot_point_exists",
     "get_last_plot_point_id",
-    "sync_characters_full_state_from_object_to_db",
     "sync_characters",
     "get_character_profile_by_name",
     "resolve_character_name",

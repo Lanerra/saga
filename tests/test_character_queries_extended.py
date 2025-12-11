@@ -5,63 +5,6 @@ from data_access import character_queries
 from models import CharacterProfile
 from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
-@pytest.mark.asyncio
-class TestSyncFullStateExtended:
-    """Extended tests for sync_full_state_from_object_to_db."""
-
-    async def test_sync_full_state_complex_logic(self, monkeypatch):
-        """Test syncing complex character state with relationships, traits, and events."""
-        
-        async def mock_read(query, params=None):
-            if "RETURN c.name AS name" in query:
-                return [{"name": "OldChar"}] # Should be marked deleted
-            return []
-
-        async def mock_write(query, params=None):
-            return []
-
-        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", AsyncMock(side_effect=mock_read))
-        monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", AsyncMock(side_effect=mock_write))
-
-        profiles_data = {
-            "Alice": {
-                "description": "Hero",
-                "traits": ["Brave", "Smart"],
-                "development_in_chapter_1": "Started journey",
-                "source_quality_chapter_1": "provisional_from_unrevised_draft",
-                "relationships": {
-                    "Bob": {"type": "FRIEND_OF", "description": "Ally", "chapter_added": 1}
-                }
-            }
-        }
-
-        result = await character_queries.sync_full_state_from_object_to_db(profiles_data)
-        assert result is True
-
-        calls = character_queries.neo4j_manager.execute_cypher_batch.call_args_list
-        assert len(calls) > 0
-        statements = calls[0][0][0]
-        combined_query_text = " ".join([s[0] for s in statements])
-
-        # Verify key logic blocks
-        assert "SET c.is_deleted = TRUE" in combined_query_text # Delete OldChar
-        assert "MERGE (c:Character {name: $char_name_val})" in combined_query_text # Merge Alice
-        assert "MERGE (ni)-[:HAS_CHARACTER]->(c)" in combined_query_text # Link to NovelInfo
-        assert "MERGE (c)-[:HAS_TRAIT]->(t)" in combined_query_text # Traits
-        assert "CREATE (dev:DevelopmentEvent)" in combined_query_text # Dev Event
-        assert "MERGE (s)-[r:`FRIEND_OF`]->(o)" in combined_query_text # Relationship
-
-    async def test_sync_full_state_invalid_profile(self, monkeypatch):
-        """Test handling of invalid profile data."""
-        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", AsyncMock(return_value=[]))
-        monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", AsyncMock(return_value=[]))
-
-        profiles_data = {
-            "InvalidChar": "Not a dict" # Should be skipped
-        }
-        
-        result = await character_queries.sync_full_state_from_object_to_db(profiles_data)
-        assert result is True # Should not crash
 
 @pytest.mark.asyncio
 class TestGetCharacterProfileByNameExtended:
