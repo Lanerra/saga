@@ -37,9 +37,6 @@ from .world_queries import (
     resolve_world_name,
     sync_world_items,
 )
-from .world_queries import (
-    sync_full_state_from_object_to_db as sync_world_full_state_from_object_to_db,
-)
 
 __all__ = [
     "save_plot_outline_to_db",
@@ -52,7 +49,6 @@ __all__ = [
     "get_character_profile_by_name",
     "resolve_character_name",
     "get_character_info_for_snippet_from_db",
-    "sync_world_full_state_from_object_to_db",
     "sync_world_items",
     "get_world_building",
     "get_world_elements_for_snippet_from_db",

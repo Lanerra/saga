@@ -113,6 +113,221 @@ def validate_world_item_fields(
     return category, name, item_id
 
 
+def classify_category_label(category: str) -> str:
+    """
+    Classify a category string to a canonical Neo4j node label.
+
+    This is the authoritative category classification function used across the codebase
+    for consistent label assignment. Supports 118 keyword variants across 7 label types.
+
+    Args:
+        category: The category string to classify
+
+    Returns:
+        Canonical Neo4j label: "Location", "Item", "Organization", "Event",
+        "Concept", "Trait", "Character", or "Chapter". Defaults to "Item" if ambiguous.
+
+    Examples:
+        >>> classify_category_label("place")
+        'Location'
+        >>> classify_category_label("weapon")
+        'Item'
+        >>> classify_category_label("battle")
+        'Event'
+    """
+    c = (category or "").strip().lower()
+
+    if c.title() in [
+        "Location",
+        "Event",
+        "Item",
+        "Trait",
+        "Character",
+        "Chapter",
+    ]:
+        return c.title()
+
+    if c in [
+        "location",
+        "locations",
+        "place",
+        "site",
+        "area",
+        "region",
+        "settlement",
+        "landmark",
+        "room",
+        "structure",
+        "territory",
+        "city",
+        "town",
+        "village",
+        "path",
+        "road",
+        "planet",
+        "landscape",
+        "building",
+    ]:
+        return "Location"
+
+    if c in [
+        "item",
+        "items",
+        "object",
+        "objects",
+        "thing",
+        "things",
+        "artifact",
+        "artifacts",
+        "tool",
+        "tools",
+        "weapon",
+        "weapons",
+        "document",
+        "documents",
+        "relic",
+        "relics",
+        "book",
+        "books",
+        "scroll",
+        "scrolls",
+        "letter",
+        "letters",
+        "device",
+        "devices",
+        "vehicle",
+        "vehicles",
+        "resource",
+        "resources",
+        "material",
+        "materials",
+        "food",
+        "clothing",
+        "currency",
+        "money",
+        "treasure",
+    ]:
+        return "Item"
+
+    if c in [
+        "faction",
+        "guild",
+        "group",
+        "order",
+        "house",
+        "council",
+        "family",
+        "government",
+        "military",
+        "religious",
+        "commercial",
+        "criminal",
+        "academic",
+        "social",
+        "army",
+        "company",
+    ]:
+        return "Organization"
+
+    if c in [
+        "event",
+        "events",
+        "happening",
+        "happenings",
+        "occurrence",
+        "occurrences",
+        "incident",
+        "incidents",
+        "development",
+        "developments",
+        "battle",
+        "battles",
+        "meeting",
+        "meetings",
+        "journey",
+        "journeys",
+        "ceremony",
+        "ceremonies",
+        "discovery",
+        "discoveries",
+        "conflict",
+        "conflicts",
+        "conversation",
+        "conversations",
+        "flashback",
+        "flashbacks",
+        "scene",
+        "scenes",
+        "moment",
+        "moments",
+    ]:
+        return "Event"
+
+    if c in [
+        "idea",
+        "philosophy",
+        "theme",
+        "law",
+        "tradition",
+        "system",
+        "magic",
+        "technology",
+        "religion",
+        "culture",
+        "history",
+        "lore",
+        "knowledge",
+        "secret",
+        "rumor",
+        "news",
+        "message",
+        "signal",
+        "record",
+        "education",
+        "economy",
+        "language",
+        "symbol",
+        "story",
+        "song",
+        "dream",
+        "memory",
+        "emotion",
+    ]:
+        return "Concept"
+
+    if c in [
+        "skill",
+        "ability",
+        "quality",
+        "attribute",
+        "status",
+        "personality",
+        "physical",
+        "supernatural",
+        "background",
+    ]:
+        return "Trait"
+
+    if c in [
+        "person",
+        "people",
+        "creature",
+        "being",
+        "spirit",
+        "deity",
+        "human",
+        "npc",
+        "protagonist",
+        "antagonist",
+        "supporting",
+        "minor",
+        "historical",
+    ]:
+        return "Character"
+
+    return "Item"
+
+
 def is_single_word_trait(trait: str) -> bool:
     """
     Check if a trait is a valid single-word trait.

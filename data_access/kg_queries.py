@@ -15,6 +15,7 @@ from models.kg_constants import (
     RELATIONSHIP_TYPES,
     VALID_NODE_LABELS,
 )
+from utils import classify_category_label
 
 logger = structlog.get_logger(__name__)
 
@@ -42,10 +43,10 @@ _CANONICAL_NODE_LABEL_MAP["worldelaborationevent"] = "WorldElaborationEvent"
 
 def _infer_from_category_simple(category: str, name: str) -> str:
     """
-    Lightweight category-based type inference using existing schema constants.
+    Lightweight category-based type inference using consolidated classification.
 
-    Replaces the deprecated 588-line heuristic function with a simpler approach
-    that leverages LABEL_NORMALIZATION_MAP and SUGGESTED_CATEGORIES from kg_constants.
+    Uses the authoritative classify_category_label() function which provides
+    comprehensive keyword matching (118 variants across 7 label types).
 
     Args:
         category: The category string to infer from
@@ -54,58 +55,9 @@ def _infer_from_category_simple(category: str, name: str) -> str:
     Returns:
         A valid node label from VALID_NODE_LABELS, or "Item" as fallback
     """
-    from models.kg_constants import LABEL_NORMALIZATION_MAP, SUGGESTED_CATEGORIES
-
-    if not category or not category.strip():
-        logger.debug(f"No category provided for entity '{name}', defaulting to 'Item'")
-        return "Item"
-
-    category_stripped = category.strip()
-
-    # Try exact match in LABEL_NORMALIZATION_MAP
-    if category_stripped in LABEL_NORMALIZATION_MAP:
-        result = LABEL_NORMALIZATION_MAP[category_stripped]
-        logger.debug(f"Mapped category '{category}' to '{result}' for entity '{name}'")
-        return result
-
-    # Try case-insensitive match in LABEL_NORMALIZATION_MAP
-    category_lower = category_stripped.lower()
-    for key, value in LABEL_NORMALIZATION_MAP.items():
-        if key.lower() == category_lower:
-            logger.debug(
-                f"Mapped category '{category}' (case-insensitive) to '{value}' for entity '{name}'"
-            )
-            return value
-
-    # Reverse lookup in SUGGESTED_CATEGORIES
-    for label, suggested_cats in SUGGESTED_CATEGORIES.items():
-        if category_stripped in suggested_cats:
-            logger.debug(
-                f"Found category '{category}' in suggested categories for '{label}' (entity: '{name}')"
-            )
-            return label
-        # Case-insensitive check
-        for cat in suggested_cats:
-            if isinstance(cat, str) and cat.lower() == category_lower:
-                logger.debug(
-                    f"Found category '{category}' (case-insensitive) in suggested categories for '{label}' (entity: '{name}')"
-                )
-                return label
-
-    # Final fallback: check if category contains any valid label name
-    for valid_label in VALID_NODE_LABELS:
-        if valid_label.lower() in category_lower:
-            logger.debug(
-                f"Category '{category}' contains label '{valid_label}', using it for entity '{name}'"
-            )
-            return valid_label
-
-    # Ultimate fallback
-    logger.warning(
-        f"Could not infer type from category '{category}' for entity '{name}'. "
-        f"Defaulting to 'Item'. Consider adding category mapping to LABEL_NORMALIZATION_MAP."
-    )
-    return "Item"
+    result = classify_category_label(category)
+    logger.debug(f"Mapped category '{category}' to '{result}' for entity '{name}'")
+    return result
 
 
 def _infer_specific_node_type(

@@ -12,7 +12,7 @@ from models.kg_constants import KG_NODE_CREATED_CHAPTER
 @pytest.mark.asyncio
 async def test_get_character_profile_by_name(monkeypatch):
     async def fake_read(query, params=None):
-        if "RETURN c" in query:
+        if "MATCH (c:Character" in query and "collect(DISTINCT t.name) AS traits" in query:
             return [
                 {
                     "c": {
@@ -20,20 +20,22 @@ async def test_get_character_profile_by_name(monkeypatch):
                         "description": "hero",
                         "status": "active",
                         "created_ts": 1,
-                    }
-                }
-            ]
-        if "HAS_TRAIT" in query:
-            return [{"trait_name": "brave"}]
-        if "RETURN target.name AS target_name" in query:
-            return [{"target_name": "Bob", "rel_props": {"type": "KNOWS"}}]
-        if "DEVELOPED_IN_CHAPTER" in query:
-            return [
-                {
-                    "summary": "growth",
-                    "chapter": 1,
-                    "is_provisional": False,
-                    "dev_id": "d1",
+                    },
+                    "traits": ["brave"],
+                    "relationships": [
+                        {
+                            "target_name": "Bob",
+                            "rel_type": "KNOWS",
+                            "rel_props": {"type": "KNOWS", "source_profile_managed": True},
+                        }
+                    ],
+                    "dev_events": [
+                        {
+                            "summary": "growth",
+                            "chapter": 1,
+                            "is_provisional": False,
+                        }
+                    ],
                 }
             ]
         return []
@@ -68,15 +70,6 @@ async def test_get_world_item_by_id(monkeypatch):
                     }
                 }
             ]
-        if "HAS_GOAL" in query or (":HAS_GOAL" in query):
-            # With the new world model, goals are stored on the node; return empty for relation query paths
-            return []
-        if (
-            "HAS_RULE" in query
-            or "HAS_KEY_ELEMENT" in query
-            or "HAS_TRAIT_ASPECT" in query
-        ):
-            return []
         if "ELABORATED_IN_CHAPTER" in query:
             # In current implementation, elaborations may not be fetched in the simplified path
             return []

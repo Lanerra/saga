@@ -11,43 +11,9 @@ from typing import Any
 import structlog
 
 from core.db_manager import neo4j_manager
-from models.kg_constants import LABEL_NORMALIZATION_MAP
+from utils import classify_category_label
 
 logger = structlog.get_logger(__name__)
-
-
-def _normalize_category(category: str) -> str:
-    """Normalize category to a primary label (e.g. 'Region' -> 'Location')."""
-    if not category:
-        return "Item"  # Default fallback
-
-    # Check exact match in map (case-insensitive keys handled by creating lower-case map?)
-    # LABEL_NORMALIZATION_MAP has Title Case keys.
-    # We should iterate or create a lower-case lookup.
-
-    # Simple normalization similar to native_builders._classify_label
-    c = category.strip().title()
-    if c in LABEL_NORMALIZATION_MAP:
-        return LABEL_NORMALIZATION_MAP[c]
-
-    # Check direct label names
-    if c in ["Location", "Event", "Item", "Character", "Trait", "Chapter", "Organization", "Concept"]:
-        return c
-
-    # Common lower-case variants handling
-    c_lower = category.strip().lower()
-
-    # Manual mappings matching native_builders logic (simplified)
-    if c_lower in ["locations", "place", "region", "area", "planet", "landscape"]:
-        return "Location"
-    if c_lower in ["items", "object", "artifact", "tool", "weapon"]:
-        return "Item"
-    if c_lower in ["events", "scene", "moment"]:
-        return "Event"
-    if c_lower in ["people", "person", "being"]:
-        return "Character"
-
-    return "Item"  # Default
 
 
 def generate_entity_id(name: str, category: str, chapter: int) -> str:
@@ -146,7 +112,7 @@ async def check_entity_similarity(
             return None
 
         # Filter results for compatibility
-        target_label = _normalize_category(category) if entity_type != "character" else "Character"
+        target_label = classify_category_label(category) if entity_type != "character" else "Character"
 
         for similar_entity in results:
             # Check compatibility for world elements
@@ -154,7 +120,7 @@ async def check_entity_similarity(
                 existing_cat = similar_entity.get("existing_category", "")
                 existing_labels = similar_entity.get("existing_labels", [])
 
-                existing_label = _normalize_category(existing_cat)
+                existing_label = classify_category_label(existing_cat)
 
                 # Check if labels match OR if existing node has the target label
                 # This handles cases where 'Region' maps to 'Location'

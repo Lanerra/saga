@@ -23,6 +23,7 @@ from .text_processing import (
     SpaCyModelManager,
     _normalize_for_id,
     _normalize_text_for_matching,
+    classify_category_label,
     find_quote_and_sentence_offsets_with_spacy,
     get_context_snippet_for_patch,
     get_text_segments,
@@ -130,5 +131,6 @@ __all__ = [
     "get_text_segments",
     "format_scene_plan_for_prompt",
     "remove_spans_from_text",
+    "classify_category_label",
     "validate_world_item_fields",
 ]
