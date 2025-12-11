@@ -10,6 +10,7 @@ from .chapter_queries import (
 )
 from .character_queries import (
     get_character_info_for_snippet_from_db,
+    get_character_profile_by_id,
     get_character_profile_by_name,
     resolve_character_name,
     sync_characters,
@@ -47,6 +48,7 @@ __all__ = [
     "plot_point_exists",
     "get_last_plot_point_id",
     "sync_characters",
+    "get_character_profile_by_id",
     "get_character_profile_by_name",
     "resolve_character_name",
     "get_character_info_for_snippet_from_db",
