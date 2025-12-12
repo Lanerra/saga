@@ -52,8 +52,14 @@ def get_world_item_by_name(
 
 
 @alru_cache(maxsize=128)
-async def get_world_item_by_id(item_id: str) -> WorldItem | None:
+async def get_world_item_by_id(
+    item_id: str, *, include_provisional: bool = False
+) -> WorldItem | None:
     """Retrieve a single ``WorldItem`` from Neo4j by its ID or fall back to name.
+
+    Provisional contract (P0):
+    - Default excludes provisional world items (node-level) and provisional elaboration events
+      unless include_provisional=True.
 
     Notes:
         This function may be called with either a canonical KG id (e.g. ``locations_castle``)
@@ -70,15 +76,21 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
 
     query = (
         f"MATCH (we {{id: $id}}) WHERE {label_predicate}"
-        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) RETURN we"
+        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)"
+        " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)"
+        " RETURN we"
     )
 
-    results = await neo4j_manager.execute_read_query(query, {"id": requested_id})
+    results = await neo4j_manager.execute_read_query(
+        query, {"id": requested_id, "include_provisional": include_provisional}
+    )
     if not results or not results[0].get("we"):
         alt_id = resolve_world_name(requested_id)
         if alt_id and alt_id != requested_id:
             effective_id = alt_id
-            results = await neo4j_manager.execute_read_query(query, {"id": effective_id})
+            results = await neo4j_manager.execute_read_query(
+                query, {"id": effective_id, "include_provisional": include_provisional}
+            )
 
     if not results or not results[0].get("we"):
         logger.info(f"No world item found for id '{requested_id}'.")
@@ -161,11 +173,13 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
 
     elab_query = f"""
     MATCH ({{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent)
+    WHERE $include_provisional = TRUE OR coalesce(elab.{KG_IS_PROVISIONAL}, FALSE) = FALSE
     RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
     ORDER BY elab.chapter_updated ASC
     """
     elab_results = await neo4j_manager.execute_read_query(
-        elab_query, {"we_id_param": effective_id}
+        elab_query,
+        {"we_id_param": effective_id, "include_provisional": include_provisional},
     )
     if elab_results:
         for elab_rec in elab_results:
@@ -186,18 +200,24 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
 
 
 async def get_world_elements_for_snippet_from_db(
-    category: str, chapter_limit: int, item_limit: int
+    category: str, chapter_limit: int, item_limit: int, *, include_provisional: bool = False
 ) -> list[dict[str, Any]]:
     query = f"""
     MATCH (we {{category: $category_param}})
     WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
       AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
 
     OPTIONAL MATCH (we)-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent)
-    WHERE elab.{KG_NODE_CHAPTER_UPDATED} <= $chapter_limit_param AND elab.{KG_IS_PROVISIONAL} = TRUE
+    WHERE elab.{KG_NODE_CHAPTER_UPDATED} <= $chapter_limit_param
+      AND coalesce(elab.{KG_IS_PROVISIONAL}, FALSE) = TRUE
 
     WITH we, COLLECT(DISTINCT elab) AS provisional_elaborations_found
-    WITH we, ( we.{KG_IS_PROVISIONAL} = TRUE OR size(provisional_elaborations_found) > 0 ) AS is_item_provisional_overall
+    WITH
+      we,
+      ( coalesce(we.{KG_IS_PROVISIONAL}, FALSE) = TRUE OR size(provisional_elaborations_found) > 0 )
+        AS is_item_provisional_overall
+    WHERE $include_provisional = TRUE OR is_item_provisional_overall = FALSE
 
     RETURN we.name AS name,
            we.description AS description,
@@ -209,6 +229,7 @@ async def get_world_elements_for_snippet_from_db(
         "category_param": category,
         "chapter_limit_param": chapter_limit,
         "item_limit_param": item_limit,
+        "include_provisional": include_provisional,
     }
     items = []
     try:
@@ -318,7 +339,7 @@ async def sync_world_items(
         return False
 
 
-async def get_world_building() -> list[WorldItem]:
+async def get_world_building(*, include_provisional: bool = False) -> list[WorldItem]:
     """
     Native model version of get_world_building_from_db.
     Returns world items as model instances without dict conversion.
@@ -343,6 +364,9 @@ async def get_world_building() -> list[WorldItem]:
         for item in world_items:
             WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
 
+        if not include_provisional:
+            world_items = [w for w in world_items if not getattr(w, "is_provisional", False)]
+
         logger.info("Fetched %d world items using native models", len(world_items))
         return world_items
 
@@ -352,7 +376,7 @@ async def get_world_building() -> list[WorldItem]:
 
 
 async def get_world_items_for_chapter_context_native(
-    chapter_number: int, limit: int = 10
+    chapter_number: int, limit: int = 10, *, include_provisional: bool = False
 ) -> list[WorldItem]:
     """
     Get world items relevant for chapter context using native models.
@@ -368,6 +392,8 @@ async def get_world_items_for_chapter_context_native(
         query = """
         MATCH (w)-[:REFERENCED_IN]->(ch:Chapter)
         WHERE ch.number < $chapter_number
+          AND (w.is_deleted IS NULL OR w.is_deleted = FALSE)
+          AND ($include_provisional = TRUE OR coalesce(w.is_provisional, FALSE) = FALSE)
         WITH w, max(ch.number) as last_reference
         ORDER BY last_reference DESC
         LIMIT $limit
@@ -375,7 +401,12 @@ async def get_world_items_for_chapter_context_native(
         """
 
         results = await neo4j_manager.execute_read_query(
-            query, {"chapter_number": chapter_number, "limit": limit}
+            query,
+            {
+                "chapter_number": chapter_number,
+                "limit": limit,
+                "include_provisional": include_provisional,
+            },
         )
 
         world_items = []

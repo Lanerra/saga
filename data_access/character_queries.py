@@ -27,12 +27,15 @@ logger = structlog.get_logger(__name__)
 
 
 @alru_cache(maxsize=128)
-async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
+async def get_character_profile_by_name(
+    name: str, *, include_provisional: bool = False
+) -> CharacterProfile | None:
     """
     Retrieve a single CharacterProfile from Neo4j by character name.
 
-    Optimized to use a single query combining character data, traits,
-    relationships, and development events.
+    Provisional contract (P0):
+    - Default excludes provisional relationship + event data unless include_provisional=True.
+    - Node-level provisional status is preserved on the returned profile (callers can decide).
     """
     canonical_name = resolve_character_name(name)
     logger.info(f"Loading character profile '{canonical_name}' from Neo4j...")
@@ -53,27 +56,43 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
             collect(DISTINCT t.name) AS traits,
             collect(
                 DISTINCT CASE
-                    WHEN coalesce(r.source_profile_managed, false) = true THEN {
+                    WHEN coalesce(r.source_profile_managed, false) = true
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(r.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
                         target_name: target.name,
                         rel_type: type(r),
                         rel_props: properties(r)
                     }
                 END
             ) AS relationships_raw,
-            collect(DISTINCT {
-                summary: dev.summary,
-                chapter: dev.chapter_updated,
-                is_provisional: dev.is_provisional
-            }) AS dev_events
+            collect(
+                DISTINCT CASE
+                    WHEN dev IS NOT NULL
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(dev.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
+                        summary: dev.summary,
+                        chapter: dev.chapter_updated,
+                        is_provisional: coalesce(dev.is_provisional, FALSE)
+                    }
+                END
+            ) AS dev_events_raw
 
         RETURN
             c,
             traits,
             [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
-            dev_events
+            [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events
     """
 
-    results = await neo4j_manager.execute_read_query(query, {"name": canonical_name})
+    results = await neo4j_manager.execute_read_query(
+        query, {"name": canonical_name, "include_provisional": include_provisional}
+    )
     if not results or not results[0].get("c"):
         logger.info(f"No character profile found for '{canonical_name}'.")
         return None
@@ -128,18 +147,15 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
 
 
 @alru_cache(maxsize=128)
-async def get_character_profile_by_id(character_id: str) -> CharacterProfile | None:
+async def get_character_profile_by_id(
+    character_id: str, *, include_provisional: bool = False
+) -> CharacterProfile | None:
     """
     Retrieve a single CharacterProfile from Neo4j by character ID.
 
-    Optimized to use a single query combining character data, traits,
-    relationships, and development events.
-
-    Args:
-        character_id: The stable ID of the character
-
-    Returns:
-        CharacterProfile or None if not found
+    Provisional contract (P0):
+    - Default excludes provisional relationship + event data unless include_provisional=True.
+    - Node-level provisional status is preserved on the returned profile (callers can decide).
     """
     logger.info(f"Loading character profile with ID '{character_id}' from Neo4j...")
 
@@ -159,27 +175,44 @@ async def get_character_profile_by_id(character_id: str) -> CharacterProfile | N
             collect(DISTINCT t.name) AS traits,
             collect(
                 DISTINCT CASE
-                    WHEN coalesce(r.source_profile_managed, false) = true THEN {
+                    WHEN coalesce(r.source_profile_managed, false) = true
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(r.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
                         target_name: target.name,
                         rel_type: type(r),
                         rel_props: properties(r)
                     }
                 END
             ) AS relationships_raw,
-            collect(DISTINCT {
-                summary: dev.summary,
-                chapter: dev.chapter_updated,
-                is_provisional: dev.is_provisional
-            }) AS dev_events
+            collect(
+                DISTINCT CASE
+                    WHEN dev IS NOT NULL
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(dev.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
+                        summary: dev.summary,
+                        chapter: dev.chapter_updated,
+                        is_provisional: coalesce(dev.is_provisional, FALSE)
+                    }
+                END
+            ) AS dev_events_raw
 
         RETURN
             c,
             traits,
             [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
-            dev_events
+            [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events
     """
 
-    results = await neo4j_manager.execute_read_query(query, {"character_id": character_id})
+    results = await neo4j_manager.execute_read_query(
+        query,
+        {"character_id": character_id, "include_provisional": include_provisional},
+    )
     if not results or not results[0].get("c"):
         logger.info(f"No character profile found with ID '{character_id}'.")
         return None
@@ -246,11 +279,19 @@ async def get_all_character_names() -> list[str]:
     return [record["name"] for record in results if record.get("name")]
 
 
-def _process_snippet_result(record: dict[str, Any]) -> dict[str, Any]:
-    """Process snippet query result into standardized format."""
+def _process_snippet_result(
+    record: dict[str, Any], *, include_provisional: bool
+) -> dict[str, Any]:
+    """Process snippet query result into standardized format.
+
+    Provisional contract (P0):
+    - Default behavior (include_provisional=False) should NOT surface provisional development
+      notes as the "most recent" signal.
+    - Still compute and return `is_provisional_overall` so callers can understand data quality.
+    """
     dev_events = record.get("dev_events", [])
 
-    valid_events = [e for e in dev_events if e.get("summary")]
+    valid_events = [e for e in dev_events if isinstance(e, dict) and e.get("summary")]
 
     non_provisional = [e for e in valid_events if not e.get("is_provisional")]
     provisional = [e for e in valid_events if e.get("is_provisional")]
@@ -262,15 +303,18 @@ def _process_snippet_result(record: dict[str, Any]) -> dict[str, Any]:
         max(provisional, key=lambda e: e["chapter"]) if provisional else None
     )
 
-    if most_recent_prov and (
-        not most_recent_non_prov
-        or most_recent_prov["chapter"] >= most_recent_non_prov["chapter"]
-    ):
-        most_current = most_recent_prov
+    if include_provisional:
+        if most_recent_prov and (
+            not most_recent_non_prov
+            or most_recent_prov["chapter"] >= most_recent_non_prov["chapter"]
+        ):
+            most_current = most_recent_prov
+        else:
+            most_current = most_recent_non_prov
+        dev_note = most_current.get("summary", "N/A") if most_current else "N/A"
     else:
-        most_current = most_recent_non_prov
-
-    dev_note = most_current.get("summary", "N/A") if most_current else "N/A"
+        # Exclude provisional notes by default.
+        dev_note = most_recent_non_prov.get("summary", "N/A") if most_recent_non_prov else "N/A"
 
     char_is_provisional = record.get("char_is_provisional", False)
     has_provisional_relationships = record.get("provisional_rel_count", 0) > 0
@@ -288,9 +332,14 @@ def _process_snippet_result(record: dict[str, Any]) -> dict[str, Any]:
 
 
 async def get_character_info_for_snippet_from_db(
-    char_name: str, chapter_limit: int
+    char_name: str, chapter_limit: int, *, include_provisional: bool = False
 ) -> dict[str, Any] | None:
-    """Get character info for snippet with chapter limit."""
+    """Get character info for snippet with chapter limit.
+
+    Provisional contract (P0):
+    - Default excludes provisional development notes from the returned "most recent" view.
+    - Still computes and returns `is_provisional_overall` based on underlying graph data.
+    """
     canonical_name = resolve_character_name(char_name)
 
     query = """
@@ -370,7 +419,7 @@ async def get_character_info_for_snippet_from_db(
         )
         return None
 
-    return _process_snippet_result(result[0])
+    return _process_snippet_result(result[0], include_provisional=include_provisional)
 
 
 async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:

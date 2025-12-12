@@ -692,7 +692,7 @@ async def query_kg_from_db(
     predicate: str | None = None,
     obj_val: str | None = None,
     chapter_limit: int | None = None,
-    include_provisional: bool = True,
+    include_provisional: bool = False,
     limit_results: int | None = None,
 ) -> list[dict[str, Any]]:
     conditions = []

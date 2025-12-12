@@ -126,6 +126,8 @@ async def find_semantic_context_native(
     query_embedding: np.ndarray,
     current_chapter_number: int,
     limit: int | None = None,
+    *,
+    include_provisional: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Native version of semantic context retrieval using single optimized query.
@@ -162,6 +164,10 @@ async def find_semantic_context_native(
     CALL db.index.vector.queryNodes($index_name, $search_limit, $query_vector)
     YIELD node AS similar_c, score
     WHERE similar_c.number < $current_chapter
+      AND (
+            $include_provisional = true
+            OR COALESCE(similar_c.is_provisional, false) = false
+          )
 
     // Ensure deterministic ordering before we collect results.
     WITH similar_c, score
@@ -178,6 +184,10 @@ async def find_semantic_context_native(
     // Get immediate previous chapter if not in similarity results
     OPTIONAL MATCH (prev_c:Chapter {number: $prev_chapter_num})
     WHERE prev_c.number < $current_chapter
+      AND (
+            $include_provisional = true
+            OR COALESCE(prev_c.is_provisional, false) = false
+          )
       AND NOT ANY(sr IN similar_results WHERE sr.chapter_number = $prev_chapter_num)
 
     WITH similar_results,
@@ -214,6 +224,7 @@ async def find_semantic_context_native(
                 "query_vector": query_embedding_list,
                 "current_chapter": current_chapter_number,
                 "prev_chapter_num": prev_chapter_num,
+                "include_provisional": include_provisional,
             },
         )
 
