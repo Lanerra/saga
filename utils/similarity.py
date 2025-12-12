@@ -4,8 +4,6 @@ import asyncio
 import numpy as np
 import structlog
 
-from core.llm_interface_refactored import llm_service
-
 from .text_processing import get_text_segments
 
 logger = structlog.get_logger(__name__)
@@ -57,6 +55,10 @@ async def find_semantically_closest_segment(
             "find_semantically_closest_segment: original_doc or query_text is empty."
         )
         return None
+
+    # Local import to avoid circular import chain:
+    # utils -> core -> data_access -> processing -> utils
+    from core.llm_interface_refactored import llm_service
 
     query_embedding = await llm_service.async_get_embedding(query_text)
     if query_embedding is None:

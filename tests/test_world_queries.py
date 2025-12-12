@@ -462,6 +462,18 @@ class TestGetBootstrapWorldElements:
         result = await world_queries.get_bootstrap_world_elements()
         assert isinstance(result, list)
 
+    async def test_get_bootstrap_world_elements_filters_soft_deleted(self, monkeypatch):
+        """P1: Bootstrap reads should exclude soft-deleted world items."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        await world_queries.get_bootstrap_world_elements()
+
+        assert mock_read.call_args_list, "Expected execute_read_query to be called"
+        first_query = mock_read.call_args_list[0].args[0]
+        assert isinstance(first_query, str)
+        assert "(we.is_deleted IS NULL OR we.is_deleted = FALSE)" in first_query
+
     async def test_get_bootstrap_world_elements_found(self, monkeypatch):
         """Test getting bootstrap world elements that exist."""
         mock_read = AsyncMock(

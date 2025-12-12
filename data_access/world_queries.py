@@ -25,7 +25,30 @@ from .cypher_builders.native_builders import NativeCypherBuilder
 logger = structlog.get_logger(__name__)
 
 # Mapping from normalized world item names to canonical IDs
+#
+# Lifecycle contract (P1):
+# - `resolve_world_name()` is best-effort ONLY (purely in-memory; no DB IO).
+# - The authoritative map population happens in explicit "populate" flows:
+#   - write-path: `sync_world_items()` (from provided models)
+#   - read-path:  `get_world_building()` (from fetched models)
+# - Callers/tests may clear/reset explicitly via the helpers below.
 WORLD_NAME_TO_ID: dict[str, str] = {}
+
+
+def clear_world_name_map() -> None:
+    """Clear the in-process world name→id map."""
+    WORLD_NAME_TO_ID.clear()
+
+
+def rebuild_world_name_map(world_items: list["WorldItem"]) -> None:
+    """Rebuild the world name→id map from a list of WorldItem models.
+
+    This clears existing entries to avoid stale accumulation across runs/tests.
+    """
+    WORLD_NAME_TO_ID.clear()
+    for item in world_items:
+        if isinstance(item, WorldItem) and item.name and item.id:
+            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
 
 
 def resolve_world_name(name: str) -> str | None:
@@ -300,11 +323,8 @@ async def sync_world_items(
             if errors:
                 logger.warning(f"Invalid WorldItem '{item.name}': {errors}")
 
-    # Update name mapping
-    WORLD_NAME_TO_ID.clear()
-    for item in world_items:
-        if isinstance(item, WorldItem):
-            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+    # Update name mapping deterministically (avoid stale accumulation).
+    rebuild_world_name_map(world_items)
 
     try:
         cypher_builder = NativeCypherBuilder()
@@ -360,9 +380,7 @@ async def get_world_building(*, include_provisional: bool = False) -> list[World
                 world_items.append(item)
 
         # Update name-to-id mapping for compatibility with callers
-        WORLD_NAME_TO_ID.clear()
-        for item in world_items:
-            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+        rebuild_world_name_map(world_items)
 
         if not include_provisional:
             world_items = [w for w in world_items if not getattr(w, "is_provisional", False)]
@@ -448,6 +466,7 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
     query = """
     MATCH (we)
     WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
       AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
       AND we.description IS NOT NULL
       AND trim(toString(we.description)) <> ''
@@ -467,7 +486,13 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
 
         bootstrap_elements = []
         for record in records:
-            we_node = record["we"]
+            # Some tests/mocks historically used "w" instead of "we"; accept both.
+            we_node = None
+            if isinstance(record, dict):
+                we_node = record.get("we") or record.get("w")
+
+            if not we_node:
+                continue
 
             # Convert Neo4j node to WorldItem
             try:

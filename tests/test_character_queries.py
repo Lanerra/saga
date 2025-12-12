@@ -230,6 +230,30 @@ class TestSyncCharacters:
         result = await character_queries.sync_characters([profile], 1)
         assert result is True
 
+    async def test_sync_characters_rebuilds_name_map(self, monkeypatch):
+        """P1: sync should deterministically rebuild the canonical-name map (no stale accumulation)."""
+        mock_execute = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            character_queries.neo4j_manager, "execute_cypher_batch", mock_execute
+        )
+
+        # Seed stale state
+        character_queries.CHAR_NAME_TO_CANONICAL.clear()
+        character_queries.CHAR_NAME_TO_CANONICAL["stale"] = "Stale"
+
+        profiles = [
+            CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]}),
+        ]
+        result = await character_queries.sync_characters(profiles, 1)
+        assert result is True
+
+        # Map should be cleared and rebuilt from the passed profiles.
+        assert "stale" not in character_queries.CHAR_NAME_TO_CANONICAL
+        assert (
+            character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice"))
+            == "Alice"
+        )
+
     async def test_sync_characters_multiple(self, monkeypatch):
         """Test syncing multiple characters."""
         mock_execute = AsyncMock(return_value=None)
@@ -294,9 +318,19 @@ class TestGetCharacterProfiles:
             AsyncMock(side_effect=fake_read),
         )
 
+        # Seed stale state to ensure fetch rebuilds deterministically.
+        character_queries.CHAR_NAME_TO_CANONICAL.clear()
+        character_queries.CHAR_NAME_TO_CANONICAL["stale"] = "Stale"
+
         result = await character_queries.get_character_profiles()
         assert len(result) == 1
         assert result[0].name == "Alice"
+
+        assert "stale" not in character_queries.CHAR_NAME_TO_CANONICAL
+        assert (
+            character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice"))
+            == "Alice"
+        )
 
 
 @pytest.mark.asyncio

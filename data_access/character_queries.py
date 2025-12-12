@@ -13,7 +13,30 @@ from models import CharacterProfile
 from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Mapping from normalized character names to canonical display names
+#
+# Lifecycle contract (P1):
+# - `resolve_character_name()` is best-effort ONLY (purely in-memory; no DB IO).
+# - The authoritative map population happens in explicit "populate" flows:
+#   - write-path: `sync_characters()` (from provided models)
+#   - read-path:  `get_character_profiles()` (from fetched models)
+# - Callers/tests may clear/reset explicitly via the helpers below.
 CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
+
+
+def clear_character_name_map() -> None:
+    """Clear the in-process character name canonicalization map."""
+    CHAR_NAME_TO_CANONICAL.clear()
+
+
+def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
+    """Rebuild the character name canonicalization map from a list of profiles.
+
+    This clears existing entries to avoid stale accumulation across runs/tests.
+    """
+    CHAR_NAME_TO_CANONICAL.clear()
+    for char in characters:
+        if isinstance(char, CharacterProfile) and char.name:
+            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
 
 
 def resolve_character_name(name: str) -> str:
@@ -481,9 +504,8 @@ async def sync_characters(
             chapter_number,
         )
 
-        # Update canonical name mapping
-        for char in characters:
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
+        # Update canonical name mapping deterministically (avoid stale accumulation).
+        rebuild_character_name_map(characters)
 
         # P1.6: Post-write cache invalidation
         # Local import avoids circular import / eager import side effects.
@@ -522,6 +544,9 @@ async def get_character_profiles() -> list[CharacterProfile]:
             if record and record.get("c"):
                 char = CharacterProfile.from_dict_record(record)
                 characters.append(char)
+
+        # Populate canonical name map for best-effort resolve helpers.
+        rebuild_character_name_map(characters)
 
         logger.info("Fetched %d characters using native models", len(characters))
         return characters

@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from core.llm_interface_refactored import llm_service
-
 from .common import (
     _is_fill_in,
     extract_json_from_text,
@@ -71,6 +69,10 @@ def format_scene_plan_for_prompt(
 
         scene_segment = "\n".join(scene_lines)
         prospective_plan = "\n".join(current_plan_parts + [scene_segment])
+
+        # Local import to avoid circular import chain:
+        # utils -> core -> data_access -> processing -> utils
+        from core.llm_interface_refactored import llm_service
 
         if (
             llm_service.count_tokens(prospective_plan, model_name_for_tokens)
