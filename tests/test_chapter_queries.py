@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import numpy as np
 import pytest
 
+from core.exceptions import DatabaseError
 from data_access import chapter_queries
 
 
@@ -13,7 +14,7 @@ class TestLoadChapterCount:
 
     async def test_load_chapter_count_zero(self, monkeypatch):
         """Test loading chapter count when zero."""
-        mock_read = AsyncMock(return_value=[{"count": 0}])
+        mock_read = AsyncMock(return_value=[{"chapter_count": 0}])
         monkeypatch.setattr(
             chapter_queries.neo4j_manager, "execute_read_query", mock_read
         )
@@ -55,8 +56,6 @@ class TestSaveChapterData:
 
         await chapter_queries.save_chapter_data_to_db(
             chapter_number=1,
-            text="Chapter text",
-            raw_llm_output="Raw output",
             summary="Chapter summary",
             embedding_array=None,
         )
@@ -72,8 +71,6 @@ class TestSaveChapterData:
         embedding = np.array([0.1, 0.2, 0.3])
         await chapter_queries.save_chapter_data_to_db(
             chapter_number=1,
-            text="Chapter text",
-            raw_llm_output="Raw output",
             summary="Chapter summary",
             embedding_array=embedding,
         )
@@ -112,6 +109,16 @@ class TestGetChapterData:
 
         result = await chapter_queries.get_chapter_data_from_db(999)
         assert result is None
+
+    async def test_get_chapter_data_raises_database_error_on_db_failure(self, monkeypatch):
+        """P1.9: DB failures should raise standardized DatabaseError (not return None)."""
+        mock_read = AsyncMock(side_effect=Exception("connection refused"))
+        monkeypatch.setattr(
+            chapter_queries.neo4j_manager, "execute_read_query", mock_read
+        )
+
+        with pytest.raises(DatabaseError):
+            await chapter_queries.get_chapter_data_from_db(1)
 
 
 @pytest.mark.asyncio
@@ -159,13 +166,19 @@ class TestFindSemanticContext:
     """Tests for finding semantic context."""
 
     async def test_find_semantic_context_found(self, monkeypatch):
-        """Test finding semantic context when found."""
+        """Test finding semantic context when found (correct return shape + deterministic contract)."""
         mock_read = AsyncMock(
             return_value=[
                 {
-                    "chapter_number": 2,
-                    "summary": "Related chapter",
-                    "score": 0.9,
+                    "context_chapters": [
+                        {
+                            "chapter_number": 2,
+                            "summary": "Related chapter",
+                            "score": 0.9,
+                            "context_type": "similarity",
+                            "is_provisional": False,
+                        }
+                    ]
                 }
             ]
         )
@@ -178,6 +191,7 @@ class TestFindSemanticContext:
             query_embedding, current_chapter_number=5, limit=3
         )
         assert isinstance(result, list)
+        assert result[0]["chapter_number"] == 2
 
     async def test_find_semantic_context_empty(self, monkeypatch):
         """Test finding semantic context when empty."""
@@ -192,6 +206,32 @@ class TestFindSemanticContext:
         )
         assert isinstance(result, list)
         assert len(result) == 0
+
+    async def test_find_semantic_context_enforces_limit_and_order(self, monkeypatch):
+        """Enforces P1.8: score-desc ordering + strict output limit."""
+        mock_read = AsyncMock(
+            return_value=[
+                {
+                    "context_chapters": [
+                        {"chapter_number": 10, "summary": "a", "score": 0.1},
+                        {"chapter_number": 11, "summary": "b", "score": 0.9},
+                        {"chapter_number": 12, "summary": "c", "score": 0.5},
+                        {"chapter_number": 13, "summary": "d", "score": 0.8},
+                    ]
+                }
+            ]
+        )
+        monkeypatch.setattr(
+            chapter_queries.neo4j_manager, "execute_read_query", mock_read
+        )
+
+        query_embedding = np.array([0.1, 0.2, 0.3])
+        result = await chapter_queries.find_semantic_context_native(
+            query_embedding, current_chapter_number=20, limit=2
+        )
+
+        assert [r["chapter_number"] for r in result] == [11, 13]
+        assert len(result) == 2
 
 
 @pytest.mark.asyncio

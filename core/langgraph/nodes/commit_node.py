@@ -730,8 +730,6 @@ async def _create_chapter_node(
 
         await chapter_queries.save_chapter_data_to_db(
             chapter_number=chapter_number,
-            text=text,
-            raw_llm_output=text,  # Same as text in this context
             summary=summary,
             embedding_array=embedding_array,
             is_provisional=False,  # Finalized chapter

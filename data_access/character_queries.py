@@ -1,25 +1,19 @@
 # data_access/character_queries.py
-import hashlib
 from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import ServiceUnavailable
 
-import config
 import utils
 from core.db_manager import neo4j_manager
 from core.schema_validator import validate_kg_object
 from models import CharacterProfile
-from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
 from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Mapping from normalized character names to canonical display names
 CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
-
-# Mapping from normalized trait names to canonical display names
-TRAIT_NAME_TO_CANONICAL: dict[str, str] = {}
 
 
 def resolve_character_name(name: str) -> str:
@@ -106,8 +100,14 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
                 for k, v in rel_props_full.items()
                 if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
             }
-        if "type" in rel_props_full:
+        # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
+        # Fall back to legacy property-based typing if present.
+        rel_type = rel_rec.get("rel_type")
+        if rel_type:
+            rel_props_cleaned["type"] = rel_type
+        elif isinstance(rel_props_full, dict) and "type" in rel_props_full:
             rel_props_cleaned["type"] = rel_props_full["type"]
+
         if "chapter_added" in rel_props_full:
             rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
         relationships[target_name] = rel_props_cleaned
@@ -208,8 +208,14 @@ async def get_character_profile_by_id(character_id: str) -> CharacterProfile | N
                 for k, v in rel_props_full.items()
                 if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
             }
-        if "type" in rel_props_full:
+        # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
+        # Fall back to legacy property-based typing if present.
+        rel_type = rel_rec.get("rel_type")
+        if rel_type:
+            rel_props_cleaned["type"] = rel_type
+        elif isinstance(rel_props_full, dict) and "type" in rel_props_full:
             rel_props_cleaned["type"] = rel_props_full["type"]
+
         if "chapter_added" in rel_props_full:
             rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
         relationships[target_name] = rel_props_cleaned
@@ -430,6 +436,12 @@ async def sync_characters(
         for char in characters:
             CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
 
+        # P1.6: Post-write cache invalidation
+        # Local import avoids circular import / eager import side effects.
+        from data_access.cache_coordinator import clear_character_read_caches
+
+        clear_character_read_caches()
+
         return True
 
     except Exception as exc:
@@ -495,7 +507,10 @@ async def get_characters_for_chapter_context_native(
         RETURN c,
                collect({
                    target_name: other.name,
-                   type: r.type,
+                   type: CASE
+                       WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r))
+                       ELSE type(r)
+                   END,
                    description: r.description
                }) as relationships
         """

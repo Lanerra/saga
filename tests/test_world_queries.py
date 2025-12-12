@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import utils
+from core.exceptions import DatabaseError
 from data_access import world_queries
 from models import WorldItem
 from models.kg_constants import (
@@ -361,6 +362,16 @@ class TestGetWorldElementsForSnippet:
 
         result = await world_queries.get_world_elements_for_snippet_from_db("Locations", 10, 5)
         assert len(result) > 0
+
+    async def test_get_world_elements_for_snippet_raises_database_error_on_db_failure(
+        self, monkeypatch
+    ):
+        """P1.9: DB failures should raise standardized DatabaseError (not return [])."""
+        mock_read = AsyncMock(side_effect=Exception("connection refused"))
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await world_queries.get_world_elements_for_snippet_from_db("Locations", 10, 5)
 
 
 @pytest.mark.asyncio

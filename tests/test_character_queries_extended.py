@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from data_access import character_queries
+from data_access.cache_coordinator import clear_all_data_access_caches
 
 
 @pytest.mark.asyncio
@@ -28,7 +29,8 @@ class TestGetCharacterProfileFetchesNoRowDropping:
                             {
                                 "target_name": "Bob",
                                 "rel_type": "FRIEND_OF",
-                                "rel_props": {"type": "FRIEND_OF", "source_profile_managed": True},
+                                # Canonical type is rel_type; rel_props may not include a `type` property.
+                                "rel_props": {"source_profile_managed": True},
                             }
                         ],
                         "dev_events": [
@@ -53,7 +55,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
         profile_dict = profile.to_dict()
         assert profile_dict["development_in_chapter_1"] == "Event1"
 
-        character_queries.get_character_profile_by_name.cache_clear()
+        clear_all_data_access_caches()
 
     async def test_get_character_profile_by_name_no_optional_data_still_returns_profile(
         self, monkeypatch
@@ -83,7 +85,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
         assert profile.traits == []
         assert profile.relationships == {}
 
-        character_queries.get_character_profile_by_name.cache_clear()
+        clear_all_data_access_caches()
 
     async def test_get_character_profile_by_id_no_optional_data_still_returns_profile(
         self, monkeypatch
@@ -113,4 +115,4 @@ class TestGetCharacterProfileFetchesNoRowDropping:
         assert profile.traits == []
         assert profile.relationships == {}
 
-        character_queries.get_character_profile_by_id.cache_clear()
+        clear_all_data_access_caches()

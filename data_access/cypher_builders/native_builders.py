@@ -46,8 +46,10 @@ class NativeCypherBuilder:
             c.last_updated = timestamp()
 
         // Handle traits as separate Trait nodes with HAS_TRAIT relationships
+        // Differential update: only remove traits that are no longer present.
         WITH c
         OPTIONAL MATCH (c)-[old_ht:HAS_TRAIT]->(old_t:Trait)
+        WHERE NOT old_t.name IN $trait_data
         DELETE old_ht
 
         WITH c
@@ -87,11 +89,24 @@ class NativeCypherBuilder:
                 c,
                 rel_data.rel_type,
                 {},
-                {description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number},
+                {
+                    description: rel_data.description,
+                    last_updated: timestamp(),
+                    chapter_added: $chapter_number,
+
+                    // P1.7: Ensure builder-created relationships are visible to profile reads
+                    // (profile reads filter on r.source_profile_managed).
+                    source_profile_managed: true,
+
+                    // P1.7: Transitional compatibility for any readers still using r.type.
+                    type: rel_data.rel_type
+                },
                 other
             ) YIELD rel
             SET rel.description = rel_data.description,
-                rel.last_updated = timestamp()
+                rel.last_updated = timestamp(),
+                rel.source_profile_managed = true,
+                rel.type = rel_data.rel_type
 
             // Link provisional node to chapter for context retrieval
             WITH other
@@ -108,11 +123,17 @@ class NativeCypherBuilder:
         relationship_data = []
         for target_name, rel_info in char.relationships.items():
             if isinstance(rel_info, dict):
-                rel_type = rel_info.get("type", "KNOWS")
+                rel_type_raw = rel_info.get("type", "KNOWS")
                 rel_desc = rel_info.get("description", "")
             else:
-                rel_type = "KNOWS"
+                rel_type_raw = "KNOWS"
                 rel_desc = str(rel_info) if rel_info else ""
+
+            # P1.7: Normalize relationship type for consistent storage and querying.
+            # Canonical representation is the Neo4j relationship type itself.
+            rel_type = str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
+            if not rel_type:
+                rel_type = "KNOWS"
 
             relationship_data.append(
                 {
@@ -202,8 +223,10 @@ class NativeCypherBuilder:
         SET w += $additional_props
 
         // Handle traits as separate Trait nodes with HAS_TRAIT relationships
+        // Differential update: only remove traits that are no longer present.
         WITH w
         OPTIONAL MATCH (w)-[old_ht:HAS_TRAIT]->(old_t:Trait)
+        WHERE NOT old_t.name IN $trait_data
         DELETE old_ht
 
         WITH w
@@ -225,15 +248,32 @@ class NativeCypherBuilder:
         WITH w
         UNWIND $relationship_data AS rel_data
         CALL (w, rel_data) {{
-            WITH w, rel_data
-            // Use MERGE instead of MATCH to create provisional nodes if they don't exist
-            // Use Item as default safe type instead of generic Entity
-            MERGE (other:Item {{name: rel_data.target_name}})
-            ON CREATE SET
-                other.is_provisional = true,
-                other.created_chapter = $chapter_number,
-                other.id = randomUUID(),
-                other.description = 'Entity created from world item relationship. Details to be developed.'
+            // Use apoc.merge.node to create/merge targets with a SAFE allowlisted label.
+            // Default remains :Item if target_label is missing/invalid.
+            WITH
+                w,
+                rel_data,
+                CASE
+                    WHEN rel_data.target_label IN $world_item_target_label_allowlist THEN rel_data.target_label
+                    ELSE 'Item'
+                END AS target_label,
+                CASE
+                    WHEN rel_data.target_id IS NOT NULL AND rel_data.target_id <> '' THEN {{id: rel_data.target_id}}
+                    ELSE {{name: rel_data.target_name}}
+                END AS merge_key_props
+
+            CALL apoc.merge.node(
+                [target_label],
+                merge_key_props,
+                {{
+                    name: rel_data.target_name,
+                    id: coalesce(rel_data.target_id, randomUUID()),
+                    is_provisional: true,
+                    created_chapter: $chapter_number,
+                    description: 'Entity created from world item relationship. Details to be developed.'
+                }},
+                {{}}
+            ) YIELD node AS other
 
             // Use apoc.merge.relationship to create relationships with dynamic types
             // This allows proper semantic relationship types (LOCATED_IN, PART_OF, etc.) instead of generic RELATIONSHIP
@@ -262,16 +302,38 @@ class NativeCypherBuilder:
         # Process relationships for batch operations
         relationship_data = []
         for target_name, rel_info in item.relationships.items():
+            target_label: str | None = None
+            target_id: str | None = None
+
             if isinstance(rel_info, dict):
-                rel_type = rel_info.get("type", "RELATED_TO")
+                rel_type_raw = rel_info.get("type", "RELATED_TO")
                 rel_desc = rel_info.get("description", "")
+
+                # Optional per-relationship target typing / identity (Option A).
+                # These are validated/allowlisted at query time.
+                target_label_raw = rel_info.get("target_label")
+                target_id_raw = rel_info.get("target_id")
+
+                if target_label_raw:
+                    target_label = str(target_label_raw).strip().capitalize() or None
+                if target_id_raw:
+                    target_id = str(target_id_raw).strip() or None
             else:
-                rel_type = "RELATED_TO"
+                rel_type_raw = "RELATED_TO"
                 rel_desc = str(rel_info) if rel_info else ""
+
+            # Normalize relationship type for consistent storage and querying.
+            rel_type = (
+                str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
+            )
+            if not rel_type:
+                rel_type = "RELATED_TO"
 
             relationship_data.append(
                 {
                     "target_name": target_name,
+                    "target_label": target_label,
+                    "target_id": target_id,
                     "rel_type": rel_type,
                     "description": rel_desc,
                 }
@@ -294,6 +356,8 @@ class NativeCypherBuilder:
             "chapter_number": chapter_number,
             "additional_props": flattened_additional_props,  # Flattened to ensure primitive types
             "relationship_data": relationship_data,
+            # Allowlist for safe label selection in apoc.merge.node
+            "world_item_target_label_allowlist": list(WORLD_ITEM_CANONICAL_LABELS),
         }
 
         return cypher, params

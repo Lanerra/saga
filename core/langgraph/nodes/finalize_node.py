@@ -125,8 +125,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
 
         await save_chapter_data_to_db(
             chapter_number=chapter_number,
-            text=draft_text,
-            raw_llm_output=draft_text,  # Final text is the raw output
             summary=current_summary,
             embedding_array=embedding,
             is_provisional=False,  # Final chapter, not provisional

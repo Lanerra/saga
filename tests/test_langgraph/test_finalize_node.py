@@ -130,7 +130,10 @@ class TestFinalizeChapter:
         expected_text = get_draft_text(sample_finalize_state, cm)
 
         assert call_args.kwargs["chapter_number"] == 1
-        assert call_args.kwargs["text"] == expected_text
+        # P2.10: save_chapter_data_to_db no longer accepts `text` / `raw_llm_output`;
+        # finalization persists summary/embedding/provisional only (text is saved to filesystem + used for embedding).
+        assert call_args.kwargs["summary"] is not None
+        assert call_args.kwargs["embedding_array"] is not None
         assert call_args.kwargs["is_provisional"] is False
 
     async def test_finalize_chapter_no_draft_text(

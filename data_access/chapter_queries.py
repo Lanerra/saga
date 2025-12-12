@@ -6,6 +6,7 @@ import structlog
 
 import config
 from core.db_manager import neo4j_manager
+from core.exceptions import handle_database_error
 
 logger = structlog.get_logger(__name__)
 
@@ -24,8 +25,6 @@ async def load_chapter_count_from_db() -> int:
 
 async def save_chapter_data_to_db(
     chapter_number: int,
-    text: str,
-    raw_llm_output: str,
     summary: str | None,
     embedding_array: np.ndarray | None,
     is_provisional: bool = False,
@@ -87,7 +86,14 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
             f"Neo4j: Error getting chapter data for {chapter_number}: {e}",
             exc_info=True,
         )
-        return None
+        # P1.9: Standardize error handling.
+        # Returning None is reserved for "not found" / invalid inputs; DB/runtime errors should
+        # be raised so callers can distinguish operational failures from missing data.
+        raise handle_database_error(
+            "get_chapter_data_from_db",
+            e,
+            chapter_number=chapter_number,
+        )
 
 
 async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
@@ -146,11 +152,20 @@ async def find_semantic_context_native(
     prev_chapter_num = current_chapter_number - 1
 
     # Single comprehensive query combining similarity search + immediate previous
+    #
+    # P1.8:
+    # - Enforce deterministic ordering (score DESC)
+    # - Enforce strict limit (<= search_limit)
+    # - Still include immediate previous chapter when available (prioritized via boosted score)
     cypher_query = """
     // Vector similarity search for semantic context
     CALL db.index.vector.queryNodes($index_name, $search_limit, $query_vector)
     YIELD node AS similar_c, score
     WHERE similar_c.number < $current_chapter
+
+    // Ensure deterministic ordering before we collect results.
+    WITH similar_c, score
+    ORDER BY score DESC
 
     WITH collect({
         chapter_number: similar_c.number,
@@ -172,13 +187,20 @@ async def find_semantic_context_native(
                chapter_number: prev_c.number,
                summary: prev_c.summary,
                is_provisional: COALESCE(prev_c.is_provisional, false),
-               score: 0.999,
+               // Boost so it stays in the final limited set.
+               score: 2.0,
                context_type: 'immediate_previous'
            }]
            ELSE []
          END AS prev_result
 
-    RETURN similar_results + prev_result AS context_chapters
+    WITH (similar_results + prev_result) AS combined
+
+    UNWIND combined AS item
+    WITH item
+    ORDER BY item.score DESC
+
+    RETURN collect(item)[..$final_limit] AS context_chapters
     """
 
     try:
@@ -186,7 +208,9 @@ async def find_semantic_context_native(
             cypher_query,
             {
                 "index_name": config.NEO4J_VECTOR_INDEX_NAME,
-                "search_limit": search_limit + 1,  # Buffer for potential duplicates
+                # Use a small buffer, then apply strict limiting in Cypher.
+                "search_limit": search_limit + 5,
+                "final_limit": search_limit,
                 "query_vector": query_embedding_list,
                 "current_chapter": current_chapter_number,
                 "prev_chapter_num": prev_chapter_num,
@@ -200,6 +224,15 @@ async def find_semantic_context_native(
             return []
 
         context_chapters = results[0]["context_chapters"]
+
+        # P1.8: Defensive contract enforcement (even if Cypher returns an overage).
+        # Keep ordering deterministic (score DESC) and enforce strict limit (<= search_limit).
+        if isinstance(context_chapters, list):
+            context_chapters = sorted(
+                context_chapters,
+                key=lambda c: float(c.get("score", 0.0)) if isinstance(c, dict) else 0.0,
+                reverse=True,
+            )[:search_limit]
 
         logger.info(
             f"Native context search found {len(context_chapters)} chapters for chapter {current_chapter_number}"

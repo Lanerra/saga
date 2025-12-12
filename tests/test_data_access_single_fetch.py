@@ -5,6 +5,7 @@ import pytest
 
 import utils
 from data_access import character_queries, world_queries
+from data_access.cache_coordinator import clear_all_data_access_caches
 from models import WorldItem
 from models.kg_constants import KG_NODE_CREATED_CHAPTER
 
@@ -26,7 +27,8 @@ async def test_get_character_profile_by_name(monkeypatch):
                         {
                             "target_name": "Bob",
                             "rel_type": "KNOWS",
-                            "rel_props": {"type": "KNOWS", "source_profile_managed": True},
+                            # Note: rel_props may or may not include a `type` field; canonical type is rel_type.
+                            "rel_props": {"source_profile_managed": True},
                         }
                     ],
                     "dev_events": [
@@ -53,7 +55,7 @@ async def test_get_character_profile_by_name(monkeypatch):
     assert profile.relationships["Bob"]["type"] == "KNOWS"
     assert profile.updates["development_in_chapter_1"] == "growth"
 
-    character_queries.get_character_profile_by_name.cache_clear()
+    clear_all_data_access_caches()
 
 
 @pytest.mark.asyncio
@@ -89,7 +91,7 @@ async def test_get_world_item_by_id(monkeypatch):
     assert isinstance(item.goals, list)
     # Elaborations are not guaranteed in current simplified fetch; do not assert here
 
-    world_queries.get_world_item_by_id.cache_clear()
+    clear_all_data_access_caches()
 
 
 @pytest.mark.asyncio

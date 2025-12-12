@@ -8,6 +8,7 @@ from async_lru import alru_cache
 
 import config
 from core.db_manager import neo4j_manager
+from core.exceptions import handle_database_error
 from core.schema_validator import schema_validator, validate_node_labels
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
@@ -664,6 +665,13 @@ async def add_kg_triples_batch_to_db(
         logger.info(
             f"Neo4j: Batch processed {len(statements_with_params)} KG triple statements."
         )
+
+        # P1.6: Post-write cache invalidation (KG reads are cached via async_lru).
+        # Local import avoids circular import / eager import side effects.
+        from data_access.cache_coordinator import clear_kg_read_caches
+
+        clear_kg_read_caches()
+
     except Exception as e:
         # Log first few problematic params for debugging, if any
         first_few_params_str = (
@@ -747,11 +755,19 @@ async def query_kg_from_db(
         )
         return triples_list
     except Exception as e:
+        # P1.9: Standardize error handling.
+        # Return empty only for legitimate "no rows" cases; DB/runtime errors should be raised
+        # as standardized core exceptions so callers can distinguish "no data" from "DB down".
         logger.error(
             f"Neo4j: Error querying KG. Query: '{full_query[:200]}...', Params: {parameters}, Error: {e}",
             exc_info=True,
         )
-        return []
+        raise handle_database_error(
+            "query_kg_from_db",
+            e,
+            query_preview=full_query[:200],
+            params=parameters,
+        )
 
 
 async def get_most_recent_value_from_db(
@@ -1222,9 +1238,11 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
     MATCH (source {id: $source_id}), (target {id: $target_id})
     MATCH (source)-[r]->(other)
     WHERE other.id <> target.id
-    WITH source, target, r, other, properties(r) as rel_props
+    WITH source, target, r, other, properties(r) as rel_props, type(r) as rel_type
     CREATE (target)-[new_r:DYNAMIC_REL]->(other)
     SET new_r = rel_props,
+        // P1.7: Preserve original typed relationship type so promotion can work.
+        new_r.type = coalesce(rel_props.type, rel_type),
         new_r.merged_from = $source_id,
         new_r.merge_reason = $reason,
         new_r.merge_timestamp = timestamp()
@@ -1237,9 +1255,11 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
     MATCH (source {id: $source_id}), (target {id: $target_id})
     MATCH (other)-[r]->(source)
     WHERE other.id <> target.id
-    WITH source, target, r, other, properties(r) as rel_props
+    WITH source, target, r, other, properties(r) as rel_props, type(r) as rel_type
     CREATE (other)-[new_r:DYNAMIC_REL]->(target)
     SET new_r = rel_props,
+        // P1.7: Preserve original typed relationship type so promotion can work.
+        new_r.type = coalesce(rel_props.type, rel_type),
         new_r.merged_from = $source_id,
         new_r.merge_reason = $reason,
         new_r.merge_timestamp = timestamp()

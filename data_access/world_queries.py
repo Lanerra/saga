@@ -1,5 +1,4 @@
 # data_access/world_queries.py
-import hashlib
 from typing import Any
 
 import structlog
@@ -8,6 +7,7 @@ from async_lru import alru_cache  # type: ignore[import-untyped]
 import config
 import utils
 from core.db_manager import neo4j_manager
+from core.exceptions import handle_database_error
 from core.schema_validator import validate_kg_object
 from models import WorldItem
 from models.kg_constants import (
@@ -236,6 +236,14 @@ async def get_world_elements_for_snippet_from_db(
             f"Error fetching world elements for snippet (cat {category}): {e}",
             exc_info=True,
         )
+        # P1.9: Raise standardized DB errors (do not silently return partial/empty results).
+        raise handle_database_error(
+            "get_world_elements_for_snippet_from_db",
+            e,
+            category=category,
+            chapter_limit=chapter_limit,
+            item_limit=item_limit,
+        )
     return items
 
 
@@ -261,7 +269,6 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
 async def sync_world_items(
     world_items: list[WorldItem],
     chapter_number: int,
-    full_sync: bool = False,
 ) -> bool:
     """Persist world element data to Neo4j using native models."""
 
@@ -292,6 +299,12 @@ async def sync_world_items(
             len(world_items),
             chapter_number,
         )
+
+        # P1.6: Post-write cache invalidation
+        # Local import avoids circular import / eager import side effects.
+        from data_access.cache_coordinator import clear_world_read_caches
+
+        clear_world_read_caches()
 
         return True
 

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from core.exceptions import DatabaseError
 from data_access import kg_queries
 
 
@@ -119,6 +120,8 @@ class TestKGQueries:
 
     async def test_query_kg_from_db(self, monkeypatch):
         """Test querying KG from database."""
+        kg_queries.query_kg_from_db.cache_clear()
+
         mock_read = AsyncMock(
             return_value=[
                 {
@@ -136,8 +139,20 @@ class TestKGQueries:
         assert len(result) > 0
         mock_read.assert_called_once()
 
+    async def test_query_kg_from_db_raises_database_error_on_db_failure(self, monkeypatch):
+        """P1.9: DB failures should raise standardized DatabaseError (not return [])."""
+        kg_queries.query_kg_from_db.cache_clear()
+
+        mock_read = AsyncMock(side_effect=Exception("connection refused"))
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await kg_queries.query_kg_from_db("Alice")
+
     async def test_get_novel_info_property_from_db(self, monkeypatch):
         """Test getting novel info property."""
+        kg_queries.get_novel_info_property_from_db.cache_clear()
+
         mock_read = AsyncMock(return_value=[{"value": "Test Novel"}])
         monkeypatch.setattr(
             kg_queries.neo4j_manager, "execute_read_query", mock_read
@@ -148,6 +163,8 @@ class TestKGQueries:
 
     async def test_get_novel_info_property_missing(self, monkeypatch):
         """Non-allowlisted NovelInfo keys are rejected (P0.4 Cypher injection hardening)."""
+        kg_queries.get_novel_info_property_from_db.cache_clear()
+
         mock_read = AsyncMock(return_value=[])
         monkeypatch.setattr(
             kg_queries.neo4j_manager, "execute_read_query", mock_read
