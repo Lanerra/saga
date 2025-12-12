@@ -37,6 +37,11 @@ class Neo4jManagerSingleton:
         # Cache of property keys discovered via CALL db.propertyKeys()
         self._property_keys_cache: set[str] | None = None
         self._property_keys_cache_ts: float | None = None
+
+        # Cached server info (best-effort; used for diagnostics and deprecation targeting)
+        self._neo4j_server_info: dict[str, Any] | None = None
+        self._neo4j_server_info_logged: bool = False
+
         self._initialized_flag = True
         self.logger.info(
             "Neo4jManagerSingleton initialized. Call connect() to establish connection."
@@ -57,6 +62,28 @@ class Neo4jManagerSingleton:
             await asyncio.to_thread(sync_driver.verify_connectivity)
             self.driver = sync_driver
             self.logger.info(f"Successfully connected to Neo4j at {config.NEO4J_URI}")
+
+            # Best-effort: log server version/edition once to support diagnosing
+            # Cypher deprecations and syntax differences across Neo4j versions.
+            try:
+                info = await asyncio.to_thread(self._sync_fetch_neo4j_server_info)
+                if info and not self._neo4j_server_info_logged:
+                    self._neo4j_server_info_logged = True
+                    self._neo4j_server_info = info
+                    self.logger.info(
+                        "Neo4j server info",
+                        uri=config.NEO4J_URI,
+                        neo4j_component=info.get("component"),
+                        neo4j_version=info.get("version"),
+                        neo4j_edition=info.get("edition"),
+                    )
+            except Exception as info_exc:  # pragma: no cover - diagnostics only
+                self.logger.debug(
+                    "Could not determine Neo4j server version via dbms.components()",
+                    uri=config.NEO4J_URI,
+                    error=str(info_exc),
+                )
+
         except ServiceUnavailable as e:
             self.logger.critical(
                 "Neo4j service unavailable", uri=config.NEO4J_URI, error=str(e)
@@ -79,6 +106,26 @@ class Neo4jManagerSingleton:
             )
             self.driver = None
             raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+
+    def _sync_fetch_neo4j_server_info(self) -> dict[str, Any] | None:
+        """Fetch Neo4j server info via dbms.components (best-effort).
+
+        Notes:
+        - This is intentionally synchronous and is meant to be called via asyncio.to_thread().
+        - Procedure availability varies across Neo4j versions; failures are swallowed by caller.
+        """
+        self._ensure_connected_sync()
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
+            # Neo4j 4/5 typically support dbms.components().
+            rec = session.run(
+                "CALL dbms.components() YIELD name, versions, edition "
+                "RETURN name AS component, versions[0] AS version, edition "
+                "LIMIT 1"
+            ).single()
+            if not rec:
+                return None
+            return dict(rec)
 
     async def close(self) -> None:
         """Close the synchronous driver."""

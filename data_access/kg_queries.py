@@ -1108,7 +1108,7 @@ async def get_chapter_context_for_entity(
     // Collect chapter numbers from independent sources without row explosion.
     WITH e
 
-    CALL {{
+    CALL (e) {{
       WITH e
       OPTIONAL MATCH (e)-[]->(event)
       WHERE (event:DevelopmentEvent OR event:WorldElaborationEvent)
@@ -1117,7 +1117,7 @@ async def get_chapter_context_for_entity(
       RETURN chapters[..$max_event_chapters] AS event_chapters
     }}
 
-    CALL {{
+    CALL (e) {{
       WITH e
       OPTIONAL MATCH (e)-[r]->()
       WHERE r.chapter_added IS NOT NULL
@@ -1142,6 +1142,13 @@ async def get_chapter_context_for_entity(
     ORDER BY c.number DESC
     """
     try:
+        query_hash = hashlib.sha1(query.encode("utf-8")).hexdigest()[:12]
+        logger.debug(
+            "Executing get_chapter_context_for_entity query",
+            query_hash=query_hash,
+            query_preview=query.strip()[:250],
+            params=params,
+        )
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
     except Exception as e:
@@ -1278,6 +1285,7 @@ async def find_candidate_duplicate_entities(
     WITH collect(e) AS candidates
     UNWIND candidates AS e1
     UNWIND candidates AS e2
+    WITH e1, e2
     WHERE elementId(e1) < elementId(e2)
     WITH e1, e2,
          toLower(toString(e1.name)) AS n1,
@@ -1334,6 +1342,7 @@ async def find_candidate_duplicate_entities(
     WITH collect(e) AS candidates
     UNWIND candidates AS e1
     UNWIND candidates AS e2
+    WITH e1, e2
     WHERE elementId(e1) < elementId(e2)
     WITH e1, e2,
          toLower(toString(e1.name)) AS n1,
@@ -1384,6 +1393,13 @@ async def find_candidate_duplicate_entities(
         "candidate_pool_size": candidate_pool_size,
     }
     try:
+        query_hash = hashlib.sha1(query.encode("utf-8")).hexdigest()[:12]
+        logger.debug(
+            "Executing find_candidate_duplicate_entities query",
+            query_hash=query_hash,
+            query_preview=query.strip()[:250],
+            params=params,
+        )
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
     except Exception as e:

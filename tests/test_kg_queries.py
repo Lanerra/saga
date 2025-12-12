@@ -504,7 +504,10 @@ class TestChapterContext:
         called_params = mock_read.call_args.args[1]
 
         # Ensure the new bounded/subquery-based structure is in use.
-        assert "CALL {" in called_query
+        #
+        # Neo4j 5+ deprecates `CALL { ... }` without a variable scope clause and prefers
+        # `CALL (e) { ... }`. We accept either form here.
+        assert ("CALL {" in called_query) or ("CALL (e) {" in called_query)
         assert "LIMIT $chapter_context_limit" in called_query
 
         # Ensure the expected bound params are provided.
