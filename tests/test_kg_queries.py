@@ -212,38 +212,9 @@ class TestEntityDeduplication:
         result = await kg_queries.get_entity_context_for_resolution("alice_entity_id")
         assert result is not None
 
-    async def test_backfill_missing_entity_ids(self, monkeypatch):
-        """Test backfilling missing entity IDs."""
-        mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
-
-        result = await kg_queries.backfill_missing_entity_ids(max_updates=10)
-        assert isinstance(result, int)
-
-
 @pytest.mark.asyncio
 class TestRelationshipMaintenance:
     """Tests for relationship maintenance operations."""
-
-    async def test_normalize_existing_relationship_types(self, monkeypatch):
-        """Test normalizing existing relationship types."""
-        mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
-
-        await kg_queries.normalize_existing_relationship_types()
-        mock_read.assert_called()
 
     async def test_deduplicate_relationships(self, monkeypatch):
         """Test deduplicating relationships."""
@@ -269,26 +240,6 @@ class TestRelationshipMaintenance:
 @pytest.mark.asyncio
 class TestDynamicRelationships:
     """Tests for dynamic relationship operations."""
-
-    async def test_fetch_unresolved_dynamic_relationships(self, monkeypatch):
-        """Test fetching unresolved dynamic relationships."""
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
-
-        result = await kg_queries.fetch_unresolved_dynamic_relationships(limit=10)
-        assert isinstance(result, list)
-
-    async def test_update_dynamic_relationship_type(self, monkeypatch):
-        """Test updating dynamic relationship type."""
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
-
-        await kg_queries.update_dynamic_relationship_type(123, "FRIEND_OF")
-        mock_read.assert_called()
 
     async def test_promote_dynamic_relationships(self, monkeypatch):
         """Test promoting dynamic relationships."""

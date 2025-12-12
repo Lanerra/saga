@@ -201,7 +201,7 @@ async def normalize_and_deduplicate_relationships() -> dict[str, int]:
         counts['promoted'] = results[0].get("promoted", 0) if results else 0
         logger.info(f"✓ Promoted {counts['promoted']} DYNAMIC_REL relationships to typed relationships")
 
-        counts['total'] = sum(counts.values()) - counts['total']
+        counts['total'] = counts['validated'] + counts['consolidated'] + counts['deduplicated'] + counts['promoted']
 
         logger.info(
             f"Relationship normalization complete: {counts['total']} total changes "
@@ -217,38 +217,6 @@ async def normalize_and_deduplicate_relationships() -> dict[str, int]:
             exc_info=True
         )
         return counts
-
-
-async def normalize_existing_relationship_types() -> None:
-    """Normalize all stored relationship types to canonical form."""
-    query = "MATCH ()-[r:DYNAMIC_REL]->() RETURN DISTINCT r.type AS t"
-    try:
-        results = await neo4j_manager.execute_read_query(query)
-    except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error(f"Error reading existing relationship types: {exc}")
-        return
-
-    statements: list[tuple[str, dict[str, Any]]] = []
-    for record in results:
-        current = record.get("t")
-        if not current:
-            continue
-        normalized = validate_relationship_type(str(current))
-        if normalized != current:
-            statements.append(
-                (
-                    "MATCH ()-[r:DYNAMIC_REL {type: $old}]->() SET r.type = $new",
-                    {"old": current, "new": normalized},
-                )
-            )
-    if statements:
-        try:
-            await neo4j_manager.execute_cypher_batch(statements)
-            logger.info("Normalized %d relationship type variations", len(statements))
-        except Exception as exc:  # pragma: no cover - log but continue
-            logger.error(
-                "Failed to update some relationship types: %s", exc, exc_info=True
-            )
 
 
 def _get_cypher_labels(entity_type: str | None) -> str:
@@ -759,13 +727,6 @@ async def get_most_recent_value_from_db(
         )
         return None
 
-    # Direct query for the most recent value to avoid dependency on query_kg_from_db
-    if not subject.strip() or not predicate.strip():
-        logger.warning(
-            f"Neo4j: get_most_recent_value_from_db: empty subject or predicate. S='{subject}', P='{predicate}'"
-        )
-        return None
-
     conditions = []
     parameters: dict[str, Any] = {}
     normalized_predicate = validate_relationship_type(predicate)
@@ -1099,57 +1060,6 @@ async def find_candidate_duplicate_entities(
         return []
 
 
-async def backfill_missing_entity_ids(max_updates: int = 1000) -> int:
-    """Assign stable deterministic IDs to Character nodes missing `id`.
-
-    Returns the number of nodes updated.
-    """
-    try:
-        # Fetch candidate characters without IDs (limit to avoid huge batches)
-        fetch_query = """
-        MATCH (c:Character)
-        WHERE c.id IS NULL OR c.id = ''
-        RETURN c.name AS name, coalesce(c.created_chapter, 0) AS created_chapter
-        LIMIT $limit
-        """
-        rows = await neo4j_manager.execute_read_query(
-            fetch_query, {"limit": max_updates}
-        )
-        if not rows:
-            return 0
-
-        from processing.entity_deduplication import generate_entity_id
-
-        items = []
-        for r in rows:
-            name = r.get("name")
-            created_chapter = int(r.get("created_chapter", 0) or 0)
-            if not name:
-                continue
-            items.append(
-                {
-                    "name": name,
-                    "id": generate_entity_id(name, "character", created_chapter),
-                }
-            )
-
-        if not items:
-            return 0
-
-        update_query = """
-        UNWIND $items AS item
-        MATCH (c:Character {name: item.name})
-        WHERE c.id IS NULL OR c.id = ''
-        SET c.id = item.id
-        RETURN count(c) AS updated
-        """
-        result = await neo4j_manager.execute_write_query(update_query, {"items": items})
-        return int((result or [{}])[0].get("updated", 0))
-    except Exception as e:
-        logger.error(f"Error backfilling missing entity IDs: {e}", exc_info=True)
-        return 0
-
-
 async def get_entity_context_for_resolution(
     entity_id: str,
 ) -> dict[str, Any] | None:
@@ -1350,7 +1260,6 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
         raise
 
 
-@alru_cache(maxsize=1)
 async def promote_dynamic_relationships() -> int:
     """
     Enhanced relationship type promotion with validation.
@@ -1363,7 +1272,7 @@ async def promote_dynamic_relationships() -> int:
         logger.info(
             "Relationship normalization disabled - skipping dynamic relationship resolution"
         )
-        return
+        return 0
 
     total_promoted = 0
 
@@ -1555,63 +1464,6 @@ async def consolidate_similar_relationships() -> int:
             "Failed to consolidate similar relationships: %s", exc, exc_info=True
         )
         return 0
-
-
-async def fetch_unresolved_dynamic_relationships(
-    limit: int = 50,
-) -> list[dict[str, Any]]:
-    """Fetch dynamic relationships lacking a specific type."""
-    query = """
-    MATCH (s)-[r:DYNAMIC_REL]->(o)
-    WHERE r.type IS NULL OR r.type = 'UNKNOWN'
-    RETURN elementId(r) AS rel_id,
-           s.name AS subject,
-           labels(s) AS subject_labels,
-           coalesce(s.description, '') AS subject_desc,
-           o.name AS object,
-           labels(o) AS object_labels,
-           coalesce(o.description, '') AS object_desc,
-           coalesce(r.type, 'UNKNOWN') AS type
-    LIMIT $limit
-    """
-    try:
-        results = await neo4j_manager.execute_read_query(query, {"limit": limit})
-        records = [dict(record) for record in results] if results else []
-        # Validate node labels in the results
-        for record in records:
-            subject_labels = record.get("subject_labels", [])
-            object_labels = record.get("object_labels", [])
-            errors = validate_node_labels(subject_labels + object_labels)
-            if errors:
-                logger.warning(
-                    "Invalid node labels in unresolved relationship: %s", errors
-                )
-        return records
-    except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error(
-            "Failed to fetch unresolved dynamic relationships: %s", exc, exc_info=True
-        )
-        return []
-
-
-async def update_dynamic_relationship_type(rel_id: int, new_type: str) -> None:
-    """Update a dynamic relationship's type."""
-    # Validate and normalize the new relationship type
-    validated_type = validate_relationship_type(new_type)
-    if validated_type != new_type:
-        logger.info(
-            f"Normalized relationship type for update: '{new_type}' -> '{validated_type}'"
-        )
-
-    query = "MATCH ()-[r:DYNAMIC_REL]->() WHERE elementId(r) = $id SET r.type = $type"
-    try:
-        await neo4j_manager.execute_write_query(
-            query, {"id": rel_id, "type": validated_type}
-        )
-    except Exception as exc:  # pragma: no cover - narrow DB errors
-        logger.error(
-            "Failed to update dynamic relationship %s: %s", rel_id, exc, exc_info=True
-        )
 
 
 async def get_shortest_path_length_between_entities(
