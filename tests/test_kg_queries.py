@@ -11,17 +11,20 @@ class TestTypeInference:
 
     def test_infer_specific_node_type_character(self):
         """Test inferring Character type."""
-        result = kg_queries._infer_specific_node_type_static("Alice", category="Characters")
+        # `classify_category_label()` maps "person"/"people"/"npc" to "Character";
+        # it does not treat "characters" as a special case (defaults to Item).
+        result = kg_queries._infer_specific_node_type("Alice", category="person")
         assert result == "Character"
 
     def test_infer_specific_node_type_location(self):
         """Test inferring Location type."""
-        result = kg_queries._infer_specific_node_type_static("The Castle", category="Locations")
-        assert result == "Structure"
+        # The current label taxonomy uses "Location" (not legacy "Structure").
+        result = kg_queries._infer_specific_node_type("The Castle", category="Locations")
+        assert result == "Location"
 
     def test_infer_specific_node_type_event(self):
         """Test inferring Event type."""
-        result = kg_queries._infer_specific_node_type_static("The Battle", category="Events")
+        result = kg_queries._infer_specific_node_type("The Battle", category="Events")
         assert result == "Event"
 
     def test_to_pascal_case(self):
@@ -44,11 +47,11 @@ class TestRelationshipTypeValidation:
         result = kg_queries.validate_relationship_type("NOVEL_TYPE")
         assert result == "NOVEL_TYPE"
 
-    def test_normalize_relationship_type(self):
-        """Test normalizing relationship types."""
-        assert kg_queries.normalize_relationship_type("friend_of") == "FRIEND_OF"
-        assert kg_queries.normalize_relationship_type("FriendOf") == "FRIENDOF"
-        assert kg_queries.normalize_relationship_type("FRIEND_OF") == "FRIEND_OF"
+    def test_validate_relationship_type_normalization(self):
+        """Test lenient relationship type normalization (non-security)."""
+        assert kg_queries.validate_relationship_type("friend_of") == "FRIEND_OF"
+        assert kg_queries.validate_relationship_type("FriendOf") == "FRIENDOF"
+        assert kg_queries.validate_relationship_type("FRIEND_OF") == "FRIEND_OF"
 
 
 class TestCypherLabelGeneration:
@@ -81,12 +84,14 @@ class TestKGBatchOperations:
             kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
         )
 
-        result = await kg_queries.add_kg_triples_batch_to_db([], 1, is_from_flawed_draft=False)
-        assert result is True
-        mock_execute.assert_called_once()
+        result = await kg_queries.add_kg_triples_batch_to_db(
+            [], 1, is_from_flawed_draft=False
+        )
+        assert result is None
+        mock_execute.assert_not_called()
 
     async def test_add_kg_triples_batch_with_entities(self, monkeypatch):
-        """Test adding batch with entities."""
+        """Test adding batch with entity objects (current structured triple format)."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(
             kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
@@ -94,18 +99,18 @@ class TestKGBatchOperations:
 
         triples = [
             {
-                "subject": "Alice",
-                "subject_type": "Character",
+                "subject": {"name": "Alice", "type": "Character"},
                 "predicate": "FRIEND_OF",
-                "object": "Bob",
-                "object_type": "Character",
-                "context": "They are friends",
+                "object_entity": {"name": "Bob", "type": "Character"},
+                "is_literal_object": False,
             }
         ]
 
-        result = await kg_queries.add_kg_triples_batch_to_db(triples, 1, is_from_flawed_draft=False)
-        assert result is True
-        mock_execute.assert_called()
+        result = await kg_queries.add_kg_triples_batch_to_db(
+            triples, 1, is_from_flawed_draft=False
+        )
+        assert result is None
+        mock_execute.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -142,14 +147,82 @@ class TestKGQueries:
         assert result == "Test Novel"
 
     async def test_get_novel_info_property_missing(self, monkeypatch):
-        """Test getting missing novel info property."""
+        """Non-allowlisted NovelInfo keys are rejected (P0.4 Cypher injection hardening)."""
         mock_read = AsyncMock(return_value=[])
         monkeypatch.setattr(
             kg_queries.neo4j_manager, "execute_read_query", mock_read
         )
 
-        result = await kg_queries.get_novel_info_property_from_db("missing")
-        assert result is None
+        with pytest.raises(ValueError, match=r"Unsafe NovelInfo property key"):
+            await kg_queries.get_novel_info_property_from_db("missing")
+
+
+@pytest.mark.asyncio
+class TestKGCypherInjectionHardening:
+    """Security regression tests for Cypher interpolation sites (P0.4)."""
+
+    async def test_query_kg_from_db_rejects_unsafe_relationship_type(self, monkeypatch):
+        """Unsafe relationship types must be rejected before Cypher interpolation."""
+        kg_queries.query_kg_from_db.cache_clear()
+
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        # Lowercase should be rejected (no silent normalization to uppercase).
+        with pytest.raises(ValueError, match=r"Unsafe relationship type"):
+            await kg_queries.query_kg_from_db(subject="Alice", predicate="friend_of")
+
+        mock_read.assert_not_called()
+
+    async def test_query_kg_from_db_allows_safe_relationship_type(self, monkeypatch):
+        """A safe relationship type continues to work and is interpolated verbatim."""
+        kg_queries.query_kg_from_db.cache_clear()
+
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        await kg_queries.query_kg_from_db(subject="Alice", predicate="FRIEND_OF")
+
+        mock_read.assert_called_once()
+        called_query = mock_read.call_args.args[0]
+        assert "MATCH (s)-[r:`FRIEND_OF`]->(o)" in called_query
+
+    async def test_get_most_recent_value_from_db_rejects_unsafe_relationship_type(
+        self, monkeypatch
+    ):
+        """Unsafe relationship types must be rejected before Cypher interpolation."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(ValueError, match=r"Unsafe relationship type"):
+            await kg_queries.get_most_recent_value_from_db("Alice", "friend_of")
+
+        mock_read.assert_not_called()
+
+    async def test_add_kg_triples_batch_to_db_rejects_unsafe_relationship_type(
+        self, monkeypatch
+    ):
+        """Batch KG writes must reject unsafe relationship types before interpolation."""
+        mock_execute = AsyncMock(return_value=None)
+        monkeypatch.setattr(
+            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
+        )
+
+        triples = [
+            {
+                "subject": {"name": "Alice", "type": "Character"},
+                # Contains spaces and lowercase (would previously be normalized).
+                "predicate": "friend of",
+                "object_entity": {"name": "Bob", "type": "Character"},
+            }
+        ]
+
+        with pytest.raises(ValueError, match=r"Unsafe relationship type"):
+            await kg_queries.add_kg_triples_batch_to_db(
+                triples, chapter_number=1, is_from_flawed_draft=False
+            )
+
+        mock_execute.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -166,7 +239,7 @@ class TestQualityAssuranceQueries:
         contradictory_pairs = [("brave", "cowardly"), ("kind", "cruel")]
         result = await kg_queries.find_contradictory_trait_characters(contradictory_pairs)
         assert isinstance(result, list)
-        mock_read.assert_called_once()
+        assert mock_read.call_count == 2
 
     async def test_find_post_mortem_activity(self, monkeypatch):
         """Test finding post-mortem activity."""
@@ -258,15 +331,14 @@ class TestPathQueries:
 
     async def test_get_shortest_path_length_between_entities(self, monkeypatch):
         """Test getting shortest path length between entities."""
-        mock_read = AsyncMock(return_value=[{"length": 2}])
+        # Implementation returns `length(p) AS len`
+        mock_read = AsyncMock(return_value=[{"len": 2}])
         monkeypatch.setattr(
             kg_queries.neo4j_manager, "execute_read_query", mock_read
         )
 
-        result = await kg_queries.get_shortest_path_length_between_entities(
-            "Alice", "Bob"
-        )
-        assert result == 2 or result is not None
+        result = await kg_queries.get_shortest_path_length_between_entities("Alice", "Bob")
+        assert result == 2
 
     async def test_get_shortest_path_no_path(self, monkeypatch):
         """Test getting shortest path when no path exists."""

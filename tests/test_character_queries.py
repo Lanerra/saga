@@ -105,6 +105,72 @@ class TestGetCharacterInfoForSnippet:
 
 
 @pytest.mark.asyncio
+class TestGetCharacterInfoForSnippet:
+    """Tests for getting character info for snippet."""
+
+    async def test_get_character_info_empty(self, monkeypatch):
+        """Test getting character info when none exist."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(
+            character_queries.neo4j_manager, "execute_read_query", mock_read
+        )
+
+        result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
+        assert result is None
+
+    async def test_get_character_info_found(self, monkeypatch):
+        """Test getting character info that exists."""
+        character_queries.CHAR_NAME_TO_CANONICAL.clear()
+        character_queries.CHAR_NAME_TO_CANONICAL["alice"] = "Alice"
+
+        mock_read = AsyncMock(
+            return_value=[
+                {
+                    "description": "A brave hero",
+                    "current_status": "Active",
+                    "most_current_dev_event": None,
+                    "is_provisional_overall": False,
+                }
+            ]
+        )
+        monkeypatch.setattr(
+            character_queries.neo4j_manager, "execute_read_query", mock_read
+        )
+
+        result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
+        assert result is not None
+        assert result["description"] == "A brave hero"
+        assert result["most_recent_development_note"] == "N/A"
+
+    async def test_get_character_info_no_optional_data_still_returns(self, monkeypatch):
+        """Regression: character row should not be dropped when optional matches find nothing."""
+        character_queries.CHAR_NAME_TO_CANONICAL.clear()
+        character_queries.CHAR_NAME_TO_CANONICAL["lonely"] = "Lonely"
+
+        mock_read = AsyncMock(
+            return_value=[
+                {
+                    "description": "No ties",
+                    "current_status": "Active",
+                    "char_is_provisional": False,
+                    "dev_events": [],
+                    "provisional_rel_count": 0,
+                }
+            ]
+        )
+        monkeypatch.setattr(
+            character_queries.neo4j_manager, "execute_read_query", mock_read
+        )
+
+        result = await character_queries.get_character_info_for_snippet_from_db("Lonely", 10)
+        assert result is not None
+        assert result["description"] == "No ties"
+        assert result["current_status"] == "Active"
+        assert result["most_recent_development_note"] == "N/A"
+        assert result["is_provisional_overall"] is False
+
+
+@pytest.mark.asyncio
 class TestFindThinCharacters:
     """Tests for finding thin characters for enrichment."""
 

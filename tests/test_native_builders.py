@@ -17,7 +17,7 @@ class TestCharacterUpsertCypher:
         assert "MERGE (c:Character {name: $name})" in cypher
         assert params["name"] == "Alice"
         assert params["description"] == "A hero"
-        assert params["chapter"] == 1
+        assert params["chapter_number"] == 1
 
     def test_character_upsert_with_relationships(self):
         """Test character upsert with relationships."""
@@ -58,7 +58,8 @@ class TestWorldItemUpsertCypher:
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        assert "MERGE (w {id: $id})" in cypher or "MERGE (w:Entity {id: $id})" in cypher
+        # P0.2: world upserts must write one canonical world label (derived from category)
+        assert "MERGE (w:Location {id: $id})" in cypher
         assert "id" in params
         assert params["name"] == "Castle"
         assert params["category"] == "Locations"
@@ -73,7 +74,7 @@ class TestWorldItemUpsertCypher:
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        assert "MERGE (w" in cypher
+        assert "MERGE (w:Location" in cypher
         assert "goals" in params or "goals" in str(cypher)
 
     def test_world_item_upsert_with_rules(self):
@@ -84,7 +85,7 @@ class TestWorldItemUpsertCypher:
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        assert "MERGE (w" in cypher
+        assert "MERGE (w:Location" in cypher
         assert "rules" in params or "rules" in str(cypher)
 
     def test_world_item_upsert_nested_properties(self):

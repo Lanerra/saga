@@ -25,6 +25,30 @@ KG_NODE_CREATED_CHAPTER = "created_chapter"
 KG_NODE_CHAPTER_UPDATED = "chapter_updated"
 KG_IS_PROVISIONAL = "is_provisional"
 
+# --- World item label taxonomy (P0.2) ---
+# Canonical world "entity" labels that the system should use consistently across
+# builder upserts, builder fetches, and read-by-id lookups.
+#
+# NOTE: This is intentionally narrower than VALID_NODE_LABELS; world items are a
+# subset of the KG schema (Character/Trait/Chapter are not "world items").
+WORLD_ITEM_CANONICAL_LABELS: tuple[str, ...] = (
+    "Location",
+    "Item",
+    "Event",
+    "Organization",
+    "Concept",
+)
+
+# Legacy labels seen in older graphs and legacy read paths. These are supported
+# for backwards compatibility in read/fetch predicates (but should not be newly
+# written as primary labels by upsert).
+WORLD_ITEM_LEGACY_LABELS: tuple[str, ...] = (
+    "Object",
+    "Artifact",
+    "Document",
+    "Relic",
+)
+
 
 # --- Canonical Schema Definition ---
 # NOTE: These are SUGGESTED types, not required types.
@@ -187,3 +211,23 @@ RELATIONSHIP_CATEGORIES = {
 RELATIONSHIP_TYPES = set()
 for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)
+
+
+# --- NovelInfo property allowlist (P0.4: Cypher injection hardening) ---
+# Neo4j/Cypher does not support parameterizing property keys, so any property-key
+# used in a query must be strictly allowlisted before being interpolated.
+#
+# Keep this list small and auditable. If you add new NovelInfo properties that
+# need to be read dynamically, update this allowlist and add a test.
+NOVEL_INFO_ALLOWED_PROPERTY_KEYS: frozenset[str] = frozenset(
+    {
+        # Common novel metadata
+        "title",
+        "genre",
+        "setting",
+        # High-level story guidance
+        "theme",
+        "central_conflict",
+        "thematic_progression",
+    }
+)

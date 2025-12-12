@@ -74,6 +74,7 @@ from core.langgraph.content_manager import (
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.schema_validator import schema_validator
 from data_access import chapter_queries, kg_queries
+from data_access.kg_queries import _get_cypher_labels as _get_cypher_labels
 from models.kg_models import CharacterProfile, WorldItem
 from processing.entity_deduplication import (
     check_entity_similarity,

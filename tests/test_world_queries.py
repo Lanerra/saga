@@ -6,7 +6,11 @@ import pytest
 import utils
 from data_access import world_queries
 from models import WorldItem
-from models.kg_constants import KG_NODE_CREATED_CHAPTER
+from models.kg_constants import (
+    KG_NODE_CREATED_CHAPTER,
+    WORLD_ITEM_CANONICAL_LABELS,
+    WORLD_ITEM_LEGACY_LABELS,
+)
 
 
 class TestWorldNameResolution:
@@ -146,6 +150,8 @@ class TestGetWorldItemById:
 
     async def test_get_world_item_by_id_found(self, monkeypatch):
         """Test getting world item by ID when found."""
+        world_queries.get_world_item_by_id.cache_clear()
+
         mock_read = AsyncMock(
             return_value=[
                 {
@@ -166,20 +172,15 @@ class TestGetWorldItemById:
         assert result is not None
         assert result.name == "Castle"
 
-    async def test_get_world_item_by_id_not_found(self, monkeypatch):
-        """Test getting world item by ID when not found."""
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+    async def test_get_world_item_by_id_label_predicate_unified(self, monkeypatch):
+        """
+        P0.2 regression test: ensure read-by-id uses unified world label taxonomy.
 
-        result = await world_queries.get_world_item_by_id("unknown_id")
-        assert result is None
-
-    async def test_get_world_item_by_id_with_fallback(self, monkeypatch):
-        """Test getting world item by ID with name fallback."""
-        world_queries.WORLD_NAME_TO_ID.clear()
-        world_queries.WORLD_NAME_TO_ID["castle"] = "locations_castle"
+        This guarantees that items written via native builder upsert (which chooses
+        canonical labels like :Location/:Item/...) are retrievable here, while also
+        supporting legacy labels for backward compatibility.
+        """
+        world_queries.get_world_item_by_id.cache_clear()
 
         mock_read = AsyncMock(
             return_value=[
@@ -197,8 +198,83 @@ class TestGetWorldItemById:
             world_queries.neo4j_manager, "execute_read_query", mock_read
         )
 
+        result = await world_queries.get_world_item_by_id("locations_castle")
+        assert result is not None
+
+        # First call should be the primary MATCH by id.
+        assert mock_read.call_args_list, "Expected execute_read_query to be called"
+        first_query = mock_read.call_args_list[0].args[0]
+        assert isinstance(first_query, str)
+
+        for label in WORLD_ITEM_CANONICAL_LABELS:
+            assert f"we:{label}" in first_query
+
+        for label in WORLD_ITEM_LEGACY_LABELS:
+            assert f"we:{label}" in first_query
+
+    async def test_get_world_item_by_id_not_found(self, monkeypatch):
+        """Test getting world item by ID when not found."""
+        world_queries.get_world_item_by_id.cache_clear()
+
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(
+            world_queries.neo4j_manager, "execute_read_query", mock_read
+        )
+
+        result = await world_queries.get_world_item_by_id("unknown_id")
+        assert result is None
+
+    async def test_get_world_item_by_id_with_fallback(self, monkeypatch):
+        """Test getting world item by ID with name fallback."""
+        world_queries.get_world_item_by_id.cache_clear()
+
+        world_queries.WORLD_NAME_TO_ID.clear()
+        world_queries.WORLD_NAME_TO_ID["castle"] = "locations_castle"
+
+        async def fake_read(query, params=None):
+            # Simulate first lookup by "id" miss, then second lookup by resolved canonical id hit.
+            if "RETURN we" in query and params and params.get("id") == "Castle":
+                return []
+            if "RETURN we" in query and params and params.get("id") == "locations_castle":
+                return [
+                    {
+                        "we": {
+                            "id": "locations_castle",
+                            "name": "Castle",
+                            "category": "Locations",
+                            KG_NODE_CREATED_CHAPTER: 1,
+                        }
+                    }
+                ]
+            # Traits / elaborations can be empty under this mock; we only validate the ID used.
+            return []
+
+        mock_read = AsyncMock(side_effect=fake_read)
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
+
         result = await world_queries.get_world_item_by_id("Castle")
         assert result is not None
+        assert result.id == "locations_castle"
+
+        # Validate enrichment queries use the same effective id.
+        trait_calls = [
+            call
+            for call in mock_read.call_args_list
+            if call.args and isinstance(call.args[0], str) and "HAS_TRAIT" in call.args[0]
+        ]
+        elab_calls = [
+            call
+            for call in mock_read.call_args_list
+            if call.args
+            and isinstance(call.args[0], str)
+            and "ELABORATED_IN_CHAPTER" in call.args[0]
+        ]
+
+        assert trait_calls, "Expected traits enrichment query to be executed"
+        assert elab_calls, "Expected elaborations enrichment query to be executed"
+
+        assert trait_calls[0].args[1]["we_id_param"] == "locations_castle"
+        assert elab_calls[0].args[1]["we_id_param"] == "locations_castle"
 
 
 @pytest.mark.asyncio

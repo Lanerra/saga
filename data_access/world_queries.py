@@ -14,6 +14,8 @@ from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_NODE_CHAPTER_UPDATED,
     KG_NODE_CREATED_CHAPTER,
+    WORLD_ITEM_CANONICAL_LABELS,
+    WORLD_ITEM_LEGACY_LABELS,
 )
 
 from .cypher_builders.native_builders import NativeCypherBuilder
@@ -51,21 +53,35 @@ def get_world_item_by_name(
 
 @alru_cache(maxsize=128)
 async def get_world_item_by_id(item_id: str) -> WorldItem | None:
-    """Retrieve a single ``WorldItem`` from Neo4j by its ID or fall back to name."""
+    """Retrieve a single ``WorldItem`` from Neo4j by its ID or fall back to name.
+
+    Notes:
+        This function may be called with either a canonical KG id (e.g. ``locations_castle``)
+        or a display name (e.g. ``Castle``). If name→id fallback succeeds, all subsequent
+        enrichment queries must use the resolved canonical id ("effective id") consistently.
+    """
     logger.info(f"Loading world item '{item_id}' from Neo4j...")
 
+    requested_id = item_id
+    effective_id: str = item_id
+
+    world_item_labels = WORLD_ITEM_CANONICAL_LABELS + WORLD_ITEM_LEGACY_LABELS
+    label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
+
     query = (
-        "MATCH (we {id: $id}) WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)"
+        f"MATCH (we {{id: $id}}) WHERE {label_predicate}"
         " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE) RETURN we"
     )
-    results = await neo4j_manager.execute_read_query(query, {"id": item_id})
+
+    results = await neo4j_manager.execute_read_query(query, {"id": requested_id})
     if not results or not results[0].get("we"):
-        alt_id = resolve_world_name(item_id)
-        if alt_id and alt_id != item_id:
-            results = await neo4j_manager.execute_read_query(query, {"id": alt_id})
+        alt_id = resolve_world_name(requested_id)
+        if alt_id and alt_id != requested_id:
+            effective_id = alt_id
+            results = await neo4j_manager.execute_read_query(query, {"id": effective_id})
 
     if not results or not results[0].get("we"):
-        logger.info(f"No world item found for id '{item_id}'.")
+        logger.info(f"No world item found for id '{requested_id}'.")
         return None
 
     we_node = results[0]["we"]
@@ -85,6 +101,9 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
             exc_info=True,
         )
         return None
+
+    # Prefer the fetched/validated node id as the single effective id for enrichment + identity.
+    effective_id = we_id
 
     # Check if any fields were missing and log a warning if so
     missing_fields = []
@@ -130,7 +149,7 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
     """
     traits_res = await neo4j_manager.execute_read_query(
         traits_query,
-        {"we_id_param": item_id},
+        {"we_id_param": effective_id},
     )
     item_detail["traits"] = sorted(
         [
@@ -146,7 +165,7 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
     ORDER BY elab.chapter_updated ASC
     """
     elab_results = await neo4j_manager.execute_read_query(
-        elab_query, {"we_id_param": item_id}
+        elab_query, {"we_id_param": effective_id}
     )
     if elab_results:
         for elab_rec in elab_results:
@@ -160,15 +179,10 @@ async def get_world_item_by_id(item_id: str) -> WorldItem | None:
                         "provisional_from_unrevised_draft"
                     )
 
-    item_detail["id"] = item_id
+    # Do not overwrite identity with the caller-provided value; callers must see the
+    # canonical/effective id that actually exists in the graph.
+    item_detail["id"] = effective_id
     return WorldItem.from_dict(category, item_name, item_detail)
-
-
-@alru_cache(maxsize=128)
-## NOTE: Legacy get_world_building_from_db() removed. Use get_world_building().
-
-## NOTE: The above legacy function remains for backward compatibility of external callers.
-## Prefer using get_world_building() which returns a flat list of WorldItem models.
 
 
 async def get_world_elements_for_snippet_from_db(

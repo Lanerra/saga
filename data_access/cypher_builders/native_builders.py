@@ -6,6 +6,7 @@ Eliminates the intermediate dict serialization layer for performance optimizatio
 
 from typing import TYPE_CHECKING, Any
 
+from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS, WORLD_ITEM_LEGACY_LABELS
 from processing.entity_deduplication import generate_entity_id
 from utils import classify_category_label
 from utils.common import flatten_dict
@@ -162,6 +163,13 @@ class NativeCypherBuilder:
         flattened_additional_props = flatten_dict(item.additional_properties)
 
         primary_label = classify_category_label(item.category)
+
+        # P0.2: Ensure world upserts always select a canonical "world item" label.
+        # This prevents accidentally writing :Trait/:Character/etc. from ambiguous categories,
+        # which would then be invisible to world reads/fetches.
+        if primary_label not in WORLD_ITEM_CANONICAL_LABELS:
+            primary_label = "Item"
+
         # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
         # Removed implicit Entity label inheritance
 
@@ -373,11 +381,15 @@ class NativeCypherBuilder:
 
         where_clause = " AND ".join(where_clauses)
 
-        # Updated to respect new schema - match all valid world element types
+        # P0.2: Canonical taxonomy is the builder taxonomy (Location/Item/Event/Organization/Concept).
+        # For backward compatibility, also match older legacy labels that may still exist in persisted graphs.
+        world_item_labels = WORLD_ITEM_CANONICAL_LABELS + WORLD_ITEM_LEGACY_LABELS
+        label_predicate = "(" + " OR ".join([f"w:{label}" for label in world_item_labels]) + ")"
+
         # Note: Character is handled by character_fetch_cypher
         cypher = f"""
         MATCH (w)
-        WHERE (w:Location OR w:Item OR w:Event OR w:Organization OR w:Concept)
+        WHERE {label_predicate}
           AND {where_clause}
 
         // Collect traits from HAS_TRAIT relationships to Trait nodes

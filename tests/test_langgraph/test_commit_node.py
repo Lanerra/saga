@@ -757,6 +757,7 @@ class TestBuildRelationshipStatements:
                 relationship_type="KNOWS",
                 target_name="Bob",
                 description="They are friends",
+                chapter=1,
                 confidence=0.9,
             )
         ]
@@ -811,6 +812,7 @@ class TestBuildRelationshipStatements:
                 relationship_type="KNOWS",
                 target_name="Bob",
                 description="They are friends",
+                chapter=1,
                 confidence=0.9,
             )
         ]
@@ -857,6 +859,7 @@ class TestBuildRelationshipStatements:
                 relationship_type="WIELDS",
                 target_name="Magic Sword",
                 description="Alice wields the sword",
+                chapter=1,
                 confidence=0.9,
             )
         ]
@@ -906,6 +909,7 @@ class TestBuildRelationshipStatements:
                 relationship_type="CAUSED",
                 target_name="Battle",
                 description="Alice caused the battle",
+                chapter=1,
                 confidence=0.8,
             )
         ]

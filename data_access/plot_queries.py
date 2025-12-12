@@ -10,7 +10,9 @@ logger = structlog.get_logger(__name__)
 
 
 async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
-    logger.info("Synchronizing plot outline to Neo4j (non-destructive)...")
+    # NOTE: Despite earlier messaging, this function performs a *synchronization* that may
+    # delete PlotPoint nodes missing from the input list. This is destructive by design.
+    logger.info("Synchronizing plot outline to Neo4j (destructive sync)...")
     if not plot_data:
         logger.warning(
             "save_plot_outline_to_db: plot_data is empty. No changes will be made."
@@ -31,128 +33,145 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
         (
             """
         MERGE (ni:NovelInfo {id: $id_val})
-        ON CREATE SET ni = $props, ni.created_ts = timestamp()
-        ON MATCH SET  ni = $props, ni.updated_ts = timestamp()
+        ON CREATE SET ni.created_ts = timestamp()
+        SET ni += $props
+        SET ni.updated_ts = timestamp()
         """,
             {"id_val": novel_id, "props": novel_props_for_set},
         )
     )
 
-    input_plot_points_list = plot_data.get("plot_points", [])
-    if not isinstance(input_plot_points_list, list):
-        logger.warning("plot_data.plot_points is not a list. Skipping plot point sync.")
-        return True
+    input_plot_points_list = plot_data.get("plot_points", None)
 
-    all_input_pp_ids: set[str] = {
-        f"pp_{novel_id}_{i + 1}" for i in range(len(input_plot_points_list))
-    }
-
-    try:
-        existing_pp_records = await neo4j_manager.execute_read_query(
-            "MATCH (:NovelInfo {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint) RETURN pp.id AS id",
-            {"novel_id_param": novel_id},
+    # If plot_points is missing or invalid, we must still persist NovelInfo properties, but
+    # we should skip plot point synchronization entirely (including any deletes) to avoid
+    # surprising destructive behavior from partial/malformed input.
+    if input_plot_points_list is None:
+        logger.info(
+            "plot_data.plot_points not provided. Skipping plot point sync (NovelInfo properties will still be saved)."
         )
-        existing_db_pp_ids: set[str] = {
-            record["id"] for record in existing_pp_records if record and record["id"]
+    elif not isinstance(input_plot_points_list, list):
+        logger.warning(
+            "plot_data.plot_points is not a list. Skipping plot point sync (NovelInfo properties will still be saved)."
+        )
+        input_plot_points_list = None
+
+    if input_plot_points_list is not None:
+        all_input_pp_ids: set[str] = {
+            f"pp_{novel_id}_{i + 1}" for i in range(len(input_plot_points_list))
         }
-    except Exception as e:
-        logger.error(
-            f"Failed to retrieve existing PlotPoint IDs for novel {novel_id}: {e}",
-            exc_info=True,
-        )
-        return False
 
-    pp_to_delete = existing_db_pp_ids - all_input_pp_ids
-    if pp_to_delete:
-        statements.append(
-            (
-                """
-            MATCH (pp:PlotPoint)
-            WHERE pp.id IN $pp_ids_to_delete
-            DETACH DELETE pp
-            """,
-                {"pp_ids_to_delete": list(pp_to_delete)},
+        try:
+            existing_pp_records = await neo4j_manager.execute_read_query(
+                "MATCH (:NovelInfo {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint) RETURN pp.id AS id",
+                {"novel_id_param": novel_id},
             )
-        )
-
-    plot_points_data = []
-    for i, point_desc_str_or_dict in enumerate(input_plot_points_list):
-        pp_id = f"pp_{novel_id}_{i + 1}"
-
-        pp_props = {
-            "id": pp_id,
-            "sequence": i + 1,
-            "status": "pending",
-        }
-        if isinstance(point_desc_str_or_dict, str):
-            pp_props["description"] = point_desc_str_or_dict
-        elif isinstance(point_desc_str_or_dict, dict):
-            pp_props["description"] = str(
-                point_desc_str_or_dict.get("description", "")
+            existing_db_pp_ids: set[str] = {
+                record["id"]
+                for record in existing_pp_records
+                if record and record["id"]
+            }
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve existing PlotPoint IDs for novel {novel_id}: {e}",
+                exc_info=True,
             )
-            pp_props["status"] = str(
-                point_desc_str_or_dict.get("status", "pending")
-            )
-            for k_pp, v_pp in point_desc_str_or_dict.items():
-                if (
-                    isinstance(v_pp, str | int | float | bool)
-                    and k_pp not in pp_props
-                ):
-                    pp_props[k_pp] = v_pp
-        else:
-            logger.warning(
-                f"Skipping invalid plot point item at index {i}: {point_desc_str_or_dict}"
-            )
-            continue
+            return False
 
-        plot_points_data.append(pp_props)
-
-    if plot_points_data:
-        statements.append(
-            (
-                """
-            UNWIND $plot_points AS pp_data
-            MERGE (pp:PlotPoint {id: pp_data.id})
-            ON CREATE SET pp = pp_data, pp.created_ts = timestamp()
-            ON MATCH SET  pp = pp_data, pp.updated_ts = timestamp()
-            """,
-                {"plot_points": plot_points_data},
-            )
-        )
-
-        statements.append(
-            (
-                """
-            MATCH (ni:NovelInfo {id: $novel_id})
-            UNWIND $plot_point_ids AS pp_id
-            MATCH (pp:PlotPoint {id: pp_id})
-            MERGE (ni)-[:HAS_PLOT_POINT]->(pp)
-            """,
-                {
-                    "novel_id": novel_id,
-                    "plot_point_ids": [pp["id"] for pp in plot_points_data],
-                },
-            )
-        )
-
-        sequential_links = [
-            {"prev_id": plot_points_data[i - 1]["id"], "curr_id": plot_points_data[i]["id"]}
-            for i in range(1, len(plot_points_data))
-        ]
-        if sequential_links:
+        pp_to_delete = existing_db_pp_ids - all_input_pp_ids
+        if pp_to_delete:
             statements.append(
                 (
                     """
-                UNWIND $links AS link
-                MATCH (prev_pp:PlotPoint {id: link.prev_id})
-                MATCH (curr_pp:PlotPoint {id: link.curr_id})
-                OPTIONAL MATCH (prev_pp)-[old_next_rel:NEXT_PLOT_POINT]->(:PlotPoint)
-                DELETE old_next_rel
-                MERGE (prev_pp)-[:NEXT_PLOT_POINT]->(curr_pp)
+                MATCH (pp:PlotPoint)
+                WHERE pp.id IN $pp_ids_to_delete
+                DETACH DELETE pp
                 """,
-                    {"links": sequential_links},
+                    {"pp_ids_to_delete": list(pp_to_delete)},
                 )
             )
+
+        plot_points_data = []
+        for i, point_desc_str_or_dict in enumerate(input_plot_points_list):
+            pp_id = f"pp_{novel_id}_{i + 1}"
+
+            pp_props = {
+                "id": pp_id,
+                "sequence": i + 1,
+                "status": "pending",
+            }
+            if isinstance(point_desc_str_or_dict, str):
+                pp_props["description"] = point_desc_str_or_dict
+            elif isinstance(point_desc_str_or_dict, dict):
+                pp_props["description"] = str(
+                    point_desc_str_or_dict.get("description", "")
+                )
+                pp_props["status"] = str(
+                    point_desc_str_or_dict.get("status", "pending")
+                )
+                for k_pp, v_pp in point_desc_str_or_dict.items():
+                    if (
+                        isinstance(v_pp, str | int | float | bool)
+                        and k_pp not in pp_props
+                    ):
+                        pp_props[k_pp] = v_pp
+            else:
+                logger.warning(
+                    f"Skipping invalid plot point item at index {i}: {point_desc_str_or_dict}"
+                )
+                continue
+
+            plot_points_data.append(pp_props)
+
+        if plot_points_data:
+            statements.append(
+                (
+                    """
+                UNWIND $plot_points AS pp_data
+                MERGE (pp:PlotPoint {id: pp_data.id})
+                ON CREATE SET pp = pp_data, pp.created_ts = timestamp()
+                ON MATCH SET  pp = pp_data, pp.updated_ts = timestamp()
+                """,
+                    {"plot_points": plot_points_data},
+                )
+            )
+
+            statements.append(
+                (
+                    """
+                MATCH (ni:NovelInfo {id: $novel_id})
+                UNWIND $plot_point_ids AS pp_id
+                MATCH (pp:PlotPoint {id: pp_id})
+                MERGE (ni)-[:HAS_PLOT_POINT]->(pp)
+                """,
+                    {
+                        "novel_id": novel_id,
+                        "plot_point_ids": [pp["id"] for pp in plot_points_data],
+                    },
+                )
+            )
+
+            sequential_links = [
+                {
+                    "prev_id": plot_points_data[i - 1]["id"],
+                    "curr_id": plot_points_data[i]["id"],
+                }
+                for i in range(1, len(plot_points_data))
+            ]
+            if sequential_links:
+                statements.append(
+                    (
+                        """
+                    UNWIND $links AS link
+                    MATCH (prev_pp:PlotPoint {id: link.prev_id})
+                    MATCH (curr_pp:PlotPoint {id: link.curr_id})
+                    OPTIONAL MATCH (prev_pp)-[old_next_rel:NEXT_PLOT_POINT]->(:PlotPoint)
+                    DELETE old_next_rel
+                    MERGE (prev_pp)-[:NEXT_PLOT_POINT]->(curr_pp)
+                    """,
+                        {"links": sequential_links},
+                    )
+                )
 
     try:
         if statements:

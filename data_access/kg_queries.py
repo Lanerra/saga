@@ -12,6 +12,7 @@ from core.schema_validator import schema_validator, validate_node_labels
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
     KG_REL_CHAPTER_ADDED,
+    NOVEL_INFO_ALLOWED_PROPERTY_KEYS,
     RELATIONSHIP_TYPES,
     VALID_NODE_LABELS,
 )
@@ -107,9 +108,15 @@ def _to_pascal_case(text: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in parts if part)
 
 
+_SAFE_RELATIONSHIP_TYPE_RE = re.compile(r"^[A-Z0-9_]+$")
+
+
 def validate_relationship_type(proposed_type: str) -> str:
     """
     Normalize a relationship type to a consistent format.
+
+    NOTE: This function is lenient and intended for general normalization (e.g., analytics
+    or downstream storage). It MUST NOT be used for Cypher relationship-type interpolation.
 
     Args:
         proposed_type: The relationship type to normalize
@@ -122,6 +129,38 @@ def validate_relationship_type(proposed_type: str) -> str:
 
     # Clean and normalize: strip whitespace, uppercase, replace spaces with underscores
     return proposed_type.strip().upper().replace(" ", "_")
+
+
+def validate_relationship_type_for_cypher_interpolation(proposed_type: str) -> str:
+    """
+    Validate a relationship type *for direct interpolation into Cypher*.
+
+    Neo4j does not parameterize relationship types, so we must strictly validate before
+    placing a relationship type inside backticks in a query.
+
+    Security policy (P0.4):
+    - Must be non-empty
+    - Must already be uppercase (no silent normalization)
+    - Must match `^[A-Z0-9_]+$`
+
+    Raises:
+        ValueError: if the relationship type is unsafe for interpolation.
+    """
+    raw = str(proposed_type).strip() if proposed_type is not None else ""
+    if not raw:
+        raise ValueError("Relationship type must be a non-empty string")
+
+    if raw != raw.upper():
+        raise ValueError(
+            f"Unsafe relationship type '{raw}': must be uppercase and match ^[A-Z0-9_]+$"
+        )
+
+    if not _SAFE_RELATIONSHIP_TYPE_RE.fullmatch(raw):
+        raise ValueError(
+            f"Unsafe relationship type '{raw}': must match ^[A-Z0-9_]+$"
+        )
+
+    return raw
 
 
 async def normalize_and_deduplicate_relationships() -> dict[str, int]:
@@ -372,7 +411,7 @@ async def add_kg_triples_batch_to_db(
         subject_type = subject_info.get(
             "type"
         )  # This is a string like "Character", "WorldElement", etc.
-        predicate_clean = str(predicate_str).strip().upper().replace(" ", "_")
+        predicate_clean = validate_relationship_type_for_cypher_interpolation(predicate_str)
 
         # Strict Type Validation & Inference
         # We must ensure subject_type is one of VALID_NODE_LABELS
@@ -657,7 +696,7 @@ async def query_kg_from_db(
         conditions.append("s.name = $subject_param")
         parameters["subject_param"] = subject.strip()
     if predicate is not None:
-        normalized_predicate = validate_relationship_type(predicate)
+        normalized_predicate = validate_relationship_type_for_cypher_interpolation(predicate)
         match_clause = f"MATCH (s)-[r:`{normalized_predicate}`]->(o) "
     if obj_val is not None:
         obj_val_stripped = obj_val.strip()
@@ -729,7 +768,7 @@ async def get_most_recent_value_from_db(
 
     conditions = []
     parameters: dict[str, Any] = {}
-    normalized_predicate = validate_relationship_type(predicate)
+    normalized_predicate = validate_relationship_type_for_cypher_interpolation(predicate)
     match_clause = f"MATCH (s)-[r:`{normalized_predicate}`]->(o) "
 
     conditions.append("s.name = $subject_param")
@@ -793,12 +832,22 @@ async def get_most_recent_value_from_db(
 @alru_cache(maxsize=64, ttl=600)  # Cache novel info properties for 10 minutes
 async def get_novel_info_property_from_db(property_key: str) -> Any | None:
     """Return a property value from the NovelInfo node."""
-    if not property_key.strip():
+    key = property_key.strip() if property_key is not None else ""
+    if not key:
         logger.warning("Neo4j: empty property key for NovelInfo query")
         return None
 
+    if key not in NOVEL_INFO_ALLOWED_PROPERTY_KEYS:
+        raise ValueError(
+            "Unsafe NovelInfo property key "
+            f"'{key}'. Allowed keys: {sorted(NOVEL_INFO_ALLOWED_PROPERTY_KEYS)}"
+        )
+
     novel_id_param = config.MAIN_NOVEL_INFO_NODE_ID
-    query = f"MATCH (ni:NovelInfo {{id: $novel_id_param}}) RETURN ni.{property_key} AS value"
+    query = (
+        "MATCH (ni:NovelInfo {id: $novel_id_param}) "
+        f"RETURN ni.{key} AS value"
+    )
     try:
         results = await neo4j_manager.execute_read_query(
             query, {"novel_id_param": novel_id_param}

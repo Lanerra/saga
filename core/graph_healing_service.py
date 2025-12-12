@@ -271,19 +271,77 @@ Provide the following information (only include fields where you have reasonable
             return True
         return False
 
-    async def find_merge_candidates(self) -> list[dict[str, Any]]:
+    async def find_merge_candidates(self, use_advanced_matching: bool = True) -> list[dict[str, Any]]:
         """
         Find pairs of entities that may be duplicates.
 
         Uses multiple similarity measures:
         1. Name similarity (fuzzy matching)
-        2. Description embedding similarity
-        3. Relationship pattern similarity
+        2. Description embedding similarity (if use_advanced_matching=False)
+        3. Advanced fuzzy matching with Levenshtein and token overlap (if use_advanced_matching=True)
+
+        Args:
+            use_advanced_matching: If True, uses kg_queries.find_candidate_duplicate_entities
+                                   which has sophisticated fuzzy matching. If False, uses
+                                   embedding-based similarity (slower but considers semantics).
+
+        Returns:
+            List of merge candidate dictionaries
         """
+        if use_advanced_matching:
+            # Use the advanced fuzzy matching from kg_queries
+            from data_access.kg_queries import find_candidate_duplicate_entities
+
+            kg_candidates = await find_candidate_duplicate_entities(
+                similarity_threshold=self.MERGE_SIMILARITY_THRESHOLD,
+                limit=50,
+            )
+
+            # Convert to our format and map id fields to element IDs
+            candidates = []
+            for c in kg_candidates:
+                # Get element IDs from entity IDs
+                get_element_id_query = """
+                    MATCH (n)
+                    WHERE n.id = $entity_id
+                    RETURN elementId(n) AS element_id
+                """
+
+                primary_results = await neo4j_manager.execute_read_query(
+                    get_element_id_query, {"entity_id": c["id1"]}
+                )
+                duplicate_results = await neo4j_manager.execute_read_query(
+                    get_element_id_query, {"entity_id": c["id2"]}
+                )
+
+                if not primary_results or not duplicate_results:
+                    continue
+
+                candidates.append(
+                    {
+                        "primary_id": primary_results[0]["element_id"],
+                        "primary_name": c["name1"],
+                        "duplicate_id": duplicate_results[0]["element_id"],
+                        "duplicate_name": c["name2"],
+                        "type": c["labels1"][0] if c.get("labels1") else "Unknown",
+                        "similarity": c["similarity"],
+                        "name_similarity": c["similarity"],  # kg_queries uses name similarity
+                        "embedding_similarity": 0.0,  # Not computed in kg_queries version
+                        "is_alias": self._is_likely_alias(c["name1"], c["name2"]),
+                    }
+                )
+
+            logger.info(
+                "Found merge candidates via advanced fuzzy matching",
+                count=len(candidates),
+            )
+
+            return candidates
+
+        # Fallback to embedding-based similarity
         candidates = []
 
         # Get all entities with descriptions
-        # Note: Removed n.is_active check as it's not a standard field
         query = """
             MATCH (n)
             WHERE n.description IS NOT NULL AND n.description <> "" AND trim(n.description) <> ""
@@ -348,7 +406,7 @@ Provide the following information (only include fields where you have reasonable
         candidates.sort(key=lambda x: -x["similarity"])
 
         logger.info(
-            "Found merge candidates",
+            "Found merge candidates via embedding similarity",
             count=len(candidates),
         )
 
@@ -457,96 +515,89 @@ Provide the following information (only include fields where you have reasonable
         self, primary_id: str, duplicate_id: str, merge_info: dict[str, Any]
     ) -> bool:
         """
-        Execute a merge of two entities.
+        Execute a merge of two entities using the robust merge implementation from kg_queries.
 
-        The primary entity absorbs the duplicate:
-        1. Transfer all relationships
-        2. Merge attributes (union of traits, keep longer description)
-        3. Mark duplicate as merged (preserve history)
-        """
-        # Step 1: Transfer outgoing relationships
-        transfer_out_query = """
-            MATCH (dup)-[r]->(target)
-            WHERE elementId(dup) = $dup_id
-            MATCH (primary)
-            WHERE elementId(primary) = $primary_id
-            WITH primary, target, type(r) AS rel_type, properties(r) AS props
-            MERGE (primary)-[new_rel:TRANSFERRED_REL]->(target)
-            SET new_rel = props
-            WITH primary, target, rel_type, new_rel
-            CALL apoc.refactor.setType(new_rel, rel_type) YIELD output
-            RETURN count(*) AS transferred
-        """
+        This delegates to the merge_entities function which provides:
+        - Atomic operations with retry logic
+        - Proper error handling
+        - Relationship preservation
 
-        # Step 2: Transfer incoming relationships
-        transfer_in_query = """
-            MATCH (source)-[r]->(dup)
-            WHERE elementId(dup) = $dup_id
-            MATCH (primary)
-            WHERE elementId(primary) = $primary_id
-            WITH source, primary, type(r) AS rel_type, properties(r) AS props
-            MERGE (source)-[new_rel:TRANSFERRED_REL]->(primary)
-            SET new_rel = props
-            WITH source, primary, rel_type, new_rel
-            CALL apoc.refactor.setType(new_rel, rel_type) YIELD output
-            RETURN count(*) AS transferred
-        """
+        Args:
+            primary_id: Element ID of the entity to keep
+            duplicate_id: Element ID of the entity to merge into primary
+            merge_info: Metadata about the merge (similarity scores, etc.)
 
-        # Step 3: Merge attributes
-        merge_attrs_query = """
-            MATCH (primary), (dup)
-            WHERE elementId(primary) = $primary_id AND elementId(dup) = $dup_id
-            SET primary.aliases = coalesce(primary.aliases, []) + [dup.name],
-                primary.traits = apoc.coll.toSet(
-                    coalesce(primary.traits, []) + coalesce(dup.traits, [])
-                ),
-                primary.description = CASE
-                    WHEN size(coalesce(dup.description, '')) > size(coalesce(primary.description, ''))
-                    THEN dup.description
-                    ELSE primary.description
-                END,
-                primary.merged_from = coalesce(primary.merged_from, []) + [elementId(dup)],
-                primary.merged_at = datetime()
-            RETURN primary.name AS name
+        Returns:
+            True if merge succeeded, False otherwise
         """
+        from data_access.kg_queries import merge_entities, get_entity_context_for_resolution
 
-        # Step 4: Mark duplicate as merged
-        mark_merged_query = """
-            MATCH (dup)
-            WHERE elementId(dup) = $dup_id
-            SET dup.merged_into = $primary_id,
-                    dup.is_active = false,
-                    dup.merged_at = datetime()
-            RETURN dup.name AS dup_name
+        # Get context for both entities to construct a reason
+        primary_context = await get_entity_context_for_resolution(primary_id)
+        duplicate_context = await get_entity_context_for_resolution(duplicate_id)
+
+        # Construct merge reason
+        similarity = merge_info.get("similarity", 0)
+        reason = f"Merged duplicate entities (similarity: {similarity:.2f})"
+
+        if primary_context and duplicate_context:
+            primary_name = primary_context.get("name", "unknown")
+            duplicate_name = duplicate_context.get("name", "unknown")
+            reason = f"Merged '{duplicate_name}' into '{primary_name}' (similarity: {similarity:.2f})"
+
+        # Convert element IDs to entity IDs (id property)
+        # Element IDs are Neo4j internal, but merge_entities expects 'id' property
+        get_id_query = """
+            MATCH (n)
+            WHERE elementId(n) = $element_id
+            RETURN n.id AS entity_id
         """
 
         try:
-            # Execute in sequence
-            await neo4j_manager.execute_write_query(
-                transfer_out_query, {"dup_id": duplicate_id, "primary_id": primary_id}
+            # Get entity IDs from element IDs
+            primary_results = await neo4j_manager.execute_read_query(
+                get_id_query, {"element_id": primary_id}
             )
-            await neo4j_manager.execute_write_query(
-                transfer_in_query, {"dup_id": duplicate_id, "primary_id": primary_id}
+            duplicate_results = await neo4j_manager.execute_read_query(
+                get_id_query, {"element_id": duplicate_id}
             )
 
-            primary_results = await neo4j_manager.execute_write_query(
-                merge_attrs_query, {"primary_id": primary_id, "dup_id": duplicate_id}
-            )
-            primary_record = primary_results[0] if primary_results else None
-
-            dup_results = await neo4j_manager.execute_write_query(
-                mark_merged_query, {"dup_id": duplicate_id, "primary_id": primary_id}
-            )
-            dup_record = dup_results[0] if dup_results else None
-
-            if primary_record and dup_record:
-                logger.info(
-                    "Executed entity merge",
-                    primary=primary_record["name"],
-                    duplicate=dup_record["dup_name"],
-                    similarity=merge_info.get("similarity", 0),
+            if not primary_results or not duplicate_results:
+                logger.error(
+                    "Could not find entity IDs for merge",
+                    primary_element_id=primary_id,
+                    duplicate_element_id=duplicate_id,
                 )
-                return True
+                return False
+
+            primary_entity_id = primary_results[0]["entity_id"]
+            duplicate_entity_id = duplicate_results[0]["entity_id"]
+
+            if not primary_entity_id or not duplicate_entity_id:
+                logger.error(
+                    "Entities missing 'id' property",
+                    primary_element_id=primary_id,
+                    duplicate_element_id=duplicate_id,
+                )
+                return False
+
+            # Execute the merge using kg_queries implementation
+            success = await merge_entities(
+                source_id=duplicate_entity_id,
+                target_id=primary_entity_id,
+                reason=reason,
+                max_retries=3,
+            )
+
+            if success:
+                logger.info(
+                    "Successfully executed entity merge via kg_queries.merge_entities",
+                    primary_id=primary_entity_id,
+                    duplicate_id=duplicate_entity_id,
+                    similarity=similarity,
+                )
+
+            return success
 
         except Exception as e:
             logger.error(
@@ -554,10 +605,9 @@ Provide the following information (only include fields where you have reasonable
                 primary_id=primary_id,
                 duplicate_id=duplicate_id,
                 error=str(e),
+                exc_info=True,
             )
             return False
-
-        return False
 
     async def cleanup_orphaned_nodes(self, current_chapter: int) -> dict[str, Any]:
         """

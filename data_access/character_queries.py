@@ -49,23 +49,34 @@ async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
 
         OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
 
+        // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
-        WHERE coalesce(r.source_profile_managed, false) = true
 
         OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
 
-        RETURN c,
-               collect(DISTINCT t.name) AS traits,
-               collect(DISTINCT {
-                   target_name: target.name,
-                   rel_type: type(r),
-                   rel_props: properties(r)
-               }) AS relationships,
-               collect(DISTINCT {
-                   summary: dev.summary,
-                   chapter: dev.chapter_updated,
-                   is_provisional: dev.is_provisional
-               }) AS dev_events
+        WITH
+            c,
+            collect(DISTINCT t.name) AS traits,
+            collect(
+                DISTINCT CASE
+                    WHEN coalesce(r.source_profile_managed, false) = true THEN {
+                        target_name: target.name,
+                        rel_type: type(r),
+                        rel_props: properties(r)
+                    }
+                END
+            ) AS relationships_raw,
+            collect(DISTINCT {
+                summary: dev.summary,
+                chapter: dev.chapter_updated,
+                is_provisional: dev.is_provisional
+            }) AS dev_events
+
+        RETURN
+            c,
+            traits,
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
+            dev_events
     """
 
     results = await neo4j_manager.execute_read_query(query, {"name": canonical_name})
@@ -138,23 +149,34 @@ async def get_character_profile_by_id(character_id: str) -> CharacterProfile | N
 
         OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
 
+        // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
-        WHERE coalesce(r.source_profile_managed, false) = true
 
         OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
 
-        RETURN c,
-               collect(DISTINCT t.name) AS traits,
-               collect(DISTINCT {
-                   target_name: target.name,
-                   rel_type: type(r),
-                   rel_props: properties(r)
-               }) AS relationships,
-               collect(DISTINCT {
-                   summary: dev.summary,
-                   chapter: dev.chapter_updated,
-                   is_provisional: dev.is_provisional
-               }) AS dev_events
+        WITH
+            c,
+            collect(DISTINCT t.name) AS traits,
+            collect(
+                DISTINCT CASE
+                    WHEN coalesce(r.source_profile_managed, false) = true THEN {
+                        target_name: target.name,
+                        rel_type: type(r),
+                        rel_props: properties(r)
+                    }
+                END
+            ) AS relationships_raw,
+            collect(DISTINCT {
+                summary: dev.summary,
+                chapter: dev.chapter_updated,
+                is_provisional: dev.is_provisional
+            }) AS dev_events
+
+        RETURN
+            c,
+            traits,
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
+            dev_events
     """
 
     results = await neo4j_manager.execute_read_query(query, {"character_id": character_id})
@@ -269,20 +291,35 @@ async def get_character_info_for_snippet_from_db(
     MATCH (c:Character {name: $char_name_param})
     WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
+    // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
     OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
-    WHERE dev.chapter_updated <= $chapter_limit_param
 
+    // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
     OPTIONAL MATCH (c)-[r]-()
-    WHERE coalesce(r.is_provisional, FALSE) = TRUE
-      AND coalesce(r.chapter_added, -1) <= $chapter_limit_param
 
-    WITH c,
-         collect(DISTINCT {
-             summary: dev.summary,
-             chapter: dev.chapter_updated,
-             is_provisional: coalesce(dev.is_provisional, FALSE)
-         }) AS dev_events,
-         count(DISTINCT r) AS provisional_rel_count
+    WITH
+        c,
+        collect(
+            DISTINCT CASE
+                WHEN dev.chapter_updated <= $chapter_limit_param THEN {
+                    summary: dev.summary,
+                    chapter: dev.chapter_updated,
+                    is_provisional: coalesce(dev.is_provisional, FALSE)
+                }
+            END
+        ) AS dev_events_raw,
+        count(
+            DISTINCT CASE
+                WHEN coalesce(r.is_provisional, FALSE) = TRUE
+                 AND coalesce(r.chapter_added, -1) <= $chapter_limit_param
+                THEN r
+            END
+        ) AS provisional_rel_count
+
+    WITH
+        c,
+        [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events,
+        provisional_rel_count
 
     RETURN c.description AS description,
            c.status AS current_status,

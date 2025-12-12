@@ -14,6 +14,32 @@ from core.exceptions import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _restore_global_neo4j_manager_singleton_state():
+    """
+    Prevent state leakage from these unit tests into the rest of the suite.
+
+    This module intentionally mutates the `Neo4jManagerSingleton` (it is a true singleton),
+    setting `driver` to MagicMock instances and modifying caches. If we don't restore that
+    state, later tests that expect a real Neo4j connection (e.g. first-name matching) can
+    fail in an order-dependent way.
+
+    We snapshot the singleton's mutable fields before each test in this module and restore
+    them afterwards.
+    """
+    manager = Neo4jManagerSingleton()
+
+    original_driver = manager.driver
+    original_property_keys_cache = manager._property_keys_cache
+    original_property_keys_cache_ts = manager._property_keys_cache_ts
+
+    yield
+
+    manager.driver = original_driver
+    manager._property_keys_cache = original_property_keys_cache
+    manager._property_keys_cache_ts = original_property_keys_cache_ts
+
+
 class TestNeo4jManagerSingleton:
     """Singleton pattern and initialization"""
 

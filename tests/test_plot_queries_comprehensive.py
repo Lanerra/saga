@@ -29,6 +29,69 @@ class TestSavePlotOutline:
         assert result is True
         mock_execute.assert_called()
 
+    async def test_save_plot_outline_does_not_replace_novelinfo_map(self, monkeypatch):
+        """
+        Guard against NovelInfo property erasure.
+
+        Regression test for the old `SET ni = $props` behavior; we must use an additive
+        merge (`SET ni += $props`) so unrelated NovelInfo keys are preserved.
+        """
+        executed: list[tuple[str, dict]] = []
+
+        async def fake_batch(statements):
+            executed.extend(statements)
+
+        monkeypatch.setattr(
+            plot_queries.neo4j_manager,
+            "execute_cypher_batch",
+            AsyncMock(side_effect=fake_batch),
+        )
+
+        result = await plot_queries.save_plot_outline_to_db(
+            {
+                "title": "Test Novel",
+                "genre": "Fantasy",
+                # Explicitly omit plot_points to keep this test focused on NovelInfo update.
+            }
+        )
+        assert result is True
+        assert executed, "Expected at least the NovelInfo upsert statement to be executed"
+
+        cypher = executed[0][0]
+        assert "SET ni += $props" in cypher
+        assert "SET ni = $props" not in cypher
+
+    async def test_save_plot_outline_invalid_plot_points_still_saves_novelinfo(
+        self, monkeypatch
+    ):
+        """
+        When plot_points is invalid, we should skip plot point sync, but still persist
+        NovelInfo properties (no early-return success without writes).
+        """
+        executed: list[tuple[str, dict]] = []
+
+        async def fake_batch(statements):
+            executed.extend(statements)
+
+        monkeypatch.setattr(
+            plot_queries.neo4j_manager,
+            "execute_cypher_batch",
+            AsyncMock(side_effect=fake_batch),
+        )
+
+        result = await plot_queries.save_plot_outline_to_db(
+            {
+                "title": "Test Novel",
+                "genre": "Fantasy",
+                "plot_points": {"not": "a list"},
+            }
+        )
+        assert result is True
+        assert executed, "Expected NovelInfo upsert to run even when plot_points is invalid"
+
+        cypher = executed[0][0]
+        assert "SET ni += $props" in cypher
+
     async def test_save_plot_outline_empty(self, monkeypatch):
         """Test saving empty plot outline."""
         mock_execute = AsyncMock(return_value=None)

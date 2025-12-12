@@ -1,45 +1,116 @@
-"""Extended tests for data_access/character_queries.py to improve coverage."""
+"""Extended tests for data_access/character_queries.py to improve coverage.
+
+These tests are intentionally written against the current single-query implementations
+of get_character_profile_by_name()/get_character_profile_by_id(), rather than older
+multi-query behavior.
+"""
+
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, patch
+
 from data_access import character_queries
-from models import CharacterProfile
-from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
 
 @pytest.mark.asyncio
-class TestGetCharacterProfileByNameExtended:
-    """Extended tests for get_character_profile_by_name."""
+class TestGetCharacterProfileFetchesNoRowDropping:
+    """Regression tests: character row should be preserved even when optional patterns match nothing."""
 
-    async def test_get_character_profile_full_details(self, monkeypatch):
-        """Test retrieving profile with all sub-elements."""
-        
-        mock_char_node = {"name": "Alice", "description": "Hero", "id": "1"}
-        
+    async def test_get_character_profile_by_name_full_details(self, monkeypatch):
+        """Profile by name returns core fields + optional collections when present."""
         async def mock_read(query, params=None):
-            if "RETURN c" in query:
-                return [{"c": mock_char_node}]
-            if "RETURN t.name AS trait_name" in query:
-                return [{"trait_name": "Brave"}]
-            if "RETURN target.name AS target_name" in query:
-                # Relationships
-                return [{"target_name": "Bob", "rel_type": "FRIEND_OF", "rel_props": {"type": "FRIEND_OF", "source_profile_managed": True}}]
-            if "RETURN dev.summary AS summary" in query:
-                # Dev events
-                return [{"summary": "Event1", "chapter": 1, "is_provisional": False}]
+            if "MATCH (c:Character {name: $name})" in query:
+                return [
+                    {
+                        "c": {"name": "Alice", "description": "Hero", "id": "1"},
+                        "traits": ["Brave"],
+                        "relationships": [
+                            {
+                                "target_name": "Bob",
+                                "rel_type": "FRIEND_OF",
+                                "rel_props": {"type": "FRIEND_OF", "source_profile_managed": True},
+                            }
+                        ],
+                        "dev_events": [
+                            {"summary": "Event1", "chapter": 1, "is_provisional": False}
+                        ],
+                    }
+                ]
             return []
 
-        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", AsyncMock(side_effect=mock_read))
+        monkeypatch.setattr(
+            character_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=mock_read),
+        )
 
         profile = await character_queries.get_character_profile_by_name("Alice")
         assert profile is not None
         assert profile.name == "Alice"
         assert "Brave" in profile.traits
         assert "Bob" in profile.relationships
-        # Verify dev event mapped to dict
-        # CharacterProfile model internals might store it or it might be in additional_properties
-        # Based on implementation: profile[dev_key] = summary
-        # So check if it's accessible.
-        # Assuming we can inspect the model or converting to dict works.
+
         profile_dict = profile.to_dict()
-        assert "development_in_chapter_1" in profile_dict
         assert profile_dict["development_in_chapter_1"] == "Event1"
+
+        character_queries.get_character_profile_by_name.cache_clear()
+
+    async def test_get_character_profile_by_name_no_optional_data_still_returns_profile(
+        self, monkeypatch
+    ):
+        """Profile by name should not be dropped when traits/relationships/dev events are absent."""
+        async def mock_read(query, params=None):
+            if "MATCH (c:Character {name: $name})" in query:
+                return [
+                    {
+                        "c": {"name": "Lonely", "description": "No ties", "id": "99"},
+                        "traits": [],
+                        "relationships": [],
+                        "dev_events": [],
+                    }
+                ]
+            return []
+
+        monkeypatch.setattr(
+            character_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=mock_read),
+        )
+
+        profile = await character_queries.get_character_profile_by_name("Lonely")
+        assert profile is not None
+        assert profile.name == "Lonely"
+        assert profile.traits == []
+        assert profile.relationships == {}
+
+        character_queries.get_character_profile_by_name.cache_clear()
+
+    async def test_get_character_profile_by_id_no_optional_data_still_returns_profile(
+        self, monkeypatch
+    ):
+        """Profile by id should not be dropped when traits/relationships/dev events are absent."""
+        async def mock_read(query, params=None):
+            if "MATCH (c:Character {id: $character_id})" in query:
+                return [
+                    {
+                        "c": {"name": "Lonely", "description": "No ties", "id": "99"},
+                        "traits": [],
+                        "relationships": [],
+                        "dev_events": [],
+                    }
+                ]
+            return []
+
+        monkeypatch.setattr(
+            character_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=mock_read),
+        )
+
+        profile = await character_queries.get_character_profile_by_id("99")
+        assert profile is not None
+        assert profile.name == "Lonely"
+        assert profile.traits == []
+        assert profile.relationships == {}
+
+        character_queries.get_character_profile_by_id.cache_clear()
