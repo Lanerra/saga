@@ -127,27 +127,72 @@ class TestKGQueriesExtended:
         assert val is False
 
     async def test_find_candidate_duplicate_entities_logic(self, monkeypatch):
-        """Test candidate duplicate finding with specific thresholds."""
-        mock_read = AsyncMock(return_value=[
-            {"id1": "1", "name1": "Alice", "id2": "2", "name2": "Alicia", "similarity": 0.9}
-        ])
+        """Guardrail: query must use a bounded candidate pool and pass size via params."""
+        mock_read = AsyncMock(
+            return_value=[
+                {
+                    "id1": "1",
+                    "name1": "Alice",
+                    "id2": "2",
+                    "name2": "Alicia",
+                    "similarity": 0.9,
+                }
+            ]
+        )
         monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         results = await kg_queries.find_candidate_duplicate_entities(
             similarity_threshold=0.8,
             limit=10,
-            desc_threshold=0.5
+            desc_threshold=0.5,
         )
-        
+
         assert len(results) == 1
         assert mock_read.call_count == 1
-        args, kwargs = mock_read.call_args
-        params = args[1] if len(args) > 1 else kwargs.get("params", {}) # Handle positional or keyword args for params
-        # Note: execute_read_query signature is (query, params=None)
-        # Verify params passed correctly
+
+        args, _kwargs = mock_read.call_args
+        called_query = args[0]
         call_params = args[1]
+
+        assert "CALL {" in called_query
+        assert "LIMIT $candidate_pool_size" in called_query
+
         assert call_params["name_threshold"] == 0.8
         assert call_params["desc_threshold"] == 0.5
+        assert call_params["label_limit"] == 10
+
+        # Default pool sizing policy: min(max(label_limit*10, 200), 500) => 200
+        assert call_params["candidate_pool_size"] == 200
+
+    async def test_find_candidate_duplicate_entities_rejects_oversized_candidate_pool(
+        self, monkeypatch
+    ):
+        """Guardrail: oversized candidate pools must fail fast unless explicitly allowed."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(ValueError, match=r"exceeds max_candidate_pool_size"):
+            await kg_queries.find_candidate_duplicate_entities(
+                candidate_pool_size=1000,
+                max_candidate_pool_size=500,
+            )
+
+        mock_read.assert_not_called()
+
+    async def test_find_candidate_duplicate_entities_allows_oversized_candidate_pool_when_explicit(
+        self, monkeypatch
+    ):
+        """Guardrail: caller may explicitly opt in to larger (potentially expensive) pools."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        await kg_queries.find_candidate_duplicate_entities(
+            candidate_pool_size=1000,
+            max_candidate_pool_size=500,
+            allow_large_candidate_pool=True,
+        )
+
+        mock_read.assert_called_once()
 
 @pytest.mark.asyncio
 class TestMergeEntitiesExtended:

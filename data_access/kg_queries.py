@@ -1,4 +1,5 @@
 # data_access/kg_queries.py
+import copy
 import hashlib
 import re
 from typing import Any
@@ -24,9 +25,15 @@ logger = structlog.get_logger(__name__)
 # Cache to prevent repeated type upgrade logging for the same entity
 _upgrade_logged = set()
 
-# Valid relationship types for narrative knowledge graphs - use canonical constants
-# NOTE: This is used for informational logging only, not enforcement.
-# In permissive mode, novel relationship types are allowed and encouraged.
+# Valid relationship types for narrative knowledge graphs - canonical reference set.
+#
+# Contract:
+# - Relationship type *membership* is permissive (novel types may exist).
+# - Relationship types that are interpolated into Cypher MUST pass strict safety checks
+#   via validate_relationship_type_for_cypher_interpolation().
+#
+# This constant is used for reference/analytics/logging and (in some maintenance queries)
+# as a whitelist when promoting DYNAMIC_REL -> typed relationships.
 VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
 # Lookup table for canonical node labels to ensure consistent casing
@@ -164,105 +171,182 @@ def validate_relationship_type_for_cypher_interpolation(proposed_type: str) -> s
     return raw
 
 
-async def normalize_and_deduplicate_relationships() -> dict[str, int]:
+async def _promote_dynamic_relationships_to_typed_relationships(*, valid_types: list[str]) -> int:
     """
-    Comprehensive relationship normalization and deduplication workflow.
+    Promote ``DYNAMIC_REL`` relationships into typed relationships (write operation).
 
-    This function consolidates multiple relationship maintenance operations:
-    1. Validates and corrects relationship type names
-    2. Consolidates non-canonical types to canonical forms
-    3. Deduplicates exact duplicate relationships
-    4. Promotes DYNAMIC_REL relationships to proper typed relationships
+    Determinism/contract notes:
+    - This only promotes when ``r.type`` is already a safe, allowlisted relationship type.
+    - It preserves all properties except the ``type`` property (which is used only as a marker).
+    """
+    promotion_query = """
+    MATCH (s)-[r:DYNAMIC_REL]->(o)
+    WHERE r.type IS NOT NULL
+      AND r.type <> 'UNKNOWN'
+      AND r.type <> 'DYNAMIC_REL'
+      AND r.type IN $valid_types
+    WITH s, r, o, r.type as rel_type, properties(r) as rel_props
+
+    CALL apoc.create.relationship(
+        s,
+        rel_type,
+        apoc.map.removeKey(rel_props, 'type'),
+        o
+    ) YIELD rel
+
+    DELETE r
+    RETURN count(rel) AS promoted
+    """
+
+    try:
+        results = await neo4j_manager.execute_write_query(
+            promotion_query, {"valid_types": valid_types}
+        )
+        return results[0].get("promoted", 0) if results else 0
+    except Exception as exc:  # pragma: no cover - narrow DB errors
+        logger.error(
+            f"Failed to promote dynamic relationships to typed relationships: {exc}",
+            exc_info=True,
+        )
+        return 0
+
+
+async def normalize_and_deduplicate_relationships(
+    *,
+    run_validation: bool = True,
+    run_type_consolidation: bool = True,
+    run_deduplication: bool = True,
+    run_dynamic_promotion: bool = True,
+) -> dict[str, int]:
+    """
+    Canonical KG relationship maintenance pipeline (authoritative entrypoint).
+
+    This is the ONE function callers should use for relationship-type maintenance in Neo4j.
+    Other helpers (including ``promote_dynamic_relationships``) delegate to this to avoid
+    divergent behavior over time.
+
+    Deterministic contract / step ordering:
+    1) Validation / normalization of ``DYNAMIC_REL.type`` strings
+       - Fixes format variants (e.g. spaces/lowercase) using ``validate_relationship_type``.
+    2) Type consolidation (format normalization of relationship TYPE names in the graph)
+       - Renames non-canonical relationship types to the normalized canonical form.
+       - NOTE: Despite historical naming, this does NOT do semantic similarity.
+    3) Deduplication
+       - Removes exact duplicate relationships of the same type between the same nodes.
+    4) Optional promotion of ``DYNAMIC_REL`` -> typed relationships
+       - Only promotes when ``r.type`` is allowlisted (``VALID_RELATIONSHIP_TYPES``).
+
+    Args:
+        run_validation: Whether to validate/correct ``DYNAMIC_REL.type`` strings.
+        run_type_consolidation: Whether to consolidate relationship type format variants.
+        run_deduplication: Whether to deduplicate identical relationships.
+        run_dynamic_promotion: Whether to promote ``DYNAMIC_REL`` into typed relationships.
 
     Returns:
-        Dict with counts: {
-            'validated': int,
-            'consolidated': int,
-            'deduplicated': int,
-            'promoted': int,
-            'total': int
-        }
+        Dict with counts (always present, deterministic keys):
+            {
+              "validated": int,
+              "consolidated": int,
+              "deduplicated": int,
+              "promoted": int,
+              "total": int
+            }
     """
     if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
         logger.info(
             "Relationship normalization disabled - skipping all relationship maintenance"
         )
         return {
-            'validated': 0,
-            'consolidated': 0,
-            'deduplicated': 0,
-            'promoted': 0,
-            'total': 0
+            "validated": 0,
+            "consolidated": 0,
+            "deduplicated": 0,
+            "promoted": 0,
+            "total": 0,
         }
 
-    counts = {
-        'validated': 0,
-        'consolidated': 0,
-        'deduplicated': 0,
-        'promoted': 0,
-        'total': 0
+    counts: dict[str, int] = {
+        "validated": 0,
+        "consolidated": 0,
+        "deduplicated": 0,
+        "promoted": 0,
+        "total": 0,
     }
 
     try:
-        logger.info("Starting comprehensive relationship normalization workflow")
-
-        counts['validated'] = await _validate_and_correct_relationship_types()
-        logger.info(f"✓ Validated {counts['validated']} relationship types")
-
-        counts['consolidated'] = await consolidate_similar_relationships()
-        logger.info(f"✓ Consolidated {counts['consolidated']} relationships to canonical forms")
-
-        counts['deduplicated'] = await deduplicate_relationships()
-        logger.info(f"✓ Deduplicated {counts['deduplicated']} duplicate relationships")
-
-        promotion_query = """
-        MATCH (s)-[r:DYNAMIC_REL]->(o)
-        WHERE r.type IS NOT NULL
-          AND r.type <> 'UNKNOWN'
-          AND r.type <> 'DYNAMIC_REL'
-          AND r.type IN $valid_types
-        WITH s, r, o, r.type as rel_type, properties(r) as rel_props
-
-        CALL apoc.create.relationship(
-            s,
-            rel_type,
-            apoc.map.removeKey(rel_props, 'type'),
-            o
-        ) YIELD rel
-
-        DELETE r
-        RETURN count(rel) AS promoted
-        """
-
-        valid_types = list(VALID_RELATIONSHIP_TYPES)
-        results = await neo4j_manager.execute_write_query(
-            promotion_query, {"valid_types": valid_types}
+        logger.info(
+            "Starting relationship maintenance pipeline",
+            run_validation=run_validation,
+            run_type_consolidation=run_type_consolidation,
+            run_deduplication=run_deduplication,
+            run_dynamic_promotion=run_dynamic_promotion,
         )
-        counts['promoted'] = results[0].get("promoted", 0) if results else 0
-        logger.info(f"✓ Promoted {counts['promoted']} DYNAMIC_REL relationships to typed relationships")
 
-        counts['total'] = counts['validated'] + counts['consolidated'] + counts['deduplicated'] + counts['promoted']
+        if run_validation:
+            counts["validated"] = await _validate_and_correct_relationship_types()
+            logger.info(f"✓ Validated {counts['validated']} relationship types")
+
+        if run_type_consolidation:
+            counts["consolidated"] = await consolidate_similar_relationships()
+            logger.info(
+                f"✓ Consolidated {counts['consolidated']} relationships to canonical forms"
+            )
+
+        if run_deduplication:
+            counts["deduplicated"] = await deduplicate_relationships()
+            logger.info(f"✓ Deduplicated {counts['deduplicated']} duplicate relationships")
+
+        if run_dynamic_promotion:
+            counts["promoted"] = await _promote_dynamic_relationships_to_typed_relationships(
+                valid_types=list(VALID_RELATIONSHIP_TYPES)
+            )
+            logger.info(
+                f"✓ Promoted {counts['promoted']} DYNAMIC_REL relationships to typed relationships"
+            )
+
+        counts["total"] = (
+            counts["validated"]
+            + counts["consolidated"]
+            + counts["deduplicated"]
+            + counts["promoted"]
+        )
 
         logger.info(
-            f"Relationship normalization complete: {counts['total']} total changes "
-            f"(validated={counts['validated']}, consolidated={counts['consolidated']}, "
-            f"deduplicated={counts['deduplicated']}, promoted={counts['promoted']})"
+            "Relationship maintenance pipeline complete",
+            total=counts["total"],
+            validated=counts["validated"],
+            consolidated=counts["consolidated"],
+            deduplicated=counts["deduplicated"],
+            promoted=counts["promoted"],
         )
 
         return counts
 
     except Exception as exc:
         logger.error(
-            f"Relationship normalization workflow failed: {exc}",
-            exc_info=True
+            f"Relationship maintenance pipeline failed: {exc}",
+            exc_info=True,
         )
         return counts
 
 
 def _get_cypher_labels(entity_type: str | None) -> str:
     """
-    Helper to create a Cypher label string.
-    STRICTLY enforces that the primary label is in VALID_NODE_LABELS (or is a supporting type).
+    Build a Cypher label clause for a single node label (e.g. ``":Character"``).
+
+    **Policy: STRICT label enforcement.**
+    This helper is used at Cypher interpolation sites; it will only return labels that are
+    known to the application schema.
+
+    Accepted inputs:
+    - Any canonical label in VALID_NODE_LABELS
+    - A small set of "supporting" internal labels (e.g., NovelInfo, ValueNode, etc.)
+    - Common variants that the schema validator can normalize (e.g., "Person" -> "Character")
+
+    Raises:
+        ValueError: if `entity_type` is empty/None or cannot be normalized to an allowed label.
+
+    Returns:
+        A string of the form ``":<CanonicalLabel>"``.
     """
     if not entity_type or not entity_type.strip():
         raise ValueError("Entity type must be provided")
@@ -295,14 +379,16 @@ def _get_cypher_labels(entity_type: str | None) -> str:
         if is_valid and corrected:
             canonical = corrected
         else:
-            # In strict mode, we do NOT allow arbitrary labels
+            # STRICT: do not allow arbitrary labels at Cypher interpolation sites.
             raise ValueError(
-                f"Invalid node label '{entity_type}'. Must be one of {sorted(VALID_NODE_LABELS)}"
+                f"Invalid node label '{entity_type}'. "
+                f"Must be one of {sorted(VALID_NODE_LABELS)} (or a supported internal label)."
             )
 
     if canonical not in VALID_NODE_LABELS and canonical not in supporting_types:
         raise ValueError(
-            f"Invalid node label '{canonical}'. Must be one of {sorted(VALID_NODE_LABELS)}"
+            f"Invalid node label '{canonical}'. "
+            f"Must be one of {sorted(VALID_NODE_LABELS)} (or a supported internal label)."
         )
 
     # Removed implicit inheritance of Entity label
@@ -687,27 +773,66 @@ async def add_kg_triples_batch_to_db(
 
 
 @alru_cache(maxsize=256, ttl=300)  # Cache for 5 minutes with 256 entries max
-async def query_kg_from_db(
+async def _query_kg_from_db_cached(
     subject: str | None = None,
     predicate: str | None = None,
     obj_val: str | None = None,
     chapter_limit: int | None = None,
     include_provisional: bool = False,
     limit_results: int | None = None,
+    *,
+    allow_unbounded_scan: bool = False,
 ) -> list[dict[str, Any]]:
+    """
+    Query KG triples from Neo4j with explicit guardrails against accidental full-graph scans.
+
+    Guardrail contract:
+    - By default, this function requires at least one *caller-provided* filter that meaningfully
+      scopes the traversal (e.g., `subject`, `predicate`, `obj_val`, or `chapter_limit`).
+    - Calling this with no such filters will raise a ValueError, unless
+      `allow_unbounded_scan=True` is provided explicitly by the caller.
+
+    Rationale:
+    - The underlying Cypher uses a broad pattern `MATCH (s)-[r]->(o)` and an ORDER BY.
+      Without filters this can force expensive scans/sorts across the entire graph.
+    """
+    # Normalize empty-string inputs to "not provided" so callers don't accidentally bypass the guardrail.
+    subject_clean = subject.strip() if isinstance(subject, str) else subject
+    if subject_clean == "":
+        subject_clean = None
+
+    predicate_clean = predicate.strip() if isinstance(predicate, str) else predicate
+    if predicate_clean == "":
+        predicate_clean = None
+
+    obj_val_clean = obj_val.strip() if isinstance(obj_val, str) else obj_val
+    if obj_val_clean == "":
+        obj_val_clean = None
+
+    has_scoping_filter = any(
+        x is not None for x in (subject_clean, predicate_clean, obj_val_clean, chapter_limit)
+    )
+    if not has_scoping_filter and not allow_unbounded_scan:
+        raise ValueError(
+            "query_kg_from_db() requires at least one filter (subject, predicate, obj_val, "
+            "or chapter_limit) to avoid accidental full-graph scans. "
+            "Pass allow_unbounded_scan=True to explicitly opt in to an unbounded scan."
+        )
+
     conditions = []
     parameters: dict[str, Any] = {}
     # Removed generic :Entity constraint, now matching on any node
     match_clause = "MATCH (s)-[r]->(o) "
 
-    if subject is not None:
+    if subject_clean is not None:
         conditions.append("s.name = $subject_param")
-        parameters["subject_param"] = subject.strip()
-    if predicate is not None:
-        normalized_predicate = validate_relationship_type_for_cypher_interpolation(predicate)
+        parameters["subject_param"] = subject_clean
+    if predicate_clean is not None:
+        normalized_predicate = validate_relationship_type_for_cypher_interpolation(
+            predicate_clean
+        )
         match_clause = f"MATCH (s)-[r:`{normalized_predicate}`]->(o) "
-    if obj_val is not None:
-        obj_val_stripped = obj_val.strip()
+    if obj_val_clean is not None:
         conditions.append(
             """
             ( (o:ValueNode AND o.value = $object_param ) OR
@@ -715,7 +840,7 @@ async def query_kg_from_db(
             )
         """
         )
-        parameters["object_param"] = obj_val_stripped
+        parameters["object_param"] = obj_val_clean
     if chapter_limit is not None:
         conditions.append(
             f"coalesce(r.{KG_REL_CHAPTER_ADDED}, -1) <= $chapter_limit_param"
@@ -768,6 +893,43 @@ async def query_kg_from_db(
             query_preview=full_query[:200],
             params=parameters,
         )
+
+
+async def query_kg_from_db(
+    subject: str | None = None,
+    predicate: str | None = None,
+    obj_val: str | None = None,
+    chapter_limit: int | None = None,
+    include_provisional: bool = False,
+    limit_results: int | None = None,
+    *,
+    allow_unbounded_scan: bool = False,
+) -> list[dict[str, Any]]:
+    """Return KG triples.
+
+    This is a thin wrapper around the cached implementation that ensures callers always
+    receive a *fresh* structure they can safely mutate without contaminating future cache hits.
+
+    Rationale:
+    - async_lru caches and returns the *same object instance* on repeated calls.
+    - This function returns a deep copy of the cached value to prevent mutation leakage.
+    """
+    cached = await _query_kg_from_db_cached(
+        subject=subject,
+        predicate=predicate,
+        obj_val=obj_val,
+        chapter_limit=chapter_limit,
+        include_provisional=include_provisional,
+        limit_results=limit_results,
+        allow_unbounded_scan=allow_unbounded_scan,
+    )
+    return copy.deepcopy(cached)
+
+
+# Preserve legacy cache management hooks for tests / tooling.
+# (e.g., callers historically did `query_kg_from_db.cache_clear()`.)
+query_kg_from_db.cache_clear = _query_kg_from_db_cached.cache_clear  # type: ignore[attr-defined]
+query_kg_from_db.cache_info = _query_kg_from_db_cached.cache_info  # type: ignore[attr-defined]
 
 
 async def get_most_recent_value_from_db(
@@ -846,7 +1008,7 @@ async def get_most_recent_value_from_db(
 
 
 @alru_cache(maxsize=64, ttl=600)  # Cache novel info properties for 10 minutes
-async def get_novel_info_property_from_db(property_key: str) -> Any | None:
+async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | None:
     """Return a property value from the NovelInfo node."""
     key = property_key.strip() if property_key is not None else ""
     if not key:
@@ -878,45 +1040,106 @@ async def get_novel_info_property_from_db(property_key: str) -> Any | None:
     return None
 
 
+async def get_novel_info_property_from_db(property_key: str) -> Any | None:
+    """Return a NovelInfo property value.
+
+    Wrapper around the cached implementation that returns a defensive deep copy so callers
+    can't mutate cached state when the stored property is a mutable structure (e.g., list/dict).
+    """
+    cached = await _get_novel_info_property_from_db_cached(property_key)
+    return copy.deepcopy(cached)
+
+
+# Preserve legacy cache management hooks for tests / tooling.
+get_novel_info_property_from_db.cache_clear = (  # type: ignore[attr-defined]
+    _get_novel_info_property_from_db_cached.cache_clear
+)
+get_novel_info_property_from_db.cache_info = (  # type: ignore[attr-defined]
+    _get_novel_info_property_from_db_cached.cache_info
+)
+
+
 async def get_chapter_context_for_entity(
-    entity_name: str | None = None, entity_id: str | None = None
+    entity_name: str | None = None,
+    entity_id: str | None = None,
+    *,
+    chapter_context_limit: int = 5,
+    max_event_chapters: int = 50,
+    max_rel_chapters: int = 200,
 ) -> list[dict[str, Any]]:
     """
-    Finds chapters where an entity was mentioned or involved to provide context for enrichment.
-    Searches by name for Characters/ValueNodes or by ID for WorldElements.
+    Find recent chapter context for an entity (bounded/deterministic).
+
+    Guardrail contract:
+    - Avoids OPTIONAL MATCH cartesian row explosion by collecting chapter numbers in isolated
+      subqueries, then combining the results.
+    - Output is deterministic and bounded:
+      - chapter numbers are sorted descending
+      - at most `chapter_context_limit` chapters are returned
     """
     if not entity_name and not entity_id:
         return []
 
+    if chapter_context_limit <= 0:
+        raise ValueError("chapter_context_limit must be a positive integer")
+    if chapter_context_limit > 20:
+        raise ValueError(
+            "chapter_context_limit is capped at 20 to keep context retrieval bounded"
+        )
+
+    if max_event_chapters <= 0 or max_rel_chapters <= 0:
+        raise ValueError("max_event_chapters and max_rel_chapters must be positive integers")
+
     match_clause = (
         "MATCH (e {id: $id_param})" if entity_id else "MATCH (e {name: $name_param})"
     )
-    params = {"id_param": entity_id} if entity_id else {"name_param": entity_name}
+    params: dict[str, Any] = {"id_param": entity_id} if entity_id else {"name_param": entity_name}
+    params.update(
+        {
+            "chapter_context_limit": int(chapter_context_limit),
+            "max_event_chapters": int(max_event_chapters),
+            "max_rel_chapters": int(max_rel_chapters),
+        }
+    )
 
     query = f"""
     {match_clause}
 
-    // Get all paths to potential chapter number sources
-    OPTIONAL MATCH (e)-[]->(event) WHERE (event:DevelopmentEvent OR event:WorldElaborationEvent) AND event.chapter_updated IS NOT NULL
-    OPTIONAL MATCH (e)-[r]->() WHERE r.chapter_added IS NOT NULL
+    // Collect chapter numbers from independent sources without row explosion.
+    WITH e
 
-    // Collect all numbers into one list, then process
+    CALL {{
+      WITH e
+      OPTIONAL MATCH (e)-[]->(event)
+      WHERE (event:DevelopmentEvent OR event:WorldElaborationEvent)
+        AND event.chapter_updated IS NOT NULL
+      WITH collect(DISTINCT event.chapter_updated) AS chapters
+      RETURN chapters[..$max_event_chapters] AS event_chapters
+    }}
+
+    CALL {{
+      WITH e
+      OPTIONAL MATCH (e)-[r]->()
+      WHERE r.chapter_added IS NOT NULL
+      WITH collect(DISTINCT r.chapter_added) AS chapters
+      RETURN chapters[..$max_rel_chapters] AS rel_chapters
+    }}
+
     WITH
-      CASE WHEN e.created_chapter IS NOT NULL THEN [e.created_chapter] ELSE [] END as created_chapter_list,
-      COLLECT(DISTINCT event.chapter_updated) as event_chapters,
-      COLLECT(DISTINCT r.chapter_added) as rel_chapters
+      CASE WHEN e.created_chapter IS NOT NULL THEN [e.created_chapter] ELSE [] END AS created_chapter_list,
+      event_chapters,
+      rel_chapters
 
-    // Combine, filter out nulls, unwind, get distinct
-    WITH created_chapter_list + event_chapters + rel_chapters as all_chapters
-    UNWIND all_chapters as chapter_num
+    WITH created_chapter_list + event_chapters + rel_chapters AS all_chapters
+    UNWIND all_chapters AS chapter_num
     WITH DISTINCT chapter_num
     WHERE chapter_num IS NOT NULL AND chapter_num > 0
+    ORDER BY chapter_num DESC
+    LIMIT $chapter_context_limit
 
-    // Now fetch the chapter data
     MATCH (c:Chapter {{number: chapter_num}})
-    RETURN c.number as chapter_number, c.summary as summary, c.text as text
+    RETURN c.number AS chapter_number, c.summary AS summary, c.text AS text
     ORDER BY c.number DESC
-    LIMIT 5 // Limit context to most recent 5 chapters
     """
     try:
         results = await neo4j_manager.execute_read_query(query, params)
@@ -997,28 +1220,65 @@ async def find_candidate_duplicate_entities(
     *,
     desc_threshold: float = 0.30,
     per_label_limit: int | None = None,
+    candidate_pool_size: int | None = None,
+    max_candidate_pool_size: int = 500,
+    allow_large_candidate_pool: bool = False,
 ) -> list[dict[str, Any]]:
     """
-    Find candidate duplicate entity pairs with tighter prefilters.
+    Find candidate duplicate entity pairs with bounded candidate selection.
 
-    Improvements vs. previous approach:
-    - Restricts comparisons to like-with-like labels (Character↔Character, Typed Entities↔Typed Entities).
-    - Normalizes names, gates by first-character and token overlap to prune pairs.
-    - Optionally incorporates lightweight description token-overlap as a secondary check.
-    - Keeps API compatible with existing caller ("similarity_threshold" and "limit").
+    Guardrail contract:
+    - This query can be quadratic in the number of candidate nodes.
+      To prevent worst-case blowups, we first select a bounded candidate pool per label
+      (Characters; and a set of non-Character entity labels), then only compare pairs
+      within that pool.
+    - `max_candidate_pool_size` is a hard cap (unless `allow_large_candidate_pool=True`).
+
+    API compatibility notes:
+    - `similarity_threshold` and `limit` are preserved.
+    - Results are "best effort" when the graph is very large: only the bounded pool is compared.
     """
+    if limit <= 0:
+        raise ValueError("limit must be a positive integer")
+
     # Use a per-label limit when provided; default to overall limit otherwise
     label_limit = per_label_limit or limit
+    if label_limit <= 0:
+        raise ValueError("per_label_limit must be a positive integer when provided")
 
-    # The query runs two label-specific searches and unions results
-    # Description similarity is a simple Jaccard-overlap on tokenized, cleaned text
+    if max_candidate_pool_size <= 0:
+        raise ValueError("max_candidate_pool_size must be a positive integer")
+
+    # Choose a conservative default pool size based on requested output size.
+    # Keep it bounded to prevent O(N^2) blowups.
+    if candidate_pool_size is None:
+        candidate_pool_size = min(max(label_limit * 10, 200), max_candidate_pool_size)
+
+    candidate_pool_size = int(candidate_pool_size)
+    if candidate_pool_size < label_limit:
+        candidate_pool_size = label_limit
+
+    if candidate_pool_size > max_candidate_pool_size and not allow_large_candidate_pool:
+        raise ValueError(
+            f"candidate_pool_size={candidate_pool_size} exceeds max_candidate_pool_size={max_candidate_pool_size}. "
+            "Pass allow_large_candidate_pool=True to explicitly opt in to larger (potentially expensive) comparisons."
+        )
+
+    # The query runs two bounded label-specific searches and unions results.
+    # Description similarity is a simple overlap on tokenized, cleaned text.
     query = """
-    // ---------- Character pairs ----------
-    MATCH (e1:Character)
-    WITH e1 WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
-    MATCH (e2:Character)
+    // ---------- Character pairs (bounded candidate pool) ----------
+    CALL {
+      MATCH (e:Character)
+      WHERE e.name IS NOT NULL AND e.id IS NOT NULL
+      RETURN e
+      ORDER BY toLower(toString(e.name)), toString(e.id)
+      LIMIT $candidate_pool_size
+    }
+    WITH collect(e) AS candidates
+    UNWIND candidates AS e1
+    UNWIND candidates AS e2
     WHERE elementId(e1) < elementId(e2)
-      AND e2.name IS NOT NULL AND e2.id IS NOT NULL
     WITH e1, e2,
          toLower(toString(e1.name)) AS n1,
          toLower(toString(e2.name)) AS n2,
@@ -1062,14 +1322,19 @@ async def find_candidate_duplicate_entities(
 
     UNION
 
-    // ---------- Typed Entity pairs (non-Character) ----------
-    MATCH (e1)
-    WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
-    WITH e1 WHERE e1.name IS NOT NULL AND e1.id IS NOT NULL
-    MATCH (e2)
-    WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
-      AND elementId(e1) < elementId(e2)
-      AND e2.name IS NOT NULL AND e2.id IS NOT NULL
+    // ---------- Typed Entity pairs (non-Character; bounded candidate pool) ----------
+    CALL {
+      MATCH (e)
+      WHERE (e:Object OR e:Artifact OR e:Location OR e:Document OR e:Item OR e:Relic)
+        AND e.name IS NOT NULL AND e.id IS NOT NULL
+      RETURN e
+      ORDER BY toLower(toString(e.name)), toString(e.id)
+      LIMIT $candidate_pool_size
+    }
+    WITH collect(e) AS candidates
+    UNWIND candidates AS e1
+    UNWIND candidates AS e2
+    WHERE elementId(e1) < elementId(e2)
     WITH e1, e2,
          toLower(toString(e1.name)) AS n1,
          toLower(toString(e2.name)) AS n2,
@@ -1116,6 +1381,7 @@ async def find_candidate_duplicate_entities(
         "name_threshold": similarity_threshold,
         "desc_threshold": desc_threshold,
         "label_limit": label_limit,
+        "candidate_pool_size": candidate_pool_size,
     }
     try:
         results = await neo4j_manager.execute_read_query(query, params)
@@ -1331,65 +1597,23 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
 async def promote_dynamic_relationships() -> int:
     """
-    Enhanced relationship type promotion with validation.
+    Deprecated entrypoint: use ``normalize_and_deduplicate_relationships`` instead.
 
-    First validates and corrects relationship types, then promotes valid types
-    to proper relationship types.
+    This function historically performed:
+    - validation/correction of ``DYNAMIC_REL.type`` strings, then
+    - promotion of ``DYNAMIC_REL`` -> typed relationships.
+
+    To prevent drift, it is now a thin wrapper around the canonical pipeline.
+    Return value is preserved for backwards compatibility: the number of relationships
+    processed for validation + promotion (not including consolidation/deduplication).
     """
-    # Add early return if normalization is disabled
-    if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
-        logger.info(
-            "Relationship normalization disabled - skipping dynamic relationship resolution"
-        )
-        return 0
-
-    total_promoted = 0
-
-    # Step 1: Validate and correct existing relationship types
-    corrected_count = await _validate_and_correct_relationship_types()
-    logger.info(f"Validated and corrected {corrected_count} relationship types")
-
-    # Step 2: Promote DYNAMIC_REL to typed relationships
-    promotion_query = """
-    MATCH (s)-[r:DYNAMIC_REL]->(o)
-    WHERE r.type IS NOT NULL
-      AND r.type <> 'UNKNOWN'
-      AND r.type <> 'DYNAMIC_REL'
-      AND r.type IN $valid_types
-    WITH s, r, o, r.type as rel_type, properties(r) as rel_props
-
-    // Create new typed relationship
-    CALL apoc.create.relationship(
-        s,
-        rel_type,
-        apoc.map.removeKey(rel_props, 'type'),
-        o
-    ) YIELD rel
-
-    // Delete old dynamic relationship
-    DELETE r
-    RETURN count(rel) AS promoted
-    """
-
-    try:
-        # Use our validated relationship types
-        valid_types = list(VALID_RELATIONSHIP_TYPES)
-        results = await neo4j_manager.execute_write_query(
-            promotion_query, {"valid_types": valid_types}
-        )
-        promoted_count = results[0].get("promoted", 0) if results else 0
-        total_promoted = corrected_count + promoted_count
-
-        logger.info(
-            f"Successfully promoted {promoted_count} dynamic relationships to typed relationships"
-        )
-        logger.info(f"Total relationship processing: {total_promoted} relationships")
-
-        return total_promoted
-
-    except Exception as exc:
-        logger.error(f"Failed to promote dynamic relationships: {exc}", exc_info=True)
-        return total_promoted  # Return partial success
+    counts = await normalize_and_deduplicate_relationships(
+        run_validation=True,
+        run_type_consolidation=False,
+        run_deduplication=False,
+        run_dynamic_promotion=True,
+    )
+    return int(counts.get("validated", 0) + counts.get("promoted", 0))
 
 
 async def _validate_and_correct_relationship_types() -> int:
@@ -1467,12 +1691,23 @@ async def deduplicate_relationships() -> int:
 
 
 async def consolidate_similar_relationships() -> int:
-    """Consolidate semantically similar relationships using the predefined taxonomy."""
-    # Get all relationship types currently in the database
+    """
+    Consolidate relationship type *format* variants into a canonical type name.
+
+    Important: despite the historical name, this function does **not** perform semantic
+    similarity consolidation. It only normalizes relationship TYPE names via
+    ``validate_relationship_type`` (uppercase + underscores) and rewrites the graph to
+    use the normalized type.
+
+    Determinism:
+    - We iterate types in a stable order (count desc, then rel_type asc) to make results
+      reproducible across runs when counts tie.
+    """
+    # Get all relationship types currently in the database (stable ordering)
     query_current = """
     MATCH ()-[r]->()
     RETURN DISTINCT type(r) AS rel_type, count(r) AS count
-    ORDER BY count DESC
+    ORDER BY count DESC, rel_type ASC
     """
 
     try:

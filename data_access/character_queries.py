@@ -1,4 +1,5 @@
 # data_access/character_queries.py
+from collections import defaultdict
 from typing import Any
 
 import structlog
@@ -129,19 +130,43 @@ async def get_character_profile_by_name(
 
     profile["traits"] = sorted([t for t in record["traits"] if t])
 
-    relationships: dict[str, Any] = {}
+    # Relationships are represented as a dict keyed by target_name.
+    #
+    # Remediation: relationship projection must NOT be lossy when there are multiple
+    # relationships to the same target (e.g., FRIEND_OF + ENEMY_OF to "Bob").
+    #
+    # Representation choice (least-breaking):
+    # - If there is exactly one relationship to a target, keep the legacy shape:
+    #     relationships[target_name] -> { ...props..., "type": "REL_TYPE" }
+    # - If there are multiple relationships to a target, store a list:
+    #     relationships[target_name] -> [{...}, {...}, ...]
+    #
+    # This preserves existing callers/tests for the common single-relationship case,
+    # while making collisions explicit rather than overwriting.
+    rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
     for rel_rec in record["relationships"]:
         if not rel_rec or not rel_rec.get("target_name"):
             continue
+
         target_name = rel_rec["target_name"]
+
         rel_props_full = rel_rec.get("rel_props", {})
-        rel_props_cleaned = {}
+        rel_props_cleaned: dict[str, Any] = {}
+
         if isinstance(rel_props_full, dict):
             rel_props_cleaned = {
                 k: v
                 for k, v in rel_props_full.items()
-                if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
+                if k
+                not in [
+                    "created_ts",
+                    "updated_ts",
+                    "source_profile_managed",
+                    "chapter_added",
+                ]
             }
+
         # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
         # Fall back to legacy property-based typing if present.
         rel_type = rel_rec.get("rel_type")
@@ -150,9 +175,30 @@ async def get_character_profile_by_name(
         elif isinstance(rel_props_full, dict) and "type" in rel_props_full:
             rel_props_cleaned["type"] = rel_props_full["type"]
 
-        if "chapter_added" in rel_props_full:
+        # Preserve chapter_added when present (callers sometimes use it).
+        if isinstance(rel_props_full, dict) and "chapter_added" in rel_props_full:
             rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
-        relationships[target_name] = rel_props_cleaned
+
+        rels_by_target[target_name].append(rel_props_cleaned)
+
+    # Deterministic/stable output:
+    # - sort targets
+    # - sort multi-relationship lists within each target
+    relationships: dict[str, Any] = {}
+    for target_name in sorted(rels_by_target.keys()):
+        rel_list = rels_by_target[target_name]
+        rel_list_sorted = sorted(
+            rel_list,
+            key=lambda r: (
+                str(r.get("type", "")),
+                str(r.get("description", "")),
+                str(r.get("chapter_added", "")),
+            ),
+        )
+        relationships[target_name] = (
+            rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
+        )
+
     profile["relationships"] = relationships
 
     for dev_rec in record["dev_events"]:

@@ -2,21 +2,26 @@
 """
 Constants used for property names and the canonical schema in the knowledge graph.
 
-**IMPORTANT - PERMISSIVE MODE:**
-As of the LangGraph migration, SAGA now operates in PERMISSIVE MODE for entity types
-and relationships. The constants defined here serve as:
+**Schema enforcement policy (contract):**
 
-1. **Suggestions and Examples** - Common patterns for LLMs to reference
-2. **Documentation** - A catalog of frequently used types in narratives
-3. **Analytics** - For tracking and analyzing emergent patterns
+- **Node labels (STRICT for Cypher label interpolation / writes):**
+  The application enforces a canonical set of node labels for entities when building
+  Cypher queries that interpolate labels (e.g., via [`_get_cypher_labels()`](data_access/kg_queries.py:262)).
+  Unknown or unsupported labels are rejected with a `ValueError` rather than silently
+  creating new labels in the graph.
 
-They are **NOT** enforcement mechanisms. The LLM is free to create:
-- Novel entity types not listed in NODE_LABELS
-- Novel relationship types not listed in RELATIONSHIP_TYPES
-- Custom combinations appropriate for the narrative context
+  Rationale: labels participate in Neo4j constraints/indexes and are commonly relied
+  upon by query patterns; allowing arbitrary labels risks schema drift and unexpected
+  query behavior.
 
-This supports creative freedom, genre-specific conventions, and emergent patterns
-that weren't anticipated when designing the schema.
+- **Relationship types (PERMISSIVE membership, STRICT safety):**
+  Relationship types are allowed to be novel (not present in [`RELATIONSHIP_TYPES`](models/kg_constants.py:211)),
+  but any relationship type that is *directly interpolated into Cypher* must pass
+  strict safety validation (uppercase and matching `^[A-Z0-9_]+$`) via
+  [`validate_relationship_type_for_cypher_interpolation()`](data_access/kg_queries.py:135).
+
+In other words: labels are a strict schema surface; relationship-type *names* may be
+emergent, but must be safe for Cypher interpolation when used in queries.
 """
 
 # Relationship and node property names

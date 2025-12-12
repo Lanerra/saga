@@ -59,17 +59,24 @@ class TestCypherLabelGeneration:
     """Tests for Cypher label generation."""
 
     def test_get_cypher_labels_character(self):
-        """Test generating labels for Character type."""
-        result = kg_queries._get_cypher_labels("Character")
-        assert ":Character" in result or "Character" in result
+        """Canonical labels return a single strict Cypher label clause."""
+        assert kg_queries._get_cypher_labels("Character") == ":Character"
 
     def test_get_cypher_labels_location(self):
-        """Test generating labels for Location type."""
-        result = kg_queries._get_cypher_labels("Location")
-        assert ":Location" in result or "Location" in result
+        """Canonical labels return a single strict Cypher label clause."""
+        assert kg_queries._get_cypher_labels("Location") == ":Location"
+
+    def test_get_cypher_labels_normalizes_common_variant(self):
+        """Common variants are normalized via schema validator (e.g., Person -> Character)."""
+        assert kg_queries._get_cypher_labels("Person") == ":Character"
+
+    def test_get_cypher_labels_rejects_unknown_label(self):
+        """Unknown labels are rejected (strict schema enforcement)."""
+        with pytest.raises(ValueError, match=r"Invalid node label"):
+            kg_queries._get_cypher_labels("MadeUpLabel")
 
     def test_get_cypher_labels_none(self):
-        """Test generating labels with no type."""
+        """Missing entity type is rejected."""
         with pytest.raises(ValueError, match="Entity type must be provided"):
             kg_queries._get_cypher_labels(None)
 
@@ -139,6 +146,65 @@ class TestKGQueries:
         assert len(result) > 0
         mock_read.assert_called_once()
 
+    async def test_query_kg_from_db_cached_result_is_defensive_copy(self, monkeypatch):
+        """Mutating a cached read result must not contaminate future cache hits.
+
+        Regression for: cached mutable return value risk.
+        """
+        kg_queries.query_kg_from_db.cache_clear()
+
+        mock_read = AsyncMock(
+            return_value=[
+                {
+                    "subject": "Alice",
+                    "predicate": "FRIEND_OF",
+                    "object": "Bob",
+                    "meta": {"tags": ["t1"], "nested": [{"k": "v"}]},
+                }
+            ]
+        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        # First call populates cache
+        r1 = await kg_queries.query_kg_from_db(subject="Alice")
+        assert r1[0]["meta"]["tags"] == ["t1"]
+        assert r1[0]["meta"]["nested"][0]["k"] == "v"
+
+        # Mutate deeply (these would contaminate the cache if the cached object were returned directly)
+        r1[0]["meta"]["tags"].append("MUTATED")
+        r1[0]["meta"]["nested"][0]["k"] = "CHANGED"
+
+        # Second call should be served from cache (DB hit must not occur),
+        # but MUST return an uncontaminated structure.
+        r2 = await kg_queries.query_kg_from_db(subject="Alice")
+        mock_read.assert_called_once()
+
+        assert r2[0]["meta"]["tags"] == ["t1"]
+        assert r2[0]["meta"]["nested"][0]["k"] == "v"
+
+    async def test_query_kg_from_db_requires_filter_by_default(self, monkeypatch):
+        """Guardrail: calling with no filters must fail fast (no full-graph scan)."""
+        kg_queries.query_kg_from_db.cache_clear()
+
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(ValueError, match=r"requires at least one filter"):
+            await kg_queries.query_kg_from_db()
+
+        mock_read.assert_not_called()
+
+    async def test_query_kg_from_db_allows_unbounded_scan_when_explicit(self, monkeypatch):
+        """Guardrail: caller may opt in explicitly to unbounded scan behavior."""
+        kg_queries.query_kg_from_db.cache_clear()
+
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        await kg_queries.query_kg_from_db(allow_unbounded_scan=True, limit_results=1)
+
+        mock_read.assert_called_once()
+
     async def test_query_kg_from_db_raises_database_error_on_db_failure(self, monkeypatch):
         """P1.9: DB failures should raise standardized DatabaseError (not return [])."""
         kg_queries.query_kg_from_db.cache_clear()
@@ -160,6 +226,27 @@ class TestKGQueries:
 
         result = await kg_queries.get_novel_info_property_from_db("title")
         assert result == "Test Novel"
+
+    async def test_get_novel_info_property_from_db_cached_value_is_defensive_copy(
+        self, monkeypatch
+    ):
+        """If NovelInfo returns a mutable structure, caching must not leak mutations."""
+        kg_queries.get_novel_info_property_from_db.cache_clear()
+
+        mock_read = AsyncMock(return_value=[{"value": {"arr": [1, 2], "obj": {"x": 1}}}])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        v1 = await kg_queries.get_novel_info_property_from_db("title")
+        assert v1 == {"arr": [1, 2], "obj": {"x": 1}}
+
+        # Deep mutation
+        v1["arr"].append(999)
+        v1["obj"]["x"] = 42
+
+        v2 = await kg_queries.get_novel_info_property_from_db("title")
+        mock_read.assert_called_once()
+
+        assert v2 == {"arr": [1, 2], "obj": {"x": 1}}
 
     async def test_get_novel_info_property_missing(self, monkeypatch):
         """Non-allowlisted NovelInfo keys are rejected (P0.4 Cypher injection hardening)."""
@@ -308,23 +395,29 @@ class TestRelationshipMaintenance:
 
     async def test_deduplicate_relationships(self, monkeypatch):
         """Test deduplicating relationships."""
-        mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        mock_write = AsyncMock(return_value=[{"removed": 0}])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_write_query", mock_write)
 
         result = await kg_queries.deduplicate_relationships()
         assert isinstance(result, int)
+        mock_write.assert_called_once()
 
     async def test_consolidate_similar_relationships(self, monkeypatch):
         """Test consolidating similar relationships."""
-        mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        # consolidate_similar_relationships() first reads the current relationship types
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        # and only writes if there is something to consolidate
+        mock_write = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_write_query", mock_write)
 
         result = await kg_queries.consolidate_similar_relationships()
         assert isinstance(result, int)
+        assert result == 0
+
+        mock_read.assert_called_once()
+        mock_write.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -333,13 +426,30 @@ class TestDynamicRelationships:
 
     async def test_promote_dynamic_relationships(self, monkeypatch):
         """Test promoting dynamic relationships."""
-        mock_read = AsyncMock(return_value=[{"count": 0}])
+        # Relationship maintenance can be disabled globally via config; this test exercises
+        # the "enabled" code path so we can assert the underlying DB calls deterministically.
         monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
+            kg_queries.config.settings,
+            "DISABLE_RELATIONSHIP_NORMALIZATION",
+            False,
+            raising=False,
         )
+
+        # promote_dynamic_relationships() is now a thin wrapper around the canonical
+        # relationship maintenance pipeline. It performs:
+        # - _validate_and_correct_relationship_types(): execute_read_query (+ optional write updates)
+        # - promotion: execute_write_query
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        mock_write = AsyncMock(return_value=[{"promoted": 0}])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_write_query", mock_write)
 
         result = await kg_queries.promote_dynamic_relationships()
         assert result == 0
+
+        mock_read.assert_called_once()
+        mock_write.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -374,14 +484,30 @@ class TestPathQueries:
 class TestChapterContext:
     """Tests for chapter context queries."""
 
-    async def test_get_chapter_context_for_entity(self, monkeypatch):
-        """Test getting chapter context for entity."""
+    async def test_get_chapter_context_for_entity_is_bounded_and_uses_subqueries(
+        self, monkeypatch
+    ):
+        """Guardrail: query should avoid OPTIONAL-MATCH row explosion and remain bounded."""
         mock_read = AsyncMock(
-            return_value=[{"chapter": 1, "description": "First appearance"}]
+            return_value=[{"chapter_number": 1, "summary": "First appearance", "text": "..." }]
         )
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
-        result = await kg_queries.get_chapter_context_for_entity("Alice", 5)
+        result = await kg_queries.get_chapter_context_for_entity(
+            entity_name="Alice",
+            chapter_context_limit=5,
+        )
         assert isinstance(result, list)
+
+        mock_read.assert_called_once()
+        called_query = mock_read.call_args.args[0]
+        called_params = mock_read.call_args.args[1]
+
+        # Ensure the new bounded/subquery-based structure is in use.
+        assert "CALL {" in called_query
+        assert "LIMIT $chapter_context_limit" in called_query
+
+        # Ensure the expected bound params are provided.
+        assert called_params["chapter_context_limit"] == 5
+        assert called_params["max_event_chapters"] > 0
+        assert called_params["max_rel_chapters"] > 0

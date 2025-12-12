@@ -50,10 +50,69 @@ class TestGetCharacterProfileFetchesNoRowDropping:
         assert profile is not None
         assert profile.name == "Alice"
         assert "Brave" in profile.traits
+
+        # Single relationship to a target keeps legacy shape: dict[str, Any]
         assert "Bob" in profile.relationships
+        assert isinstance(profile.relationships["Bob"], dict)
+        assert profile.relationships["Bob"]["type"] == "FRIEND_OF"
 
         profile_dict = profile.to_dict()
         assert profile_dict["development_in_chapter_1"] == "Event1"
+
+        clear_all_data_access_caches()
+
+    async def test_get_character_profile_by_name_preserves_multi_relationships_same_target(
+        self, monkeypatch
+    ):
+        """Regression: multiple relationships to the same target must not overwrite each other."""
+        async def mock_read(query, params=None):
+            if "MATCH (c:Character {name: $name})" in query:
+                return [
+                    {
+                        "c": {"name": "Alice", "description": "Hero", "id": "1"},
+                        "traits": ["Brave"],
+                        "relationships": [
+                            {
+                                "target_name": "Bob",
+                                "rel_type": "FRIEND_OF",
+                                "rel_props": {
+                                    "source_profile_managed": True,
+                                    "description": "Genuinely likes him",
+                                },
+                            },
+                            {
+                                "target_name": "Bob",
+                                "rel_type": "ENEMY_OF",
+                                "rel_props": {
+                                    "source_profile_managed": True,
+                                    "description": "Also rivals him",
+                                },
+                            },
+                        ],
+                        "dev_events": [],
+                    }
+                ]
+            return []
+
+        monkeypatch.setattr(
+            character_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=mock_read),
+        )
+
+        profile = await character_queries.get_character_profile_by_name("Alice")
+        assert profile is not None
+
+        assert "Bob" in profile.relationships
+        bob_rels = profile.relationships["Bob"]
+        assert isinstance(bob_rels, list)
+        assert len(bob_rels) == 2
+
+        # Deterministic ordering: by type then description then chapter_added.
+        assert bob_rels[0]["type"] == "ENEMY_OF"
+        assert bob_rels[1]["type"] == "FRIEND_OF"
+
+        assert {r["type"] for r in bob_rels} == {"FRIEND_OF", "ENEMY_OF"}
 
         clear_all_data_access_caches()
 

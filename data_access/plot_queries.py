@@ -1,4 +1,5 @@
 # data_access/plot_queries.py
+import json
 from typing import Any
 
 import structlog
@@ -22,11 +23,22 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     statements: list[tuple[str, dict[str, Any]]] = []
 
-    novel_props_for_set = {
-        k: v
-        for k, v in plot_data.items()
-        if not isinstance(v, list | dict) and v is not None and k != "id"
-    }
+    # Persist primitive NovelInfo properties as-is, and persist any structured/list/dict
+    # properties as JSON under a deterministic *_json key so we can round-trip them.
+    #
+    # This avoids silently ignoring input schema (acts/chapters/etc) while staying within
+    # Neo4j property type constraints.
+    novel_props_for_set: dict[str, Any] = {}
+    for k, v in plot_data.items():
+        if v is None or k == "id" or k == "plot_points":
+            continue
+
+        if isinstance(v, list | dict):
+            # Neo4j properties can't store nested maps/lists-of-maps directly.
+            novel_props_for_set[f"{k}_json"] = json.dumps(v)
+        else:
+            novel_props_for_set[k] = v
+
     novel_props_for_set["id"] = novel_id
 
     statements.append(
@@ -207,9 +219,27 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
 
     novel_node = result_list[0]["ni"]
     plot_data.update(dict(novel_node))
-    plot_data.pop("id", None)  # Remove internal DB ID from returned dict
+
+    # Remove internal DB IDs/timestamps from returned dict
+    plot_data.pop("id", None)
     plot_data.pop("created_ts", None)
     plot_data.pop("updated_ts", None)
+
+    # Round-trip any *_json NovelInfo properties back into their structured form.
+    # (e.g., acts_json -> acts)
+    json_keys = [k for k in list(plot_data.keys()) if k.endswith("_json")]
+    for json_key in json_keys:
+        raw = plot_data.get(json_key)
+        if not isinstance(raw, str):
+            continue
+        try:
+            decoded = json.loads(raw)
+        except Exception:
+            # Leave the raw string untouched if decode fails.
+            continue
+
+        plot_data[json_key[: -len("_json")]] = decoded
+        plot_data.pop(json_key, None)
 
     # Fetch PlotPoints linked to this NovelInfo, ordered by sequence
     plot_points_query = """
@@ -221,17 +251,18 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
         plot_points_query, {"novel_id_param": novel_id}
     )
 
-    fetched_plot_points = []
+    # Return plot points as structured dicts end-to-end.
+    fetched_plot_points: list[dict[str, Any]] = []
     if pp_results:
         for record in pp_results:
             pp_node = record.get("pp")
-            if pp_node:
-                fetched_plot_points.append(
-                    pp_node.get(
-                        "description",
-                        f"Plot Point {pp_node.get('sequence')}: Desc missing",
-                    )
-                )
+            if not pp_node:
+                continue
+            pp_dict = dict(pp_node)
+            pp_dict.pop("created_ts", None)
+            pp_dict.pop("updated_ts", None)
+            fetched_plot_points.append(pp_dict)
+
     plot_data["plot_points"] = fetched_plot_points
 
     logger.info(
@@ -241,73 +272,68 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
 
 
 async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
-    """Append a new PlotPoint node linked to NovelInfo and previous PlotPoint."""
+    """Append a new PlotPoint node linked to NovelInfo and previous PlotPoint.
+
+    Concurrency safety:
+    - Sequence/id assignment is performed atomically inside a single write query by
+      incrementing a NovelInfo-scoped counter property (`ni.last_plot_point_seq`).
+    - Neo4j will take a write lock on the NovelInfo node for the duration of the
+      transaction, serializing concurrent increments and preventing duplicate IDs.
+    """
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
-    # Determine next sequence number
-    query = (
-        "MATCH (:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint) "
-        "RETURN coalesce(max(pp.sequence), 0) AS max_seq"
+    prev_id = prev_plot_point_id or None
+
+    query = """
+    MATCH (ni:NovelInfo {id: $novel_id})
+    SET ni.last_plot_point_seq = coalesce(ni.last_plot_point_seq, 0) + 1
+    WITH ni, ni.last_plot_point_seq AS next_seq
+    WITH ni, next_seq, ("pp_" + $novel_id + "_" + toString(next_seq)) AS pp_id
+    CREATE (pp:PlotPoint {
+        id: pp_id,
+        sequence: next_seq,
+        description: $desc,
+        status: 'pending',
+        created_ts: timestamp()
+    })
+    MERGE (ni)-[:HAS_PLOT_POINT]->(pp)
+    WITH ni, pp, pp_id
+    OPTIONAL MATCH (ni)-[:HAS_PLOT_POINT]->(prev:PlotPoint {id: $prev_id})
+    FOREACH (_ IN CASE WHEN prev IS NULL THEN [] ELSE [1] END |
+        OPTIONAL MATCH (prev)-[r:NEXT_PLOT_POINT]->(:PlotPoint)
+        DELETE r
+        MERGE (prev)-[:NEXT_PLOT_POINT]->(pp)
     )
-    result = await neo4j_manager.execute_read_query(query, {"novel_id": novel_id})
-    max_seq = result[0].get("max_seq") if result else 0
-    next_seq = (max_seq or 0) + 1
-    pp_id = f"pp_{novel_id}_{next_seq}"
+    RETURN pp_id AS id
+    """
 
-    statements: list[tuple[str, dict[str, Any]]] = [
-        (
-            """
-        MERGE (pp:PlotPoint {id: $pp_id})
-        ON CREATE SET pp.description = $desc, pp.sequence = $seq, pp.status = 'pending', pp.created_ts = timestamp()
-        ON MATCH SET  pp.description = $desc, pp.sequence = $seq, pp.updated_ts = timestamp()
-        """,
-            {"pp_id": pp_id, "desc": description, "seq": next_seq},
-        ),
-        (
-            """
-        MATCH (ni:NovelInfo {id: $novel_id})
-        MATCH (pp:PlotPoint {id: $pp_id})
-        MERGE (ni)-[:HAS_PLOT_POINT]->(pp)
-        """,
-            {"novel_id": novel_id, "pp_id": pp_id},
-        ),
-    ]
-
-    if prev_plot_point_id:
-        statements.append(
-            (
-                """
-            MATCH (prev:PlotPoint {id: $prev_id})
-            MATCH (curr:PlotPoint {id: $pp_id})
-            OPTIONAL MATCH (prev)-[r:NEXT_PLOT_POINT]->(:PlotPoint)
-            DELETE r
-            MERGE (prev)-[:NEXT_PLOT_POINT]->(curr)
-            """,
-                {"prev_id": prev_plot_point_id, "pp_id": pp_id},
-            )
-        )
-
-    await neo4j_manager.execute_cypher_batch(statements)
-    return pp_id
+    result = await neo4j_manager.execute_write_query(
+        query, {"novel_id": novel_id, "desc": description, "prev_id": prev_id}
+    )
+    return result[0]["id"] if result and result[0] and result[0].get("id") else ""
 
 
 async def plot_point_exists(description: str) -> bool:
-    """Check if a plot point with the given description exists."""
+    """Check if a plot point with the given description exists for the active novel."""
+    novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     query = """
-    MATCH (pp:PlotPoint)
+    MATCH (ni:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint)
     WHERE toLower(pp.description) = toLower($desc)
     RETURN count(pp) AS cnt
     """
-    result = await neo4j_manager.execute_read_query(query, {"desc": description})
+    result = await neo4j_manager.execute_read_query(
+        query, {"novel_id": novel_id, "desc": description}
+    )
     return bool(result and result[0] and result[0].get("cnt", 0) > 0)
 
 
 async def get_last_plot_point_id() -> str | None:
-    """Return the ID of the most recent PlotPoint."""
+    """Return the ID of the most recent PlotPoint for the active novel."""
+    novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     query = """
-    MATCH (pp:PlotPoint)
+    MATCH (ni:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint)
     RETURN pp.id AS id
     ORDER BY pp.sequence DESC
     LIMIT 1
     """
-    result = await neo4j_manager.execute_read_query(query)
-    return result[0].get("id") if result and result[0] else None
+    result = await neo4j_manager.execute_read_query(query, {"novel_id": novel_id})
+    return result[0].get("id") if result and result[0] and result[0].get("id") else None

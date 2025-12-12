@@ -1,8 +1,10 @@
 """Comprehensive tests for data_access/plot_queries.py"""
+import json
 from unittest.mock import AsyncMock
 
 import pytest
 
+import config
 from data_access import plot_queries
 
 
@@ -11,10 +13,20 @@ class TestSavePlotOutline:
     """Tests for saving plot outline."""
 
     async def test_save_plot_outline_basic(self, monkeypatch):
-        """Test saving basic plot outline."""
-        mock_execute = AsyncMock(return_value=None)
+        """Test saving basic plot outline.
+
+        Ensures structured/list input like `acts` is not silently ignored; it must be
+        persisted (round-trippable) via a *_json NovelInfo property.
+        """
+        executed: list[tuple[str, dict]] = []
+
+        async def fake_batch(statements):
+            executed.extend(statements)
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_cypher_batch", mock_execute
+            plot_queries.neo4j_manager,
+            "execute_cypher_batch",
+            AsyncMock(side_effect=fake_batch),
         )
 
         plot_data = {
@@ -27,7 +39,16 @@ class TestSavePlotOutline:
 
         result = await plot_queries.save_plot_outline_to_db(plot_data)
         assert result is True
-        mock_execute.assert_called()
+        assert executed
+
+        # First statement is NovelInfo upsert with props
+        cypher, params = executed[0]
+        assert "MERGE (ni:NovelInfo" in cypher
+        props = params.get("props", {})
+        assert props.get("title") == "Test Novel"
+        assert props.get("genre") == "Fantasy"
+        assert "acts_json" in props
+        assert json.loads(props["acts_json"]) == [{"act_number": 1, "description": "Act 1"}]
 
     async def test_save_plot_outline_does_not_replace_novelinfo_map(self, monkeypatch):
         """
@@ -103,10 +124,19 @@ class TestSavePlotOutline:
         assert result is True
 
     async def test_save_plot_outline_with_chapters(self, monkeypatch):
-        """Test saving plot outline with chapter details."""
-        mock_execute = AsyncMock(return_value=None)
+        """Test saving plot outline with chapter details.
+
+        Ensures nested structures are persisted (via acts_json) instead of being dropped.
+        """
+        executed: list[tuple[str, dict]] = []
+
+        async def fake_batch(statements):
+            executed.extend(statements)
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_cypher_batch", mock_execute
+            plot_queries.neo4j_manager,
+            "execute_cypher_batch",
+            AsyncMock(side_effect=fake_batch),
         )
 
         plot_data = {
@@ -125,6 +155,14 @@ class TestSavePlotOutline:
 
         result = await plot_queries.save_plot_outline_to_db(plot_data)
         assert result is True
+        assert executed
+
+        cypher, params = executed[0]
+        assert "MERGE (ni:NovelInfo" in cypher
+        props = params.get("props", {})
+        assert "acts_json" in props
+        decoded = json.loads(props["acts_json"])
+        assert decoded[0]["chapters"][0]["chapter_number"] == 1
 
 
 @pytest.mark.asyncio
@@ -132,7 +170,11 @@ class TestGetPlotOutline:
     """Tests for getting plot outline."""
 
     async def test_get_plot_outline_found(self, monkeypatch):
-        """Test getting plot outline when found."""
+        """Test getting plot outline when found.
+
+        Plot points should be returned as structured dicts (not just descriptions),
+        and *_json NovelInfo fields should round-trip back to structured keys.
+        """
         async def fake_read(query, params=None):
             if "RETURN ni" in query:
                 return [
@@ -140,6 +182,20 @@ class TestGetPlotOutline:
                         "ni": {
                             "title": "Test Novel",
                             "genre": "Fantasy",
+                            "acts_json": json.dumps(
+                                [{"act_number": 1, "description": "Act 1"}]
+                            ),
+                        }
+                    }
+                ]
+            if "RETURN pp" in query:
+                return [
+                    {
+                        "pp": {
+                            "id": f"pp_{config.MAIN_NOVEL_INFO_NODE_ID}_1",
+                            "sequence": 1,
+                            "description": "Plot Point 1",
+                            "status": "pending",
                         }
                     }
                 ]
@@ -154,6 +210,13 @@ class TestGetPlotOutline:
         result = await plot_queries.get_plot_outline_from_db()
         assert isinstance(result, dict)
         assert result.get("title") == "Test Novel"
+        assert result.get("acts") == [{"act_number": 1, "description": "Act 1"}]
+
+        plot_points = result.get("plot_points")
+        assert isinstance(plot_points, list)
+        assert plot_points and isinstance(plot_points[0], dict)
+        assert plot_points[0]["description"] == "Plot Point 1"
+        assert plot_points[0]["sequence"] == 1
 
     async def test_get_plot_outline_empty(self, monkeypatch):
         """Test getting plot outline when empty."""
@@ -198,30 +261,52 @@ class TestPlotPointExists:
     """Tests for checking if plot point exists."""
 
     async def test_plot_point_exists_true(self, monkeypatch):
-        """Test checking plot point that exists."""
-        mock_read = AsyncMock(return_value=[{"cnt": 1}])
+        """Test checking plot point that exists (novel-scoped)."""
+
+        async def fake_read(query, params=None):
+            assert "MATCH (ni:NovelInfo" in query
+            assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
+            assert (params or {}).get("desc") == "Test description"
+            return [{"cnt": 1}]
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_read_query", mock_read
+            plot_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=fake_read),
         )
 
         result = await plot_queries.plot_point_exists("Test description")
         assert result is True
 
     async def test_plot_point_exists_false(self, monkeypatch):
-        """Test checking plot point that doesn't exist."""
-        mock_read = AsyncMock(return_value=[{"cnt": 0}])
+        """Test checking plot point that doesn't exist (novel-scoped)."""
+
+        async def fake_read(query, params=None):
+            assert "MATCH (ni:NovelInfo" in query
+            assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
+            return [{"cnt": 0}]
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_read_query", mock_read
+            plot_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=fake_read),
         )
 
         result = await plot_queries.plot_point_exists("Test description")
         assert result is False
 
     async def test_plot_point_exists_empty_result(self, monkeypatch):
-        """Test checking plot point with empty result."""
-        mock_read = AsyncMock(return_value=[])
+        """Test checking plot point with empty result (novel-scoped)."""
+
+        async def fake_read(query, params=None):
+            assert "MATCH (ni:NovelInfo" in query
+            assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
+            return []
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_read_query", mock_read
+            plot_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=fake_read),
         )
 
         result = await plot_queries.plot_point_exists("Test description")
@@ -233,30 +318,51 @@ class TestGetLastPlotPointId:
     """Tests for getting last plot point ID."""
 
     async def test_get_last_plot_point_id_found(self, monkeypatch):
-        """Test getting last plot point ID when found."""
-        mock_read = AsyncMock(return_value=[{"id": "pp_novel_5"}])
+        """Test getting last plot point ID when found (novel-scoped)."""
+
+        async def fake_read(query, params=None):
+            assert "MATCH (ni:NovelInfo" in query
+            assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
+            return [{"id": "pp_novel_5"}]
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_read_query", mock_read
+            plot_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=fake_read),
         )
 
         result = await plot_queries.get_last_plot_point_id()
         assert result == "pp_novel_5"
 
     async def test_get_last_plot_point_id_none(self, monkeypatch):
-        """Test getting last plot point ID when none exist."""
-        mock_read = AsyncMock(return_value=[])
+        """Test getting last plot point ID when none exist (novel-scoped)."""
+
+        async def fake_read(query, params=None):
+            assert "MATCH (ni:NovelInfo" in query
+            assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
+            return []
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_read_query", mock_read
+            plot_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=fake_read),
         )
 
         result = await plot_queries.get_last_plot_point_id()
         assert result is None
 
     async def test_get_last_plot_point_id_null(self, monkeypatch):
-        """Test getting last plot point ID when null."""
-        mock_read = AsyncMock(return_value=[{"id": None}])
+        """Test getting last plot point ID when null (novel-scoped)."""
+
+        async def fake_read(query, params=None):
+            assert "MATCH (ni:NovelInfo" in query
+            assert (params or {}).get("novel_id") == config.MAIN_NOVEL_INFO_NODE_ID
+            return [{"id": None}]
+
         monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_read_query", mock_read
+            plot_queries.neo4j_manager,
+            "execute_read_query",
+            AsyncMock(side_effect=fake_read),
         )
 
         result = await plot_queries.get_last_plot_point_id()
