@@ -85,7 +85,21 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            logger.error("extract_characters: failed to parse JSON", raw_text=raw_text)
+            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
+            try:
+                import hashlib
+
+                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
+                raw_len = len(raw_text)
+            except Exception:  # pragma: no cover
+                raw_sha = None
+                raw_len = None
+
+            logger.error(
+                "extract_characters: failed to parse JSON",
+                response_sha1=raw_sha,
+                response_len=raw_len,
+            )
             return {
                 "extracted_entities": {"characters": [], "world_items": []},
                 "extracted_relationships": [],
@@ -181,7 +195,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
     )
 
     # DEBUG: validate prompt/template wiring and detect schema mismatches early.
-    # This is intentionally lightweight (head+hash) to avoid logging full chapter text.
+    # Do NOT log any prompt fragments (they can contain narrative/manuscript text).
     try:
         import hashlib
 
@@ -190,7 +204,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             "extract_locations: rendered prompt",
             template="knowledge_agent/extract_locations.j2",
             prompt_sha1=prompt_sha,
-            prompt_head=prompt[:250],
+            prompt_len=len(prompt),
             chapter=state.get("current_chapter", 1),
         )
     except Exception as _e:  # pragma: no cover - debug logging must never break extraction
@@ -215,8 +229,8 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             grammar=grammar,
         )
 
-        # DEBUG: capture response shape (head+hash) to diagnose schema mismatches like
-        # category='entities'/'relationships' showing up in location extraction.
+        # DEBUG: capture response shape (hash+len) to diagnose schema mismatches.
+        # Do NOT log response fragments (they can contain narrative/manuscript text).
         try:
             import hashlib
 
@@ -225,7 +239,6 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                 "extract_locations: LLM response received",
                 response_sha1=raw_sha,
                 response_len=len(raw_text),
-                response_head=raw_text[:350],
                 chapter=state.get("current_chapter", 1),
             )
         except Exception:  # pragma: no cover - debug logging must never break extraction
@@ -234,7 +247,21 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            logger.error("extract_locations: failed to parse JSON", raw_text=raw_text)
+            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
+            try:
+                import hashlib
+
+                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
+                raw_len = len(raw_text)
+            except Exception:  # pragma: no cover
+                raw_sha = None
+                raw_len = None
+
+            logger.error(
+                "extract_locations: failed to parse JSON",
+                response_sha1=raw_sha,
+                response_len=raw_len,
+            )
             return {}
 
         # DEBUG: log parsed top-level keys and world_updates keys to confirm expected schema.
@@ -438,7 +465,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
     )
 
     # DEBUG: validate prompt/template wiring and detect schema mismatches early.
-    # This mirrors extract_locations debug instrumentation for cross-node comparison.
+    # Do NOT log any prompt fragments (they can contain narrative/manuscript text).
     try:
         import hashlib
 
@@ -447,7 +474,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             "extract_events: rendered prompt",
             template="knowledge_agent/extract_events.j2",
             prompt_sha1=prompt_sha,
-            prompt_head=prompt[:250],
+            prompt_len=len(prompt),
             chapter=state.get("current_chapter", 1),
         )
     except Exception as _e:  # pragma: no cover - debug logging must never break extraction
@@ -472,7 +499,8 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             grammar=grammar,
         )
 
-        # DEBUG: capture response shape (head+hash) to diagnose schema mismatches.
+        # DEBUG: capture response shape (hash+len) to diagnose schema mismatches.
+        # Do NOT log response fragments (they can contain narrative/manuscript text).
         try:
             import hashlib
 
@@ -481,7 +509,6 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 "extract_events: LLM response received",
                 response_sha1=raw_sha,
                 response_len=len(raw_text),
-                response_head=raw_text[:350],
                 chapter=state.get("current_chapter", 1),
             )
         except Exception:  # pragma: no cover - debug logging must never break extraction
@@ -490,7 +517,21 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            logger.error("extract_events: failed to parse JSON", raw_text=raw_text)
+            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
+            try:
+                import hashlib
+
+                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
+                raw_len = len(raw_text)
+            except Exception:  # pragma: no cover
+                raw_sha = None
+                raw_len = None
+
+            logger.error(
+                "extract_events: failed to parse JSON",
+                response_sha1=raw_sha,
+                response_len=raw_len,
+            )
             return {}
 
         # DEBUG: log parsed top-level keys and world_updates keys to confirm expected schema.
@@ -711,7 +752,21 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            logger.error("extract_relationships: failed to parse JSON", raw_text=raw_text)
+            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
+            try:
+                import hashlib
+
+                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
+                raw_len = len(raw_text)
+            except Exception:  # pragma: no cover
+                raw_sha = None
+                raw_len = None
+
+            logger.error(
+                "extract_relationships: failed to parse JSON",
+                response_sha1=raw_sha,
+                response_len=raw_len,
+            )
             return {"extracted_relationships": []}
 
         if not data:

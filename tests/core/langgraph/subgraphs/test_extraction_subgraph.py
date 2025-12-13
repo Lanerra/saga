@@ -76,6 +76,68 @@ async def test_extraction_subgraph():
 
 
 @pytest.mark.asyncio
+async def test_extraction_nodes_do_not_log_prompt_or_response_fragments(tmp_path):
+    """
+    Regression test for LANGGRAPH-021 / remediation 9.1 #3.
+
+    Extraction nodes must not log any prompt/response fragments (e.g., `prompt_head`,
+    `response_head`) or raw LLM output (`raw_text`) because those can contain narrative
+    manuscript content.
+    """
+    from core.langgraph.nodes.extraction_nodes import extract_locations
+
+    project_dir = str(tmp_path / "test_project")
+    state = create_initial_state(
+        project_id="test_project",
+        title="Test Novel",
+        genre="Fantasy",
+        theme="Heroism",
+        setting="A magical world",
+        target_word_count=50000,
+        total_chapters=10,
+        project_dir=project_dir,
+        protagonist_name="Test Hero",
+    )
+
+    content_manager = ContentManager(project_dir)
+    draft_text = "Elara walked into the Sunken Library. She found the Starfall Map."
+    state["draft_ref"] = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+    state["current_chapter"] = 1
+
+    # Force a JSON decode error to exercise the logging path.
+    with (
+        patch("core.llm_interface_refactored.llm_service.async_call_llm", return_value=("{not json", None)),
+        patch("core.langgraph.nodes.extraction_nodes.logger") as mock_logger,
+    ):
+        result = await extract_locations(state)
+        assert result == {}
+
+        # Ensure the JSON parse error log does not include raw text.
+        error_calls = mock_logger.error.call_args_list
+        assert error_calls, "Expected an error log on JSON parsing failure"
+
+        # Look for the specific JSON parse error event.
+        found_parse_error = False
+        for call in error_calls:
+            args, kwargs = call
+            if args and args[0] == "extract_locations: failed to parse JSON":
+                found_parse_error = True
+                assert "raw_text" not in kwargs
+                assert "response_head" not in kwargs
+                assert "prompt_head" not in kwargs
+                assert "response_sha1" in kwargs
+                assert "response_len" in kwargs
+        assert found_parse_error, "Expected 'extract_locations: failed to parse JSON' log event"
+
+        # Ensure *no* log call contains content fragments.
+        forbidden_keys = {"prompt_head", "response_head", "raw_text"}
+        for method_name in ("debug", "info", "warning", "error"):
+            method = getattr(mock_logger, method_name)
+            for call in method.call_args_list:
+                _args, kwargs = call
+                assert forbidden_keys.isdisjoint(set(kwargs.keys()))
+
+@pytest.mark.asyncio
 async def test_extraction_clears_previous_state():
     """
     Test that extraction properly clears previous state to prevent accumulation.

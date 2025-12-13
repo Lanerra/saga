@@ -22,6 +22,21 @@ from core.langgraph.workflow import (
 )
 
 
+def test_create_checkpointer_filename_only_path_does_not_raise(tmp_path: Any, monkeypatch: Any) -> None:
+    """
+    `create_checkpointer()` should not crash when `db_path` has no directory component.
+
+    Regression test for LANGGRAPH-007: `os.path.dirname("saga.db") == ""` must not lead to
+    `os.makedirs("")`.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    from core.langgraph.workflow import create_checkpointer
+
+    checkpointer = create_checkpointer("saga.db")
+    assert checkpointer is not None
+
+
 @pytest.fixture
 def sample_phase2_state(tmp_path: Any) -> NarrativeState:
     """Sample state ready for Phase 2 workflow."""
@@ -327,6 +342,48 @@ class TestPhase2Workflow:
     async def test_workflow_multiple_revision_cycles(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow with multiple revision cycles."""
         pass
+
+
+def test_phase2_graph_check_quality_is_reachable() -> None:
+    """
+    Regression test for LANGGRAPH-005 / remediation plan 9.1 #4.
+
+    If `check_quality` is declared in the Phase 2 graph, it must be reachable.
+    This prevents dead-node drift where QA is assumed to run but never executes.
+    """
+    graph = create_phase2_graph()
+    graph_obj = graph.get_graph()
+
+    nodes = set(graph_obj.nodes)
+    edges = [(edge.source, edge.target) for edge in graph_obj.edges]
+
+    # Sanity: this test assumes Phase 2 declares check_quality.
+    assert "check_quality" in nodes
+
+    # Ensure the intended wiring is present.
+    assert ("heal_graph", "check_quality") in edges
+
+    # Ensure `check_quality` is reachable from the entrypoint through node-to-node edges.
+    start = "generate"
+    adjacency: dict[str, set[str]] = {}
+    for source, target in edges:
+        if isinstance(source, str) and isinstance(target, str):
+            adjacency.setdefault(source, set()).add(target)
+
+    visited: set[str] = set()
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        if node in visited:
+            continue
+        visited.add(node)
+
+        for nxt in adjacency.get(node, set()):
+            # Only traverse actual nodes; ignore END-style sentinel targets.
+            if nxt in nodes:
+                stack.append(nxt)
+
+    assert "check_quality" in visited
 
 
 @pytest.mark.asyncio

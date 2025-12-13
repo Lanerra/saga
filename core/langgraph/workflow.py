@@ -210,7 +210,8 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     - Finalization: Persist to filesystem and Neo4j
 
     Workflow:
-        generate_subgraph → extract_subgraph → normalize_relationships → commit → validate_subgraph → {revise? revise → extract : summarize} → finalize → END
+        generate_subgraph → extract_subgraph → normalize_relationships → commit → validate_subgraph
+        → {revise? revise → extract : summarize} → finalize → heal_graph → check_quality → END
 
     Migration Reference: docs/phase2_migration_plan.md - Step 2.5
 
@@ -318,7 +319,8 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     )
 
     # Graph healing runs after successful finalization
-    workflow.add_edge("heal_graph", END)
+    workflow.add_edge("heal_graph", "check_quality")
+    workflow.add_edge("check_quality", END)
 
     # Error handler terminates workflow
     workflow.add_edge("error_handler", END)
@@ -338,6 +340,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
             "summarize",
             "finalize",
             "heal_graph",
+            "check_quality",
             "error_handler",
         ],
         entry_point="generate",
@@ -371,8 +374,12 @@ def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSa
     """
     import os
 
-    # Ensure checkpoints directory exists
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    # Ensure checkpoints directory exists.
+    #
+    # Note: `os.path.dirname("saga.db") == ""`, and `os.makedirs("")` can raise.
+    db_dir = os.path.dirname(db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
 
     logger.info(
         "create_checkpointer: creating async SQLite checkpointer",

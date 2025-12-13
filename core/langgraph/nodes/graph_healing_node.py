@@ -55,18 +55,27 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         total_enriched = state.get("nodes_enriched", 0) + results["nodes_enriched"]
         total_removed = state.get("nodes_removed", 0) + results.get("nodes_removed", 0)
 
-        # Extract merge candidates for potential user review
-        merge_candidates = []
-        pending_merges = []
-        auto_approved_merges = []
+        # Avoid negative metrics: some services return "remaining", others return "total".
+        # We clamp to ensure the state is never misleading for dashboards/consumers.
+        provisional_raw = results.get("provisional_count", 0)
+        graduated_this_run = results.get("nodes_graduated", 0)
+        provisional_remaining = max(0, provisional_raw - graduated_this_run)
+
+        # Extract merge candidates for potential user review.
+        # `merge_candidates` must be populated consistently (was previously always empty).
+        merge_candidates: list[dict[str, object]] = []
+        pending_merges: list[dict[str, object]] = []
+        auto_approved_merges: list[dict[str, object]] = []
 
         for action in results.get("actions", []):
-            if action["type"] == "merge":
+            if action.get("type") == "merge":
                 merge_info = {
-                    "primary": action["primary"],
-                    "duplicate": action["duplicate"],
-                    "similarity": action["similarity"],
+                    "primary": action.get("primary"),
+                    "duplicate": action.get("duplicate"),
+                    "similarity": action.get("similarity"),
                 }
+                merge_candidates.append(merge_info)
+
                 if action.get("auto_approved"):
                     auto_approved_merges.append(merge_info)
                 else:
@@ -79,7 +88,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             enriched=results["nodes_enriched"],
             merged=results["nodes_merged"],
             removed=results.get("nodes_removed", 0),
-            provisional_remaining=results.get("provisional_count", 0) - results["nodes_graduated"],
+            provisional_remaining=provisional_remaining,
         )
 
         return {
@@ -87,7 +96,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             "current_node": "heal_graph",
             "last_error": None,
             "last_healing_chapter": current_chapter,
-            "provisional_count": results.get("provisional_count", 0) - results["nodes_graduated"],
+            "provisional_count": provisional_remaining,
             "nodes_graduated": total_graduated,
             "nodes_merged": total_merged,
             "nodes_enriched": total_enriched,
