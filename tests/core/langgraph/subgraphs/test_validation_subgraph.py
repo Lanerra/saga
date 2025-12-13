@@ -273,6 +273,33 @@ class TestParseQualityScores:
         assert scores["tone_consistency_score"] == 0.90
         assert scores["feedback"] == "Great work!"
 
+    def test_parse_numeric_values_does_not_raise_typeerror(self):
+        """
+        Regression test for runtime crash when using PEP-604 unions inside isinstance().
+
+        Before the fix, this would raise:
+          TypeError: isinstance() argument 2 cannot be a union
+
+        Ensure representative numeric values (ints + floats) parse successfully.
+        """
+        response = """{
+            "coherence_score": 1,
+            "prose_quality_score": 0.75,
+            "plot_advancement_score": 0,
+            "pacing_score": 0.7,
+            "tone_consistency_score": 1.0,
+            "feedback": "OK"
+        }"""
+
+        scores = _parse_quality_scores(response)
+
+        assert scores["coherence_score"] == 1.0
+        assert scores["plot_advancement_score"] == 0.0
+        assert scores["prose_quality_score"] == 0.75
+        assert scores["pacing_score"] == 0.7
+        assert scores["tone_consistency_score"] == 1.0
+        assert scores["feedback"] == "OK"
+
     def test_parse_clamps_scores(self):
         """Scores outside 0-1 range are clamped."""
         response = """{

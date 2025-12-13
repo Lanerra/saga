@@ -2,9 +2,11 @@
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import numpy as np
 import pytest
 
-from core.llm_interface_refactored import CompletionService
+import config
+from core.llm_interface_refactored import CompletionService, EmbeddingService
 
 
 class _DummyCompletionClient:
@@ -71,3 +73,28 @@ async def test_streaming_delta_reasoning_content_accumulates() -> None:
     svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
     text, usage = await svc.get_streaming_completion("model", "prompt")  # type: ignore
     assert text == "Hello World"
+
+
+def test_embedding_fallback_accepts_numeric_list_under_non_embedding_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Exercise the fallback branch in EmbeddingService._extract_and_validate_embedding():
+
+    - Response does NOT include "embedding" key
+    - Response includes a numeric list under some other key
+    - Should validate and return a numpy array without raising TypeError
+    """
+    # Keep the test fast and deterministic by shrinking the expected dim.
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+    monkeypatch.setattr(config, "EMBEDDING_DTYPE", np.float32)
+
+    class _DummyEmbeddingClient:
+        pass
+
+    svc = EmbeddingService(_DummyEmbeddingClient())  # type: ignore[arg-type]
+
+    response = {"vector": [1, 2.5, 3]}
+    embedding = svc._extract_and_validate_embedding(response)
+
+    assert isinstance(embedding, np.ndarray)
+    assert embedding.shape == (3,)
+    assert embedding.dtype == np.float32

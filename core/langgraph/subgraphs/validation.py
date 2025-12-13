@@ -315,7 +315,7 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
                 "tone_consistency_score",
             ]:
                 value = scores.get(key)
-                if isinstance(value, int | float):
+                if isinstance(value, (int, float)):
                     normalized[key] = max(0.0, min(1.0, float(value)))
                 else:
                     normalized[key] = 0.7  # Default fallback

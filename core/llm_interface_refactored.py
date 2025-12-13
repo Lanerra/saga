@@ -219,7 +219,7 @@ class EmbeddingService:
         # Try fallback keys
         logger.warning(f"Primary embedding key '{primary_key}' not found, trying fallbacks")
         for key, value in response_data.items():
-            if isinstance(value, list) and all(isinstance(item, float | int) for item in value):
+            if isinstance(value, list) and all(isinstance(item, (float, int)) for item in value):
                 embedding = self._validate_embedding_list(value)
                 if embedding is not None:
                     logger.info(f"Found embedding using fallback key '{key}'")
