@@ -29,6 +29,123 @@ from core.langgraph.state import Contradiction, ExtractedEntity, NarrativeState
 logger = structlog.get_logger(__name__)
 
 
+def _normalize_trait(value: Any) -> str | None:
+    """
+    Normalize a trait string for stable comparisons.
+
+    We treat traits as *values* (typically emitted by extraction under `attributes["traits"]`)
+    and compare normalized forms to avoid false negatives due to casing/whitespace.
+    """
+    if not isinstance(value, str):
+        return None
+    norm = value.strip().lower()
+    return norm or None
+
+
+def _coerce_traits_list(raw: Any) -> list[str]:
+    """
+    Coerce an arbitrary value into a list of normalized trait strings.
+
+    Expected contract (from extraction): `attributes["traits"]` is a list[str].
+    Defensive behavior:
+      - If it's a string, treat it as a single trait.
+      - If it's a list/tuple/set, normalize each entry.
+      - Otherwise, return [].
+    """
+    if raw is None:
+        return []
+
+    values: list[Any]
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, (list, tuple, set)):
+        values = list(raw)
+    else:
+        return []
+
+    out: list[str] = []
+    for v in values:
+        norm = _normalize_trait(v)
+        if norm:
+            out.append(norm)
+    return out
+
+
+def get_extracted_events_for_validation(extracted_entities: dict[str, Any] | None) -> list[Any]:
+    """
+    Single source of truth for how validation derives "events" from state.
+
+    State-shape contract:
+      - Canonical: events are stored in `extracted_entities["world_items"]` as entities
+        with `type == "Event"` (case-insensitive).
+      - Legacy compatibility: if `extracted_entities["events"]` exists, we also include
+        those entries.
+
+    Returns:
+      A deduplicated list of event-like objects (ExtractedEntity or dict) for downstream
+      timeline/plot checks.
+    """
+    if not extracted_entities:
+        return []
+
+    world_items = extracted_entities.get("world_items", [])
+    legacy_events = extracted_entities.get("events", [])
+
+    candidates: list[Any] = []
+    if isinstance(world_items, list):
+        candidates.extend(world_items)
+    if isinstance(legacy_events, list):
+        candidates.extend(legacy_events)
+
+    # Filter by type == Event (supports ExtractedEntity objects or dicts)
+    filtered: list[Any] = []
+    for item in candidates:
+        item_type = None
+        if isinstance(item, dict):
+            item_type = item.get("type")
+        else:
+            item_type = getattr(item, "type", None)
+
+        if isinstance(item_type, str) and item_type.strip().lower() == "event":
+            filtered.append(item)
+
+    # Deduplicate by (name, description) when available; fall back to id(item)
+    seen: set[tuple[str, str] | int] = set()
+    deduped: list[Any] = []
+    for item in filtered:
+        name = ""
+        desc = ""
+        if isinstance(item, dict):
+            name = str(item.get("name") or "")
+            desc = str(item.get("description") or "")
+        else:
+            name = str(getattr(item, "name", "") or "")
+            desc = str(getattr(item, "description", "") or "")
+
+        key = (name, desc) if (name or desc) else id(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+
+    return deduped
+
+
+def _get_character_trait_values_for_validation(char: Any) -> set[str]:
+    """
+    Extract normalized trait *values* for a character for validation.
+
+    Expected contract: `char.attributes["traits"]` is a list[str].
+    Defensive behavior: missing/invalid shapes yield an empty set.
+    """
+    attrs = getattr(char, "attributes", None)
+    if not isinstance(attrs, dict):
+        return set()
+
+    raw_traits = attrs.get("traits", [])
+    return set(_coerce_traits_list(raw_traits))
+
+
 async def validate_consistency(state: NarrativeState) -> NarrativeState:
     """
     Check generated content for contradictions against knowledge graph.
@@ -270,18 +387,15 @@ async def _check_character_traits(
 
             if result and len(result) > 0:
                 existing = result[0]
-                # Filter out None/empty values
+                # Normalize established traits defensively (Neo4j may return mixed casing)
                 traits_list = existing.get("traits", [])
-                established_traits = set(t for t in traits_list if t)
+                established_traits = set(_coerce_traits_list(traits_list))
 
-                # Extract traits from new attributes
-                # Attributes dict may contain traits as keys
-                new_trait_candidates = set(char.attributes.keys())
+                # Extract *new* traits from the extraction contract:
+                #   ExtractedEntity.attributes["traits"] -> list[str]
+                new_trait_candidates = _get_character_trait_values_for_validation(char)
 
-                # Also check description for trait keywords
-                # (Simple keyword matching - could be enhanced with NLP)
-
-                # Check for contradictions
+                # Check for contradictions (pair values are already lowercase in our list)
                 for trait_a, trait_b in contradictory_pairs:
                     # Check if established trait conflicts with new trait
                     if trait_a in established_traits and trait_b in new_trait_candidates:
@@ -359,23 +473,36 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
         return True
 
     # Check 2: Get all extracted elements
-    entities = state.get("extracted_entities", {})
-    events = entities.get("events", [])
+    entities = state.get("extracted_entities", {}) or {}
     characters = entities.get("characters", [])
     world_items = entities.get("world_items", [])
     relationships = state.get("extracted_relationships", [])
 
+    # Canonical state-shape: events are stored in world_items with type == "Event".
+    # We also accept legacy `extracted_entities["events"]` if present.
+    extracted_events = get_extracted_events_for_validation(entities)
+
+    # Avoid double-counting: world_items includes events, but we still want to count
+    # events explicitly for readability and future heuristics.
+    non_event_world_items: list[Any] = []
+    if isinstance(world_items, list):
+        for item in world_items:
+            item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+            if isinstance(item_type, str) and item_type.strip().lower() == "event":
+                continue
+            non_event_world_items.append(item)
+
     # Check 3: Count total new content
-    total_new_elements = len(characters) + len(world_items) + len(events)
+    total_new_elements = len(characters) + len(non_event_world_items) + len(extracted_events)
     total_relationships = len(relationships)
 
     # If we have no new elements AND no relationships, the plot is stagnant
     if total_new_elements == 0 and total_relationships == 0:
         logger.debug(
             "_is_plot_stagnant: no new elements or relationships",
-            characters=len(characters),
-            world_items=len(world_items),
-            events=len(events),
+            characters=len(characters) if isinstance(characters, list) else None,
+            world_items=len(non_event_world_items),
+            events=len(extracted_events),
             relationships=total_relationships,
         )
         return True

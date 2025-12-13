@@ -43,7 +43,7 @@ class TestSaveChapterData:
     """Tests for saving chapter data."""
 
     async def test_save_chapter_data_basic(self, monkeypatch):
-        """Test saving basic chapter data."""
+        """Test saving basic chapter data (must always set Chapter.id)."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_write_query", mock_execute)
 
@@ -54,8 +54,20 @@ class TestSaveChapterData:
         )
         mock_execute.assert_called_once()
 
+        # Canonical Chapter persistence must always set Chapter.id.
+        call_args = mock_execute.call_args
+        query = call_args.args[0]
+        params = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("parameters", {})
+
+        assert "c.id" in query
+        assert params["chapter_number_param"] == 1
+        assert params["chapter_id_param"] == chapter_queries.compute_chapter_id(1)
+        assert params["summary_param"] == "Chapter summary"
+        assert params["embedding_vector_param"] is None
+        assert params["is_provisional_param"] is False
+
     async def test_save_chapter_data_with_embedding(self, monkeypatch):
-        """Test saving chapter data with embedding."""
+        """Test saving chapter data with embedding (must always set Chapter.id)."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_write_query", mock_execute)
 
@@ -66,6 +78,16 @@ class TestSaveChapterData:
             embedding_array=embedding,
         )
         mock_execute.assert_called_once()
+
+        call_args = mock_execute.call_args
+        query = call_args.args[0]
+        params = call_args.args[1] if len(call_args.args) > 1 else call_args.kwargs.get("parameters", {})
+
+        assert "c.id" in query
+        assert params["chapter_number_param"] == 1
+        assert params["chapter_id_param"] == chapter_queries.compute_chapter_id(1)
+        # Neo4j embedding conversion uses float32; allow minor float representation variance.
+        assert params["embedding_vector_param"] == pytest.approx([0.1, 0.2, 0.3], rel=1e-6, abs=1e-6)
 
 
 @pytest.mark.asyncio

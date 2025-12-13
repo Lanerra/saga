@@ -7,6 +7,7 @@ import yaml
 from core.langgraph.content_manager import ContentManager, get_previous_summaries
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.state import NarrativeState
+from data_access import chapter_queries
 
 
 async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a test summary.") -> Path:
@@ -58,12 +59,31 @@ async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a 
         }
 
     original_call = summary_module.llm_service.async_call_llm
+    original_write = summary_module.neo4j_manager.execute_write_query
+
+    write_calls: list[tuple[str, dict]] = []
+
+    async def fake_write(query: str, params=None):
+        p = params or {}
+        write_calls.append((query, p))
+
+        # Canonical chapter upsert must always set Chapter.id.
+        assert "c.id" in query
+        assert "chapter_id_param" in query or "chapter_id" in query
+
+        assert p.get("chapter_number_param") == 1
+        assert p.get("chapter_id_param") == chapter_queries.compute_chapter_id(1)
+        assert p.get("summary_param") == summary_text
+
+        return []
 
     try:
         summary_module.llm_service.async_call_llm = fake_async_call_llm  # type: ignore[assignment]
+        summary_module.neo4j_manager.execute_write_query = fake_write  # type: ignore[assignment]
         new_state = await summarize_chapter(state)
     finally:
         summary_module.llm_service.async_call_llm = original_call  # type: ignore[assignment]
+        summary_module.neo4j_manager.execute_write_query = original_write  # type: ignore[assignment]
 
     # Ensure node updated state as expected
     assert new_state["current_node"] == "summarize"

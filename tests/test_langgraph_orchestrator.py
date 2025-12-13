@@ -517,6 +517,78 @@ class TestRunNovelGenerationLoop:
             orchestrator.display.start.assert_called_once()
             orchestrator.display.stop.assert_called_once()
 
+    async def test_run_novel_generation_loop_closes_llm_http_client_on_success(self, orchestrator):
+        """
+        Orchestrator establishes an explicit LLM HTTP client lifecycle boundary and closes it.
+
+        This is the remediation target for CORE-004 / LANGGRAPH-026:
+        workflows should not rely on import-time singleton cleanup.
+        """
+        mock_checkpointer = MagicMock()
+        mock_checkpointer.__aenter__ = AsyncMock(return_value=mock_checkpointer)
+        mock_checkpointer.__aexit__ = AsyncMock(return_value=None)
+
+        mock_graph = MagicMock()
+
+        async def mock_events(*args, **kwargs):
+            # Minimal "successful" run; no node needs to call the LLM for this test.
+            yield {"finalize": {"current_node": "finalize", "draft_word_count": 1234}}
+
+        mock_graph.astream = mock_events
+
+        orchestrator.display.stop = AsyncMock()
+
+        # Patch the underlying httpx client constructor used by HTTPClientService so we can assert closure.
+        dummy_httpx_client = MagicMock()
+        dummy_httpx_client.aclose = AsyncMock()
+
+        with (
+            patch("core.http_client_service.httpx.AsyncClient", return_value=dummy_httpx_client) as mock_async_client_ctor,
+            patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock),
+            patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_state,
+            patch("orchestration.langgraph_orchestrator.create_checkpointer") as mock_cp,
+            patch("orchestration.langgraph_orchestrator.create_full_workflow_graph") as mock_graph_creator,
+        ):
+            mock_state.return_value = {"current_chapter": 1, "total_chapters": 1}
+            mock_cp.return_value = mock_checkpointer
+            mock_graph_creator.return_value = mock_graph
+
+            await orchestrator.run_novel_generation_loop()
+
+        # Exactly one managed HTTP client should have been created and closed.
+        mock_async_client_ctor.assert_called_once()
+        dummy_httpx_client.aclose.assert_awaited_once()
+
+    async def test_run_novel_generation_loop_closes_llm_http_client_on_failure(self, orchestrator):
+        """LLM HTTP client is closed even when workflow creation fails inside the lifecycle boundary."""
+        mock_checkpointer = MagicMock()
+        mock_checkpointer.__aenter__ = AsyncMock(return_value=mock_checkpointer)
+        mock_checkpointer.__aexit__ = AsyncMock(return_value=None)
+
+        orchestrator.display.stop = AsyncMock()
+
+        dummy_httpx_client = MagicMock()
+        dummy_httpx_client.aclose = AsyncMock()
+
+        with (
+            patch("core.http_client_service.httpx.AsyncClient", return_value=dummy_httpx_client) as mock_async_client_ctor,
+            patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock),
+            patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_state,
+            patch("orchestration.langgraph_orchestrator.create_checkpointer") as mock_cp,
+            patch(
+                "orchestration.langgraph_orchestrator.create_full_workflow_graph",
+                side_effect=RuntimeError("Graph build failed"),
+            ),
+        ):
+            mock_state.return_value = {"current_chapter": 1, "total_chapters": 1}
+            mock_cp.return_value = mock_checkpointer
+
+            with pytest.raises(RuntimeError, match="Graph build failed"):
+                await orchestrator.run_novel_generation_loop()
+
+        mock_async_client_ctor.assert_called_once()
+        dummy_httpx_client.aclose.assert_awaited_once()
+
     async def test_run_novel_generation_loop_handles_errors(self, orchestrator):
         """Generation loop handles errors gracefully."""
         orchestrator.display.stop = AsyncMock()

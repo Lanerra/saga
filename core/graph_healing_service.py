@@ -40,7 +40,10 @@ class GraphHealingService:
             MATCH (n)
             WHERE n.is_provisional = true
             RETURN
+                // Neo4j-internal identifier (elementId) is for internal DB operations only.
                 elementId(n) AS element_id,
+                // Application-stable identifier (n.id) must be used for any cross-module boundary.
+                n.id AS id,
                 n.name AS name,
                 labels(n)[0] AS type,
                 n.description AS description,
@@ -129,15 +132,24 @@ class GraphHealingService:
 
         Returns enriched attributes that can be applied to the node.
         """
+        # `element_id` is Neo4j-internal. Keep it internal-only.
+        # For cross-module calls (data_access.*), use stable application id (`n.id`).
         element_id = node["element_id"]
+        entity_id = node.get("id")
 
         # Get all chapters where this entity appears using shared logic
         from data_access.kg_queries import get_chapter_context_for_entity
 
-        mentions = await get_chapter_context_for_entity(entity_id=element_id)
+        # Prefer stable application id; fall back to name only if id is missing.
+        mentions = await get_chapter_context_for_entity(entity_id=entity_id) if entity_id else await get_chapter_context_for_entity(entity_name=node.get("name"))
 
         if not mentions:
-            logger.debug("No chapter mentions found for node", name=node["name"])
+            logger.debug(
+                "No chapter mentions found for node",
+                name=node["name"],
+                entity_id=entity_id,
+                element_id=element_id,
+            )
             return {}
 
         # Build enrichment prompt
@@ -498,26 +510,17 @@ Provide the following information (only include fields where you have reasonable
         """
         from data_access.kg_queries import get_entity_context_for_resolution, merge_entities
 
-        # Get context for both entities to construct a reason
-        primary_context = await get_entity_context_for_resolution(primary_id)
-        duplicate_context = await get_entity_context_for_resolution(duplicate_id)
-
-        # Construct merge reason
-        similarity = merge_info.get("similarity", 0)
-        reason = f"Merged duplicate entities (similarity: {similarity:.2f})"
-
-        if primary_context and duplicate_context:
-            primary_name = primary_context.get("name", "unknown")
-            duplicate_name = duplicate_context.get("name", "unknown")
-            reason = f"Merged '{duplicate_name}' into '{primary_name}' (similarity: {similarity:.2f})"
-
-        # Convert element IDs to entity IDs (id property)
-        # Element IDs are Neo4j internal, but merge_entities expects 'id' property
+        # Convert element IDs to entity IDs (id property) for any cross-module calls.
+        # Element IDs are Neo4j internal; kg_queries APIs are standardized on stable `n.id`.
         get_id_query = """
             MATCH (n)
             WHERE elementId(n) = $element_id
             RETURN n.id AS entity_id
         """
+
+        # Construct merge reason (may be improved using stable-id context below).
+        similarity = merge_info.get("similarity", 0)
+        reason = f"Merged duplicate entities (similarity: {similarity:.2f})"
 
         try:
             # Get entity IDs from element IDs
@@ -543,7 +546,16 @@ Provide the following information (only include fields where you have reasonable
                 )
                 return False
 
-            # Execute the merge using kg_queries implementation
+            # Get context for both entities (boundary call: must use stable `id`)
+            primary_context = await get_entity_context_for_resolution(primary_entity_id)
+            duplicate_context = await get_entity_context_for_resolution(duplicate_entity_id)
+
+            if primary_context and duplicate_context:
+                primary_name = primary_context.get("name", "unknown")
+                duplicate_name = duplicate_context.get("name", "unknown")
+                reason = f"Merged '{duplicate_name}' into '{primary_name}' (similarity: {similarity:.2f})"
+
+            # Execute the merge using kg_queries implementation (stable ids)
             success = await merge_entities(
                 source_id=duplicate_entity_id,
                 target_id=primary_entity_id,

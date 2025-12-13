@@ -9,7 +9,9 @@ the Phase 2 complete workflow.
 Migration Reference: docs/langgraph-architecture.md - Section 10.2
 """
 
+import importlib
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -20,10 +22,85 @@ from core.db_manager import neo4j_manager
 from core.langgraph.initialization.validation import validate_initialization_artifacts
 from core.langgraph.state import NarrativeState, create_initial_state
 from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
+from core.llm_interface_refactored import async_llm_context
 from data_access import chapter_queries
 from ui.rich_display import RichDisplayManager
 
 logger = structlog.get_logger(__name__)
+
+
+# Modules that directly import `llm_service` via `from core.llm_interface_refactored import llm_service`.
+#
+# Because that pattern binds the object into each module namespace at import-time,
+# orchestrator/workflow boundaries must explicitly override those module attributes
+# for the duration of a workflow run to ensure the underlying HTTP client lifecycle
+# is managed (opened/closed) deterministically.
+_LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
+    # Root singleton module (defensive; some tests patch this directly)
+    "core.llm_interface_refactored",
+    # LangGraph generation + extraction + embedding + revision + summary
+    "core.langgraph.nodes.generation_node",
+    "core.langgraph.nodes.embedding_node",
+    "core.langgraph.nodes.extraction_nodes",
+    "core.langgraph.nodes.revision_node",
+    "core.langgraph.nodes.summary_node",
+    # LangGraph initialization nodes
+    "core.langgraph.initialization.character_sheets_node",
+    "core.langgraph.initialization.global_outline_node",
+    "core.langgraph.initialization.act_outlines_node",
+    "core.langgraph.initialization.chapter_outline_node",
+    "core.langgraph.initialization.commit_init_node",
+    # Validation subgraph (LLM-based quality eval + world rule checks)
+    "core.langgraph.subgraphs.validation",
+    # Services invoked by workflow nodes that also import `llm_service`
+    "core.graph_healing_service",
+    "core.relationship_normalization_service",
+    # Defensive: other nodes occasionally used in graphs
+    "core.langgraph.nodes.context_retrieval_node",
+    "core.langgraph.nodes.scene_planning_node",
+)
+
+
+@asynccontextmanager
+async def _managed_llm_lifecycle_for_workflow() -> Any:
+    """
+    Ensure LangGraph workflows run with an explicit, deterministic LLM HTTP client lifecycle.
+
+    Strategy:
+    - Create a fresh LLM service instance via [`async_llm_context()`](core/llm_interface_refactored.py:37),
+      which guarantees `HTTPClientService.aclose()` on exit.
+    - Temporarily patch each workflow-related module's `llm_service` reference to point at
+      the managed instance for the duration of the workflow run.
+    - Always restore previous module references on exit (success/failure).
+
+    This avoids requiring every node to manage resources and avoids deep rewiring of
+    node signatures/state.
+    """
+    async with async_llm_context() as (managed_llm_service, _embedding_service):
+        patched: list[tuple[object, Any]] = []
+
+        for module_name in _LLM_SERVICE_PATCH_MODULES:
+            try:
+                module = importlib.import_module(module_name)
+            except Exception:
+                # Defensive: missing/optional modules should not break orchestration.
+                continue
+
+            if hasattr(module, "llm_service"):
+                patched.append((module, module.llm_service))
+                module.llm_service = managed_llm_service
+
+        try:
+            yield managed_llm_service
+        finally:
+            # Restore in reverse order for sanity.
+            for module, previous in reversed(patched):
+                try:
+                    module.llm_service = previous
+                except Exception:
+                    # Best-effort restore; failing to restore should not mask the
+                    # original workflow error.
+                    continue
 
 
 class LangGraphOrchestrator:
@@ -77,13 +154,17 @@ class LangGraphOrchestrator:
 
             # Step 3: Create workflow with checkpointing
             # AsyncSqliteSaver.from_conn_string() returns an async context manager
-            async with create_checkpointer(str(self.checkpointer_path)) as checkpointer:
-                graph = create_full_workflow_graph(checkpointer=checkpointer)
+            #
+            # IMPORTANT: Establish an explicit LLM client lifecycle boundary at the
+            # orchestrator/workflow boundary (not inside individual nodes).
+            async with _managed_llm_lifecycle_for_workflow():
+                async with create_checkpointer(str(self.checkpointer_path)) as checkpointer:
+                    graph = create_full_workflow_graph(checkpointer=checkpointer)
 
-                # Step 4: Generate chapters
-                # The graph will automatically run initialization on first run
-                # via the conditional routing node
-                await self._run_chapter_generation_loop(graph, state)
+                    # Step 4: Generate chapters
+                    # The graph will automatically run initialization on first run
+                    # via the conditional routing node
+                    await self._run_chapter_generation_loop(graph, state)
 
             logger.info("=" * 60)
             logger.info("SAGA: LangGraph Generation Complete")

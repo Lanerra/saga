@@ -11,6 +11,92 @@ from core.exceptions import handle_database_error
 logger = structlog.get_logger(__name__)
 
 
+def compute_chapter_id(chapter_number: int, *, novel_id: str | None = None) -> str:
+    """
+    Compute the canonical, deterministic Chapter.id value.
+
+    Canonical identity contract:
+    - Chapter nodes MUST always have `id` set to satisfy schema constraints
+      (see Chapter.id unique constraint in [`core/db_manager.py`](core/db_manager.py:413)).
+    - Chapter.id must be stable/deterministic so different persistence paths (commit/summary/finalize)
+      converge on the same identity semantics.
+
+    Strategy:
+    - Use the main NovelInfo identifier as the novel namespace.
+    - Compose: "chapter_{novel_id}_{chapter_number}"
+
+    Args:
+        chapter_number: 1-indexed chapter number
+        novel_id: Optional novel identity namespace; defaults to `config.MAIN_NOVEL_INFO_NODE_ID`
+
+    Returns:
+        Deterministic Chapter.id string
+    """
+    novel_id_val = novel_id or config.MAIN_NOVEL_INFO_NODE_ID
+    return f"chapter_{novel_id_val}_{int(chapter_number)}"
+
+
+def build_chapter_upsert_statement(
+    *,
+    chapter_number: int,
+    summary: str | None = None,
+    embedding_vector: list[float] | None = None,
+    is_provisional: bool | None = None,
+    novel_id: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """
+    Build the canonical Cypher + params for Chapter persistence.
+
+    This is the single source of truth for Chapter persistence semantics and MUST:
+    - MERGE Chapter by `number` (unique constraint exists),
+    - ALWAYS ensure `c.id` is populated (existing nodes get `coalesce`-filled; new nodes get it via the SET),
+    - Avoid clobbering fields when the caller does not provide a value (e.g., summary-only updates
+      must not clear embedding_vector).
+
+    Args:
+        chapter_number: Chapter number (unique)
+        summary: Optional summary to set; if None, summary is not modified
+        embedding_vector: Optional embedding vector to set; if None, embedding_vector is not modified
+        is_provisional: Optional provisional flag to set; if None, is_provisional is not modified
+        novel_id: Optional novel identity namespace (used for deterministic chapter id)
+
+    Returns:
+        (cypher_query, parameters)
+    """
+    chapter_id = compute_chapter_id(chapter_number, novel_id=novel_id)
+
+    query = """
+    MERGE (c:Chapter {number: $chapter_number_param})
+    ON CREATE SET
+        c.created_ts = timestamp()
+    SET
+        c.id = coalesce(c.id, $chapter_id_param),
+        c.last_updated = timestamp()
+
+    FOREACH (_ IN CASE WHEN $summary_param IS NULL THEN [] ELSE [1] END |
+        SET c.summary = $summary_param
+    )
+
+    FOREACH (_ IN CASE WHEN $is_provisional_param IS NULL THEN [] ELSE [1] END |
+        SET c.is_provisional = $is_provisional_param
+    )
+
+    FOREACH (_ IN CASE WHEN $embedding_vector_param IS NULL THEN [] ELSE [1] END |
+        SET c.embedding_vector = $embedding_vector_param
+    )
+    """
+
+    parameters = {
+        "chapter_number_param": int(chapter_number),
+        "chapter_id_param": chapter_id,
+        "summary_param": summary,
+        "is_provisional_param": is_provisional,
+        "embedding_vector_param": embedding_vector,
+    }
+
+    return query, parameters
+
+
 async def load_chapter_count_from_db() -> int:
     query = "MATCH (c:Chapter) RETURN count(c) AS chapter_count"
     try:
@@ -29,25 +115,30 @@ async def save_chapter_data_to_db(
     embedding_array: np.ndarray | None,
     is_provisional: bool = False,
 ) -> None:
+    """
+    Persist Chapter metadata to Neo4j using the canonical Chapter persistence semantics.
+
+    This function is intentionally used by multiple workflow nodes (finalize and potentially others);
+    it delegates to [`build_chapter_upsert_statement()`](data_access/chapter_queries.py:43) so all
+    Chapter writes consistently satisfy schema constraints (Chapter.id).
+
+    Note:
+    - `summary=None` will NOT clear an existing summary; it simply will not update it.
+    - `embedding_array=None` will NOT clear an existing embedding; it simply will not update it.
+    """
     if chapter_number <= 0:
         logger.error(f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}.")
         return
 
     embedding_list = neo4j_manager.embedding_to_list(embedding_array)
 
-    query = """
-    MERGE (c:Chapter {number: $chapter_number_param})
-    SET c.summary = $summary_param,
-        c.is_provisional = $is_provisional_param,
-        c.embedding_vector = $embedding_vector_param,
-        c.last_updated = timestamp()
-    """
-    parameters = {
-        "chapter_number_param": chapter_number,
-        "summary_param": summary if summary is not None else "",
-        "is_provisional_param": is_provisional,
-        "embedding_vector_param": embedding_list,
-    }
+    query, parameters = build_chapter_upsert_statement(
+        chapter_number=chapter_number,
+        summary=summary,
+        embedding_vector=embedding_list,
+        is_provisional=is_provisional,
+    )
+
     try:
         await neo4j_manager.execute_write_query(query, parameters)
         logger.info(f"Neo4j: Successfully saved chapter data for chapter {chapter_number}.")

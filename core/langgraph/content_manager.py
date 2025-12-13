@@ -18,7 +18,6 @@ Reference: docs/complexity-hotspots.md - "Externalize content from state"
 from __future__ import annotations
 
 import json
-import pickle
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TypedDict, cast
@@ -175,6 +174,18 @@ class ContentManager:
             checksum=self._compute_checksum(data_bytes),
         )
 
+    def _write_bytes_atomically(self, path: Path, data_bytes: bytes) -> None:
+        """
+        Write bytes atomically (write to temp file, then rename).
+
+        This is the lowest-level writer used by safe "binary" and JSON serialization
+        to ensure checksums are computed from the exact bytes written on disk.
+        """
+        temp_path = path.with_suffix(".tmp")
+        with temp_path.open("wb") as f:
+            f.write(data_bytes)
+        temp_path.replace(path)
+
     def save_binary(
         self,
         data: Any,
@@ -183,27 +194,47 @@ class ContentManager:
         version: int = 1,
     ) -> ContentRef:
         """
-        Save binary data (e.g., embeddings) using pickle.
+        Save "binary" data in a safe format.
+
+        Security note:
+        - This method intentionally does NOT use pickle.
+        - Only bytes-like payloads or JSON-serializable payloads are supported.
+
+        Supported payloads:
+        - `bytes` / `bytearray` / `memoryview` -> stored as `.bin`
+        - JSON-serializable objects (e.g., `list[float]` embeddings) -> stored as compact `.json`
 
         Args:
-            data: Any Python object
-            content_type: Type of content
+            data: Bytes-like payload or JSON-serializable object
+            content_type: Type of content (e.g., "embedding")
             identifier: Unique identifier
             version: Version number
 
         Returns:
-            ContentRef with file path and metadata
+            ContentRef with file path and metadata (checksum matches on-disk bytes)
         """
-        path = self._get_content_path(content_type, identifier, version, "pkl")
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            data_bytes = bytes(data)
+            extension = "bin"
+        else:
+            try:
+                # Compact JSON to reduce file size and ensure deterministic bytes.
+                # NOTE: embeddings are typically list[float] which is JSON-serializable.
+                json_text = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+            except TypeError as e:
+                raise TypeError(
+                    "ContentManager.save_binary only supports bytes-like payloads or JSON-serializable objects. " "Refusing to serialize arbitrary Python objects (pickle is unsafe)."
+                ) from e
+
+            data_bytes = json_text.encode("utf-8")
+            extension = "json"
+
+        path = self._get_content_path(content_type, identifier, version, extension)
 
         # Write content atomically
-        temp_path = path.with_suffix(".tmp")
-        with temp_path.open("wb") as f:
-            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
-        temp_path.replace(path)
+        self._write_bytes_atomically(path, data_bytes)
 
-        # Create reference
-        data_bytes = pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+        # Create reference (checksum computed over exact bytes written)
         return ContentRef(
             path=self._get_relative_path(path),
             content_type=content_type,
@@ -251,13 +282,19 @@ class ContentManager:
 
     def load_binary(self, ref: ContentRef | str) -> Any:
         """
-        Load binary data from file reference.
+        Load "binary" data from file reference using safe parsers only.
+
+        Security note:
+        - This method intentionally refuses to load `.pkl` artifacts.
+        - If you have legacy pickle artifacts, re-generate them in the new safe format.
 
         Args:
             ref: ContentRef or direct path string
 
         Returns:
-            Deserialized Python object
+            - For `.json`: deserialized JSON object
+            - For `.npy`: Python list (from a 1D numpy array) with `allow_pickle=False`
+            - For other extensions (e.g., `.bin`): raw bytes
         """
         path_str = ref["path"] if isinstance(ref, dict) else ref
         full_path = self.project_dir / path_str
@@ -265,8 +302,28 @@ class ContentManager:
         if not full_path.exists():
             raise FileNotFoundError(f"Content file not found: {full_path}")
 
-        with full_path.open("rb") as f:
-            return pickle.load(f)
+        suffix = full_path.suffix.lower()
+
+        if suffix == ".pkl":
+            raise ValueError(
+                "Refusing to load legacy pickle artifact (unsafe deserialization / RCE risk). "
+                "Delete and re-generate embeddings/artifacts in the new safe format (.json/.npy), "
+                f"or remove the file: {full_path}"
+            )
+
+        if suffix == ".json":
+            with full_path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+
+        if suffix == ".npy":
+            # `.npy` is safe iff `allow_pickle=False`.
+            import numpy as np
+
+            arr = np.load(full_path, allow_pickle=False)
+            return arr.tolist()
+
+        # Default: treat as raw bytes
+        return full_path.read_bytes()
 
     def save_list_of_texts(
         self,
@@ -354,7 +411,7 @@ class ContentManager:
         pattern = f"{safe_id}_v*.txt"
 
         versions = []
-        for ext in ["txt", "json", "pkl"]:
+        for ext in ["txt", "json", "bin", "npy", "pkl"]:
             pattern = f"{safe_id}_v*.{ext}"
             for path in type_dir.glob(pattern):
                 # Extract version from filename
@@ -458,13 +515,26 @@ def save_embedding(
     chapter: int,
     version: int = 1,
 ) -> ContentRef:
-    """Save chapter embedding."""
+    """Save chapter embedding (safe format; never pickle)."""
     return manager.save_binary(embedding, "embedding", f"chapter_{chapter}", version)
 
 
 def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float]:
-    """Load chapter embedding."""
-    return manager.load_binary(ref)
+    """Load chapter embedding (safe formats only)."""
+    data = manager.load_binary(ref)
+
+    # `load_binary` returns list for `.npy` and JSON-decoded value for `.json`.
+    if isinstance(data, list):
+        # JSON may contain ints; normalize to floats.
+        normalized: list[float] = []
+        for v in data:
+            if isinstance(v, (int, float)):
+                normalized.append(float(v))
+            else:
+                raise ValueError(f"Embedding vector must be numeric; got element {type(v)}")
+        return normalized
+
+    raise ValueError(f"Unexpected embedding payload type: {type(data)}")
 
 
 def save_extracted_entities(
@@ -809,26 +879,40 @@ def set_extracted_relationships(
     manager: ContentManager,
     relationships: list[Any],
     state: Mapping[str, Any],
-) -> None:
+    *,
+    version: int | None = None,
+) -> ContentRef:
     """
-    Save extracted relationships to externalized content.
+    Save extracted relationships to externalized content and return the new reference.
 
-    This is used by normalize_relationships node to save normalized
+    This is used by the relationship normalization node to persist normalized
     relationships back to externalized storage.
+
+    Versioning contract:
+    - If `version` is provided, that exact version is used.
+    - If `version` is None, we write the next available version for this chapter
+      using [`ContentManager.get_latest_version()`](core/langgraph/content_manager.py:334) + 1.
 
     Args:
         manager: ContentManager instance
-        relationships: List of relationships to save (ExtractedRelationship objects)
+        relationships: List of relationships to save (ExtractedRelationship objects or dicts)
         state: Current state (for accessing current_chapter)
+        version: Optional explicit version to write
+
+    Returns:
+        ContentRef pointing at the saved relationships JSON file.
     """
     chapter = state.get("current_chapter", 1)
 
+    # Choose version (never hardcode to 1)
+    chosen_version = int(version) if version is not None else manager.get_latest_version("extracted_relationships", f"chapter_{chapter}") + 1
+
     # Convert to dicts for JSON serialization
-    rel_dicts = []
+    rel_dicts: list[dict[str, Any]] = []
     for r in relationships:
         # Handle both dict and object types
         if isinstance(r, dict):
-            rel_dicts.append(r)
+            rel_dicts.append(cast(dict[str, Any], r))
         else:
             # Convert ExtractedRelationship object to dict
             rel_dicts.append(
@@ -845,14 +929,17 @@ def set_extracted_relationships(
             )
 
     # Save to content manager
-    ref = save_extracted_relationships(manager, rel_dicts, chapter)
+    ref = save_extracted_relationships(manager, rel_dicts, chapter, chosen_version)
 
     logger.debug(
-        "Saved normalized relationships",
+        "Saved extracted relationships",
         chapter=chapter,
         count=len(relationships),
-        ref=ref.get("path") if isinstance(ref, dict) else None,
+        version=chosen_version,
+        ref_path=ref.get("path") if isinstance(ref, dict) else None,
     )
+
+    return ref
 
 
 def get_active_characters(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:

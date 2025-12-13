@@ -26,10 +26,14 @@ class TestExtractedEntity:
         """Test creating a character entity."""
         entity = sample_extracted_entity
         assert entity.name == "Test Character"
-        assert entity.type == "character"
+        # `ExtractedEntity` normalizes to canonical schema labels (TitleCase).
+        assert entity.type == "Character"
         assert entity.description == "A brave test character"
         assert entity.first_appearance_chapter == 1
         assert "brave" in entity.attributes
+        # Original type is preserved for downstream logic that wants subtype/category semantics.
+        assert entity.attributes["original_type"] == "character"
+        assert entity.attributes["category"] == "character"
 
     def test_create_location_entity(self) -> None:
         """Test creating a location entity."""
@@ -40,7 +44,10 @@ class TestExtractedEntity:
             first_appearance_chapter=1,
             attributes={"category": "settlement"},
         )
-        assert entity.type == "location"
+        assert entity.type == "Location"
+        assert entity.attributes["original_type"] == "location"
+        # Category is preserved when explicitly provided by the caller.
+        assert entity.attributes["category"] == "settlement"
         assert entity.name == "Ancient Castle"
 
     def test_create_object_entity(self) -> None:
@@ -52,7 +59,11 @@ class TestExtractedEntity:
             first_appearance_chapter=1,
             attributes={"category": "artifact"},
         )
-        assert entity.type == "object"
+        # "object" is normalized via the schema normalization map to the canonical label.
+        assert entity.type == "Item"
+        assert entity.attributes["original_type"] == "object"
+        # Category is preserved when explicitly provided by the caller.
+        assert entity.attributes["category"] == "artifact"
 
     def test_create_event_entity(self) -> None:
         """Test creating an event entity."""
@@ -63,7 +74,9 @@ class TestExtractedEntity:
             first_appearance_chapter=5,
             attributes={"importance": 0.9},
         )
-        assert entity.type == "event"
+        assert entity.type == "Event"
+        assert entity.attributes["original_type"] == "event"
+        assert entity.attributes["category"] == "event"
 
     def test_entity_with_empty_attributes(self) -> None:
         """Test entity with empty attributes dict."""
@@ -74,7 +87,10 @@ class TestExtractedEntity:
             first_appearance_chapter=1,
             attributes={},
         )
-        assert entity.attributes == {}
+        # When type normalization occurs, the model preserves the original input
+        # in attributes for downstream categorization/deduplication logic.
+        assert entity.type == "Character"
+        assert entity.attributes == {"original_type": "character", "category": "character"}
 
     def test_entity_attributes_are_mutable(self) -> None:
         """Test that entity attributes can be modified."""

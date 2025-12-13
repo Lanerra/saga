@@ -54,6 +54,10 @@ def sample_validation_state(tmp_path):
         "contradictions": [],
         "extracted_entities": {
             "characters": [],
+            # Canonical extraction contract uses `world_items` for non-character entities
+            # including events (type == "Event"). We keep legacy keys in this fixture
+            # for backward-compatible callers/tests.
+            "world_items": [],
             "locations": [],
             "events": [],
         },
@@ -384,6 +388,62 @@ class TestDetectContradictions:
             mock_rules.assert_called_once()
             mock_locations.assert_called_once()
             mock_relationships.assert_called_once()
+
+    async def test_detect_contradictions_timeline_uses_world_items_events(self, sample_validation_state):
+        """
+        Regression test for LANGGRAPH-003 / LANGGRAPH-017:
+
+        The validation subgraph must not assume an `extracted_entities["events"]` bucket.
+        Canonical extraction stores events in `extracted_entities["world_items"]` with
+        type == "Event".
+        """
+        state = sample_validation_state.copy()
+        state["current_chapter"] = 3
+        # No `events` bucket on purpose (canonical shape does not require it).
+        state["extracted_entities"] = {
+            "characters": [],
+            "world_items": [
+                {
+                    "name": "Battle of the Bridge",
+                    "type": "Event",
+                    "description": "A decisive fight at the bridge.",
+                    "attributes": {"timestamp": "today"},
+                }
+            ],
+        }
+
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_character_locations",
+                new_callable=AsyncMock,
+            ) as mock_locations,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
+            mock_timeline.return_value = []
+            mock_rules.return_value = []
+            mock_locations.return_value = []
+            mock_relationships.return_value = []
+
+            await detect_contradictions(state)
+
+            # Ensure timeline check receives the Event from world_items.
+            assert mock_timeline.call_count == 1
+            passed_events = mock_timeline.call_args.args[0]
+            assert isinstance(passed_events, list)
+            assert len(passed_events) == 1
+            assert passed_events[0].get("type") == "Event"
+            assert passed_events[0].get("name") == "Battle of the Bridge"
 
     async def test_detect_contradictions_critical_triggers_revision(self, sample_validation_state):
         """Critical contradictions trigger needs_revision."""

@@ -28,6 +28,7 @@ from core.langgraph.content_manager import (
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from data_access import chapter_queries
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.file_io import write_text_file
 
@@ -260,22 +261,21 @@ async def _save_summary_to_neo4j(
         chapter_number: Chapter number to update
         summary: Summary text to save
     """
-    query = """
-    MERGE (c:Chapter {number: $chapter_number})
-    SET c.summary = $summary,
-        c.last_updated = timestamp()
-    """
-
-    parameters = {
-        "chapter_number": chapter_number,
-        "summary": summary,
-    }
+    # Canonical Chapter persistence: ensure Chapter.id is always present and stable.
+    query, parameters = chapter_queries.build_chapter_upsert_statement(
+        chapter_number=chapter_number,
+        summary=summary,
+        # Summary node should not touch embedding/provisional flags; leave them unchanged.
+        embedding_vector=None,
+        is_provisional=None,
+    )
 
     try:
         await neo4j_manager.execute_write_query(query, parameters)
         logger.info(
-            "summarize_chapter: summary saved to Neo4j",
+            "summarize_chapter: summary saved to Neo4j (canonical chapter upsert)",
             chapter=chapter_number,
+            chapter_id=parameters.get("chapter_id_param"),
         )
     except Exception as e:
         logger.error(

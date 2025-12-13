@@ -51,6 +51,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
     content_manager = ContentManager(state.get("project_dir", ""))
 
     # Get current relationships and vocabulary
+    # NOTE: [`get_extracted_relationships()`](core/langgraph/content_manager.py:783) prefers the ref when present.
     extracted_rels_dicts = get_extracted_relationships(state, content_manager)
     vocabulary = state.get("relationship_vocabulary", {})
     current_chapter = state.get("current_chapter", 1)
@@ -152,12 +153,21 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
         top_relationships=_get_top_relationships(vocabulary, limit=5),
     )
 
-    # Save normalized relationships back to content manager
-    set_extracted_relationships(content_manager, normalized_rels, state)
+    # Save normalized relationships back to content manager and update the ref.
+    #
+    # This fixes the "normalization bypass" where commit prefers reading via
+    # [`get_extracted_relationships()`](core/langgraph/content_manager.py:783) and would therefore
+    # ignore normalized relationships unless `extracted_relationships_ref` is updated.
+    normalized_ref = set_extracted_relationships(content_manager, normalized_rels, state)
 
     # Update state
+    #
+    # Source-of-truth contract:
+    # - `extracted_relationships_ref` is authoritative for downstream nodes (including commit).
+    # - `extracted_relationships` is kept in sync for backward-compat with any in-memory consumers.
     return {
         "extracted_relationships": normalized_rels,
+        "extracted_relationships_ref": normalized_ref,
         "relationship_vocabulary": vocabulary,
         "relationship_vocabulary_size": len(vocabulary),
         "relationships_normalized_this_chapter": normalized_count,

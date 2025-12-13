@@ -81,6 +81,144 @@ class TestCommitToGraph:
                         # Verify Neo4j execution
                         assert mock_neo4j.execute_cypher_batch.called
 
+    async def test_extraction_normalization_commit_reads_normalized_ref(self, tmp_path):
+        """
+        End-to-end-ish unit test for remediation item 8:
+        “Resolve normalization bypass (ref/version mismatch) so relationship normalization is effective”.
+
+        This test verifies:
+        - Extraction consolidation externalizes relationships and sets `extracted_relationships_ref`.
+        - Relationship normalization persists normalized relationships and updates `extracted_relationships_ref`.
+        - Commit reads relationships via the ref (prefers ref) and therefore uses normalized relationship types.
+
+        Determinism:
+        - We patch [`normalization_service.normalize_relationship_type()`](core/relationship_normalization_service.py:31)
+          to avoid embeddings/LLM calls while still proving semantic normalization changes the predicate.
+        """
+        from core.langgraph.nodes.extraction_nodes import consolidate_extraction
+        from core.langgraph.nodes.relationship_normalization_node import normalize_relationships
+        from core.langgraph.state import ExtractedEntity, ExtractedRelationship
+
+        project_dir = str(tmp_path)
+
+        state = {
+            "project_dir": project_dir,
+            "current_chapter": 1,
+            "draft_word_count": 0,
+            "relationship_vocabulary": {
+                "WORKS_WITH": {
+                    "canonical_type": "WORKS_WITH",
+                    "usage_count": 1,
+                    "first_used_chapter": 0,
+                    "example_descriptions": [],
+                    "synonyms": [],
+                    "last_used_chapter": 0,
+                }
+            },
+            "extracted_entities": {
+                "characters": [
+                    ExtractedEntity(
+                        name="Alice",
+                        type="Character",
+                        description="Alice",
+                        first_appearance_chapter=1,
+                        attributes={},
+                    ),
+                    ExtractedEntity(
+                        name="Bob",
+                        type="Character",
+                        description="Bob",
+                        first_appearance_chapter=1,
+                        attributes={},
+                    ),
+                ],
+                "world_items": [],
+            },
+            # IMPORTANT: this is the relationship we expect to be normalized away.
+            "extracted_relationships": [
+                ExtractedRelationship(
+                    source_name="Alice",
+                    target_name="Bob",
+                    relationship_type="COLLABORATES_WITH",
+                    description="They collaborate",
+                    chapter=1,
+                    confidence=0.9,
+                )
+            ],
+        }
+
+        # Step 1: Consolidate extraction -> writes externalized refs.
+        extraction_update = consolidate_extraction(state)
+        state = {**state, **extraction_update}
+
+        assert state.get("extracted_relationships_ref"), "consolidate_extraction must set extracted_relationships_ref"
+
+        # Poison the in-memory list to prove commit reads via the ref and not the in-state field.
+        state["extracted_relationships"] = [
+            ExtractedRelationship(
+                source_name="Alice",
+                target_name="Bob",
+                relationship_type="SHOULD_NOT_SEE",
+                description="poison",
+                chapter=1,
+                confidence=0.9,
+            )
+        ]
+
+        # Step 2: Normalize relationships -> must update extracted_relationships_ref to the normalized file.
+        with patch("core.langgraph.nodes.relationship_normalization_node.config.ENABLE_RELATIONSHIP_NORMALIZATION", True):
+            with patch(
+                "core.langgraph.nodes.relationship_normalization_node.normalization_service.normalize_relationship_type",
+                new=AsyncMock(return_value=("WORKS_WITH", True, 0.99)),
+            ):
+                normalization_update = await normalize_relationships(state)
+
+        state = {**state, **normalization_update}
+
+        assert state["extracted_relationships_ref"]["version"] >= 2
+
+        # Step 3: Commit reads from extracted_relationships_ref (single source of truth) and uses WORKS_WITH.
+        with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
+            with patch(
+                "core.langgraph.nodes.commit_node._run_phase2_deduplication",
+                new=AsyncMock(return_value={"characters": 0, "world_items": 0}),
+            ):
+                # Avoid relying on real chapter query builder in this focused test.
+                with patch(
+                    "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
+                    return_value=(
+                        "CHAPTER_UPSERT",
+                        {
+                            "chapter_number_param": 1,
+                            "chapter_id_param": "chapter_1",
+                            "summary_param": None,
+                            "embedding_vector_param": None,
+                            "is_provisional_param": False,
+                        },
+                    ),
+                ):
+                    with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
+                        mock_builder = mock_builder_class.return_value
+                        mock_builder.character_upsert_cypher.return_value = ("CHAR_UPSERT", {})
+                        mock_builder.world_item_upsert_cypher.return_value = ("WORLD_UPSERT", {})
+
+                        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                            mock_neo4j.execute_cypher_batch = AsyncMock()
+
+                            result = await commit_to_graph(state)
+                            assert result["last_error"] is None
+
+                            assert mock_neo4j.execute_cypher_batch.called
+                            args, _kwargs = mock_neo4j.execute_cypher_batch.call_args
+                            statements = args[0]
+
+                            # Find relationship statements and assert predicate type is normalized.
+                            rel_queries = [q for (q, _p) in statements if isinstance(q, str) and "-[r:`" in q]
+
+                            assert any("`WORKS_WITH`" in q for q in rel_queries)
+                            assert all("`COLLABORATES_WITH`" not in q for q in rel_queries)
+                            assert all("`SHOULD_NOT_SEE`" not in q for q in rel_queries)
+
     async def test_commit_handles_errors_gracefully(
         self,
         sample_state_with_extraction,
@@ -916,7 +1054,7 @@ class TestBuildChapterNodeStatement:
     """Tests for _build_chapter_node_statement function."""
 
     def test_builds_statement_with_all_fields(self):
-        """Test building statement with all fields."""
+        """Test building statement with all fields (must include Chapter.id)."""
         query, params = _build_chapter_node_statement(
             chapter_number=1,
             text="Chapter text",
@@ -925,15 +1063,23 @@ class TestBuildChapterNodeStatement:
             embedding=[0.1, 0.2, 0.3],
         )
 
+        # Canonical Chapter persistence query must:
+        # - MERGE by number
+        # - always set c.id via coalesce(...)
         assert "MERGE" in query
         assert "Chapter" in query
+        assert "c.id" in query
+        assert "coalesce" in query
+
         assert params["chapter_number_param"] == 1
+        assert params["chapter_id_param"].startswith("chapter_")
         assert params["summary_param"] == "Chapter summary"
         assert params["embedding_vector_param"] == [0.1, 0.2, 0.3]
+        # commit node sets is_provisional=false deterministically
         assert params["is_provisional_param"] is False
 
     def test_builds_statement_without_optional_fields(self):
-        """Test building statement without summary and embedding."""
+        """Test building statement without summary and embedding (must still include Chapter.id)."""
         query, params = _build_chapter_node_statement(
             chapter_number=2,
             text="Chapter text",
@@ -943,8 +1089,11 @@ class TestBuildChapterNodeStatement:
         )
 
         assert "MERGE" in query
+        assert "c.id" in query
         assert params["chapter_number_param"] == 2
-        assert params["summary_param"] == ""
+        assert params["chapter_id_param"].startswith("chapter_")
+        # When summary is omitted, it should remain NULL in params (meaning "do not update")
+        assert params["summary_param"] is None
         assert params["embedding_vector_param"] is None
 
 

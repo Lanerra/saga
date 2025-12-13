@@ -137,6 +137,7 @@ async def test_extraction_nodes_do_not_log_prompt_or_response_fragments(tmp_path
                 _args, kwargs = call
                 assert forbidden_keys.isdisjoint(set(kwargs.keys()))
 
+
 @pytest.mark.asyncio
 async def test_extraction_clears_previous_state():
     """

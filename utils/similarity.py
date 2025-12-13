@@ -1,5 +1,7 @@
 # utils/similarity.py
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import numpy as np
 import structlog
@@ -7,6 +9,33 @@ import structlog
 from .text_processing import get_text_segments
 
 logger = structlog.get_logger(__name__)
+
+
+class _LLMServiceProxy:
+    """
+    Lazy proxy for `core.llm_interface_refactored.llm_service`.
+
+    Why:
+    - `tests/test_similarity_segments.py` patches `utils.similarity.llm_service.async_get_embedding`
+    - importing `core.llm_interface_refactored` at module-import time can create circular imports:
+      utils -> core -> data_access -> processing -> utils
+
+    This proxy is always present (never None), but only imports the real service if/when called.
+    """
+
+    async_get_embedding: Callable[[str], Awaitable[np.ndarray | None]]
+
+    def __init__(self) -> None:
+        async def _lazy_async_get_embedding(text: str) -> np.ndarray | None:
+            from core.llm_interface_refactored import llm_service as real_llm_service
+
+            return await real_llm_service.async_get_embedding(text)
+
+        self.async_get_embedding = _lazy_async_get_embedding
+
+
+# Public patch point for tests (and a stable import surface for callers).
+llm_service: Any = _LLMServiceProxy()
 
 
 def numpy_cosine_similarity(vec1: np.ndarray | None, vec2: np.ndarray | None) -> float:
@@ -53,10 +82,6 @@ async def find_semantically_closest_segment(
     if not original_doc or not query_text:
         logger.debug("find_semantically_closest_segment: original_doc or query_text is empty.")
         return None
-
-    # Local import to avoid circular import chain:
-    # utils -> core -> data_access -> processing -> utils
-    from core.llm_interface_refactored import llm_service
 
     query_embedding = await llm_service.async_get_embedding(query_text)
     if query_embedding is None:

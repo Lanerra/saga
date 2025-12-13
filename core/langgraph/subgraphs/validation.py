@@ -33,6 +33,9 @@ from core.langgraph.content_manager import (
     get_previous_summaries,
 )
 from core.langgraph.nodes.validation_node import (
+    get_extracted_events_for_validation,
+)
+from core.langgraph.nodes.validation_node import (
     validate_consistency as original_validate_consistency,
 )
 from core.langgraph.state import Contradiction, NarrativeState
@@ -391,8 +394,11 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     current_chapter = state.get("current_chapter", 1)
 
     # Check 1: Timeline violations
+    # Delegate state-shape assumptions to the validation node's helper so the subgraph
+    # doesn't diverge (canonical events live in `world_items` with type == "Event").
+    extracted_events = get_extracted_events_for_validation(state.get("extracted_entities", {}))
     timeline_contradictions = await _check_timeline(
-        state.get("extracted_entities", {}).get("events", []),
+        extracted_events,
         current_chapter,
     )
     contradictions.extend(timeline_contradictions)

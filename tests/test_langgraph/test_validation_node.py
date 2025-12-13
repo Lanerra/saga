@@ -156,31 +156,33 @@ class TestCheckCharacterTraits:
                 type="character",
                 description="A brave warrior",
                 first_appearance_chapter=1,
-                attributes={"brave": "", "loyal": ""},
+                # Extraction contract: traits are stored under attributes["traits"] as values.
+                attributes={"traits": ["brave", "loyal"]},
             )
         ]
 
-        # Mock Neo4j to return existing traits that don't conflict
-        mock_neo4j_manager.execute_read_query.return_value = [{"traits": ["brave", "loyal"], "first_chapter": 1, "description": "..."}]
+        # Mock Neo4j to return existing traits that don't conflict (mixed casing ok)
+        mock_neo4j_manager.execute_read_query.return_value = [{"traits": ["Brave", "LOYAL"], "first_chapter": 1, "description": "..."}]
 
         with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             contradictions = await _check_character_traits(characters, 1)
             assert len(contradictions) == 0
 
     async def test_check_contradictory_traits(self, mock_neo4j_manager):
-        """Test checking traits with contradictions."""
+        """Test checking traits with contradictions (trait VALUES, normalized)."""
         characters = [
             ExtractedEntity(
                 name="Alice",
                 type="character",
                 description="A cowardly warrior",
                 first_appearance_chapter=5,
-                attributes={"cowardly": ""},  # Contradicts "brave"
+                # Contradicts established "brave" (case/whitespace should not matter)
+                attributes={"traits": ["  Cowardly  "]},
             )
         ]
 
-        # Mock Neo4j to return "brave" as established trait
-        mock_neo4j_manager.execute_read_query.return_value = [{"traits": ["brave"], "first_chapter": 1, "description": "A brave warrior"}]
+        # Mock Neo4j to return "brave" as established trait (mixed casing ok)
+        mock_neo4j_manager.execute_read_query.return_value = [{"traits": ["Brave"], "first_chapter": 1, "description": "A brave warrior"}]
 
         with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             contradictions = await _check_character_traits(characters, 5)
@@ -274,6 +276,29 @@ class TestIsPlotStagnant:
                 )
             ],
             "world_items": [],
+        }
+        state["extracted_relationships"] = []
+
+        assert _is_plot_stagnant(state) is False
+
+    def test_not_stagnant_with_world_items_event(self, sample_initial_state):
+        """
+        Regression test for LANGGRAPH-003: extraction stores events under world_items
+        with type == "Event" (no separate `events` bucket required).
+        """
+        state = sample_initial_state
+        state["draft_word_count"] = 2000
+        state["extracted_entities"] = {
+            "characters": [],
+            "world_items": [
+                ExtractedEntity(
+                    name="A Duel at Dawn",
+                    type="Event",
+                    description="Two rivals duel at sunrise.",
+                    first_appearance_chapter=1,
+                    attributes={},
+                )
+            ],
         }
         state["extracted_relationships"] = []
 

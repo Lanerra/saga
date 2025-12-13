@@ -1005,6 +1005,11 @@ def _build_chapter_node_statement(
     """
     Build Cypher statement for chapter node creation.
 
+    NOTE:
+    This MUST use the canonical Chapter persistence semantics so Chapter nodes always
+    have schema-required identity (`Chapter.id`) and we never create "number-only"
+    Chapter nodes.
+
     Args:
         chapter_number: Chapter number
         text: Chapter text content
@@ -1015,25 +1020,18 @@ def _build_chapter_node_statement(
     Returns:
         Tuple of (cypher_query, parameters)
     """
-
-    query = """
-    MERGE (c:Chapter {number: $chapter_number_param})
-    SET c.summary = $summary_param,
-        c.is_provisional = $is_provisional_param,
-        c.embedding_vector = $embedding_vector_param,
-        c.last_updated = timestamp()
-    """
-
-    parameters = {
-        "chapter_number_param": chapter_number,
-        "summary_param": summary if summary is not None else "",
-        "is_provisional_param": False,  # Finalized chapter
-        "embedding_vector_param": embedding,
-    }
+    # Delegate to the authoritative Chapter persistence helper.
+    query, parameters = chapter_queries.build_chapter_upsert_statement(
+        chapter_number=chapter_number,
+        summary=summary,
+        embedding_vector=embedding,
+        is_provisional=False,  # Chapter draft is validated before commit in the workflow
+    )
 
     logger.debug(
-        "_build_chapter_node_statement: built statement",
+        "_build_chapter_node_statement: built statement (canonical chapter upsert)",
         chapter=chapter_number,
+        chapter_id=parameters.get("chapter_id_param"),
     )
 
     return (query, parameters)
