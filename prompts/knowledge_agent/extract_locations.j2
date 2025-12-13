@@ -11,8 +11,8 @@ Your task is to extract DETAILED location and world-building information from th
 
 **Extraction Rules:**
 1. **Focus on Places**: Extract locations, structures, settlements, regions, and rooms.
-2. **Type Enforcement**: The `type` field MUST be "Location".
-3. **Use Category for Specifics**: Use the `category` field to specify the subtype.
+2. **Canonical Labeling**: All extracted nodes here are Locations (canonical label: `Location`).
+3. **Use `category` for Subtypes**: Each extracted location MUST include a `category` string to specify the subtype.
    - **Settlement**: Cities, towns, villages (e.g., "New York", "The Hidden Village")
    - **Structure**: Buildings, towers, fortresses (e.g., "The Tower of London", "The Observatory")
    - **Region**: Large geographical areas, kingdoms, wastelands (e.g., "The Northern Wastes", "The Empire")
@@ -21,18 +21,38 @@ Your task is to extract DETAILED location and world-building information from th
    - **Path**: Roads, tunnels, trade routes (e.g., "The Silk Road", "The Secret Tunnel")
    - **CelestialBody**: Planets, moons, stars (e.g., "Mars", "The Moon")
 4. **Prefer Proper Nouns**: Prioritize named locations (e.g., "The Sunken Library", "Sector 7").
-5. **Skip Atmospheric Details**: Do not extract "shadows", "light", "weather" unless they are magical/anomalous entities.
+5. **Skip Atmospheric Details**: Do not extract "shadows", "light", "weather" unless they are stable magical/anomalous entities.
 
-**Required Information:**
+**Output Format (JSON Only; schema is enforced):**
+- You MUST output exactly:
+  - `{"world_updates": {"Location": { ... }}}`
+- Do NOT emit keys like `"locations"`, `"entities"`, `"relationships"`, `"world_items"`, etc.
+- Under `"Location"`, each entry is:
+  - key = location name (string)
+  - value = object with keys: `description`, `category`, `goals`, `rules`, `key_elements`
 
-For each extracted location, provide:
+**Example:**
+```json
+{
+  "world_updates": {
+    "Location": {
+      "The Sunken Library": {
+        "description": "A flooded archive beneath the city, guarded by antique drones.",
+        "category": "Structure",
+        "goals": [],
+        "rules": ["No open flame inside; methane pockets ignite."],
+        "key_elements": ["Collapsed stacks", "Brackish water", "Locked vault doors"]
+      }
+    }
+  }
+}
+```
+
+**Required Information (per location):**
 1. **Description**: Detailed description.
 2. **Category**: Specific subtype (e.g., "Settlement", "Structure", "Region").
 3. **Key Elements**: Significant details or properties.
-
-**CRITICAL**: Use SPECIFIC categories, but the node LABEL/TYPE must be "Location".
-
-*Note: The system enforces the output structure. Focus on extracting accurate and detailed information.*
+4. **Goals / Rules**: If explicitly present; otherwise empty lists.
 
 **Chapter {{ chapter_number }} Text:**
 ```text

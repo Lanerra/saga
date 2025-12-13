@@ -161,7 +161,8 @@ The validation subgraph consists of three sequential checks:
    The evaluator returns a JSON payload; scores below a configurable threshold (`0.5` by default) are turned into a `Contradiction` of type `"quality_issue"` and cause `needs_revision` to be set.
 3. **`detect_contradictions`** – performs deeper narrative analysis:
    * **Timeline violations** – checks extracted events against historical events stored in Neo4j.
-   * **World‑rule breaches** – uses the LLM to verify that the draft does not break any rule defined in `world_rules` or stored as `WorldRule` nodes.
+   * **World‑rule breaches** – uses the LLM to verify that the draft does not break any rule defined in `world_rules` and/or persisted world-rule facts in the knowledge graph.
+     * Note: `WorldRule` is not treated as a canonical Neo4j node label under the current labeling strategy; rule semantics should be represented via canonical labels (e.g., `Concept`) plus `category`/attributes, or via structured state (`current_world_rules`).
    * **Character location inconsistencies** – ensures a character is not inexplicably in two places at once.
    * **Relationship evolution problems** – flags abrupt changes such as `HATES → LOVES` without sufficient development.
 
@@ -191,15 +192,29 @@ Every major node is wrapped by the conditional edge `should_handle_error`.  If `
 
 ### 7.1 Neo4j Schema
 
-The knowledge graph uses a **labeled property graph** with the following node and relationship types:
+The knowledge graph uses a **labeled property graph** with the following node and relationship types.
 
-* **Nodes** – `Character`, `Location`, `Event`, `Object`, `Chapter`, `WorldRule`.
-* **Relationships** –
-  * Social: `KNOWS`, `LOVES`, `ENEMIES_WITH`, `TRUSTS`, `WORKS_FOR`, `ALLIES_WITH`.
-  * Spatial: `LOCATED_IN`, `VISITED`.
-  * Event‑related: `PARTICIPATED_IN`, `WITNESSED`, `CAUSED`.
-  * Meta: `OCCURRED_IN`, `MENTIONED_IN`.
-  * Embedding index: `chapterEmbeddings` on `Chapter` for semantic search.
+#### Canonical domain node labels (schema contract)
+SAGA enforces a canonical set of **9** domain labels:
+
+- `Character`
+- `Location`
+- `Event`
+- `Item`
+- `Organization`
+- `Concept`
+- `Trait`
+- `Chapter`
+- `Novel`
+
+These labels are treated as a strict schema surface (indexes/constraints + Cypher label interpolation safety).
+
+#### Subtypes and legacy aliases
+Subtypes and legacy “types” (e.g., `Faction`, `Settlement`, `Artifact`, `Relic`, `Document`, `PlotPoint`, etc.) are **NOT** Neo4j labels.
+They are represented using properties (typically `category` and/or `original_type`) on nodes whose label is one of the canonical labels above.
+
+#### Relationships
+Relationship types are expected to be uppercase with underscores (e.g., `LOCATED_IN`, `MEMBER_OF`, `BETRAYS`). The vocabulary is allowed to grow, but relationship type strings must be safe for Cypher interpolation.
 
 All write operations go through the `commit_to_graph` node, which performs a two‑phase deduplication (name‑based followed by relationship‑pattern‑based) to avoid graph pollution.
 

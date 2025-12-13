@@ -15,7 +15,16 @@ category-map ::= "{" ws (category-entry ("," ws category-entry)*)? ws "}"
 category-entry ::= json-string ws ":" ws entity-map
 entity-map ::= "{" ws (entity-entry ("," ws entity-entry)*)? ws "}"
 entity-entry ::= json-string ws ":" ws entity-details
-entity-details ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"goals\"" ws ":" ws string-list "," ws "\"rules\"" ws ":" ws string-list "," ws "\"key_elements\"" ws ":" ws string-list ws "}"
+
+# Backward compatible entity schema:
+# - Historically, entity-details did not include "category" due to grammar limitations.
+# - New schema supports per-entity "category" to preserve subtype semantics while
+#   keeping type/label canonical (Location/Event/Item/Organization/Concept).
+entity-details ::= entity-details-with-category | entity-details-no-category
+
+entity-details-with-category ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"category\"" ws ":" ws json-string "," ws "\"goals\"" ws ":" ws string-list "," ws "\"rules\"" ws ":" ws string-list "," ws "\"key_elements\"" ws ":" ws string-list ws "}"
+
+entity-details-no-category ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"goals\"" ws ":" ws string-list "," ws "\"rules\"" ws ":" ws string-list "," ws "\"key_elements\"" ws ":" ws string-list ws "}"
 
 # 3. Relationship Extraction (Triples)
 relationship-extraction ::= "{" ws "\"kg_triples\"" ws ":" ws triple-list ws "}"

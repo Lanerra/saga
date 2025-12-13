@@ -11,8 +11,8 @@ Your task is to extract SIGNIFICANT events from the provided chapter text.
 
 **Extraction Rules:**
 1. **Focus on Significant Story Elements**: Extract plot beats, character development, world revelations, battles, and turning points.
-2. **Type Enforcement**: The `type` field MUST be "Event".
-3. **Use Category for Specifics**: Use the `category` field to specify the subtype.
+2. **Canonical Labeling**: All extracted nodes here are Events (canonical label: `Event`).
+3. **Use `category` for Subtypes**: Each extracted event MUST include a `category` string to specify the subtype.
    - **Scene**: A specific scene or sequence of actions (e.g., "The Meeting at the Inn")
    - **Flashback**: A scene occurring in the past (e.g., "Recall of the War")
    - **Battle**: A combat encounter (e.g., "The Battle of Helm's Deep")
@@ -22,16 +22,36 @@ Your task is to extract SIGNIFICANT events from the provided chapter text.
 4. **Granularity**: Do not extract every single action. Focus on summary-level events.
 5. **Naming**: Give events descriptive names that capture their essence.
 
-**Required Information:**
+**Output Format (JSON Only; schema is enforced):**
+- You MUST output exactly:
+  - `{"world_updates": {"Event": { ... }}}`
+- Do NOT emit keys like `"events"`, `"entities"`, `"relationships"`, `"world_items"`, etc.
+- Under `"Event"`, each entry is:
+  - key = event name (string)
+  - value = object with keys: `description`, `category`, `goals`, `rules`, `key_elements`
 
-For each extracted event, provide:
+**Example:**
+```json
+{
+  "world_updates": {
+    "Event": {
+      "The Collapse of the Skybridge": {
+        "description": "During the chase, the ancient bridge fails and splits the group.",
+        "category": "Scene",
+        "goals": ["Escape the pursuing patrol"],
+        "rules": ["Crossing requires a safety line; loose stones trigger collapse."],
+        "key_elements": ["Falling debris", "Separated allies", "Destroyed route"]
+      }
+    }
+  }
+}
+```
+
+**Required Information (per event):**
 1. **Description**: Detailed description of the event.
 2. **Category**: Specific subtype (e.g., "Scene", "Battle", "Conversation").
 3. **Key Elements**: Important details, consequences, or themes associated with the event.
-
-**CRITICAL**: Use SPECIFIC categories, but the node LABEL/TYPE must be "Event".
-
-*Note: The system enforces the output structure. Focus on extracting accurate and detailed information.*
+4. **Goals / Rules**: If explicitly present; otherwise empty lists.
 
 **Chapter {{ chapter_number }} Text:**
 ```text

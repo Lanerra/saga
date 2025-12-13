@@ -214,28 +214,48 @@ SUGGESTED_CATEGORIES = {
         "Background",
         "Historical",
     ],
+    # Subtypes are stored in `category` and are intentionally open-ended.
+    # This list is advisory (soft validation) and should match what prompts
+    # actively instruct the model to emit.
     "Location": [
+        # Common location kinds
         "City",
         "Town",
         "Village",
+        "Settlement",
         "Building",
+        "Structure",
         "Room",
         "Region",
-        "Planet",
         "Landscape",
         "Landmark",
+        "Territory",
+        "Path",
+        "Planet",
+        "CelestialBody",
+        # Legacy/variant bucket names sometimes seen in older outputs
         "locations",
         "location",
     ],
     "Event": [
+        # Common narrative event kinds
+        "Scene",
         "Battle",
         "Meeting",
         "Journey",
+        "Travel",
         "Ceremony",
         "Discovery",
         "Conflict",
         "Conversation",
         "Flashback",
+        # Narrative/KG subtypes (still Events; subtype lives in category)
+        "PlotPoint",
+        "DevelopmentEvent",
+        "WorldElaborationEvent",
+        "Era",
+        "Moment",
+        # Legacy/variant bucket names sometimes seen in older outputs
         "events",
         "event",
     ],
