@@ -158,14 +158,16 @@ class ContentManager:
         """
         path = self._get_content_path(content_type, identifier, version, "json")
 
-        # Write content atomically
-        temp_path = path.with_suffix(".tmp")
-        with temp_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        temp_path.replace(path)
+        # Serialize once with the exact formatting we want on disk, then compute
+        # checksum over the exact bytes written. This avoids mismatch between
+        # `ContentRef.checksum` and on-disk content.
+        json_text = json.dumps(data, indent=2, ensure_ascii=False)
+        data_bytes = json_text.encode("utf-8")
 
-        # Create reference
-        data_bytes = json.dumps(data).encode("utf-8")
+        # Write content atomically (bytes) to preserve checksum correctness
+        self._write_bytes_atomically(path, data_bytes)
+
+        # Create reference (checksum computed over exact bytes written)
         return ContentRef(
             path=self._get_relative_path(path),
             content_type=content_type,
@@ -243,17 +245,46 @@ class ContentManager:
             checksum=self._compute_checksum(data_bytes),
         )
 
-    def load_text(self, ref: ContentRef | str) -> str:
+    def _resolve_ref_path(self, ref: ContentRef | str | Path, *, caller: str) -> str:
+        """
+        Resolve a `ContentRef | str | Path` into a relative-ish path string.
+
+        Contract:
+        - If `ref` is a dict-like `ContentRef`, it must contain a non-empty string at key `"path"`.
+        - If `ref` is a `str` or `Path`, it is treated as a (typically relative) path under `project_dir`.
+
+        Raises:
+            ValueError: if a dict ref is missing `"path"` (or `"path"` is not a non-empty str)
+            TypeError: if an unsupported ref type is provided
+        """
+        if isinstance(ref, Path):
+            return str(ref)
+
+        if isinstance(ref, str):
+            return ref
+
+        if isinstance(ref, dict):
+            path = ref.get("path")
+            if isinstance(path, str) and path:
+                return path
+
+            # Make the failure explicit and actionable (avoid KeyError hazards).
+            keys = sorted(list(ref.keys()))
+            raise ValueError(f"{caller} expected a ContentRef dict with required key 'path' (non-empty str); " f"got keys={keys}, ref={ref!r}")
+
+        raise TypeError(f"{caller} expected ContentRef | str | Path; got {type(ref)}")
+
+    def load_text(self, ref: ContentRef | str | Path) -> str:
         """
         Load text content from file reference.
 
         Args:
-            ref: ContentRef or direct path string
+            ref: ContentRef, direct path string, or Path
 
         Returns:
             Text content
         """
-        path_str = ref["path"] if isinstance(ref, dict) else ref
+        path_str = self._resolve_ref_path(ref, caller="ContentManager.load_text")
         full_path = self.project_dir / path_str
 
         if not full_path.exists():
@@ -261,17 +292,17 @@ class ContentManager:
 
         return full_path.read_text(encoding="utf-8")
 
-    def load_json(self, ref: ContentRef | str) -> dict[str, Any] | list[Any]:
+    def load_json(self, ref: ContentRef | str | Path) -> dict[str, Any] | list[Any]:
         """
         Load JSON data from file reference.
 
         Args:
-            ref: ContentRef or direct path string
+            ref: ContentRef, direct path string, or Path
 
         Returns:
             Deserialized JSON data
         """
-        path_str = ref["path"] if isinstance(ref, dict) else ref
+        path_str = self._resolve_ref_path(ref, caller="ContentManager.load_json")
         full_path = self.project_dir / path_str
 
         if not full_path.exists():
@@ -280,7 +311,7 @@ class ContentManager:
         with full_path.open("r", encoding="utf-8") as f:
             return json.load(f)
 
-    def load_binary(self, ref: ContentRef | str) -> Any:
+    def load_binary(self, ref: ContentRef | str | Path) -> Any:
         """
         Load "binary" data from file reference using safe parsers only.
 
@@ -289,14 +320,14 @@ class ContentManager:
         - If you have legacy pickle artifacts, re-generate them in the new safe format.
 
         Args:
-            ref: ContentRef or direct path string
+            ref: ContentRef, direct path string, or Path
 
         Returns:
             - For `.json`: deserialized JSON object
             - For `.npy`: Python list (from a 1D numpy array) with `allow_pickle=False`
             - For other extensions (e.g., `.bin`): raw bytes
         """
-        path_str = ref["path"] if isinstance(ref, dict) else ref
+        path_str = self._resolve_ref_path(ref, caller="ContentManager.load_binary")
         full_path = self.project_dir / path_str
 
         if not full_path.exists():

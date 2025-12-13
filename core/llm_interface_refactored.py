@@ -293,7 +293,6 @@ class CompletionService:
             "completions_successful": 0,
             "completions_failed": 0,
             "fallback_used": 0,
-            "streaming_requests": 0,
         }
 
     async def get_completion(
@@ -438,7 +437,6 @@ class CompletionService:
             "success_rate": (self._stats["completions_successful"] / total * 100) if total > 0 else 0,
             "failure_rate": (self._stats["completions_failed"] / total * 100) if total > 0 else 0,
             "fallback_rate": (self._stats["fallback_used"] / total * 100) if total > 0 else 0,
-            "streaming_rate": (self._stats["streaming_requests"] / total * 100) if total > 0 else 0,
         }
 
 
@@ -480,7 +478,6 @@ class RefactoredLLMService:
         temperature: float | None = None,
         max_tokens: int | None = None,
         allow_fallback: bool = False,
-        stream_to_disk: bool = False,
         auto_clean_response: bool = True,
         grammar: str | None = None,
         *,

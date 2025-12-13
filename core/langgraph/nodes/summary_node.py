@@ -100,7 +100,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             temperature=0.3,  # Low temperature for consistency
             max_tokens=200,  # Short summary
             allow_fallback=True,
-            stream_to_disk=False,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),
         )

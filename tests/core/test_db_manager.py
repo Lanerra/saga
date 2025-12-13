@@ -259,11 +259,11 @@ class TestSyncQueryExecution:
         mock_tx.run.assert_called_once_with("MATCH (n) RETURN n", {})
 
     def test_sync_execute_read_query(self):
-        """_sync_execute_read_query uses read transaction"""
+        """_sync_execute_read_query uses execute_read (Neo4j v5+ API)"""
         manager = Neo4jManagerSingleton()
 
         mock_session = MagicMock()
-        mock_session.read_transaction.return_value = [{"name": "Alice"}]
+        mock_session.execute_read.return_value = [{"name": "Alice"}]
 
         mock_driver = MagicMock()
         mock_driver.session.return_value.__enter__.return_value = mock_session
@@ -274,14 +274,14 @@ class TestSyncQueryExecution:
         result = manager._sync_execute_read_query("MATCH (n) RETURN n", {})
 
         assert result == [{"name": "Alice"}]
-        mock_session.read_transaction.assert_called_once()
+        mock_session.execute_read.assert_called_once_with(manager._sync_execute_query_tx, "MATCH (n) RETURN n", {})
 
     def test_sync_execute_write_query(self):
-        """_sync_execute_write_query uses write transaction"""
+        """_sync_execute_write_query uses execute_write (Neo4j v5+ API)"""
         manager = Neo4jManagerSingleton()
 
         mock_session = MagicMock()
-        mock_session.write_transaction.return_value = [{"created": 1}]
+        mock_session.execute_write.return_value = [{"created": 1}]
 
         mock_driver = MagicMock()
         mock_driver.session.return_value.__enter__.return_value = mock_session
@@ -292,7 +292,7 @@ class TestSyncQueryExecution:
         result = manager._sync_execute_write_query("CREATE (n:Node)", {})
 
         assert result == [{"created": 1}]
-        mock_session.write_transaction.assert_called_once()
+        mock_session.execute_write.assert_called_once_with(manager._sync_execute_query_tx, "CREATE (n:Node)", {})
 
     def test_sync_execute_cypher_batch_empty(self):
         """_sync_execute_cypher_batch handles empty statement list"""

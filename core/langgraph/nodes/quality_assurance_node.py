@@ -14,6 +14,8 @@ this node focuses on consistency checking and error detection.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import structlog
 
 import config
@@ -170,7 +172,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     qa_history.append(
         {
             "chapter": current_chapter,
-            "timestamp": "now",
+            "timestamp": datetime.now(UTC).isoformat(),
             "results": qa_results,
         }
     )

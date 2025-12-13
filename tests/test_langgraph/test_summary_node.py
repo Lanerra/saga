@@ -47,7 +47,6 @@ async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a 
         temperature: float,
         max_tokens: int,
         allow_fallback: bool,
-        stream_to_disk: bool,
         auto_clean_response: bool,
         system_prompt: str,
     ):

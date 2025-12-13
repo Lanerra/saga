@@ -249,6 +249,28 @@ Provide the following information (only include fields where you have reasonable
         await neo4j_manager.execute_write_query(query, params)
         return True
 
+    async def get_node_by_element_id(self, element_id: str) -> dict[str, Any] | None:
+        """
+        Load the latest node properties from Neo4j by internal elementId.
+
+        This is intentionally an internal-only helper. It is used to avoid stale
+        in-memory node dicts after an enrichment write.
+        """
+        query = """
+            MATCH (n)
+            WHERE elementId(n) = $element_id
+            RETURN
+                elementId(n) AS element_id,
+                n.id AS id,
+                n.name AS name,
+                labels(n)[0] AS type,
+                n.description AS description,
+                n.traits AS traits,
+                n.created_chapter AS created_chapter
+        """
+        results = await neo4j_manager.execute_read_query(query, {"element_id": element_id})
+        return results[0] if results else None
+
     async def graduate_node(self, element_id: str, confidence: float) -> bool:
         """Graduate a node from provisional status."""
         query = """
@@ -702,8 +724,18 @@ Provide the following information (only include fields where you have reasonable
                         }
                     )
 
-                    # Re-check confidence after enrichment
-                    new_confidence = await self.calculate_node_confidence(node, current_chapter)
+                    # Re-check confidence after enrichment using UPDATED node properties.
+                    #
+                    # CORE-009: Enrichment writes to Neo4j; recomputing confidence with the
+                    # original in-memory `node` dict can be stale. Reload by element_id so
+                    # `description`/`traits` reflect the applied enrichment.
+                    updated_node = await self.get_node_by_element_id(node["element_id"])
+                    if updated_node is None:
+                        # Defensive fallback: if reload fails, at least avoid crashing and
+                        # proceed with the original node dict.
+                        updated_node = node
+
+                    new_confidence = await self.calculate_node_confidence(updated_node, current_chapter)
                     if new_confidence >= self.CONFIDENCE_THRESHOLD:
                         if await self.graduate_node(node["element_id"], new_confidence):
                             results["nodes_graduated"] += 1

@@ -172,7 +172,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             temperature=getattr(config.Temperatures, "REVISION", 0.5),  # Lower temp for consistency
             max_tokens=max_gen_tokens,
             allow_fallback=True,
-            stream_to_disk=False,
             frequency_penalty=getattr(config, "FREQUENCY_PENALTY_DRAFTING", 0.3),
             presence_penalty=getattr(config, "PRESENCE_PENALTY_DRAFTING", 0.3),
             auto_clean_response=True,

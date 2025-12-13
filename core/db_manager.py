@@ -159,13 +159,17 @@ class Neo4jManagerSingleton:
         self._ensure_connected_sync()
         assert self.driver is not None
         with self.driver.session(database=config.NEO4J_DATABASE) as session:
-            return session.read_transaction(self._sync_execute_query_tx, query, parameters)
+            # Neo4j Python driver v5+ deprecates `read_transaction` in favor of `execute_read`.
+            # We keep the transaction function signature identical (tx, query, parameters)
+            # to preserve behavior and return values.
+            return session.execute_read(self._sync_execute_query_tx, query, parameters)
 
     def _sync_execute_write_query(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         self._ensure_connected_sync()
         assert self.driver is not None
         with self.driver.session(database=config.NEO4J_DATABASE) as session:
-            return session.write_transaction(self._sync_execute_query_tx, query, parameters)
+            # Neo4j Python driver v5+ deprecates `write_transaction` in favor of `execute_write`.
+            return session.execute_write(self._sync_execute_query_tx, query, parameters)
 
     def _sync_execute_cypher_batch(self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]) -> None:
         if not cypher_statements_with_params:

@@ -496,7 +496,6 @@ Provide a concise summary (max 100 words):"""
             temperature=config.TEMPERATURE_SUMMARY,
             max_tokens=max_tokens,
             allow_fallback=True,
-            stream_to_disk=False,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),
         )

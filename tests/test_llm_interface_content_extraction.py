@@ -1,5 +1,4 @@
 # tests/test_llm_interface_content_extraction.py
-from collections.abc import AsyncGenerator
 from typing import Any
 
 import numpy as np
@@ -34,15 +33,9 @@ class _DummyCompletionClient:
             "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         }
 
-    async def get_streaming_completion(self, *args: Any, **kwargs: Any) -> AsyncGenerator[dict[str, Any], None]:
-        # Yield two chunks that stream reasoning_content in the delta
-        async def _gen() -> AsyncGenerator[dict[str, Any], None]:
-            yield {"choices": [{"delta": {"reasoning_content": "Hello "}, "finish_reason": None}]}
-            yield {"choices": [{"delta": {"reasoning_content": "World"}, "finish_reason": None}]}
-
-        # Make this an async generator function by yielding from the inner generator
-        async for item in _gen():
-            yield item
+    # NOTE:
+    # Streaming was removed from the public LLM surface (CORE-006 remediation),
+    # so we intentionally do not provide a get_streaming_completion() helper here.
 
 
 class _DummyTextProcessor:
@@ -65,14 +58,11 @@ async def test_extracts_reasoning_content_when_missing_content() -> None:
     assert usage and usage.get("total_tokens") == 3
 
 
-@pytest.mark.asyncio
-async def test_streaming_delta_reasoning_content_accumulates() -> None:
-    # Streaming API removed; skip if method not available
-    if not hasattr(CompletionService, "get_streaming_completion"):
-        pytest.skip("Streaming completion is not supported in the current API")
-    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
-    text, usage = await svc.get_streaming_completion("model", "prompt")  # type: ignore
-    assert text == "Hello World"
+def test_streaming_api_surface_removed() -> None:
+    """
+    CORE-006: Streaming support was removed; ensure we don't expose misleading streaming APIs.
+    """
+    assert not hasattr(CompletionService, "get_streaming_completion")
 
 
 def test_embedding_fallback_accepts_numeric_list_under_non_embedding_key(monkeypatch: pytest.MonkeyPatch) -> None:
