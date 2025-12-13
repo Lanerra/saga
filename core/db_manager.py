@@ -38,6 +38,12 @@ class Neo4jManagerSingleton:
         self._property_keys_cache: set[str] | None = None
         self._property_keys_cache_ts: float | None = None
 
+        # Cached APOC capability detection (CORE-010)
+        # - None => not yet checked this process
+        # - bool => cached availability
+        self._apoc_available_cache: bool | None = None
+        self._apoc_availability_warning_logged: bool = False
+
         # Cached server info (best-effort; used for diagnostics and deprecation targeting)
         self._neo4j_server_info: dict[str, Any] | None = None
         self._neo4j_server_info_logged: bool = False
@@ -341,6 +347,51 @@ class Neo4jManagerSingleton:
         return await asyncio.to_thread(_run_transaction)
 
     # -------------------------------------------------------------------------
+    # Capability discovery helpers (APOC, etc.)
+    # -------------------------------------------------------------------------
+
+    async def is_apoc_available(self, *, log_warning_once: bool = False) -> bool:
+        """Return True if APOC procedures appear to be callable on this deployment.
+
+        Design goals:
+        - Cached once per process (avoids repeated procedure calls).
+        - Safe under restricted environments: any error is interpreted as APOC unavailable.
+        - Version-agnostic: avoids relying on procedure listing permissions (e.g. dbms.procedures()).
+
+        Implementation:
+        - Attempt a trivial `RETURN apoc.version()` which works on common APOC installs.
+        - If the procedure is missing or blocked, Neo4j will raise an error; treat as unavailable.
+
+        Args:
+            log_warning_once: If True, emit a clear warning once per process when APOC is
+                              determined to be unavailable.
+
+        Returns:
+            bool: Whether APOC appears to be available.
+        """
+        if self._apoc_available_cache is not None:
+            return self._apoc_available_cache
+
+        # Ensure we have a driver; execute_read_query() will connect if needed.
+        try:
+            _ = await self.execute_read_query("RETURN apoc.version() AS version")
+            self._apoc_available_cache = True
+            return True
+        except Exception as e:
+            # Treat all errors as "unavailable" to be safe on deployments that
+            # restrict procedure invocation or introspection.
+            self._apoc_available_cache = False
+
+            if log_warning_once and not self._apoc_availability_warning_logged:
+                self._apoc_availability_warning_logged = True
+                self.logger.warning(
+                    "APOC procedures unavailable; continuing without APOC-dependent features",
+                    error=str(e),
+                )
+
+            return False
+
+    # -------------------------------------------------------------------------
     # Schema/property key discovery helpers
     # -------------------------------------------------------------------------
 
@@ -463,7 +514,9 @@ class Neo4jManagerSingleton:
         # Filter out None (when legacy disabled)
         schema_only_queries = [q for q in (core_constraints_queries + index_queries) if q]
         try:
-            await self._execute_schema_batch(schema_only_queries)
+            # CORE-001: schema creation must not block the asyncio event loop.
+            # The Neo4j driver used here is synchronous, so run schema batch execution in a worker thread.
+            await asyncio.to_thread(self._execute_schema_batch, schema_only_queries)
             self.logger.info(f"Phase 1 complete: Successfully created {len(schema_only_queries)} schema elements.")
         except Exception as e:
             self.logger.error(
@@ -537,8 +590,13 @@ class Neo4jManagerSingleton:
                 except Exception as individual_e:
                     self.logger.warning(f"Phase 2 fallback: Failed to create type placeholder: {individual_e}")
 
-    async def _execute_schema_batch(self, queries: list[str]) -> None:
-        """Execute schema operations in isolation (no data writes)."""
+    def _execute_schema_batch(self, queries: list[str]) -> None:
+        """Execute schema operations in isolation (no data writes).
+
+        Notes:
+        - This uses the synchronous Neo4j driver APIs (session/tx/tx.run).
+        - Callers from async code MUST wrap this via asyncio.to_thread(...) to avoid blocking the event loop.
+        """
         self._ensure_connected_sync()
         assert self.driver is not None
         with self.driver.session(database=config.NEO4J_DATABASE) as session:

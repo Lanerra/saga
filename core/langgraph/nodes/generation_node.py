@@ -35,30 +35,27 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 logger = structlog.get_logger(__name__)
 
 
-async def generate_chapter(state: NarrativeState) -> NarrativeState:
+async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
     """
-    Generate chapter prose from outline and Neo4j context.
+    Generate chapter prose from outline and Neo4j context (single-shot).
 
-    This is the main LangGraph node function for chapter generation.
-    It builds context from the knowledge graph, constructs a generation prompt,
-    calls the LLM, and updates the state with the generated chapter text.
+    IMPORTANT:
+    - This is the legacy / single-shot implementation kept for backcompat and
+      isolated unit tests.
+    - The canonical public generation entrypoint is the scene-based generation
+      subgraph (plan scenes → retrieve context → draft scenes → assemble chapter).
 
-    PORTED FROM: NarrativeAgent.draft_chapter()
-
-    Process Flow:
-    1. Build context from knowledge graph (characters, locations, events, etc.)
-    2. Construct generation prompt with all relevant context
-    3. Generate chapter text via LLM
-    4. Post-process and update state
+    See:
+    - [`create_generation_subgraph()`](core/langgraph/subgraphs/generation.py:35)
 
     Args:
         state: Current narrative state containing outline, chapter number, etc.
 
     Returns:
-        Updated state with draft_text and draft_word_count populated
+        Updated state with draft_ref and draft_word_count populated
     """
     logger.info(
-        "generate_chapter: starting generation",
+        "generate_chapter_single_shot: starting generation",
         chapter=state.get("current_chapter", 1),
         model=state.get("generation_model", ""),
     )
@@ -71,7 +68,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
     if not chapter_outlines:
         error_msg = "No chapter outlines available for generation"
-        logger.error("generate_chapter: fatal error", error=error_msg)
+        logger.error("generate_chapter_single_shot: fatal error", error=error_msg)
         return {
             **state,
             "last_error": error_msg,
@@ -86,7 +83,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     if chapter_number not in chapter_outlines:
         error_msg = f"Chapter {chapter_number} not found in chapter outlines"
         logger.error(
-            "generate_chapter: fatal error",
+            "generate_chapter_single_shot: fatal error",
             error=error_msg,
             chapter=chapter_number,
             available_chapters=list(chapter_outlines.keys()),
@@ -109,7 +106,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
         if not plot_point_focus:
             logger.warning(
-                "generate_chapter: no plot point focus found, using generic focus",
+                "generate_chapter_single_shot: no plot point focus found, using generic focus",
                 chapter=chapter_number,
             )
             plot_point_focus = f"Continue the story in Chapter {chapter_number}"
@@ -179,7 +176,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
     if max_gen_tokens < 500:
         error_msg = f"Insufficient token space for generation. " f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
-        logger.error("generate_chapter: token budget exceeded", error=error_msg)
+        logger.error("generate_chapter_single_shot: token budget exceeded", error=error_msg)
         return {
             **state,
             "last_error": error_msg,
@@ -188,7 +185,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
     # Step 5: Generate via LLM
     logger.info(
-        "generate_chapter: calling LLM",
+        "generate_chapter_single_shot: calling LLM",
         chapter=chapter_number,
         model=model_name,
         max_tokens=max_gen_tokens,
@@ -210,7 +207,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
         if not draft_text or not draft_text.strip():
             logger.error(
-                "generate_chapter: LLM returned empty text",
+                "generate_chapter_single_shot: LLM returned empty text",
                 chapter=chapter_number,
             )
             return {
@@ -223,7 +220,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         word_count = len(draft_text.split())
 
         logger.info(
-            "generate_chapter: generation complete",
+            "generate_chapter_single_shot: generation complete",
             chapter=chapter_number,
             word_count=word_count,
             tokens_used=usage.get("total_tokens", 0) if usage else 0,
@@ -239,7 +236,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         if removed_chars > 0:
             final_word_count = len(deduplicated_text.split())
             logger.info(
-                "generate_chapter: deduplication applied",
+                "generate_chapter_single_shot: deduplication applied",
                 chapter=chapter_number,
                 chars_removed=removed_chars,
                 original_words=word_count,
@@ -250,7 +247,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
             deduplicated_text = draft_text
             final_word_count = word_count
             logger.info(
-                "generate_chapter: no duplicates detected",
+                "generate_chapter_single_shot: no duplicates detected",
                 chapter=chapter_number,
                 is_from_flawed_draft=False,
             )
@@ -294,7 +291,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         )
 
         logger.info(
-            "generate_chapter: content externalized",
+            "generate_chapter_single_shot: content externalized",
             chapter=chapter_number,
             version=current_version,
             draft_size=draft_ref["size_bytes"],
@@ -314,7 +311,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     except Exception as e:
         error_msg = f"Error during LLM generation: {str(e)}"
         logger.error(
-            "generate_chapter: exception during generation",
+            "generate_chapter_single_shot: exception during generation",
             chapter=chapter_number,
             error=str(e),
             exc_info=True,
@@ -376,4 +373,4 @@ async def _construct_generation_prompt(
     return prompt
 
 
-__all__ = ["generate_chapter"]
+__all__ = ["generate_chapter_single_shot"]

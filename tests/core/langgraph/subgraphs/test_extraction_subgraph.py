@@ -110,7 +110,11 @@ async def test_extraction_nodes_do_not_log_prompt_or_response_fragments(tmp_path
         patch("core.langgraph.nodes.extraction_nodes.logger") as mock_logger,
     ):
         result = await extract_locations(state)
-        assert result == {}
+
+        # CORE-007: extraction failures must be explicit (fatal) instead of silently returning {}.
+        assert result.get("has_fatal_error") is True
+        assert result.get("error_node") == "extract_locations"
+        assert result.get("last_error") is not None
 
         # Ensure the JSON parse error log does not include raw text.
         error_calls = mock_logger.error.call_args_list
@@ -244,3 +248,47 @@ async def test_extraction_clears_previous_state():
         assert len(result["extracted_relationships"]) == 1
         assert result["extracted_relationships"][0].source_name == "NewCharacter"
         assert result["extracted_relationships"][0].target_name == "NewLocation"
+
+
+@pytest.mark.asyncio
+async def test_extraction_subgraph_propagates_llm_failure_as_fatal(tmp_path):
+    """
+    CORE-007: Ensure extraction failures propagate in a controlled way.
+
+    If a core LLM call fails (typed exception), extraction should set:
+    - has_fatal_error=True
+    - last_error populated
+    - error_node set to the failing node
+    """
+    from core.exceptions import LLMServiceError
+
+    workflow = create_extraction_subgraph()
+
+    project_dir = str(tmp_path / "test_project")
+    state = create_initial_state(
+        project_id="test_project",
+        title="Test Novel",
+        genre="Fantasy",
+        theme="Heroism",
+        setting="A magical world",
+        target_word_count=50000,
+        total_chapters=10,
+        project_dir=project_dir,
+        protagonist_name="Test Hero",
+    )
+
+    content_manager = ContentManager(project_dir)
+    draft_text = "Elara walked into the Sunken Library. She found the Starfall Map."
+    state["draft_ref"] = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+    state["current_chapter"] = 1
+
+    # Make the FIRST extraction node fail (extract_characters).
+    with patch(
+        "core.llm_interface_refactored.llm_service.async_call_llm",
+        side_effect=LLMServiceError("LLM completion failed", details={"primary_model": "test-model"}),
+    ):
+        result = await workflow.ainvoke(state)
+
+    assert result.get("has_fatal_error") is True
+    assert result.get("error_node") == "extract_characters"
+    assert result.get("last_error") is not None

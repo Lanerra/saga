@@ -58,6 +58,40 @@ async def test_extracts_reasoning_content_when_missing_content() -> None:
     assert usage and usage.get("total_tokens") == 3
 
 
+@pytest.mark.asyncio
+async def test_get_completion_strict_raises_on_missing_model_or_prompt() -> None:
+    """
+    CORE-007: CompletionService.get_completion() must not return ambiguous sentinels
+    on input validation failures by default.
+    """
+    from core.exceptions import LLMServiceError
+
+    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
+
+    with pytest.raises(LLMServiceError):
+        await svc.get_completion("", "prompt")
+
+    with pytest.raises(LLMServiceError):
+        await svc.get_completion("model", "")
+
+
+@pytest.mark.asyncio
+async def test_get_completion_non_strict_returns_legacy_sentinel_on_error() -> None:
+    """
+    CORE-007 compatibility: strict=False preserves the legacy ("", None) sentinel.
+    """
+
+    class _ExplodingClient:
+        async def get_completion(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise RuntimeError("provider down")
+
+    svc = CompletionService(_ExplodingClient(), _DummyTextProcessor())  # type: ignore
+    text, usage = await svc.get_completion("model", "prompt", strict=False)
+
+    assert text == ""
+    assert usage is None
+
+
 def test_streaming_api_surface_removed() -> None:
     """
     CORE-006: Streaming support was removed; ensure we don't expose misleading streaming APIs.

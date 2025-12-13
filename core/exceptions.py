@@ -35,6 +35,16 @@ class DatabaseTransactionError(DatabaseError):
     """Errors related to database transaction handling."""
 
 
+class KnowledgeGraphPersistenceError(DatabaseError):
+    """
+    Errors related to knowledge graph persistence operations.
+
+    CORE-007: Core persistence services must not swallow exceptions or return ambiguous
+    sentinel values as the primary failure signal. This exception type allows
+    workflows to catch and handle persistence failures explicitly.
+    """
+
+
 class ValidationError(SAGACoreError):
     """Errors related to data validation."""
 

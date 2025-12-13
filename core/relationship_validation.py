@@ -1,25 +1,21 @@
 """
 Relationship validation system for SAGA LangGraph workflow.
 
-This module provides semantic validation for relationships extracted from narrative text.
-It allows LLMs maximum creative freedom in assigning relationships while optionally
-flagging potentially unusual combinations for review.
+This module provides *semantic* validation for relationships extracted from narrative text.
 
-**PERMISSIVE MODE** (Default):
-The validation system now operates in a fully permissive mode by default, allowing
-the LLM to create any relationships it deems narratively appropriate. This supports:
-- Creative and unconventional narrative structures
-- Metaphorical and symbolic relationships
-- Genre-specific relationship types (sci-fi, fantasy, experimental)
-- Emergent relationship patterns not anticipated in the schema
+CORE-011 contract alignment:
+- Relationship validation is *not* the schema contract authority.
+- The authoritative schema contract is enforced at persistence boundaries (commit/write paths):
+  node labels MUST be canonical (one of `VALID_NODE_LABELS`), and relationship types must be
+  safe for Cypher interpolation.
+- Therefore this validator must NOT imply that arbitrary novel node labels or relationship
+  types will be "added to the knowledge graph".
 
-Design Philosophy:
-- Trust the LLM to create semantically appropriate relationships
-- Creative flexibility is paramount - no hard constraints
-- Validation logs informational warnings only, never blocks
-- Unknown relationship types are allowed and logged
-- Entity type mismatches are allowed with warnings
-- The system learns from what the LLM creates rather than constraining it
+This validator may still be used for:
+- Soft, informational semantic warnings (default "flexible" behavior)
+- Optional strict semantic checks when explicitly enabled (enable_strict_mode=True)
+
+If persistence rejects or canonicalizes values, that behavior is handled in the commit/persist layer.
 """
 
 from __future__ import annotations
@@ -306,59 +302,71 @@ class RelationshipValidator:
 
     def validate_relationship_type(self, relationship_type: str) -> tuple[bool, str | None]:
         """
-        Check if a relationship type is recognized.
+        Check if a relationship type is recognized by the application's reference vocabulary.
 
-        In permissive mode (default), this always returns True and only logs
-        informational messages for unknown types.
+        Contract notes (CORE-011):
+        - Unknown relationship types are NOT automatically "added" by this validator.
+        - Persistence may still accept novel relationship types *as long as they are safe*
+          for Cypher interpolation (uppercase + `^[A-Z0-9_]+$`). That enforcement happens
+          at commit/persist boundaries, not here.
 
         Args:
             relationship_type: The relationship type to validate
 
         Returns:
-            Tuple of (is_valid, warning_message)
-            In permissive mode, is_valid is always True.
+            Tuple of (is_valid, message)
+            - In flexible mode (enable_strict_mode=False), unknown types return (True, info_msg)
+            - In strict mode, unknown types return (False, error_msg)
         """
         if relationship_type not in self.known_relationship_types:
-            info = (
-                f"[INFO] Novel relationship type '{relationship_type}' detected. "
-                f"This will be added to the knowledge graph. "
-                f"The LLM is free to create new relationship types as needed for the narrative."
+            msg = (
+                f"Unknown relationship type '{relationship_type}'. "
+                "Semantic validator does not expand the schema. "
+                "Use an existing canonical relationship type when possible; "
+                "otherwise ensure the type is normalized (UPPERCASE_WITH_UNDERSCORES) "
+                "and will be accepted by persistence."
             )
-            # In permissive mode, we allow unknown types
             if not self.enable_strict_mode:
-                return True, info  # Valid, with info message
-            else:
-                return False, info  # Invalid in strict mode
+                return True, msg
+            return False, msg
+
         return True, None
 
     def validate_entity_types(self, source_type: str, target_type: str) -> tuple[bool, list[str]]:
         """
-        Check if entity types are recognized.
+        Check if entity types are recognized by the canonical label set.
 
-        In permissive mode (default), this always returns True and only logs
-        informational messages for unknown types.
+        Contract notes (CORE-011):
+        - Unknown entity types are NOT "added" as labels.
+        - Persistence enforces canonical node labels; intake may include subtypes (e.g., "Guild")
+          but those must be canonicalized (e.g., -> "Organization") before writing.
 
         Args:
             source_type: The source entity type
             target_type: The target entity type
 
         Returns:
-            Tuple of (all_valid, list of warnings)
-            In permissive mode, all_valid is always True.
+            Tuple of (all_valid, messages)
+            - In flexible mode: always (True, messages) (informational warnings only)
+            - In strict mode: (False, messages) if either type is not in VALID_NODE_LABELS
         """
-        info_messages = []
+        messages: list[str] = []
 
         if source_type not in self.known_node_labels:
-            info_messages.append(f"[INFO] Novel entity type '{source_type}' detected. " f"This will be added to the knowledge graph as a new node type.")
+            messages.append(
+                f"Unknown entity type '{source_type}'. "
+                "Node labels are canonical at persistence boundaries; "
+                "use a canonical label (e.g., Character/Location/Event/Item/Organization/Concept/Trait/Chapter/Novel) "
+                "or ensure it maps to one."
+            )
 
         if target_type not in self.known_node_labels:
-            info_messages.append(f"[INFO] Novel entity type '{target_type}' detected. " f"This will be added to the knowledge graph as a new node type.")
+            messages.append(f"Unknown entity type '{target_type}'. " "Node labels are canonical at persistence boundaries; " "use a canonical label or ensure it maps to one.")
 
-        # In permissive mode, unknown types are valid
         if not self.enable_strict_mode:
-            return True, info_messages
-        else:
-            return len(info_messages) == 0, info_messages
+            return True, messages
+
+        return len(messages) == 0, messages
 
     def validate_semantic_compatibility(self, relationship_type: str, source_type: str, target_type: str) -> tuple[bool, list[str]]:
         """

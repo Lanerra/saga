@@ -345,6 +345,110 @@ async def test_generate_act_outlines_calculates_chapters_per_act(base_state, moc
 
 
 @pytest.mark.asyncio
+async def test_generate_act_outlines_remainder_distribution(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+    """
+    total_chapters not divisible by act_count should:
+    - cover all chapters exactly once
+    - distribute remainder to early acts (sizes differ by at most 1)
+    """
+    # 20 chapters, 3 acts => 7,7,6 with ranges: 1-7, 8-14, 15-20
+    state = {**base_state, "total_chapters": 20}
+    mock_get_functions["global"].return_value = {
+        "act_count": 3,
+        "raw_text": "Global outline",
+    }
+
+    await generate_act_outlines(state)
+
+    cm_instance = mock_content_manager.return_value
+    saved_act_outlines = cm_instance.save_json.call_args.args[0]
+
+    assert saved_act_outlines[1]["chapters_in_act"] == 7
+    assert saved_act_outlines[1]["chapters_start"] == 1
+    assert saved_act_outlines[1]["chapters_end"] == 7
+
+    assert saved_act_outlines[2]["chapters_in_act"] == 7
+    assert saved_act_outlines[2]["chapters_start"] == 8
+    assert saved_act_outlines[2]["chapters_end"] == 14
+
+    assert saved_act_outlines[3]["chapters_in_act"] == 6
+    assert saved_act_outlines[3]["chapters_start"] == 15
+    assert saved_act_outlines[3]["chapters_end"] == 20
+
+
+@pytest.mark.asyncio
+async def test_generate_act_outlines_act_count_greater_than_chapters(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+    """
+    act_count > total_chapters should not crash; later acts should receive empty ranges.
+
+    Example: 2 chapters, 5 acts => ranges:
+      act1: 1-1 (1)
+      act2: 2-2 (1)
+      act3: 3-2 (0) empty
+      act4: 3-2 (0) empty
+      act5: 3-2 (0) empty
+    """
+    state = {**base_state, "total_chapters": 2}
+    mock_get_functions["global"].return_value = {
+        "act_count": 5,
+        "raw_text": "Global outline",
+    }
+
+    await generate_act_outlines(state)
+
+    assert mock_llm_service.async_call_llm.call_count == 5
+
+    cm_instance = mock_content_manager.return_value
+    saved_act_outlines = cm_instance.save_json.call_args.args[0]
+
+    assert saved_act_outlines[1]["chapters_in_act"] == 1
+    assert saved_act_outlines[1]["chapters_start"] == 1
+    assert saved_act_outlines[1]["chapters_end"] == 1
+
+    assert saved_act_outlines[2]["chapters_in_act"] == 1
+    assert saved_act_outlines[2]["chapters_start"] == 2
+    assert saved_act_outlines[2]["chapters_end"] == 2
+
+    # Empty ranges: end < start and chapters_in_act == 0
+    for act_num in [3, 4, 5]:
+        assert saved_act_outlines[act_num]["chapters_in_act"] == 0
+        assert saved_act_outlines[act_num]["chapters_start"] == 3
+        assert saved_act_outlines[act_num]["chapters_end"] == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_act_outlines_uses_explicit_global_ranges(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+    """If the global outline provides explicit chapters_start/chapters_end, use them."""
+    state = {**base_state, "total_chapters": 6}
+    mock_get_functions["global"].return_value = {
+        "act_count": 3,
+        "acts": [
+            {"act_number": 1, "chapters_start": 1, "chapters_end": 2},
+            {"act_number": 2, "chapters_start": 3, "chapters_end": 5},
+            {"act_number": 3, "chapters_start": 6, "chapters_end": 6},
+        ],
+        "raw_text": "Global outline",
+    }
+
+    await generate_act_outlines(state)
+
+    cm_instance = mock_content_manager.return_value
+    saved_act_outlines = cm_instance.save_json.call_args.args[0]
+
+    assert saved_act_outlines[1]["chapters_in_act"] == 2
+    assert saved_act_outlines[1]["chapters_start"] == 1
+    assert saved_act_outlines[1]["chapters_end"] == 2
+
+    assert saved_act_outlines[2]["chapters_in_act"] == 3
+    assert saved_act_outlines[2]["chapters_start"] == 3
+    assert saved_act_outlines[2]["chapters_end"] == 5
+
+    assert saved_act_outlines[3]["chapters_in_act"] == 1
+    assert saved_act_outlines[3]["chapters_start"] == 6
+    assert saved_act_outlines[3]["chapters_end"] == 6
+
+
+@pytest.mark.asyncio
 async def test_generate_act_outlines_without_character_sheets(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify generation works without character sheets."""
     mock_get_functions["chars"].return_value = {}

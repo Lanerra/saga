@@ -1,5 +1,8 @@
 # core/langgraph/nodes/scene_planning_node.py
 import json
+import re
+from json import JSONDecodeError
+from typing import Any
 
 import structlog
 
@@ -16,6 +19,131 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
+
+
+_SCENE_REQUIRED_KEYS: tuple[str, ...] = (
+    "title",
+    "pov_character",
+    "setting",
+    "characters",
+    "plot_point",
+    "conflict",
+    "outcome",
+)
+
+
+def _extract_json_candidates(response: str) -> list[tuple[str, str]]:
+    """
+    Extract candidate JSON strings from a possibly-chatty LLM response.
+
+    Supports:
+    - Pure JSON (object or list)
+    - JSON in markdown fences ```json ... ```
+    - JSON preceded/followed by commentary
+
+    Returns a list of (source, json_string) candidates, ordered from most likely
+    to least likely.
+    """
+    text = (response or "").strip()
+    if not text:
+        return []
+
+    candidates: list[tuple[str, str]] = [("raw", text)]
+
+    # 1) Markdown fenced blocks (can appear multiple times).
+    for i, m in enumerate(re.finditer(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL | re.IGNORECASE), start=1):
+        block = (m.group(1) or "").strip()
+        if block:
+            candidates.append((f"fence[{i}]", block))
+
+    # 2) Use JSONDecoder.raw_decode to parse embedded JSON starting at any '{' or '['.
+    # This is robust to leading commentary, as long as the JSON itself is valid.
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r"[\{\[]", response):
+        idx = m.start()
+        try:
+            obj, end = decoder.raw_decode(response, idx)
+        except Exception:
+            continue
+        # Keep the exact substring that parsed successfully.
+        snippet = response[idx:end].strip()
+        if snippet:
+            candidates.append((f"raw_decode@{idx}", snippet))
+
+    # De-duplicate while preserving order
+    seen: set[str] = set()
+    unique: list[tuple[str, str]] = []
+    for source, cand in candidates:
+        key = cand
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((source, cand))
+
+    return unique
+
+
+def _validate_scene_plan_structure(scenes: Any) -> list[str]:
+    errors: list[str] = []
+
+    if not isinstance(scenes, list):
+        errors.append(f"Expected a JSON list of scenes, got {type(scenes).__name__}")
+        return errors
+
+    for i, scene in enumerate(scenes):
+        if not isinstance(scene, dict):
+            errors.append(f"Scene[{i}] must be an object, got {type(scene).__name__}")
+            continue
+
+        missing = [k for k in _SCENE_REQUIRED_KEYS if k not in scene]
+        if missing:
+            errors.append(f"Scene[{i}] is missing required keys: {missing}")
+
+        chars = scene.get("characters")
+        if "characters" in scene:
+            if not isinstance(chars, list) or not all(isinstance(c, str) and c.strip() for c in chars):
+                errors.append(f"Scene[{i}].characters must be a non-empty list of character name strings")
+
+    return errors
+
+
+def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, Any]]:
+    """
+    Parse the LLM response into a validated list of scene plan dicts.
+
+    Raises ValueError with actionable messages on failure.
+    """
+    candidates = _extract_json_candidates(response)
+    if not candidates:
+        raise ValueError("LLM returned an empty response; expected a JSON list of scene objects. " "Required keys per scene: " + ", ".join(_SCENE_REQUIRED_KEYS))
+
+    parse_errors: list[str] = []
+
+    for source, cand in candidates:
+        try:
+            parsed = json.loads(cand)
+        except JSONDecodeError as e:
+            parse_errors.append(f"{source}: JSONDecodeError at pos {e.pos}: {e.msg}")
+            continue
+
+        # Allow a wrapper object (some models return {"scenes": [...]})
+        if isinstance(parsed, dict) and "scenes" in parsed:
+            parsed = parsed["scenes"]
+
+        structure_errors = _validate_scene_plan_structure(parsed)
+        if structure_errors:
+            parse_errors.append(f"{source}: invalid structure: {structure_errors}")
+            continue
+
+        return parsed  # type: ignore[return-value]
+
+    # If we got here, no candidate worked.
+    debug_sources = [s for s, _ in candidates[:5]]
+    raise ValueError(
+        "Failed to parse a valid scene plan JSON list from LLM response. "
+        f"Tried candidates: {debug_sources}. "
+        "Expected: a JSON list of scene objects with keys " + ", ".join(_SCENE_REQUIRED_KEYS) + ". Errors: " + "; ".join(parse_errors[:5])
+    )
 
 
 async def _ensure_scene_characters_exist(
@@ -188,20 +316,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
             system_prompt=get_system_prompt("narrative_agent"),
         )
 
-        # Parse JSON response
-        # The LLM might wrap it in markdown code blocks, so we need to clean it
-        cleaned_response = response.strip()
-        if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response[7:]
-        if cleaned_response.startswith("```"):
-            cleaned_response = cleaned_response[3:]
-        if cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[:-3]
-
-        scenes = json.loads(cleaned_response)
-
-        if not isinstance(scenes, list):
-            raise ValueError("LLM response is not a list of scenes")
+        scenes = _parse_scene_plan_json_from_llm_response(response)
 
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
 
@@ -242,6 +357,6 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         logger.error("plan_scenes: error planning scenes", error=str(e))
         return {
             **state,
-            "last_error": f"Error planning scenes: {str(e)}",
+            "last_error": ("Error planning scenes: " + str(e) + " | Expected: JSON list of scene objects with keys: " + ", ".join(_SCENE_REQUIRED_KEYS)),
             "current_node": "plan_scenes",
         }

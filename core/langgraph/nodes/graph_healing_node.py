@@ -45,6 +45,17 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         # Run the healing process
         results = await graph_healing_service.heal_graph(current_chapter=current_chapter, model=model)
 
+        # Explicit observability for non-fatal healing degradations (LANGGRAPH-025).
+        # Even if the workflow continues, warnings must be visible in logs/state.
+        healing_warnings = results.get("warnings", []) or []
+        if healing_warnings:
+            logger.warning(
+                "heal_graph: Healing completed with warnings",
+                chapter=current_chapter,
+                warnings=healing_warnings,
+                apoc_available=results.get("apoc_available"),
+            )
+
         # Update healing history
         healing_history = state.get("healing_history", [])
         healing_history.append(results)
@@ -105,6 +116,9 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             "pending_merges": pending_merges,
             "auto_approved_merges": auto_approved_merges,
             "healing_history": healing_history,
+            # Snapshot for callers/tests so warnings are not "silent degradation".
+            "last_healing_warnings": healing_warnings,
+            "last_apoc_available": results.get("apoc_available"),
         }
 
     except Exception as e:

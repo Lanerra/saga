@@ -1049,6 +1049,139 @@ class TestBuildRelationshipStatements:
 
             assert len(statements) == 1
 
+    async def test_canonicalizes_subtype_labels_for_persistence(self):
+        """
+        CORE-011: Subtype labels (e.g., "Guild") must be canonicalized at persistence boundary.
+
+        This test verifies the commit-node relationship statement builder canonicalizes
+        the object node label to a canonical schema label (Guild -> Organization).
+        """
+        relationships = [
+            ExtractedRelationship(
+                source_name="Alice",
+                relationship_type="MEMBER_OF",
+                target_name="The Guild",
+                description="Alice is a member of the guild",
+                chapter=1,
+                confidence=0.9,
+            )
+        ]
+
+        char_entities = [
+            ExtractedEntity(
+                name="Alice",
+                type="Character",
+                description="Alice",
+                first_appearance_chapter=1,
+                attributes={},
+            ),
+        ]
+
+        world_entities = [
+            ExtractedEntity(
+                name="The Guild",
+                type="Guild",  # subtype/alias, must canonicalize
+                description="A guild",
+                first_appearance_chapter=1,
+                attributes={"category": "Guild"},
+            )
+        ]
+
+        statements = await _build_relationship_statements(
+            relationships,
+            char_entities,
+            world_entities,
+            {"Alice": "Alice"},
+            {"The Guild": "The Guild"},
+            1,
+            False,
+        )
+
+        assert len(statements) == 1
+        query, _params = statements[0]
+        assert "(obj:Organization" in query  # canonical label, not ":Guild"
+
+    async def test_commit_rejects_unknown_entity_label_at_persistence_boundary(self, tmp_path):
+        """
+        CORE-011: Unknown/unmappable labels must be rejected at persistence boundary.
+
+        This is an end-to-end-ish test through commit_to_graph (the write boundary).
+        """
+        project_dir = str(tmp_path)
+
+        state = {
+            "project_dir": project_dir,
+            "current_chapter": 1,
+            "draft_word_count": 0,
+            "extracted_entities": {
+                "characters": [
+                    ExtractedEntity(
+                        name="Alice",
+                        type="MadeUpLabel",  # invalid label -> must be rejected
+                        description="Alice",
+                        first_appearance_chapter=1,
+                        attributes={},
+                    ),
+                    ExtractedEntity(
+                        name="Bob",
+                        type="Character",
+                        description="Bob",
+                        first_appearance_chapter=1,
+                        attributes={},
+                    ),
+                ],
+                "world_items": [],
+            },
+            "extracted_relationships": [
+                ExtractedRelationship(
+                    source_name="Alice",
+                    target_name="Bob",
+                    relationship_type="KNOWS",
+                    description="They are friends",
+                    chapter=1,
+                    confidence=0.9,
+                )
+            ],
+        }
+
+        with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
+            with patch(
+                "core.langgraph.nodes.commit_node._run_phase2_deduplication",
+                new=AsyncMock(return_value={"characters": 0, "world_items": 0}),
+            ):
+                # Avoid relying on real chapter query builder in this focused test.
+                with patch(
+                    "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
+                    return_value=(
+                        "CHAPTER_UPSERT",
+                        {
+                            "chapter_number_param": 1,
+                            "chapter_id_param": "chapter_1",
+                            "summary_param": None,
+                            "embedding_vector_param": None,
+                            "is_provisional_param": False,
+                        },
+                    ),
+                ):
+                    with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
+                        mock_builder = mock_builder_class.return_value
+                        mock_builder.character_upsert_cypher.return_value = ("CHAR_UPSERT", {})
+                        mock_builder.world_item_upsert_cypher.return_value = ("WORLD_UPSERT", {})
+
+                        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                            mock_neo4j.execute_cypher_batch = AsyncMock()
+
+                            result = await commit_to_graph(state)
+
+                            assert result["has_fatal_error"] is True
+                            assert result["last_error"] is not None
+                            # CORE-011: fail fast with an actionable, deterministic message.
+                            assert "Invalid entity type" in result["last_error"]
+                            assert "persistence boundary" in result["last_error"]
+
+                            # Ensure we fail before issuing writes.
+                            assert mock_neo4j.execute_cypher_batch.called is False
+
 
 class TestBuildChapterNodeStatement:
     """Tests for _build_chapter_node_statement function."""

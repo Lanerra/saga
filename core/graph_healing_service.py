@@ -215,19 +215,27 @@ Provide the following information (only include fields where you have reasonable
             return {}
 
     async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
-        """Apply enriched attributes to a node."""
+        """Apply enriched attributes to a node.
+
+        HARDENING (CORE-010):
+        - Do not assume APOC is installed. Enrichment must work on Neo4j deployments
+          without APOC by using pure Cypher equivalents.
+        """
         if not enriched or enriched.get("confidence", 0) < 0.6:
             return False
 
-        updates = []
-        params = {"element_id": element_id}
+        updates: list[str] = []
+        params: dict[str, Any] = {"element_id": element_id}
 
         if enriched.get("inferred_description"):
             updates.append("n.description = $description")
             params["description"] = enriched["inferred_description"]
 
         if enriched.get("inferred_traits"):
-            updates.append("n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)")
+            # Pure Cypher "set semantics" for list concatenation:
+            # preserve first occurrence order while removing duplicates.
+            # Equivalent intent to: apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)
+            updates.append("n.traits = reduce(acc = [], t IN (coalesce(n.traits, []) + $new_traits) | " "CASE WHEN t IN acc THEN acc ELSE acc + t END)")
             params["new_traits"] = enriched["inferred_traits"]
 
         if enriched.get("inferred_role"):
@@ -678,13 +686,29 @@ Provide the following information (only include fields where you have reasonable
         results: dict[str, Any] = {
             "chapter": current_chapter,
             "timestamp": datetime.now().isoformat(),
+            # Capability snapshot (CORE-010 / LANGGRAPH-025 hardening)
+            # Used for diagnostics and to prevent silent degradation on APOC-less deployments.
+            "apoc_available": None,
             "nodes_enriched": 0,
             "nodes_graduated": 0,
             "nodes_merged": 0,
             "nodes_removed": 0,
             "merge_candidates_found": 0,
             "actions": [],
+            "warnings": [],
         }
+
+        # Capability check (cached once per process; safe on restricted deployments).
+        # We log a clear warning ONCE per process if APOC is unavailable, but we do not
+        # fail healing since enrichment no longer depends on APOC (pure Cypher).
+        results["apoc_available"] = await neo4j_manager.is_apoc_available(log_warning_once=True)
+        if results["apoc_available"] is False:
+            results["warnings"].append(
+                {
+                    "type": "apoc_unavailable",
+                    "message": "APOC procedures unavailable; graph healing enrichment uses pure Cypher fallback.",
+                }
+            )
 
         # Step 1: Process provisional nodes
         provisional_nodes = await self.identify_provisional_nodes()

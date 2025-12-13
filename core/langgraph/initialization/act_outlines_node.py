@@ -15,6 +15,7 @@ from core.langgraph.content_manager import (
     get_character_sheets,
     get_global_outline,
 )
+from core.langgraph.initialization.chapter_allocation import choose_act_ranges
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -64,14 +65,24 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
             "initialization_step": "act_outlines_failed",
         }
 
-    act_count = global_outline.get("act_count", 3)
+    act_count_raw = global_outline.get("act_count", 3)
+    act_count = act_count_raw if isinstance(act_count_raw, int) and not isinstance(act_count_raw, bool) else 3
+    if act_count <= 0:
+        act_count = 3
+
     total_chapters = state.get("total_chapters", 20)
-    chapters_per_act = total_chapters // act_count
+    if not isinstance(total_chapters, int) or isinstance(total_chapters, bool) or total_chapters < 0:
+        total_chapters = 20
+
+    # Prefer explicit act ranges from global outline when present; otherwise compute
+    # balanced ranges that cover all chapters exactly once and distribute remainder.
+    act_ranges = choose_act_ranges(global_outline=global_outline, total_chapters=total_chapters)
 
     logger.info(
         "generate_act_outlines: generating outlines",
         act_count=act_count,
-        chapters_per_act=chapters_per_act,
+        total_chapters=total_chapters,
+        act_ranges={k: {"chapters_start": v.chapters_start, "chapters_end": v.chapters_end, "chapters_in_act": v.chapters_in_act} for k, v in act_ranges.items()},
     )
 
     # Generate outline for each act
@@ -79,14 +90,23 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
     for act_num in range(1, act_count + 1):
         logger.info("generate_act_outlines: generating act", act_number=act_num)
 
+        act_range = act_ranges.get(act_num)
+        chapters_in_act = act_range.chapters_in_act if act_range else 0
+
         act_outline = await _generate_single_act_outline(
             state=state,
             act_number=act_num,
             total_acts=act_count,
-            chapters_in_act=chapters_per_act,
+            chapters_in_act=chapters_in_act,
         )
 
         if act_outline:
+            # Record chapter allocation alongside the outline so downstream logic can
+            # introspect without recomputing allocation.
+            if act_range:
+                act_outline["chapters_start"] = act_range.chapters_start
+                act_outline["chapters_end"] = act_range.chapters_end
+
             act_outlines[act_num] = act_outline
         else:
             logger.warning(

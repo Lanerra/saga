@@ -264,6 +264,78 @@ def test_determine_act_for_chapter_boundary():
             assert _determine_act_for_chapter(state, 99) == 3
 
 
+def test_determine_act_for_chapter_uses_explicit_ranges():
+    """If global outline provides explicit act ranges, mapping should follow those ranges."""
+    with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock_cm:
+        instance = MagicMock()
+        mock_cm.return_value = instance
+
+        with patch("core.langgraph.initialization.chapter_outline_node.get_global_outline") as mock_get:
+            mock_get.return_value = {
+                "act_count": 3,
+                "acts": [
+                    {"act_number": 1, "chapters_start": 1, "chapters_end": 2},
+                    {"act_number": 2, "chapters_start": 3, "chapters_end": 5},
+                    {"act_number": 3, "chapters_start": 6, "chapters_end": 6},
+                ],
+            }
+
+            state = {"total_chapters": 6, "project_dir": "/tmp"}
+
+            assert _determine_act_for_chapter(state, 1) == 1
+            assert _determine_act_for_chapter(state, 2) == 1
+            assert _determine_act_for_chapter(state, 3) == 2
+            assert _determine_act_for_chapter(state, 5) == 2
+            assert _determine_act_for_chapter(state, 6) == 3
+
+
+def test_determine_act_for_chapter_act_count_greater_than_chapters_no_crash():
+    """
+    act_count > total_chapters must not cause division/modulo by zero.
+
+    Balanced allocation should behave sensibly:
+    - early acts may get single chapters
+    - later acts may be empty
+    """
+    with patch("core.langgraph.initialization.chapter_outline_node.ContentManager") as mock_cm:
+        instance = MagicMock()
+        mock_cm.return_value = instance
+
+        with patch("core.langgraph.initialization.chapter_outline_node.get_global_outline") as mock_get:
+            mock_get.return_value = {"act_count": 5}
+
+            state = {"total_chapters": 2, "project_dir": "/tmp"}
+
+            assert _determine_act_for_chapter(state, 1) == 1
+            assert _determine_act_for_chapter(state, 2) == 2
+            # Out-of-range chapters clamp to last act
+            assert _determine_act_for_chapter(state, 99) == 5
+
+
+@pytest.mark.asyncio
+async def test_generate_single_chapter_outline_uses_explicit_ranges_for_chapter_in_act(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
+    """chapter_in_act should be computed using explicit global act ranges when present."""
+    # Act 2 starts at chapter 3; chapter 4 should be "Chapter 2 of this act"
+    mock_get_functions["global"].return_value = {
+        "act_count": 3,
+        "acts": [
+            {"act_number": 1, "chapters_start": 1, "chapters_end": 2},
+            {"act_number": 2, "chapters_start": 3, "chapters_end": 5},
+            {"act_number": 3, "chapters_start": 6, "chapters_end": 6},
+        ],
+        "raw_text": "Global outline text",
+    }
+
+    state = {**base_state, "total_chapters": 6}
+
+    await _generate_single_chapter_outline(state, chapter_number=4, act_number=2)
+
+    call_args = mock_llm_service.async_call_llm.call_args
+    assert call_args is not None
+    prompt = call_args.kwargs.get("prompt", "")
+    assert "Chapter 2 of this act" in prompt
+
+
 def test_build_character_summary_with_characters():
     """Verify character summary with multiple characters."""
     character_sheets = {

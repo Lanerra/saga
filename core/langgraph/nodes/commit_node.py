@@ -72,9 +72,15 @@ from core.langgraph.content_manager import (
     load_embedding,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
-from core.schema_validator import schema_validator
+from core.schema_validator import canonicalize_entity_type_for_persistence
 from data_access import chapter_queries, kg_queries
-from data_access.kg_queries import _get_cypher_labels as _get_cypher_labels
+from data_access.kg_queries import (
+    _get_cypher_labels as _get_cypher_labels,
+)
+from data_access.kg_queries import (
+    validate_relationship_type,
+    validate_relationship_type_for_cypher_interpolation,
+)
 from models.kg_models import CharacterProfile, WorldItem
 from processing.entity_deduplication import (
     check_entity_similarity,
@@ -596,42 +602,22 @@ async def _create_relationships(
     def _make_entity_dict(name: str, original_name: str) -> dict:
         """Create entity dict with name, type, and category.
 
-        Canonical labeling contract:
-        - Node labels must be one of the 9 canonical labels.
-        - Legacy aliases/subtypes must not be written as labels.
-        - When type is missing/unknown, fall back to a canonical label (`Item`) and
-          preserve the semantic hint via `category`.
+        CORE-011 contract (canonical-label-first at persistence boundaries):
+        - Node labels written to Neo4j MUST be one of the canonical domain labels
+          [`VALID_NODE_LABELS`](models/kg_constants.py:66).
+        - Subtypes / legacy aliases (e.g., "Structure", "Guild", "DevelopmentEvent") are
+          permitted as intake but MUST be canonicalized before persistence.
+        - Unknown / unmappable types are rejected with a clear error (no silent fallback).
+
+        When type is missing, we fall back to canonical "Item" and preserve semantics via `category`.
         """
-        entity_type = entity_type_map.get(original_name, "Item")  # Default to Item
+        entity_type = entity_type_map.get(original_name, None)
         entity_category = entity_category_map.get(original_name, "")
 
-        # Map extraction types to Neo4j node types.
-        # Upstream may provide subtype labels; schema_validator will normalize them to canonical.
-        neo4j_type = "Item"
-
-        if entity_type:
-            # Validate and normalize
-            is_valid, normalized, _ = schema_validator.validate_entity_type(entity_type)
-            if is_valid:
-                neo4j_type = normalized
-            elif entity_type[0].isupper():
-                # Already a proper node type from the ontology; keep as-is (may be internal/support label)
-                neo4j_type = entity_type
-            else:
-                # Legacy lowercase type, apply mapping into canonical labels
-                type_mapping = {
-                    "character": "Character",
-                    "location": "Location",
-                    "event": "Event",
-                    "item": "Item",
-                    "organization": "Organization",
-                    "concept": "Concept",
-                    "trait": "Trait",
-                    "chapter": "Chapter",
-                    # Legacy alias -> canonical
-                    "object": "Item",
-                }
-                neo4j_type = type_mapping.get(entity_type.lower(), "Item")
+        if not entity_type or not str(entity_type).strip():
+            neo4j_type = "Item"
+        else:
+            neo4j_type = canonicalize_entity_type_for_persistence(entity_type)
 
         return {
             "name": name,
@@ -825,42 +811,21 @@ async def _build_relationship_statements(
 
     # Helper to create subject/object dict with type info
     def _make_entity_dict(name: str, original_name: str, explicit_type: str | None = None) -> dict[str, str]:
-        # Use explicit type if provided (from ExtractedRelationship.source_type/target_type)
-        # Otherwise fall back to entity_type_map lookup.
-        if explicit_type:
-            entity_type = explicit_type
-        else:
-            entity_type = entity_type_map.get(original_name, "Item")
+        """
+        Create entity dict with canonical `type` label for Cypher label interpolation.
 
+        CORE-011 contract: enforce canonical labels at persistence boundaries.
+        - If an explicit type is provided (from ExtractedRelationship.source_type/target_type),
+          it MUST be canonicalizable to one of VALID_NODE_LABELS.
+        - If type is missing, we fall back to canonical "Item".
+        """
+        entity_type = explicit_type if explicit_type is not None else entity_type_map.get(original_name, None)
         entity_category = entity_category_map.get(original_name, "")
 
-        # Canonical labeling contract: never write legacy aliases/subtypes as labels.
-        # Normalize everything into canonical node labels; preserve finer semantics via `category`.
-        neo4j_type = "Item"
-
-        if entity_type:
-            # Validate and normalize
-            is_valid, normalized, _ = schema_validator.validate_entity_type(entity_type)
-            if is_valid:
-                neo4j_type = normalized
-            elif entity_type[0].isupper():
-                # Already a proper node type from the ontology; keep as-is (may be internal/support label)
-                neo4j_type = entity_type
-            else:
-                # Legacy lowercase type, apply mapping into canonical labels
-                type_mapping = {
-                    "character": "Character",
-                    "location": "Location",
-                    "event": "Event",
-                    "item": "Item",
-                    "organization": "Organization",
-                    "concept": "Concept",
-                    "trait": "Trait",
-                    "chapter": "Chapter",
-                    # Legacy alias -> canonical
-                    "object": "Item",
-                }
-                neo4j_type = type_mapping.get(entity_type.lower(), "Item")
+        if not entity_type or not str(entity_type).strip():
+            neo4j_type = "Item"
+        else:
+            neo4j_type = canonicalize_entity_type_for_persistence(entity_type)
 
         return {
             "name": name,
@@ -914,7 +879,12 @@ async def _build_relationship_statements(
             subject_type = subject["type"]
             if not isinstance(predicate, str):
                 predicate = str(predicate)
-            predicate_clean = predicate.strip().upper().replace(" ", "_")
+
+            # CORE-011 contract: canonicalize at persistence boundary.
+            # - Normalize (uppercase + underscores)
+            # - Then validate strict safety for Cypher interpolation (reject unsafe types)
+            predicate_normalized = validate_relationship_type(predicate)
+            predicate_clean = validate_relationship_type_for_cypher_interpolation(predicate_normalized)
 
             if not predicate_clean:
                 logger.warning(
@@ -926,9 +896,7 @@ async def _build_relationship_statements(
             object_name = obj["name"]
             object_type = obj["type"]
 
-            # Get Cypher labels for nodes
-            from data_access.kg_queries import _get_cypher_labels
-
+            # Get Cypher labels for nodes (already imported at module scope).
             subject_labels = _get_cypher_labels(subject_type)
             object_labels = _get_cypher_labels(object_type)
 
@@ -978,7 +946,13 @@ async def _build_relationship_statements(
 
             statements.append((query, params))
 
+        except ValueError as e:
+            # CORE-011: persistence boundary contract violation (canonical labels / safe rel types).
+            # Do NOT silently drop relationships; fail the commit path with a clear error.
+            raise ValueError(f"Persistence boundary validation failed for relationship triple: {e}") from e
         except Exception as e:
+            # Non-contract build errors are treated as best-effort (skip this triple) to avoid
+            # failing the entire commit for incidental formatting issues.
             logger.warning(
                 "_build_relationship_statements: failed to build statement for triple",
                 error=str(e),

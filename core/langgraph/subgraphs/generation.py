@@ -7,8 +7,6 @@ from langgraph.graph import END, StateGraph  # type: ignore
 from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.context_retrieval_node import retrieve_context
 from core.langgraph.nodes.scene_generation_node import draft_scene
-
-# Import new nodes
 from core.langgraph.nodes.scene_planning_node import plan_scenes
 from core.langgraph.state import NarrativeState
 
@@ -34,7 +32,10 @@ def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end"]:
 
 def create_generation_subgraph() -> StateGraph:
     """
-    Create the generation subgraph.
+    Create the scene-based generation subgraph.
+
+    This is the canonical generation implementation for the workflow:
+    plan scenes → retrieve context → draft scenes → assemble chapter.
     """
     workflow = StateGraph(NarrativeState)
 
@@ -57,3 +58,19 @@ def create_generation_subgraph() -> StateGraph:
     workflow.add_edge("assemble_chapter", END)
 
     return workflow.compile()
+
+
+def generate_chapter() -> StateGraph:
+    """
+    Canonical public generation API.
+
+    Returns the compiled, scene-based generation subgraph used by workflows.
+    """
+    return create_generation_subgraph()
+
+
+__all__ = [
+    "create_generation_subgraph",
+    "generate_chapter",
+    "should_continue_scenes",
+]

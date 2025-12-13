@@ -124,6 +124,49 @@ class SchemaValidationService:
 schema_validator = SchemaValidationService()
 
 
+def canonicalize_entity_type_for_persistence(type_name: str) -> str:
+    """
+    Canonicalize an entity type into a strict canonical node label for persistence.
+
+    CORE-011 contract (canonical-label-first at persistence boundaries):
+    - By the time we build Cypher that interpolates labels, the label MUST be one of
+      [`VALID_NODE_LABELS`](models/kg_constants.py:66).
+    - Subtypes / legacy labels (e.g., "Structure", "Guild", "DevelopmentEvent") are
+      permitted as *inputs* but are canonicalized via [`LABEL_NORMALIZATION_MAP`](models/kg_constants.py:83).
+    - Unknown/unmappable labels are rejected with a clear, actionable error.
+
+    Notes:
+    - This function intentionally does NOT consult config flags like ENFORCE_SCHEMA_VALIDATION.
+      Persistence boundaries must be deterministic and safe regardless of "early validation" toggles.
+
+    Raises:
+        ValueError: If the type cannot be normalized to a canonical label.
+
+    Returns:
+        Canonical label string (one of VALID_NODE_LABELS).
+    """
+    raw = str(type_name).strip() if type_name is not None else ""
+    if not raw:
+        raise ValueError("Entity type cannot be empty at persistence boundary")
+
+    # Fast path: exact canonical match
+    if raw in VALID_NODE_LABELS:
+        return raw
+
+    # Case-insensitive canonical match (e.g., "character" -> "Character")
+    canonical_case_map: dict[str, str] = {lbl.lower(): lbl for lbl in VALID_NODE_LABELS}
+    canonical_ci = canonical_case_map.get(raw.lower())
+    if canonical_ci:
+        return canonical_ci
+
+    # Alias/subtype normalization map (e.g., "Person" -> "Character", "Structure" -> "Location")
+    mapped = LABEL_NORMALIZATION_MAP.get(raw) or LABEL_NORMALIZATION_MAP.get(raw.lower())
+    if mapped and mapped in VALID_NODE_LABELS:
+        return mapped
+
+    raise ValueError(f"Invalid entity type '{raw}' at persistence boundary. " f"Must be one of {sorted(VALID_NODE_LABELS)} " f"(or a known alias/subtype that maps via LABEL_NORMALIZATION_MAP).")
+
+
 def validate_kg_object(obj: Any) -> list[str]:
     """
     Validate a knowledge graph object (CharacterProfile or WorldItem).

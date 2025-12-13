@@ -22,6 +22,12 @@ from core.langgraph.content_manager import (
     get_global_outline,
     get_previous_summaries,
 )
+from core.langgraph.initialization.chapter_allocation import (
+    choose_act_ranges,
+)
+from core.langgraph.initialization.chapter_allocation import (
+    determine_act_for_chapter as determine_act_for_chapter_from_outline,
+)
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.grammar_loader import load_grammar
@@ -182,11 +188,24 @@ async def _generate_single_chapter_outline(
     # Build previous context
     previous_context = "\n".join(previous_summaries[-3:]) if previous_summaries else "This is the beginning of the story."
 
-    # Determine chapter position in act
+    # Determine chapter position in act.
+    #
+    # LANGGRAPH-016: avoid modulo/div-by-zero when act_count > total_chapters
+    # (which makes chapters_per_act == 0 under integer division).
+    #
+    # Prefer explicit per-act ranges from the global outline when present; otherwise
+    # fall back to a balanced allocation that covers all chapters exactly once.
     total_chapters = state.get("total_chapters", 20)
-    act_count = global_outline.get("act_count", 3)
-    chapters_per_act = total_chapters // act_count
-    chapter_in_act = ((chapter_number - 1) % chapters_per_act) + 1
+    act_ranges = choose_act_ranges(global_outline=global_outline, total_chapters=total_chapters)
+    act_range = act_ranges.get(act_number)
+
+    if act_range and act_range.contains(chapter_number):
+        chapter_in_act = (chapter_number - act_range.chapters_start) + 1
+    else:
+        # If the act range is empty or the chapter is out-of-range, don't crash.
+        # We use 0 to make the "Chapter X of this act" text visibly suspicious
+        # rather than silently misleading.
+        chapter_in_act = 0
 
     prompt = render_prompt(
         "initialization/generate_chapter_outline.j2",
@@ -269,15 +288,14 @@ def _determine_act_for_chapter(state: NarrativeState, chapter_number: int) -> in
     # Initialize content manager and get global outline
     content_manager = ContentManager(state.get("project_dir", ""))
     global_outline = get_global_outline(state, content_manager) or {}
-    act_count = global_outline.get("act_count", 3)
 
-    chapters_per_act = total_chapters / act_count
-    act_number = int((chapter_number - 1) / chapters_per_act) + 1
-
-    # Ensure we don't exceed act count
-    act_number = min(act_number, act_count)
-
-    return act_number
+    # Prefer explicit act chapter ranges from the global outline when present,
+    # otherwise fall back to a balanced allocation.
+    return determine_act_for_chapter_from_outline(
+        global_outline=global_outline,
+        total_chapters=total_chapters,
+        chapter_number=chapter_number,
+    )
 
 
 def _build_character_summary(character_sheets: dict[str, dict]) -> str:

@@ -128,7 +128,7 @@ class TestRelationshipValidator:
         is_valid, warning = validator.validate_relationship_type("UNKNOWN_TYPE")
         assert is_valid is False
         assert warning is not None
-        assert "Novel relationship type" in warning or "Unknown relationship type" in warning
+        assert "Unknown relationship type" in warning
 
     def test_validate_known_entity_types(self) -> None:
         """Test validation of known entity types."""

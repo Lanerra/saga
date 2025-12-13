@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -54,6 +54,10 @@ async def test_heal_graph_clamps_provisional_count_non_negative(tmp_path) -> Non
 
     # Clamped
     assert out["provisional_count"] == 0
+
+    # New observability fields (LANGGRAPH-025 hardening): should exist and be empty when no warnings.
+    assert out["last_healing_warnings"] == []
+    assert out["last_apoc_available"] is None
 
 
 @pytest.mark.asyncio
@@ -119,6 +123,10 @@ async def test_heal_graph_populates_merge_candidates_and_partitions_merges(tmp_p
     # Provisional remaining: provisional_count - nodes_graduated => 1 - 1 == 0
     assert out["provisional_count"] == 0
 
+    # New observability fields (LANGGRAPH-025 hardening): should exist and be empty when no warnings.
+    assert out["last_healing_warnings"] == []
+    assert out["last_apoc_available"] is None
+
     # Totals should accumulate.
     assert out["nodes_graduated"] == 11
     assert out["nodes_merged"] == 7
@@ -137,3 +145,53 @@ async def test_heal_graph_populates_merge_candidates_and_partitions_merges(tmp_p
     all_candidates = {_fingerprint_merge(m) for m in out["merge_candidates"]}
     partitioned = {_fingerprint_merge(m) for m in (out["auto_approved_merges"] + out["pending_merges"])}
     assert all_candidates == partitioned
+
+
+@pytest.mark.asyncio
+async def test_heal_graph_surfaces_healing_warnings_in_state_and_logs_once(tmp_path) -> None:
+    """
+    Regression test for LANGGRAPH-025 / remediation plan item 11.
+
+    If graph healing returns warnings (e.g., APOC unavailable), the node must not
+    "silently degrade"—it must surface warnings into state and log them.
+    """
+    state = create_initial_state(
+        project_id="test_project",
+        title="Test Novel",
+        genre="Fantasy",
+        theme="Heroism",
+        setting="A magical world",
+        target_word_count=50000,
+        total_chapters=10,
+        project_dir=str(tmp_path / "test_project"),
+        protagonist_name="Test Hero",
+    )
+    state["current_chapter"] = 5
+
+    results = {
+        "nodes_graduated": 0,
+        "nodes_merged": 0,
+        "nodes_enriched": 0,
+        "nodes_removed": 0,
+        "provisional_count": 0,
+        "actions": [],
+        "apoc_available": False,
+        "warnings": [{"type": "apoc_unavailable", "message": "APOC procedures unavailable"}],
+    }
+
+    with (
+        patch(
+            "core.langgraph.nodes.graph_healing_node.graph_healing_service.heal_graph",
+            new=AsyncMock(return_value=results),
+        ),
+        patch("core.langgraph.nodes.graph_healing_node.logger.warning", new=MagicMock()) as warn,
+    ):
+        out = await heal_graph(state)
+
+    assert out["current_node"] == "heal_graph"
+    assert out["last_error"] is None
+    assert out["last_healing_warnings"] == results["warnings"]
+    assert out["last_apoc_available"] is False
+
+    # The node should log warnings (at least once for this call).
+    assert warn.call_count == 1

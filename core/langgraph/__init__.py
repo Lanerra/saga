@@ -52,7 +52,7 @@ from core.langgraph.graph_context import build_context_from_graph, get_key_event
 from core.langgraph.nodes import (
     commit_to_graph,
     finalize_chapter,
-    generate_chapter,
+    generate_chapter_single_shot,
     revise_chapter,
     summarize_chapter,
     validate_consistency,
@@ -65,6 +65,7 @@ from core.langgraph.state import (
     State,
     create_initial_state,
 )
+from core.langgraph.subgraphs.generation import generate_chapter
 from core.langgraph.visualization import (
     print_workflow_summary,
     visualize_workflow,
@@ -86,7 +87,10 @@ __all__ = [
     # Nodes
     "commit_to_graph",
     "validate_consistency",
+    # Canonical generation API (scene-based subgraph)
     "generate_chapter",
+    # Backcompat: explicit single-shot node (async)
+    "generate_chapter_single_shot",
     "revise_chapter",
     "summarize_chapter",
     "finalize_chapter",

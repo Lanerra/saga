@@ -1,6 +1,7 @@
 """Comprehensive tests for core/db_manager.py"""
 
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -34,11 +35,18 @@ def _restore_global_neo4j_manager_singleton_state():
     original_property_keys_cache = manager._property_keys_cache
     original_property_keys_cache_ts = manager._property_keys_cache_ts
 
+    # CORE-010: APOC capability detection is cached once per process; tests that
+    # mutate those caches must not leak to other modules/tests.
+    original_apoc_available_cache = manager._apoc_available_cache
+    original_apoc_availability_warning_logged = manager._apoc_availability_warning_logged
+
     yield
 
     manager.driver = original_driver
     manager._property_keys_cache = original_property_keys_cache
     manager._property_keys_cache_ts = original_property_keys_cache_ts
+    manager._apoc_available_cache = original_apoc_available_cache
+    manager._apoc_availability_warning_logged = original_apoc_availability_warning_logged
 
 
 class TestNeo4jManagerSingleton:
@@ -664,6 +672,39 @@ class TestPropertyKeyCache:
 
 
 @pytest.mark.asyncio
+class TestApocCapabilityDetection:
+    """APOC capability detection / caching (CORE-010)."""
+
+    async def test_is_apoc_available_returns_false_and_warns_once_when_unavailable(self) -> None:
+        manager = Neo4jManagerSingleton()
+
+        # Reset caches explicitly for determinism within this unit test.
+        manager._apoc_available_cache = None
+        manager._apoc_availability_warning_logged = False
+
+        # Avoid any real connectivity attempts by patching execute_read_query directly.
+        with (
+            patch.object(
+                manager,
+                "execute_read_query",
+                new=AsyncMock(side_effect=RuntimeError("Procedure not found")),
+            ) as exec_read,
+            patch.object(manager.logger, "warning", new=MagicMock()) as warn,
+        ):
+            out1 = await manager.is_apoc_available(log_warning_once=True)
+            out2 = await manager.is_apoc_available(log_warning_once=True)
+
+        assert out1 is False
+        assert out2 is False
+
+        # Cached once per process => only one underlying probe.
+        assert exec_read.await_count == 1
+
+        # Warning should be emitted only once per process/run.
+        assert warn.call_count == 1
+
+
+@pytest.mark.asyncio
 class TestSchemaCreation:
     """Schema creation and management"""
 
@@ -689,33 +730,49 @@ class TestSchemaCreation:
         assert len(phase2_called) == 1
 
     async def test_create_constraints_and_indexes_batch_success(self, monkeypatch):
-        """Constraints and indexes created via batch"""
+        """Constraints and indexes created via batch (offloaded via asyncio.to_thread)"""
         manager = Neo4jManagerSingleton()
 
-        executed_queries = []
+        executed_queries: list[str] = []
 
-        async def mock_execute_batch(queries):
+        def mock_execute_batch(queries: list[str]) -> None:
             executed_queries.extend(queries)
 
+        to_thread_calls: list[tuple[object, tuple[object, ...], dict[str, object], int]] = []
+
+        async def mock_to_thread(func, *args, **kwargs):
+            # Record the calling thread id (the event loop thread for this test),
+            # and execute inline to keep this unit test deterministic.
+            to_thread_calls.append((func, args, kwargs, threading.get_ident()))
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr(asyncio, "to_thread", mock_to_thread)
         monkeypatch.setattr(manager, "_execute_schema_batch", mock_execute_batch)
         monkeypatch.setattr(manager, "execute_write_query", AsyncMock())
 
         await manager._create_constraints_and_indexes()
 
         assert len(executed_queries) > 0
+        assert len(to_thread_calls) >= 1
+        # Ensure the schema batch path uses asyncio.to_thread(...) rather than running directly on the loop.
+        assert to_thread_calls[0][0] is manager._execute_schema_batch
 
     async def test_create_constraints_and_indexes_batch_failure_fallback(self, monkeypatch):
-        """Falls back to individual execution on batch failure"""
+        """Falls back to individual execution on batch failure (batch runs via asyncio.to_thread)"""
         manager = Neo4jManagerSingleton()
 
-        async def mock_batch_fail(queries):
+        def mock_batch_fail(queries: list[str]) -> None:
             raise RuntimeError("Batch failed")
 
-        individual_calls = []
+        individual_calls: list[list[str]] = []
 
-        async def mock_individual(queries):
+        async def mock_individual(queries: list[str]) -> None:
             individual_calls.append(queries)
 
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr(asyncio, "to_thread", mock_to_thread)
         monkeypatch.setattr(manager, "_execute_schema_batch", mock_batch_fail)
         monkeypatch.setattr(manager, "_execute_schema_individually", mock_individual)
         monkeypatch.setattr(manager, "execute_write_query", AsyncMock())
@@ -728,16 +785,53 @@ class TestSchemaCreation:
         """Vector index creation error is logged but doesn't fail"""
         manager = Neo4jManagerSingleton()
 
-        async def mock_batch_success(queries):
-            pass
+        def mock_batch_success(queries: list[str]) -> None:
+            return None
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
 
         async def mock_vector_fail(query):
             raise RuntimeError("Vector index not supported")
 
+        monkeypatch.setattr(asyncio, "to_thread", mock_to_thread)
         monkeypatch.setattr(manager, "_execute_schema_batch", mock_batch_success)
         monkeypatch.setattr(manager, "execute_write_query", mock_vector_fail)
 
         await manager._create_constraints_and_indexes()
+
+    async def test_create_constraints_and_indexes_schema_batch_tx_run_off_event_loop_thread(self, monkeypatch):
+        """tx.run for schema batch does not execute on the asyncio event loop thread (CORE-001)"""
+        manager = Neo4jManagerSingleton()
+
+        event_loop_thread_id = threading.get_ident()
+        tx_run_thread_ids: list[int] = []
+
+        def record_tx_run_thread(query: str) -> None:
+            tx_run_thread_ids.append(threading.get_ident())
+
+        mock_tx = MagicMock()
+        mock_tx.closed.return_value = False
+        mock_tx.run.side_effect = record_tx_run_thread
+        mock_tx.commit = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.begin_transaction.return_value = mock_tx
+
+        mock_driver = MagicMock()
+        # driver.session(...) returns a context manager; its __enter__ yields the session object.
+        mock_driver.session.return_value.__enter__.return_value = mock_session
+        mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
+
+        manager.driver = mock_driver
+        # Avoid real vector index execution; this test focuses on the schema batch.
+        monkeypatch.setattr(manager, "execute_write_query", AsyncMock())
+
+        await manager._create_constraints_and_indexes()
+
+        assert len(tx_run_thread_ids) > 0
+        # The schema batch is offloaded via asyncio.to_thread, so tx.run must not run on the event loop thread.
+        assert all(tid != event_loop_thread_id for tid in tx_run_thread_ids)
 
     async def test_create_type_placeholders_success(self, monkeypatch):
         """Type placeholders created successfully"""
@@ -838,7 +932,7 @@ class TestSyncSchemaOperations:
             "CREATE INDEX test2 IF NOT EXISTS FOR (n:Test) ON (n.name)",
         ]
 
-        asyncio.run(manager._execute_schema_batch(queries))
+        manager._execute_schema_batch(queries)
 
         assert mock_tx.run.call_count == 2
         mock_tx.commit.assert_called_once()
@@ -865,7 +959,7 @@ class TestSyncSchemaOperations:
         queries = ["CREATE CONSTRAINT invalid"]
 
         with pytest.raises(RuntimeError):
-            asyncio.run(manager._execute_schema_batch(queries))
+            manager._execute_schema_batch(queries)
 
         mock_tx.rollback.assert_called_once()
 

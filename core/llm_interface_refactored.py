@@ -18,6 +18,7 @@ import numpy as np
 import structlog
 
 import config
+from core.exceptions import LLMServiceError, create_error_context
 from core.http_client_service import (
     CompletionHTTPClient,
     EmbeddingHTTPClient,
@@ -306,6 +307,7 @@ class CompletionService:
         grammar: str | None = None,
         *,
         system_prompt: str | None = None,
+        strict: bool = True,
         **kwargs: Any,
     ) -> tuple[str, dict[str, int] | None]:
         """
@@ -326,8 +328,15 @@ class CompletionService:
         self._stats["completions_requested"] += 1
 
         if not model_name or not prompt:
-            logger.error("get_completion: model_name and prompt are required")
             self._stats["completions_failed"] += 1
+            error_details = create_error_context(
+                model_name=model_name,
+                prompt_len=len(prompt) if isinstance(prompt, str) else None,
+                allow_fallback=allow_fallback,
+            )
+            if strict:
+                raise LLMServiceError("get_completion requires non-empty model_name and prompt", details=error_details)
+            logger.error("get_completion: model_name and prompt are required", **error_details)
             return "", None
 
         effective_temperature = temperature if temperature is not None else config.Temperatures.DEFAULT
@@ -356,12 +365,34 @@ class CompletionService:
             self._stats["completions_successful"] += 1
             return content, usage_data
 
-        except Exception as e:
-            logger.error(f"Primary model '{model_name}' failed: {e}")
+        except Exception as primary_error:
+            # Never log raw prompt; capture only hash+length to aid debugging.
+            try:
+                prompt_sha1 = hashlib.sha1(prompt.encode("utf-8")).hexdigest()[:12]
+                prompt_len = len(prompt)
+            except Exception:  # pragma: no cover
+                prompt_sha1 = None
+                prompt_len = None
+
+            logger.error(
+                "get_completion: primary model failed",
+                model=model_name,
+                prompt_sha1=prompt_sha1,
+                prompt_len=prompt_len,
+                error=str(primary_error),
+                exc_info=True,
+            )
+
+            fallback_error: Exception | None = None
 
             # Try fallback if enabled
             if allow_fallback and config.MEDIUM_MODEL:
-                logger.info(f"Attempting fallback with '{config.MEDIUM_MODEL}'")
+                logger.info(
+                    "get_completion: attempting fallback model",
+                    fallback_model=config.MEDIUM_MODEL,
+                    primary_model=model_name,
+                    prompt_sha1=prompt_sha1,
+                )
                 self._stats["fallback_used"] += 1
 
                 try:
@@ -383,10 +414,36 @@ class CompletionService:
                     self._stats["completions_successful"] += 1
                     return content, usage_data
 
-                except Exception as fallback_error:
-                    logger.error(f"Fallback model also failed: {fallback_error}")
+                except Exception as exc:
+                    fallback_error = exc
+                    logger.error(
+                        "get_completion: fallback model failed",
+                        primary_model=model_name,
+                        fallback_model=config.MEDIUM_MODEL,
+                        prompt_sha1=prompt_sha1,
+                        prompt_len=prompt_len,
+                        error=str(exc),
+                        exc_info=True,
+                    )
 
             self._stats["completions_failed"] += 1
+
+            error_details = create_error_context(
+                primary_model=model_name,
+                fallback_model=config.MEDIUM_MODEL if allow_fallback else None,
+                allow_fallback=allow_fallback,
+                prompt_sha1=prompt_sha1,
+                prompt_len=prompt_len,
+                primary_error=str(primary_error),
+                primary_error_type=type(primary_error).__name__,
+                fallback_error=str(fallback_error) if fallback_error else None,
+                fallback_error_type=type(fallback_error).__name__ if fallback_error else None,
+            )
+
+            if strict:
+                raise LLMServiceError("LLM completion failed", details=error_details) from primary_error
+
+            # Compatibility: explicit non-strict mode preserves legacy sentinel return.
             return "", None
 
     # Streaming completion path removed to simplify the API.
@@ -482,12 +539,17 @@ class RefactoredLLMService:
         grammar: str | None = None,
         *,
         system_prompt: str | None = None,
+        strict: bool = True,
         **kwargs: Any,
     ) -> tuple[str, dict[str, int] | None]:
         """
         Call LLM with comprehensive options.
 
-        REFACTORED: Simplified orchestration, delegating to specialized services.
+        CORE-007 error contract:
+        - By default (`strict=True`), errors raise a typed exception (LLMServiceError)
+          rather than returning ambiguous sentinels like ("", None).
+        - For compatibility with legacy "best-effort" flows, callers may set
+          `strict=False` to preserve the sentinel return behavior.
         """
         return await self._completion_service.get_completion(
             model_name,
@@ -498,6 +560,7 @@ class RefactoredLLMService:
             auto_clean_response,
             grammar=grammar,
             system_prompt=system_prompt,
+            strict=strict,
             **kwargs,
         )
 

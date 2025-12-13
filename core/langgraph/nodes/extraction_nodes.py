@@ -16,6 +16,7 @@ from typing import Any
 import structlog
 
 import config
+from core.exceptions import LLMServiceError
 from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.state import (
     ExtractedEntity,
@@ -38,6 +39,10 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
 
     FIRST node in sequential extraction - CLEARS previous extraction state.
     """
+    if state.get("has_fatal_error", False):
+        # Fail-fast / no-op: upstream error should stop the workflow; don't do more LLM calls.
+        return {"current_node": "extract_characters"}
+
     logger.info("extract_characters: starting (clearing previous extraction state)")
 
     # Initialize content manager and get draft text
@@ -100,7 +105,13 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
                 response_sha1=raw_sha,
                 response_len=raw_len,
             )
+
+            # CORE-007: invalid extraction output is a hard failure (avoid continuing with empty state).
             return {
+                "current_node": "extract_characters",
+                "last_error": "Character extraction failed: LLM returned invalid JSON",
+                "has_fatal_error": True,
+                "error_node": "extract_characters",
                 "extracted_entities": {"characters": [], "world_items": []},
                 "extracted_relationships": [],
             }
@@ -153,9 +164,23 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
             "extracted_relationships": [],
         }
 
-    except Exception as e:
-        logger.error("extract_characters: failed", error=str(e))
+    except LLMServiceError as e:
+        logger.error("extract_characters: LLM failure", error=str(e), exc_info=True)
         return {
+            "current_node": "extract_characters",
+            "last_error": f"Character extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_characters",
+            "extracted_entities": {"characters": [], "world_items": []},
+            "extracted_relationships": [],
+        }
+    except Exception as e:
+        logger.error("extract_characters: failed", error=str(e), exc_info=True)
+        return {
+            "current_node": "extract_characters",
+            "last_error": f"Character extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_characters",
             "extracted_entities": {"characters": [], "world_items": []},
             "extracted_relationships": [],
         }
@@ -167,6 +192,9 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
 
     APPENDS to world_items (sequential extraction).
     """
+    if state.get("has_fatal_error", False):
+        return {"current_node": "extract_locations"}
+
     logger.info("extract_locations: starting")
 
     # Initialize content manager and get draft text
@@ -262,7 +290,14 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                 response_sha1=raw_sha,
                 response_len=raw_len,
             )
-            return {}
+
+            # CORE-007: invalid extraction output is a hard failure (avoid continuing with partial state).
+            return {
+                "current_node": "extract_locations",
+                "last_error": "Location extraction failed: LLM returned invalid JSON",
+                "has_fatal_error": True,
+                "error_node": "extract_locations",
+            }
 
         # DEBUG: log parsed top-level keys and world_updates keys to confirm expected schema.
         try:
@@ -426,9 +461,22 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             }
         }
 
+    except LLMServiceError as e:
+        logger.error("extract_locations: LLM failure", error=str(e), exc_info=True)
+        return {
+            "current_node": "extract_locations",
+            "last_error": f"Location extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_locations",
+        }
     except Exception as e:
-        logger.error("extract_locations: failed", error=str(e))
-        return {}
+        logger.error("extract_locations: failed", error=str(e), exc_info=True)
+        return {
+            "current_node": "extract_locations",
+            "last_error": f"Location extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_locations",
+        }
 
 
 async def extract_events(state: NarrativeState) -> dict[str, Any]:
@@ -437,6 +485,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
 
     APPENDS to world_items (sequential extraction).
     """
+    if state.get("has_fatal_error", False):
+        return {"current_node": "extract_events"}
+
     logger.info("extract_events: starting")
 
     # Initialize content manager and get draft text
@@ -532,7 +583,14 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 response_sha1=raw_sha,
                 response_len=raw_len,
             )
-            return {}
+
+            # CORE-007: invalid extraction output is a hard failure (avoid continuing with partial state).
+            return {
+                "current_node": "extract_events",
+                "last_error": "Event extraction failed: LLM returned invalid JSON",
+                "has_fatal_error": True,
+                "error_node": "extract_events",
+            }
 
         # DEBUG: log parsed top-level keys and world_updates keys to confirm expected schema.
         try:
@@ -690,9 +748,22 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             }
         }
 
+    except LLMServiceError as e:
+        logger.error("extract_events: LLM failure", error=str(e), exc_info=True)
+        return {
+            "current_node": "extract_events",
+            "last_error": f"Event extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_events",
+        }
     except Exception as e:
-        logger.error("extract_events: failed", error=str(e))
-        return {}
+        logger.error("extract_events: failed", error=str(e), exc_info=True)
+        return {
+            "current_node": "extract_events",
+            "last_error": f"Event extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_events",
+        }
 
 
 async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
@@ -703,6 +774,9 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     Also creates ExtractedEntity objects for entities found in relationships
     that weren't already extracted, preserving their type information.
     """
+    if state.get("has_fatal_error", False):
+        return {"current_node": "extract_relationships"}
+
     logger.info("extract_relationships: starting")
 
     # Initialize content manager and get draft text
@@ -767,7 +841,15 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                 response_sha1=raw_sha,
                 response_len=raw_len,
             )
-            return {"extracted_relationships": []}
+
+            # CORE-007: invalid extraction output is a hard failure (avoid continuing with partial state).
+            return {
+                "current_node": "extract_relationships",
+                "last_error": "Relationship extraction failed: LLM returned invalid JSON",
+                "has_fatal_error": True,
+                "error_node": "extract_relationships",
+                "extracted_relationships": [],
+            }
 
         if not data:
             return {"extracted_relationships": []}
@@ -916,9 +998,24 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             },
         }
 
+    except LLMServiceError as e:
+        logger.error("extract_relationships: LLM failure", error=str(e), exc_info=True)
+        return {
+            "current_node": "extract_relationships",
+            "last_error": f"Relationship extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_relationships",
+            "extracted_relationships": [],
+        }
     except Exception as e:
-        logger.error("extract_relationships: failed", error=str(e))
-        return {"extracted_relationships": []}
+        logger.error("extract_relationships: failed", error=str(e), exc_info=True)
+        return {
+            "current_node": "extract_relationships",
+            "last_error": f"Relationship extraction failed: {e}",
+            "has_fatal_error": True,
+            "error_node": "extract_relationships",
+            "extracted_relationships": [],
+        }
 
 
 def consolidate_extraction(state: NarrativeState) -> NarrativeState:

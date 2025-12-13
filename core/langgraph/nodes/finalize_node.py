@@ -14,12 +14,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+import numpy as np
 import structlog
 
 from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
     get_previous_summaries,
+    load_embedding,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -99,17 +101,35 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         # Continue with Neo4j save even if filesystem fails
         # (Neo4j is source of truth)
 
-    # Step 2: Generate embedding
+    # Step 2: Get or generate embedding (exactly once per chapter when embedding node is present)
+    #
+    # Preferred behavior:
+    # - If an upstream embedding node ran, it should have stored `embedding_ref` in state.
+    #   We load and reuse that here (no recompute).
+    # - If no embedding is available (e.g., embedding node absent), we compute as a fallback.
     try:
-        embedding = await llm_service.async_get_embedding(draft_text)
-        logger.info(
-            "finalize_chapter: embedding generated",
-            chapter=chapter_number,
-            embedding_shape=embedding.shape if embedding is not None else None,
-        )
+        embedding = None
+        embedding_ref = state.get("embedding_ref")
+
+        if embedding_ref:
+            embedding_list = load_embedding(content_manager, embedding_ref)
+            embedding = np.array(embedding_list, dtype=np.float32)
+            logger.info(
+                "finalize_chapter: reusing embedding from embedding_ref",
+                chapter=chapter_number,
+                embedding_shape=embedding.shape,
+                embedding_ref_path=embedding_ref.get("path") if isinstance(embedding_ref, dict) else None,
+            )
+        else:
+            embedding = await llm_service.async_get_embedding(draft_text)
+            logger.info(
+                "finalize_chapter: embedding generated (fallback)",
+                chapter=chapter_number,
+                embedding_shape=embedding.shape if embedding is not None else None,
+            )
     except Exception as e:
         logger.error(
-            "finalize_chapter: embedding generation failed",
+            "finalize_chapter: embedding resolution failed",
             chapter=chapter_number,
             error=str(e),
             exc_info=True,

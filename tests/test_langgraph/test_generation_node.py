@@ -14,9 +14,13 @@ import pytest
 from core.langgraph.content_manager import ContentManager, get_draft_text
 from core.langgraph.nodes.generation_node import (
     _construct_generation_prompt,
-    generate_chapter,
+    generate_chapter_single_shot,
 )
 from core.langgraph.state import create_initial_state
+
+# Backcompat within this test module: historically these tests called the
+# single-shot generation function `generate_chapter`.
+generate_chapter = generate_chapter_single_shot
 
 
 @pytest.fixture

@@ -25,6 +25,7 @@ from typing import Any
 import structlog
 
 from core.db_manager import neo4j_manager
+from core.exceptions import KnowledgeGraphPersistenceError, create_error_context
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
 
@@ -49,6 +50,7 @@ class KnowledgeGraphService:
         world_items: list[WorldItem] | None = None,
         chapter_number: int = 0,
         extra_statements: list[tuple[str, dict[str, Any]]] | None = None,
+        strict: bool = True,
     ) -> bool:
         """
         Persist entity nodes into Neo4j.
@@ -61,7 +63,11 @@ class KnowledgeGraphService:
                 in the same batch transaction.
 
         Returns:
-            True on success, False on failure (never raises).
+            True on success.
+
+            Compatibility behavior:
+            - If `strict=False`, returns False on failure instead of raising.
+            - CORE-007: `strict=True` is the default and raises a typed exception on failure.
         """
         characters = characters or []
         world_items = world_items or []
@@ -99,12 +105,28 @@ class KnowledgeGraphService:
             return True
 
         except Exception as exc:
+            error_details = create_error_context(
+                chapter=chapter_number,
+                characters=len(characters),
+                world_items=len(world_items),
+                statements=len(statements),
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+
             logger.error(
                 "knowledge_graph_service.persist_entities: failed",
-                chapter=chapter_number,
-                error=str(exc),
+                **error_details,
                 exc_info=True,
             )
+
+            if strict:
+                raise KnowledgeGraphPersistenceError(
+                    "Failed to persist entities to knowledge graph",
+                    details=error_details,
+                ) from exc
+
+            # Compatibility: explicit non-strict mode preserves legacy boolean failure signal.
             return False
 
 
