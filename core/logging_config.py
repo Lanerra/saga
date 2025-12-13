@@ -42,9 +42,7 @@ def setup_saga_logging() -> None:
     if getattr(config, "SIMPLE_LOGGING_MODE", False):
         stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
-        stream_handler.setFormatter(
-            rich_formatter
-        )  # Use rich formatter for better console output
+        stream_handler.setFormatter(rich_formatter)  # Use rich formatter for better console output
         root_logger.addHandler(stream_handler)
         root_logger.info("Simple logging mode enabled: console only.")
     elif config.LOG_FILE:
@@ -74,17 +72,11 @@ def setup_saga_logging() -> None:
                 exc_info=True,
             )
 
-    if (
-        not getattr(config, "SIMPLE_LOGGING_MODE", False)
-        and RICH_AVAILABLE
-        and config.ENABLE_RICH_PROGRESS
-    ):
+    if not getattr(config, "SIMPLE_LOGGING_MODE", False) and RICH_AVAILABLE and config.ENABLE_RICH_PROGRESS:
         existing_console = None
         if root_logger.handlers:
             for _h_idx, h in enumerate(root_logger.handlers):
-                if hasattr(h, "console") and not isinstance(
-                    h, stdlib_logging.FileHandler
-                ):
+                if hasattr(h, "console") and not isinstance(h, stdlib_logging.FileHandler):
                     existing_console = h.console
                     break
 
@@ -106,14 +98,10 @@ def setup_saga_logging() -> None:
         rich_handler.setFormatter(rich_formatter)
         root_logger.addHandler(rich_handler)
         root_logger.info("Rich logging handler enabled for console.")
-    elif not any(
-        isinstance(h, stdlib_logging.StreamHandler) for h in root_logger.handlers
-    ):
+    elif not any(isinstance(h, stdlib_logging.StreamHandler) for h in root_logger.handlers):
         stream_handler = stdlib_logging.StreamHandler()
         stream_handler.setLevel(config.LOG_LEVEL_STR)
-        stream_handler.setFormatter(
-            rich_formatter
-        )  # Use rich formatter for better console output
+        stream_handler.setFormatter(rich_formatter)  # Use rich formatter for better console output
         root_logger.addHandler(stream_handler)
         root_logger.info("Standard stream logging handler enabled for console.")
 
@@ -122,6 +110,4 @@ def setup_saga_logging() -> None:
     stdlib_logging.getLogger("httpx").setLevel(stdlib_logging.WARNING)
     stdlib_logging.getLogger("httpcore").setLevel(stdlib_logging.WARNING)
 
-    structlog.get_logger().info(
-        f"SAGA Logging setup complete. Application Log Level: {stdlib_logging.getLevelName(config.LOG_LEVEL_STR)}."
-    )
+    structlog.get_logger().info(f"SAGA Logging setup complete. Application Log Level: {stdlib_logging.getLevelName(config.LOG_LEVEL_STR)}.")

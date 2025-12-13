@@ -155,9 +155,7 @@ def _export_png(graph: Any, output_path: Path, title: str | None) -> None:
             "_export_png: graphviz not available",
             error=str(e),
         )
-        raise ImportError(
-            "PNG export requires graphviz. Install with: pip install pygraphviz"
-        ) from e
+        raise ImportError("PNG export requires graphviz. Install with: pip install pygraphviz") from e
     except Exception as e:
         logger.error(
             "_export_png: failed to create PNG diagram",
@@ -208,9 +206,7 @@ def _export_ascii(graph: Any, output_path: Path, title: str | None) -> None:
                 lines.append(f"  {source} --> {target}")
 
         lines.append("")
-        lines.append(
-            f"Entry Point: {graph_obj.entry_point if hasattr(graph_obj, 'entry_point') else 'unknown'}"
-        )
+        lines.append(f"Entry Point: {graph_obj.entry_point if hasattr(graph_obj, 'entry_point') else 'unknown'}")
         lines.append("")
 
         ascii_diagram = "\n".join(lines)

@@ -50,9 +50,7 @@ def sample_phase2_state(tmp_path: Any) -> NarrativeState:
             "chapter_summary": "Introduction",
         }
     }
-    chapter_outlines_ref = content_manager.save_json(
-        chapter_outlines, "chapter_outlines", "all", 1
-    )
+    chapter_outlines_ref = content_manager.save_json(chapter_outlines, "chapter_outlines", "all", 1)
     state["chapter_outlines_ref"] = chapter_outlines_ref
 
     # Set current chapter
@@ -220,9 +218,7 @@ class TestShouldReviseOrContinue:
 class TestPhase2Workflow:
     """Tests for complete Phase 2 workflow."""
 
-    async def test_workflow_successful_path_no_revision(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_successful_path_no_revision(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test successful workflow without any revisions."""
         # Create workflow
         graph = create_phase2_graph()
@@ -246,27 +242,17 @@ class TestPhase2Workflow:
         # assert result["current_node"] == "finalize"
         # assert result["draft_ref"] is not None
 
-    @pytest.mark.skip(
-        reason="Refactoring to use subgraphs changes how revision is triggered"
-    )
-    async def test_workflow_with_single_revision(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    @pytest.mark.skip(reason="Refactoring to use subgraphs changes how revision is triggered")
+    async def test_workflow_with_single_revision(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow with one revision cycle."""
         pass
 
-    @pytest.mark.skip(
-        reason="Refactoring to use subgraphs changes how revision is triggered"
-    )
-    async def test_workflow_max_iterations_enforcement(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    @pytest.mark.skip(reason="Refactoring to use subgraphs changes how revision is triggered")
+    async def test_workflow_max_iterations_enforcement(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that max iterations are enforced."""
         pass
 
-    async def test_workflow_force_continue_skips_revision(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_force_continue_skips_revision(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that force_continue skips revision."""
         # Set force_continue
         state = {**sample_phase2_state}
@@ -302,9 +288,7 @@ class TestPhase2Workflow:
         mock_all_nodes["finalize"].assert_called_once()
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes execution tracking")
-    async def test_workflow_node_execution_order(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_node_execution_order(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that nodes execute in correct order."""
         pass
 
@@ -313,9 +297,7 @@ class TestPhase2Workflow:
         "Checkpointing functionality is verified in Phase 1 tests. "
         "This test needs refactoring to use async context manager properly."
     )
-    async def test_workflow_with_checkpointing(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any
-    ) -> None:
+    async def test_workflow_with_checkpointing(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
         """Test workflow with checkpointing enabled."""
         from core.langgraph.workflow import create_checkpointer
 
@@ -336,21 +318,13 @@ class TestPhase2Workflow:
         # Verify checkpoint file was created
         assert checkpoint_db.exists()
 
-    @pytest.mark.skip(
-        reason="Refactoring to use subgraphs changes state field preservation"
-    )
-    async def test_workflow_preserves_state_through_nodes(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    @pytest.mark.skip(reason="Refactoring to use subgraphs changes state field preservation")
+    async def test_workflow_preserves_state_through_nodes(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that state is properly preserved through all nodes."""
         pass
 
-    @pytest.mark.skip(
-        reason="Refactoring to use subgraphs changes how revision is triggered"
-    )
-    async def test_workflow_multiple_revision_cycles(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    @pytest.mark.skip(reason="Refactoring to use subgraphs changes how revision is triggered")
+    async def test_workflow_multiple_revision_cycles(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow with multiple revision cycles."""
         pass
 
@@ -360,15 +334,11 @@ class TestPhase2Integration:
     """Integration tests for Phase 2 workflow."""
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes state fields")
-    async def test_complete_chapter_generation_workflow(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any
-    ) -> None:
+    async def test_complete_chapter_generation_workflow(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
         """Test complete end-to-end chapter generation."""
         pass
 
-    @pytest.mark.skip(
-        reason="Refactoring to use subgraphs changes graph structure validation"
-    )
+    @pytest.mark.skip(reason="Refactoring to use subgraphs changes graph structure validation")
     async def test_workflow_graph_structure(self) -> None:
         """Test that Phase 2 graph has correct structure."""
         pass
@@ -461,43 +431,31 @@ class TestWorkflowErrorHandling:
     """Tests for error handling in Phase 2 workflow (P1.1 & P1.3)."""
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_generation_failure(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_routes_to_error_handler_on_generation_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when generation fails."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_extraction_failure(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_routes_to_error_handler_on_extraction_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when extraction fails."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_validation_failure(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_routes_to_error_handler_on_validation_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when validation triggers fatal error."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_revision_failure(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_routes_to_error_handler_on_revision_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when revision fails."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes call expectations")
-    async def test_workflow_completes_successfully_without_errors(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_completes_successfully_without_errors(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow completes when no fatal errors occur."""
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_stops_at_first_fatal_error(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_stops_at_first_fatal_error(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow stops execution at first fatal error encountered."""
         pass

@@ -51,9 +51,7 @@ logger = structlog.get_logger(__name__)
 
 
 @alru_cache(maxsize=128)
-async def get_character_profile_by_name(
-    name: str, *, include_provisional: bool = False
-) -> CharacterProfile | None:
+async def get_character_profile_by_name(name: str, *, include_provisional: bool = False) -> CharacterProfile | None:
     """
     Retrieve a single CharacterProfile from Neo4j by character name.
 
@@ -114,9 +112,7 @@ async def get_character_profile_by_name(
             [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events
     """
 
-    results = await neo4j_manager.execute_read_query(
-        query, {"name": canonical_name, "include_provisional": include_provisional}
-    )
+    results = await neo4j_manager.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
     if not results or not results[0].get("c"):
         logger.info(f"No character profile found for '{canonical_name}'.")
         return None
@@ -195,9 +191,7 @@ async def get_character_profile_by_name(
                 str(r.get("chapter_added", "")),
             ),
         )
-        relationships[target_name] = (
-            rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
-        )
+        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
 
     profile["relationships"] = relationships
 
@@ -216,9 +210,7 @@ async def get_character_profile_by_name(
 
 
 @alru_cache(maxsize=128)
-async def get_character_profile_by_id(
-    character_id: str, *, include_provisional: bool = False
-) -> CharacterProfile | None:
+async def get_character_profile_by_id(character_id: str, *, include_provisional: bool = False) -> CharacterProfile | None:
     """
     Retrieve a single CharacterProfile from Neo4j by character ID.
 
@@ -305,11 +297,7 @@ async def get_character_profile_by_id(
         rel_props_full = rel_rec.get("rel_props", {})
         rel_props_cleaned = {}
         if isinstance(rel_props_full, dict):
-            rel_props_cleaned = {
-                k: v
-                for k, v in rel_props_full.items()
-                if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
-            }
+            rel_props_cleaned = {k: v for k, v in rel_props_full.items() if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]}
         # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
         # Fall back to legacy property-based typing if present.
         rel_type = rel_rec.get("rel_type")
@@ -339,18 +327,12 @@ async def get_character_profile_by_id(
 
 async def get_all_character_names() -> list[str]:
     """Return a list of all character names from Neo4j."""
-    query = (
-        "MATCH (c:Character) "
-        "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE "
-        "RETURN c.name AS name ORDER BY c.name"
-    )
+    query = "MATCH (c:Character) " "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE " "RETURN c.name AS name ORDER BY c.name"
     results = await neo4j_manager.execute_read_query(query)
     return [record["name"] for record in results if record.get("name")]
 
 
-def _process_snippet_result(
-    record: dict[str, Any], *, include_provisional: bool
-) -> dict[str, Any]:
+def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool) -> dict[str, Any]:
     """Process snippet query result into standardized format.
 
     Provisional contract (P0):
@@ -365,18 +347,11 @@ def _process_snippet_result(
     non_provisional = [e for e in valid_events if not e.get("is_provisional")]
     provisional = [e for e in valid_events if e.get("is_provisional")]
 
-    most_recent_non_prov = (
-        max(non_provisional, key=lambda e: e["chapter"]) if non_provisional else None
-    )
-    most_recent_prov = (
-        max(provisional, key=lambda e: e["chapter"]) if provisional else None
-    )
+    most_recent_non_prov = max(non_provisional, key=lambda e: e["chapter"]) if non_provisional else None
+    most_recent_prov = max(provisional, key=lambda e: e["chapter"]) if provisional else None
 
     if include_provisional:
-        if most_recent_prov and (
-            not most_recent_non_prov
-            or most_recent_prov["chapter"] >= most_recent_non_prov["chapter"]
-        ):
+        if most_recent_prov and (not most_recent_non_prov or most_recent_prov["chapter"] >= most_recent_non_prov["chapter"]):
             most_current = most_recent_prov
         else:
             most_current = most_recent_non_prov
@@ -388,9 +363,7 @@ def _process_snippet_result(
     char_is_provisional = record.get("char_is_provisional", False)
     has_provisional_relationships = record.get("provisional_rel_count", 0) > 0
     has_provisional_events = len(provisional) > 0
-    is_provisional_overall = (
-        char_is_provisional or has_provisional_relationships or has_provisional_events
-    )
+    is_provisional_overall = char_is_provisional or has_provisional_relationships or has_provisional_events
 
     return {
         "description": record.get("description"),
@@ -400,9 +373,7 @@ def _process_snippet_result(
     }
 
 
-async def get_character_info_for_snippet_from_db(
-    char_name: str, chapter_limit: int, *, include_provisional: bool = False
-) -> dict[str, Any] | None:
+async def get_character_info_for_snippet_from_db(char_name: str, chapter_limit: int, *, include_provisional: bool = False) -> dict[str, Any] | None:
     """Get character info for snippet with chapter limit.
 
     Provisional contract (P0):
@@ -537,9 +508,7 @@ async def sync_characters(
 
     try:
         cypher_builder = NativeCypherBuilder()
-        statements = cypher_builder.batch_character_upsert_cypher(
-            characters, chapter_number
-        )
+        statements = cypher_builder.batch_character_upsert_cypher(characters, chapter_number)
 
         if statements:
             await neo4j_manager.execute_cypher_batch(statements)
@@ -602,9 +571,7 @@ async def get_character_profiles() -> list[CharacterProfile]:
         return []
 
 
-async def get_characters_for_chapter_context_native(
-    chapter_number: int, limit: int = 10
-) -> list[CharacterProfile]:
+async def get_characters_for_chapter_context_native(chapter_number: int, limit: int = 10) -> list[CharacterProfile]:
     """
     Get characters relevant for chapter context using native models.
 
@@ -635,9 +602,7 @@ async def get_characters_for_chapter_context_native(
                }) as relationships
         """
 
-        results = await neo4j_manager.execute_read_query(
-            query, {"chapter_number": chapter_number, "limit": limit}
-        )
+        results = await neo4j_manager.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
 
         characters = []
         for record in results:

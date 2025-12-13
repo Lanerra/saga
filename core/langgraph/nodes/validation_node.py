@@ -105,9 +105,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # - Any critical issues found, OR
     # - More than 2 major issues found
     # Unless force_continue is set
-    needs_revision = (
-        len(critical_issues) > 0 or len(major_issues) > 2
-    ) and not state.get("force_continue", False)
+    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 2) and not state.get("force_continue", False)
 
     logger.info(
         "validate_consistency: validation complete",
@@ -181,12 +179,8 @@ async def _validate_relationships(
     # Validate each relationship
     for rel in relationships:
         # Get entity types
-        source_type = entity_type_map.get(
-            rel.source_name, "Character"
-        )  # Default to Character
-        target_type = entity_type_map.get(
-            rel.target_name, "Character"
-        )  # Default to Character
+        source_type = entity_type_map.get(rel.source_name, "Character")  # Default to Character
+        target_type = entity_type_map.get(rel.target_name, "Character")  # Default to Character
 
         # Validate the relationship (permissive mode - always valid)
         is_valid, errors, info_warnings = validator.validate(
@@ -290,16 +284,11 @@ async def _check_character_traits(
                 # Check for contradictions
                 for trait_a, trait_b in contradictory_pairs:
                     # Check if established trait conflicts with new trait
-                    if (
-                        trait_a in established_traits
-                        and trait_b in new_trait_candidates
-                    ):
+                    if trait_a in established_traits and trait_b in new_trait_candidates:
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_a}' "
-                                f"in chapter {existing.get('first_chapter', '?')}, "
-                                f"but is now described as '{trait_b}'",
+                                description=f"{char.name} was established as '{trait_a}' " f"in chapter {existing.get('first_chapter', '?')}, " f"but is now described as '{trait_b}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,
@@ -309,16 +298,11 @@ async def _check_character_traits(
                             )
                         )
                     # Also check reverse
-                    elif (
-                        trait_b in established_traits
-                        and trait_a in new_trait_candidates
-                    ):
+                    elif trait_b in established_traits and trait_a in new_trait_candidates:
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_b}' "
-                                f"in chapter {existing.get('first_chapter', '?')}, "
-                                f"but is now described as '{trait_a}'",
+                                description=f"{char.name} was established as '{trait_b}' " f"in chapter {existing.get('first_chapter', '?')}, " f"but is now described as '{trait_a}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,

@@ -34,10 +34,7 @@ def test_draft_scene_outputs_text_only(monkeypatch: pytest.MonkeyPatch) -> None:
                     "{% block instructions %}4. Output ONLY the scene text.{% endblock %}"
                     "{% block output_header %}{% endblock %}"
                 ),
-                "narrative_agent/base_draft.j2": (
-                    "{{ 'context' }}{% block output_header %}{% endblock %}"
-                    "{% block instructions %}{% endblock %}"
-                ),
+                "narrative_agent/base_draft.j2": ("{{ 'context' }}{% block output_header %}{% endblock %}" "{% block instructions %}{% endblock %}"),
             }
         )
     )

@@ -50,9 +50,7 @@ class GraphHealingService:
         """
         return await neo4j_manager.execute_read_query(query)
 
-    async def calculate_node_confidence(
-        self, node: dict[str, Any], current_chapter: int = 0
-    ) -> float:
+    async def calculate_node_confidence(self, node: dict[str, Any], current_chapter: int = 0) -> float:
         """
         Calculate confidence score for a provisional node.
 
@@ -70,9 +68,7 @@ class GraphHealingService:
             WHERE elementId(n) = $element_id
             RETURN count(r) AS rel_count
         """
-        results = await neo4j_manager.execute_read_query(
-            rel_query, {"element_id": element_id}
-        )
+        results = await neo4j_manager.execute_read_query(rel_query, {"element_id": element_id})
         record = results[0] if results else None
         rel_count = record["rel_count"] if record else 0
 
@@ -99,9 +95,7 @@ class GraphHealingService:
                 WHERE elementId(n) = $element_id
                 RETURN n.status AS status
             """
-            results = await neo4j_manager.execute_read_query(
-                status_query, {"element_id": element_id}
-            )
+            results = await neo4j_manager.execute_read_query(status_query, {"element_id": element_id})
             record = results[0] if results else None
             if record and record.get("status") and record["status"] != "Unknown":
                 completeness_score += 0.1
@@ -129,9 +123,7 @@ class GraphHealingService:
 
         return total_confidence
 
-    async def enrich_node_from_context(
-        self, node: dict[str, Any], model: str
-    ) -> dict[str, Any]:
+    async def enrich_node_from_context(self, node: dict[str, Any], model: str) -> dict[str, Any]:
         """
         Use LLM to infer missing attributes from all mentions of this entity.
 
@@ -223,9 +215,7 @@ Provide the following information (only include fields where you have reasonable
             params["description"] = enriched["inferred_description"]
 
         if enriched.get("inferred_traits"):
-            updates.append(
-                "n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)"
-            )
+            updates.append("n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)")
             params["new_traits"] = enriched["inferred_traits"]
 
         if enriched.get("inferred_role"):
@@ -257,9 +247,7 @@ Provide the following information (only include fields where you have reasonable
                 n.graduation_confidence = $confidence
             RETURN n.name AS name
         """
-        results = await neo4j_manager.execute_write_query(
-            query, {"element_id": element_id, "confidence": confidence}
-        )
+        results = await neo4j_manager.execute_write_query(query, {"element_id": element_id, "confidence": confidence})
 
         if results:
             record = results[0]
@@ -307,12 +295,8 @@ Provide the following information (only include fields where you have reasonable
                     RETURN elementId(n) AS element_id
                 """
 
-                primary_results = await neo4j_manager.execute_read_query(
-                    get_element_id_query, {"entity_id": c["id1"]}
-                )
-                duplicate_results = await neo4j_manager.execute_read_query(
-                    get_element_id_query, {"entity_id": c["id2"]}
-                )
+                primary_results = await neo4j_manager.execute_read_query(get_element_id_query, {"entity_id": c["id1"]})
+                duplicate_results = await neo4j_manager.execute_read_query(get_element_id_query, {"entity_id": c["id2"]})
 
                 if not primary_results or not duplicate_results:
                     continue
@@ -370,9 +354,7 @@ Provide the following information (only include fields where you have reasonable
                     continue
 
                 # Name similarity
-                name_sim = SequenceMatcher(
-                    None, e1["name"].lower(), e2["name"].lower()
-                ).ratio()
+                name_sim = SequenceMatcher(None, e1["name"].lower(), e2["name"].lower()).ratio()
 
                 # Embedding similarity
                 emb_sim = 0.0
@@ -452,9 +434,7 @@ Provide the following information (only include fields where you have reasonable
 
         return False
 
-    async def validate_merge(
-        self, primary_id: str, duplicate_id: str
-    ) -> dict[str, Any]:
+    async def validate_merge(self, primary_id: str, duplicate_id: str) -> dict[str, Any]:
         """
         Validate a merge by checking for co-occurrence.
 
@@ -469,9 +449,7 @@ Provide the following information (only include fields where you have reasonable
             AND (x:Chapter OR x:Event)
             RETURN count(x) AS cooccurrences
         """
-        results = await neo4j_manager.execute_read_query(
-            cooccurrence_query, {"primary_id": primary_id, "duplicate_id": duplicate_id}
-        )
+        results = await neo4j_manager.execute_read_query(cooccurrence_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
         record = results[0] if results else None
         cooccurrences = record["cooccurrences"] if record else 0
 
@@ -481,21 +459,11 @@ Provide the following information (only include fields where you have reasonable
             WHERE elementId(n) IN [$primary_id, $duplicate_id]
             RETURN elementId(n) AS node_id, type(r) AS rel_type, count(*) AS count
         """
-        rel_patterns = await neo4j_manager.execute_read_query(
-            rel_query, {"primary_id": primary_id, "duplicate_id": duplicate_id}
-        )
+        rel_patterns = await neo4j_manager.execute_read_query(rel_query, {"primary_id": primary_id, "duplicate_id": duplicate_id})
 
         # Build relationship fingerprints
-        primary_rels = {
-            r["rel_type"]: r["count"]
-            for r in rel_patterns
-            if r["node_id"] == primary_id
-        }
-        dup_rels = {
-            r["rel_type"]: r["count"]
-            for r in rel_patterns
-            if r["node_id"] == duplicate_id
-        }
+        primary_rels = {r["rel_type"]: r["count"] for r in rel_patterns if r["node_id"] == primary_id}
+        dup_rels = {r["rel_type"]: r["count"] for r in rel_patterns if r["node_id"] == duplicate_id}
 
         # Calculate relationship similarity
         all_types = set(primary_rels.keys()) | set(dup_rels.keys())
@@ -511,9 +479,7 @@ Provide the following information (only include fields where you have reasonable
             "is_valid": cooccurrences == 0 and rel_similarity > 0.5,
         }
 
-    async def execute_merge(
-        self, primary_id: str, duplicate_id: str, merge_info: dict[str, Any]
-    ) -> bool:
+    async def execute_merge(self, primary_id: str, duplicate_id: str, merge_info: dict[str, Any]) -> bool:
         """
         Execute a merge of two entities using the robust merge implementation from kg_queries.
 
@@ -530,7 +496,7 @@ Provide the following information (only include fields where you have reasonable
         Returns:
             True if merge succeeded, False otherwise
         """
-        from data_access.kg_queries import merge_entities, get_entity_context_for_resolution
+        from data_access.kg_queries import get_entity_context_for_resolution, merge_entities
 
         # Get context for both entities to construct a reason
         primary_context = await get_entity_context_for_resolution(primary_id)
@@ -555,12 +521,8 @@ Provide the following information (only include fields where you have reasonable
 
         try:
             # Get entity IDs from element IDs
-            primary_results = await neo4j_manager.execute_read_query(
-                get_id_query, {"element_id": primary_id}
-            )
-            duplicate_results = await neo4j_manager.execute_read_query(
-                get_id_query, {"element_id": duplicate_id}
-            )
+            primary_results = await neo4j_manager.execute_read_query(get_id_query, {"element_id": primary_id})
+            duplicate_results = await neo4j_manager.execute_read_query(get_id_query, {"element_id": duplicate_id})
 
             if not primary_results or not duplicate_results:
                 logger.error(
@@ -636,9 +598,7 @@ Provide the following information (only include fields where you have reasonable
         """
         cutoff = current_chapter - self.ORPHAN_CLEANUP_CHAPTERS
 
-        orphaned_nodes = await neo4j_manager.execute_read_query(
-            query, {"cutoff_chapter": cutoff}
-        )
+        orphaned_nodes = await neo4j_manager.execute_read_query(query, {"cutoff_chapter": cutoff})
         results["nodes_checked"] = len(orphaned_nodes)
 
         if not orphaned_nodes:
@@ -652,9 +612,7 @@ Provide the following information (only include fields where you have reasonable
                 DELETE n
             """
             try:
-                await neo4j_manager.execute_write_query(
-                    delete_query, {"element_id": node["element_id"]}
-                )
+                await neo4j_manager.execute_write_query(delete_query, {"element_id": node["element_id"]})
                 results["nodes_removed"] += 1
                 logger.info(
                     "Removed orphaned provisional node",
@@ -733,9 +691,7 @@ Provide the following information (only include fields where you have reasonable
                     )
 
                     # Re-check confidence after enrichment
-                    new_confidence = await self.calculate_node_confidence(
-                        node, current_chapter
-                    )
+                    new_confidence = await self.calculate_node_confidence(node, current_chapter)
                     if new_confidence >= self.CONFIDENCE_THRESHOLD:
                         if await self.graduate_node(node["element_id"], new_confidence):
                             results["nodes_graduated"] += 1
@@ -753,18 +709,14 @@ Provide the following information (only include fields where you have reasonable
 
         for candidate in merge_candidates:
             # Validate the merge
-            validation = await self.validate_merge(
-                candidate["primary_id"], candidate["duplicate_id"]
-            )
+            validation = await self.validate_merge(candidate["primary_id"], candidate["duplicate_id"])
 
             if not validation["is_valid"]:
                 continue
 
             # Auto-approve high confidence merges
             if candidate["similarity"] >= self.AUTO_MERGE_THRESHOLD:
-                if await self.execute_merge(
-                    candidate["primary_id"], candidate["duplicate_id"], candidate
-                ):
+                if await self.execute_merge(candidate["primary_id"], candidate["duplicate_id"], candidate):
                     results["nodes_merged"] += 1
                     results["actions"].append(
                         {

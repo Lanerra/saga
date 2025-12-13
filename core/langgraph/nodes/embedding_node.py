@@ -33,9 +33,7 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
     draft_text = get_draft_text(state, content_manager)
     chapter_num = state.get("current_chapter")
 
-    logger.info(
-        "generate_embedding: starting embedding generation", chapter=chapter_num
-    )
+    logger.info("generate_embedding: starting embedding generation", chapter=chapter_num)
 
     if not draft_text or not draft_text.strip():
         logger.warning(
@@ -73,10 +71,7 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
         content_manager = ContentManager(state.get("project_dir", ""))
 
         # Get current version (for revision tracking)
-        current_version = (
-            content_manager.get_latest_version("embedding", f"chapter_{chapter_num}")
-            + 1
-        )
+        current_version = content_manager.get_latest_version("embedding", f"chapter_{chapter_num}") + 1
 
         # Externalize generated_embedding to reduce state bloat
         embedding_ref = content_manager.save_binary(

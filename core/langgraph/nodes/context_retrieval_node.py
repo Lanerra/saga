@@ -36,9 +36,7 @@ logger = structlog.get_logger(__name__)
 
 # Context budget configuration (in tokens)
 # These can be tuned based on model context window
-DEFAULT_CONTEXT_BUDGET_TOKENS = (
-    config.settings.MAX_CONTEXT_TOKENS // 2
-)  # Reserve half for generation
+DEFAULT_CONTEXT_BUDGET_TOKENS = config.settings.MAX_CONTEXT_TOKENS // 2  # Reserve half for generation
 PREVIOUS_SCENES_TOKEN_BUDGET = 2000  # Max tokens for previous scene context
 SUMMARY_MAX_TOKENS = 150  # Target tokens per scene summary
 CHARACTER_PROFILES_TOKEN_BUDGET = 3000  # Max tokens for character profiles
@@ -177,9 +175,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     # 6. Semantic Context (Vector Search)
     # =========================================================================
     # Generate query from current scene description
-    scene_query = (
-        f"{current_scene.get('title', '')} {current_scene.get('scene_description', '')}"
-    )
+    scene_query = f"{current_scene.get('title', '')} {current_scene.get('scene_description', '')}"
     semantic_context = await _get_semantic_context(
         query_text=scene_query,
         chapter_number=chapter_number,
@@ -245,19 +241,12 @@ async def _get_scene_character_context(
     )
 
     # Get filtered character profiles - let exceptions propagate
-    character_profiles_text = (
-        await get_filtered_character_profiles_for_prompt_plain_text(
-            character_names=scene_characters,
-            up_to_chapter_inclusive=chapter_number - 1
-            if chapter_number > 1
-            else config.KG_PREPOPULATION_CHAPTER_NUM,
-        )
+    character_profiles_text = await get_filtered_character_profiles_for_prompt_plain_text(
+        character_names=scene_characters,
+        up_to_chapter_inclusive=chapter_number - 1 if chapter_number > 1 else config.KG_PREPOPULATION_CHAPTER_NUM,
     )
 
-    if (
-        character_profiles_text
-        and character_profiles_text != "No character profiles available."
-    ):
+    if character_profiles_text and character_profiles_text != "No character profiles available.":
         # Truncate if exceeds budget
         truncated = truncate_text_by_tokens(
             text=character_profiles_text,
@@ -296,9 +285,7 @@ def _extract_scene_characters(scene: dict) -> list[str]:
                         characters.append(char["name"].strip())
             elif isinstance(scene_chars, str):
                 # Comma-separated list
-                characters.extend(
-                    [c.strip() for c in scene_chars.split(",") if c.strip()]
-                )
+                characters.extend([c.strip() for c in scene_chars.split(",") if c.strip()])
             break
 
     # Deduplicate while preserving order
@@ -419,9 +406,7 @@ async def _get_previous_scenes_context(
 
         # Calculate token budget for this scene (more for recent scenes)
         scene_weight = i + 1  # Earlier scenes get less weight
-        scene_token_budget = int(
-            PREVIOUS_SCENES_TOKEN_BUDGET * (scene_weight / total_weight)
-        )
+        scene_token_budget = int(PREVIOUS_SCENES_TOKEN_BUDGET * (scene_weight / total_weight))
 
         # Ensure minimum budget
         scene_token_budget = max(scene_token_budget, SUMMARY_MAX_TOKENS)
@@ -563,9 +548,7 @@ def _smart_truncate_scene(
 
     # Calculate split points
     head_tokens = int(max_tokens * 0.1)  # 10% for beginning context
-    tail_tokens = (
-        max_tokens - head_tokens - 10
-    )  # Rest for tail, minus some for ellipsis
+    tail_tokens = max_tokens - head_tokens - 10  # Rest for tail, minus some for ellipsis
 
     # Split text approximately
     words = text.split()
@@ -613,11 +596,7 @@ async def _get_scene_location_context(
 
     try:
         # Query Neo4j for location details
-        kg_chapter_limit = (
-            config.KG_PREPOPULATION_CHAPTER_NUM
-            if chapter_number == 1
-            else chapter_number - 1
-        )
+        kg_chapter_limit = config.KG_PREPOPULATION_CHAPTER_NUM if chapter_number == 1 else chapter_number - 1
 
         # Get location status and description
         results = await kg_queries.query_kg_from_db(
@@ -635,9 +614,7 @@ async def _get_scene_location_context(
                     location_facts.append(f"- {location_name} {predicate}: {obj}")
 
             if location_facts:
-                return f"**Current Location - {location_name}:**\n" + "\n".join(
-                    location_facts[:5]
-                )
+                return f"**Current Location - {location_name}:**\n" + "\n".join(location_facts[:5])
 
     except Exception as e:
         logger.warning(
@@ -697,16 +674,10 @@ async def _get_semantic_context(
             context_type = chapter.get("context_type", "similarity")
 
             # Label context type clearly
-            label = (
-                "Previous Chapter"
-                if context_type == "immediate_previous"
-                else f"Similar Chapter (Score: {score:.2f})"
-            )
+            label = "Previous Chapter" if context_type == "immediate_previous" else f"Similar Chapter (Score: {score:.2f})"
 
             if summary:
-                formatted_parts.append(
-                    f"\n--- Chapter {chap_num} ({label}) ---\n{summary}"
-                )
+                formatted_parts.append(f"\n--- Chapter {chap_num} ({label}) ---\n{summary}")
 
         result_text = "\n".join(formatted_parts)
 

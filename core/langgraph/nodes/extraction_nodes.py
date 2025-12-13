@@ -55,9 +55,7 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
         "knowledge_agent/extract_characters.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get(
-                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
-            ),
+            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
             "chapter_number": state.get("current_chapter", 1),
             "novel_title": state.get("title", ""),
             "novel_genre": state.get("genre", ""),
@@ -116,9 +114,7 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
                 }
 
                 # Validate entity type (Characters are always "Character")
-                is_valid, normalized_type, err = schema_validator.validate_entity_type(
-                    "Character"
-                )
+                is_valid, normalized_type, err = schema_validator.validate_entity_type("Character")
 
                 if is_valid:
                     char_updates.append(
@@ -176,9 +172,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         "knowledge_agent/extract_locations.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get(
-                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
-            ),
+            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
             "chapter_number": state.get("current_chapter", 1),
             "novel_title": state.get("title", ""),
             "novel_genre": state.get("genre", ""),
@@ -247,9 +241,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         try:
             top_keys = sorted(list(data.keys())) if isinstance(data, dict) else []
             raw_updates = data.get("world_updates", {}) if isinstance(data, dict) else {}
-            wu_keys = (
-                sorted(list(raw_updates.keys()))[:30] if isinstance(raw_updates, dict) else []
-            )
+            wu_keys = sorted(list(raw_updates.keys()))[:30] if isinstance(raw_updates, dict) else []
             suspicious = sorted(
                 set(wu_keys).intersection(
                     {
@@ -379,9 +371,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
 
                 # Use category (when present) for deterministic IDs; otherwise fall back.
                 id_category = subtype_category or allowed_type.lower()
-                item_id = generate_entity_id(
-                    name, id_category, state.get("current_chapter", 1)
-                )
+                item_id = generate_entity_id(name, id_category, state.get("current_chapter", 1))
 
                 attributes = {
                     "category": subtype_category or id_category,
@@ -439,9 +429,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         "knowledge_agent/extract_events.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get(
-                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
-            ),
+            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
             "chapter_number": state.get("current_chapter", 1),
             "novel_title": state.get("title", ""),
             "novel_genre": state.get("genre", ""),
@@ -509,9 +497,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         try:
             top_keys = sorted(list(data.keys())) if isinstance(data, dict) else []
             raw_updates = data.get("world_updates", {}) if isinstance(data, dict) else {}
-            wu_keys = (
-                sorted(list(raw_updates.keys()))[:30] if isinstance(raw_updates, dict) else []
-            )
+            wu_keys = sorted(list(raw_updates.keys()))[:30] if isinstance(raw_updates, dict) else []
             suspicious = sorted(
                 set(wu_keys).intersection(
                     {
@@ -626,9 +612,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
 
                 # Soft category validation (warning only)
                 if subtype_category:
-                    _, cat_msg = schema_validator.validate_category(
-                        entity_type, subtype_category
-                    )
+                    _, cat_msg = schema_validator.validate_category(entity_type, subtype_category)
                     if cat_msg:
                         logger.warning(
                             "extract_events: category validation warning",
@@ -639,9 +623,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
 
                 # Use category (when present) for deterministic IDs; otherwise fall back.
                 id_category = subtype_category or allowed_type.lower()
-                item_id = generate_entity_id(
-                    name, id_category, state.get("current_chapter", 1)
-                )
+                item_id = generate_entity_id(name, id_category, state.get("current_chapter", 1))
 
                 attributes = {
                     "category": subtype_category or id_category,
@@ -699,9 +681,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         "knowledge_agent/extract_relationships.j2",
         {
             "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
-            "protagonist": state.get(
-                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
-            ),
+            "protagonist": state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
             "chapter_number": state.get("current_chapter", 1),
             "novel_title": state.get("title", ""),
             "novel_genre": state.get("genre", ""),
@@ -731,9 +711,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
-            logger.error(
-                "extract_relationships: failed to parse JSON", raw_text=raw_text
-            )
+            logger.error("extract_relationships: failed to parse JSON", raw_text=raw_text)
             return {"extracted_relationships": []}
 
         if not data:
@@ -743,9 +721,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         kg_triples_list = data.get("kg_triples", [])
 
         if not isinstance(kg_triples_list, list):
-            logger.warning(
-                "extract_relationships: kg_triples is not a list", raw_data=data
-            )
+            logger.warning("extract_relationships: kg_triples is not a list", raw_data=data)
             return {"extracted_relationships": []}
 
         # Import parsing utility
@@ -797,9 +773,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                 subject_parsed = _get_entity_type_and_name_from_text(subject)
                 raw_type = subject_parsed.get("type")
                 if raw_type:
-                    is_valid, normalized, _ = schema_validator.validate_entity_type(
-                        raw_type
-                    )
+                    is_valid, normalized, _ = schema_validator.validate_entity_type(raw_type)
                     subject_type = normalized if is_valid else raw_type
                 else:
                     subject_type = None
@@ -809,9 +783,7 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                 target_parsed = _get_entity_type_and_name_from_text(target)
                 raw_type = target_parsed.get("type")
                 if raw_type:
-                    is_valid, normalized, _ = schema_validator.validate_entity_type(
-                        raw_type
-                    )
+                    is_valid, normalized, _ = schema_validator.validate_entity_type(raw_type)
                     target_type = normalized if is_valid else raw_type
                 else:
                     target_type = None
@@ -867,12 +839,8 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             new_entities_from_relationships.append((entity, is_character))
 
         # Add new entities to the appropriate lists
-        new_characters = [
-            e for e, is_char in new_entities_from_relationships if is_char
-        ]
-        new_world_items = [
-            e for e, is_char in new_entities_from_relationships if not is_char
-        ]
+        new_characters = [e for e, is_char in new_entities_from_relationships if is_char]
+        new_world_items = [e for e, is_char in new_entities_from_relationships if not is_char]
 
         logger.info(
             "extract_relationships: created entities from relationship parsing",
@@ -921,30 +889,17 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     chapter_number = state.get("current_chapter", 1)
 
     # Get current version for this chapter's extractions
-    current_version = (
-        content_manager.get_latest_version(
-            "extracted_entities", f"chapter_{chapter_number}"
-        )
-        + 1
-    )
+    current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
 
     # Serialize ExtractedEntity and ExtractedRelationship objects to dicts
     extracted_entities = state.get("extracted_entities", {})
     entities_dict = {
-        "characters": [
-            e.model_dump() if hasattr(e, "model_dump") else e
-            for e in extracted_entities.get("characters", [])
-        ],
-        "world_items": [
-            e.model_dump() if hasattr(e, "model_dump") else e
-            for e in extracted_entities.get("world_items", [])
-        ],
+        "characters": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("characters", [])],
+        "world_items": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("world_items", [])],
     }
 
     relationships = state.get("extracted_relationships", [])
-    relationships_list = [
-        r.model_dump() if hasattr(r, "model_dump") else r for r in relationships
-    ]
+    relationships_list = [r.model_dump() if hasattr(r, "model_dump") else r for r in relationships]
 
     # Save to external files
     from core.langgraph.content_manager import (

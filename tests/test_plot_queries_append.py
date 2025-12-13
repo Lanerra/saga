@@ -49,9 +49,7 @@ async def test_append_plot_point_single_write_query_and_atomic_id(monkeypatch):
         AsyncMock(side_effect=AssertionError("append_plot_point must not batch for id assignment")),
     )
 
-    new_id = await plot_queries.append_plot_point(
-        "New", f"pp_{config.MAIN_NOVEL_INFO_NODE_ID}_2"
-    )
+    new_id = await plot_queries.append_plot_point("New", f"pp_{config.MAIN_NOVEL_INFO_NODE_ID}_2")
 
     assert new_id == f"pp_{config.MAIN_NOVEL_INFO_NODE_ID}_3"
     assert len(write_calls) == 1, "append_plot_point must issue exactly one write query"

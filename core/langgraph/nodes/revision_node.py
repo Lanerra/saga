@@ -117,9 +117,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             hybrid_context=hybrid_context,
             novel_title=state.get("title", ""),
             novel_genre=state.get("genre", ""),
-            protagonist_name=state.get(
-                "protagonist_name", config.DEFAULT_PROTAGONIST_NAME
-            ),
+            protagonist_name=state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
         )
     except Exception as e:
         error_msg = f"Revision prompt construction failed: {str(e)}"
@@ -148,13 +146,8 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
     max_gen_tokens = min(max_generation, available_tokens)
 
     if max_gen_tokens < 500:
-        error_msg = (
-            f"Insufficient token space for revision. "
-            f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
-        )
-        logger.error(
-            "revise_chapter: fatal error - token budget exceeded", error=error_msg
-        )
+        error_msg = f"Insufficient token space for revision. " f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
+        logger.error("revise_chapter: fatal error - token budget exceeded", error=error_msg)
         return {
             **state,
             "last_error": error_msg,
@@ -176,9 +169,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         revised_text, usage = await llm_service.async_call_llm(
             model_name=model_name,
             prompt=prompt,
-            temperature=getattr(
-                config.Temperatures, "REVISION", 0.5
-            ),  # Lower temp for consistency
+            temperature=getattr(config.Temperatures, "REVISION", 0.5),  # Lower temp for consistency
             max_tokens=max_gen_tokens,
             allow_fallback=True,
             stream_to_disk=False,
@@ -212,15 +203,11 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
 
         # Step 6: Deduplicate text to remove repetitive segments
         deduplicator = TextDeduplicator()
-        deduplicated_text, removed_chars = await deduplicator.deduplicate(
-            revised_text, segment_level="paragraph"
-        )
+        deduplicated_text, removed_chars = await deduplicator.deduplicate(revised_text, segment_level="paragraph")
 
         # Track if deduplication modified text (signals potentially flawed extraction)
         # Preserve existing flag if already set, or set based on this revision
-        is_from_flawed_draft = state.get("is_from_flawed_draft", False) or (
-            removed_chars > 0
-        )
+        is_from_flawed_draft = state.get("is_from_flawed_draft", False) or (removed_chars > 0)
 
         if removed_chars > 0:
             final_word_count = len(deduplicated_text.split())
@@ -244,12 +231,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             )
 
         # Save revised draft to content manager
-        current_version = (
-            content_manager.get_latest_version(
-                "draft", f"chapter_{state.get('current_chapter', 1)}"
-            )
-            + 1
-        )
+        current_version = content_manager.get_latest_version("draft", f"chapter_{state.get('current_chapter', 1)}") + 1
         draft_ref = content_manager.save_text(
             deduplicated_text,
             "draft",
@@ -360,13 +342,9 @@ Please ensure your revision stays true to this plot point while addressing all i
 """
         for i, contradiction in enumerate(contradictions, 1):
             severity_label = contradiction.severity.upper()
-            all_problem_descriptions += (
-                f"{i}. [{severity_label}] {contradiction.description}\n"
-            )
+            all_problem_descriptions += f"{i}. [{severity_label}] {contradiction.description}\n"
             if contradiction.suggested_fix:
-                all_problem_descriptions += (
-                    f"   Suggested fix: {contradiction.suggested_fix}\n"
-                )
+                all_problem_descriptions += f"   Suggested fix: {contradiction.suggested_fix}\n"
 
     # Render using the full chapter rewrite template
     prompt = render_prompt(

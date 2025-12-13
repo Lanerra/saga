@@ -96,7 +96,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "human": "Character",
     "NPC": "Character",
     "npc": "Character",
-
     # ----------------------------
     # Location-like subtypes
     # ----------------------------
@@ -122,7 +121,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "path": "Location",
     "Territory": "Location",
     "territory": "Location",
-
     # ----------------------------
     # Legacy object-ish labels -> Item
     # ----------------------------
@@ -134,7 +132,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "document": "Item",
     "Relic": "Item",
     "relic": "Item",
-
     # Common item-ish subtypes
     "Weapon": "Item",
     "weapon": "Item",
@@ -146,7 +143,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "resource": "Item",
     "Currency": "Item",
     "currency": "Item",
-
     # ----------------------------
     # Organization-like subtypes
     # ----------------------------
@@ -162,13 +158,11 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "order": "Organization",
     "Council": "Organization",
     "council": "Organization",
-
     # ----------------------------
     # Concept-like
     # ----------------------------
     "Concept": "Concept",
     "concept": "Concept",
-
     # ----------------------------
     # Trait-like
     # ----------------------------
@@ -180,7 +174,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "quality": "Trait",
     "Attribute": "Trait",
     "attribute": "Trait",
-
     # ----------------------------
     # Event-like subtypes
     # ----------------------------

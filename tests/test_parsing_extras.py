@@ -15,9 +15,7 @@ CHAR_UPDATE_LIST_INTERNAL_KEYS = ["traits", "relationships", "aliases"]
 from typing import Any
 
 
-def _normalize_attributes(
-    data: Any, key_map: dict[str, str], list_keys: list[str]
-) -> dict[str, Any]:
+def _normalize_attributes(data: Any, key_map: dict[str, str], list_keys: list[str]) -> dict[str, Any]:
     """Normalize attributes for testing compatibility."""
     if not isinstance(data, dict):
         return {}
@@ -54,27 +52,18 @@ def _normalize_attributes(
 
 def test_normalize_attributes_basic_mapping() -> None:
     data = {"desc": "Hero", "traits": "brave, kind"}
-    result = _normalize_attributes(
-        data, CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS
-    )
+    result = _normalize_attributes(data, CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS)
     assert result["description"] == "Hero"
     assert result["traits"] == ["brave", "kind"]
 
 
 def test_normalize_attributes_not_dict() -> None:
-    assert (
-        _normalize_attributes(
-            "oops", CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS
-        )
-        == {}
-    )
+    assert _normalize_attributes("oops", CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS) == {}
 
 
 def test_normalize_attributes_defaults_and_none() -> None:
     data = {"traits": None}
-    result = _normalize_attributes(
-        data, CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS
-    )
+    result = _normalize_attributes(data, CHAR_UPDATE_KEY_MAP, CHAR_UPDATE_LIST_INTERNAL_KEYS)
     assert result["traits"] == []
     assert result["relationships"] == []
     assert result["aliases"] == []

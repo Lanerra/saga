@@ -1,4 +1,5 @@
 """Comprehensive tests for data_access/plot_queries.py"""
+
 import json
 from unittest.mock import AsyncMock
 
@@ -82,9 +83,7 @@ class TestSavePlotOutline:
         assert "SET ni += $props" in cypher
         assert "SET ni = $props" not in cypher
 
-    async def test_save_plot_outline_invalid_plot_points_still_saves_novelinfo(
-        self, monkeypatch
-    ):
+    async def test_save_plot_outline_invalid_plot_points_still_saves_novelinfo(self, monkeypatch):
         """
         When plot_points is invalid, we should skip plot point sync, but still persist
         NovelInfo properties (no early-return success without writes).
@@ -116,9 +115,7 @@ class TestSavePlotOutline:
     async def test_save_plot_outline_empty(self, monkeypatch):
         """Test saving empty plot outline."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(plot_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         result = await plot_queries.save_plot_outline_to_db({})
         assert result is True
@@ -175,6 +172,7 @@ class TestGetPlotOutline:
         Plot points should be returned as structured dicts (not just descriptions),
         and *_json NovelInfo fields should round-trip back to structured keys.
         """
+
         async def fake_read(query, params=None):
             if "RETURN ni" in query:
                 return [
@@ -182,9 +180,7 @@ class TestGetPlotOutline:
                         "ni": {
                             "title": "Test Novel",
                             "genre": "Fantasy",
-                            "acts_json": json.dumps(
-                                [{"act_number": 1, "description": "Act 1"}]
-                            ),
+                            "acts_json": json.dumps([{"act_number": 1, "description": "Act 1"}]),
                         }
                     }
                 ]
@@ -221,9 +217,7 @@ class TestGetPlotOutline:
     async def test_get_plot_outline_empty(self, monkeypatch):
         """Test getting plot outline when empty."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            plot_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(plot_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await plot_queries.get_plot_outline_from_db()
         assert isinstance(result, dict)
@@ -231,6 +225,7 @@ class TestGetPlotOutline:
 
     async def test_get_plot_outline_with_acts(self, monkeypatch):
         """Test getting plot outline with acts."""
+
         async def fake_read(query, params=None):
             if "MATCH (ni:NovelInfo)" in query and "RETURN ni" in query:
                 return [

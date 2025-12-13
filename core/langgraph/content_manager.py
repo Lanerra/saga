@@ -394,9 +394,7 @@ def save_scenes(
     version: int = 1,
 ) -> ContentRef:
     """Save scene drafts for a chapter."""
-    return manager.save_list_of_texts(
-        scene_drafts, "scenes", f"chapter_{chapter}", version
-    )
+    return manager.save_list_of_texts(scene_drafts, "scenes", f"chapter_{chapter}", version)
 
 
 def load_scenes(manager: ContentManager, ref: ContentRef | str) -> list[str]:
@@ -432,9 +430,7 @@ def save_character_sheets(
     return manager.save_json(character_sheets, "character_sheets", "all", version)
 
 
-def load_character_sheets(
-    manager: ContentManager, ref: ContentRef | str
-) -> dict[str, dict[str, Any]]:
+def load_character_sheets(manager: ContentManager, ref: ContentRef | str) -> dict[str, dict[str, Any]]:
     """Load character sheets."""
     data = manager.load_json(ref)
     if not isinstance(data, dict):
@@ -478,14 +474,10 @@ def save_extracted_entities(
     version: int = 1,
 ) -> ContentRef:
     """Save extracted entities for a chapter."""
-    return manager.save_json(
-        entities, "extracted_entities", f"chapter_{chapter}", version
-    )
+    return manager.save_json(entities, "extracted_entities", f"chapter_{chapter}", version)
 
 
-def load_extracted_entities(
-    manager: ContentManager, ref: ContentRef | str
-) -> dict[str, list[dict[str, Any]]]:
+def load_extracted_entities(manager: ContentManager, ref: ContentRef | str) -> dict[str, list[dict[str, Any]]]:
     """Load extracted entities for a chapter."""
     data = manager.load_json(ref)
     if not isinstance(data, dict):
@@ -500,14 +492,10 @@ def save_extracted_relationships(
     version: int = 1,
 ) -> ContentRef:
     """Save extracted relationships for a chapter."""
-    return manager.save_json(
-        relationships, "extracted_relationships", f"chapter_{chapter}", version
-    )
+    return manager.save_json(relationships, "extracted_relationships", f"chapter_{chapter}", version)
 
 
-def load_extracted_relationships(
-    manager: ContentManager, ref: ContentRef | str
-) -> list[dict[str, Any]]:
+def load_extracted_relationships(manager: ContentManager, ref: ContentRef | str) -> list[dict[str, Any]]:
     """Load extracted relationships for a chapter."""
     data = manager.load_json(ref)
     if not isinstance(data, list):
@@ -522,14 +510,10 @@ def save_active_characters(
     version: int = 1,
 ) -> ContentRef:
     """Save active characters for a chapter."""
-    return manager.save_json(
-        characters, "active_characters", f"chapter_{chapter}", version
-    )
+    return manager.save_json(characters, "active_characters", f"chapter_{chapter}", version)
 
 
-def load_active_characters(
-    manager: ContentManager, ref: ContentRef | str
-) -> list[dict[str, Any]]:
+def load_active_characters(manager: ContentManager, ref: ContentRef | str) -> list[dict[str, Any]]:
     """Load active characters for a chapter."""
     data = manager.load_json(ref)
     if not isinstance(data, list):
@@ -547,9 +531,7 @@ def save_chapter_plan(
     return manager.save_json(plan, "chapter_plan", f"chapter_{chapter}", version)
 
 
-def load_chapter_plan(
-    manager: ContentManager, ref: ContentRef | str
-) -> list[dict[str, Any]]:
+def load_chapter_plan(manager: ContentManager, ref: ContentRef | str) -> list[dict[str, Any]]:
     """Load chapter plan for a chapter."""
     data = manager.load_json(ref)
     if not isinstance(data, list):
@@ -610,9 +592,7 @@ def get_scene_drafts(state: Mapping[str, Any], manager: ContentManager) -> list[
     return manager.load_list_of_texts(scene_drafts_ref)
 
 
-def get_previous_summaries(
-    state: Mapping[str, Any], manager: ContentManager
-) -> list[str]:
+def get_previous_summaries(state: Mapping[str, Any], manager: ContentManager) -> list[str]:
     """
     Get previous chapter summaries from externalized content.
 
@@ -658,9 +638,7 @@ def get_hybrid_context(state: Mapping[str, Any], manager: ContentManager) -> str
     return manager.load_text(hybrid_context_ref)
 
 
-def get_character_sheets(
-    state: Mapping[str, Any], manager: ContentManager
-) -> dict[str, dict]:
+def get_character_sheets(state: Mapping[str, Any], manager: ContentManager) -> dict[str, dict]:
     """
     Get character sheets from externalized content.
 
@@ -686,9 +664,7 @@ def get_character_sheets(
     return cast(dict[str, dict[str, Any]], data)
 
 
-def get_chapter_outlines(
-    state: Mapping[str, Any], manager: ContentManager
-) -> dict[int, dict]:
+def get_chapter_outlines(state: Mapping[str, Any], manager: ContentManager) -> dict[int, dict]:
     """
     Get chapter outlines from externalized content.
 
@@ -721,9 +697,7 @@ def get_chapter_outlines(
     return result
 
 
-def get_global_outline(
-    state: Mapping[str, Any], manager: ContentManager
-) -> dict | None:
+def get_global_outline(state: Mapping[str, Any], manager: ContentManager) -> dict | None:
     """
     Get global outline from externalized content.
 
@@ -749,9 +723,7 @@ def get_global_outline(
     return data
 
 
-def get_act_outlines(
-    state: Mapping[str, Any], manager: ContentManager
-) -> dict[int, dict]:
+def get_act_outlines(state: Mapping[str, Any], manager: ContentManager) -> dict[int, dict]:
     """
     Get act outlines from externalized content.
 
@@ -783,9 +755,7 @@ def get_act_outlines(
     return result
 
 
-def get_extracted_entities(
-    state: Mapping[str, Any], manager: ContentManager
-) -> dict[str, list[dict[str, Any]]]:
+def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) -> dict[str, list[dict[str, Any]]]:
     """
     Get extracted entities from externalized content.
 
@@ -810,9 +780,7 @@ def get_extracted_entities(
     return cast(dict[str, list[dict[str, Any]]], data)
 
 
-def get_extracted_relationships(
-    state: Mapping[str, Any], manager: ContentManager
-) -> list[dict[str, Any]]:
+def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
     """
     Get extracted relationships from externalized content.
 
@@ -887,9 +855,7 @@ def set_extracted_relationships(
     )
 
 
-def get_active_characters(
-    state: Mapping[str, Any], manager: ContentManager
-) -> list[dict[str, Any]]:
+def get_active_characters(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
     """
     Get active characters from externalized content.
 
@@ -914,9 +880,7 @@ def get_active_characters(
     return data
 
 
-def get_chapter_plan(
-    state: Mapping[str, Any], manager: ContentManager
-) -> list[dict[str, Any]]:
+def get_chapter_plan(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
     """
     Get chapter plan from externalized content.
 

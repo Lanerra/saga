@@ -63,9 +63,7 @@ def sample_generation_state(tmp_path):
     state["plot_point_focus"] = "The hero begins their journey"
 
     # Add some previous chapter summaries (for chapter 2+)
-    summaries = [
-        "Chapter 1: The hero discovered their destiny and set out from their village."
-    ]
+    summaries = ["Chapter 1: The hero discovered their destiny and set out from their village."]
     sum_ref = content_manager.save_list_of_texts(summaries, "summaries", "all", 1)
     state["summaries_ref"] = sum_ref
 
@@ -94,14 +92,10 @@ def mock_context_builder():
     """Mock context building functions."""
     with (
         patch("core.langgraph.nodes.generation_node.get_key_events") as mock_events,
-        patch(
-            "core.langgraph.nodes.generation_node.get_reliable_kg_facts_for_drafting_prompt"
-        ) as mock_kg,
+        patch("core.langgraph.nodes.generation_node.get_reliable_kg_facts_for_drafting_prompt") as mock_kg,
     ):
         mock_events.return_value = []
-        mock_kg.return_value = (
-            "**Knowledge Graph Facts:**\n- Test fact 1\n- Test fact 2"
-        )
+        mock_kg.return_value = "**Knowledge Graph Facts:**\n- Test fact 1\n- Test fact 2"
         yield {
             "get_events": mock_events,
             "get_kg_facts": mock_kg,
@@ -165,9 +159,7 @@ class TestConstructGenerationPrompt:
 class TestGenerateChapter:
     """Tests for generate_chapter node function."""
 
-    async def test_generate_chapter_success(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_success(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test successful chapter generation."""
         result = await generate_chapter(sample_generation_state)
 
@@ -192,9 +184,7 @@ class TestGenerateChapter:
         # Verify LLM was called
         mock_llm_generation.async_call_llm.assert_called_once()
 
-    async def test_generate_chapter_no_outline(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_no_outline(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test generation fails gracefully without chapter outlines."""
         state = {**sample_generation_state}
         # Clear chapter outlines reference
@@ -210,9 +200,7 @@ class TestGenerateChapter:
         # LLM should not be called
         mock_llm_generation.async_call_llm.assert_not_called()
 
-    async def test_generate_chapter_with_context(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_with_context(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test generation uses context from knowledge graph."""
         result = await generate_chapter(sample_generation_state)
 
@@ -223,9 +211,7 @@ class TestGenerateChapter:
         # hybrid_context is externalized to hybrid_context_ref
         assert result.get("hybrid_context_ref") is not None
 
-    async def test_generate_chapter_empty_llm_response(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_generate_chapter_empty_llm_response(self, sample_generation_state, mock_context_builder):
         """Test handling of empty LLM response."""
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
             mock_llm.async_call_llm = AsyncMock(return_value=("", {}))
@@ -237,14 +223,10 @@ class TestGenerateChapter:
             assert result["last_error"] is not None
             assert "empty" in result["last_error"].lower()
 
-    async def test_generate_chapter_llm_exception(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_generate_chapter_llm_exception(self, sample_generation_state, mock_context_builder):
         """Test handling of LLM exceptions."""
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                side_effect=Exception("LLM service unavailable")
-            )
+            mock_llm.async_call_llm = AsyncMock(side_effect=Exception("LLM service unavailable"))
             mock_llm.count_tokens = lambda text, model: 500
 
             result = await generate_chapter(sample_generation_state)
@@ -254,9 +236,7 @@ class TestGenerateChapter:
             assert "LLM service unavailable" in result["last_error"]
             assert result["current_node"] == "generate"
 
-    async def test_generate_chapter_token_budget_exceeded(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_generate_chapter_token_budget_exceeded(self, sample_generation_state, mock_context_builder):
         """Test handling when token budget is exceeded."""
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
             # Set very high token count to exceed budget
@@ -271,9 +251,7 @@ class TestGenerateChapter:
             # LLM should not be called
             mock_llm.async_call_llm.assert_not_called()
 
-    async def test_generate_chapter_with_previous_summaries(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_with_previous_summaries(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test generation includes previous chapter summaries."""
         state = {**sample_generation_state}
         state["current_chapter"] = 3
@@ -299,9 +277,7 @@ class TestGenerateChapter:
         # Verify KG facts were fetched
         mock_context_builder["get_kg_facts"].assert_called_once()
 
-    async def test_generate_chapter_extracts_plot_point_from_outline(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_extracts_plot_point_from_outline(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test plot point extraction from outline when not in state."""
         state = {**sample_generation_state}
         # Remove plot_point_focus from state
@@ -313,9 +289,7 @@ class TestGenerateChapter:
         assert result["draft_ref"] is not None
         assert result["last_error"] is None
 
-    async def test_generate_chapter_word_count_calculation(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_word_count_calculation(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test word count is calculated correctly."""
         # Mock LLM to return known text
         test_text = "One two three four five six seven eight nine ten."
@@ -328,18 +302,14 @@ class TestGenerateChapter:
             # Should calculate correct word count
             assert result["draft_word_count"] == len(test_text.split())
 
-    async def test_generate_chapter_stores_kg_facts(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_stores_kg_facts(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test KG facts are stored in state for potential reuse."""
         result = await generate_chapter(sample_generation_state)
 
         # Should store KG facts ref
         assert result.get("kg_facts_ref") is not None
 
-    async def test_generate_chapter_with_active_characters(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_with_active_characters(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test generation with specific active characters."""
         state = {**sample_generation_state}
         state["active_character_names"] = ["Hero", "Mentor", "Villain"]
@@ -352,9 +322,7 @@ class TestGenerateChapter:
         # Verify KG facts were fetched
         mock_context_builder["get_kg_facts"].assert_called_once()
 
-    async def test_generate_chapter_with_location(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_with_location(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test generation with current location specified."""
         state = {**sample_generation_state}
         state["current_location"] = "castle_001"
@@ -372,9 +340,7 @@ class TestGenerateChapter:
 class TestGenerationErrorHandling:
     """Tests for error handling in generation node (P1.1 & P1.3)."""
 
-    async def test_generate_chapter_empty_chapter_outlines_fatal_error(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_empty_chapter_outlines_fatal_error(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test generation with empty chapter_outlines triggers fatal error."""
         state = {**sample_generation_state}
         state["chapter_outlines_ref"] = None
@@ -390,9 +356,7 @@ class TestGenerationErrorHandling:
 
         mock_llm_generation.async_call_llm.assert_not_called()
 
-    async def test_generate_chapter_missing_current_chapter_in_outlines(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_missing_current_chapter_in_outlines(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test generation when current chapter is not in chapter_outlines."""
         state = {**sample_generation_state}
         state["current_chapter"] = 5
@@ -412,9 +376,7 @@ class TestGenerationErrorHandling:
 class TestGenerationIntegration:
     """Integration tests for generation node."""
 
-    async def test_full_generation_workflow(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_full_generation_workflow(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test complete generation workflow."""
         # Generate chapter
         result = await generate_chapter(sample_generation_state)
@@ -432,9 +394,7 @@ class TestGenerationIntegration:
         assert result["title"] == sample_generation_state["title"]
         assert result["genre"] == sample_generation_state["genre"]
 
-    async def test_generation_with_minimal_state(
-        self, mock_llm_generation, mock_context_builder, tmp_path
-    ):
+    async def test_generation_with_minimal_state(self, mock_llm_generation, mock_context_builder, tmp_path):
         """Test generation with minimal required state."""
         project_dir = str(tmp_path / "minimal")
         minimal_state = create_initial_state(
@@ -471,9 +431,7 @@ class TestGenerationIntegration:
 class TestGenerationDeduplication:
     """Tests for text deduplication in generation node."""
 
-    async def test_generate_chapter_deduplicates_text(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_generate_chapter_deduplicates_text(self, sample_generation_state, mock_context_builder):
         """Test that deduplication is applied to generated text."""
         # Create text with duplicate paragraphs
         duplicate_text = (
@@ -484,9 +442,7 @@ class TestGenerationDeduplication:
         )
 
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                return_value=(duplicate_text, {"total_tokens": 100})
-            )
+            mock_llm.async_call_llm = AsyncMock(return_value=(duplicate_text, {"total_tokens": 100}))
             mock_llm.count_tokens = lambda text, model: 500
 
             result = await generate_chapter(sample_generation_state)
@@ -497,17 +453,13 @@ class TestGenerationDeduplication:
             # The exact behavior depends on deduplicator settings
             assert result["last_error"] is None
 
-    async def test_generate_chapter_deduplication_updates_word_count(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_generate_chapter_deduplication_updates_word_count(self, sample_generation_state, mock_context_builder):
         """Test that word count reflects deduplicated text."""
         # Create text with duplicate segments
         duplicate_text = "Same text. " * 50  # Repetitive text
 
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                return_value=(duplicate_text, {"total_tokens": 100})
-            )
+            mock_llm.async_call_llm = AsyncMock(return_value=(duplicate_text, {"total_tokens": 100}))
             mock_llm.count_tokens = lambda text, model: 500
 
             result = await generate_chapter(sample_generation_state)
@@ -517,20 +469,12 @@ class TestGenerationDeduplication:
             text = get_draft_text(result, cm)
             assert result["draft_word_count"] == len(text.split())
 
-    async def test_generate_chapter_no_duplicates_preserves_text(
-        self, sample_generation_state, mock_llm_generation, mock_context_builder
-    ):
+    async def test_generate_chapter_no_duplicates_preserves_text(self, sample_generation_state, mock_llm_generation, mock_context_builder):
         """Test that unique text is preserved during deduplication."""
-        unique_text = (
-            "The hero embarked on their quest with determination. "
-            "Each step brought new challenges and discoveries. "
-            "The path ahead was uncertain but filled with promise."
-        )
+        unique_text = "The hero embarked on their quest with determination. " "Each step brought new challenges and discoveries. " "The path ahead was uncertain but filled with promise."
 
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                return_value=(unique_text, {"total_tokens": 100})
-            )
+            mock_llm.async_call_llm = AsyncMock(return_value=(unique_text, {"total_tokens": 100}))
             mock_llm.count_tokens = lambda text, model: 500
 
             result = await generate_chapter(sample_generation_state)
@@ -549,21 +493,15 @@ class TestGenerationDeduplication:
 class TestProvisionalFlagging:
     """Tests for is_from_flawed_draft provisional flagging."""
 
-    async def test_provisional_flag_set_when_dedup_removes_text(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_provisional_flag_set_when_dedup_removes_text(self, sample_generation_state, mock_context_builder):
         """Test that is_from_flawed_draft is True when deduplication removes text."""
         # Create text with duplicates that will be removed
         duplicate_text = (
-            "Paragraph one with content.\n\n"
-            "Paragraph two with different content.\n\n"
-            "Paragraph one with content.\n\n"  # Exact duplicate
+            "Paragraph one with content.\n\n" "Paragraph two with different content.\n\n" "Paragraph one with content.\n\n"  # Exact duplicate
         )
 
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                return_value=(duplicate_text, {"total_tokens": 100})
-            )
+            mock_llm.async_call_llm = AsyncMock(return_value=(duplicate_text, {"total_tokens": 100}))
             mock_llm.count_tokens = lambda text, model: 500
 
             result = await generate_chapter(sample_generation_state)
@@ -573,20 +511,12 @@ class TestProvisionalFlagging:
             assert "is_from_flawed_draft" in result
             assert result["last_error"] is None
 
-    async def test_provisional_flag_false_when_no_duplicates(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_provisional_flag_false_when_no_duplicates(self, sample_generation_state, mock_context_builder):
         """Test that is_from_flawed_draft is False when no duplicates found."""
-        unique_text = (
-            "First paragraph with unique content.\n\n"
-            "Second paragraph with different content.\n\n"
-            "Third paragraph completely different."
-        )
+        unique_text = "First paragraph with unique content.\n\n" "Second paragraph with different content.\n\n" "Third paragraph completely different."
 
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                return_value=(unique_text, {"total_tokens": 100})
-            )
+            mock_llm.async_call_llm = AsyncMock(return_value=(unique_text, {"total_tokens": 100}))
             mock_llm.count_tokens = lambda text, model: 500
 
             result = await generate_chapter(sample_generation_state)
@@ -595,17 +525,13 @@ class TestProvisionalFlagging:
             assert result.get("is_from_flawed_draft") is False
             assert result["last_error"] is None
 
-    async def test_provisional_flag_logged(
-        self, sample_generation_state, mock_context_builder
-    ):
+    async def test_provisional_flag_logged(self, sample_generation_state, mock_context_builder):
         """Test that provisional flag is included in logging."""
         test_text = "Some chapter text without duplicates."
 
         with patch("core.langgraph.nodes.generation_node.llm_service") as mock_llm:
             with patch("core.langgraph.nodes.generation_node.logger") as mock_logger:
-                mock_llm.async_call_llm = AsyncMock(
-                    return_value=(test_text, {"total_tokens": 100})
-                )
+                mock_llm.async_call_llm = AsyncMock(return_value=(test_text, {"total_tokens": 100}))
                 mock_llm.count_tokens = lambda text, model: 500
 
                 result = await generate_chapter(sample_generation_state)

@@ -42,6 +42,7 @@ class ValidationError(SAGACoreError):
 class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
 
+
 def create_error_context(**kwargs: Any) -> dict[str, Any]:
     """
     Helper function to create standardized error context dictionaries.
@@ -55,9 +56,7 @@ def create_error_context(**kwargs: Any) -> dict[str, Any]:
     return {k: v for k, v in kwargs.items() if v is not None}
 
 
-def handle_database_error(
-    operation: str, original_error: Exception, **context: Any
-) -> DatabaseError:
+def handle_database_error(operation: str, original_error: Exception, **context: Any) -> DatabaseError:
     """
     Convert generic exceptions to standardized database errors.
 
@@ -77,14 +76,8 @@ def handle_database_error(
     )
 
     if "connection" in str(original_error).lower():
-        return DatabaseConnectionError(
-            f"Database connection failed during {operation}", details=error_details
-        )
+        return DatabaseConnectionError(f"Database connection failed during {operation}", details=error_details)
     elif "transaction" in str(original_error).lower():
-        return DatabaseTransactionError(
-            f"Database transaction failed during {operation}", details=error_details
-        )
+        return DatabaseTransactionError(f"Database transaction failed during {operation}", details=error_details)
     else:
-        return DatabaseError(
-            f"Database error during {operation}", details=error_details
-        )
+        return DatabaseError(f"Database error during {operation}", details=error_details)

@@ -27,12 +27,7 @@ class Neo4jExtractor:
         elif isinstance(value, str):
             # Handle comma-separated values by taking first part
             # Clean potential list representation before splitting
-            cleaned_value = (
-                value.replace("[", "")
-                .replace("]", "")
-                .replace("'", "")
-                .replace('"', "")
-            )
+            cleaned_value = value.replace("[", "").replace("]", "").replace("'", "").replace('"', "")
             num_str = cleaned_value.split(",")[0].strip()
             if not num_str:
                 return 0
@@ -56,8 +51,6 @@ class Neo4jExtractor:
         return [str(value)] if value is not None else []
 
     @staticmethod
-    def extract_core_fields_from_node(
-        node: neo4j.Node | dict[str, Any], core_fields: set[str]
-    ) -> dict[str, Any]:
+    def extract_core_fields_from_node(node: neo4j.Node | dict[str, Any], core_fields: set[str]) -> dict[str, Any]:
         """Extract additional properties that aren't core fields."""
         return {k: v for k, v in dict(node).items() if k not in core_fields}

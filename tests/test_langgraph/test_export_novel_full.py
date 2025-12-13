@@ -8,17 +8,7 @@ from core.langgraph.export import generate_full_export
 
 def _write_chapter_md(path: Path, chapter_num: int, title: str, body: str) -> None:
     """Helper to create a canonical chapter .md file with YAML front matter."""
-    content = (
-        "---\n"
-        f"chapter: {chapter_num}\n"
-        f'title: "{title}"\n'
-        "word_count: 4\n"
-        'generated_at: "2025-01-01T00:00:00"\n'
-        "version: 1\n"
-        "---\n"
-        "\n"
-        f"{body}\n"
-    )
+    content = "---\n" f"chapter: {chapter_num}\n" f'title: "{title}"\n' "word_count: 4\n" 'generated_at: "2025-01-01T00:00:00"\n' "version: 1\n" "---\n" "\n" f"{body}\n"
     path.write_text(content, encoding="utf-8")
 
 

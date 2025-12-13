@@ -32,6 +32,7 @@ from core.text_processing_service import TextProcessingService
 
 logger = structlog.get_logger(__name__)
 
+
 @asynccontextmanager
 async def async_llm_context(
     batch_size: int | None = None,
@@ -63,9 +64,7 @@ async def async_llm_context(
 
     embedding_service = EmbeddingService(embedding_client)
     completion_service = CompletionService(completion_client, text_processor)
-    llm_service = RefactoredLLMService(
-        completion_service, embedding_service, text_processor
-    )
+    llm_service = RefactoredLLMService(completion_service, embedding_service, text_processor)
 
     # Cache size tracking not directly available via service attribute
     initial_cache_size = 0
@@ -146,9 +145,7 @@ class EmbeddingService:
         self._stats["embeddings_requested"] += 1
 
         if not text or not isinstance(text, str) or not text.strip():
-            logger.warning(
-                f"get_embedding: empty or invalid text provided. Text repr: {repr(text)}"
-            )
+            logger.warning(f"get_embedding: empty or invalid text provided. Text repr: {repr(text)}")
             self._stats["embeddings_failed"] += 1
             return None
 
@@ -163,9 +160,7 @@ class EmbeddingService:
         self._stats["cache_misses"] += 1
 
         try:
-            response_data = await self._embedding_client.get_embedding(
-                text, config.EMBEDDING_MODEL
-            )
+            response_data = await self._embedding_client.get_embedding(text, config.EMBEDDING_MODEL)
 
             # Extract and validate embedding
             embedding = self._extract_and_validate_embedding(response_data)
@@ -183,9 +178,7 @@ class EmbeddingService:
             self._stats["embeddings_failed"] += 1
             return None
 
-    async def get_embeddings_batch(
-        self, texts: list[str], batch_size: int | None = None
-    ) -> list[np.ndarray | None]:
+    async def get_embeddings_batch(self, texts: list[str], batch_size: int | None = None) -> list[np.ndarray | None]:
         """
         Get embeddings for multiple texts in batches for better performance.
 
@@ -214,27 +207,19 @@ class EmbeddingService:
 
         return results
 
-    def _extract_and_validate_embedding(
-        self, response_data: dict[str, Any]
-    ) -> np.ndarray | None:
+    def _extract_and_validate_embedding(self, response_data: dict[str, Any]) -> np.ndarray | None:
         """Extract and validate embedding from API response."""
         # Try primary key first
         primary_key = "embedding"
-        if primary_key in response_data and isinstance(
-            response_data[primary_key], list
-        ):
+        if primary_key in response_data and isinstance(response_data[primary_key], list):
             embedding = self._validate_embedding_list(response_data[primary_key])
             if embedding is not None:
                 return embedding
 
         # Try fallback keys
-        logger.warning(
-            f"Primary embedding key '{primary_key}' not found, trying fallbacks"
-        )
+        logger.warning(f"Primary embedding key '{primary_key}' not found, trying fallbacks")
         for key, value in response_data.items():
-            if isinstance(value, list) and all(
-                isinstance(item, float | int) for item in value
-            ):
+            if isinstance(value, list) and all(isinstance(item, float | int) for item in value):
                 embedding = self._validate_embedding_list(value)
                 if embedding is not None:
                     logger.info(f"Found embedding using fallback key '{key}'")
@@ -243,28 +228,19 @@ class EmbeddingService:
         logger.error(f"No suitable embedding found in response: {response_data}")
         return None
 
-    def _validate_embedding_list(
-        self, embedding_list: list[float | int]
-    ) -> np.ndarray | None:
+    def _validate_embedding_list(self, embedding_list: list[float | int]) -> np.ndarray | None:
         """Validate and convert embedding list to numpy array."""
         try:
             embedding = np.array(embedding_list).astype(config.EMBEDDING_DTYPE)
             if embedding.ndim > 1:
-                logger.warning(
-                    f"Embedding had unexpected ndim > 1: {embedding.ndim}. Flattening."
-                )
+                logger.warning(f"Embedding had unexpected ndim > 1: {embedding.ndim}. Flattening.")
                 embedding = embedding.flatten()
 
             if embedding.shape == (config.EXPECTED_EMBEDDING_DIM,):
-                logger.debug(
-                    f"Embedding validated: shape={embedding.shape}, dtype={embedding.dtype}"
-                )
+                logger.debug(f"Embedding validated: shape={embedding.shape}, dtype={embedding.dtype}")
                 return embedding
 
-            logger.error(
-                f"Embedding dimension mismatch: Expected ({config.EXPECTED_EMBEDDING_DIM},), "
-                f"Got {embedding.shape}. List length: {len(embedding_list)}"
-            )
+            logger.error(f"Embedding dimension mismatch: Expected ({config.EXPECTED_EMBEDDING_DIM},), " f"Got {embedding.shape}. List length: {len(embedding_list)}")
 
         except (TypeError, ValueError) as e:
             logger.error(f"Failed to convert embedding list to numpy array: {e}")
@@ -282,23 +258,11 @@ class EmbeddingService:
         return {
             **self._stats,
             "cache_size": cache_size,
-            "cache_hit_rate": (self._stats["cache_hits"] / total * 100)
-            if total > 0
-            else 0,
-            "cache_miss_rate": (self._stats["cache_misses"] / total * 100)
-            if total > 0
-            else 0,
-            "success_rate": (self._stats["embeddings_successful"] / total * 100)
-            if total > 0
-            else 0,
-            "failure_rate": (self._stats["embeddings_failed"] / total * 100)
-            if total > 0
-            else 0,
-            "validation_failure_rate": (
-                self._stats["validation_failures"] / total * 100
-            )
-            if total > 0
-            else 0,
+            "cache_hit_rate": (self._stats["cache_hits"] / total * 100) if total > 0 else 0,
+            "cache_miss_rate": (self._stats["cache_misses"] / total * 100) if total > 0 else 0,
+            "success_rate": (self._stats["embeddings_successful"] / total * 100) if total > 0 else 0,
+            "failure_rate": (self._stats["embeddings_failed"] / total * 100) if total > 0 else 0,
+            "validation_failure_rate": (self._stats["validation_failures"] / total * 100) if total > 0 else 0,
         }
 
 
@@ -367,17 +331,11 @@ class CompletionService:
             self._stats["completions_failed"] += 1
             return "", None
 
-        effective_temperature = (
-            temperature if temperature is not None else config.Temperatures.DEFAULT
-        )
-        effective_max_tokens = (
-            max_tokens if max_tokens is not None else config.MAX_GENERATION_TOKENS
-        )
+        effective_temperature = temperature if temperature is not None else config.Temperatures.DEFAULT
+        effective_max_tokens = max_tokens if max_tokens is not None else config.MAX_GENERATION_TOKENS
 
         # Build messages with optional system prompt
-        messages = (
-            [{"role": "system", "content": system_prompt}] if system_prompt else []
-        ) + [{"role": "user", "content": prompt}]
+        messages = ([{"role": "system", "content": system_prompt}] if system_prompt else []) + [{"role": "user", "content": prompt}]
 
         # Try primary model
         try:
@@ -421,9 +379,7 @@ class CompletionService:
                     usage_data = response_data.get("usage")
 
                     if auto_clean_response:
-                        content = self._text_processor.response_cleaner.clean_response(
-                            content
-                        )
+                        content = self._text_processor.response_cleaner.clean_response(content)
 
                     self._stats["completions_successful"] += 1
                     return content, usage_data
@@ -452,37 +408,26 @@ class CompletionService:
                 # 2) Some providers (e.g., Qwen reasoning models) expose 'reasoning_content'
                 reasoning_content = message.get("reasoning_content")
                 if isinstance(reasoning_content, str) and reasoning_content.strip():
-                    logger.warning(
-                        "LLM response missing 'content'; using 'reasoning_content' fallback"
-                    )
+                    logger.warning("LLM response missing 'content'; using 'reasoning_content' fallback")
                     return reasoning_content
 
                 # 3) Occasionally providers place content directly under the choice
                 direct_choice_content = choice0.get("content")
-                if (
-                    isinstance(direct_choice_content, str)
-                    and direct_choice_content.strip()
-                ):
-                    logger.warning(
-                        "LLM response missing message.content; using choice['content'] fallback"
-                    )
+                if isinstance(direct_choice_content, str) and direct_choice_content.strip():
+                    logger.warning("LLM response missing message.content; using choice['content'] fallback")
                     return direct_choice_content
 
                 # 4) Last resorts: top-level convenience fields sometimes appear
                 for key in ("output_text", "text", "response", "content"):
                     top = response_data.get(key)
                     if isinstance(top, str) and top.strip():
-                        logger.warning(
-                            f"LLM response using top-level '{key}' fallback for content"
-                        )
+                        logger.warning(f"LLM response using top-level '{key}' fallback for content")
                         return top
 
         except Exception as e:
             logger.error(f"Completion content extraction failed: {e}", exc_info=True)
 
-        logger.error(
-            f"Invalid response structure - missing choices/content: {response_data}"
-        )
+        logger.error(f"Invalid response structure - missing choices/content: {response_data}")
         return ""
 
     def get_statistics(self) -> dict[str, Any]:
@@ -490,18 +435,10 @@ class CompletionService:
         total = self._stats["completions_requested"]
         return {
             **self._stats,
-            "success_rate": (self._stats["completions_successful"] / total * 100)
-            if total > 0
-            else 0,
-            "failure_rate": (self._stats["completions_failed"] / total * 100)
-            if total > 0
-            else 0,
-            "fallback_rate": (self._stats["fallback_used"] / total * 100)
-            if total > 0
-            else 0,
-            "streaming_rate": (self._stats["streaming_requests"] / total * 100)
-            if total > 0
-            else 0,
+            "success_rate": (self._stats["completions_successful"] / total * 100) if total > 0 else 0,
+            "failure_rate": (self._stats["completions_failed"] / total * 100) if total > 0 else 0,
+            "fallback_rate": (self._stats["fallback_used"] / total * 100) if total > 0 else 0,
+            "streaming_rate": (self._stats["streaming_requests"] / total * 100) if total > 0 else 0,
         }
 
 
@@ -575,9 +512,7 @@ class RefactoredLLMService:
         """
         return await self._embedding_service.get_embedding(text)
 
-    async def async_get_embeddings_batch(
-        self, texts: list[str], batch_size: int | None = None
-    ) -> list[np.ndarray | None]:
+    async def async_get_embeddings_batch(self, texts: list[str], batch_size: int | None = None) -> list[np.ndarray | None]:
         """
         Get embeddings for multiple texts in batches.
 
@@ -605,9 +540,7 @@ class RefactoredLLMService:
 
         REFACTORED: Simple delegation to text processing service.
         """
-        return self._text_processor.tokenizer.truncate_text_by_tokens(
-            text, model_name, max_tokens, truncation_marker
-        )
+        return self._text_processor.tokenizer.truncate_text_by_tokens(text, model_name, max_tokens, truncation_marker)
 
     def get_combined_statistics(self) -> dict[str, Any]:
         """Get combined statistics from all services."""

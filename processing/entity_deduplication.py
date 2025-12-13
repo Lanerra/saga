@@ -37,9 +37,7 @@ def generate_entity_id(name: str, category: str, chapter: int) -> str:
     return f"entity_{content_hash}"
 
 
-async def check_entity_similarity(
-    name: str, entity_type: str, category: str = ""
-) -> dict[str, Any] | None:
+async def check_entity_similarity(name: str, entity_type: str, category: str = "") -> dict[str, Any] | None:
     """Check for existing entities with same semantic content.
 
     Args:
@@ -127,30 +125,17 @@ async def check_entity_similarity(
                 is_compatible = (existing_label == target_label) or (target_label in existing_labels)
 
                 if not is_compatible:
-                    logger.debug(
-                        f"Skipping incompatible match: '{similar_entity['existing_name']}' "
-                        f"(Category: {existing_cat}, Label: {existing_label}) != Target: {target_label}"
-                    )
+                    logger.debug(f"Skipping incompatible match: '{similar_entity['existing_name']}' " f"(Category: {existing_cat}, Label: {existing_label}) != Target: {target_label}")
                     continue
 
             similarity_score = similar_entity.get("similarity", 0.0)
 
             # Check if this is a first name match (similarity = 0.95)
-            is_first_name_match = (
-                entity_type == "character"
-                and similarity_score == 0.95
-                and similar_entity["existing_name"].split()[0].lower() == name.lower()
-            )
+            is_first_name_match = entity_type == "character" and similarity_score == 0.95 and similar_entity["existing_name"].split()[0].lower() == name.lower()
 
             # Log the similarity check
-            match_type = (
-                "first name match" if is_first_name_match else "similarity match"
-            )
-            logger.info(
-                f"Entity similarity check for '{name}' (type: {entity_type}): "
-                f"Found {match_type} with '{similar_entity['existing_name']}' "
-                f"(similarity: {similarity_score:.2f})"
-            )
+            match_type = "first name match" if is_first_name_match else "similarity match"
+            logger.info(f"Entity similarity check for '{name}' (type: {entity_type}): " f"Found {match_type} with '{similar_entity['existing_name']}' " f"(similarity: {similarity_score:.2f})")
 
             # Return the similar entity info
             return {
@@ -165,9 +150,7 @@ async def check_entity_similarity(
         return None
 
     except Exception as e:
-        logger.error(
-            f"Error checking entity similarity for '{name}': {e}", exc_info=True
-        )
+        logger.error(f"Error checking entity similarity for '{name}': {e}", exc_info=True)
         # On error, don't block creation - return None to allow normal processing
         return None
 
@@ -193,32 +176,20 @@ async def should_merge_entities(
 
     # High name similarity - likely the same entity
     if similarity >= similarity_threshold:
-        logger.info(
-            f"High similarity detected: '{new_name}' vs '{existing_entity['existing_name']}' "
-            f"(similarity: {similarity:.2f}). Recommending merge."
-        )
+        logger.info(f"High similarity detected: '{new_name}' vs '{existing_entity['existing_name']}' " f"(similarity: {similarity:.2f}). Recommending merge.")
         return True
 
     # Medium similarity - check descriptions if available
-    if (
-        similarity >= 0.7
-        and new_description
-        and existing_entity.get("existing_description")
-    ):
+    if similarity >= 0.7 and new_description and existing_entity.get("existing_description"):
         # Could add more sophisticated description similarity checking here
         # For now, use name similarity as primary indicator
-        logger.info(
-            f"Medium similarity detected: '{new_name}' vs '{existing_entity['existing_name']}' "
-            f"(similarity: {similarity:.2f}). Recommending merge based on name similarity."
-        )
+        logger.info(f"Medium similarity detected: '{new_name}' vs '{existing_entity['existing_name']}' " f"(similarity: {similarity:.2f}). Recommending merge based on name similarity.")
         return True
 
     return False
 
 
-async def prevent_character_duplication(
-    name: str, description: str = "", similarity_threshold: float | None = None
-) -> str | None:
+async def prevent_character_duplication(name: str, description: str = "", similarity_threshold: float | None = None) -> str | None:
     """Check for character duplicates and return existing name if found.
 
     Args:
@@ -232,10 +203,7 @@ async def prevent_character_duplication(
     import config
 
     # Check if duplicate prevention is enabled
-    if (
-        not config.ENABLE_DUPLICATE_PREVENTION
-        or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED
-    ):
+    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
         return None
 
     # Use config default if not specified
@@ -244,13 +212,8 @@ async def prevent_character_duplication(
 
     similar_entity = await check_entity_similarity(name, "character")
 
-    if similar_entity and await should_merge_entities(
-        name, description, similar_entity, similarity_threshold
-    ):
-        logger.info(
-            f"Preventing duplicate character creation: '{name}' is similar to existing "
-            f"character '{similar_entity['existing_name']}'. Using existing character."
-        )
+    if similar_entity and await should_merge_entities(name, description, similar_entity, similarity_threshold):
+        logger.info(f"Preventing duplicate character creation: '{name}' is similar to existing " f"character '{similar_entity['existing_name']}'. Using existing character.")
         return similar_entity["existing_name"]
 
     return None
@@ -276,10 +239,7 @@ async def prevent_world_item_duplication(
     import config
 
     # Check if duplicate prevention is enabled
-    if (
-        not config.ENABLE_DUPLICATE_PREVENTION
-        or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED
-    ):
+    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
         return None
 
     # Use config default if not specified
@@ -288,21 +248,14 @@ async def prevent_world_item_duplication(
 
     similar_entity = await check_entity_similarity(name, "world_element", category)
 
-    if similar_entity and await should_merge_entities(
-        name, description, similar_entity, similarity_threshold
-    ):
-        logger.info(
-            f"Preventing duplicate world item creation: '{name}' (category: {category}) "
-            f"is similar to existing item '{similar_entity['existing_name']}'. Using existing item."
-        )
+    if similar_entity and await should_merge_entities(name, description, similar_entity, similarity_threshold):
+        logger.info(f"Preventing duplicate world item creation: '{name}' (category: {category}) " f"is similar to existing item '{similar_entity['existing_name']}'. Using existing item.")
         return similar_entity.get("existing_id")
 
     return None
 
 
-async def check_relationship_pattern_similarity(
-    entity1_name: str, entity2_name: str, entity_type: str = "character"
-) -> float:
+async def check_relationship_pattern_similarity(entity1_name: str, entity2_name: str, entity_type: str = "character") -> float:
     """Check if two entities have similar relationship patterns.
 
     This function compares the relationships of two entities to determine
@@ -379,10 +332,7 @@ async def check_relationship_pattern_similarity(
 
         similarity = intersection / union if union > 0 else 0.0
 
-        logger.debug(
-            f"Relationship pattern similarity for '{entity1_name}' vs '{entity2_name}': "
-            f"{similarity:.2f} ({intersection} common / {union} total patterns)"
-        )
+        logger.debug(f"Relationship pattern similarity for '{entity1_name}' vs '{entity2_name}': " f"{similarity:.2f} ({intersection} common / {union} total patterns)")
 
         return similarity
 
@@ -469,16 +419,11 @@ async def find_relationship_based_duplicates(
             name_sim = result["name_sim"]
 
             # Check relationship pattern similarity
-            rel_sim = await check_relationship_pattern_similarity(
-                name1, name2, entity_type
-            )
+            rel_sim = await check_relationship_pattern_similarity(name1, name2, entity_type)
 
             if rel_sim >= relationship_similarity_threshold:
                 duplicate_pairs.append((name1, name2, name_sim, rel_sim))
-                logger.info(
-                    f"Found potential duplicate based on relationships: '{name1}' vs '{name2}' "
-                    f"(name_sim: {name_sim:.2f}, rel_sim: {rel_sim:.2f})"
-                )
+                logger.info(f"Found potential duplicate based on relationships: '{name1}' vs '{name2}' " f"(name_sim: {name_sim:.2f}, rel_sim: {rel_sim:.2f})")
 
         return duplicate_pairs
 
@@ -545,17 +490,11 @@ async def merge_duplicate_entities(
             result = await neo4j_manager.execute_read_query(query, params)
 
             if not result:
-                logger.warning(
-                    f"Cannot merge entities '{entity1_name}' and '{entity2_name}': entities not found"
-                )
+                logger.warning(f"Cannot merge entities '{entity1_name}' and '{entity2_name}': entities not found")
                 return False
 
             # Keep the entity that was created first
-            canonical = (
-                entity1_name
-                if result[0]["created1"] <= result[0]["created2"]
-                else entity2_name
-            )
+            canonical = entity1_name if result[0]["created1"] <= result[0]["created2"] else entity2_name
             duplicate = entity2_name if canonical == entity1_name else entity1_name
         else:
             canonical = keep_entity
@@ -658,9 +597,7 @@ async def merge_duplicate_entities(
         params = {"canonical": canonical, "duplicate": duplicate}
         await neo4j_manager.execute_write_query(merge_query, params)
 
-        logger.info(
-            f"Successfully merged duplicate entities: '{duplicate}' merged into '{canonical}'"
-        )
+        logger.info(f"Successfully merged duplicate entities: '{duplicate}' merged into '{canonical}'")
         return True
 
     except Exception as e:

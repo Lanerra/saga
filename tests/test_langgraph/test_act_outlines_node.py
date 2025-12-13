@@ -30,9 +30,7 @@ def base_state():
 @pytest.fixture
 def mock_content_manager():
     """Create a mock ContentManager."""
-    with patch(
-        "core.langgraph.initialization.act_outlines_node.ContentManager"
-    ) as mock:
+    with patch("core.langgraph.initialization.act_outlines_node.ContentManager") as mock:
         instance = MagicMock()
         instance.save_json.return_value = {
             "path": "mock/path/act_outlines.json",
@@ -46,9 +44,7 @@ def mock_content_manager():
 @pytest.fixture
 def mock_llm_service():
     """Create a mock LLM service."""
-    with patch(
-        "core.langgraph.initialization.act_outlines_node.llm_service"
-    ) as mock:
+    with patch("core.langgraph.initialization.act_outlines_node.llm_service") as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 """Act 1: The Setup
@@ -65,12 +61,7 @@ Tension builds as threats emerge.""",
 @pytest.fixture
 def mock_get_functions():
     """Mock the content getter functions."""
-    with patch(
-        "core.langgraph.initialization.act_outlines_node.get_global_outline"
-    ) as mock_global, patch(
-        "core.langgraph.initialization.act_outlines_node.get_character_sheets"
-    ) as mock_chars:
-
+    with patch("core.langgraph.initialization.act_outlines_node.get_global_outline") as mock_global, patch("core.langgraph.initialization.act_outlines_node.get_character_sheets") as mock_chars:
         mock_global.return_value = {
             "act_count": 3,
             "raw_text": "A three-act story about a hero's journey.",
@@ -94,9 +85,7 @@ def mock_get_functions():
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_success(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_success(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify successful generation of act outlines."""
     state = {**base_state, "total_chapters": 21}
 
@@ -111,9 +100,7 @@ async def test_generate_act_outlines_success(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_missing_global_outline(
-    base_state, mock_content_manager, mock_get_functions
-):
+async def test_generate_act_outlines_missing_global_outline(base_state, mock_content_manager, mock_get_functions):
     """Verify error when global outline is missing."""
     mock_get_functions["global"].return_value = None
 
@@ -127,9 +114,7 @@ async def test_generate_act_outlines_missing_global_outline(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_five_acts(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_five_acts(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify generation for five-act structure."""
     mock_get_functions["global"].return_value = {
         "act_count": 5,
@@ -145,9 +130,7 @@ async def test_generate_act_outlines_five_acts(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_single_act_fails(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_single_act_fails(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify handling when single act generation fails."""
     call_count = [0]
 
@@ -171,9 +154,7 @@ async def test_generate_act_outlines_single_act_fails(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_all_fail(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_all_fail(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify error when all act generations fail."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
@@ -186,9 +167,7 @@ async def test_generate_act_outlines_all_fail(
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_success(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_single_act_outline_success(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify successful generation of single act outline."""
     state = {**base_state}
 
@@ -208,9 +187,7 @@ async def test_generate_single_act_outline_success(
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_empty_response(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_single_act_outline_empty_response(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify handling of empty LLM response."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
@@ -227,13 +204,9 @@ async def test_generate_single_act_outline_empty_response(
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_exception(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_single_act_outline_exception(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify exception handling during generation."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        side_effect=Exception("LLM error")
-    )
+    mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
     state = {**base_state}
 
@@ -316,9 +289,7 @@ def test_build_character_summary_includes_description():
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_uses_character_context(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_uses_character_context(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify act outline generation uses character context."""
     state = {**base_state}
 
@@ -331,9 +302,7 @@ async def test_generate_act_outlines_uses_character_context(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_uses_global_outline(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_uses_global_outline(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify act outline generation uses global outline."""
     state = {**base_state}
 
@@ -344,9 +313,7 @@ async def test_generate_act_outlines_uses_global_outline(
 
 
 @pytest.mark.asyncio
-async def test_generate_single_act_outline_different_acts(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_single_act_outline_different_acts(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify generation works for different act numbers."""
     state = {**base_state}
 
@@ -364,9 +331,7 @@ async def test_generate_single_act_outline_different_acts(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_calculates_chapters_per_act(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_calculates_chapters_per_act(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify correct calculation of chapters per act."""
     state = {**base_state, "total_chapters": 18}
     mock_get_functions["global"].return_value = {
@@ -380,9 +345,7 @@ async def test_generate_act_outlines_calculates_chapters_per_act(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_without_character_sheets(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_without_character_sheets(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify generation works without character sheets."""
     mock_get_functions["chars"].return_value = {}
 
@@ -395,19 +358,10 @@ async def test_generate_act_outlines_without_character_sheets(
 
 
 @pytest.mark.asyncio
-async def test_generate_act_outlines_stores_all_acts(
-    base_state, mock_content_manager, mock_llm_service, mock_get_functions
-):
+async def test_generate_act_outlines_stores_all_acts(base_state, mock_content_manager, mock_llm_service, mock_get_functions):
     """Verify all successfully generated acts are stored."""
-    responses = [
-        f"Act {i} outline content" for i in range(1, 4)
-    ]
-    mock_llm_service.async_call_llm = AsyncMock(
-        side_effect=[
-            (resp, {"prompt_tokens": 100, "completion_tokens": 50})
-            for resp in responses
-        ]
-    )
+    responses = [f"Act {i} outline content" for i in range(1, 4)]
+    mock_llm_service.async_call_llm = AsyncMock(side_effect=[(resp, {"prompt_tokens": 100, "completion_tokens": 50}) for resp in responses])
 
     state = {**base_state}
 

@@ -71,15 +71,11 @@ class KnowledgeGraphService:
 
         try:
             for char in characters:
-                cypher, params = self.cypher_builder.character_upsert_cypher(
-                    char, chapter_number
-                )
+                cypher, params = self.cypher_builder.character_upsert_cypher(char, chapter_number)
                 statements.append((cypher, params))
 
             for item in world_items:
-                cypher, params = self.cypher_builder.world_item_upsert_cypher(
-                    item, chapter_number
-                )
+                cypher, params = self.cypher_builder.world_item_upsert_cypher(item, chapter_number)
                 statements.append((cypher, params))
 
             statements.extend(extra_statements)

@@ -5,7 +5,6 @@ import pytest
 
 from core.langgraph.initialization.global_outline_node import (
     ActOutline,
-    CharacterArc,
     GlobalOutlineSchema,
     _build_character_context_from_sheets,
     _extract_json_from_response,
@@ -36,9 +35,7 @@ def base_state():
 @pytest.fixture
 def mock_content_manager():
     """Create a mock ContentManager."""
-    with patch(
-        "core.langgraph.initialization.global_outline_node.ContentManager"
-    ) as mock:
+    with patch("core.langgraph.initialization.global_outline_node.ContentManager") as mock:
         instance = MagicMock()
         instance.save_json.return_value = {
             "path": "mock/path/global_outline.json",
@@ -100,9 +97,7 @@ def sample_outline_json():
 @pytest.fixture
 def mock_llm_service(sample_outline_json):
     """Create a mock LLM service."""
-    with patch(
-        "core.langgraph.initialization.global_outline_node.llm_service"
-    ) as mock:
+    with patch("core.langgraph.initialization.global_outline_node.llm_service") as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 json.dumps(sample_outline_json),
@@ -115,9 +110,7 @@ def mock_llm_service(sample_outline_json):
 @pytest.fixture
 def mock_get_character_sheets():
     """Mock get_character_sheets function."""
-    with patch(
-        "core.langgraph.initialization.global_outline_node.get_character_sheets"
-    ) as mock:
+    with patch("core.langgraph.initialization.global_outline_node.get_character_sheets") as mock:
         mock.return_value = {
             "Hero": {
                 "description": "A brave warrior",
@@ -132,9 +125,7 @@ def mock_get_character_sheets():
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_success(
-    base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets
-):
+async def test_generate_global_outline_success(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
     """Verify successful generation of global outline."""
     state = {**base_state}
 
@@ -147,9 +138,7 @@ async def test_generate_global_outline_success(
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_empty_response(
-    base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets
-):
+async def test_generate_global_outline_empty_response(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
     """Verify error handling when LLM returns empty response."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
@@ -162,13 +151,9 @@ async def test_generate_global_outline_empty_response(
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_exception(
-    base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets
-):
+async def test_generate_global_outline_exception(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
     """Verify exception handling during generation."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        side_effect=Exception("LLM error")
-    )
+    mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
     state = {**base_state}
 
@@ -179,9 +164,7 @@ async def test_generate_global_outline_exception(
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_without_characters(
-    base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets
-):
+async def test_generate_global_outline_without_characters(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
     """Verify generation works without character sheets."""
     mock_get_character_sheets.return_value = {}
 
@@ -514,9 +497,7 @@ def test_fallback_parse_outline_roman_numerals(base_state):
 
 
 @pytest.mark.asyncio
-async def test_generate_global_outline_uses_grammar(
-    base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets
-):
+async def test_generate_global_outline_uses_grammar(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
     """Verify generation uses GBNF grammar."""
     state = {**base_state}
 

@@ -33,9 +33,7 @@ class TestFirstNameMatching:
         # Verify match found with high similarity (0.95 for first name match)
         assert result is not None, "Should find a match for first name"
         assert result["existing_name"] == "Jonathan Smith"
-        assert (
-            result["similarity"] == 0.95
-        ), "First name match should have 0.95 similarity"
+        assert result["similarity"] == 0.95, "First name match should have 0.95 similarity"
 
     async def test_first_name_case_insensitive_matching(self, neo4j_test_db):
         """Test that first name matching is case-insensitive."""
@@ -96,9 +94,7 @@ class TestFirstNameMatching:
 
         # Should either find no match, or find a match with low similarity
         if result is not None:
-            assert (
-                result["similarity"] < 0.8
-            ), "Different names should have low similarity"
+            assert result["similarity"] < 0.8, "Different names should have low similarity"
 
     async def test_multiple_characters_picks_best_match(self, neo4j_test_db):
         """Test that when multiple characters exist, the best match is returned."""

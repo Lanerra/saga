@@ -83,16 +83,10 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
 
     # Validate inputs
     if not global_outline:
-        logger.warning(
-            "generate_chapter_outline: no global outline available, "
-            "generating with limited context"
-        )
+        logger.warning("generate_chapter_outline: no global outline available, " "generating with limited context")
 
     if not act_outlines:
-        logger.warning(
-            "generate_chapter_outline: no act outlines available, "
-            "generating with limited context"
-        )
+        logger.warning("generate_chapter_outline: no act outlines available, " "generating with limited context")
 
     # Determine which act this chapter belongs to
     act_number = _determine_act_for_chapter(state, chapter_number)
@@ -186,11 +180,7 @@ async def _generate_single_chapter_outline(
     character_context = _build_character_summary(character_sheets)
 
     # Build previous context
-    previous_context = (
-        "\n".join(previous_summaries[-3:])
-        if previous_summaries
-        else "This is the beginning of the story."
-    )
+    previous_context = "\n".join(previous_summaries[-3:]) if previous_summaries else "This is the beginning of the story."
 
     # Determine chapter position in act
     total_chapters = state.get("total_chapters", 20)
@@ -370,9 +360,7 @@ def _parse_chapter_outline(
             elif line.strip():
                 if current_section == "scene" and not scene_description:
                     scene_description = line.strip()
-                elif current_section == "beats" and line.strip().startswith(
-                    ("-", "*", "•")
-                ):
+                elif current_section == "beats" and line.strip().startswith(("-", "*", "•")):
                     key_beats.append(line.strip().lstrip("-*• "))
                 elif current_section == "plot" and not plot_point:
                     plot_point = line.strip()

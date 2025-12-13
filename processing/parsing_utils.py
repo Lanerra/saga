@@ -231,9 +231,7 @@ def _is_proper_noun(entity_name: str) -> bool:
 
         return False
 
-    capitalized_count = sum(
-        1 for w in significant_words if _is_word_capitalized_or_special(w)
-    )
+    capitalized_count = sum(1 for w in significant_words if _is_word_capitalized_or_special(w))
 
     # Proper noun if 60%+ of significant words are capitalized
     is_mostly_capitalized = capitalized_count >= len(significant_words) * 0.6
@@ -244,19 +242,13 @@ def _is_proper_noun(entity_name: str) -> bool:
     # If it starts with "the ", "a ", "an " and only has 1-2 words total, likely generic
     # e.g. "The Room", "A Man" -> False (not proper)
     # "The Order of the Phoenix" -> True (proper)
-    if (
-        name_lower.startswith("the ")
-        or name_lower.startswith("a ")
-        or name_lower.startswith("an ")
-    ) and len(words) <= 2:
+    if (name_lower.startswith("the ") or name_lower.startswith("a ") or name_lower.startswith("an ")) and len(words) <= 2:
         return False
 
     return is_mostly_capitalized
 
 
-def _should_filter_entity(
-    entity_name: str | None, entity_type: str | None = None, mention_count: int = 1
-) -> bool:
+def _should_filter_entity(entity_name: str | None, entity_type: str | None = None, mention_count: int = 1) -> bool:
     """
     Filter out problematic entity names that create noise in the knowledge graph.
 
@@ -328,9 +320,7 @@ def _should_filter_entity(
 
     # Filter generic "A [Noun]" patterns (e.g. "A Man", "An Apple")
     # These are usually not specific enough to be knowledge graph nodes
-    if (name_lower.startswith("a ") or name_lower.startswith("an ")) and len(
-        name_lower.split()
-    ) <= 2:
+    if (name_lower.startswith("a ") or name_lower.startswith("an ")) and len(name_lower.split()) <= 2:
         return True
 
     # Filter "Not X" patterns (e.g., "Not Dead", "Not Gone")
@@ -356,12 +346,8 @@ def _should_filter_entity(
     try:
         import config
 
-        proper_noun_threshold = getattr(
-            config, "ENTITY_MENTION_THRESHOLD_PROPER_NOUN", 1
-        )
-        common_noun_threshold = getattr(
-            config, "ENTITY_MENTION_THRESHOLD_COMMON_NOUN", 3
-        )
+        proper_noun_threshold = getattr(config, "ENTITY_MENTION_THRESHOLD_PROPER_NOUN", 1)
+        common_noun_threshold = getattr(config, "ENTITY_MENTION_THRESHOLD_COMMON_NOUN", 3)
     except ImportError:
         # Fallback defaults if config not available
         proper_noun_threshold = 1
@@ -370,16 +356,12 @@ def _should_filter_entity(
     if is_proper:
         # Proper nouns: keep if mentioned threshold or more times
         if mention_count < proper_noun_threshold:
-            logger.debug(
-                f"Filtered proper noun '{entity_name}' with {mention_count} mentions (threshold: {proper_noun_threshold})"
-            )
+            logger.debug(f"Filtered proper noun '{entity_name}' with {mention_count} mentions (threshold: {proper_noun_threshold})")
             return True
     else:
         # Common nouns: require higher threshold
         if mention_count < common_noun_threshold:
-            logger.debug(
-                f"Filtered common noun '{entity_name}' with {mention_count} mentions (threshold: {common_noun_threshold})"
-            )
+            logger.debug(f"Filtered common noun '{entity_name}' with {mention_count} mentions (threshold: {common_noun_threshold})")
             return True
 
     return False
@@ -404,16 +386,12 @@ def parse_llm_triples(
 
     for line_num, line in enumerate(lines):
         line = line.strip()
-        if (
-            not line or line.startswith("#") or line.startswith("//")
-        ):  # Skip empty or comment lines
+        if not line or line.startswith("#") or line.startswith("//"):  # Skip empty or comment lines
             continue
 
         parts = [p.strip() for p in line.split("|")]
         if len(parts) < 3:
-            logger_func.warning(
-                f"Line {line_num + 1}: Malformed triple (expected at least 3 parts separated by '|'): '{line}'"
-            )
+            logger_func.warning(f"Line {line_num + 1}: Malformed triple (expected at least 3 parts separated by '|'): '{line}'")
             continue
 
         subject_text = parts[0]
@@ -421,18 +399,14 @@ def parse_llm_triples(
         object_text = parts[2]
 
         if len(parts) > 3:
-            logger_func.debug(
-                f"Line {line_num + 1}: Triple had extra parts which are being ignored: '{' | '.join(parts[3:])}' from original line '{line}'"
-            )
+            logger_func.debug(f"Line {line_num + 1}: Triple had extra parts which are being ignored: '{' | '.join(parts[3:])}' from original line '{line}'")
 
         subject_details = _get_entity_type_and_name_from_text(subject_text)
         pred_norm = predicate_text.strip().upper().replace(" ", "_")
         try:
             import config  # local import to avoid cycles
 
-            if pred_norm == "STATUS_IS" and not getattr(
-                config, "ENABLE_STATUS_IS_ALIAS", True
-            ):
+            if pred_norm == "STATUS_IS" and not getattr(config, "ENABLE_STATUS_IS_ALIAS", True):
                 pred_norm = "HAS_STATUS"
         except Exception as e:
             logger.warning(
@@ -444,9 +418,7 @@ def parse_llm_triples(
         predicate_str = pred_norm  # Normalize predicate
 
         if not subject_details.get("name") or not predicate_str:
-            logger_func.warning(
-                f"Line {line_num + 1}: Missing subject name or predicate: S='{subject_text}', P='{predicate_text}'"
-            )
+            logger_func.warning(f"Line {line_num + 1}: Missing subject name or predicate: S='{subject_text}', P='{predicate_text}'")
             continue
 
         # Determine if object is an entity or a literal
@@ -475,58 +447,36 @@ def parse_llm_triples(
         if is_literal_object:
             object_literal_payload = object_text.strip()
             # Further clean if it's a string literal that might have quotes (LLM sometimes adds them)
-            if object_literal_payload.startswith(
-                '"'
-            ) and object_literal_payload.endswith('"'):
+            if object_literal_payload.startswith('"') and object_literal_payload.endswith('"'):
                 object_literal_payload = object_literal_payload[1:-1]
-            if object_literal_payload.startswith(
-                "'"
-            ) and object_literal_payload.endswith("'"):
+            if object_literal_payload.startswith("'") and object_literal_payload.endswith("'"):
                 object_literal_payload = object_literal_payload[1:-1]
 
-        if not is_literal_object and (
-            not object_entity_payload or not object_entity_payload.get("name")
-        ):
+        if not is_literal_object and (not object_entity_payload or not object_entity_payload.get("name")):
             # This means we thought it was an entity due to ':', but parsing failed to get a name.
             # So, revert to treating it as a literal.
-            logger_func.debug(
-                f"Line {line_num + 1}: Object '{object_text}' looked like entity but parsed no name. Reverting to literal."
-            )
+            logger_func.debug(f"Line {line_num + 1}: Object '{object_text}' looked like entity but parsed no name. Reverting to literal.")
             object_literal_payload = object_text.strip()
             is_literal_object = True
             object_entity_payload = None
 
         # Apply filtering to prevent problematic entities
         subject_name = subject_details.get("name")
-        if subject_name and _should_filter_entity(
-            subject_name, subject_details.get("type")
-        ):
-            logger_func.info(
-                f"Line {line_num + 1}: Filtered out problematic subject entity: '{subject_name}'"
-            )
+        if subject_name and _should_filter_entity(subject_name, subject_details.get("type")):
+            logger_func.info(f"Line {line_num + 1}: Filtered out problematic subject entity: '{subject_name}'")
             continue
 
         # Filter object entity if it exists
         if not is_literal_object and object_entity_payload:
             object_name = object_entity_payload.get("name")
-            if object_name and _should_filter_entity(
-                object_name, object_entity_payload.get("type")
-            ):
-                logger_func.info(
-                    f"Line {line_num + 1}: Filtered out problematic object entity: '{object_name}'"
-                )
+            if object_name and _should_filter_entity(object_name, object_entity_payload.get("type")):
+                logger_func.info(f"Line {line_num + 1}: Filtered out problematic object entity: '{object_name}'")
                 continue
 
         # Drop triples with empty/null literal objects
         if is_literal_object:
-            if (
-                object_literal_payload is None
-                or not str(object_literal_payload).strip()
-                or str(object_literal_payload).strip().lower() in {"none", "null"}
-            ):
-                logger_func.info(
-                    f"Line {line_num + 1}: Filtered out triple with null/empty literal object"
-                )
+            if object_literal_payload is None or not str(object_literal_payload).strip() or str(object_literal_payload).strip().lower() in {"none", "null"}:
+                logger_func.info(f"Line {line_num + 1}: Filtered out triple with null/empty literal object")
                 continue
 
         triples_list.append(

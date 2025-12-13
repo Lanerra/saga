@@ -152,14 +152,10 @@ class WorldItem(BaseModel):
         item_id = data.get("id", "")
 
         # Validate and normalize all core fields
-        category, name, item_id = validate_world_item_fields(
-            category, name, item_id, allow_empty_name
-        )
+        category, name, item_id = validate_world_item_fields(category, name, item_id, allow_empty_name)
 
         # Extract and validate created_chapter using shared utility
-        created_chapter = Neo4jExtractor.safe_int_extract(
-            data.get(KG_NODE_CREATED_CHAPTER, 0)
-        )
+        created_chapter = Neo4jExtractor.safe_int_extract(data.get(KG_NODE_CREATED_CHAPTER, 0))
 
         # Extract and validate is_provisional
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
@@ -242,9 +238,7 @@ class WorldItem(BaseModel):
         }
 
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(
-            node, core_fields
-        )
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
         # Extract relationships if available
         relationships = {}
@@ -271,18 +265,12 @@ class WorldItem(BaseModel):
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
             name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(
-                node_dict.get("description", "")
-            ),
+            description=Neo4jExtractor.safe_string_extract(node_dict.get("description", "")),
             goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
             rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(
-                node_dict.get("key_elements", [])
-            ),
+            key_elements=Neo4jExtractor.safe_list_extract(node_dict.get("key_elements", [])),
             traits=traits,
-            created_chapter=Neo4jExtractor.safe_int_extract(
-                node_dict.get("created_chapter", 0)
-            ),
+            created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
             relationships=relationships,
             additional_properties=additional_props,
@@ -314,27 +302,19 @@ class WorldItem(BaseModel):
         }
 
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(
-            node, core_fields
-        )
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
         node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
             name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(
-                node_dict.get("description", "")
-            ),
+            description=Neo4jExtractor.safe_string_extract(node_dict.get("description", "")),
             goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
             rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(
-                node_dict.get("key_elements", [])
-            ),
+            key_elements=Neo4jExtractor.safe_list_extract(node_dict.get("key_elements", [])),
             traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(
-                node_dict.get("created_chapter", 0)
-            ),
+            created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
             relationships={},  # Relationships handled separately
             additional_properties=additional_props,
@@ -373,13 +353,9 @@ class RelationshipUsage:
     canonical_type: str  # The normalized form (e.g., "WORKS_WITH")
     first_used_chapter: int  # When first introduced
     usage_count: int  # How many times used across narrative
-    example_descriptions: list[str] = field(
-        default_factory=list
-    )  # Sample usage contexts
+    example_descriptions: list[str] = field(default_factory=list)  # Sample usage contexts
     embedding: list[float] | None = None  # Cached embedding for fast comparison
-    synonyms: list[str] = field(
-        default_factory=list
-    )  # Variant forms normalized to this
+    synonyms: list[str] = field(default_factory=list)  # Variant forms normalized to this
     last_used_chapter: int = 0  # Most recent usage
 
     class Config:

@@ -19,29 +19,13 @@ def _make_state(tmp_path: Path) -> NarrativeState:
     project_dir.mkdir()
 
     # Prose with embedded literal "\n" sequences and real newlines
-    character_description = (
-        "Hero of the story with a complex past.\\n"
-        "Second line of bio that should appear on its own line.\n"
-        "Third line already separated."
-    )
+    character_description = "Hero of the story with a complex past.\\n" "Second line of bio that should appear on its own line.\n" "Third line already separated."
 
-    global_outline_text = (
-        "This is the high-level arc of the story.\\n"
-        "It spans multiple acts and should be readable.\n"
-        "Final line."
-    )
+    global_outline_text = "This is the high-level arc of the story.\\n" "It spans multiple acts and should be readable.\n" "Final line."
 
-    act1_outline_text = (
-        "Act I sets up the world and characters.\\n"
-        "Multiple beats are described here.\n"
-        "Closes on an inciting incident."
-    )
+    act1_outline_text = "Act I sets up the world and characters.\\n" "Multiple beats are described here.\n" "Closes on an inciting incident."
 
-    world_item_description = (
-        "An ancient city hidden beneath the desert sands.\\n"
-        "Legends speak of its cursed guardians.\n"
-        "Explorers rarely return."
-    )
+    world_item_description = "An ancient city hidden beneath the desert sands.\\n" "Legends speak of its cursed guardians.\n" "Explorers rarely return."
 
     content_manager = ContentManager(project_dir)
 

@@ -57,9 +57,7 @@ def resolve_world_name(name: str) -> str | None:
     return WORLD_NAME_TO_ID.get(utils._normalize_for_id(name))
 
 
-def get_world_item_by_name(
-    world_data: dict[str, dict[str, WorldItem]], name: str
-) -> WorldItem | None:
+def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: str) -> WorldItem | None:
     """Retrieve a WorldItem from cached data using a fuzzy name lookup."""
     item_id = resolve_world_name(name)
     if not item_id:
@@ -74,9 +72,7 @@ def get_world_item_by_name(
 
 
 @alru_cache(maxsize=128)
-async def get_world_item_by_id(
-    item_id: str, *, include_provisional: bool = False
-) -> WorldItem | None:
+async def get_world_item_by_id(item_id: str, *, include_provisional: bool = False) -> WorldItem | None:
     """Retrieve a single ``WorldItem`` from Neo4j by its ID or fall back to name.
 
     Provisional contract (P0):
@@ -108,16 +104,12 @@ async def get_world_item_by_id(
         " RETURN we"
     )
 
-    results = await neo4j_manager.execute_read_query(
-        query, {"id": requested_id, "include_provisional": include_provisional}
-    )
+    results = await neo4j_manager.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
     if not results or not results[0].get("we"):
         alt_id = resolve_world_name(requested_id)
         if alt_id and alt_id != requested_id:
             effective_id = alt_id
-            results = await neo4j_manager.execute_read_query(
-                query, {"id": effective_id, "include_provisional": include_provisional}
-            )
+            results = await neo4j_manager.execute_read_query(query, {"id": effective_id, "include_provisional": include_provisional})
 
     if not results or not results[0].get("we"):
         logger.info(f"No world item found for id '{requested_id}'.")
@@ -131,9 +123,7 @@ async def get_world_item_by_id(
     # Validate and normalize core fields for world item
     # This ensures that all world items have valid id, category, and name
     try:
-        category, item_name, we_id = utils.validate_world_item_fields(
-            category, item_name, we_id
-        )
+        category, item_name, we_id = utils.validate_world_item_fields(category, item_name, we_id)
     except Exception as e:
         logger.error(
             f"Error validating world item core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
@@ -154,9 +144,7 @@ async def get_world_item_by_id(
         missing_fields.append("id")
 
     if missing_fields:
-        logger.warning(
-            f"Corrected world item with missing core fields ({', '.join(missing_fields)}) for id '{item_id}': {we_node}"
-        )
+        logger.warning(f"Corrected world item with missing core fields ({', '.join(missing_fields)}) for id '{item_id}': {we_node}")
         # Update the we_node dict with corrected values for subsequent processing
         we_node["category"] = category
         we_node["name"] = item_name
@@ -166,17 +154,13 @@ async def get_world_item_by_id(
     item_detail.pop("created_ts", None)
     item_detail.pop("updated_ts", None)
 
-    created_chapter_num = item_detail.pop(
-        KG_NODE_CREATED_CHAPTER, config.KG_PREPOPULATION_CHAPTER_NUM
-    )
+    created_chapter_num = item_detail.pop(KG_NODE_CREATED_CHAPTER, config.KG_PREPOPULATION_CHAPTER_NUM)
     item_detail["created_chapter"] = int(created_chapter_num)
     item_detail[f"added_in_chapter_{created_chapter_num}"] = True
 
     if item_detail.pop(KG_IS_PROVISIONAL, False):
         item_detail["is_provisional"] = True
-        item_detail[f"source_quality_chapter_{created_chapter_num}"] = (
-            "provisional_from_unrevised_draft"
-        )
+        item_detail[f"source_quality_chapter_{created_chapter_num}"] = "provisional_from_unrevised_draft"
     else:
         item_detail["is_provisional"] = False
 
@@ -190,13 +174,7 @@ async def get_world_item_by_id(
         traits_query,
         {"we_id_param": effective_id},
     )
-    item_detail["traits"] = sorted(
-        [
-            res_item["trait_name"]
-            for res_item in traits_res
-            if res_item and res_item.get("trait_name") is not None
-        ]
-    )
+    item_detail["traits"] = sorted([res_item["trait_name"] for res_item in traits_res if res_item and res_item.get("trait_name") is not None])
 
     elab_query = f"""
     MATCH ({{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent)
@@ -216,9 +194,7 @@ async def get_world_item_by_id(
                 elab_key = f"elaboration_in_chapter_{chapter_val}"
                 item_detail[elab_key] = summary_val
                 if elab_rec.get(KG_IS_PROVISIONAL):
-                    item_detail[f"source_quality_chapter_{chapter_val}"] = (
-                        "provisional_from_unrevised_draft"
-                    )
+                    item_detail[f"source_quality_chapter_{chapter_val}"] = "provisional_from_unrevised_draft"
 
     # Do not overwrite identity with the caller-provided value; callers must see the
     # canonical/effective id that actually exists in the graph.
@@ -226,9 +202,7 @@ async def get_world_item_by_id(
     return WorldItem.from_dict(category, item_name, item_detail)
 
 
-async def get_world_elements_for_snippet_from_db(
-    category: str, chapter_limit: int, item_limit: int, *, include_provisional: bool = False
-) -> list[dict[str, Any]]:
+async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: int, item_limit: int, *, include_provisional: bool = False) -> list[dict[str, Any]]:
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
@@ -267,18 +241,12 @@ async def get_world_elements_for_snippet_from_db(
         if results:
             for record in results:
                 desc_val = record.get("description")
-                desc = (
-                    str(desc_val) if desc_val is not None else ""
-                )  # Ensure desc is a string
+                desc = str(desc_val) if desc_val is not None else ""  # Ensure desc is a string
 
                 items.append(
                     {
                         "name": record.get("name"),
-                        "description_snippet": (
-                            desc[:50].strip() + "..."
-                            if len(desc) > 50
-                            else desc.strip()
-                        ),
+                        "description_snippet": (desc[:50].strip() + "..." if len(desc) > 50 else desc.strip()),
                         "is_provisional": record.get("is_provisional", False),
                     }
                 )
@@ -338,9 +306,7 @@ async def sync_world_items(
 
     try:
         cypher_builder = NativeCypherBuilder()
-        statements = cypher_builder.batch_world_item_upsert_cypher(
-            world_items, chapter_number
-        )
+        statements = cypher_builder.batch_world_item_upsert_cypher(world_items, chapter_number)
 
         if statements:
             await neo4j_manager.execute_cypher_batch(statements)
@@ -403,9 +369,7 @@ async def get_world_building(*, include_provisional: bool = False) -> list[World
         return []
 
 
-async def get_world_items_for_chapter_context_native(
-    chapter_number: int, limit: int = 10, *, include_provisional: bool = False
-) -> list[WorldItem]:
+async def get_world_items_for_chapter_context_native(chapter_number: int, limit: int = 10, *, include_provisional: bool = False) -> list[WorldItem]:
     """
     Get world items relevant for chapter context using native models.
 
@@ -511,30 +475,17 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
             try:
                 world_item = WorldItem.from_db_node(we_node)
                 # Additional validation: ensure the description is meaningful after conversion
-                if (
-                    world_item.description
-                    and world_item.description.strip()
-                    and config.FILL_IN not in world_item.description
-                ):
+                if world_item.description and world_item.description.strip() and config.FILL_IN not in world_item.description:
                     bootstrap_elements.append(world_item)
 
             except Exception as e:
-                logger.warning(
-                    f"Failed to convert bootstrap element node to WorldItem: {e}. "
-                    f"Node: {dict(we_node)}"
-                )
+                logger.warning(f"Failed to convert bootstrap element node to WorldItem: {e}. " f"Node: {dict(we_node)}")
                 continue
 
-        logger.info(
-            f"Retrieved {len(bootstrap_elements)} bootstrap world elements for early chapter injection"
-        )
+        logger.info(f"Retrieved {len(bootstrap_elements)} bootstrap world elements for early chapter injection")
 
         return bootstrap_elements
 
     except Exception as e:
-        logger.error(
-            f"Failed to retrieve bootstrap world elements: {e}. "
-            f"Error type: {type(e).__name__}. "
-            f"Check Neo4j connection and query syntax."
-        )
+        logger.error(f"Failed to retrieve bootstrap world elements: {e}. " f"Error type: {type(e).__name__}. " f"Check Neo4j connection and query syntax.")
         return []

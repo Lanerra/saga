@@ -23,9 +23,7 @@ def get_cached_value(key: str, service_name: str) -> Any | None:
     return _ensure_service(service_name).get(key)
 
 
-def set_cached_value(
-    key: str, value: Any, service_name: str, ttl: int | None = None
-) -> None:
+def set_cached_value(key: str, value: Any, service_name: str, ttl: int | None = None) -> None:
     """Set cached value (ttl ignored)."""
     _ensure_service(service_name)[key] = value
 

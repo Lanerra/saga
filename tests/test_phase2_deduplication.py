@@ -40,9 +40,7 @@ class TestRelationshipPatternSimilarity:
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
-            similarity = await check_relationship_pattern_similarity(
-                "Alice", "Alice Chen", "character"
-            )
+            similarity = await check_relationship_pattern_similarity("Alice", "Alice Chen", "character")
 
             # Identical patterns should have similarity of 1.0
             assert similarity == 1.0
@@ -69,9 +67,7 @@ class TestRelationshipPatternSimilarity:
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
-            similarity = await check_relationship_pattern_similarity(
-                "Alice", "Alice Chen", "character"
-            )
+            similarity = await check_relationship_pattern_similarity("Alice", "Alice Chen", "character")
 
             # Should be approximately 0.667
             assert 0.65 <= similarity <= 0.70
@@ -94,9 +90,7 @@ class TestRelationshipPatternSimilarity:
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
-            similarity = await check_relationship_pattern_similarity(
-                "Alice", "Eve", "character"
-            )
+            similarity = await check_relationship_pattern_similarity("Alice", "Eve", "character")
 
             # No overlap should result in 0.0
             assert similarity == 0.0
@@ -115,9 +109,7 @@ class TestRelationshipPatternSimilarity:
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_result)
 
-            similarity = await check_relationship_pattern_similarity(
-                "Alice", "New Character", "character"
-            )
+            similarity = await check_relationship_pattern_similarity("Alice", "New Character", "character")
 
             # Can't determine similarity without relationships
             assert similarity == 0.0
@@ -125,13 +117,9 @@ class TestRelationshipPatternSimilarity:
     async def test_handles_neo4j_errors_gracefully(self):
         """Test error handling when Neo4j query fails."""
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
-            mock_neo4j.execute_read_query = AsyncMock(
-                side_effect=Exception("Database connection failed")
-            )
+            mock_neo4j.execute_read_query = AsyncMock(side_effect=Exception("Database connection failed"))
 
-            similarity = await check_relationship_pattern_similarity(
-                "Alice", "Alice Chen", "character"
-            )
+            similarity = await check_relationship_pattern_similarity("Alice", "Alice Chen", "character")
 
             # Should return 0.0 on error to prevent blocking
             assert similarity == 0.0
@@ -235,9 +223,7 @@ class TestMergeDuplicateEntities:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_created_query)
             mock_neo4j.execute_write_query = AsyncMock()
 
-            success = await merge_duplicate_entities(
-                "Alice", "Alice Chen", entity_type="character"
-            )
+            success = await merge_duplicate_entities("Alice", "Alice Chen", entity_type="character")
 
             assert success is True
             # Verify merge query was called
@@ -258,9 +244,7 @@ class TestMergeDuplicateEntities:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_created_query)
             mock_neo4j.execute_write_query = AsyncMock()
 
-            success = await merge_duplicate_entities(
-                "Alice Chen", "Alice", entity_type="character"
-            )
+            success = await merge_duplicate_entities("Alice Chen", "Alice", entity_type="character")
 
             assert success is True
             # Verify the correct entity (Alice) is kept
@@ -274,9 +258,7 @@ class TestMergeDuplicateEntities:
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_write_query = AsyncMock()
 
-            success = await merge_duplicate_entities(
-                "Alice", "Alice Chen", entity_type="character", keep_entity="Alice Chen"
-            )
+            success = await merge_duplicate_entities("Alice", "Alice Chen", entity_type="character", keep_entity="Alice Chen")
 
             # Should use specified entity
             call_args = mock_neo4j.execute_write_query.call_args
@@ -287,13 +269,9 @@ class TestMergeDuplicateEntities:
     async def test_handles_missing_entities(self):
         """Test handling when entities don't exist."""
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
-            mock_neo4j.execute_read_query = AsyncMock(
-                return_value=[]
-            )  # No entities found
+            mock_neo4j.execute_read_query = AsyncMock(return_value=[])  # No entities found
 
-            success = await merge_duplicate_entities(
-                "NonExistent1", "NonExistent2", entity_type="character"
-            )
+            success = await merge_duplicate_entities("NonExistent1", "NonExistent2", entity_type="character")
 
             assert success is False
 
@@ -310,13 +288,9 @@ class TestMergeDuplicateEntities:
 
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_read_query = AsyncMock(return_value=mock_created_query)
-            mock_neo4j.execute_write_query = AsyncMock(
-                side_effect=Exception("Merge failed")
-            )
+            mock_neo4j.execute_write_query = AsyncMock(side_effect=Exception("Merge failed"))
 
-            success = await merge_duplicate_entities(
-                "Alice", "Alice Chen", entity_type="character"
-            )
+            success = await merge_duplicate_entities("Alice", "Alice Chen", entity_type="character")
 
             # Should return False on error
             assert success is False

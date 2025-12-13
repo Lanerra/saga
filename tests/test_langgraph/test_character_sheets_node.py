@@ -32,9 +32,7 @@ def base_state():
 @pytest.fixture
 def mock_content_manager():
     """Create a mock ContentManager."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.ContentManager"
-    ) as mock:
+    with patch("core.langgraph.initialization.character_sheets_node.ContentManager") as mock:
         instance = MagicMock()
         instance.save_json.return_value = {
             "path": "mock/path/character_sheets.json",
@@ -48,9 +46,7 @@ def mock_content_manager():
 @pytest.fixture
 def mock_neo4j():
     """Mock Neo4j manager for trait queries."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.neo4j_manager"
-    ) as mock:
+    with patch("core.langgraph.initialization.character_sheets_node.neo4j_manager") as mock:
         mock.execute_read_query = AsyncMock(
             return_value=[
                 {"trait_name": "brave"},
@@ -64,22 +60,22 @@ def mock_neo4j():
 @pytest.fixture
 def mock_llm_service():
     """Create a mock LLM service."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.llm_service"
-    ) as mock:
+    with patch("core.langgraph.initialization.character_sheets_node.llm_service") as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
-                json.dumps({
-                    "name": "Hero",
-                    "description": "A brave warrior",
-                    "traits": ["brave", "loyal"],
-                    "status": "Active",
-                    "motivations": "Save the kingdom",
-                    "background": "Born in a village",
-                    "skills": ["swordfighting"],
-                    "relationships": {"Mentor": "Wise guide"},
-                    "internal_conflict": "Self-doubt",
-                }),
+                json.dumps(
+                    {
+                        "name": "Hero",
+                        "description": "A brave warrior",
+                        "traits": ["brave", "loyal"],
+                        "status": "Active",
+                        "motivations": "Save the kingdom",
+                        "background": "Born in a village",
+                        "skills": ["swordfighting"],
+                        "relationships": {"Mentor": "Wise guide"},
+                        "internal_conflict": "Self-doubt",
+                    }
+                ),
                 {"prompt_tokens": 100, "completion_tokens": 50},
             )
         )
@@ -89,9 +85,7 @@ def mock_llm_service():
 @pytest.fixture
 def mock_schema_validator():
     """Mock schema validator."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.schema_validator"
-    ) as mock:
+    with patch("core.langgraph.initialization.character_sheets_node.schema_validator") as mock:
         mock.validate_entity_type.return_value = (True, "Character", None)
         yield mock
 
@@ -110,9 +104,7 @@ async def test_get_existing_traits_success(mock_neo4j):
 @pytest.mark.asyncio
 async def test_get_existing_traits_empty():
     """Verify handling when no traits exist."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.neo4j_manager"
-    ) as mock:
+    with patch("core.langgraph.initialization.character_sheets_node.neo4j_manager") as mock:
         mock.execute_read_query = AsyncMock(return_value=[])
 
         traits = await _get_existing_traits()
@@ -123,12 +115,8 @@ async def test_get_existing_traits_empty():
 @pytest.mark.asyncio
 async def test_get_existing_traits_exception():
     """Verify exception handling during trait retrieval."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.neo4j_manager"
-    ) as mock:
-        mock.execute_read_query = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+    with patch("core.langgraph.initialization.character_sheets_node.neo4j_manager") as mock:
+        mock.execute_read_query = AsyncMock(side_effect=Exception("Database error"))
 
         traits = await _get_existing_traits()
 
@@ -137,21 +125,21 @@ async def test_get_existing_traits_exception():
 
 def test_parse_character_sheet_response_valid_json(mock_schema_validator):
     """Verify parsing of valid JSON character sheet."""
-    response = json.dumps({
-        "name": "Hero",
-        "description": "A brave warrior",
-        "traits": ["brave", "loyal"],
-        "status": "Active",
-        "motivations": "Save the kingdom",
-        "background": "Born in a village",
-        "skills": ["swordfighting"],
-        "relationships": {"Mentor": "Wise guide"},
-        "internal_conflict": "Self-doubt",
-    })
+    response = json.dumps(
+        {
+            "name": "Hero",
+            "description": "A brave warrior",
+            "traits": ["brave", "loyal"],
+            "status": "Active",
+            "motivations": "Save the kingdom",
+            "background": "Born in a village",
+            "skills": ["swordfighting"],
+            "relationships": {"Mentor": "Wise guide"},
+            "internal_conflict": "Self-doubt",
+        }
+    )
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = ["brave", "loyal"]
 
         result = _parse_character_sheet_response(response, "Hero")
@@ -172,9 +160,7 @@ def test_parse_character_sheet_response_with_markdown(mock_schema_validator):
 }
 ```"""
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = ["brave"]
 
         result = _parse_character_sheet_response(response, "Hero")
@@ -185,14 +171,14 @@ def test_parse_character_sheet_response_with_markdown(mock_schema_validator):
 
 def test_parse_character_sheet_response_missing_name(mock_schema_validator):
     """Verify name defaults to provided character_name if missing."""
-    response = json.dumps({
-        "description": "Test character",
-        "traits": [],
-    })
+    response = json.dumps(
+        {
+            "description": "Test character",
+            "traits": [],
+        }
+    )
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
         result = _parse_character_sheet_response(response, "DefaultName")
@@ -204,9 +190,7 @@ def test_parse_character_sheet_response_invalid_json(mock_schema_validator):
     """Verify fallback when JSON parsing fails."""
     response = "This is not valid JSON but a plain text description"
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
         result = _parse_character_sheet_response(response, "Hero")
@@ -217,14 +201,14 @@ def test_parse_character_sheet_response_invalid_json(mock_schema_validator):
 
 def test_parse_character_sheet_response_filters_traits(mock_schema_validator):
     """Verify trait filtering removes invalid traits."""
-    response = json.dumps({
-        "name": "Hero",
-        "traits": ["brave", "very long invalid trait", "loyal", "another bad trait here"],
-    })
+    response = json.dumps(
+        {
+            "name": "Hero",
+            "traits": ["brave", "very long invalid trait", "loyal", "another bad trait here"],
+        }
+    )
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = ["brave", "loyal"]
 
         result = _parse_character_sheet_response(response, "Hero")
@@ -236,17 +220,17 @@ def test_parse_character_sheet_response_transforms_relationships(
     mock_schema_validator,
 ):
     """Verify relationship transformation to internal structure."""
-    response = json.dumps({
-        "name": "Hero",
-        "relationships": {
-            "Mentor": "Wise guide",
-            "Friend": "Close ally",
-        },
-    })
+    response = json.dumps(
+        {
+            "name": "Hero",
+            "relationships": {
+                "Mentor": "Wise guide",
+                "Friend": "Close ally",
+            },
+        }
+    )
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
         result = _parse_character_sheet_response(response, "Hero")
@@ -290,9 +274,7 @@ async def test_generate_character_list_with_formatting(base_state, mock_llm_serv
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_ensures_protagonist(
-    base_state, mock_llm_service
-):
+async def test_generate_character_list_ensures_protagonist(base_state, mock_llm_service):
     """Verify protagonist is always included in list."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
@@ -311,9 +293,7 @@ async def test_generate_character_list_ensures_protagonist(
 async def test_generate_character_list_limits_to_ten(base_state, mock_llm_service):
     """Verify character list is limited to 10 characters."""
     character_names = "\n".join([f"Character{i}" for i in range(20)])
-    mock_llm_service.async_call_llm = AsyncMock(
-        return_value=(character_names, {"prompt_tokens": 100, "completion_tokens": 50})
-    )
+    mock_llm_service.async_call_llm = AsyncMock(return_value=(character_names, {"prompt_tokens": 100, "completion_tokens": 50}))
 
     result = await _generate_character_list(base_state)
 
@@ -333,9 +313,7 @@ async def test_generate_character_list_empty_response(base_state, mock_llm_servi
 @pytest.mark.asyncio
 async def test_generate_character_list_exception(base_state, mock_llm_service):
     """Verify fallback to protagonist on exception."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        side_effect=Exception("LLM error")
-    )
+    mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
     result = await _generate_character_list(base_state)
 
@@ -343,13 +321,9 @@ async def test_generate_character_list_exception(base_state, mock_llm_service):
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_success(
-    base_state, mock_llm_service, mock_schema_validator
-):
+async def test_generate_character_sheet_success(base_state, mock_llm_service, mock_schema_validator):
     """Verify successful generation of character sheet."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = ["brave", "loyal"]
 
         result = await _generate_character_sheet(
@@ -367,13 +341,9 @@ async def test_generate_character_sheet_success(
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_non_protagonist(
-    base_state, mock_llm_service, mock_schema_validator
-):
+async def test_generate_character_sheet_non_protagonist(base_state, mock_llm_service, mock_schema_validator):
     """Verify sheet generation for non-protagonist character."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
         result = await _generate_character_sheet(
@@ -387,9 +357,7 @@ async def test_generate_character_sheet_non_protagonist(
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_empty_response(
-    base_state, mock_llm_service, mock_schema_validator
-):
+async def test_generate_character_sheet_empty_response(base_state, mock_llm_service, mock_schema_validator):
     """Verify handling of empty LLM response."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
@@ -403,13 +371,9 @@ async def test_generate_character_sheet_empty_response(
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_exception(
-    base_state, mock_llm_service, mock_schema_validator
-):
+async def test_generate_character_sheet_exception(base_state, mock_llm_service, mock_schema_validator):
     """Verify exception handling during sheet generation."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        side_effect=Exception("LLM error")
-    )
+    mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
     result = await _generate_character_sheet(
         state=base_state,
@@ -430,11 +394,13 @@ async def test_generate_character_sheets_success(
 ):
     """Verify successful generation of all character sheets."""
     char_list_response = "Hero\nMentor\nVillain"
-    char_sheet_response = json.dumps({
-        "name": "Test",
-        "description": "Test character",
-        "traits": ["brave"],
-    })
+    char_sheet_response = json.dumps(
+        {
+            "name": "Test",
+            "description": "Test character",
+            "traits": ["brave"],
+        }
+    )
 
     mock_llm_service.async_call_llm = AsyncMock(
         side_effect=[
@@ -445,9 +411,7 @@ async def test_generate_character_sheets_success(
         ]
     )
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = ["brave"]
 
         result = await generate_character_sheets(base_state)
@@ -481,9 +445,7 @@ async def test_generate_character_sheets_missing_genre(base_state):
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheets_character_list_fails(
-    base_state, mock_llm_service, mock_neo4j
-):
+async def test_generate_character_sheets_character_list_fails(base_state, mock_llm_service, mock_neo4j):
     """Verify error when character list generation fails."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
@@ -510,9 +472,7 @@ async def test_generate_character_sheets_all_sheets_fail(
         ]
     )
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
         result = await generate_character_sheets(base_state)
@@ -522,13 +482,9 @@ async def test_generate_character_sheets_all_sheets_fail(
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_uses_existing_traits(
-    base_state, mock_llm_service, mock_schema_validator
-):
+async def test_generate_character_sheet_uses_existing_traits(base_state, mock_llm_service, mock_schema_validator):
     """Verify existing traits are passed to prompt."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
         await _generate_character_sheet(
@@ -545,13 +501,9 @@ async def test_generate_character_sheet_uses_existing_traits(
 
 
 @pytest.mark.asyncio
-async def test_generate_character_sheet_uses_grammar(
-    base_state, mock_llm_service, mock_schema_validator
-):
+async def test_generate_character_sheet_uses_grammar(base_state, mock_llm_service, mock_schema_validator):
     """Verify character sheet generation uses GBNF grammar."""
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
         await _generate_character_sheet(

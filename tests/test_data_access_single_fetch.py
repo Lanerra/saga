@@ -108,9 +108,7 @@ async def test_sync_world_items_populates_name_to_id(monkeypatch):
 
     world_queries.WORLD_NAME_TO_ID.clear()
     await world_queries.sync_world_items(world_data, 1)
-    assert (
-        world_queries.WORLD_NAME_TO_ID[utils._normalize_for_id("City")] == world_item.id
-    )
+    assert world_queries.WORLD_NAME_TO_ID[utils._normalize_for_id("City")] == world_item.id
 
 
 @pytest.mark.asyncio
@@ -144,7 +142,4 @@ async def test_get_world_building_from_db_populates_name_to_id(monkeypatch):
     city = next((w for w in world_items if w.name == "City"), None)
     assert city is not None
     assert city.id == "places_city"
-    assert (
-        world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City"))
-        == "places_city"
-    )
+    assert world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City")) == "places_city"

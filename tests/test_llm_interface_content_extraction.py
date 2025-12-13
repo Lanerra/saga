@@ -32,21 +32,11 @@ class _DummyCompletionClient:
             "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         }
 
-    async def get_streaming_completion(
-        self, *args: Any, **kwargs: Any
-    ) -> AsyncGenerator[dict[str, Any], None]:
+    async def get_streaming_completion(self, *args: Any, **kwargs: Any) -> AsyncGenerator[dict[str, Any], None]:
         # Yield two chunks that stream reasoning_content in the delta
         async def _gen() -> AsyncGenerator[dict[str, Any], None]:
-            yield {
-                "choices": [
-                    {"delta": {"reasoning_content": "Hello "}, "finish_reason": None}
-                ]
-            }
-            yield {
-                "choices": [
-                    {"delta": {"reasoning_content": "World"}, "finish_reason": None}
-                ]
-            }
+            yield {"choices": [{"delta": {"reasoning_content": "Hello "}, "finish_reason": None}]}
+            yield {"choices": [{"delta": {"reasoning_content": "World"}, "finish_reason": None}]}
 
         # Make this an async generator function by yielding from the inner generator
         async for item in _gen():

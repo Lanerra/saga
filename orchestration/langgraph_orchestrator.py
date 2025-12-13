@@ -139,9 +139,7 @@ class LangGraphOrchestrator:
             # Fallback: check for initialization files
             init_file = self.project_dir / "outline" / "structure.yaml"
             initialization_complete = init_file.exists()
-            logger.info(
-                f"Initialization detection (fallback): structure.yaml exists={initialization_complete}"
-            )
+            logger.info(f"Initialization detection (fallback): structure.yaml exists={initialization_complete}")
 
         # Create initial state
         state = create_initial_state(
@@ -186,9 +184,7 @@ class LangGraphOrchestrator:
 
         return state
 
-    async def _run_chapter_generation_loop(
-        self, graph: Any, state: NarrativeState
-    ) -> None:
+    async def _run_chapter_generation_loop(self, graph: Any, state: NarrativeState) -> None:
         """
         Generate CHAPTERS_PER_RUN chapters through the LangGraph workflow.
 
@@ -211,15 +207,8 @@ class LangGraphOrchestrator:
         config_dict = {"configurable": {"thread_id": "saga_generation"}}
 
         chapters_generated = 0
-        while (
-            chapters_generated < chapters_per_run and current_chapter <= total_chapters
-        ):
-            logger.info(
-                "=" * 60
-                + f"\nGenerating Chapter {current_chapter} of {total_chapters}"
-                + "\n"
-                + "=" * 60
-            )
+        while chapters_generated < chapters_per_run and current_chapter <= total_chapters:
+            logger.info("=" * 60 + f"\nGenerating Chapter {current_chapter} of {total_chapters}" + "\n" + "=" * 60)
 
             # Update state for this chapter
             state["current_chapter"] = current_chapter
@@ -277,9 +266,7 @@ class LangGraphOrchestrator:
                     )
                     break
                 else:
-                    logger.error(
-                        f"Chapter {current_chapter} generation failed - no events received"
-                    )
+                    logger.error(f"Chapter {current_chapter} generation failed - no events received")
                     break
 
             except Exception as e:
@@ -296,9 +283,7 @@ class LangGraphOrchestrator:
             final_chapter=current_chapter - 1,
         )
 
-    async def _handle_workflow_event(
-        self, event: dict[str, Any], chapter_number: int
-    ) -> None:
+    async def _handle_workflow_event(self, event: dict[str, Any], chapter_number: int) -> None:
         """
         Handle LangGraph workflow events for real-time progress tracking.
 
@@ -320,9 +305,7 @@ class LangGraphOrchestrator:
         # The node name is the KEY, and the state update is the VALUE.
 
         if not isinstance(event, dict) or len(event) == 0:
-            logger.warning(
-                "Received empty or invalid event", event_type=type(event).__name__
-            )
+            logger.warning("Received empty or invalid event", event_type=type(event).__name__)
             return
 
         # Extract node name and state update from event
@@ -335,11 +318,7 @@ class LangGraphOrchestrator:
             logger.debug(f"Skipping internal node event: {node_name}")
             return
 
-        initialization_step = (
-            state_update.get("initialization_step", "")
-            if isinstance(state_update, dict)
-            else ""
-        )
+        initialization_step = state_update.get("initialization_step", "") if isinstance(state_update, dict) else ""
 
         # Determine human-readable step description
         step_description = self._get_step_description(node_name, initialization_step)
@@ -413,9 +392,7 @@ class LangGraphOrchestrator:
                 acts=act_count,
             )
 
-    def _get_step_description(
-        self, node_name: str, initialization_step: str = ""
-    ) -> str:
+    def _get_step_description(self, node_name: str, initialization_step: str = "") -> str:
         """
         Convert node name to human-readable step description.
 
@@ -429,9 +406,7 @@ class LangGraphOrchestrator:
         # Initialization phase descriptions
         # Only use initialization_step if it's a recognized initialization phase
         # Ignore chapter outline completion markers like "chapter_outline_2_complete"
-        if initialization_step and not initialization_step.startswith(
-            "chapter_outline"
-        ):
+        if initialization_step and not initialization_step.startswith("chapter_outline"):
             init_descriptions = {
                 "character_sheets": "Generating Character Sheets",
                 "global_outline": "Creating Global Story Outline",

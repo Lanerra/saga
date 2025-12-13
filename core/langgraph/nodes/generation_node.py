@@ -178,10 +178,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
     max_gen_tokens = min(max_generation, available_tokens)
 
     if max_gen_tokens < 500:
-        error_msg = (
-            f"Insufficient token space for generation. "
-            f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
-        )
+        error_msg = f"Insufficient token space for generation. " f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
         logger.error("generate_chapter: token budget exceeded", error=error_msg)
         return {
             **state,
@@ -235,9 +232,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
 
         # Step 7: Deduplicate text to remove repetitive segments
         deduplicator = TextDeduplicator()
-        deduplicated_text, removed_chars = await deduplicator.deduplicate(
-            draft_text, segment_level="paragraph"
-        )
+        deduplicated_text, removed_chars = await deduplicator.deduplicate(draft_text, segment_level="paragraph")
 
         # Track if deduplication modified text (signals potentially flawed extraction)
         is_from_flawed_draft = removed_chars > 0
@@ -265,9 +260,7 @@ async def generate_chapter(state: NarrativeState) -> NarrativeState:
         content_manager = ContentManager(state.get("project_dir", ""))
 
         # Get current version (for revision tracking)
-        current_version = (
-            content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
-        )
+        current_version = content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
 
         # Externalize draft_text to reduce state bloat
         draft_ref = content_manager.save_text(

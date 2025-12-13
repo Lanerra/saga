@@ -38,9 +38,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     # Calculate target word count for this scene
     total_target = 3000  # Default chapter length
     if state.get("target_word_count") and state.get("total_chapters"):
-        total_target = state.get("target_word_count", 0) // state.get(
-            "total_chapters", 0
-        )
+        total_target = state.get("target_word_count", 0) // state.get("total_chapters", 0)
 
     scene_target = total_target // len(chapter_plan)
 
@@ -74,10 +72,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         new_drafts = current_drafts + [draft_text]
 
         # Save updated scene drafts
-        current_version = (
-            content_manager.get_latest_version("scenes", f"chapter_{chapter_number}")
-            + 1
-        )
+        current_version = content_manager.get_latest_version("scenes", f"chapter_{chapter_number}") + 1
         scene_drafts_ref = content_manager.save_list_of_texts(
             new_drafts,
             "scenes",

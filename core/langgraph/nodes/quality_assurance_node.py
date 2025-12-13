@@ -92,9 +92,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
 
     if config.settings.QA_CHECK_CONTRADICTORY_TRAITS:
         try:
-            contradictory_traits = await find_contradictory_trait_characters(
-                CONTRADICTORY_TRAIT_PAIRS
-            )
+            contradictory_traits = await find_contradictory_trait_characters(CONTRADICTORY_TRAIT_PAIRS)
             qa_results["contradictory_traits"] = contradictory_traits
             qa_results["issues_found"] += len(contradictory_traits)
 
@@ -102,10 +100,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 logger.warning(
                     "check_quality: Found characters with contradictory traits",
                     count=len(contradictory_traits),
-                    examples=[
-                        f"{c['character_name']}: {c['trait1']} vs {c['trait2']}"
-                        for c in contradictory_traits[:3]
-                    ],
+                    examples=[f"{c['character_name']}: {c['trait1']} vs {c['trait2']}" for c in contradictory_traits[:3]],
                 )
 
         except Exception as e:
@@ -125,10 +120,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 logger.warning(
                     "check_quality: Found post-mortem character activity",
                     count=len(post_mortem),
-                    examples=[
-                        f"{a['character_name']} (died ch. {a['death_chapter']})"
-                        for a in post_mortem[:3]
-                    ],
+                    examples=[f"{a['character_name']} (died ch. {a['death_chapter']})" for a in post_mortem[:3]],
                 )
 
         except Exception as e:
@@ -184,10 +176,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     )
 
     total_issues = qa_results["issues_found"]
-    total_fixes = (
-        qa_results["relationships_deduplicated"]
-        + qa_results["relationships_consolidated"]
-    )
+    total_fixes = qa_results["relationships_deduplicated"] + qa_results["relationships_consolidated"]
 
     logger.info(
         "check_quality: Quality assurance complete",

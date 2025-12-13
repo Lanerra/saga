@@ -24,9 +24,7 @@ def _require_file(root: Path, relative: str, missing: list[str]) -> None:
         missing.append(f"Missing {relative}")
 
 
-def _require_any(
-    root: Path, pattern: str, description: str, missing: list[str]
-) -> None:
+def _require_any(root: Path, pattern: str, description: str, missing: list[str]) -> None:
     """Check that at least one file matching pattern exists under root.
 
     Append description to missing if none found.

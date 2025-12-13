@@ -21,9 +21,7 @@ logger = structlog.get_logger(__name__)
 class ConfigurationValidationError(Exception):
     """Exception raised when configuration validation fails."""
 
-    def __init__(
-        self, message: str, field: str, bootstrap_value: Any, runtime_value: Any
-    ):
+    def __init__(self, message: str, field: str, bootstrap_value: Any, runtime_value: Any):
         self.message = message
         self.field = field
         self.bootstrap_value = bootstrap_value
@@ -42,9 +40,7 @@ class BootstrapContentValidator:
     def __init__(self) -> None:
         self.logger = structlog.get_logger(__name__)
 
-    def validate_plot_outline_consistency(
-        self, plot_outline: dict[str, Any], bootstrap_source: str = "bootstrap"
-    ) -> list[ConfigurationValidationError]:
+    def validate_plot_outline_consistency(self, plot_outline: dict[str, Any], bootstrap_source: str = "bootstrap") -> list[ConfigurationValidationError]:
         """
         Validate that plot outline content is consistent with runtime configuration.
 
@@ -168,17 +164,11 @@ class BootstrapContentValidator:
         errors: list[ConfigurationValidationError] = []
 
         # Check if world overview exists and matches setting description
-        if (
-            "_overview_" in world_building
-            and "_overview_" in world_building["_overview_"]
-        ):
+        if "_overview_" in world_building and "_overview_" in world_building["_overview_"]:
             overview_item = world_building["_overview_"]["_overview_"]
             if isinstance(overview_item, WorldItem):
                 overview_desc = overview_item.description
-                if (
-                    overview_desc
-                    and overview_desc != config.CONFIGURED_SETTING_DESCRIPTION
-                ):
+                if overview_desc and overview_desc != config.CONFIGURED_SETTING_DESCRIPTION:
                     errors.append(
                         ConfigurationValidationError(
                             "World overview description differs from runtime configuration",
@@ -212,21 +202,15 @@ class BootstrapContentValidator:
         all_errors: list[ConfigurationValidationError] = []
 
         # Validate plot outline
-        plot_errors = self.validate_plot_outline_consistency(
-            plot_outline, bootstrap_source
-        )
+        plot_errors = self.validate_plot_outline_consistency(plot_outline, bootstrap_source)
         all_errors.extend(plot_errors)
 
         # Validate character profiles
-        char_errors = self.validate_character_profiles_consistency(
-            character_profiles, plot_outline
-        )
+        char_errors = self.validate_character_profiles_consistency(character_profiles, plot_outline)
         all_errors.extend(char_errors)
 
         # Validate world building
-        world_errors = self.validate_world_building_consistency(
-            world_building, plot_outline
-        )
+        world_errors = self.validate_world_building_consistency(world_building, plot_outline)
         all_errors.extend(world_errors)
 
         is_valid = len(all_errors) == 0
@@ -242,9 +226,7 @@ class BootstrapContentValidator:
 
         return is_valid, all_errors
 
-    def suggest_corrections(
-        self, errors: list[ConfigurationValidationError]
-    ) -> dict[str, Any]:
+    def suggest_corrections(self, errors: list[ConfigurationValidationError]) -> dict[str, Any]:
         """
         Suggest corrections for validation errors.
 
@@ -264,35 +246,19 @@ class BootstrapContentValidator:
         for error in errors:
             if error.field == "genre":
                 corrections["plot_outline"]["genre"] = config.CONFIGURED_GENRE
-                corrections["config_updates"]["CONFIGURED_GENRE"] = (
-                    config.CONFIGURED_GENRE
-                )
+                corrections["config_updates"]["CONFIGURED_GENRE"] = config.CONFIGURED_GENRE
             elif error.field == "theme":
                 corrections["plot_outline"]["theme"] = config.CONFIGURED_THEME
-                corrections["config_updates"]["CONFIGURED_THEME"] = (
-                    config.CONFIGURED_THEME
-                )
+                corrections["config_updates"]["CONFIGURED_THEME"] = config.CONFIGURED_THEME
             elif error.field == "setting":
-                corrections["plot_outline"]["setting"] = (
-                    config.CONFIGURED_SETTING_DESCRIPTION
-                )
-                corrections["config_updates"]["CONFIGURED_SETTING_DESCRIPTION"] = (
-                    config.CONFIGURED_SETTING_DESCRIPTION
-                )
+                corrections["plot_outline"]["setting"] = config.CONFIGURED_SETTING_DESCRIPTION
+                corrections["config_updates"]["CONFIGURED_SETTING_DESCRIPTION"] = config.CONFIGURED_SETTING_DESCRIPTION
             elif error.field == "protagonist_name":
-                corrections["plot_outline"]["protagonist_name"] = (
-                    config.DEFAULT_PROTAGONIST_NAME
-                )
-                corrections["config_updates"]["DEFAULT_PROTAGONIST_NAME"] = (
-                    config.DEFAULT_PROTAGONIST_NAME
-                )
+                corrections["plot_outline"]["protagonist_name"] = config.DEFAULT_PROTAGONIST_NAME
+                corrections["config_updates"]["DEFAULT_PROTAGONIST_NAME"] = config.DEFAULT_PROTAGONIST_NAME
             elif error.field == "setting_description":
-                corrections["world_building"]["_overview_"] = (
-                    config.CONFIGURED_SETTING_DESCRIPTION
-                )
-                corrections["config_updates"]["CONFIGURED_SETTING_DESCRIPTION"] = (
-                    config.CONFIGURED_SETTING_DESCRIPTION
-                )
+                corrections["world_building"]["_overview_"] = config.CONFIGURED_SETTING_DESCRIPTION
+                corrections["config_updates"]["CONFIGURED_SETTING_DESCRIPTION"] = config.CONFIGURED_SETTING_DESCRIPTION
 
         return corrections
 

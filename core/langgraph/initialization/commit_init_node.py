@@ -181,9 +181,7 @@ async def _parse_character_sheets_to_profiles(
                 "_parse_character_sheets_to_profiles: no pre-parsed traits, using LLM extraction",
                 character=name,
             )
-            structured_data = await _extract_structured_character_data(
-                name, description
-            )
+            structured_data = await _extract_structured_character_data(name, description)
             raw_extracted_traits = structured_data.get("traits", [])
             traits = validate_and_filter_traits(raw_extracted_traits)
             status = structured_data.get("status", status)
@@ -219,9 +217,7 @@ async def _parse_character_sheets_to_profiles(
     return profiles
 
 
-async def _extract_structured_character_data(
-    name: str, description: str, model_name: str | None = None
-) -> dict[str, Any]:
+async def _extract_structured_character_data(name: str, description: str, model_name: str | None = None) -> dict[str, Any]:
     """
     Use LLM to extract structured data from character sheet description.
 
@@ -318,9 +314,7 @@ def _parse_character_extraction_response(response: str) -> dict[str, Any]:
     return structured
 
 
-async def _extract_world_items_from_outline(
-    global_outline: dict, setting: str, model_name: str | None = None
-) -> list[WorldItem]:
+async def _extract_world_items_from_outline(global_outline: dict, setting: str, model_name: str | None = None) -> list[WorldItem]:
     """
     Extract world-building elements from the global outline.
 
@@ -423,9 +417,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
             from processing.entity_deduplication import generate_entity_id
 
             item = WorldItem(
-                id=generate_entity_id(
-                    name, category, chapter=0
-                ),  # chapter=0 for initialization
+                id=generate_entity_id(name, category, chapter=0),  # chapter=0 for initialization
                 name=name,
                 description=description,
                 category=category,

@@ -84,11 +84,7 @@ def generate_docs(
         default_val = getattr(current_settings, field_name, None)
         default_str = _format_default(default_val)
 
-        description = (
-            field_info.description.replace("\n", " ").strip()
-            if field_info.description
-            else ""
-        )
+        description = field_info.description.replace("\n", " ").strip() if field_info.description else ""
 
         description = description.replace("|", "\\|")
 

@@ -110,11 +110,7 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
     assert state["initialization_complete"] is False
 
     # Assert: warning about incomplete initialization artifacts was logged
-    warnings = [
-        record
-        for record in caplog.records
-        if "Initialization artifacts incomplete" in record.getMessage()
-    ]
+    warnings = [record for record in caplog.records if "Initialization artifacts incomplete" in record.getMessage()]
     # NOTE: This test might be failing due to how pytest captures logs in async tests
     # or how the orchestrator is initialized. For now, let's just check if caplog is working.
     # If the list is empty, it means either the log wasn't emitted or captured.
@@ -191,9 +187,5 @@ async def test_load_or_create_state_no_warning_when_artifacts_complete(
     assert state["initialization_complete"] is True
 
     # Assert: no warning about incomplete artifacts
-    warnings = [
-        record
-        for record in caplog.records
-        if "Initialization artifacts incomplete for" in record.getMessage()
-    ]
+    warnings = [record for record in caplog.records if "Initialization artifacts incomplete for" in record.getMessage()]
     assert not warnings

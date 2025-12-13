@@ -31,18 +31,10 @@ class TestBuildContextFromGraph:
         mock_chapter_queries,
     ):
         """Test building context with default parameters."""
-        with patch(
-            "core.langgraph.graph_context.character_queries", mock_character_queries
-        ):
-            with patch(
-                "core.langgraph.graph_context.world_queries", mock_world_queries
-            ):
-                with patch(
-                    "core.langgraph.graph_context.chapter_queries", mock_chapter_queries
-                ):
-                    with patch(
-                        "core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager
-                    ):
+        with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
+            with patch("core.langgraph.graph_context.world_queries", mock_world_queries):
+                with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
+                    with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
                         context = await build_context_from_graph(current_chapter=5)
 
                         assert "characters" in context
@@ -62,22 +54,12 @@ class TestBuildContextFromGraph:
     ):
         """Test building context with specific character names."""
         # Mock character lookup
-        mock_character_queries.get_character_profile_by_name = AsyncMock(
-            return_value=sample_character_profile
-        )
+        mock_character_queries.get_character_profile_by_name = AsyncMock(return_value=sample_character_profile)
 
-        with patch(
-            "core.langgraph.graph_context.character_queries", mock_character_queries
-        ):
-            with patch(
-                "core.langgraph.graph_context.world_queries", mock_world_queries
-            ):
-                with patch(
-                    "core.langgraph.graph_context.chapter_queries", mock_chapter_queries
-                ):
-                    with patch(
-                        "core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager
-                    ):
+        with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
+            with patch("core.langgraph.graph_context.world_queries", mock_world_queries):
+                with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
+                    with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
                         context = await build_context_from_graph(
                             current_chapter=5,
                             active_character_names=["Test Hero"],
@@ -104,18 +86,10 @@ class TestBuildContextFromGraph:
             }
         ]
 
-        with patch(
-            "core.langgraph.graph_context.character_queries", mock_character_queries
-        ):
-            with patch(
-                "core.langgraph.graph_context.world_queries", mock_world_queries
-            ):
-                with patch(
-                    "core.langgraph.graph_context.chapter_queries", mock_chapter_queries
-                ):
-                    with patch(
-                        "core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager
-                    ):
+        with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
+            with patch("core.langgraph.graph_context.world_queries", mock_world_queries):
+                with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
+                    with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
                         context = await build_context_from_graph(
                             current_chapter=5,
                             location_id="loc_001",
@@ -124,24 +98,14 @@ class TestBuildContextFromGraph:
                         assert context["location"] is not None
                         assert context["location"]["name"] == "Castle"
 
-    async def test_build_context_handles_errors(
-        self, mock_character_queries, mock_world_queries, mock_chapter_queries
-    ):
+    async def test_build_context_handles_errors(self, mock_character_queries, mock_world_queries, mock_chapter_queries):
         """Test that context building handles errors gracefully."""
         # Mock character queries to raise exception
-        mock_character_queries.get_characters_for_chapter_context_native.side_effect = (
-            Exception("Query error")
-        )
+        mock_character_queries.get_characters_for_chapter_context_native.side_effect = Exception("Query error")
 
-        with patch(
-            "core.langgraph.graph_context.character_queries", mock_character_queries
-        ):
-            with patch(
-                "core.langgraph.graph_context.world_queries", mock_world_queries
-            ):
-                with patch(
-                    "core.langgraph.graph_context.chapter_queries", mock_chapter_queries
-                ):
+        with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
+            with patch("core.langgraph.graph_context.world_queries", mock_world_queries):
+                with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
                     context = await build_context_from_graph(current_chapter=5)
 
                     # Should return empty context structure
@@ -154,17 +118,11 @@ class TestBuildContextFromGraph:
 class TestGetCharactersByNames:
     """Tests for _get_characters_by_names helper function."""
 
-    async def test_get_existing_characters(
-        self, mock_character_queries, sample_character_profile
-    ):
+    async def test_get_existing_characters(self, mock_character_queries, sample_character_profile):
         """Test getting characters that exist."""
-        mock_character_queries.get_character_profile_by_name = AsyncMock(
-            return_value=sample_character_profile
-        )
+        mock_character_queries.get_character_profile_by_name = AsyncMock(return_value=sample_character_profile)
 
-        with patch(
-            "core.langgraph.graph_context.character_queries", mock_character_queries
-        ):
+        with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
             characters = await _get_characters_by_names(["Test Hero"])
 
             assert len(characters) == 1
@@ -172,22 +130,16 @@ class TestGetCharactersByNames:
 
     async def test_get_nonexistent_characters(self, mock_character_queries):
         """Test getting characters that don't exist."""
-        mock_character_queries.get_character_profile_by_name = AsyncMock(
-            return_value=None
-        )
+        mock_character_queries.get_character_profile_by_name = AsyncMock(return_value=None)
 
-        with patch(
-            "core.langgraph.graph_context.character_queries", mock_character_queries
-        ):
+        with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
             characters = await _get_characters_by_names(["Nonexistent"])
 
             assert len(characters) == 0
 
     async def test_get_empty_list(self, mock_character_queries):
         """Test with empty character name list."""
-        with patch(
-            "core.langgraph.graph_context.character_queries", mock_character_queries
-        ):
+        with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
             characters = await _get_characters_by_names([])
 
             assert len(characters) == 0
@@ -233,24 +185,16 @@ class TestGetRecentSummaries:
             4: {"summary": "Chapter 4 summary", "text": "...", "is_provisional": False},
         }
 
-        with patch(
-            "core.langgraph.graph_context.chapter_queries", mock_chapter_queries
-        ):
-            summaries = await _get_recent_summaries(
-                current_chapter=5, lookback_chapters=3
-            )
+        with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
+            summaries = await _get_recent_summaries(current_chapter=5, lookback_chapters=3)
 
             assert len(summaries) == 2
             assert summaries[0]["summary"] == "Chapter 3 summary"
 
     async def test_get_summaries_with_no_lookback(self, mock_chapter_queries):
         """Test with no lookback (current chapter = 1)."""
-        with patch(
-            "core.langgraph.graph_context.chapter_queries", mock_chapter_queries
-        ):
-            summaries = await _get_recent_summaries(
-                current_chapter=1, lookback_chapters=5
-            )
+        with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
+            summaries = await _get_recent_summaries(current_chapter=1, lookback_chapters=5)
 
             assert summaries == []
 

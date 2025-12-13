@@ -66,23 +66,15 @@ class TokenizerService:
             try:
                 encoder = tiktoken.encoding_for_model(model_name)
             except KeyError:
-                logger.debug(
-                    f"No direct tiktoken encoding for '{model_name}'. "
-                    f"Using default '{config.TIKTOKEN_DEFAULT_ENCODING}'."
-                )
+                logger.debug(f"No direct tiktoken encoding for '{model_name}'. " f"Using default '{config.TIKTOKEN_DEFAULT_ENCODING}'.")
                 encoder = tiktoken.get_encoding(config.TIKTOKEN_DEFAULT_ENCODING)
 
             self._tokenizer_cache[model_name] = encoder
-            logger.debug(
-                f"Tokenizer for model '{model_name}' (using actual encoder '{encoder.name}') found and cached."
-            )
+            logger.debug(f"Tokenizer for model '{model_name}' (using actual encoder '{encoder.name}') found and cached.")
             return encoder
 
         except KeyError:
-            logger.error(
-                f"Default tiktoken encoding '{config.TIKTOKEN_DEFAULT_ENCODING}' also not found. "
-                f"Token counting will fall back to character-based heuristic for '{model_name}'."
-            )
+            logger.error(f"Default tiktoken encoding '{config.TIKTOKEN_DEFAULT_ENCODING}' also not found. " f"Token counting will fall back to character-based heuristic for '{model_name}'.")
             return None
 
         except Exception as e:
@@ -115,10 +107,7 @@ class TokenizerService:
             self._stats["fallback_used"] += 1
             char_count = len(text)
             token_estimate = int(char_count / config.FALLBACK_CHARS_PER_TOKEN)
-            logger.warning(
-                f"count_tokens: Failed to get tokenizer for '{model_name}'. "
-                f"Falling back to character-based estimate: {char_count} chars -> ~{token_estimate} tokens."
-            )
+            logger.warning(f"count_tokens: Failed to get tokenizer for '{model_name}'. " f"Falling back to character-based estimate: {char_count} chars -> ~{token_estimate} tokens.")
             return token_estimate
 
     def truncate_text_by_tokens(
@@ -149,10 +138,7 @@ class TokenizerService:
             # Fallback to character-based truncation
             self._stats["fallback_used"] += 1
             max_chars = int(max_tokens * config.FALLBACK_CHARS_PER_TOKEN)
-            logger.warning(
-                f"truncate_text_by_tokens: Failed to get tokenizer for '{model_name}'. "
-                f"Falling back to character-based truncation: {max_tokens} tokens -> ~{max_chars} chars."
-            )
+            logger.warning(f"truncate_text_by_tokens: Failed to get tokenizer for '{model_name}'. " f"Falling back to character-based truncation: {max_tokens} tokens -> ~{max_chars} chars.")
             if len(text) > max_chars:
                 effective_max_chars = max_chars - len(truncation_marker)
                 if effective_max_chars < 0:
@@ -167,18 +153,13 @@ class TokenizerService:
         # Calculate tokens needed for truncation marker
         marker_tokens_len = 0
         if truncation_marker:
-            marker_tokens_len = len(
-                encoder.encode(truncation_marker, allowed_special="all")
-            )
+            marker_tokens_len = len(encoder.encode(truncation_marker, allowed_special="all"))
 
         content_tokens_to_keep = max_tokens - marker_tokens_len
         effective_truncation_marker = truncation_marker
 
         if content_tokens_to_keep < 0:
-            logger.debug(
-                f"Truncation marker ('{truncation_marker}' -> {marker_tokens_len} tokens) "
-                f"is longer than max_tokens ({max_tokens}). Using empty marker."
-            )
+            logger.debug(f"Truncation marker ('{truncation_marker}' -> {marker_tokens_len} tokens) " f"is longer than max_tokens ({max_tokens}). Using empty marker.")
             content_tokens_to_keep = max_tokens
             effective_truncation_marker = ""
 
@@ -186,10 +167,7 @@ class TokenizerService:
 
         # Ensure we keep at least one token if possible
         if not truncated_content_tokens and max_tokens > 0 and tokens:
-            logger.debug(
-                "Truncated content to 0 tokens due to marker length. "
-                "Attempting to keep 1 token of content."
-            )
+            logger.debug("Truncated content to 0 tokens due to marker length. " "Attempting to keep 1 token of content.")
             truncated_content_tokens = tokens[:1]
             effective_truncation_marker = ""
 
@@ -198,19 +176,12 @@ class TokenizerService:
             return decoded_text + effective_truncation_marker
         except Exception as e:
             logger.error(
-                f"Error decoding truncated tokens for model '{model_name}': {e}. "
-                f"Falling back to simpler char-based truncation.",
+                f"Error decoding truncated tokens for model '{model_name}': {e}. " f"Falling back to simpler char-based truncation.",
                 exc_info=True,
             )
             # Fallback to character-based truncation
-            avg_chars_per_token = (
-                len(text) / len(tokens)
-                if len(tokens) > 0
-                else config.FALLBACK_CHARS_PER_TOKEN
-            )
-            estimated_char_limit_for_content = int(
-                content_tokens_to_keep * avg_chars_per_token
-            )
+            avg_chars_per_token = len(text) / len(tokens) if len(tokens) > 0 else config.FALLBACK_CHARS_PER_TOKEN
+            estimated_char_limit_for_content = int(content_tokens_to_keep * avg_chars_per_token)
             return text[:estimated_char_limit_for_content] + effective_truncation_marker
 
     def get_statistics(self) -> dict[str, Any]:
@@ -218,12 +189,8 @@ class TokenizerService:
         total_requests = self._stats["tokenizer_requests"]
         return {
             **self._stats,
-            "cache_hit_rate": (self._stats["cache_hits"] / total_requests * 100)
-            if total_requests > 0
-            else 0,
-            "fallback_rate": (self._stats["fallback_used"] / total_requests * 100)
-            if total_requests > 0
-            else 0,
+            "cache_hit_rate": (self._stats["cache_hits"] / total_requests * 100) if total_requests > 0 else 0,
+            "fallback_rate": (self._stats["fallback_used"] / total_requests * 100) if total_requests > 0 else 0,
         }
 
 
@@ -282,15 +249,9 @@ class ResponseCleaningService:
                     flags=re.DOTALL | re.IGNORECASE,
                 )
             )
-            patterns["think_self_closing"].append(
-                re.compile(rf"<\s*{tag_name}\s*/\s*>", flags=re.IGNORECASE)
-            )
-            patterns["think_opening"].append(
-                re.compile(rf"<\s*{tag_name}\s*>", flags=re.IGNORECASE)
-            )
-            patterns["think_closing"].append(
-                re.compile(rf"<\s*/\s*{tag_name}\s*>", flags=re.IGNORECASE)
-            )
+            patterns["think_self_closing"].append(re.compile(rf"<\s*{tag_name}\s*/\s*>", flags=re.IGNORECASE))
+            patterns["think_opening"].append(re.compile(rf"<\s*{tag_name}\s*>", flags=re.IGNORECASE))
+            patterns["think_closing"].append(re.compile(rf"<\s*/\s*{tag_name}\s*>", flags=re.IGNORECASE))
 
         # Code blocks
         patterns["code_blocks"].append(
@@ -324,9 +285,7 @@ class ResponseCleaningService:
         ]
 
         for pattern_str in phrase_patterns:
-            patterns["common_phrases"].append(
-                re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE)
-            )
+            patterns["common_phrases"].append(re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE))
 
         return patterns
 
@@ -341,9 +300,7 @@ class ResponseCleaningService:
             Cleaned and normalized text
         """
         if not isinstance(text, str):
-            logger.warning(
-                f"clean_response received non-string input: {type(text)}. Returning empty string."
-            )
+            logger.warning(f"clean_response received non-string input: {type(text)}. Returning empty string.")
             return ""
 
         self._stats["responses_cleaned"] += 1
@@ -363,10 +320,7 @@ class ResponseCleaningService:
 
         if len(cleaned_text) < len(text_before_think_removal):
             self._stats["think_tags_removed"] += 1
-            logger.debug(
-                f"clean_response: Removed think tag content. "
-                f"Length before: {len(text_before_think_removal)}, after: {len(cleaned_text)}."
-            )
+            logger.debug(f"clean_response: Removed think tag content. " f"Length before: {len(text_before_think_removal)}, after: {len(cleaned_text)}.")
 
         # Remove code blocks
         for pattern in self._compiled_patterns["code_blocks"]:
@@ -403,15 +357,10 @@ class ResponseCleaningService:
 
         # Track significant reductions
         if original_length > 0 and len(final_text) < original_length:
-            reduction_percentage = (
-                (original_length - len(final_text)) / original_length
-            ) * 100
+            reduction_percentage = ((original_length - len(final_text)) / original_length) * 100
             if reduction_percentage > 0.5:
                 self._stats["significant_reductions"] += 1
-                logger.debug(
-                    f"Cleaning reduced text length from {original_length} to {len(final_text)} "
-                    f"({reduction_percentage:.1f}% reduction)."
-                )
+                logger.debug(f"Cleaning reduced text length from {original_length} to {len(final_text)} " f"({reduction_percentage:.1f}% reduction).")
 
         return final_text
 
@@ -420,26 +369,10 @@ class ResponseCleaningService:
         total_cleaned = self._stats["responses_cleaned"]
         return {
             **self._stats,
-            "think_removal_rate": (
-                self._stats["think_tags_removed"] / total_cleaned * 100
-            )
-            if total_cleaned > 0
-            else 0,
-            "code_cleaning_rate": (
-                self._stats["code_blocks_cleaned"] / total_cleaned * 100
-            )
-            if total_cleaned > 0
-            else 0,
-            "phrase_removal_rate": (
-                self._stats["phrases_removed"] / total_cleaned * 100
-            )
-            if total_cleaned > 0
-            else 0,
-            "significant_reduction_rate": (
-                self._stats["significant_reductions"] / total_cleaned * 100
-            )
-            if total_cleaned > 0
-            else 0,
+            "think_removal_rate": (self._stats["think_tags_removed"] / total_cleaned * 100) if total_cleaned > 0 else 0,
+            "code_cleaning_rate": (self._stats["code_blocks_cleaned"] / total_cleaned * 100) if total_cleaned > 0 else 0,
+            "phrase_removal_rate": (self._stats["phrases_removed"] / total_cleaned * 100) if total_cleaned > 0 else 0,
+            "significant_reduction_rate": (self._stats["significant_reductions"] / total_cleaned * 100) if total_cleaned > 0 else 0,
         }
 
 
@@ -485,6 +418,4 @@ def truncate_text_by_tokens(
     truncation_marker: str = "\n... (truncated)",
 ) -> str:
     """Convenience function for text truncation using default service."""
-    return _default_tokenizer.truncate_text_by_tokens(
-        text, model_name, max_tokens, truncation_marker
-    )
+    return _default_tokenizer.truncate_text_by_tokens(text, model_name, max_tokens, truncation_marker)

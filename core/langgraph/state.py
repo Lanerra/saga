@@ -69,9 +69,7 @@ class ExtractedEntity(BaseModel):
     def validate_entity_type(self) -> ExtractedEntity:
         """Validate and normalize the entity type."""
         current_type = self.type
-        is_valid, normalized_type, _ = schema_validator.validate_entity_type(
-            current_type
-        )
+        is_valid, normalized_type, _ = schema_validator.validate_entity_type(current_type)
 
         # Preserve the original specific type in attributes before normalization
         if is_valid and normalized_type != current_type:
@@ -213,9 +211,7 @@ class NarrativeState(TypedDict, total=False):
 
     # Externalized context references
     summaries_ref: ContentRef | None  # Reference to externalized summaries
-    active_characters_ref: (
-        ContentRef | None
-    )  # Reference to externalized active characters
+    active_characters_ref: ContentRef | None  # Reference to externalized active characters
 
     # =========================================================================
     # Generated Content (current chapter)
@@ -242,12 +238,8 @@ class NarrativeState(TypedDict, total=False):
     extracted_relationships: list[ExtractedRelationship]
 
     # Externalized extraction references (to reduce state bloat)
-    extracted_entities_ref: (
-        ContentRef | None
-    )  # Reference to externalized extracted entities
-    extracted_relationships_ref: (
-        ContentRef | None
-    )  # Reference to externalized extracted relationships
+    extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities
+    extracted_relationships_ref: ContentRef | None  # Reference to externalized extracted relationships
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)
@@ -255,9 +247,7 @@ class NarrativeState(TypedDict, total=False):
     contradictions: list[Contradiction]
     needs_revision: bool
     revision_feedback: str | None
-    is_from_flawed_draft: (
-        bool  # True if deduplication removed text or other quality issues detected
-    )
+    is_from_flawed_draft: bool  # True if deduplication removed text or other quality issues detected
 
     # =========================================================================
     # Quality Metrics (LLM-evaluated quality scores)
@@ -330,9 +320,7 @@ class NarrativeState(TypedDict, total=False):
     # Revision State (properly typed with TypedDict structures)
     # =========================================================================
     evaluation_result: EvaluationResult | None  # EvaluationResult TypedDict
-    patch_instructions: (
-        list[PatchInstruction] | None
-    )  # List of PatchInstruction TypedDicts
+    patch_instructions: list[PatchInstruction] | None  # List of PatchInstruction TypedDicts
 
     # =========================================================================
     # World Building Context
@@ -350,14 +338,10 @@ class NarrativeState(TypedDict, total=False):
     # Initialization Phase State (for initialization workflow)
     # =========================================================================
     # Externalized initialization content references
-    character_sheets_ref: (
-        ContentRef | None
-    )  # Reference to externalized character sheets
+    character_sheets_ref: ContentRef | None  # Reference to externalized character sheets
     global_outline_ref: ContentRef | None  # Reference to externalized global outline
     act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
-    chapter_outlines_ref: (
-        ContentRef | None
-    )  # Reference to externalized chapter outlines
+    chapter_outlines_ref: ContentRef | None  # Reference to externalized chapter outlines
 
     # Inline initialization artifacts (for tests or before persistence)
     character_sheets: dict[str, Any] | None
@@ -372,9 +356,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Relationship Vocabulary (for normalization)
     # =========================================================================
-    relationship_vocabulary: dict[
-        str, Any
-    ]  # Maps canonical_type -> RelationshipUsage dict
+    relationship_vocabulary: dict[str, Any]  # Maps canonical_type -> RelationshipUsage dict
     relationship_vocabulary_size: int  # Track vocabulary growth
     relationships_normalized_this_chapter: int  # Monitoring metric
     relationships_novel_this_chapter: int  # Monitoring metric

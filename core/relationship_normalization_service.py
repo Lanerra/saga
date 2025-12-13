@@ -84,9 +84,7 @@ class RelationshipNormalizationService:
             return canonical_form, False, 0.0
 
         # Find most similar existing relationship
-        best_match, best_similarity = await self._find_most_similar(
-            canonical_form, list(vocabulary.keys())
-        )
+        best_match, best_similarity = await self._find_most_similar(canonical_form, list(vocabulary.keys()))
 
         threshold = config.REL_NORM_SIMILARITY_THRESHOLD
 
@@ -104,10 +102,7 @@ class RelationshipNormalizationService:
         # Check if in ambiguous range (for optional LLM disambiguation)
         ambiguous_min = config.REL_NORM_SIMILARITY_THRESHOLD_AMBIGUOUS_MIN
 
-        if (
-            ambiguous_min <= best_similarity < threshold
-            and config.REL_NORM_USE_LLM_DISAMBIGUATION
-        ):
+        if ambiguous_min <= best_similarity < threshold and config.REL_NORM_USE_LLM_DISAMBIGUATION:
             # Use LLM to disambiguate
             should_normalize = await self._llm_disambiguate(
                 rel_type,
@@ -156,9 +151,7 @@ class RelationshipNormalizationService:
 
         return canonical
 
-    async def _find_most_similar(
-        self, rel_type: str, vocabulary_types: list[str]
-    ) -> tuple[str, float]:
+    async def _find_most_similar(self, rel_type: str, vocabulary_types: list[str]) -> tuple[str, float]:
         """
         Find most semantically similar relationship type in vocabulary.
 
@@ -339,17 +332,13 @@ Answer with EXACTLY one word: NORMALIZE or DISTINCT"""
                 "usage_count": 1,
                 "example_descriptions": [rel_description] if rel_description else [],
                 "embedding": None,  # Will be computed on next comparison
-                "synonyms": [original_type]
-                if (was_normalized and original_type)
-                else [],
+                "synonyms": [original_type] if (was_normalized and original_type) else [],
                 "last_used_chapter": current_chapter,
             }
 
         return vocabulary
 
-    def prune_vocabulary(
-        self, vocabulary: dict[str, Any], current_chapter: int
-    ) -> dict[str, Any]:
+    def prune_vocabulary(self, vocabulary: dict[str, Any], current_chapter: int) -> dict[str, Any]:
         """
         Prune rarely-used relationships from vocabulary.
 

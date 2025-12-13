@@ -53,10 +53,7 @@ class HTTPClientService:
             "retry_attempts": 0,
         }
 
-        logger.info(
-            f"HTTPClientService initialized with timeout={timeout}s, "
-            f"concurrency_limit={config.MAX_CONCURRENT_LLM_CALLS}"
-        )
+        logger.info(f"HTTPClientService initialized with timeout={timeout}s, " f"concurrency_limit={config.MAX_CONCURRENT_LLM_CALLS}")
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client and cleanup resources."""
@@ -91,21 +88,15 @@ class HTTPClientService:
             self.request_count += 1
 
             effective_headers = headers or {}
-            effective_max_retries = (
-                max_retries if max_retries is not None else config.LLM_RETRY_ATTEMPTS
-            )
+            effective_max_retries = max_retries if max_retries is not None else config.LLM_RETRY_ATTEMPTS
 
             last_exception: Exception | None = None
 
             for attempt in range(effective_max_retries):
                 try:
-                    logger.debug(
-                        f"HTTP POST to {url} (attempt {attempt + 1}/{effective_max_retries})"
-                    )
+                    logger.debug(f"HTTP POST to {url} (attempt {attempt + 1}/{effective_max_retries})")
 
-                    response = await self._client.post(
-                        url, json=payload, headers=effective_headers
-                    )
+                    response = await self._client.post(url, json=payload, headers=effective_headers)
                     response.raise_for_status()
 
                     self._stats["successful_requests"] += 1
@@ -121,15 +112,11 @@ class HTTPClientService:
                     status_code = e.response.status_code if e.response else 0
                     response_text = e.response.text[:200] if e.response else "N/A"
 
-                    logger.warning(
-                        f"HTTP status error (attempt {attempt + 1}): {status_code} - {response_text}"
-                    )
+                    logger.warning(f"HTTP status error (attempt {attempt + 1}): {status_code} - {response_text}")
 
                     # Don't retry on client errors (except 429 rate limit)
                     if 400 <= status_code < 500 and status_code != 429:
-                        logger.error(
-                            f"Non-retryable client error {status_code}, aborting"
-                        )
+                        logger.error(f"Non-retryable client error {status_code}, aborting")
                         break
 
                 except httpx.RequestError as e:
@@ -146,17 +133,13 @@ class HTTPClientService:
                 # Apply retry delay if not the last attempt
                 if attempt < effective_max_retries - 1:
                     delay = config.LLM_RETRY_DELAY_SECONDS * (2**attempt)
-                    logger.info(
-                        f"Retrying in {delay:.2f}s due to: {type(last_exception).__name__}"
-                    )
+                    logger.info(f"Retrying in {delay:.2f}s due to: {type(last_exception).__name__}")
                     await asyncio.sleep(delay)
                     self._stats["retry_attempts"] += 1
 
             # All retries failed
             self._stats["failed_requests"] += 1
-            logger.error(
-                f"HTTP POST failed after {effective_max_retries} attempts: {last_exception}"
-            )
+            logger.error(f"HTTP POST failed after {effective_max_retries} attempts: {last_exception}")
 
             if last_exception:
                 raise last_exception
@@ -170,15 +153,9 @@ class HTTPClientService:
         total = self._stats["total_requests"]
         return {
             **self._stats,
-            "success_rate": (self._stats["successful_requests"] / total * 100)
-            if total > 0
-            else 0,
-            "failure_rate": (self._stats["failed_requests"] / total * 100)
-            if total > 0
-            else 0,
-            "avg_retries_per_request": (self._stats["retry_attempts"] / total)
-            if total > 0
-            else 0,
+            "success_rate": (self._stats["successful_requests"] / total * 100) if total > 0 else 0,
+            "failure_rate": (self._stats["failed_requests"] / total * 100) if total > 0 else 0,
+            "avg_retries_per_request": (self._stats["retry_attempts"] / total) if total > 0 else 0,
         }
 
 
@@ -219,14 +196,9 @@ class EmbeddingHTTPClient:
 
         payload = {"model": model, "prompt": text.strip()}
 
-        logger.debug(
-            f"Requesting embedding from Ollama for model '{model}': "
-            f"'{text[:80].replace(chr(10), ' ')}...'"
-        )
+        logger.debug(f"Requesting embedding from Ollama for model '{model}': " f"'{text[:80].replace(chr(10), ' ')}...'")
 
-        response = await self._http_client.post_json(
-            f"{config.EMBEDDING_API_BASE}/api/embeddings", payload
-        )
+        response = await self._http_client.post_json(f"{config.EMBEDDING_API_BASE}/api/embeddings", payload)
 
         return response.json()
 
@@ -289,14 +261,9 @@ class CompletionHTTPClient:
             "Content-Type": "application/json",
         }
 
-        logger.debug(
-            f"Requesting completion from {config.OPENAI_API_BASE} "
-            f"for model '{model}' with {len(messages)} messages"
-        )
+        logger.debug(f"Requesting completion from {config.OPENAI_API_BASE} " f"for model '{model}' with {len(messages)} messages")
 
-        response = await self._http_client.post_json(
-            f"{config.OPENAI_API_BASE}/chat/completions", payload, headers
-        )
+        response = await self._http_client.post_json(f"{config.OPENAI_API_BASE}/chat/completions", payload, headers)
 
         return response.json()
 

@@ -15,9 +15,7 @@ def service():
 async def test_normalize_exact_match(service):
     vocabulary = {"FRIENDS_WITH": {"canonical_type": "FRIENDS_WITH"}}
 
-    normalized, was_norm, sim = await service.normalize_relationship_type(
-        "FRIENDS_WITH", "They are friends", vocabulary, 1
-    )
+    normalized, was_norm, sim = await service.normalize_relationship_type("FRIENDS_WITH", "They are friends", vocabulary, 1)
 
     assert normalized == "FRIENDS_WITH"
     assert was_norm is False
@@ -28,9 +26,7 @@ async def test_normalize_exact_match(service):
 async def test_normalize_case_variant(service):
     vocabulary = {"FRIENDS_WITH": {"canonical_type": "FRIENDS_WITH"}}
 
-    normalized, was_norm, sim = await service.normalize_relationship_type(
-        "friends_with", "They are friends", vocabulary, 1
-    )
+    normalized, was_norm, sim = await service.normalize_relationship_type("friends_with", "They are friends", vocabulary, 1)
 
     assert normalized == "FRIENDS_WITH"
     assert was_norm is True
@@ -41,9 +37,7 @@ async def test_normalize_case_variant(service):
 async def test_normalize_punctuation_variant(service):
     vocabulary = {"FRIENDS_WITH": {"canonical_type": "FRIENDS_WITH"}}
 
-    normalized, was_norm, sim = await service.normalize_relationship_type(
-        "FRIENDS-WITH", "They are friends", vocabulary, 1
-    )
+    normalized, was_norm, sim = await service.normalize_relationship_type("FRIENDS-WITH", "They are friends", vocabulary, 1)
 
     assert normalized == "FRIENDS_WITH"
     assert was_norm is True
@@ -74,9 +68,7 @@ async def test_normalize_semantic_similarity(service):
 
         mock_embed.return_value = np.array([0.9, 0.1, 0.0])
 
-        normalized, was_norm, sim = await service.normalize_relationship_type(
-            "COLLABORATES_WITH", "Working together", vocabulary, 1
-        )
+        normalized, was_norm, sim = await service.normalize_relationship_type("COLLABORATES_WITH", "Working together", vocabulary, 1)
 
         # 0.9 / (1 * sqrt(0.82)) ~= 0.99
         assert normalized == "WORKS_WITH"
@@ -103,9 +95,7 @@ async def test_normalize_novel_relationship(service):
     ) as mock_embed:
         mock_embed.return_value = np.array([0.0, 1.0, 0.0])
 
-        normalized, was_norm, sim = await service.normalize_relationship_type(
-            "LOVES", "Deep affection", vocabulary, 1
-        )
+        normalized, was_norm, sim = await service.normalize_relationship_type("LOVES", "Deep affection", vocabulary, 1)
 
         assert normalized == "LOVES"
         assert was_norm is False
@@ -116,9 +106,7 @@ def test_update_vocabulary_usage(service):
     vocabulary = {}
 
     # First usage
-    vocab = service.update_vocabulary_usage(
-        vocabulary, "TEST_REL", "Description 1", 1, False
-    )
+    vocab = service.update_vocabulary_usage(vocabulary, "TEST_REL", "Description 1", 1, False)
 
     assert "TEST_REL" in vocab
     assert vocab["TEST_REL"]["usage_count"] == 1
@@ -126,9 +114,7 @@ def test_update_vocabulary_usage(service):
     assert "Description 1" in vocab["TEST_REL"]["example_descriptions"]
 
     # Second usage
-    vocab = service.update_vocabulary_usage(
-        vocab, "TEST_REL", "Description 2", 2, False
-    )
+    vocab = service.update_vocabulary_usage(vocab, "TEST_REL", "Description 2", 2, False)
 
     assert vocab["TEST_REL"]["usage_count"] == 2
     assert vocab["TEST_REL"]["last_used_chapter"] == 2

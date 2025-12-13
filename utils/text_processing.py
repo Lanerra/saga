@@ -52,9 +52,7 @@ def _normalize_for_id(text: str) -> str:
     return text
 
 
-async def get_context_snippet_for_patch(
-    original_text: str, problem: dict[str, Any], max_chars: int
-) -> str:
+async def get_context_snippet_for_patch(original_text: str, problem: dict[str, Any], max_chars: int) -> str:
     """Return a context snippet around the problem’s quote or start of text.
 
     Replaces the old _get_context_window_for_patch_llm shim with a proper helper
@@ -65,25 +63,19 @@ async def get_context_snippet_for_patch(
         return ""
     quote = None
     if isinstance(problem, dict):
-        quote = problem.get("original_problem_quote_text") or problem.get(
-            "quote_from_original_text"
-        )
+        quote = problem.get("original_problem_quote_text") or problem.get("quote_from_original_text")
     if isinstance(quote, str) and quote:
         idx = original_text.find(quote)
         if idx != -1:
             left = max_chars // 2
             start = max(0, idx - left)
-            end = min(
-                len(original_text), idx + len(quote) + (max_chars - (idx - start))
-            )
+            end = min(len(original_text), idx + len(quote) + (max_chars - (idx - start)))
             snippet = original_text[start:end]
             return snippet[:max_chars]
     return original_text[:max_chars]
 
 
-def validate_world_item_fields(
-    category: str, name: str, item_id: str, allow_empty_name: bool = False
-) -> tuple[str, str, str]:
+def validate_world_item_fields(category: str, name: str, item_id: str, allow_empty_name: bool = False) -> tuple[str, str, str]:
     """Validate and normalize WorldItem core fields, providing defaults for missing values."""
     # Validate category
     if not category or not isinstance(category, str) or not category.strip():
@@ -91,9 +83,7 @@ def validate_world_item_fields(
 
     # Validate name
     # Only set default name if allow_empty_name is False and name is actually missing/empty
-    if (not allow_empty_name) and (
-        not name or not isinstance(name, str) or not name.strip()
-    ):
+    if (not allow_empty_name) and (not name or not isinstance(name, str) or not name.strip()):
         name = "unnamed_element"
 
     # Validate ID: ensure deterministic, human-readable if possible
@@ -439,10 +429,7 @@ class SpaCyModelManager:
         try:  # import spacy lazily
             import spacy
         except Exception:
-            logger.error(
-                "spaCy library not installed. Install with: pip install spacy. "
-                "spaCy-dependent features will be disabled."
-            )
+            logger.error("spaCy library not installed. Install with: pip install spacy. " "spaCy-dependent features will be disabled.")
             self._nlp = None
             return
 
@@ -462,8 +449,7 @@ class SpaCyModelManager:
             logger.info("spaCy model '%s' loaded.", model_name)
         except OSError:
             logger.error(
-                "spaCy model '%s' not found. Install with: python -m spacy download %s. "
-                "spaCy-dependent features will be disabled.",
+                "spaCy model '%s' not found. Install with: python -m spacy download %s. " "spaCy-dependent features will be disabled.",
                 model_name,
                 model_name,
             )
@@ -486,9 +472,7 @@ def _normalize_text_for_matching(text: str) -> str:
     if not text:
         return ""
     text = text.lower()
-    text = re.sub(
-        r"^[ '\"\(]*(\.\.\.)?[ '\"\(]*|[ '\"\(]*(\.\.\.)?[ '\"\(]*$", "", text
-    )
+    text = re.sub(r"^[ '\"\(]*(\.\.\.)?[ '\"\(]*|[ '\"\(]*(\.\.\.)?[ '\"\(]*$", "", text)
     text = re.sub(r"[^\w\s]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -503,9 +487,7 @@ def _token_similarity(a: str, b: str) -> float:
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
 
 
-async def find_quote_and_sentence_offsets_with_spacy(
-    doc_text: str, quote_text_from_llm: str
-) -> tuple[int, int, int, int] | None:
+async def find_quote_and_sentence_offsets_with_spacy(doc_text: str, quote_text_from_llm: str) -> tuple[int, int, int, int] | None:
     """Locate quote and sentence offsets within ``doc_text``."""
     load_spacy_model_if_needed()
     if not quote_text_from_llm.strip() or not doc_text.strip():
@@ -513,16 +495,12 @@ async def find_quote_and_sentence_offsets_with_spacy(
         return None
 
     if "N/A - General Issue" in quote_text_from_llm:
-        logger.debug(
-            "Quote is '%s', treating as general issue. No offsets.", quote_text_from_llm
-        )
+        logger.debug("Quote is '%s', treating as general issue. No offsets.", quote_text_from_llm)
         return None
 
     cleaned_llm_quote_for_direct_search = quote_text_from_llm.strip(" \"'.")
     if not cleaned_llm_quote_for_direct_search:
-        logger.debug(
-            "LLM quote became empty after basic stripping for direct search, cannot match."
-        )
+        logger.debug("LLM quote became empty after basic stripping for direct search, cannot match.")
         return None
 
     # Prepare sentence segments regardless of spaCy availability
@@ -530,9 +508,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
 
     current_pos = 0
     while current_pos < len(doc_text):
-        match_start = doc_text.lower().find(
-            cleaned_llm_quote_for_direct_search.lower(), current_pos
-        )
+        match_start = doc_text.lower().find(cleaned_llm_quote_for_direct_search.lower(), current_pos)
         if match_start == -1:
             break
 
@@ -562,9 +538,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
         current_pos = match_end
 
     if partial_ratio_alignment is not None:
-        alignment = partial_ratio_alignment(
-            cleaned_llm_quote_for_direct_search, doc_text
-        )
+        alignment = partial_ratio_alignment(cleaned_llm_quote_for_direct_search, doc_text)
         if alignment is not None and getattr(alignment, "score", 0.0) >= 85.0:
             match_start = alignment.dest_start
             match_end = alignment.dest_end
@@ -640,9 +614,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
     return None
 
 
-def get_text_segments(
-    text: str, segment_level: str = "paragraph"
-) -> list[tuple[str, int, int]]:
+def get_text_segments(text: str, segment_level: str = "paragraph") -> list[tuple[str, int, int]]:
     """Segment text into paragraphs or sentences with offsets."""
     load_spacy_model_if_needed()
     segments: list[tuple[str, int, int]] = []
@@ -694,13 +666,9 @@ def get_text_segments(
             for sent in doc.sents:
                 sent_text_stripped = sent.text.strip()
                 if sent_text_stripped:
-                    segments.append(
-                        (sent_text_stripped, sent.start_char, sent.end_char)
-                    )
+                    segments.append((sent_text_stripped, sent.start_char, sent.end_char))
         else:
-            logger.warning(
-                "get_text_segments: spaCy model not loaded. Falling back to basic sentence segmentation (less accurate)."
-            )
+            logger.warning("get_text_segments: spaCy model not loaded. Falling back to basic sentence segmentation (less accurate).")
             for match in re.finditer(r"([^\.!?]+(?:[\.!?]|$))", text):
                 sent_text_stripped = match.group(1).strip()
                 if sent_text_stripped:
@@ -708,8 +676,6 @@ def get_text_segments(
             if not segments and text.strip():
                 segments.append((text.strip(), 0, len(text)))
     else:
-        raise ValueError(
-            f"Unsupported segment_level for get_text_segments: {segment_level}"
-        )
+        raise ValueError(f"Unsupported segment_level for get_text_segments: {segment_level}")
 
     return segments

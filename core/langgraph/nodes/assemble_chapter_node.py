@@ -36,9 +36,7 @@ def assemble_chapter(state: NarrativeState) -> NarrativeState:
     chapter_number = state.get("current_chapter", 1)
 
     # Get current version (for revision tracking)
-    current_version = (
-        content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
-    )
+    current_version = content_manager.get_latest_version("draft", f"chapter_{chapter_number}") + 1
 
     # Externalize scene_drafts to reduce state bloat
     scene_drafts_ref = content_manager.save_list_of_texts(

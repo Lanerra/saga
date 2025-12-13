@@ -1,4 +1,5 @@
 """Tests for data_access/character_queries.py"""
+
 from unittest.mock import AsyncMock
 
 import pytest
@@ -39,9 +40,7 @@ class TestGetAllCharacterNames:
     async def test_get_all_character_names_empty(self, monkeypatch):
         """Test getting character names when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.get_all_character_names()
         assert isinstance(result, list)
@@ -56,9 +55,7 @@ class TestGetAllCharacterNames:
                 {"name": "Charlie"},
             ]
         )
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.get_all_character_names()
         assert len(result) == 3
@@ -72,9 +69,7 @@ class TestGetCharacterInfoForSnippet:
     async def test_get_character_info_empty(self, monkeypatch):
         """Test getting character info when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
         assert result is None
@@ -94,9 +89,7 @@ class TestGetCharacterInfoForSnippet:
                 }
             ]
         )
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
         assert result is not None
@@ -111,9 +104,7 @@ class TestGetCharacterInfoForSnippet:
     async def test_get_character_info_empty(self, monkeypatch):
         """Test getting character info when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
         assert result is None
@@ -133,9 +124,7 @@ class TestGetCharacterInfoForSnippet:
                 }
             ]
         )
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
         assert result is not None
@@ -158,9 +147,7 @@ class TestGetCharacterInfoForSnippet:
                 }
             ]
         )
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.get_character_info_for_snippet_from_db("Lonely", 10)
         assert result is not None
@@ -177,9 +164,7 @@ class TestFindThinCharacters:
     async def test_find_thin_characters_empty(self, monkeypatch):
         """Test finding thin characters when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.find_thin_characters_for_enrichment()
         assert isinstance(result, list)
@@ -195,9 +180,7 @@ class TestFindThinCharacters:
                 }
             ]
         )
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.find_thin_characters_for_enrichment()
         assert len(result) > 0
@@ -210,9 +193,7 @@ class TestSyncCharacters:
     async def test_sync_characters_empty(self, monkeypatch):
         """Test syncing empty character list."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         result = await character_queries.sync_characters([], 1)
         assert result is True
@@ -220,22 +201,16 @@ class TestSyncCharacters:
     async def test_sync_characters_single(self, monkeypatch):
         """Test syncing single character."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
-        profile = CharacterProfile.from_dict(
-            "Alice", {"description": "A hero", "traits": ["brave"]}
-        )
+        profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]})
         result = await character_queries.sync_characters([profile], 1)
         assert result is True
 
     async def test_sync_characters_rebuilds_name_map(self, monkeypatch):
         """P1: sync should deterministically rebuild the canonical-name map (no stale accumulation)."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         # Seed stale state
         character_queries.CHAR_NAME_TO_CANONICAL.clear()
@@ -249,17 +224,12 @@ class TestSyncCharacters:
 
         # Map should be cleared and rebuilt from the passed profiles.
         assert "stale" not in character_queries.CHAR_NAME_TO_CANONICAL
-        assert (
-            character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice"))
-            == "Alice"
-        )
+        assert character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice")) == "Alice"
 
     async def test_sync_characters_multiple(self, monkeypatch):
         """Test syncing multiple characters."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         profiles = [
             CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]}),
@@ -275,6 +245,7 @@ class TestGetCharacterProfiles:
 
     async def test_get_character_profiles_empty(self, monkeypatch):
         """Test getting profiles when none exist."""
+
         async def fake_read(query, params=None):
             if "RETURN c.name" in query:
                 return []
@@ -292,6 +263,7 @@ class TestGetCharacterProfiles:
 
     async def test_get_character_profiles_single(self, monkeypatch):
         """Test getting single character profile."""
+
         async def fake_read(query, params=None):
             if "RETURN c.name" in query:
                 return [{"name": "Alice"}]
@@ -327,10 +299,7 @@ class TestGetCharacterProfiles:
         assert result[0].name == "Alice"
 
         assert "stale" not in character_queries.CHAR_NAME_TO_CANONICAL
-        assert (
-            character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice"))
-            == "Alice"
-        )
+        assert character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice")) == "Alice"
 
 
 @pytest.mark.asyncio
@@ -340,17 +309,14 @@ class TestGetCharactersForChapterContext:
     async def test_get_characters_for_chapter_context_empty(self, monkeypatch):
         """Test getting characters when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            character_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
-        result = await character_queries.get_characters_for_chapter_context_native(
-            chapter_number=1, limit=10
-        )
+        result = await character_queries.get_characters_for_chapter_context_native(chapter_number=1, limit=10)
         assert isinstance(result, list)
 
     async def test_get_characters_for_chapter_context_found(self, monkeypatch):
         """Test getting characters that exist."""
+
         async def fake_read(query, params=None):
             if "RETURN c" in query:
                 return [
@@ -375,8 +341,6 @@ class TestGetCharactersForChapterContext:
             AsyncMock(side_effect=fake_read),
         )
 
-        result = await character_queries.get_characters_for_chapter_context_native(
-            chapter_number=1, limit=10
-        )
+        result = await character_queries.get_characters_for_chapter_context_native(chapter_number=1, limit=10)
         assert len(result) > 0
         assert result[0].name == "Alice"

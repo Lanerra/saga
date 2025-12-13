@@ -87,19 +87,14 @@ class SchemaValidationService:
                 return True, mapped, None
 
         # If we get here, it's not a valid label
-        error_msg = (
-            f"Invalid entity type '{raw}'. "
-            f"Must be one of: {', '.join(sorted(VALID_NODE_LABELS))}"
-        )
+        error_msg = f"Invalid entity type '{raw}'. " f"Must be one of: {', '.join(sorted(VALID_NODE_LABELS))}"
 
         if self.log_violations:
             logger.warning("Schema violation", error=error_msg, type_name=raw)
 
         return False, raw, error_msg
 
-    def validate_category(
-        self, type_name: str, category: str
-    ) -> tuple[bool, str | None]:
+    def validate_category(self, type_name: str, category: str) -> tuple[bool, str | None]:
         """
         Validate if a category is appropriate for the given entity type.
         This is a soft validation (warning only) as categories are open-ended.
@@ -121,10 +116,7 @@ class SchemaValidationService:
         if any(c.lower() == category.lower() for c in suggested):
             return True, None
 
-        msg = (
-            f"Category '{category}' is not in suggested list for {type_name}. "
-            f"Suggested: {', '.join(suggested)}"
-        )
+        msg = f"Category '{category}' is not in suggested list for {type_name}. " f"Suggested: {', '.join(suggested)}"
         return False, msg
 
 
@@ -243,11 +235,10 @@ def validate_node_labels(labels: list[str]) -> list[str]:
         elif not label[0].isupper():
             errors.append(f"Node label '{label}' should start with an uppercase letter")
         elif not label.isalnum():
-            errors.append(
-                f"Node label '{label}' should only contain alphanumeric characters"
-            )
+            errors.append(f"Node label '{label}' should only contain alphanumeric characters")
 
     return errors
+
 
 def validate_world_item(item: WorldItem) -> list[str]:
     """

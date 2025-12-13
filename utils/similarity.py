@@ -51,9 +51,7 @@ async def find_semantically_closest_segment(
 ) -> tuple[int, int, float] | None:
     """Find the document segment most semantically similar to ``query_text``."""
     if not original_doc or not query_text:
-        logger.debug(
-            "find_semantically_closest_segment: original_doc or query_text is empty."
-        )
+        logger.debug("find_semantically_closest_segment: original_doc or query_text is empty.")
         return None
 
     # Local import to avoid circular import chain:
@@ -85,9 +83,7 @@ async def find_semantically_closest_segment(
     try:
         import config
 
-        max_concurrent = max(
-            1, int(getattr(config.settings, "MAX_CONCURRENT_LLM_CALLS", 4))
-        )
+        max_concurrent = max(1, int(getattr(config.settings, "MAX_CONCURRENT_LLM_CALLS", 4)))
     except Exception as e:
         logger.warning(
             "Failed to read MAX_CONCURRENT_LLM_CALLS from config, using default",
@@ -101,9 +97,7 @@ async def find_semantically_closest_segment(
         async with semaphore:
             return await llm_service.async_get_embedding(text)
 
-    tasks = [
-        asyncio.create_task(_embed_with_limit(seg_text)) for seg_text in segment_texts
-    ]
+    tasks = [asyncio.create_task(_embed_with_limit(seg_text)) for seg_text in segment_texts]
     segment_embeddings_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, seg_embedding_or_exc in enumerate(segment_embeddings_results):

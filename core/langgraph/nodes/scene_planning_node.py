@@ -59,9 +59,7 @@ async def _ensure_scene_characters_exist(
                 break
 
     if not scene_characters:
-        logger.debug(
-            "_ensure_scene_characters_exist: no characters found in scene plans"
-        )
+        logger.debug("_ensure_scene_characters_exist: no characters found in scene plans")
         return
 
     # Get existing characters from Neo4j
@@ -124,9 +122,7 @@ async def _ensure_scene_characters_exist(
                     MERGE (c)-[:MENTIONED_IN]->(chap)
                 """
                 try:
-                    await neo4j_manager.execute_write_query(
-                        link_query, {"char_name": char_name, "chapter": chapter_number}
-                    )
+                    await neo4j_manager.execute_write_query(link_query, {"char_name": char_name, "chapter": chapter_number})
                 except Exception as link_error:
                     logger.debug(
                         "_ensure_scene_characters_exist: could not link to chapter (may not exist yet)",
@@ -134,9 +130,7 @@ async def _ensure_scene_characters_exist(
                         error=str(link_error),
                     )
         else:
-            logger.warning(
-                "_ensure_scene_characters_exist: failed to persist stub profiles"
-            )
+            logger.warning("_ensure_scene_characters_exist: failed to persist stub profiles")
     except Exception as e:
         logger.error(
             "_ensure_scene_characters_exist: error persisting stub profiles",
@@ -162,9 +156,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     outline = chapter_outlines.get(chapter_number)
 
     if not outline:
-        logger.error(
-            "plan_scenes: no outline found for chapter", chapter=chapter_number
-        )
+        logger.error("plan_scenes: no outline found for chapter", chapter=chapter_number)
         return {
             **state,
             "last_error": f"No outline found for chapter {chapter_number}",
@@ -221,12 +213,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         content_manager = ContentManager(state.get("project_dir", ""))
 
         # Get current version for this chapter's plan
-        current_version = (
-            content_manager.get_latest_version(
-                "chapter_plan", f"chapter_{chapter_number}"
-            )
-            + 1
-        )
+        current_version = content_manager.get_latest_version("chapter_plan", f"chapter_{chapter_number}") + 1
 
         # Save chapter plan to external file
         chapter_plan_ref = save_chapter_plan(

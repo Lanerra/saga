@@ -22,9 +22,7 @@ load_dotenv()
 logger = structlog.get_logger()
 
 
-async def _load_list_from_json_async(
-    file_path: str, default_if_missing: list[str] | None = None
-) -> list[str]:
+async def _load_list_from_json_async(file_path: str, default_if_missing: list[str] | None = None) -> list[str]:
     """Load a list of strings from a JSON file asynchronously."""
     if default_if_missing is None:
         default_if_missing = []
@@ -32,18 +30,14 @@ async def _load_list_from_json_async(
         if os.path.exists(file_path):
             with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, list) and all(
-                    isinstance(item, str) for item in data
-                ):
+                if isinstance(data, list) and all(isinstance(item, str) for item in data):
                     return data
                 logger.warning(
                     "Content of file is not a list of strings. Using default.",
                     file_path=file_path,
                 )
                 return default_if_missing
-        logger.warning(
-            "Configuration file not found. Using default.", file_path=file_path
-        )
+        logger.warning("Configuration file not found. Using default.", file_path=file_path)
         return default_if_missing
     except json.JSONDecodeError:
         logger.error(
@@ -53,9 +47,7 @@ async def _load_list_from_json_async(
         )
         return default_if_missing
     except Exception:
-        logger.error(
-            "Unexpected error loading file.", file_path=file_path, exc_info=True
-        )
+        logger.error("Unexpected error loading file.", file_path=file_path, exc_info=True)
         return default_if_missing
 
 
@@ -66,9 +58,7 @@ class SchemaEnforcementSettings(BaseSettings):
     Controls strictness of entity type validation and normalization.
     """
 
-    ENFORCE_SCHEMA_VALIDATION: bool = Field(
-        default=True, description="Master toggle for schema validation"
-    )
+    ENFORCE_SCHEMA_VALIDATION: bool = Field(default=True, description="Master toggle for schema validation")
 
     REJECT_INVALID_ENTITIES: bool = Field(
         default=False,
@@ -80,9 +70,7 @@ class SchemaEnforcementSettings(BaseSettings):
         description="Automatically map common variants (Person->Character) to canonical labels",
     )
 
-    LOG_SCHEMA_VIOLATIONS: bool = Field(
-        default=True, description="Log detailed warnings when schema violations occur"
-    )
+    LOG_SCHEMA_VIOLATIONS: bool = Field(default=True, description="Log detailed warnings when schema violations occur")
 
     class Config:
         env_prefix = "SAGA_SCHEMA_"
@@ -97,9 +85,7 @@ class RelationshipNormalizationSettings(BaseSettings):
     """
 
     # Master toggle
-    ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(
-        default=True, description="Enable relationship normalization system"
-    )
+    ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=True, description="Enable relationship normalization system")
 
     # Similarity thresholds
     SIMILARITY_THRESHOLD: float = Field(
@@ -143,9 +129,7 @@ class RelationshipNormalizationSettings(BaseSettings):
     )
 
     # Advanced features
-    USE_LLM_DISAMBIGUATION: bool = Field(
-        default=False, description="Use LLM to disambiguate ambiguous similarity cases"
-    )
+    USE_LLM_DISAMBIGUATION: bool = Field(default=False, description="Use LLM to disambiguate ambiguous similarity cases")
 
     NORMALIZE_CASE_VARIANTS: bool = Field(
         default=True,
@@ -295,9 +279,7 @@ class SagaSettings(BaseSettings):
 
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
-    LOG_FORMAT: str = (
-        "%(asctime)s - %(levelname)s - [%(name)s:%(funcName)s:%(lineno)d] - %(message)s"
-    )
+    LOG_FORMAT: str = "%(asctime)s - %(levelname)s - [%(name)s:%(funcName)s:%(lineno)d] - %(message)s"
     LOG_DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     LOG_FILE: str | None = "saga_run.log"
     ENABLE_RICH_PROGRESS: bool = True
@@ -305,16 +287,12 @@ class SagaSettings(BaseSettings):
     SIMPLE_LOGGING_MODE: bool = False
 
     # NLP / spaCy configuration
-    SPACY_MODEL: str | None = (
-        None  # default None => utils.text_processing uses en_core_web_sm
-    )
+    SPACY_MODEL: str | None = None  # default None => utils.text_processing uses en_core_web_sm
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
     CONFIGURED_THEME: str = "the hubris of humanity"
-    CONFIGURED_SETTING_DESCRIPTION: str = (
-        "a remote outpost on the surface of Jupiter's moon, Callisto"
-    )
+    CONFIGURED_SETTING_DESCRIPTION: str = "a remote outpost on the surface of Jupiter's moon, Callisto"
     DEFAULT_PROTAGONIST_NAME: str = "Ilya Lakatos"
     DEFAULT_PLOT_OUTLINE_TITLE: str = "Untitled Narrative"
 
@@ -334,14 +312,10 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
     # Relationship Normalization
-    relationship_normalization: RelationshipNormalizationSettings = Field(
-        default_factory=RelationshipNormalizationSettings
-    )
+    relationship_normalization: RelationshipNormalizationSettings = Field(default_factory=RelationshipNormalizationSettings)
 
     # Schema Enforcement
-    schema_enforcement: SchemaEnforcementSettings = Field(
-        default_factory=SchemaEnforcementSettings
-    )
+    schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)
 
     # Legacy Degradation Flags
     ENABLE_STATUS_IS_ALIAS: bool = True
@@ -398,9 +372,7 @@ for _field in settings.model_fields:
 
 
 PLOT_OUTLINE_FILE = os.path.join(settings.BASE_OUTPUT_DIR, settings.PLOT_OUTLINE_FILE)
-CHARACTER_PROFILES_FILE = os.path.join(
-    settings.BASE_OUTPUT_DIR, settings.CHARACTER_PROFILES_FILE
-)
+CHARACTER_PROFILES_FILE = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHARACTER_PROFILES_FILE)
 WORLD_BUILDER_FILE = os.path.join(settings.BASE_OUTPUT_DIR, settings.WORLD_BUILDER_FILE)
 CHAPTERS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTERS_DIR)
 CHAPTER_LOGS_DIR = os.path.join(settings.BASE_OUTPUT_DIR, settings.CHAPTER_LOGS_DIR)
@@ -429,9 +401,7 @@ structlog.configure(
 
 
 # Filter internal structlog fields
-def filter_internal_keys(
-    logger: Any, name: str, event_dict: MutableMapping[str, Any]
-) -> MutableMapping[str, Any]:
+def filter_internal_keys(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
     """Remove internal structlog fields from event dict."""
     keys_to_remove = [k for k in event_dict.keys() if k.startswith("_")]
     for key in keys_to_remove:
@@ -440,9 +410,7 @@ def filter_internal_keys(
 
 
 # Simple human-readable formatter for structlog (with Rich markup for console)
-def simple_log_format_rich(
-    logger: Any, name: str, event_dict: MutableMapping[str, Any]
-) -> str:
+def simple_log_format_rich(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> str:
     """Simple human-readable log formatter with Rich markup for console output."""
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
@@ -496,9 +464,7 @@ def simple_log_format_rich(
 
 
 # Simple human-readable formatter for structlog (plain text for files)
-def simple_log_format_plain(
-    logger: Any, name: str, event_dict: MutableMapping[str, Any]
-) -> str:
+def simple_log_format_plain(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> str:
     """Simple human-readable log formatter without markup for file output."""
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
@@ -592,9 +558,7 @@ rich_formatter = structlog.stdlib.ProcessorFormatter(
 
 handler: stdlib_logging.Handler = stdlib_logging.StreamHandler()
 if settings.LOG_FILE:
-    handler = stdlib_logging.FileHandler(
-        os.path.join(settings.BASE_OUTPUT_DIR, settings.LOG_FILE)
-    )
+    handler = stdlib_logging.FileHandler(os.path.join(settings.BASE_OUTPUT_DIR, settings.LOG_FILE))
 
 
 handler.setFormatter(simple_formatter)

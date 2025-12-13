@@ -1,4 +1,5 @@
 """Tests for data_access/world_queries.py"""
+
 from unittest.mock import AsyncMock
 
 import pytest
@@ -47,11 +48,7 @@ class TestWorldItemByName:
 
         castle_item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle"})
         castle_item.id = "locations_castle"
-        world_data = {
-            "Locations": {
-                "Castle": castle_item
-            }
-        }
+        world_data = {"Locations": {"Castle": castle_item}}
 
         result = world_queries.get_world_item_by_name(world_data, "Castle")
         assert result is not None
@@ -60,9 +57,7 @@ class TestWorldItemByName:
     def test_get_world_item_by_name_not_found(self):
         """Test getting world item by name when not found."""
         world_queries.WORLD_NAME_TO_ID.clear()
-        world_data = {
-            "Locations": {}
-        }
+        world_data = {"Locations": {}}
 
         result = world_queries.get_world_item_by_name(world_data, "Unknown")
         assert result is None
@@ -74,11 +69,7 @@ class TestWorldItemByName:
 
         castle_item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle"})
         castle_item.id = "locations_castle"
-        world_data = {
-            "Locations": {
-                "Castle": castle_item
-            }
-        }
+        world_data = {"Locations": {"Castle": castle_item}}
 
         result = world_queries.get_world_item_by_name(world_data, "castle")
         assert result is not None
@@ -91,9 +82,7 @@ class TestSyncWorldItems:
     async def test_sync_world_items_empty(self, monkeypatch):
         """Test syncing empty world items list."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         world_queries.WORLD_NAME_TO_ID.clear()
         result = await world_queries.sync_world_items([], 1)
@@ -102,11 +91,10 @@ class TestSyncWorldItems:
     async def test_sync_world_items_single_item(self, monkeypatch):
         """Test syncing single world item."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         from unittest.mock import MagicMock
+
         mock_builder = MagicMock()
         mock_builder.batch_world_item_upsert_cypher.return_value = [("MERGE (w:Location)", {})]
         monkeypatch.setattr("data_access.world_queries.NativeCypherBuilder", lambda: mock_builder)
@@ -121,11 +109,10 @@ class TestSyncWorldItems:
     async def test_sync_world_items_multiple(self, monkeypatch):
         """Test syncing multiple world items."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         from unittest.mock import MagicMock
+
         mock_builder = MagicMock()
         mock_builder.batch_world_item_upsert_cypher.return_value = [
             ("MERGE (w:Location)", {}),
@@ -164,9 +151,7 @@ class TestGetWorldItemById:
                 }
             ]
         )
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_item_by_id("locations_castle")
         assert result is not None
@@ -195,9 +180,7 @@ class TestGetWorldItemById:
                 }
             ]
         )
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_item_by_id("locations_castle")
         assert result is not None
@@ -219,9 +202,7 @@ class TestGetWorldItemById:
         world_queries.get_world_item_by_id.cache_clear()
 
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_item_by_id("unknown_id")
         assert result is None
@@ -259,18 +240,8 @@ class TestGetWorldItemById:
         assert result.id == "locations_castle"
 
         # Validate enrichment queries use the same effective id.
-        trait_calls = [
-            call
-            for call in mock_read.call_args_list
-            if call.args and isinstance(call.args[0], str) and "HAS_TRAIT" in call.args[0]
-        ]
-        elab_calls = [
-            call
-            for call in mock_read.call_args_list
-            if call.args
-            and isinstance(call.args[0], str)
-            and "ELABORATED_IN_CHAPTER" in call.args[0]
-        ]
+        trait_calls = [call for call in mock_read.call_args_list if call.args and isinstance(call.args[0], str) and "HAS_TRAIT" in call.args[0]]
+        elab_calls = [call for call in mock_read.call_args_list if call.args and isinstance(call.args[0], str) and "ELABORATED_IN_CHAPTER" in call.args[0]]
 
         assert trait_calls, "Expected traits enrichment query to be executed"
         assert elab_calls, "Expected elaborations enrichment query to be executed"
@@ -286,9 +257,7 @@ class TestGetWorldBuilding:
     async def test_get_world_building_empty(self, monkeypatch):
         """Test getting world building when empty."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         world_queries.WORLD_NAME_TO_ID.clear()
         result = await world_queries.get_world_building()
@@ -297,6 +266,7 @@ class TestGetWorldBuilding:
 
     async def test_get_world_building_with_items(self, monkeypatch):
         """Test getting world building with items."""
+
         async def fake_read(query, params=None):
             if "RETURN wc" in query:
                 return [{"wc": {"overview_description": "World overview"}}]
@@ -321,9 +291,7 @@ class TestGetWorldBuilding:
                 ]
             return []
 
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", AsyncMock(side_effect=fake_read)
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", AsyncMock(side_effect=fake_read))
 
         world_queries.WORLD_NAME_TO_ID.clear()
         result = await world_queries.get_world_building()
@@ -339,9 +307,7 @@ class TestGetWorldElementsForSnippet:
     async def test_get_world_elements_for_snippet_empty(self, monkeypatch):
         """Test getting world elements when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_elements_for_snippet_from_db("Locations", 10, 5)
         assert isinstance(result, list)
@@ -357,16 +323,12 @@ class TestGetWorldElementsForSnippet:
                 }
             ]
         )
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_elements_for_snippet_from_db("Locations", 10, 5)
         assert len(result) > 0
 
-    async def test_get_world_elements_for_snippet_raises_database_error_on_db_failure(
-        self, monkeypatch
-    ):
+    async def test_get_world_elements_for_snippet_raises_database_error_on_db_failure(self, monkeypatch):
         """P1.9: DB failures should raise standardized DatabaseError (not return [])."""
         mock_read = AsyncMock(side_effect=Exception("connection refused"))
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
@@ -382,9 +344,7 @@ class TestFindThinWorldElements:
     async def test_find_thin_world_elements_empty(self, monkeypatch):
         """Test finding thin world elements when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.find_thin_world_elements_for_enrichment()
         assert isinstance(result, list)
@@ -401,9 +361,7 @@ class TestFindThinWorldElements:
                 }
             ]
         )
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.find_thin_world_elements_for_enrichment()
         assert len(result) > 0
@@ -416,13 +374,9 @@ class TestGetWorldItemsForChapterContext:
     async def test_get_world_items_for_chapter_context_empty(self, monkeypatch):
         """Test getting world items when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
-        result = await world_queries.get_world_items_for_chapter_context_native(
-            chapter_number=1, limit=10
-        )
+        result = await world_queries.get_world_items_for_chapter_context_native(chapter_number=1, limit=10)
         assert isinstance(result, list)
 
     async def test_get_world_items_for_chapter_context_found(self, monkeypatch):
@@ -439,13 +393,9 @@ class TestGetWorldItemsForChapterContext:
                 }
             ]
         )
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
-        result = await world_queries.get_world_items_for_chapter_context_native(
-            chapter_number=1, limit=10
-        )
+        result = await world_queries.get_world_items_for_chapter_context_native(chapter_number=1, limit=10)
         assert len(result) > 0
 
 
@@ -456,9 +406,7 @@ class TestGetBootstrapWorldElements:
     async def test_get_bootstrap_world_elements_empty(self, monkeypatch):
         """Test getting bootstrap world elements when none exist."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_bootstrap_world_elements()
         assert isinstance(result, list)
@@ -489,11 +437,7 @@ class TestGetBootstrapWorldElements:
                 }
             ]
         )
-        monkeypatch.setattr(
-            world_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_bootstrap_world_elements()
         assert isinstance(result, list)
-
-

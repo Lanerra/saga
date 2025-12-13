@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from core.langgraph.state import Contradiction, ExtractedEntity, ExtractedRelationship
+from core.langgraph.state import Contradiction
 from core.langgraph.subgraphs.validation import (
     _build_quality_evaluation_prompt,
     _build_rule_check_prompt,
@@ -132,9 +132,7 @@ class TestEvaluateQuality:
             assert result["tone_consistency_score"] == 0.90
             assert "Good pacing" in result["quality_feedback"]
 
-    async def test_evaluate_quality_below_threshold_triggers_contradiction(
-        self, sample_validation_state
-    ):
+    async def test_evaluate_quality_below_threshold_triggers_contradiction(self, sample_validation_state):
         """Low quality scores trigger quality contradiction."""
         mock_response = """{
             "coherence_score": 0.3,
@@ -153,9 +151,7 @@ class TestEvaluateQuality:
 
             result = await evaluate_quality(sample_validation_state)
 
-            quality_contradictions = [
-                c for c in result["contradictions"] if c.type == "quality_issue"
-            ]
+            quality_contradictions = [c for c in result["contradictions"] if c.type == "quality_issue"]
             assert len(quality_contradictions) == 1
             assert "below threshold" in quality_contradictions[0].description
 
@@ -321,11 +317,7 @@ class TestParseQualityScores:
         assert 0.0 <= scores["pacing_score"] <= 1.0
         assert 0.0 <= scores["plot_advancement_score"] <= 1.0
         assert 0.0 <= scores["tone_consistency_score"] <= 1.0
-        assert any(
-            score in [0.85, 0.72, 0.68, 0.91, 0.77]
-            for score in scores.values()
-            if isinstance(score, float)
-        )
+        assert any(score in [0.85, 0.72, 0.68, 0.91, 0.77] for score in scores.values() if isinstance(score, float))
 
 
 @pytest.mark.asyncio
@@ -334,19 +326,24 @@ class TestDetectContradictions:
 
     async def test_detect_contradictions_basic(self, sample_validation_state):
         """Basic contradiction detection runs."""
-        with patch(
-            "core.langgraph.subgraphs.validation._check_timeline",
-            new_callable=AsyncMock,
-        ) as mock_timeline, patch(
-            "core.langgraph.subgraphs.validation._check_world_rules",
-            new_callable=AsyncMock,
-        ) as mock_rules, patch(
-            "core.langgraph.subgraphs.validation._check_character_locations",
-            new_callable=AsyncMock,
-        ) as mock_locations, patch(
-            "core.langgraph.subgraphs.validation._check_relationship_evolution",
-            new_callable=AsyncMock,
-        ) as mock_relationships:
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_character_locations",
+                new_callable=AsyncMock,
+            ) as mock_locations,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
             mock_timeline.return_value = []
             mock_rules.return_value = []
             mock_locations.return_value = []
@@ -361,9 +358,7 @@ class TestDetectContradictions:
             mock_locations.assert_called_once()
             mock_relationships.assert_called_once()
 
-    async def test_detect_contradictions_critical_triggers_revision(
-        self, sample_validation_state
-    ):
+    async def test_detect_contradictions_critical_triggers_revision(self, sample_validation_state):
         """Critical contradictions trigger needs_revision."""
         critical_contradiction = Contradiction(
             type="timeline",
@@ -373,19 +368,24 @@ class TestDetectContradictions:
             suggested_fix="Fix timeline",
         )
 
-        with patch(
-            "core.langgraph.subgraphs.validation._check_timeline",
-            new_callable=AsyncMock,
-        ) as mock_timeline, patch(
-            "core.langgraph.subgraphs.validation._check_world_rules",
-            new_callable=AsyncMock,
-        ) as mock_rules, patch(
-            "core.langgraph.subgraphs.validation._check_character_locations",
-            new_callable=AsyncMock,
-        ) as mock_locations, patch(
-            "core.langgraph.subgraphs.validation._check_relationship_evolution",
-            new_callable=AsyncMock,
-        ) as mock_relationships:
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_character_locations",
+                new_callable=AsyncMock,
+            ) as mock_locations,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
             mock_timeline.return_value = [critical_contradiction]
             mock_rules.return_value = []
             mock_locations.return_value = []
@@ -396,9 +396,7 @@ class TestDetectContradictions:
             assert result["needs_revision"] is True
             assert len(result["contradictions"]) == 1
 
-    async def test_detect_contradictions_multiple_major_triggers_revision(
-        self, sample_validation_state
-    ):
+    async def test_detect_contradictions_multiple_major_triggers_revision(self, sample_validation_state):
         """Multiple major contradictions trigger revision."""
         major_contradictions = [
             Contradiction(
@@ -424,19 +422,24 @@ class TestDetectContradictions:
             ),
         ]
 
-        with patch(
-            "core.langgraph.subgraphs.validation._check_timeline",
-            new_callable=AsyncMock,
-        ) as mock_timeline, patch(
-            "core.langgraph.subgraphs.validation._check_world_rules",
-            new_callable=AsyncMock,
-        ) as mock_rules, patch(
-            "core.langgraph.subgraphs.validation._check_character_locations",
-            new_callable=AsyncMock,
-        ) as mock_locations, patch(
-            "core.langgraph.subgraphs.validation._check_relationship_evolution",
-            new_callable=AsyncMock,
-        ) as mock_relationships:
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_character_locations",
+                new_callable=AsyncMock,
+            ) as mock_locations,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
             mock_timeline.return_value = []
             mock_rules.return_value = major_contradictions
             mock_locations.return_value = []
@@ -446,9 +449,7 @@ class TestDetectContradictions:
 
             assert result["needs_revision"] is True
 
-    async def test_detect_contradictions_force_continue_bypasses(
-        self, sample_validation_state
-    ):
+    async def test_detect_contradictions_force_continue_bypasses(self, sample_validation_state):
         """force_continue bypasses revision even with contradictions."""
         state = sample_validation_state.copy()
         state["force_continue"] = True
@@ -461,19 +462,24 @@ class TestDetectContradictions:
             suggested_fix="Fix it",
         )
 
-        with patch(
-            "core.langgraph.subgraphs.validation._check_timeline",
-            new_callable=AsyncMock,
-        ) as mock_timeline, patch(
-            "core.langgraph.subgraphs.validation._check_world_rules",
-            new_callable=AsyncMock,
-        ) as mock_rules, patch(
-            "core.langgraph.subgraphs.validation._check_character_locations",
-            new_callable=AsyncMock,
-        ) as mock_locations, patch(
-            "core.langgraph.subgraphs.validation._check_relationship_evolution",
-            new_callable=AsyncMock,
-        ) as mock_relationships:
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_character_locations",
+                new_callable=AsyncMock,
+            ) as mock_locations,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
             mock_timeline.return_value = [critical_contradiction]
             mock_rules.return_value = []
             mock_locations.return_value = []
@@ -613,19 +619,20 @@ class TestCheckWorldRules:
         """No violations found returns empty list."""
         mock_response = "[]"
 
-        with patch(
-            "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-            new_callable=AsyncMock,
-        ) as mock_query, patch(
-            "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
-            new_callable=AsyncMock,
-        ) as mock_llm:
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
+                new_callable=AsyncMock,
+            ) as mock_query,
+            patch(
+                "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
+                new_callable=AsyncMock,
+            ) as mock_llm,
+        ):
             mock_query.return_value = []
             mock_llm.return_value = (mock_response, {"tokens": 50})
 
-            contradictions = await _check_world_rules(
-                "Test text", ["Magic requires words"], 1
-            )
+            contradictions = await _check_world_rules("Test text", ["Magic requires words"], 1)
 
             assert contradictions == []
 
@@ -637,19 +644,20 @@ class TestCheckWorldRules:
             "fix": "Add spoken spell"
         }]"""
 
-        with patch(
-            "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-            new_callable=AsyncMock,
-        ) as mock_query, patch(
-            "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
-            new_callable=AsyncMock,
-        ) as mock_llm:
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
+                new_callable=AsyncMock,
+            ) as mock_query,
+            patch(
+                "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
+                new_callable=AsyncMock,
+            ) as mock_llm,
+        ):
             mock_query.return_value = []
             mock_llm.return_value = (mock_response, {"tokens": 100})
 
-            contradictions = await _check_world_rules(
-                "Test text", ["Magic requires spoken words"], 1
-            )
+            contradictions = await _check_world_rules("Test text", ["Magic requires spoken words"], 1)
 
             assert len(contradictions) == 1
             assert contradictions[0].type == "world_rule"
@@ -664,13 +672,16 @@ class TestCheckWorldRules:
 
         mock_response = "[]"
 
-        with patch(
-            "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-            new_callable=AsyncMock,
-        ) as mock_query, patch(
-            "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
-            new_callable=AsyncMock,
-        ) as mock_llm:
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
+                new_callable=AsyncMock,
+            ) as mock_query,
+            patch(
+                "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
+                new_callable=AsyncMock,
+            ) as mock_llm,
+        ):
             mock_query.return_value = db_rules
             mock_llm.return_value = (mock_response, {"tokens": 50})
 
@@ -700,9 +711,7 @@ class TestBuildRuleCheckPrompt:
 
     def test_build_rule_check_prompt_basic(self):
         """Basic prompt building works."""
-        prompt = _build_rule_check_prompt(
-            "Test text here", ["Rule 1", "Rule 2", "Rule 3"]
-        )
+        prompt = _build_rule_check_prompt("Test text here", ["Rule 1", "Rule 2", "Rule 3"])
 
         assert "Test text here" in prompt
         assert "Rule 1" in prompt

@@ -37,9 +37,7 @@ class TestCommitToGraph:
 
         # Mock the NativeCypherBuilder and neo4j_manager instead of knowledge_graph_service
         # since commit_node now uses NativeCypherBuilder directly
-        with patch(
-            "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-        ) as mock_builder_class:
+        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
             mock_builder = mock_builder_class.return_value
             mock_builder.character_upsert_cypher.return_value = ("query", {})
             mock_builder.world_item_upsert_cypher.return_value = ("query", {})
@@ -62,9 +60,7 @@ class TestCommitToGraph:
         """Test commit with entities and relationships."""
         state = sample_state_with_extraction
 
-        with patch(
-            "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-        ) as mock_builder_class:
+        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
             mock_builder = mock_builder_class.return_value
             mock_builder.character_upsert_cypher.return_value = ("query", {})
             mock_builder.world_item_upsert_cypher.return_value = ("query", {})
@@ -72,9 +68,7 @@ class TestCommitToGraph:
             with patch("core.db_manager.neo4j_manager") as mock_neo4j:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                with patch(
-                    "core.langgraph.nodes.commit_node.kg_queries", mock_kg_queries
-                ):
+                with patch("core.langgraph.nodes.commit_node.kg_queries", mock_kg_queries):
                     with patch(
                         "core.langgraph.nodes.commit_node.check_entity_similarity",
                         new=AsyncMock(return_value=None),
@@ -95,13 +89,9 @@ class TestCommitToGraph:
         """Test that commit handles errors gracefully."""
         state = sample_state_with_extraction
 
-        with patch(
-            "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-        ) as mock_builder_class:
+        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
             mock_builder = mock_builder_class.return_value
-            mock_builder.character_upsert_cypher.side_effect = Exception(
-                "Database error"
-            )
+            mock_builder.character_upsert_cypher.side_effect = Exception("Database error")
 
             with patch(
                 "core.langgraph.nodes.commit_node.check_entity_similarity",
@@ -135,9 +125,7 @@ class TestCommitToGraph:
             with patch("core.db_manager.neo4j_manager") as mock_neo4j:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                with patch(
-                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-                ) as mock_builder_class:
+                with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
                     mock_builder = mock_builder_class.return_value
                     mock_builder.character_upsert_cypher.return_value = ("query", {})
                     mock_builder.world_item_upsert_cypher.return_value = ("query", {})
@@ -173,9 +161,7 @@ class TestCommitToGraph:
             with patch("core.db_manager.neo4j_manager") as mock_neo4j:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                with patch(
-                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-                ) as mock_builder_class:
+                with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
                     mock_builder = mock_builder_class.return_value
                     mock_builder.character_upsert_cypher.return_value = ("query", {})
                     mock_builder.world_item_upsert_cypher.return_value = ("query", {})
@@ -201,9 +187,7 @@ class TestCommitToGraph:
         with patch("core.db_manager.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_cypher_batch = AsyncMock()
 
-            with patch(
-                "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-            ) as mock_builder_class:
+            with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
                 mock_builder = mock_builder_class.return_value
                 mock_builder.character_upsert_cypher.return_value = ("query", {})
                 mock_builder.world_item_upsert_cypher.return_value = ("query", {})
@@ -247,9 +231,7 @@ class TestCommitToGraph:
         with patch("core.db_manager.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_cypher_batch = AsyncMock()
 
-            with patch(
-                "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-            ) as mock_builder_class:
+            with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
                 mock_builder = mock_builder_class.return_value
                 mock_builder.world_item_upsert_cypher.return_value = ("query", {})
 
@@ -280,9 +262,7 @@ class TestConvertToCharacterProfiles:
                 attributes={
                     "traits": ["brave", "loyal", "determined"],
                     "status": "alive",
-                    "relationships": {
-                        "Bob": {"type": "FRIEND", "description": "Close friend"}
-                    },
+                    "relationships": {"Bob": {"type": "FRIEND", "description": "Close friend"}},
                 },
             ),
         ]
@@ -434,17 +414,13 @@ class TestDeduplication:
         """Test character deduplication when no duplicates found."""
         state = sample_state_with_extraction
 
-        with patch(
-            "core.langgraph.nodes.commit_node.check_entity_similarity"
-        ) as mock_check:
+        with patch("core.langgraph.nodes.commit_node.check_entity_similarity") as mock_check:
             mock_check.return_value = None
 
             with patch("core.db_manager.neo4j_manager") as mock_neo4j:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                with patch(
-                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-                ) as mock_builder_class:
+                with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
                     mock_builder = mock_builder_class.return_value
                     mock_builder.character_upsert_cypher.return_value = ("query", {})
                     mock_builder.world_item_upsert_cypher.return_value = ("query", {})
@@ -464,17 +440,13 @@ class TestDeduplication:
         """Test world item deduplication."""
         state = sample_state_with_extraction
 
-        with patch(
-            "core.langgraph.nodes.commit_node.check_entity_similarity"
-        ) as mock_check:
+        with patch("core.langgraph.nodes.commit_node.check_entity_similarity") as mock_check:
             mock_check.return_value = None
 
             with patch("core.db_manager.neo4j_manager") as mock_neo4j:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                with patch(
-                    "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-                ) as mock_builder_class:
+                with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
                     mock_builder = mock_builder_class.return_value
                     mock_builder.character_upsert_cypher.return_value = ("query", {})
                     mock_builder.world_item_upsert_cypher.return_value = ("query", {})
@@ -636,9 +608,7 @@ class TestDeduplicateWorldItem:
                 "core.langgraph.nodes.commit_node.generate_entity_id",
                 return_value="new_id_123",
             ):
-                result = await _deduplicate_world_item(
-                    "Magic Sword", "artifact", "A legendary blade", 1
-                )
+                result = await _deduplicate_world_item("Magic Sword", "artifact", "A legendary blade", 1)
                 assert result == "new_id_123"
 
     async def test_similar_entity_and_merge(self):
@@ -658,9 +628,7 @@ class TestDeduplicateWorldItem:
                 "core.langgraph.nodes.commit_node.should_merge_entities",
                 new=AsyncMock(return_value=True),
             ):
-                result = await _deduplicate_world_item(
-                    "Magic Sword", "artifact", "A legendary blade", 1
-                )
+                result = await _deduplicate_world_item("Magic Sword", "artifact", "A legendary blade", 1)
                 assert result == "existing_sword_id"
 
     async def test_duplicate_prevention_disabled(self):
@@ -673,9 +641,7 @@ class TestDeduplicateWorldItem:
                 "core.langgraph.nodes.commit_node.generate_entity_id",
                 return_value="new_id_456",
             ):
-                result = await _deduplicate_world_item(
-                    "Castle", "structure", "A grand castle", 1
-                )
+                result = await _deduplicate_world_item("Castle", "structure", "A grand castle", 1)
                 assert result == "new_id_456"
 
 
@@ -716,9 +682,7 @@ class TestBuildEntityPersistenceStatements:
             )
         ]
 
-        with patch(
-            "data_access.cypher_builders.native_builders.NativeCypherBuilder"
-        ) as mock_builder_class:
+        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
             mock_builder = mock_builder_class.return_value
             mock_builder.character_upsert_cypher.return_value = (
                 "CHARACTER QUERY",
@@ -729,9 +693,7 @@ class TestBuildEntityPersistenceStatements:
                 {"id": "sword_001"},
             )
 
-            statements = await _build_entity_persistence_statements(
-                characters, world_items, 1
-            )
+            statements = await _build_entity_persistence_statements(characters, world_items, 1)
 
             assert len(statements) == 2
             assert statements[0][0] == "CHARACTER QUERY"

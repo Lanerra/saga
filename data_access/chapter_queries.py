@@ -30,9 +30,7 @@ async def save_chapter_data_to_db(
     is_provisional: bool = False,
 ) -> None:
     if chapter_number <= 0:
-        logger.error(
-            f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}."
-        )
+        logger.error(f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}.")
         return
 
     embedding_list = neo4j_manager.embedding_to_list(embedding_array)
@@ -52,9 +50,7 @@ async def save_chapter_data_to_db(
     }
     try:
         await neo4j_manager.execute_write_query(query, parameters)
-        logger.info(
-            f"Neo4j: Successfully saved chapter data for chapter {chapter_number}."
-        )
+        logger.info(f"Neo4j: Successfully saved chapter data for chapter {chapter_number}.")
     except Exception as e:
         logger.error(
             f"Neo4j: Error saving chapter data for chapter {chapter_number}: {e}",
@@ -70,9 +66,7 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
     RETURN c.summary AS summary, c.is_provisional AS is_provisional
     """
     try:
-        result = await neo4j_manager.execute_read_query(
-            query, {"chapter_number_param": chapter_number}
-        )
+        result = await neo4j_manager.execute_read_query(query, {"chapter_number_param": chapter_number})
         if result and result[0]:
             logger.debug(f"Neo4j: Data found for chapter {chapter_number}.")
             return {
@@ -105,20 +99,14 @@ async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
     RETURN c.embedding_vector AS embedding_vector
     """
     try:
-        result = await neo4j_manager.execute_read_query(
-            query, {"chapter_number_param": chapter_number}
-        )
+        result = await neo4j_manager.execute_read_query(query, {"chapter_number_param": chapter_number})
         if result and result[0] and result[0].get("embedding_vector"):
             embedding_list = result[0]["embedding_vector"]
             return neo4j_manager.list_to_embedding(embedding_list)
-        logger.debug(
-            f"Neo4j: No embedding vector found on chapter node {chapter_number}."
-        )
+        logger.debug(f"Neo4j: No embedding vector found on chapter node {chapter_number}.")
         return None
     except Exception as e:
-        logger.error(
-            f"Neo4j: Error getting embedding for {chapter_number}: {e}", exc_info=True
-        )
+        logger.error(f"Neo4j: Error getting embedding for {chapter_number}: {e}", exc_info=True)
         return None
 
 
@@ -229,9 +217,7 @@ async def find_semantic_context_native(
         )
 
         if not results or not results[0]:
-            logger.info(
-                f"No semantic context found for chapter {current_chapter_number}"
-            )
+            logger.info(f"No semantic context found for chapter {current_chapter_number}")
             return []
 
         context_chapters = results[0]["context_chapters"]
@@ -245,9 +231,7 @@ async def find_semantic_context_native(
                 reverse=True,
             )[:search_limit]
 
-        logger.info(
-            f"Native context search found {len(context_chapters)} chapters for chapter {current_chapter_number}"
-        )
+        logger.info(f"Native context search found {len(context_chapters)} chapters for chapter {current_chapter_number}")
 
         return context_chapters
 
@@ -283,9 +267,7 @@ async def get_chapter_content_batch_native(
     """
 
     try:
-        results = await neo4j_manager.execute_read_query(
-            cypher_query, {"chapter_numbers": chapter_numbers}
-        )
+        results = await neo4j_manager.execute_read_query(cypher_query, {"chapter_numbers": chapter_numbers})
 
         chapter_data = {}
         for record in results:
@@ -295,9 +277,7 @@ async def get_chapter_content_batch_native(
                 "is_provisional": record.get("is_provisional", False),
             }
 
-        logger.debug(
-            f"Native batch retrieval got {len(chapter_data)} chapters of {len(chapter_numbers)} requested"
-        )
+        logger.debug(f"Native batch retrieval got {len(chapter_data)} chapters of {len(chapter_numbers)} requested")
 
         return chapter_data
 

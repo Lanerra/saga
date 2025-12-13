@@ -26,9 +26,7 @@ class DummyNLP:
 async def test_find_quote_offsets_no_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(text_processing.spacy_manager, "_nlp", None)
     monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
-    result = await text_processing.find_quote_and_sentence_offsets_with_spacy(
-        "doc", "quote"
-    )
+    result = await text_processing.find_quote_and_sentence_offsets_with_spacy("doc", "quote")
     assert result is None
 
 
@@ -36,9 +34,7 @@ async def test_find_quote_offsets_no_model(monkeypatch: pytest.MonkeyPatch) -> N
 async def test_find_quote_offsets_direct(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(text_processing.spacy_manager, "_nlp", DummyNLP())
     monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
-    result = await text_processing.find_quote_and_sentence_offsets_with_spacy(
-        "Hello world", "world"
-    )
+    result = await text_processing.find_quote_and_sentence_offsets_with_spacy("Hello world", "world")
     assert result == (6, 11, 0, len("Hello world"))
 
 
@@ -48,9 +44,7 @@ async def test_find_quote_offsets_fuzzy_punctuation(
 ) -> None:
     monkeypatch.setattr(text_processing.spacy_manager, "_nlp", DummyNLP())
     monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
-    result = await text_processing.find_quote_and_sentence_offsets_with_spacy(
-        "Hello world.", "Hello world!"
-    )
+    result = await text_processing.find_quote_and_sentence_offsets_with_spacy("Hello world.", "Hello world!")
     assert result == (0, 11, 0, len("Hello world."))
 
 
@@ -60,9 +54,7 @@ async def test_find_quote_offsets_fuzzy_extra_word(
 ) -> None:
     monkeypatch.setattr(text_processing.spacy_manager, "_nlp", DummyNLP())
     monkeypatch.setattr(text_processing.spacy_manager, "load", lambda: None)
-    result = await text_processing.find_quote_and_sentence_offsets_with_spacy(
-        "Hello world.", "Hello world again"
-    )
+    result = await text_processing.find_quote_and_sentence_offsets_with_spacy("Hello world.", "Hello world again")
     assert result == (0, 12, 0, len("Hello world."))
 
 

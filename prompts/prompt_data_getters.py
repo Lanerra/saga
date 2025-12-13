@@ -46,16 +46,10 @@ def _ensure_cache_is_scoped_to_chapter(chapter_number: int | None) -> None:
     _current_cache_chapter = chapter_number
 
 
-def _deterministic_character_order(
-    characters: set[str], protagonist_name: str | None
-) -> list[str]:
+def _deterministic_character_order(characters: set[str], protagonist_name: str | None) -> list[str]:
     """Return a reproducible ordering for character-focused facts."""
 
-    protagonist_norm = (
-        utils._normalize_for_id(protagonist_name)
-        if protagonist_name and isinstance(protagonist_name, str)
-        else None
-    )
+    protagonist_norm = utils._normalize_for_id(protagonist_name) if protagonist_name and isinstance(protagonist_name, str) else None
 
     def _sort_key(name: str) -> tuple[int, str]:
         normalized = utils._normalize_for_id(name)
@@ -65,16 +59,12 @@ def _deterministic_character_order(
     return sorted(characters, key=_sort_key)
 
 
-async def _cached_character_info(
-    char_name: str, chapter_limit: int | None
-) -> dict[str, Any] | None:
+async def _cached_character_info(char_name: str, chapter_limit: int | None) -> dict[str, Any] | None:
     """Cache character database queries to avoid redundant lookups."""
     cache_key = f"char_info_{char_name}_{chapter_limit}"
     if cache_key not in _context_cache:
         limit_val = chapter_limit if chapter_limit is not None else 1000
-        result = await character_queries.get_character_info_for_snippet_from_db(
-            char_name, limit_val
-        )
+        result = await character_queries.get_character_info_for_snippet_from_db(char_name, limit_val)
         _context_cache[cache_key] = result
     return _context_cache[cache_key]
 
@@ -90,9 +80,7 @@ async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
     # Note: cache key uses item_id to avoid repeated lookups per chapter run
 
 
-def _format_dict_for_plain_text_prompt(
-    data: dict[str, Any], indent_level: int = 0, name_override: str | None = None
-) -> list[str]:
+def _format_dict_for_plain_text_prompt(data: dict[str, Any], indent_level: int = 0, name_override: str | None = None) -> list[str]:
     lines = []
     indent = "  " * indent_level
     if name_override:
@@ -124,9 +112,7 @@ def _format_dict_for_plain_text_prompt(
     for key in sorted_keys:
         value = data[key]
 
-        if key.startswith(
-            ("source_quality_chapter_", "updated_in_chapter_", "added_in_chapter_")
-        ) and key not in ["prompt_notes"]:
+        if key.startswith(("source_quality_chapter_", "updated_in_chapter_", "added_in_chapter_")) and key not in ["prompt_notes"]:
             continue
         if key == "is_provisional_hint":
             continue
@@ -136,18 +122,14 @@ def _format_dict_for_plain_text_prompt(
         if isinstance(value, dict):
             if value:
                 lines.append(f"{indent}{key_str_display}:")
-                lines.extend(
-                    _format_dict_for_plain_text_prompt(value, indent_level + 1)
-                )
+                lines.extend(_format_dict_for_plain_text_prompt(value, indent_level + 1))
         elif isinstance(value, list):
             if not value:
                 lines.append(f"{indent}{key_str_display}: (empty list or N/A)")
             else:
                 lines.append(f"{indent}{key_str_display}:")
                 try:
-                    display_items = sorted(
-                        [str(x) for x in value if not isinstance(x, dict)]
-                    )
+                    display_items = sorted([str(x) for x in value if not isinstance(x, dict)])
                     dict_items = [x for x in value if isinstance(x, dict)]
                 except TypeError:
                     display_items = [str(x) for x in value if not isinstance(x, dict)]
@@ -156,11 +138,7 @@ def _format_dict_for_plain_text_prompt(
                 for item_str in display_items:
                     lines.append(f"{indent}  - {item_str}")
                 for item_dict in dict_items:
-                    lines.extend(
-                        _format_dict_for_plain_text_prompt(
-                            item_dict, indent_level + 1, name_override="- Item"
-                        )
-                    )
+                    lines.extend(_format_dict_for_plain_text_prompt(item_dict, indent_level + 1, name_override="- Item"))
         elif value is not None and (isinstance(value, bool) or str(value).strip()):
             lines.append(f"{indent}{key_str_display}: {str(value)}")
 
@@ -174,15 +152,9 @@ def _add_provisional_notes_and_filter_developments(
 ) -> dict[str, Any]:
     item_data = copy.deepcopy(item_data_original)
     prompt_notes_list = []
-    effective_filter_chapter = (
-        config.KG_PREPOPULATION_CHAPTER_NUM
-        if up_to_chapter_inclusive == config.KG_PREPOPULATION_CHAPTER_NUM
-        else up_to_chapter_inclusive
-    )
+    effective_filter_chapter = config.KG_PREPOPULATION_CHAPTER_NUM if up_to_chapter_inclusive == config.KG_PREPOPULATION_CHAPTER_NUM else up_to_chapter_inclusive
 
-    dev_elaboration_prefix = (
-        "development_in_chapter_" if is_character else "elaboration_in_chapter_"
-    )
+    dev_elaboration_prefix = "development_in_chapter_" if is_character else "elaboration_in_chapter_"
     added_prefix = "added_in_chapter_"
 
     keys_to_remove = []
@@ -192,42 +164,24 @@ def _add_provisional_notes_and_filter_developments(
         if key.startswith((dev_elaboration_prefix, added_prefix)):
             try:
                 chap_num_of_key_str = key.split("_")[-1]
-                chap_num_of_key = (
-                    int(re.match(r"\d+", chap_num_of_key_str).group(0))
-                    if re.match(r"\d+", chap_num_of_key_str)
-                    else -1
-                )
-                if (
-                    effective_filter_chapter is not None
-                    and chap_num_of_key > effective_filter_chapter
-                ):
+                chap_num_of_key = int(re.match(r"\d+", chap_num_of_key_str).group(0)) if re.match(r"\d+", chap_num_of_key_str) else -1
+                if effective_filter_chapter is not None and chap_num_of_key > effective_filter_chapter:
                     keys_to_remove.append(key)
             except (ValueError, IndexError, AttributeError) as e:
-                logger.warning(
-                    f"Could not parse chapter from key '{key}' during filtering: {e}"
-                )
+                logger.warning(f"Could not parse chapter from key '{key}' during filtering: {e}")
 
         if key.startswith("source_quality_chapter_"):
             try:
                 chap_num_of_source_str = key.split("_")[-1]
-                chap_num_of_source = (
-                    int(re.match(r"\d+", chap_num_of_source_str).group(0))
-                    if re.match(r"\d+", chap_num_of_source_str)
-                    else -1
-                )
+                chap_num_of_source = int(re.match(r"\d+", chap_num_of_source_str).group(0)) if re.match(r"\d+", chap_num_of_source_str) else -1
 
-                if (
-                    effective_filter_chapter is None
-                    or chap_num_of_source <= effective_filter_chapter
-                ) and item_data[key] == "provisional_from_unrevised_draft":
+                if (effective_filter_chapter is None or chap_num_of_source <= effective_filter_chapter) and item_data[key] == "provisional_from_unrevised_draft":
                     has_provisional_data_relevant_to_filter = True
                     note = f"Data from Chapter {chap_num_of_source} may be provisional (from unrevised draft)."
                     if note not in prompt_notes_list:
                         prompt_notes_list.append(note)
             except (ValueError, IndexError, AttributeError) as e:
-                logger.warning(
-                    f"Could not parse chapter from source_quality key '{key}': {e}"
-                )
+                logger.warning(f"Could not parse chapter from source_quality key '{key}': {e}")
 
     for k_rem in keys_to_remove:
         item_data.pop(k_rem, None)
@@ -258,9 +212,7 @@ async def _get_character_profiles_dict_with_notes(
 
     for char_name in character_names:
         try:
-            profile_obj = await character_queries.get_character_profile_by_name(
-                char_name
-            )
+            profile_obj = await character_queries.get_character_profile_by_name(char_name)
         except Exception as exc:
             logger.error(
                 "Error fetching character '%s' from Neo4j: %s",
@@ -287,14 +239,8 @@ async def get_filtered_character_profiles_for_prompt_plain_text(
     character_names: list[str],
     up_to_chapter_inclusive: int | None = None,
 ) -> str:
-    logger.info(
-        f"Fetching and formatting filtered character profiles as PLAIN TEXT up to chapter {up_to_chapter_inclusive}."
-    )
-    filter_chapter_for_profiles = (
-        config.KG_PREPOPULATION_CHAPTER_NUM
-        if up_to_chapter_inclusive == 0
-        else up_to_chapter_inclusive
-    )
+    logger.info(f"Fetching and formatting filtered character profiles as PLAIN TEXT up to chapter {up_to_chapter_inclusive}.")
+    filter_chapter_for_profiles = config.KG_PREPOPULATION_CHAPTER_NUM if up_to_chapter_inclusive == 0 else up_to_chapter_inclusive
 
     profiles_dict_with_notes = await _get_character_profiles_dict_with_notes(
         character_names,
@@ -312,9 +258,7 @@ async def get_filtered_character_profiles_for_prompt_plain_text(
             continue
 
         output_lines_list.append("")
-        formatted_profile_lines = _format_dict_for_plain_text_prompt(
-            profile_data, indent_level=0, name_override=char_name
-        )
+        formatted_profile_lines = _format_dict_for_plain_text_prompt(profile_data, indent_level=0, name_override=char_name)
         output_lines_list.extend(formatted_profile_lines)
 
     return "\n".join(output_lines_list).strip()
@@ -357,12 +301,10 @@ async def _get_world_data_dict_with_notes(
                 continue
 
             item_dict = item_obj.to_dict()
-            processed_category[item_obj.name] = (
-                _add_provisional_notes_and_filter_developments(
-                    item_dict,
-                    filter_chapter,
-                    is_character=False,
-                )
+            processed_category[item_obj.name] = _add_provisional_notes_and_filter_developments(
+                item_dict,
+                filter_chapter,
+                is_character=False,
             )
 
         processed_world_data[category_name] = processed_category
@@ -374,14 +316,8 @@ async def get_filtered_world_data_for_prompt_plain_text(
     world_item_ids_by_category: dict[str, list[str]],
     up_to_chapter_inclusive: int | None = None,
 ) -> str:
-    logger.info(
-        f"Fetching and formatting filtered world data as PLAIN TEXT up to chapter {up_to_chapter_inclusive}."
-    )
-    filter_chapter_for_world = (
-        config.KG_PREPOPULATION_CHAPTER_NUM
-        if up_to_chapter_inclusive == 0
-        else up_to_chapter_inclusive
-    )
+    logger.info(f"Fetching and formatting filtered world data as PLAIN TEXT up to chapter {up_to_chapter_inclusive}.")
+    filter_chapter_for_world = config.KG_PREPOPULATION_CHAPTER_NUM if up_to_chapter_inclusive == 0 else up_to_chapter_inclusive
 
     world_data_dict_with_notes = await _get_world_data_dict_with_notes(
         world_item_ids_by_category,
@@ -392,24 +328,12 @@ async def get_filtered_world_data_for_prompt_plain_text(
 
     output_lines_list = []
     overview_data = world_data_dict_with_notes.get("_overview_")
-    if (
-        overview_data
-        and isinstance(overview_data, dict)
-        and overview_data.get("description")
-    ):
+    if overview_data and isinstance(overview_data, dict) and overview_data.get("description"):
         output_lines_list.append("World-Building Overview:")
-        output_lines_list.extend(
-            _format_dict_for_plain_text_prompt(overview_data, indent_level=0)
-        )
+        output_lines_list.extend(_format_dict_for_plain_text_prompt(overview_data, indent_level=0))
         output_lines_list.append("")
 
-    sorted_categories = sorted(
-        [
-            cat
-            for cat in world_data_dict_with_notes.keys()
-            if cat not in ["_overview_", "is_default", "source", "user_supplied_data"]
-        ]
-    )
+    sorted_categories = sorted([cat for cat in world_data_dict_with_notes.keys() if cat not in ["_overview_", "is_default", "source", "user_supplied_data"]])
 
     for category_name in sorted_categories:
         category_items = world_data_dict_with_notes[category_name]
@@ -425,14 +349,10 @@ async def get_filtered_world_data_for_prompt_plain_text(
                 continue
 
             if not category_header_added:
-                output_lines_list.append(
-                    f"{category_name.replace('_', ' ').capitalize()}:"
-                )
+                output_lines_list.append(f"{category_name.replace('_', ' ').capitalize()}:")
                 category_header_added = True
 
-            item_lines = _format_dict_for_plain_text_prompt(
-                item_data, indent_level=0, name_override=item_name
-            )
+            item_lines = _format_dict_for_plain_text_prompt(item_data, indent_level=0, name_override=item_name)
             output_lines_list.extend(item_lines)
             if item_lines:
                 output_lines_list.append("")
@@ -492,11 +412,7 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     if chapter_number <= 0:
         return "No KG facts applicable for pre-first chapter."
 
-    kg_chapter_limit = (
-        config.KG_PREPOPULATION_CHAPTER_NUM
-        if chapter_number == 1
-        else chapter_number - 1
-    )
+    kg_chapter_limit = config.KG_PREPOPULATION_CHAPTER_NUM if chapter_number == 1 else chapter_number - 1
 
     facts_for_prompt_list: list[str] = []
 
@@ -505,14 +421,10 @@ async def get_reliable_kg_facts_for_drafting_prompt(
         protagonist_name = config.DEFAULT_PROTAGONIST_NAME
 
     # Step 1: Discover characters of interest
-    characters_of_interest = await _discover_characters_of_interest(
-        protagonist_name, chapter_plan, chapter_number
-    )
+    characters_of_interest = await _discover_characters_of_interest(protagonist_name, chapter_plan, chapter_number)
 
     # Step 2: Apply protagonist-proximity filtering
-    characters_of_interest = await _apply_protagonist_proximity_filtering(
-        characters_of_interest, protagonist_name
-    )
+    characters_of_interest = await _apply_protagonist_proximity_filtering(characters_of_interest, protagonist_name)
 
     # Step 3: Gather novel-level facts
     await _gather_novel_info_facts(facts_for_prompt_list, max_total_facts)
@@ -532,9 +444,7 @@ async def get_reliable_kg_facts_for_drafting_prompt(
         return "No specific reliable KG facts identified as highly relevant for this chapter's current focus from Neo4j."
 
     unique_facts = sorted(list(set(facts_for_prompt_list)))
-    final_prompt_parts = [
-        "**Key Reliable KG Facts (from Neo4j - up to previous chapter/initial state):**"
-    ]
+    final_prompt_parts = ["**Key Reliable KG Facts (from Neo4j - up to previous chapter/initial state):**"]
     final_prompt_parts.extend(unique_facts[:max_total_facts])
     return "\n".join(final_prompt_parts)
 
@@ -586,9 +496,7 @@ async def get_character_state_snippet_for_prompt(
             char_profile = characters_to_include[char_name]
 
             # Get character data from Neo4j (using cached query)
-            neo4j_char_data = await _cached_character_info(
-                char_name, current_chapter_num_for_filtering
-            )
+            neo4j_char_data = await _cached_character_info(char_name, current_chapter_num_for_filtering)
 
             profile_lines = []
             if char_profile.description:
@@ -601,20 +509,10 @@ async def get_character_state_snippet_for_prompt(
 
             # Add additional data from updates field
             if char_profile.updates:
-                if (
-                    "personality" in char_profile.updates
-                    and char_profile.updates["personality"]
-                ):
-                    profile_lines.append(
-                        f"Personality: {char_profile.updates['personality']}"
-                    )
-                if (
-                    "background" in char_profile.updates
-                    and char_profile.updates["background"]
-                ):
-                    profile_lines.append(
-                        f"Background: {char_profile.updates['background']}"
-                    )
+                if "personality" in char_profile.updates and char_profile.updates["personality"]:
+                    profile_lines.append(f"Personality: {char_profile.updates['personality']}")
+                if "background" in char_profile.updates and char_profile.updates["background"]:
+                    profile_lines.append(f"Background: {char_profile.updates['background']}")
 
             # Add Neo4j data if available
             if neo4j_char_data:
@@ -665,31 +563,17 @@ async def _discover_characters_of_interest(
         Set of character names of interest
     """
     # Start with protagonist-centric filtering
-    characters_of_interest: set[str] = (
-        {protagonist_name}
-        if protagonist_name and not utils._is_fill_in(protagonist_name)
-        else set()
-    )
+    characters_of_interest: set[str] = {protagonist_name} if protagonist_name and not utils._is_fill_in(protagonist_name) else set()
 
     # Add characters from chapter plan
     if chapter_plan and isinstance(chapter_plan, list):
         for scene_detail in chapter_plan:
-            if (
-                isinstance(scene_detail, dict)
-                and "characters_involved" in scene_detail
-                and isinstance(scene_detail["characters_involved"], list)
-            ):
+            if isinstance(scene_detail, dict) and "characters_involved" in scene_detail and isinstance(scene_detail["characters_involved"], list):
                 for char_name_in_plan in scene_detail["characters_involved"]:
-                    if (
-                        isinstance(char_name_in_plan, str)
-                        and char_name_in_plan.strip()
-                        and not utils._is_fill_in(char_name_in_plan)
-                    ):
+                    if isinstance(char_name_in_plan, str) and char_name_in_plan.strip() and not utils._is_fill_in(char_name_in_plan):
                         characters_of_interest.add(char_name_in_plan.strip())
 
-    logger.debug(
-        f"KG fact gathering for Ch {chapter_number} draft: Chars of interest: {characters_of_interest}"
-    )
+    logger.debug(f"KG fact gathering for Ch {chapter_number} draft: Chars of interest: {characters_of_interest}")
     return characters_of_interest
 
 
@@ -708,23 +592,14 @@ async def _apply_protagonist_proximity_filtering(
         return {protagonist_name}
     if len(others) <= 2:
         for c in others:
-            path_len = await kg_queries.get_shortest_path_length_between_entities(
-                protagonist_name, c
-            )
+            path_len = await kg_queries.get_shortest_path_length_between_entities(protagonist_name, c)
             if path_len is not None and path_len <= 3:
                 pruned.add(c)
     else:
-        tasks = [
-            kg_queries.get_shortest_path_length_between_entities(protagonist_name, c)
-            for c in others
-        ]
+        tasks = [kg_queries.get_shortest_path_length_between_entities(protagonist_name, c) for c in others]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for c, path_len in zip(others, results, strict=False):
-            if (
-                not isinstance(path_len, Exception)
-                and path_len is not None
-                and path_len <= 3
-            ):
+            if not isinstance(path_len, Exception) and path_len is not None and path_len <= 3:
                 pruned.add(c)
     pruned.add(protagonist_name)
 
@@ -748,32 +623,24 @@ async def _gather_novel_info_facts(
     novel_info_results = await asyncio.gather(*novel_info_tasks, return_exceptions=True)
 
     # Process theme
-    if len(facts_list) < max_total_facts and not isinstance(
-        novel_info_results[0], Exception
-    ):
+    if len(facts_list) < max_total_facts and not isinstance(novel_info_results[0], Exception):
         value = novel_info_results[0]
         if value:
             fact_text = f"- The novel's central theme is: {value}."
             if fact_text not in facts_list:
                 facts_list.append(fact_text)
     elif isinstance(novel_info_results[0], Exception):
-        logger.warning(
-            f"KG Query for novel context 'theme' failed: {novel_info_results[0]}"
-        )
+        logger.warning(f"KG Query for novel context 'theme' failed: {novel_info_results[0]}")
 
     # Process central conflict
-    if len(facts_list) < max_total_facts and not isinstance(
-        novel_info_results[1], Exception
-    ):
+    if len(facts_list) < max_total_facts and not isinstance(novel_info_results[1], Exception):
         value = novel_info_results[1]
         if value:
             fact_text = f"- The main conflict summary: {value}."
             if fact_text not in facts_list:
                 facts_list.append(fact_text)
     elif isinstance(novel_info_results[1], Exception):
-        logger.warning(
-            f"KG Query for novel context 'central_conflict' failed: {novel_info_results[1]}"
-        )
+        logger.warning(f"KG Query for novel context 'central_conflict' failed: {novel_info_results[1]}")
 
 
 async def _gather_character_facts(
@@ -785,9 +652,7 @@ async def _gather_character_facts(
     protagonist_name: str | None,
 ) -> None:
     """Gather character-specific facts (status, location, relationships) in parallel."""
-    character_names_list = _deterministic_character_order(
-        characters_of_interest, protagonist_name
-    )[:3]
+    character_names_list = _deterministic_character_order(characters_of_interest, protagonist_name)[:3]
     if not character_names_list:
         return
 
@@ -796,15 +661,9 @@ async def _gather_character_facts(
     for char_name in character_names_list:
         character_tasks.extend(
             [
-                kg_queries.get_most_recent_value_from_db(
-                    char_name, "STATUS_IS", kg_chapter_limit
-                ),
-                kg_queries.get_most_recent_value_from_db(
-                    char_name, "LOCATED_IN", kg_chapter_limit
-                ),
-                kg_queries.query_kg_from_db(
-                    subject=char_name, chapter_limit=kg_chapter_limit
-                ),
+                kg_queries.get_most_recent_value_from_db(char_name, "STATUS_IS", kg_chapter_limit),
+                kg_queries.get_most_recent_value_from_db(char_name, "LOCATED_IN", kg_chapter_limit),
+                kg_queries.query_kg_from_db(subject=char_name, chapter_limit=kg_chapter_limit),
             ]
         )
 
@@ -832,49 +691,27 @@ async def _gather_character_facts(
         relationships_result = character_results[i * 3 + 2]
 
         # Process status
-        if (
-            not isinstance(status_result, Exception)
-            and status_result
-            and facts_for_this_char < max_facts_per_char
-            and len(facts_list) < max_total_facts
-        ):
+        if not isinstance(status_result, Exception) and status_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
             fact_text = f"- {char_name}'s status is: {status_result}."
             if fact_text not in facts_list:
                 facts_list.append(fact_text)
                 facts_for_this_char += 1
         elif isinstance(status_result, Exception):
-            logger.warning(
-                "KG Query for %s's status failed: %s", char_name, status_result
-            )
+            logger.warning("KG Query for %s's status failed: %s", char_name, status_result)
 
         # Process location
-        if (
-            not isinstance(location_result, Exception)
-            and location_result
-            and facts_for_this_char < max_facts_per_char
-            and len(facts_list) < max_total_facts
-        ):
+        if not isinstance(location_result, Exception) and location_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
             fact_text = f"- {char_name} is located in: {location_result}."
             if fact_text not in facts_list:
                 facts_list.append(fact_text)
                 facts_for_this_char += 1
         elif isinstance(location_result, Exception):
-            logger.warning(
-                f"KG Query for {char_name}'s location failed: {location_result}"
-            )
+            logger.warning(f"KG Query for {char_name}'s location failed: {location_result}")
 
         # Process relationships
-        if (
-            not isinstance(relationships_result, Exception)
-            and isinstance(relationships_result, list)
-            and facts_for_this_char < max_facts_per_char
-            and len(facts_list) < max_total_facts
-        ):
+        if not isinstance(relationships_result, Exception) and isinstance(relationships_result, list) and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
             for rel_res in relationships_result:
-                if (
-                    facts_for_this_char >= max_facts_per_char
-                    or len(facts_list) >= max_total_facts
-                ):
+                if facts_for_this_char >= max_facts_per_char or len(facts_list) >= max_total_facts:
                     break
                 if rel_res.get("predicate") in interesting_rel_types:
                     rel_type_display = rel_res["predicate"].replace("_", " ")
@@ -883,9 +720,7 @@ async def _gather_character_facts(
                         facts_list.append(fact_text)
                         facts_for_this_char += 1
         elif isinstance(relationships_result, Exception):
-            logger.warning(
-                f"KG Query for {char_name}'s relationships failed: {relationships_result}"
-            )
+            logger.warning(f"KG Query for {char_name}'s relationships failed: {relationships_result}")
 
 
 async def get_world_state_snippet_for_prompt(
@@ -908,11 +743,7 @@ async def get_world_state_snippet_for_prompt(
         world_by_category[category].append(item)
 
     # Limit items per category for prompt efficiency
-    max_items_per_category = (
-        config.PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY
-        if hasattr(config, "PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY")
-        else 3
-    )
+    max_items_per_category = config.PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY if hasattr(config, "PLANNING_CONTEXT_MAX_WORLD_ITEMS_PER_CATEGORY") else 3
 
     for category, items in world_by_category.items():
         if not items:

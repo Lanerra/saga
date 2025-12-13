@@ -35,9 +35,7 @@ def base_state():
 @pytest.fixture
 def mock_content_manager():
     """Create a mock ContentManager."""
-    with patch(
-        "core.langgraph.initialization.commit_init_node.ContentManager"
-    ) as mock:
+    with patch("core.langgraph.initialization.commit_init_node.ContentManager") as mock:
         mock.return_value = MagicMock()
         yield mock
 
@@ -45,12 +43,7 @@ def mock_content_manager():
 @pytest.fixture
 def mock_get_functions():
     """Mock the content getter functions."""
-    with patch(
-        "core.langgraph.initialization.commit_init_node.get_character_sheets"
-    ) as mock_chars, patch(
-        "core.langgraph.initialization.commit_init_node.get_global_outline"
-    ) as mock_global:
-
+    with patch("core.langgraph.initialization.commit_init_node.get_character_sheets") as mock_chars, patch("core.langgraph.initialization.commit_init_node.get_global_outline") as mock_global:
         mock_chars.return_value = {
             "Hero": {
                 "description": "A brave warrior",
@@ -92,9 +85,7 @@ def mock_get_functions():
 @pytest.fixture
 def mock_neo4j_manager():
     """Mock the Neo4j manager."""
-    with patch(
-        "core.langgraph.initialization.commit_init_node.neo4j_manager"
-    ) as mock:
+    with patch("core.langgraph.initialization.commit_init_node.neo4j_manager") as mock:
         mock.execute_cypher_batch = AsyncMock()
         yield mock
 
@@ -102,9 +93,7 @@ def mock_neo4j_manager():
 @pytest.fixture
 def mock_llm_service():
     """Create a mock LLM service."""
-    with patch(
-        "core.langgraph.initialization.commit_init_node.llm_service"
-    ) as mock:
+    with patch("core.langgraph.initialization.commit_init_node.llm_service") as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
                 """TRAITS: brave, loyal, strong
@@ -181,9 +170,7 @@ async def test_commit_initialization_batch_execution_failure(
     mock_neo4j_manager,
 ):
     """Verify handling when batch execution fails."""
-    mock_neo4j_manager.execute_cypher_batch = AsyncMock(
-        side_effect=Exception("Batch execution failed")
-    )
+    mock_neo4j_manager.execute_cypher_batch = AsyncMock(side_effect=Exception("Batch execution failed"))
 
     state = {**base_state}
 
@@ -200,12 +187,8 @@ async def test_commit_initialization_exception(
     mock_get_functions,
 ):
     """Verify exception handling during batch execution."""
-    with patch(
-        "core.langgraph.initialization.commit_init_node.neo4j_manager"
-    ) as mock_manager:
-        mock_manager.execute_cypher_batch = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+    with patch("core.langgraph.initialization.commit_init_node.neo4j_manager") as mock_manager:
+        mock_manager.execute_cypher_batch = AsyncMock(side_effect=Exception("Database error"))
 
         state = {**base_state}
 
@@ -261,9 +244,7 @@ async def test_parse_character_sheets_to_profiles_filters_invalid_traits():
         },
     }
 
-    with patch(
-        "core.langgraph.initialization.commit_init_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.commit_init_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = ["brave", "loyal"]
 
         profiles = await _parse_character_sheets_to_profiles(character_sheets)
@@ -291,9 +272,7 @@ async def test_parse_character_sheets_to_profiles_no_traits_uses_llm(
         },
     }
 
-    with patch(
-        "core.langgraph.initialization.commit_init_node.validate_and_filter_traits"
-    ) as mock_validate:
+    with patch("core.langgraph.initialization.commit_init_node.validate_and_filter_traits") as mock_validate:
         mock_validate.side_effect = lambda traits: traits if traits else []
 
         profiles = await _parse_character_sheets_to_profiles(character_sheets)
@@ -305,9 +284,7 @@ async def test_parse_character_sheets_to_profiles_no_traits_uses_llm(
 @pytest.mark.asyncio
 async def test_extract_structured_character_data_success(mock_llm_service):
     """Verify successful extraction of structured character data."""
-    result = await _extract_structured_character_data(
-        "Hero", "A brave knight who protects the realm"
-    )
+    result = await _extract_structured_character_data("Hero", "A brave knight who protects the realm")
 
     assert "traits" in result
     assert "status" in result
@@ -319,13 +296,9 @@ async def test_extract_structured_character_data_success(mock_llm_service):
 @pytest.mark.asyncio
 async def test_extract_structured_character_data_exception(mock_llm_service):
     """Verify fallback when extraction fails."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        side_effect=Exception("LLM error")
-    )
+    mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
-    result = await _extract_structured_character_data(
-        "Hero", "A brave knight"
-    )
+    result = await _extract_structured_character_data("Hero", "A brave knight")
 
     assert result["traits"] == []
     assert result["status"] == "Active"
@@ -385,13 +358,9 @@ async def test_extract_world_items_from_outline_success(mock_llm_service):
         )
     )
 
-    global_outline = {
-        "raw_text": "A story about a kingdom threatened by darkness."
-    }
+    global_outline = {"raw_text": "A story about a kingdom threatened by darkness."}
 
-    result = await _extract_world_items_from_outline(
-        global_outline, "Medieval fantasy kingdom"
-    )
+    result = await _extract_world_items_from_outline(global_outline, "Medieval fantasy kingdom")
 
     assert len(result) >= 1
     assert any(item.name == "Royal Castle" for item in result)
@@ -410,9 +379,7 @@ async def test_extract_world_items_from_outline_empty():
 @pytest.mark.asyncio
 async def test_extract_world_items_from_outline_exception(mock_llm_service):
     """Verify exception handling during extraction."""
-    mock_llm_service.async_call_llm = AsyncMock(
-        side_effect=Exception("LLM error")
-    )
+    mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
     global_outline = {"raw_text": "Test outline"}
 
@@ -427,9 +394,7 @@ def test_parse_world_items_extraction():
 [Object] Magic Sword: A legendary blade
 [Location] Dark Forest: A dangerous place"""
 
-    with patch(
-        "processing.entity_deduplication.generate_entity_id"
-    ) as mock_id:
+    with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
 
         result = _parse_world_items_extraction(response)
@@ -449,9 +414,7 @@ Invalid line without brackets
 [Object] No description here
 [Location] Valid Item 2: Another description"""
 
-    with patch(
-        "processing.entity_deduplication.generate_entity_id"
-    ) as mock_id:
+    with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
 
         result = _parse_world_items_extraction(response)
@@ -480,9 +443,7 @@ def test_parse_world_items_extraction_whitespace_lines():
 
 """
 
-    with patch(
-        "processing.entity_deduplication.generate_entity_id"
-    ) as mock_id:
+    with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
 
         result = _parse_world_items_extraction(response)

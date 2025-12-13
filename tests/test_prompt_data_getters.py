@@ -1,10 +1,9 @@
-import copy
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import config
-from models import CharacterProfile, SceneDetail, WorldItem
+from models import CharacterProfile, WorldItem
 from prompts import prompt_data_getters
 
 
@@ -68,17 +67,13 @@ class TestCharacterOrdering:
 
     def test_orders_protagonist_first(self):
         characters = {"Alice", "Bob", "Charlie"}
-        result = prompt_data_getters._deterministic_character_order(
-            characters, "Alice"
-        )
+        result = prompt_data_getters._deterministic_character_order(characters, "Alice")
 
         assert result[0] == "Alice"
 
     def test_orders_alphabetically_after_protagonist(self):
         characters = {"Alice", "Charlie", "Bob"}
-        result = prompt_data_getters._deterministic_character_order(
-            characters, "Alice"
-        )
+        result = prompt_data_getters._deterministic_character_order(characters, "Alice")
 
         assert result == ["Alice", "Bob", "Charlie"]
 
@@ -90,9 +85,7 @@ class TestCharacterOrdering:
 
     def test_handles_missing_protagonist(self):
         characters = {"Alice", "Bob", "Charlie"}
-        result = prompt_data_getters._deterministic_character_order(
-            characters, "David"
-        )
+        result = prompt_data_getters._deterministic_character_order(characters, "David")
 
         assert result == ["Alice", "Bob", "Charlie"]
 
@@ -102,17 +95,13 @@ class TestCharacterOrdering:
 
     def test_normalizes_names_for_comparison(self):
         characters = {"Alice", "ALICE", "alice"}
-        result = prompt_data_getters._deterministic_character_order(
-            characters, "alice"
-        )
+        result = prompt_data_getters._deterministic_character_order(characters, "alice")
 
         assert len(result) == 3
 
     def test_handles_case_insensitive_protagonist(self):
         characters = {"alice", "Bob", "Charlie"}
-        result = prompt_data_getters._deterministic_character_order(
-            characters, "ALICE"
-        )
+        result = prompt_data_getters._deterministic_character_order(characters, "ALICE")
 
         assert result[0] == "alice"
 
@@ -212,9 +201,7 @@ class TestFormattingFunction:
     def test_uses_name_override(self):
         data = {"description": "Test"}
 
-        result = prompt_data_getters._format_dict_for_plain_text_prompt(
-            data, name_override="Custom Name"
-        )
+        result = prompt_data_getters._format_dict_for_plain_text_prompt(data, name_override="Custom Name")
 
         assert result[0] == "Custom Name:"
 
@@ -254,9 +241,7 @@ class TestProvisionalNotesAndFiltering:
             "development_in_chapter_2": "early development",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=3, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=3, is_character=True)
 
         assert "development_in_chapter_2" in result
         assert "development_in_chapter_5" not in result
@@ -268,9 +253,7 @@ class TestProvisionalNotesAndFiltering:
             "elaboration_in_chapter_2": "early",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=3, is_character=False
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=3, is_character=False)
 
         assert "elaboration_in_chapter_2" in result
         assert "elaboration_in_chapter_5" not in result
@@ -281,9 +264,7 @@ class TestProvisionalNotesAndFiltering:
             "source_quality_chapter_1": "provisional_from_unrevised_draft",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=2, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=2, is_character=True)
 
         assert "prompt_notes" in result
         assert any("provisional" in note.lower() for note in result["prompt_notes"])
@@ -295,9 +276,7 @@ class TestProvisionalNotesAndFiltering:
             "source_quality_chapter_10": "provisional_from_unrevised_draft",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=5, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=5, is_character=True)
 
         assert "prompt_notes" not in result
         assert result.get("is_provisional_hint") is not True
@@ -305,9 +284,7 @@ class TestProvisionalNotesAndFiltering:
     def test_handles_added_in_chapter_filtering(self):
         item_data = {"name": "Test", "added_in_chapter_10": "new data"}
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=5, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=5, is_character=True)
 
         assert "added_in_chapter_10" not in result
 
@@ -318,9 +295,7 @@ class TestProvisionalNotesAndFiltering:
             "development_in_chapter_10": "later",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=5, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=5, is_character=True)
 
         assert result["name"] == "Test"
         assert result["description"] == "A test item"
@@ -332,9 +307,7 @@ class TestProvisionalNotesAndFiltering:
                 "development_in_chapter_1": "chapter 1",
             }
 
-            result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-                item_data, up_to_chapter_inclusive=0, is_character=True
-            )
+            result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=0, is_character=True)
 
             assert "development_in_chapter_1" not in result
 
@@ -345,9 +318,7 @@ class TestProvisionalNotesAndFiltering:
             "development_in_chapter_": "no number",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=5, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=5, is_character=True)
 
         assert result["name"] == "Test"
 
@@ -358,9 +329,7 @@ class TestProvisionalNotesAndFiltering:
             "source_quality_chapter_3": "provisional_from_unrevised_draft",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=None, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=None, is_character=True)
 
         assert "development_in_chapter_5" in result
         assert "prompt_notes" in result
@@ -372,9 +341,7 @@ class TestProvisionalNotesAndFiltering:
             "source_quality_chapter_2": "provisional_from_unrevised_draft",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=5, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=5, is_character=True)
 
         assert len(result["prompt_notes"]) == 2
 
@@ -385,9 +352,7 @@ class TestProvisionalNotesAndFiltering:
             "source_quality_chapter_1": "provisional_from_unrevised_draft",
         }
 
-        result = prompt_data_getters._add_provisional_notes_and_filter_developments(
-            item_data, up_to_chapter_inclusive=10, is_character=True
-        )
+        result = prompt_data_getters._add_provisional_notes_and_filter_developments(item_data, up_to_chapter_inclusive=10, is_character=True)
 
         assert result["prompt_notes"] == sorted(result["prompt_notes"])
 
@@ -397,9 +362,7 @@ class TestCachedCharacterInfo:
 
     @pytest.mark.asyncio
     async def test_caches_character_queries(self):
-        with patch(
-            "data_access.character_queries.get_character_info_for_snippet_from_db"
-        ) as mock_query:
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db") as mock_query:
             mock_query.return_value = {"name": "Alice", "summary": "Test"}
 
             result1 = await prompt_data_getters._cached_character_info("Alice", 5)
@@ -410,9 +373,7 @@ class TestCachedCharacterInfo:
 
     @pytest.mark.asyncio
     async def test_differentiates_by_chapter_limit(self):
-        with patch(
-            "data_access.character_queries.get_character_info_for_snippet_from_db"
-        ) as mock_query:
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db") as mock_query:
             mock_query.return_value = {"name": "Alice", "summary": "Test"}
 
             await prompt_data_getters._cached_character_info("Alice", 5)
@@ -422,9 +383,7 @@ class TestCachedCharacterInfo:
 
     @pytest.mark.asyncio
     async def test_handles_none_chapter_limit(self):
-        with patch(
-            "data_access.character_queries.get_character_info_for_snippet_from_db"
-        ) as mock_query:
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db") as mock_query:
             mock_query.return_value = {"name": "Alice", "summary": "Test"}
 
             result = await prompt_data_getters._cached_character_info("Alice", None)
@@ -458,9 +417,7 @@ class TestCachedWorldItem:
     @pytest.mark.asyncio
     async def test_differentiates_by_item_id(self):
         with patch("data_access.world_queries.get_world_item_by_id") as mock_query:
-            mock_query.return_value = WorldItem(
-                id="test", category="test", name="Test", created_chapter=1
-            )
+            mock_query.return_value = WorldItem(id="test", category="test", name="Test", created_chapter=1)
 
             await prompt_data_getters._cached_world_item_by_id("item_001")
             await prompt_data_getters._cached_world_item_by_id("item_002")
@@ -473,9 +430,7 @@ class TestGetCharacterProfilesDictWithNotes:
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_empty_list(self):
-        result = await prompt_data_getters._get_character_profiles_dict_with_notes(
-            [], up_to_chapter_inclusive=5
-        )
+        result = await prompt_data_getters._get_character_profiles_dict_with_notes([], up_to_chapter_inclusive=5)
 
         assert result == {}
 
@@ -489,61 +444,41 @@ class TestGetCharacterProfilesDictWithNotes:
             created_chapter=1,
         )
 
-        with patch(
-            "data_access.character_queries.get_character_profile_by_name"
-        ) as mock_get:
+        with patch("data_access.character_queries.get_character_profile_by_name") as mock_get:
             mock_get.return_value = mock_profile
 
-            result = await prompt_data_getters._get_character_profiles_dict_with_notes(
-                ["Alice"], up_to_chapter_inclusive=5
-            )
+            result = await prompt_data_getters._get_character_profiles_dict_with_notes(["Alice"], up_to_chapter_inclusive=5)
 
             assert "Alice" in result
             assert result["Alice"]["description"] == "Test character"
 
     @pytest.mark.asyncio
     async def test_handles_missing_character(self):
-        with patch(
-            "data_access.character_queries.get_character_profile_by_name"
-        ) as mock_get:
+        with patch("data_access.character_queries.get_character_profile_by_name") as mock_get:
             mock_get.return_value = None
 
-            result = await prompt_data_getters._get_character_profiles_dict_with_notes(
-                ["Alice"], up_to_chapter_inclusive=5
-            )
+            result = await prompt_data_getters._get_character_profiles_dict_with_notes(["Alice"], up_to_chapter_inclusive=5)
 
             assert result == {}
 
     @pytest.mark.asyncio
     async def test_handles_query_exception(self):
-        with patch(
-            "data_access.character_queries.get_character_profile_by_name"
-        ) as mock_get:
+        with patch("data_access.character_queries.get_character_profile_by_name") as mock_get:
             mock_get.side_effect = Exception("Database error")
 
-            result = await prompt_data_getters._get_character_profiles_dict_with_notes(
-                ["Alice"], up_to_chapter_inclusive=5
-            )
+            result = await prompt_data_getters._get_character_profiles_dict_with_notes(["Alice"], up_to_chapter_inclusive=5)
 
             assert result == {}
 
     @pytest.mark.asyncio
     async def test_processes_multiple_characters(self):
-        mock_alice = CharacterProfile(
-            name="Alice", description="Alice desc", created_chapter=1
-        )
-        mock_bob = CharacterProfile(
-            name="Bob", description="Bob desc", created_chapter=1
-        )
+        mock_alice = CharacterProfile(name="Alice", description="Alice desc", created_chapter=1)
+        mock_bob = CharacterProfile(name="Bob", description="Bob desc", created_chapter=1)
 
-        with patch(
-            "data_access.character_queries.get_character_profile_by_name"
-        ) as mock_get:
+        with patch("data_access.character_queries.get_character_profile_by_name") as mock_get:
             mock_get.side_effect = [mock_alice, mock_bob]
 
-            result = await prompt_data_getters._get_character_profiles_dict_with_notes(
-                ["Alice", "Bob"], up_to_chapter_inclusive=5
-            )
+            result = await prompt_data_getters._get_character_profiles_dict_with_notes(["Alice", "Bob"], up_to_chapter_inclusive=5)
 
             assert "Alice" in result
             assert "Bob" in result
@@ -554,35 +489,21 @@ class TestGetFilteredCharacterProfilesPlainText:
 
     @pytest.mark.asyncio
     async def test_returns_message_when_no_profiles(self):
-        with patch(
-            "prompts.prompt_data_getters._get_character_profiles_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_character_profiles_dict_with_notes") as mock_get:
             mock_get.return_value = {}
 
-            result = (
-                await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(
-                    []
-                )
-            )
+            result = await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text([])
 
             assert result == "No character profiles available."
 
     @pytest.mark.asyncio
     async def test_formats_character_profiles_as_plain_text(self):
-        mock_profiles = {
-            "Alice": {"description": "A brave warrior", "traits": ["brave", "loyal"]}
-        }
+        mock_profiles = {"Alice": {"description": "A brave warrior", "traits": ["brave", "loyal"]}}
 
-        with patch(
-            "prompts.prompt_data_getters._get_character_profiles_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_character_profiles_dict_with_notes") as mock_get:
             mock_get.return_value = mock_profiles
 
-            result = (
-                await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(
-                    ["Alice"]
-                )
-            )
+            result = await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(["Alice"])
 
             assert "Key Character Profiles:" in result
             assert "Alice" in result
@@ -596,16 +517,10 @@ class TestGetFilteredCharacterProfilesPlainText:
             "Bob": {"description": "Bob desc"},
         }
 
-        with patch(
-            "prompts.prompt_data_getters._get_character_profiles_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_character_profiles_dict_with_notes") as mock_get:
             mock_get.return_value = mock_profiles
 
-            result = (
-                await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(
-                    ["Charlie", "Alice", "Bob"]
-                )
-            )
+            result = await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(["Charlie", "Alice", "Bob"])
 
             alice_index = result.find("Alice")
             bob_index = result.find("Bob")
@@ -616,14 +531,10 @@ class TestGetFilteredCharacterProfilesPlainText:
     @pytest.mark.asyncio
     async def uses_prepopulation_chapter_for_chapter_0(self):
         with patch.object(config, "KG_PREPOPULATION_CHAPTER_NUM", 0):
-            with patch(
-                "prompts.prompt_data_getters._get_character_profiles_dict_with_notes"
-            ) as mock_get:
+            with patch("prompts.prompt_data_getters._get_character_profiles_dict_with_notes") as mock_get:
                 mock_get.return_value = {}
 
-                await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(
-                    ["Alice"], up_to_chapter_inclusive=0
-                )
+                await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(["Alice"], up_to_chapter_inclusive=0)
 
                 mock_get.assert_called_once()
                 assert mock_get.call_args[0][1] == 0
@@ -636,16 +547,10 @@ class TestGetFilteredCharacterProfilesPlainText:
             "Charlie": None,
         }
 
-        with patch(
-            "prompts.prompt_data_getters._get_character_profiles_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_character_profiles_dict_with_notes") as mock_get:
             mock_get.return_value = mock_profiles
 
-            result = (
-                await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(
-                    ["Alice", "Bob", "Charlie"]
-                )
-            )
+            result = await prompt_data_getters.get_filtered_character_profiles_for_prompt_plain_text(["Alice", "Bob", "Charlie"])
 
             assert "Alice" in result
             assert "Bob" not in result or result.count("Bob") == 0
@@ -656,9 +561,7 @@ class TestGetWorldDataDictWithNotes:
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_empty_dict(self):
-        result = await prompt_data_getters._get_world_data_dict_with_notes(
-            {}, up_to_chapter_inclusive=5
-        )
+        result = await prompt_data_getters._get_world_data_dict_with_notes({}, up_to_chapter_inclusive=5)
 
         assert result == {}
 
@@ -672,41 +575,29 @@ class TestGetWorldDataDictWithNotes:
             created_chapter=1,
         )
 
-        with patch(
-            "prompts.prompt_data_getters._cached_world_item_by_id"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._cached_world_item_by_id") as mock_get:
             mock_get.return_value = mock_item
 
-            result = await prompt_data_getters._get_world_data_dict_with_notes(
-                {"locations": ["item_001"]}, up_to_chapter_inclusive=5
-            )
+            result = await prompt_data_getters._get_world_data_dict_with_notes({"locations": ["item_001"]}, up_to_chapter_inclusive=5)
 
             assert "locations" in result
             assert "Castle" in result["locations"]
 
     @pytest.mark.asyncio
     async def test_handles_missing_world_item(self):
-        with patch(
-            "prompts.prompt_data_getters._cached_world_item_by_id"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._cached_world_item_by_id") as mock_get:
             mock_get.return_value = None
 
-            result = await prompt_data_getters._get_world_data_dict_with_notes(
-                {"locations": ["item_001"]}, up_to_chapter_inclusive=5
-            )
+            result = await prompt_data_getters._get_world_data_dict_with_notes({"locations": ["item_001"]}, up_to_chapter_inclusive=5)
 
             assert result["locations"] == {}
 
     @pytest.mark.asyncio
     async def test_handles_query_exception(self):
-        with patch(
-            "prompts.prompt_data_getters._cached_world_item_by_id"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._cached_world_item_by_id") as mock_get:
             mock_get.side_effect = Exception("Database error")
 
-            result = await prompt_data_getters._get_world_data_dict_with_notes(
-                {"locations": ["item_001"]}, up_to_chapter_inclusive=5
-            )
+            result = await prompt_data_getters._get_world_data_dict_with_notes({"locations": ["item_001"]}, up_to_chapter_inclusive=5)
 
             assert result["locations"] == {}
 
@@ -727,9 +618,7 @@ class TestGetWorldDataDictWithNotes:
             created_chapter=1,
         )
 
-        with patch(
-            "prompts.prompt_data_getters._cached_world_item_by_id"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._cached_world_item_by_id") as mock_get:
             mock_get.side_effect = [mock_location, mock_artifact]
 
             result = await prompt_data_getters._get_world_data_dict_with_notes(
@@ -748,16 +637,10 @@ class TestGetFilteredWorldDataPlainText:
 
     @pytest.mark.asyncio
     async def test_returns_message_when_no_data(self):
-        with patch(
-            "prompts.prompt_data_getters._get_world_data_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_world_data_dict_with_notes") as mock_get:
             mock_get.return_value = {}
 
-            result = (
-                await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
-                    {}
-                )
-            )
+            result = await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text({})
 
             assert result == "No world-building data available."
 
@@ -768,16 +651,10 @@ class TestGetFilteredWorldDataPlainText:
             "locations": {"Castle": {"description": "A grand castle"}},
         }
 
-        with patch(
-            "prompts.prompt_data_getters._get_world_data_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_world_data_dict_with_notes") as mock_get:
             mock_get.return_value = mock_data
 
-            result = (
-                await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
-                    {"_overview_": ["item"], "locations": ["loc"]}
-                )
-            )
+            result = await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text({"_overview_": ["item"], "locations": ["loc"]})
 
             assert "World-Building Overview:" in result
             assert "fantasy world" in result
@@ -789,16 +666,10 @@ class TestGetFilteredWorldDataPlainText:
             "locations": {"Castle": {"description": "A castle"}},
         }
 
-        with patch(
-            "prompts.prompt_data_getters._get_world_data_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_world_data_dict_with_notes") as mock_get:
             mock_get.return_value = mock_data
 
-            result = (
-                await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
-                    {"_overview_": ["item"], "locations": ["loc"]}
-                )
-            )
+            result = await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text({"_overview_": ["item"], "locations": ["loc"]})
 
             assert "World-Building Overview:" not in result
 
@@ -811,20 +682,16 @@ class TestGetFilteredWorldDataPlainText:
             "locations": {"Castle": {"description": "A castle"}},
         }
 
-        with patch(
-            "prompts.prompt_data_getters._get_world_data_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_world_data_dict_with_notes") as mock_get:
             mock_get.return_value = mock_data
 
-            result = (
-                await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
-                    {
-                        "is_default": ["x"],
-                        "source": ["x"],
-                        "user_supplied_data": ["x"],
-                        "locations": ["loc"],
-                    }
-                )
+            result = await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
+                {
+                    "is_default": ["x"],
+                    "source": ["x"],
+                    "user_supplied_data": ["x"],
+                    "locations": ["loc"],
+                }
             )
 
             assert "is_default" not in result.lower()
@@ -840,16 +707,10 @@ class TestGetFilteredWorldDataPlainText:
             "beta": {"Item3": {"description": "Test"}},
         }
 
-        with patch(
-            "prompts.prompt_data_getters._get_world_data_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_world_data_dict_with_notes") as mock_get:
             mock_get.return_value = mock_data
 
-            result = (
-                await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
-                    {"zebra": ["z"], "alpha": ["a"], "beta": ["b"]}
-                )
-            )
+            result = await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text({"zebra": ["z"], "alpha": ["a"], "beta": ["b"]})
 
             alpha_index = result.find("Alpha:")
             beta_index = result.find("Beta:")
@@ -861,36 +722,21 @@ class TestGetFilteredWorldDataPlainText:
     async def test_returns_fallback_message_when_all_filtered(self):
         mock_data = {"_overview_": {}}
 
-        with patch(
-            "prompts.prompt_data_getters._get_world_data_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_world_data_dict_with_notes") as mock_get:
             mock_get.return_value = mock_data
 
-            result = (
-                await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
-                    {"_overview_": ["item"]}
-                )
-            )
+            result = await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text({"_overview_": ["item"]})
 
-            assert (
-                "No significant world-building data available after filtering"
-                in result
-            )
+            assert "No significant world-building data available after filtering" in result
 
     @pytest.mark.asyncio
     async def test_strips_trailing_empty_lines(self):
         mock_data = {"locations": {"Castle": {"description": "A castle"}}}
 
-        with patch(
-            "prompts.prompt_data_getters._get_world_data_dict_with_notes"
-        ) as mock_get:
+        with patch("prompts.prompt_data_getters._get_world_data_dict_with_notes") as mock_get:
             mock_get.return_value = mock_data
 
-            result = (
-                await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text(
-                    {"locations": ["loc"]}
-                )
-            )
+            result = await prompt_data_getters.get_filtered_world_data_for_prompt_plain_text({"locations": ["loc"]})
 
             assert not result.endswith("\n\n")
 
@@ -900,9 +746,7 @@ class TestDiscoverCharactersOfInterest:
 
     @pytest.mark.asyncio
     async def test_includes_protagonist(self):
-        result = await prompt_data_getters._discover_characters_of_interest(
-            protagonist_name="Alice", chapter_plan=None, chapter_number=1
-        )
+        result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="Alice", chapter_plan=None, chapter_number=1)
 
         assert "Alice" in result
 
@@ -911,9 +755,7 @@ class TestDiscoverCharactersOfInterest:
         with patch("utils._is_fill_in") as mock_fill:
             mock_fill.return_value = True
 
-            result = await prompt_data_getters._discover_characters_of_interest(
-                protagonist_name="TBD", chapter_plan=None, chapter_number=1
-            )
+            result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="TBD", chapter_plan=None, chapter_number=1)
 
             assert "TBD" not in result
 
@@ -924,9 +766,7 @@ class TestDiscoverCharactersOfInterest:
             {"characters_involved": ["Charlie"]},
         ]
 
-        result = await prompt_data_getters._discover_characters_of_interest(
-            protagonist_name="Alice", chapter_plan=chapter_plan, chapter_number=1
-        )
+        result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="Alice", chapter_plan=chapter_plan, chapter_number=1)
 
         assert "Alice" in result
         assert "Bob" in result
@@ -934,17 +774,13 @@ class TestDiscoverCharactersOfInterest:
 
     @pytest.mark.asyncio
     async def test_handles_empty_chapter_plan(self):
-        result = await prompt_data_getters._discover_characters_of_interest(
-            protagonist_name="Alice", chapter_plan=[], chapter_number=1
-        )
+        result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="Alice", chapter_plan=[], chapter_number=1)
 
         assert "Alice" in result
 
     @pytest.mark.asyncio
     async def test_handles_none_chapter_plan(self):
-        result = await prompt_data_getters._discover_characters_of_interest(
-            protagonist_name="Alice", chapter_plan=None, chapter_number=1
-        )
+        result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="Alice", chapter_plan=None, chapter_number=1)
 
         assert "Alice" in result
 
@@ -955,9 +791,7 @@ class TestDiscoverCharactersOfInterest:
 
             chapter_plan = [{"characters_involved": ["Alice", "TBD"]}]
 
-            result = await prompt_data_getters._discover_characters_of_interest(
-                protagonist_name="Hero", chapter_plan=chapter_plan, chapter_number=1
-            )
+            result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="Hero", chapter_plan=chapter_plan, chapter_number=1)
 
             assert "Alice" in result
             assert "TBD" not in result
@@ -971,9 +805,7 @@ class TestDiscoverCharactersOfInterest:
             {"characters_involved": [None, "", "  ", "Alice"]},
         ]
 
-        result = await prompt_data_getters._discover_characters_of_interest(
-            protagonist_name="Hero", chapter_plan=chapter_plan, chapter_number=1
-        )
+        result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="Hero", chapter_plan=chapter_plan, chapter_number=1)
 
         assert "Hero" in result
         assert "Alice" in result
@@ -982,9 +814,7 @@ class TestDiscoverCharactersOfInterest:
     async def test_strips_whitespace_from_character_names(self):
         chapter_plan = [{"characters_involved": ["  Alice  ", "Bob"]}]
 
-        result = await prompt_data_getters._discover_characters_of_interest(
-            protagonist_name="Hero", chapter_plan=chapter_plan, chapter_number=1
-        )
+        result = await prompt_data_getters._discover_characters_of_interest(protagonist_name="Hero", chapter_plan=chapter_plan, chapter_number=1)
 
         assert "Alice" in result or "  Alice  " in result
 
@@ -994,38 +824,29 @@ class TestApplyProtagonistProximityFiltering:
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_characters(self):
-        result = await prompt_data_getters._apply_protagonist_proximity_filtering(
-            characters_of_interest=set(), protagonist_name="Alice"
-        )
+        result = await prompt_data_getters._apply_protagonist_proximity_filtering(characters_of_interest=set(), protagonist_name="Alice")
 
         assert len(result) == 0
 
     @pytest.mark.asyncio
     async def test_returns_protagonist_only_when_no_others(self):
-        result = await prompt_data_getters._apply_protagonist_proximity_filtering(
-            characters_of_interest={"Alice"}, protagonist_name="Alice"
-        )
+        result = await prompt_data_getters._apply_protagonist_proximity_filtering(characters_of_interest={"Alice"}, protagonist_name="Alice")
 
         assert result == {"Alice"}
 
     @pytest.mark.asyncio
     async def test_keeps_protagonist_without_protagonist_name(self):
-        with patch(
-            "data_access.kg_queries.get_shortest_path_length_between_entities"
-        ) as mock_path:
+        with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
             mock_path.return_value = 2
 
-            result = await prompt_data_getters._apply_protagonist_proximity_filtering(
-                characters_of_interest={"Alice", "Bob"}, protagonist_name=""
-            )
+            result = await prompt_data_getters._apply_protagonist_proximity_filtering(characters_of_interest={"Alice", "Bob"}, protagonist_name="")
 
             assert result == {"Alice", "Bob"}
 
     @pytest.mark.asyncio
     async def test_filters_distant_characters_small_set(self):
-        with patch(
-            "data_access.kg_queries.get_shortest_path_length_between_entities"
-        ) as mock_path:
+        with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
+
             async def get_path(protag, char):
                 if char == "Bob":
                     return 2
@@ -1046,9 +867,7 @@ class TestApplyProtagonistProximityFiltering:
 
     @pytest.mark.asyncio
     async def test_uses_parallel_queries_for_large_set(self):
-        with patch(
-            "data_access.kg_queries.get_shortest_path_length_between_entities"
-        ) as mock_path:
+        with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
             mock_path.return_value = 2
 
             result = await prompt_data_getters._apply_protagonist_proximity_filtering(
@@ -1061,23 +880,18 @@ class TestApplyProtagonistProximityFiltering:
 
     @pytest.mark.asyncio
     async def test_handles_none_path_length(self):
-        with patch(
-            "data_access.kg_queries.get_shortest_path_length_between_entities"
-        ) as mock_path:
+        with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
             mock_path.return_value = None
 
-            result = await prompt_data_getters._apply_protagonist_proximity_filtering(
-                characters_of_interest={"Alice", "Bob"}, protagonist_name="Alice"
-            )
+            result = await prompt_data_getters._apply_protagonist_proximity_filtering(characters_of_interest={"Alice", "Bob"}, protagonist_name="Alice")
 
             assert "Alice" in result
             assert "Bob" not in result
 
     @pytest.mark.asyncio
     async def test_handles_query_exceptions(self):
-        with patch(
-            "data_access.kg_queries.get_shortest_path_length_between_entities"
-        ) as mock_path:
+        with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
+
             async def raise_error(*args, **kwargs):
                 raise Exception("Query failed")
 
@@ -1095,23 +909,18 @@ class TestApplyProtagonistProximityFiltering:
 
     @pytest.mark.asyncio
     async def test_includes_close_characters(self):
-        with patch(
-            "data_access.kg_queries.get_shortest_path_length_between_entities"
-        ) as mock_path:
+        with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
             mock_path.return_value = 1
 
-            result = await prompt_data_getters._apply_protagonist_proximity_filtering(
-                characters_of_interest={"Alice", "Bob"}, protagonist_name="Alice"
-            )
+            result = await prompt_data_getters._apply_protagonist_proximity_filtering(characters_of_interest={"Alice", "Bob"}, protagonist_name="Alice")
 
             assert "Alice" in result
             assert "Bob" in result
 
     @pytest.mark.asyncio
     async def test_threshold_is_three_hops(self):
-        with patch(
-            "data_access.kg_queries.get_shortest_path_length_between_entities"
-        ) as mock_path:
+        with patch("data_access.kg_queries.get_shortest_path_length_between_entities") as mock_path:
+
             async def get_path(protag, char):
                 if char == "Bob":
                     return 3
@@ -1138,80 +947,58 @@ class TestGatherNovelInfoFacts:
     async def test_stops_when_max_facts_reached(self):
         facts = ["fact1", "fact2"]
 
-        await prompt_data_getters._gather_novel_info_facts(
-            facts_list=facts, max_total_facts=2
-        )
+        await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=2)
 
         assert len(facts) == 2
 
     @pytest.mark.asyncio
     async def test_gathers_theme_from_kg(self):
-        with patch(
-            "data_access.kg_queries.get_novel_info_property_from_db"
-        ) as mock_query:
+        with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_query:
             mock_query.return_value = "Redemption"
 
             facts = []
-            await prompt_data_getters._gather_novel_info_facts(
-                facts_list=facts, max_total_facts=10
-            )
+            await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
 
             assert len(facts) > 0
             assert any("theme" in fact.lower() for fact in facts)
 
     @pytest.mark.asyncio
     async def test_gathers_central_conflict_from_kg(self):
-        with patch(
-            "data_access.kg_queries.get_novel_info_property_from_db"
-        ) as mock_query:
+        with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_query:
             mock_query.side_effect = [None, "Good vs Evil"]
 
             facts = []
-            await prompt_data_getters._gather_novel_info_facts(
-                facts_list=facts, max_total_facts=10
-            )
+            await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
 
             assert any("conflict" in fact.lower() for fact in facts)
 
     @pytest.mark.asyncio
     async def test_handles_query_exceptions(self):
-        with patch(
-            "data_access.kg_queries.get_novel_info_property_from_db"
-        ) as mock_query:
+        with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_query:
             mock_query.side_effect = Exception("Query failed")
 
             facts = []
-            await prompt_data_getters._gather_novel_info_facts(
-                facts_list=facts, max_total_facts=10
-            )
+            await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
 
             assert len(facts) == 0
 
     @pytest.mark.asyncio
     async def test_skips_empty_values(self):
-        with patch(
-            "data_access.kg_queries.get_novel_info_property_from_db"
-        ) as mock_query:
+        with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_query:
             mock_query.return_value = None
 
             facts = []
-            await prompt_data_getters._gather_novel_info_facts(
-                facts_list=facts, max_total_facts=10
-            )
+            await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
 
             assert len(facts) == 0
 
     @pytest.mark.asyncio
     async def test_avoids_duplicate_facts(self):
-        with patch(
-            "data_access.kg_queries.get_novel_info_property_from_db"
-        ) as mock_query:
+        with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_query:
             mock_query.side_effect = ["Redemption", "Main conflict"]
 
             facts = ["- The novel's central theme is: Redemption."]
-            await prompt_data_getters._gather_novel_info_facts(
-                facts_list=facts, max_total_facts=10
-            )
+            await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
 
             assert "- The novel's central theme is: Redemption." in facts
             assert len([f for f in facts if "Redemption" in f]) == 1
@@ -1258,9 +1045,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_gathers_character_status(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_status:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_status:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_status.side_effect = ["alive", None]
                 mock_rel.return_value = []
@@ -1280,9 +1065,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_gathers_character_location(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_location:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_location:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_location.side_effect = [None, "Castle"]
                 mock_rel.return_value = []
@@ -1302,9 +1085,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_gathers_character_relationships(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_value:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_value.return_value = None
                 mock_rel.return_value = [
@@ -1327,9 +1108,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_respects_max_facts_per_char(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_value:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_value.side_effect = ["alive", "Castle"]
                 mock_rel.return_value = [
@@ -1351,9 +1130,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_respects_max_total_facts(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_value:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_value.return_value = "alive"
                 mock_rel.return_value = []
@@ -1372,9 +1149,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_filters_relationship_types(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_value:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_value.return_value = None
                 mock_rel.return_value = [
@@ -1397,9 +1172,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_handles_query_exceptions(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_value:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_value.side_effect = Exception("Query failed")
                 mock_rel.side_effect = Exception("Query failed")
@@ -1418,9 +1191,7 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_avoids_duplicate_facts(self):
-        with patch(
-            "data_access.kg_queries.get_most_recent_value_from_db"
-        ) as mock_value:
+        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
             with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                 mock_value.side_effect = ["alive", None]
                 mock_rel.return_value = []
@@ -1443,9 +1214,7 @@ class TestGetReliableKGFactsForDraftingPrompt:
 
     @pytest.mark.asyncio
     async def test_returns_message_for_chapter_zero(self):
-        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-            chapter_number=0
-        )
+        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=0)
 
         assert "No KG facts applicable" in result
 
@@ -1454,113 +1223,67 @@ class TestGetReliableKGFactsForDraftingPrompt:
         mock_snapshot = MagicMock()
         mock_snapshot.kg_facts_block = "Cached KG facts"
 
-        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-            chapter_number=1, snapshot=mock_snapshot
-        )
+        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=1, snapshot=mock_snapshot)
 
         assert result == "Cached KG facts"
 
     @pytest.mark.asyncio
     async def test_uses_default_protagonist_when_none_provided(self):
         with patch.object(config, "DEFAULT_PROTAGONIST_NAME", "DefaultHero"):
-            with patch(
-                "prompts.prompt_data_getters._discover_characters_of_interest"
-            ) as mock_discover:
-                with patch(
-                    "prompts.prompt_data_getters._apply_protagonist_proximity_filtering"
-                ) as mock_filter:
-                    with patch(
-                        "prompts.prompt_data_getters._gather_novel_info_facts"
-                    ) as mock_novel:
-                        with patch(
-                            "prompts.prompt_data_getters._gather_character_facts"
-                        ) as mock_char:
+            with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
+                with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
+                    with patch("prompts.prompt_data_getters._gather_novel_info_facts") as mock_novel:
+                        with patch("prompts.prompt_data_getters._gather_character_facts") as mock_char:
                             mock_discover.return_value = set()
                             mock_filter.return_value = set()
 
-                            await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-                                chapter_number=1, protagonist_name=None
-                            )
+                            await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=1, protagonist_name=None)
 
                             mock_discover.assert_called_once()
-                            assert (
-                                mock_discover.call_args[0][0] == "DefaultHero"
-                            )
+                            assert mock_discover.call_args[0][0] == "DefaultHero"
 
     @pytest.mark.asyncio
     async def test_returns_no_facts_message_when_empty(self):
-        with patch(
-            "prompts.prompt_data_getters._discover_characters_of_interest"
-        ) as mock_discover:
-            with patch(
-                "prompts.prompt_data_getters._apply_protagonist_proximity_filtering"
-            ) as mock_filter:
-                with patch(
-                    "prompts.prompt_data_getters._gather_novel_info_facts"
-                ) as mock_novel:
-                    with patch(
-                        "prompts.prompt_data_getters._gather_character_facts"
-                    ) as mock_char:
+        with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
+            with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
+                with patch("prompts.prompt_data_getters._gather_novel_info_facts") as mock_novel:
+                    with patch("prompts.prompt_data_getters._gather_character_facts") as mock_char:
                         mock_discover.return_value = set()
                         mock_filter.return_value = set()
 
-                        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-                            chapter_number=1
-                        )
+                        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=1)
 
                         assert "No specific reliable KG facts" in result
 
     @pytest.mark.asyncio
     async def uses_prepopulation_chapter_for_chapter_1(self):
         with patch.object(config, "KG_PREPOPULATION_CHAPTER_NUM", 0):
-            with patch(
-                "prompts.prompt_data_getters._discover_characters_of_interest"
-            ) as mock_discover:
-                with patch(
-                    "prompts.prompt_data_getters._apply_protagonist_proximity_filtering"
-                ) as mock_filter:
-                    with patch(
-                        "prompts.prompt_data_getters._gather_novel_info_facts"
-                    ):
-                        with patch(
-                            "prompts.prompt_data_getters._gather_character_facts"
-                        ) as mock_char:
+            with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
+                with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
+                    with patch("prompts.prompt_data_getters._gather_novel_info_facts"):
+                        with patch("prompts.prompt_data_getters._gather_character_facts") as mock_char:
                             mock_discover.return_value = {"Alice"}
                             mock_filter.return_value = {"Alice"}
 
-                            await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-                                chapter_number=1
-                            )
+                            await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=1)
 
                             mock_char.assert_called_once()
                             assert mock_char.call_args[0][1] == 0
 
     @pytest.mark.asyncio
     async def test_limits_facts_to_max_total(self):
-        with patch(
-            "prompts.prompt_data_getters._discover_characters_of_interest"
-        ) as mock_discover:
-            with patch(
-                "prompts.prompt_data_getters._apply_protagonist_proximity_filtering"
-            ) as mock_filter:
-                with patch(
-                    "data_access.kg_queries.get_novel_info_property_from_db"
-                ) as mock_novel:
-                    with patch(
-                        "data_access.kg_queries.get_most_recent_value_from_db"
-                    ) as mock_value:
-                        with patch(
-                            "data_access.kg_queries.query_kg_from_db"
-                        ) as mock_rel:
+        with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
+            with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
+                with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_novel:
+                    with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                        with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                             mock_discover.return_value = {"Alice"}
                             mock_filter.return_value = {"Alice"}
                             mock_novel.return_value = "Theme"
                             mock_value.return_value = "alive"
                             mock_rel.return_value = []
 
-                            result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-                                chapter_number=2, max_total_facts=2
-                            )
+                            result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=2, max_total_facts=2)
 
                             lines = result.split("\n")
                             facts = [l for l in lines if l.startswith("-")]
@@ -1568,30 +1291,18 @@ class TestGetReliableKGFactsForDraftingPrompt:
 
     @pytest.mark.asyncio
     async def test_deduplicates_and_sorts_facts(self):
-        with patch(
-            "prompts.prompt_data_getters._discover_characters_of_interest"
-        ) as mock_discover:
-            with patch(
-                "prompts.prompt_data_getters._apply_protagonist_proximity_filtering"
-            ) as mock_filter:
-                with patch(
-                    "data_access.kg_queries.get_novel_info_property_from_db"
-                ) as mock_novel:
-                    with patch(
-                        "data_access.kg_queries.get_most_recent_value_from_db"
-                    ) as mock_value:
-                        with patch(
-                            "data_access.kg_queries.query_kg_from_db"
-                        ) as mock_rel:
+        with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
+            with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
+                with patch("data_access.kg_queries.get_novel_info_property_from_db") as mock_novel:
+                    with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                        with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
                             mock_discover.return_value = {"Alice"}
                             mock_filter.return_value = {"Alice"}
                             mock_novel.side_effect = ["Theme B", "Theme A"]
                             mock_value.return_value = None
                             mock_rel.return_value = []
 
-                            result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-                                chapter_number=2
-                            )
+                            result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=2)
 
                             lines = [l for l in result.split("\n") if l.startswith("-")]
                             if len(lines) >= 2:
@@ -1602,20 +1313,14 @@ class TestGetReliableKGFactsForDraftingPrompt:
         mock_snapshot = MagicMock()
         del mock_snapshot.kg_facts_block
 
-        with patch(
-            "prompts.prompt_data_getters._discover_characters_of_interest"
-        ) as mock_discover:
-            with patch(
-                "prompts.prompt_data_getters._apply_protagonist_proximity_filtering"
-            ) as mock_filter:
+        with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
+            with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
                 with patch("prompts.prompt_data_getters._gather_novel_info_facts"):
                     with patch("prompts.prompt_data_getters._gather_character_facts"):
                         mock_discover.return_value = set()
                         mock_filter.return_value = set()
 
-                        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(
-                            chapter_number=1, snapshot=mock_snapshot
-                        )
+                        result = await prompt_data_getters.get_reliable_kg_facts_for_drafting_prompt(chapter_number=1, snapshot=mock_snapshot)
 
                         assert "No specific reliable KG facts" in result
 
@@ -1625,115 +1330,81 @@ class TestGetCharacterStateSnippet:
 
     @pytest.mark.asyncio
     async def test_returns_empty_string_for_no_profiles(self):
-        result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-            character_profiles=[]
-        )
+        result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[])
 
         assert result == ""
 
     @pytest.mark.asyncio
     async def test_prioritizes_protagonist(self):
-        alice = CharacterProfile(
-            name="Alice", description="Alice desc", created_chapter=1
-        )
-        bob = CharacterProfile(
-            name="Bob", description="Bob desc", created_chapter=1
-        )
+        alice = CharacterProfile(name="Alice", description="Alice desc", created_chapter=1)
+        bob = CharacterProfile(name="Bob", description="Bob desc", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[bob, alice], protagonist_name="Alice"
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[bob, alice], protagonist_name="Alice")
 
             lines = result.split("\n")
-            alice_index = next(
-                (i for i, l in enumerate(lines) if "Alice" in l and "**" in l), -1
-            )
-            bob_index = next(
-                (i for i, l in enumerate(lines) if "Bob" in l and "**" in l), -1
-            )
+            alice_index = next((i for i, l in enumerate(lines) if "Alice" in l and "**" in l), -1)
+            bob_index = next((i for i, l in enumerate(lines) if "Bob" in l and "**" in l), -1)
 
             if alice_index >= 0 and bob_index >= 0:
                 assert alice_index < bob_index
 
     @pytest.mark.asyncio
     async def test_limits_characters_to_config_max(self):
-        profiles = [
-            CharacterProfile(name=f"Char{i}", created_chapter=1) for i in range(10)
-        ]
+        profiles = [CharacterProfile(name=f"Char{i}", created_chapter=1) for i in range(10)]
 
-        with patch(
-            "prompts.prompt_data_getters._cached_character_info"
-        ) as mock_info:
+        with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=profiles
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=profiles)
 
             character_count = result.count("**Char")
             assert character_count <= 10
 
     @pytest.mark.asyncio
     async def test_includes_character_description(self):
-        alice = CharacterProfile(
-            name="Alice", description="A brave warrior", created_chapter=1
-        )
+        alice = CharacterProfile(name="Alice", description="A brave warrior", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "brave warrior" in result
 
     @pytest.mark.asyncio
     async def test_includes_character_traits(self):
-        alice = CharacterProfile(
-            name="Alice", traits=["brave", "loyal", "honest"], created_chapter=1
-        )
+        alice = CharacterProfile(name="Alice", traits=["brave", "loyal", "honest"], created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "brave" in result
             assert "Traits:" in result
 
     @pytest.mark.asyncio
     async def test_includes_character_status_when_not_unknown(self):
-        alice = CharacterProfile(
-            name="Alice", status="alive", created_chapter=1
-        )
+        alice = CharacterProfile(name="Alice", status="alive", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "Status: alive" in result
 
     @pytest.mark.asyncio
     async def test_skips_unknown_status(self):
-        alice = CharacterProfile(
-            name="Alice", status="Unknown", created_chapter=1
-        )
+        alice = CharacterProfile(name="Alice", status="Unknown", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "Status:" not in result or "Unknown" not in result
 
@@ -1748,9 +1419,7 @@ class TestGetCharacterStateSnippet:
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "Personality:" in result
             assert "Introverted" in result
@@ -1766,9 +1435,7 @@ class TestGetCharacterStateSnippet:
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "Background:" in result
             assert "mountains" in result
@@ -1778,13 +1445,9 @@ class TestGetCharacterStateSnippet:
         alice = CharacterProfile(name="Alice", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
-            mock_info.return_value = {
-                "summary": "Currently searching for the artifact"
-            }
+            mock_info.return_value = {"summary": "Currently searching for the artifact"}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "Current State:" in result
             assert "artifact" in result
@@ -1796,9 +1459,7 @@ class TestGetCharacterStateSnippet:
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {"key_relationships": ["friend of Bob", "mentor to Charlie"]}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "Key Relationships:" in result
             assert "Bob" in result
@@ -1814,13 +1475,9 @@ class TestGetCharacterStateSnippet:
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
-            traits_line = next(
-                (line for line in result.split("\n") if "Traits:" in line), ""
-            )
+            traits_line = next((line for line in result.split("\n") if "Traits:" in line), "")
             trait_count = traits_line.count(",") + 1
             assert trait_count <= 3
 
@@ -1829,20 +1486,12 @@ class TestGetCharacterStateSnippet:
         alice = CharacterProfile(name="Alice", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
-            mock_info.return_value = {
-                "key_relationships": ["rel1", "rel2", "rel3", "rel4", "rel5"]
-            }
+            mock_info.return_value = {"key_relationships": ["rel1", "rel2", "rel3", "rel4", "rel5"]}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             rel_line = next(
-                (
-                    line
-                    for line in result.split("\n")
-                    if "Key Relationships:" in line
-                ),
+                (line for line in result.split("\n") if "Key Relationships:" in line),
                 "",
             )
             rel_count = rel_line.count(",") + 1
@@ -1859,9 +1508,7 @@ class TestGetCharacterStateSnippet:
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {"personality": "Neo4j personality"}
 
-            result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                character_profiles=[alice]
-            )
+            result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[alice])
 
             assert "Profile personality" in result
             assert result.count("Personality:") == 1
@@ -1869,24 +1516,16 @@ class TestGetCharacterStateSnippet:
     @pytest.mark.asyncio
     async def test_uses_default_protagonist_when_none_provided(self):
         with patch.object(config, "DEFAULT_PROTAGONIST_NAME", "DefaultHero"):
-            alice = CharacterProfile(
-                name="DefaultHero", description="Hero", created_chapter=1
-            )
+            alice = CharacterProfile(name="DefaultHero", description="Hero", created_chapter=1)
             bob = CharacterProfile(name="Bob", description="Bob", created_chapter=1)
 
-            with patch(
-                "prompts.prompt_data_getters._cached_character_info"
-            ) as mock_info:
+            with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
                 mock_info.return_value = {}
 
-                result = await prompt_data_getters.get_character_state_snippet_for_prompt(
-                    character_profiles=[bob, alice], protagonist_name=None
-                )
+                result = await prompt_data_getters.get_character_state_snippet_for_prompt(character_profiles=[bob, alice], protagonist_name=None)
 
                 lines = result.split("\n")
-                hero_index = next(
-                    (i for i, l in enumerate(lines) if "DefaultHero" in l), -1
-                )
+                hero_index = next((i for i, l in enumerate(lines) if "DefaultHero" in l), -1)
                 bob_index = next((i for i, l in enumerate(lines) if "Bob" in l), -1)
 
                 if hero_index >= 0 and bob_index >= 0:
@@ -1898,9 +1537,7 @@ class TestGetWorldStateSnippet:
 
     @pytest.mark.asyncio
     async def test_returns_empty_string_for_no_items(self):
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[])
 
         assert result == ""
 
@@ -1921,9 +1558,7 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item1, item2]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item1, item2])
 
         assert "**location:**" in result
         assert "**artifact:**" in result
@@ -1938,9 +1573,7 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
         assert "**Miscellaneous:**" in result
 
@@ -1957,9 +1590,7 @@ class TestGetWorldStateSnippet:
             for i in range(10)
         ]
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=items
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=items)
 
         location_count = result.count("**Location")
         assert location_count <= 10
@@ -1974,9 +1605,7 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
         assert "Description: A grand medieval castle" in result
 
@@ -1990,9 +1619,7 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
         assert "Goals:" in result
         assert "Defeat evil" in result
@@ -2007,9 +1634,7 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
         assert "Rules:" in result
         assert "No magic allowed" in result
@@ -2024,9 +1649,7 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
         assert "Key Elements:" in result
         assert "throne room" in result
@@ -2041,13 +1664,9 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
-        goals_line = next(
-            (line for line in result.split("\n") if "Goals:" in line), ""
-        )
+        goals_line = next((line for line in result.split("\n") if "Goals:" in line), "")
         goal_count = goals_line.count(",") + 1
         assert goal_count <= 2
 
@@ -2061,13 +1680,9 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
-        rules_line = next(
-            (line for line in result.split("\n") if "Rules:" in line), ""
-        )
+        rules_line = next((line for line in result.split("\n") if "Rules:" in line), "")
         rule_count = rules_line.count(",") + 1
         assert rule_count <= 2
 
@@ -2081,13 +1696,9 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
-        elements_line = next(
-            (line for line in result.split("\n") if "Key Elements:" in line), ""
-        )
+        elements_line = next((line for line in result.split("\n") if "Key Elements:" in line), "")
         element_count = elements_line.count(",") + 1
         assert element_count <= 3
 
@@ -2108,9 +1719,7 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item1, item2]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item1, item2])
 
         assert "AAA With Desc" in result or "ZZZ No Desc" in result
 
@@ -2127,8 +1736,6 @@ class TestGetWorldStateSnippet:
             created_chapter=1,
         )
 
-        result = await prompt_data_getters.get_world_state_snippet_for_prompt(
-            world_building=[item]
-        )
+        result = await prompt_data_getters.get_world_state_snippet_for_prompt(world_building=[item])
 
         assert "**Castle**" in result

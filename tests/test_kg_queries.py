@@ -1,5 +1,6 @@
 """Tests for data_access/kg_queries.py"""
-from unittest.mock import AsyncMock, patch
+
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -88,22 +89,16 @@ class TestKGBatchOperations:
     async def test_add_kg_triples_batch_empty(self, monkeypatch):
         """Test adding empty batch of triples."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
-        result = await kg_queries.add_kg_triples_batch_to_db(
-            [], 1, is_from_flawed_draft=False
-        )
+        result = await kg_queries.add_kg_triples_batch_to_db([], 1, is_from_flawed_draft=False)
         assert result is None
         mock_execute.assert_not_called()
 
     async def test_add_kg_triples_batch_with_entities(self, monkeypatch):
         """Test adding batch with entity objects (current structured triple format)."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         triples = [
             {
@@ -114,9 +109,7 @@ class TestKGBatchOperations:
             }
         ]
 
-        result = await kg_queries.add_kg_triples_batch_to_db(
-            triples, 1, is_from_flawed_draft=False
-        )
+        result = await kg_queries.add_kg_triples_batch_to_db(triples, 1, is_from_flawed_draft=False)
         assert result is None
         mock_execute.assert_called_once()
 
@@ -138,9 +131,7 @@ class TestKGQueries:
                 }
             ]
         )
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.query_kg_from_db("Alice")
         assert len(result) > 0
@@ -220,16 +211,12 @@ class TestKGQueries:
         kg_queries.get_novel_info_property_from_db.cache_clear()
 
         mock_read = AsyncMock(return_value=[{"value": "Test Novel"}])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.get_novel_info_property_from_db("title")
         assert result == "Test Novel"
 
-    async def test_get_novel_info_property_from_db_cached_value_is_defensive_copy(
-        self, monkeypatch
-    ):
+    async def test_get_novel_info_property_from_db_cached_value_is_defensive_copy(self, monkeypatch):
         """If NovelInfo returns a mutable structure, caching must not leak mutations."""
         kg_queries.get_novel_info_property_from_db.cache_clear()
 
@@ -253,9 +240,7 @@ class TestKGQueries:
         kg_queries.get_novel_info_property_from_db.cache_clear()
 
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         with pytest.raises(ValueError, match=r"Unsafe NovelInfo property key"):
             await kg_queries.get_novel_info_property_from_db("missing")
@@ -291,9 +276,7 @@ class TestKGCypherInjectionHardening:
         called_query = mock_read.call_args.args[0]
         assert "MATCH (s)-[r:`FRIEND_OF`]->(o)" in called_query
 
-    async def test_get_most_recent_value_from_db_rejects_unsafe_relationship_type(
-        self, monkeypatch
-    ):
+    async def test_get_most_recent_value_from_db_rejects_unsafe_relationship_type(self, monkeypatch):
         """Unsafe relationship types must be rejected before Cypher interpolation."""
         mock_read = AsyncMock(return_value=[])
         monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
@@ -303,14 +286,10 @@ class TestKGCypherInjectionHardening:
 
         mock_read.assert_not_called()
 
-    async def test_add_kg_triples_batch_to_db_rejects_unsafe_relationship_type(
-        self, monkeypatch
-    ):
+    async def test_add_kg_triples_batch_to_db_rejects_unsafe_relationship_type(self, monkeypatch):
         """Batch KG writes must reject unsafe relationship types before interpolation."""
         mock_execute = AsyncMock(return_value=None)
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         triples = [
             {
@@ -322,9 +301,7 @@ class TestKGCypherInjectionHardening:
         ]
 
         with pytest.raises(ValueError, match=r"Unsafe relationship type"):
-            await kg_queries.add_kg_triples_batch_to_db(
-                triples, chapter_number=1, is_from_flawed_draft=False
-            )
+            await kg_queries.add_kg_triples_batch_to_db(triples, chapter_number=1, is_from_flawed_draft=False)
 
         mock_execute.assert_not_called()
 
@@ -336,9 +313,7 @@ class TestQualityAssuranceQueries:
     async def test_find_contradictory_trait_characters(self, monkeypatch):
         """Test finding characters with contradictory traits."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         contradictory_pairs = [("brave", "cowardly"), ("kind", "cruel")]
         result = await kg_queries.find_contradictory_trait_characters(contradictory_pairs)
@@ -348,9 +323,7 @@ class TestQualityAssuranceQueries:
     async def test_find_post_mortem_activity(self, monkeypatch):
         """Test finding post-mortem activity."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.find_post_mortem_activity()
         assert isinstance(result, list)
@@ -364,9 +337,7 @@ class TestEntityDeduplication:
     async def test_find_candidate_duplicate_entities(self, monkeypatch):
         """Test finding candidate duplicate entities."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.find_candidate_duplicate_entities()
         assert isinstance(result, list)
@@ -382,12 +353,11 @@ class TestEntityDeduplication:
                 }
             ]
         )
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.get_entity_context_for_resolution("alice_entity_id")
         assert result is not None
+
 
 @pytest.mark.asyncio
 class TestRelationshipMaintenance:
@@ -460,9 +430,7 @@ class TestPathQueries:
         """Test getting shortest path length between entities."""
         # Implementation returns `length(p) AS len`
         mock_read = AsyncMock(return_value=[{"len": 2}])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.get_shortest_path_length_between_entities("Alice", "Bob")
         assert result == 2
@@ -470,13 +438,9 @@ class TestPathQueries:
     async def test_get_shortest_path_no_path(self, monkeypatch):
         """Test getting shortest path when no path exists."""
         mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            kg_queries.neo4j_manager, "execute_read_query", mock_read
-        )
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
-        result = await kg_queries.get_shortest_path_length_between_entities(
-            "Alice", "Zoe"
-        )
+        result = await kg_queries.get_shortest_path_length_between_entities("Alice", "Zoe")
         assert result is None
 
 
@@ -484,13 +448,9 @@ class TestPathQueries:
 class TestChapterContext:
     """Tests for chapter context queries."""
 
-    async def test_get_chapter_context_for_entity_is_bounded_and_uses_subqueries(
-        self, monkeypatch
-    ):
+    async def test_get_chapter_context_for_entity_is_bounded_and_uses_subqueries(self, monkeypatch):
         """Guardrail: query should avoid OPTIONAL-MATCH row explosion and remain bounded."""
-        mock_read = AsyncMock(
-            return_value=[{"chapter_number": 1, "summary": "First appearance", "text": "..." }]
-        )
+        mock_read = AsyncMock(return_value=[{"chapter_number": 1, "summary": "First appearance", "text": "..."}])
         monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.get_chapter_context_for_entity(

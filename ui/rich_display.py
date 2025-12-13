@@ -136,20 +136,12 @@ class RichDisplayManager:
         # Get request count from the refactored service statistics
         try:
             stats = llm_service.get_combined_statistics()
-            request_count = stats.get("completion_service", {}).get(
-                "completions_requested", 0
-            )
-            requests_per_minute = (
-                request_count / (elapsed_seconds / 60) if elapsed_seconds > 0 else 0.0
-            )
+            request_count = stats.get("completion_service", {}).get("completions_requested", 0)
+            requests_per_minute = request_count / (elapsed_seconds / 60) if elapsed_seconds > 0 else 0.0
         except (AttributeError, KeyError):
             requests_per_minute = 0.0
-        self.status_text_requests_per_minute.plain = (
-            f"Requests/Min: {requests_per_minute:.2f}"
-        )
-        self.status_text_elapsed_time.plain = (
-            f"Elapsed Time: {time.strftime('%H:%M:%S', time.gmtime(elapsed_seconds))}"
-        )
+        self.status_text_requests_per_minute.plain = f"Requests/Min: {requests_per_minute:.2f}"
+        self.status_text_elapsed_time.plain = f"Elapsed Time: {time.strftime('%H:%M:%S', time.gmtime(elapsed_seconds))}"
         # Force a refresh to keep the live panel anchored and updated
         try:
             self.live.refresh()

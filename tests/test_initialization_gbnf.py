@@ -65,17 +65,11 @@ CHARACTER_SHEET_JSON = """
 async def test_global_outline_gbnf_integration():
     """Verify global_outline_node correctly loads and modifies grammar."""
 
-    with patch(
-        "core.langgraph.initialization.global_outline_node.llm_service"
-    ) as mock_llm:
-        mock_llm.async_call_llm = AsyncMock(
-            return_value=(GLOBAL_OUTLINE_JSON, {"tokens": 100})
-        )
+    with patch("core.langgraph.initialization.global_outline_node.llm_service") as mock_llm:
+        mock_llm.async_call_llm = AsyncMock(return_value=(GLOBAL_OUTLINE_JSON, {"tokens": 100}))
 
         # Mock ContentManager to avoid file I/O
-        with patch(
-            "core.langgraph.initialization.global_outline_node.ContentManager"
-        ) as mock_cm:
+        with patch("core.langgraph.initialization.global_outline_node.ContentManager") as mock_cm:
             mock_cm_instance = mock_cm.return_value
             mock_cm_instance.save_json.return_value = {
                 "path": "mock/path",
@@ -109,9 +103,7 @@ async def test_global_outline_gbnf_integration():
 async def test_character_sheets_gbnf_integration():
     """Verify character_sheets_node correctly loads and modifies grammar."""
 
-    with patch(
-        "core.langgraph.initialization.character_sheets_node.llm_service"
-    ) as mock_llm:
+    with patch("core.langgraph.initialization.character_sheets_node.llm_service") as mock_llm:
         # Mock responses: 1 for list, 1 for sheet (simplified for 1 char)
         mock_llm.async_call_llm = AsyncMock(
             side_effect=[
@@ -123,9 +115,7 @@ async def test_character_sheets_gbnf_integration():
         )
 
         # Mock ContentManager
-        with patch(
-            "core.langgraph.initialization.character_sheets_node.ContentManager"
-        ) as mock_cm:
+        with patch("core.langgraph.initialization.character_sheets_node.ContentManager") as mock_cm:
             mock_cm_instance = mock_cm.return_value
             mock_cm_instance.save_json.return_value = {
                 "path": "mock/path",
@@ -149,9 +139,7 @@ async def test_character_sheets_gbnf_integration():
             assert "character-sheet ::=" in grammar
 
             # Verify parsing logic (unit test for parser)
-            parsed = _parse_character_sheet_response(
-                CHARACTER_SHEET_JSON, "Commander Shepard"
-            )
+            parsed = _parse_character_sheet_response(CHARACTER_SHEET_JSON, "Commander Shepard")
             assert parsed["name"] == "Commander Shepard"
             assert parsed["status"] == "Active"
             assert len(parsed["traits"]) == 2

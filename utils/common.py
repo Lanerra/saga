@@ -19,9 +19,7 @@ logger = structlog.get_logger(__name__)
 
 
 # --- helpers.py ---
-def flatten_dict(
-    d: dict[str, Any], parent_key: str = "", sep: str = "."
-) -> dict[str, Any]:
+def flatten_dict(d: dict[str, Any], parent_key: str = "", sep: str = ".") -> dict[str, Any]:
     """Flatten a nested dictionary into dot/indexed keys; skip None values."""
     items: list[tuple[str, Any]] = []
     for k, v in d.items():
@@ -71,9 +69,7 @@ def safe_json_loads(
     if strict_extract:
         start_chars = ["{", "["]
         end_chars = {"{": "}", "[": "]"}
-        start_pos = min(
-            [i for i in (text.find("{"), text.find("[")) if i != -1] or [len(text)]
-        )
+        start_pos = min([i for i in (text.find("{"), text.find("[")) if i != -1] or [len(text)])
         if start_pos == len(text):
             return None
         stack: list[str] = []
@@ -142,9 +138,7 @@ def load_yaml_file(
         if content is None:
             return None if return_none_on_empty else {}
         if not isinstance(content, dict):
-            logger.error(
-                f"YAML file {filepath} must have a dictionary as its root element for this application."
-            )
+            logger.error(f"YAML file {filepath} must have a dictionary as its root element for this application.")
             return None
         return normalize_keys_recursive(content) if normalize_keys else content
     except FileNotFoundError:

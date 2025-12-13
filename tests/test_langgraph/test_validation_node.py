@@ -41,16 +41,12 @@ class ValidationResult:
 class TestValidateConsistency:
     """Tests for validate_consistency node function."""
 
-    async def test_validate_with_no_contradictions(
-        self, sample_state_with_extraction, mock_neo4j_manager
-    ):
+    async def test_validate_with_no_contradictions(self, sample_state_with_extraction, mock_neo4j_manager):
         """Test validation with no contradictions found."""
         state = sample_state_with_extraction
         state["draft_word_count"] = 2000
 
-        with patch(
-            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
-        ):
+        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             # Mock character trait check to return no contradictions
             with patch(
                 "core.langgraph.nodes.validation_node._check_character_traits",
@@ -62,9 +58,7 @@ class TestValidateConsistency:
                 assert result["needs_revision"] is False
                 assert len(result["contradictions"]) == 0
 
-    async def test_validate_plot_stagnation_detected(
-        self, sample_initial_state, mock_neo4j_manager
-    ):
+    async def test_validate_plot_stagnation_detected(self, sample_initial_state, mock_neo4j_manager):
         """Test that plot stagnation is detected."""
         state = sample_initial_state
         state["draft_text"] = "Short text"
@@ -72,9 +66,7 @@ class TestValidateConsistency:
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
-        with patch(
-            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
-        ):
+        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             with patch(
                 "core.langgraph.nodes.validation_node._check_character_traits",
                 return_value=[],
@@ -82,14 +74,10 @@ class TestValidateConsistency:
                 result = await validate_consistency(state)
 
                 # Should detect plot stagnation
-                stagnation_contradictions = [
-                    c for c in result["contradictions"] if c.type == "plot_stagnation"
-                ]
+                stagnation_contradictions = [c for c in result["contradictions"] if c.type == "plot_stagnation"]
                 assert len(stagnation_contradictions) > 0
 
-    async def test_validate_force_continue_bypasses_revision(
-        self, sample_state_with_extraction, mock_neo4j_manager
-    ):
+    async def test_validate_force_continue_bypasses_revision(self, sample_state_with_extraction, mock_neo4j_manager):
         """Test that force_continue bypasses revision."""
         state = sample_state_with_extraction
         # Create a condition that would normally trigger revision (e.g. stagnation)
@@ -98,9 +86,7 @@ class TestValidateConsistency:
         state["extracted_relationships"] = []
         state["force_continue"] = True
 
-        with patch(
-            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
-        ):
+        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             with patch(
                 "core.langgraph.nodes.validation_node._check_character_traits",
                 return_value=[],
@@ -149,9 +135,7 @@ class TestValidateRelationships:
         }
 
         # Valid social relationship between characters should pass
-        contradictions = await _validate_relationships(
-            relationships, 1, extracted_entities
-        )
+        contradictions = await _validate_relationships(relationships, 1, extracted_entities)
         assert len(contradictions) == 0
 
     async def test_validate_empty_relationships(self):
@@ -177,13 +161,9 @@ class TestCheckCharacterTraits:
         ]
 
         # Mock Neo4j to return existing traits that don't conflict
-        mock_neo4j_manager.execute_read_query.return_value = [
-            {"traits": ["brave", "loyal"], "first_chapter": 1, "description": "..."}
-        ]
+        mock_neo4j_manager.execute_read_query.return_value = [{"traits": ["brave", "loyal"], "first_chapter": 1, "description": "..."}]
 
-        with patch(
-            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
-        ):
+        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             contradictions = await _check_character_traits(characters, 1)
             assert len(contradictions) == 0
 
@@ -200,13 +180,9 @@ class TestCheckCharacterTraits:
         ]
 
         # Mock Neo4j to return "brave" as established trait
-        mock_neo4j_manager.execute_read_query.return_value = [
-            {"traits": ["brave"], "first_chapter": 1, "description": "A brave warrior"}
-        ]
+        mock_neo4j_manager.execute_read_query.return_value = [{"traits": ["brave"], "first_chapter": 1, "description": "A brave warrior"}]
 
-        with patch(
-            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
-        ):
+        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             contradictions = await _check_character_traits(characters, 5)
 
             # Should detect brave/cowardly contradiction
@@ -233,9 +209,7 @@ class TestCheckCharacterTraits:
         # Mock Neo4j to return empty result (no existing character)
         mock_neo4j_manager.execute_read_query.return_value = []
 
-        with patch(
-            "core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager
-        ):
+        with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             contradictions = await _check_character_traits(characters, 1)
             assert len(contradictions) == 0
 

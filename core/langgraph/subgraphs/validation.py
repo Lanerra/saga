@@ -107,9 +107,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         genre=state.get("genre", ""),
         theme=state.get("theme", ""),
         previous_summaries=get_previous_summaries(state, content_manager),
-        chapter_outline=get_chapter_outlines(state, content_manager).get(
-            state.get("current_chapter", 1), {}
-        ),
+        chapter_outline=get_chapter_outlines(state, content_manager).get(state.get("current_chapter", 1), {}),
     )
 
     try:
@@ -156,9 +154,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
                     description=f"Overall quality score ({avg_quality:.2f}) below threshold ({min_quality_threshold})",
                     conflicting_chapters=[state.get("current_chapter", 1)],
                     severity="major",
-                    suggested_fix=scores.get(
-                        "feedback", "Improve prose quality and coherence"
-                    ),
+                    suggested_fix=scores.get("feedback", "Improve prose quality and coherence"),
                 )
             )
 
@@ -217,22 +213,13 @@ def _build_quality_evaluation_prompt(
     max_text_length = 8000
     if len(draft_text) > max_text_length:
         half_length = max_text_length // 2
-        draft_text = (
-            draft_text[:half_length]
-            + "\n\n[... middle section truncated for evaluation ...]\n\n"
-            + draft_text[-half_length:]
-        )
+        draft_text = draft_text[:half_length] + "\n\n[... middle section truncated for evaluation ...]\n\n" + draft_text[-half_length:]
 
     # Format previous summaries
     summary_context = ""
     if previous_summaries:
         recent_summaries = previous_summaries[-3:]  # Last 3 chapters
-        summary_context = "\n".join(
-            [
-                f"Chapter {chapter_number - len(recent_summaries) + i}: {s}"
-                for i, s in enumerate(recent_summaries)
-            ]
-        )
+        summary_context = "\n".join([f"Chapter {chapter_number - len(recent_summaries) + i}: {s}" for i, s in enumerate(recent_summaries)])
 
     # Format chapter outline
     outline_context = ""
@@ -447,9 +434,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     critical_issues = [c for c in contradictions if c.severity == "critical"]
     major_issues = [c for c in contradictions if c.severity == "major"]
 
-    needs_revision = (
-        len(critical_issues) > 0 or len(major_issues) > 2
-    ) and not state.get("force_continue", False)
+    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 2) and not state.get("force_continue", False)
 
     return {
         **state,
@@ -495,9 +480,7 @@ async def _check_timeline(
             ORDER BY ch.number, e.timestamp
         """
 
-        existing_events = await neo4j_manager.execute_read_query(
-            query, {"current_chapter": current_chapter}
-        )
+        existing_events = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
 
         if not existing_events:
             return []
@@ -579,16 +562,8 @@ def _events_are_related(event1: str, event2: str) -> bool:
         "their",
     }
 
-    words1 = {
-        w.lower()
-        for w in event1.split()
-        if len(w) > 4 and w.lower() not in common_words
-    }
-    words2 = {
-        w.lower()
-        for w in event2.split()
-        if len(w) > 4 and w.lower() not in common_words
-    }
+    words1 = {w.lower() for w in event1.split() if len(w) > 4 and w.lower() not in common_words}
+    words2 = {w.lower() for w in event2.split() if len(w) > 4 and w.lower() not in common_words}
 
     overlap = words1 & words2
     return len(overlap) >= 2
@@ -685,14 +660,10 @@ async def _check_world_rules(
             contradictions.append(
                 Contradiction(
                     type="world_rule",
-                    description=violation.get(
-                        "description", "World rule violation detected"
-                    ),
+                    description=violation.get("description", "World rule violation detected"),
                     conflicting_chapters=[current_chapter],
                     severity=violation.get("severity", "major"),
-                    suggested_fix=violation.get(
-                        "fix", "Revise to comply with world rules"
-                    ),
+                    suggested_fix=violation.get("fix", "Revise to comply with world rules"),
                 )
             )
 
@@ -812,9 +783,7 @@ async def _check_character_locations(
         if prev_chapter < 1:
             return []
 
-        prev_locations = await neo4j_manager.execute_read_query(
-            query, {"prev_chapter": prev_chapter}
-        )
+        prev_locations = await neo4j_manager.execute_read_query(query, {"prev_chapter": prev_chapter})
 
         if not prev_locations:
             return []
@@ -825,9 +794,7 @@ async def _check_character_locations(
         # Get current location name
         current_loc_name = None
         if current_location:
-            current_loc_name = current_location.get("name") or current_location.get(
-                "neo4j_id"
-            )
+            current_loc_name = current_location.get("name") or current_location.get("neo4j_id")
 
         # Check for impossible location changes
         for char in extracted_characters:
@@ -901,9 +868,7 @@ async def _check_relationship_evolution(
                 LIMIT 1
             """
 
-            result = await neo4j_manager.execute_read_query(
-                query, {"source": source, "target": target}
-            )
+            result = await neo4j_manager.execute_read_query(query, {"source": source, "target": target})
 
             if result and len(result) > 0:
                 prev_rel = result[0]

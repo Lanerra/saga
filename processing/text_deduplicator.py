@@ -33,9 +33,7 @@ class TextDeduplicator:
         self.min_segment_length_chars = min_segment_length_chars
         self.prefer_newer = prefer_newer
 
-    async def deduplicate(
-        self, original_text: str, segment_level: str = "paragraph"
-    ) -> tuple[str, int]:
+    async def deduplicate(self, original_text: str, segment_level: str = "paragraph") -> tuple[str, int]:
         if not original_text.strip():
             return original_text, 0
 
@@ -43,16 +41,10 @@ class TextDeduplicator:
         if not segments:
             return original_text, 0
 
-        normalized_cache: list[str] = [
-            utils._normalize_text_for_matching(seg[0]) for seg in segments
-        ]
+        normalized_cache: list[str] = [utils._normalize_text_for_matching(seg[0]) for seg in segments]
         indices_to_remove: set[int] = set()
         fingerprint_map: dict[str, int] = {}
-        iteration_range = (
-            range(len(segments) - 1, -1, -1)
-            if self.prefer_newer
-            else range(len(segments))
-        )
+        iteration_range = range(len(segments) - 1, -1, -1) if self.prefer_newer else range(len(segments))
 
         for idx in iteration_range:
             if idx in indices_to_remove:
@@ -81,17 +73,10 @@ class TextDeduplicator:
             # Process embeddings in batches to control memory usage and API load
             for i in range(0, len(unique_indices), batch_size):
                 batch_indices = unique_indices[i : i + batch_size]
-                batch_tasks = [
-                    llm_service.async_get_embedding(segments[idx][0])
-                    for idx in batch_indices
-                ]
-                batch_results = await asyncio.gather(
-                    *batch_tasks, return_exceptions=True
-                )
+                batch_tasks = [llm_service.async_get_embedding(segments[idx][0]) for idx in batch_indices]
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 
-                for batch_idx, result in zip(
-                    batch_indices, batch_results, strict=False
-                ):
+                for batch_idx, result in zip(batch_indices, batch_results, strict=False):
                     if not isinstance(result, Exception):
                         embeddings[batch_idx] = cast(np.ndarray | None, result)
 
@@ -108,13 +93,9 @@ class TextDeduplicator:
                     if emb_j is None:
                         continue
                     try:
-                        similarity = utils.numpy_cosine_similarity(
-                            embeddings[idx], emb_j
-                        )
+                        similarity = utils.numpy_cosine_similarity(embeddings[idx], emb_j)
                     except ValueError:
-                        logger.warning(
-                            "Cosine similarity shape mismatch handled: setting to 0.0 for deduplication compatibility."
-                        )
+                        logger.warning("Cosine similarity shape mismatch handled: setting to 0.0 for deduplication compatibility.")
                         similarity = 0.0
                     if similarity > self.similarity_threshold:
                         remove_idx = idx if not self.prefer_newer else kept_idx

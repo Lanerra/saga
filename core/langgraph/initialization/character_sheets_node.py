@@ -56,9 +56,7 @@ async def _get_existing_traits() -> list[str]:
         return []
 
 
-def _parse_character_sheet_response(
-    response: str, character_name: str
-) -> dict[str, any]:
+def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, any]:
     """
     Parse the structured character sheet response into CharacterProfile-compatible format.
     Refactored to handle JSON response enforced by GBNF grammar.
@@ -355,10 +353,7 @@ async def _generate_character_sheet(
     existing_traits_hint = ""
     if existing_traits:
         traits_sample = existing_traits[:40]  # Limit to 20 examples
-        existing_traits_hint = (
-            f"\n\nExisting traits in the story (consider reusing to create interconnectedness): "
-            f"{', '.join(traits_sample)}"
-        )
+        existing_traits_hint = f"\n\nExisting traits in the story (consider reusing to create interconnectedness): " f"{', '.join(traits_sample)}"
 
     prompt = render_prompt(
         "initialization/generate_character_sheet.j2",

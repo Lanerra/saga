@@ -138,21 +138,14 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
     # Convert dicts to ExtractedEntity objects if needed
     char_entities_raw = extracted.get("characters", [])
-    char_entities = [
-        ExtractedEntity(**e) if isinstance(e, dict) else e for e in char_entities_raw
-    ]
+    char_entities = [ExtractedEntity(**e) if isinstance(e, dict) else e for e in char_entities_raw]
 
     world_entities_raw = extracted.get("world_items", [])
-    world_entities = [
-        ExtractedEntity(**e) if isinstance(e, dict) else e for e in world_entities_raw
-    ]
+    world_entities = [ExtractedEntity(**e) if isinstance(e, dict) else e for e in world_entities_raw]
 
     # Convert dicts to ExtractedRelationship objects if needed
     relationships_raw = get_extracted_relationships(state, content_manager)
-    relationships = [
-        ExtractedRelationship(**r) if isinstance(r, dict) else r
-        for r in relationships_raw
-    ]
+    relationships = [ExtractedRelationship(**r) if isinstance(r, dict) else r for r in relationships_raw]
 
     logger.info(
         "commit_to_graph",
@@ -169,9 +162,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     try:
         # Step 1: Deduplicate characters (READ operations)
         for char in char_entities:
-            deduplicated_name = await _deduplicate_character(
-                char.name, char.description, state.get("current_chapter", 1)
-            )
+            deduplicated_name = await _deduplicate_character(char.name, char.description, state.get("current_chapter", 1))
             char_mappings[char.name] = deduplicated_name
 
         # Step 2: Deduplicate world items (READ operations)
@@ -205,12 +196,8 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         unique_char_entities = _deduplicate_entity_list(char_entities)
         unique_world_entities = _deduplicate_entity_list(world_entities)
 
-        character_models = _convert_to_character_profiles(
-            unique_char_entities, char_mappings, state.get("current_chapter", 1)
-        )
-        world_item_models = _convert_to_world_items(
-            unique_world_entities, world_mappings, state.get("current_chapter", 1)
-        )
+        character_models = _convert_to_character_profiles(unique_char_entities, char_mappings, state.get("current_chapter", 1))
+        world_item_models = _convert_to_world_items(unique_world_entities, world_mappings, state.get("current_chapter", 1))
 
         # Step 4-6: Collect ALL Cypher statements for single transaction
         # This ensures atomicity - either all succeed or all are rolled back
@@ -218,9 +205,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
         # Step 4a: Collect entity persistence statements
         if character_models or world_item_models:
-            entity_statements = await _build_entity_persistence_statements(
-                character_models, world_item_models, state.get("current_chapter", 1)
-            )
+            entity_statements = await _build_entity_persistence_statements(character_models, world_item_models, state.get("current_chapter", 1))
             all_statements.extend(entity_statements)
 
         # Step 4b: Collect relationship statements
@@ -244,13 +229,9 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         embedding = None
         if state.get("embedding_ref"):
             try:
-                embedding = load_embedding(
-                    content_manager, state.get("embedding_ref", None)
-                )
+                embedding = load_embedding(content_manager, state.get("embedding_ref", None))
             except Exception as e:
-                logger.warning(
-                    "commit_to_graph: failed to load embedding", error=str(e)
-                )
+                logger.warning("commit_to_graph: failed to load embedding", error=str(e))
         elif state.get("generated_embedding"):
             # Fallback for backward compatibility or if not externalized yet
             embedding = state.get("generated_embedding")
@@ -365,10 +346,7 @@ async def _deduplicate_character(name: str, description: str, chapter: int) -> s
         Name to use (either existing character name or original name)
     """
     # Check if duplicate prevention is enabled in config
-    if (
-        not config.ENABLE_DUPLICATE_PREVENTION
-        or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED
-    ):
+    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
         return name
 
     # Check for similar existing character
@@ -397,9 +375,7 @@ async def _deduplicate_character(name: str, description: str, chapter: int) -> s
     return name
 
 
-async def _deduplicate_world_item(
-    name: str, category: str, description: str, chapter: int
-) -> str:
+async def _deduplicate_world_item(name: str, category: str, description: str, chapter: int) -> str:
     """
     Check for duplicate world items and return the ID to use.
 
@@ -419,10 +395,7 @@ async def _deduplicate_world_item(
         ID to use (either existing world item ID or new deterministic ID)
     """
     # Check if duplicate prevention is enabled in config
-    if (
-        not config.ENABLE_DUPLICATE_PREVENTION
-        or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED
-    ):
+    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
         # Generate new ID
         return generate_entity_id(name, category, chapter)
 
@@ -555,11 +528,7 @@ def _convert_to_world_items(
             key_elements = [str(key_elements)] if key_elements else []
 
         # Collect additional properties
-        additional_properties = {
-            k: v
-            for k, v in entity.attributes.items()
-            if k not in {"category", "id", "goals", "rules", "key_elements"}
-        }
+        additional_properties = {k: v for k, v in entity.attributes.items() if k not in {"category", "id", "goals", "rules", "key_elements"}}
 
         items.append(
             WorldItem(
@@ -697,9 +666,7 @@ async def _create_relationships(
 
     # Use existing infrastructure to persist relationships
     try:
-        await kg_queries.add_kg_triples_batch_to_db(
-            structured_triples, chapter, is_from_flawed_draft
-        )
+        await kg_queries.add_kg_triples_batch_to_db(structured_triples, chapter, is_from_flawed_draft)
 
         logger.info(
             "commit_to_graph: created relationships",
@@ -857,9 +824,7 @@ async def _build_relationship_statements(
     )
 
     # Helper to create subject/object dict with type info
-    def _make_entity_dict(
-        name: str, original_name: str, explicit_type: str | None = None
-    ) -> dict[str, str]:
+    def _make_entity_dict(name: str, original_name: str, explicit_type: str | None = None) -> dict[str, str]:
         # Use explicit type if provided (from ExtractedRelationship.source_type/target_type)
         # Otherwise fall back to entity_type_map lookup.
         if explicit_type:
@@ -921,9 +886,7 @@ async def _build_relationship_statements(
         triple = {
             "subject": _make_entity_dict(source_name, rel.source_name, source_type),
             "predicate": rel.relationship_type,
-            "object_entity": _make_entity_dict(
-                target_name, rel.target_name, target_type
-            ),
+            "object_entity": _make_entity_dict(target_name, rel.target_name, target_type),
             "is_literal_object": False,
             "description": rel.description,
             "confidence": rel.confidence,
@@ -1134,9 +1097,7 @@ async def _run_phase2_deduplication(chapter: int) -> dict[str, int]:
         )
 
         for entity1, entity2, name_sim, rel_sim in char_duplicates:
-            success = await merge_duplicate_entities(
-                entity1, entity2, entity_type="character"
-            )
+            success = await merge_duplicate_entities(entity1, entity2, entity_type="character")
             if success:
                 merge_counts["characters"] += 1
                 logger.info(
@@ -1156,9 +1117,7 @@ async def _run_phase2_deduplication(chapter: int) -> dict[str, int]:
         )
 
         for entity1, entity2, name_sim, rel_sim in world_duplicates:
-            success = await merge_duplicate_entities(
-                entity1, entity2, entity_type="world_element"
-            )
+            success = await merge_duplicate_entities(entity1, entity2, entity_type="world_element")
             if success:
                 merge_counts["world_items"] += 1
                 logger.info(

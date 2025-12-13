@@ -9,9 +9,7 @@ from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.state import NarrativeState
 
 
-async def _run_summarize_chapter(
-    tmp_path: Path, summary_text: str = "This is a test summary."
-) -> Path:
+async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a test summary.") -> Path:
     """
     Helper to invoke summarize_chapter with a minimal deterministic state.
 
@@ -23,9 +21,7 @@ async def _run_summarize_chapter(
     content_manager = ContentManager(project_dir)
 
     # Save draft text
-    draft_ref = content_manager.save_text(
-        "Chapter 1 draft text.", "draft", "chapter_1", 1
-    )
+    draft_ref = content_manager.save_text("Chapter 1 draft text.", "draft", "chapter_1", 1)
 
     # Save summaries
     sum_ref = content_manager.save_list_of_texts([], "summaries", "all", 1)

@@ -1,6 +1,7 @@
 """Comprehensive tests for core/db_manager.py"""
+
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
@@ -174,6 +175,7 @@ class TestConnection:
 
     async def test_ensure_connected_when_disconnected(self, monkeypatch):
         """_ensure_connected connects when driver is None"""
+
         async def mock_connect(self):
             self.driver = MagicMock()
 
@@ -200,6 +202,7 @@ class TestConnection:
 
     async def test_ensure_connected_fails_after_connect_attempt(self, monkeypatch):
         """_ensure_connected raises error if connect fails to set driver"""
+
         async def mock_connect_fail(self):
             pass
 
@@ -562,11 +565,7 @@ class TestPropertyKeyCache:
             {"propertyKey": "created_ts"},
         ]
 
-        monkeypatch.setattr(
-            manager,
-            "_sync_execute_read_query",
-            lambda q, p: mock_results
-        )
+        monkeypatch.setattr(manager, "_sync_execute_read_query", lambda q, p: mock_results)
 
         keys = await manager.refresh_property_keys_cache()
 
@@ -584,11 +583,7 @@ class TestPropertyKeyCache:
             {"property": "description"},
         ]
 
-        monkeypatch.setattr(
-            manager,
-            "_sync_execute_read_query",
-            lambda q, p: mock_results
-        )
+        monkeypatch.setattr(manager, "_sync_execute_read_query", lambda q, p: mock_results)
 
         keys = await manager.refresh_property_keys_cache()
 
@@ -602,11 +597,7 @@ class TestPropertyKeyCache:
         def mock_failing_query(q, p):
             raise RuntimeError("Query failed")
 
-        monkeypatch.setattr(
-            manager,
-            "_sync_execute_read_query",
-            mock_failing_query
-        )
+        monkeypatch.setattr(manager, "_sync_execute_read_query", mock_failing_query)
 
         keys = await manager.refresh_property_keys_cache()
 
@@ -648,11 +639,7 @@ class TestPropertyKeyCache:
 
         mock_results = [{"propertyKey": "new_key"}]
 
-        monkeypatch.setattr(
-            manager,
-            "_sync_execute_read_query",
-            lambda q, p: mock_results
-        )
+        monkeypatch.setattr(manager, "_sync_execute_read_query", lambda q, p: mock_results)
 
         with patch("time.monotonic", return_value=1400.0):
             result = await manager.has_property_key("new_key", max_age_seconds=300)
@@ -668,11 +655,7 @@ class TestPropertyKeyCache:
 
         mock_results = [{"propertyKey": "name"}]
 
-        monkeypatch.setattr(
-            manager,
-            "_sync_execute_read_query",
-            lambda q, p: mock_results
-        )
+        monkeypatch.setattr(manager, "_sync_execute_read_query", lambda q, p: mock_results)
 
         result = await manager.has_property_key("name")
 

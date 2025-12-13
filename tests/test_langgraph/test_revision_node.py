@@ -57,9 +57,7 @@ def sample_revision_state(tmp_path):
             "chapter_summary": "Introduction to the protagonist",
         }
     }
-    chapter_outlines_ref = content_manager.save_json(
-        chapter_outlines, "chapter_outlines", "all", 1
-    )
+    chapter_outlines_ref = content_manager.save_json(chapter_outlines, "chapter_outlines", "all", 1)
     state["chapter_outlines_ref"] = chapter_outlines_ref
 
     # Add contradictions
@@ -86,9 +84,7 @@ def sample_revision_state(tmp_path):
     state["needs_revision"] = True
 
     # Add hybrid context
-    state["hybrid_context"] = (
-        "**Previous context:** Hero is established as brave and honorable."
-    )
+    state["hybrid_context"] = "**Previous context:** Hero is established as brave and honorable."
 
     return state
 
@@ -115,12 +111,8 @@ def mock_llm_revision():
 @pytest.fixture
 def mock_prompt_data_getters():
     """Mock prompt data getter functions."""
-    with patch(
-        "core.langgraph.nodes.revision_node.get_reliable_kg_facts_for_drafting_prompt"
-    ) as mock_kg:
-        mock_kg.return_value = (
-            "**Knowledge Graph Facts:**\n- Hero is brave\n- Forest is dangerous"
-        )
+    with patch("core.langgraph.nodes.revision_node.get_reliable_kg_facts_for_drafting_prompt") as mock_kg:
+        mock_kg.return_value = "**Knowledge Graph Facts:**\n- Hero is brave\n- Forest is dangerous"
         yield {"get_kg_facts": mock_kg}
 
 
@@ -248,9 +240,7 @@ class TestConstructRevisionPrompt:
         assert "Test context" in prompt
         assert "Hero" in prompt  # Protagonist name is in template
 
-    async def test_construct_prompt_with_no_hybrid_context(
-        self, mock_prompt_data_getters
-    ):
+    async def test_construct_prompt_with_no_hybrid_context(self, mock_prompt_data_getters):
         """Test prompt construction when hybrid context is missing."""
         prompt = await _construct_revision_prompt(
             draft_text="Text",
@@ -307,9 +297,7 @@ class TestConstructRevisionPrompt:
 class TestReviseChapter:
     """Tests for revise_chapter node function."""
 
-    async def test_revise_chapter_success(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_success(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test successful chapter revision."""
         result = await revise_chapter(sample_revision_state)
 
@@ -342,9 +330,7 @@ class TestReviseChapter:
         # Verify LLM was called
         mock_llm_revision.async_call_llm.assert_called_once()
 
-    async def test_revise_chapter_max_iterations_reached(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_max_iterations_reached(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test revision stops when max iterations reached."""
         state = {**sample_revision_state}
         state["iteration_count"] = 3
@@ -361,9 +347,7 @@ class TestReviseChapter:
         # LLM should not be called
         mock_llm_revision.async_call_llm.assert_not_called()
 
-    async def test_revise_chapter_no_draft_text(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_no_draft_text(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test revision fails gracefully without draft text."""
         state = {**sample_revision_state}
         state["draft_ref"] = None
@@ -378,9 +362,7 @@ class TestReviseChapter:
         # LLM should not be called
         mock_llm_revision.async_call_llm.assert_not_called()
 
-    async def test_revise_chapter_empty_llm_response(
-        self, sample_revision_state, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_empty_llm_response(self, sample_revision_state, mock_prompt_data_getters):
         """Test handling of empty LLM response."""
         with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
             mock_llm.async_call_llm = AsyncMock(return_value=("", {}))
@@ -392,14 +374,10 @@ class TestReviseChapter:
             assert result["last_error"] is not None
             assert "empty" in result["last_error"].lower()
 
-    async def test_revise_chapter_llm_exception(
-        self, sample_revision_state, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_llm_exception(self, sample_revision_state, mock_prompt_data_getters):
         """Test handling of LLM exceptions."""
         with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                side_effect=Exception("LLM service unavailable")
-            )
+            mock_llm.async_call_llm = AsyncMock(side_effect=Exception("LLM service unavailable"))
             mock_llm.count_tokens = lambda text, model: 800
 
             result = await revise_chapter(sample_revision_state)
@@ -409,9 +387,7 @@ class TestReviseChapter:
             assert "LLM service unavailable" in result["last_error"]
             assert result["current_node"] == "revise"
 
-    async def test_revise_chapter_token_budget_exceeded(
-        self, sample_revision_state, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_token_budget_exceeded(self, sample_revision_state, mock_prompt_data_getters):
         """Test handling when token budget is exceeded."""
         with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
             # Set very high token count to exceed budget
@@ -426,9 +402,7 @@ class TestReviseChapter:
             # LLM should not be called
             mock_llm.async_call_llm.assert_not_called()
 
-    async def test_revise_chapter_uses_revision_model(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_uses_revision_model(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test that revision uses the revision_model from state."""
         await revise_chapter(sample_revision_state)
 
@@ -436,9 +410,7 @@ class TestReviseChapter:
         call_args = mock_llm_revision.async_call_llm.call_args
         assert call_args.kwargs["model_name"] == "test-revision-model"
 
-    async def test_revise_chapter_uses_lower_temperature(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_uses_lower_temperature(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test that revision uses lower temperature for consistency."""
         await revise_chapter(sample_revision_state)
 
@@ -447,9 +419,7 @@ class TestReviseChapter:
         # Should use REVISION temperature (0.5) which is lower than CHAPTER_GENERATION (0.7)
         assert call_args.kwargs["temperature"] <= 0.7
 
-    async def test_revise_chapter_increments_iteration(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_increments_iteration(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test that iteration count is properly incremented."""
         # Start at iteration 1
         state = {**sample_revision_state}
@@ -460,9 +430,7 @@ class TestReviseChapter:
         # Should increment to 2
         assert result["iteration_count"] == 2
 
-    async def test_revise_chapter_clears_contradictions(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_clears_contradictions(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test that contradictions are cleared after revision."""
         # Start with contradictions
         assert len(sample_revision_state["contradictions"]) > 0
@@ -472,9 +440,7 @@ class TestReviseChapter:
         # Should clear contradictions for re-validation
         assert result["contradictions"] == []
 
-    async def test_revise_chapter_word_count_recalculation(
-        self, sample_revision_state, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_word_count_recalculation(self, sample_revision_state, mock_prompt_data_getters):
         """Test that word count is recalculated for revised text."""
         test_text = "One two three four five six seven eight nine ten."
         with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
@@ -486,17 +452,13 @@ class TestReviseChapter:
             # Should calculate correct word count
             assert result["draft_word_count"] == len(test_text.split())
 
-    async def test_revise_chapter_prompt_construction_error(
-        self, sample_revision_state, mock_llm_revision
-    ):
+    async def test_revise_chapter_prompt_construction_error(self, sample_revision_state, mock_llm_revision):
         """Test handling of prompt construction errors.
 
         Note: KG query failures are handled gracefully with a warning,
         so revision continues with "Context unavailable."
         """
-        with patch(
-            "core.langgraph.nodes.revision_node.get_reliable_kg_facts_for_drafting_prompt"
-        ) as mock_kg:
+        with patch("core.langgraph.nodes.revision_node.get_reliable_kg_facts_for_drafting_prompt") as mock_kg:
             mock_kg.side_effect = Exception("KG query failed")
 
             # Remove hybrid_context to force KG facts fetch
@@ -515,9 +477,7 @@ class TestReviseChapter:
 class TestRevisionIntegration:
     """Integration tests for revision node."""
 
-    async def test_full_revision_workflow(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_full_revision_workflow(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test complete revision workflow."""
         # Revise chapter
         result = await revise_chapter(sample_revision_state)
@@ -536,9 +496,7 @@ class TestRevisionIntegration:
         assert result["title"] == sample_revision_state["title"]
         assert result["genre"] == sample_revision_state["genre"]
 
-    async def test_multiple_revision_iterations(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_multiple_revision_iterations(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test multiple revision iterations."""
         state = sample_revision_state
 
@@ -592,9 +550,7 @@ class TestRevisionIntegration:
         assert result4["current_node"] == "revise_failed"
         assert "Max revision attempts" in result4["last_error"]
 
-    async def test_revision_with_minimal_contradictions(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revision_with_minimal_contradictions(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test revision with minimal contradiction information."""
         state = {**sample_revision_state}
         state["contradictions"] = []  # No specific contradictions
@@ -610,9 +566,7 @@ class TestRevisionIntegration:
 class TestRevisionErrorHandling:
     """Tests for error handling in revision node (P1.1 & P1.3)."""
 
-    async def test_revise_chapter_max_iterations_fatal_error(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_max_iterations_fatal_error(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test revision with max iterations exceeded triggers fatal error."""
         state = {**sample_revision_state}
         state["iteration_count"] = 3
@@ -629,9 +583,7 @@ class TestRevisionErrorHandling:
 
         mock_llm_revision.async_call_llm.assert_not_called()
 
-    async def test_revise_chapter_missing_draft_text_fatal_error(
-        self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_missing_draft_text_fatal_error(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test revision with missing draft_text triggers fatal error."""
         state = {**sample_revision_state}
         state["draft_ref"] = None
@@ -646,9 +598,7 @@ class TestRevisionErrorHandling:
 
         mock_llm_revision.async_call_llm.assert_not_called()
 
-    async def test_revise_chapter_token_budget_exceeded_fatal_error(
-        self, sample_revision_state, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_token_budget_exceeded_fatal_error(self, sample_revision_state, mock_prompt_data_getters):
         """Test revision with token budget exceeded triggers fatal error."""
         with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
             mock_llm.count_tokens = lambda text, model: 150000
@@ -662,13 +612,9 @@ class TestRevisionErrorHandling:
 
             mock_llm.async_call_llm.assert_not_called()
 
-    async def test_revise_chapter_prompt_construction_failure_fatal_error(
-        self, sample_revision_state, mock_llm_revision
-    ):
+    async def test_revise_chapter_prompt_construction_failure_fatal_error(self, sample_revision_state, mock_llm_revision):
         """Test revision with prompt construction failure triggers fatal error."""
-        with patch(
-            "core.langgraph.nodes.revision_node._construct_revision_prompt"
-        ) as mock_prompt:
+        with patch("core.langgraph.nodes.revision_node._construct_revision_prompt") as mock_prompt:
             mock_prompt.side_effect = Exception("Prompt construction failed")
 
             state = {**sample_revision_state}
@@ -681,14 +627,10 @@ class TestRevisionErrorHandling:
             assert result["has_fatal_error"] is True
             assert result["error_node"] == "revise"
 
-    async def test_revise_chapter_llm_failure_fatal_error(
-        self, sample_revision_state, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_llm_failure_fatal_error(self, sample_revision_state, mock_prompt_data_getters):
         """Test revision with LLM failure triggers fatal error."""
         with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
-            mock_llm.async_call_llm = AsyncMock(
-                side_effect=Exception("LLM service error")
-            )
+            mock_llm.async_call_llm = AsyncMock(side_effect=Exception("LLM service error"))
             mock_llm.count_tokens = lambda text, model: 800
 
             result = await revise_chapter(sample_revision_state)
@@ -698,9 +640,7 @@ class TestRevisionErrorHandling:
             assert result["has_fatal_error"] is True
             assert result["error_node"] == "revise"
 
-    async def test_revise_chapter_empty_llm_response_returns_error(
-        self, sample_revision_state, mock_prompt_data_getters
-    ):
+    async def test_revise_chapter_empty_llm_response_returns_error(self, sample_revision_state, mock_prompt_data_getters):
         """Test revision with empty LLM response returns error but not fatal."""
         with patch("core.langgraph.nodes.revision_node.llm_service") as mock_llm:
             mock_llm.async_call_llm = AsyncMock(return_value=("", {}))

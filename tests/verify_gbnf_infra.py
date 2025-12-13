@@ -36,11 +36,7 @@ async def test_grammar_loader() -> None:
         # common.gbnf has "root ::= json_object"
         # initialization.gbnf has "root ::= global_outline ..."
 
-        roots = [
-            line
-            for line in grammar_text.splitlines()
-            if line.strip().startswith("root ::=")
-        ]
+        roots = [line for line in grammar_text.splitlines() if line.strip().startswith("root ::=")]
         print(f"Found {len(roots)} root definitions: {roots}")
 
         if len(roots) == 1 and "global_outline" in roots[0]:
@@ -79,9 +75,7 @@ async def test_service_propagation() -> None:
     test_grammar = 'root ::= "test"'
 
     # Call the top-level service
-    await llm_service.async_call_llm(
-        model_name="test-model", prompt="Test prompt", grammar=test_grammar
-    )
+    await llm_service.async_call_llm(model_name="test-model", prompt="Test prompt", grammar=test_grammar)
 
     # Verify the call reached the http client with the grammar in the payload
     call_args = mock_post_json.call_args

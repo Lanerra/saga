@@ -152,9 +152,7 @@ class RelationshipValidationRule:
         self.rule_name = rule_name
         self.rationale = rationale
 
-    def validate(
-        self, relationship_type: str, source_type: str, target_type: str
-    ) -> tuple[bool, str | None]:
+    def validate(self, relationship_type: str, source_type: str, target_type: str) -> tuple[bool, str | None]:
         """
         Validate a relationship against this rule.
 
@@ -175,9 +173,7 @@ class RelationshipValidationRule:
         if self.valid_source_types != "ANY":
             if source_type not in self.valid_source_types:
                 error = (
-                    f"Invalid source type '{source_type}' for relationship '{relationship_type}'. "
-                    f"Expected one of: {', '.join(sorted(self.valid_source_types))}. "
-                    f"Rationale: {self.rationale}"
+                    f"Invalid source type '{source_type}' for relationship '{relationship_type}'. " f"Expected one of: {', '.join(sorted(self.valid_source_types))}. " f"Rationale: {self.rationale}"
                 )
                 return False, error
 
@@ -185,9 +181,7 @@ class RelationshipValidationRule:
         if self.valid_target_types != "ANY":
             if target_type not in self.valid_target_types:
                 error = (
-                    f"Invalid target type '{target_type}' for relationship '{relationship_type}'. "
-                    f"Expected one of: {', '.join(sorted(self.valid_target_types))}. "
-                    f"Rationale: {self.rationale}"
+                    f"Invalid target type '{target_type}' for relationship '{relationship_type}'. " f"Expected one of: {', '.join(sorted(self.valid_target_types))}. " f"Rationale: {self.rationale}"
                 )
                 return False, error
 
@@ -222,10 +216,7 @@ VALIDATION_RULES = [
     RelationshipValidationRule(
         relationship_types={"LOCATED_IN", "LOCATED_AT"},
         valid_source_types="ANY",
-        valid_target_types=LOCATION_TYPES
-        | PHYSICAL_OBJECT_TYPES
-        | ORGANIZATION_TYPES
-        | SENTIENT_TYPES,
+        valid_target_types=LOCATION_TYPES | PHYSICAL_OBJECT_TYPES | ORGANIZATION_TYPES | SENTIENT_TYPES,
         rule_name="spatial_containment",
         rationale="[INFO] Location relationships typically reference places or containers",
     ),
@@ -260,10 +251,7 @@ VALIDATION_RULES = [
     # (informational only - not enforced)
     RelationshipValidationRule(
         relationship_types={"CONTAINS", "PART_OF"},
-        valid_source_types=PHYSICAL_OBJECT_TYPES
-        | LOCATION_TYPES
-        | EVENT_TYPES
-        | ABSTRACT_TYPES,
+        valid_source_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES | EVENT_TYPES | ABSTRACT_TYPES,
         valid_target_types="ANY",
         rule_name="containment",
         rationale="[INFO] Containment relationships typically involve physical or conceptual containers",
@@ -316,9 +304,7 @@ class RelationshipValidator:
         self.known_node_labels = VALID_NODE_LABELS
         self.enable_strict_mode = enable_strict_mode
 
-    def validate_relationship_type(
-        self, relationship_type: str
-    ) -> tuple[bool, str | None]:
+    def validate_relationship_type(self, relationship_type: str) -> tuple[bool, str | None]:
         """
         Check if a relationship type is recognized.
 
@@ -345,9 +331,7 @@ class RelationshipValidator:
                 return False, info  # Invalid in strict mode
         return True, None
 
-    def validate_entity_types(
-        self, source_type: str, target_type: str
-    ) -> tuple[bool, list[str]]:
+    def validate_entity_types(self, source_type: str, target_type: str) -> tuple[bool, list[str]]:
         """
         Check if entity types are recognized.
 
@@ -365,16 +349,10 @@ class RelationshipValidator:
         info_messages = []
 
         if source_type not in self.known_node_labels:
-            info_messages.append(
-                f"[INFO] Novel entity type '{source_type}' detected. "
-                f"This will be added to the knowledge graph as a new node type."
-            )
+            info_messages.append(f"[INFO] Novel entity type '{source_type}' detected. " f"This will be added to the knowledge graph as a new node type.")
 
         if target_type not in self.known_node_labels:
-            info_messages.append(
-                f"[INFO] Novel entity type '{target_type}' detected. "
-                f"This will be added to the knowledge graph as a new node type."
-            )
+            info_messages.append(f"[INFO] Novel entity type '{target_type}' detected. " f"This will be added to the knowledge graph as a new node type.")
 
         # In permissive mode, unknown types are valid
         if not self.enable_strict_mode:
@@ -382,9 +360,7 @@ class RelationshipValidator:
         else:
             return len(info_messages) == 0, info_messages
 
-    def validate_semantic_compatibility(
-        self, relationship_type: str, source_type: str, target_type: str
-    ) -> tuple[bool, list[str]]:
+    def validate_semantic_compatibility(self, relationship_type: str, source_type: str, target_type: str) -> tuple[bool, list[str]]:
         """
         Validate that the relationship makes semantic sense for the entity types.
 
@@ -408,23 +384,17 @@ class RelationshipValidator:
             # Optionally log if this is an unusual combination
             # but don't consider it an error
             for rule in self.rules:
-                is_valid, message = rule.validate(
-                    relationship_type, source_type, target_type
-                )
+                is_valid, message = rule.validate(relationship_type, source_type, target_type)
                 if not is_valid and message:
                     # Convert error to info message
-                    info_msg = message.replace("Invalid", "[INFO] Unusual").replace(
-                        "Expected", "Typically"
-                    )
+                    info_msg = message.replace("Invalid", "[INFO] Unusual").replace("Expected", "Typically")
                     info_messages.append(info_msg)
             return True, info_messages  # Always valid in permissive mode
         else:
             # Strict mode: apply all validation rules
             errors = []
             for rule in self.rules:
-                is_valid, error = rule.validate(
-                    relationship_type, source_type, target_type
-                )
+                is_valid, error = rule.validate(relationship_type, source_type, target_type)
                 if not is_valid and error:
                     errors.append(error)
             return len(errors) == 0, errors
@@ -469,9 +439,7 @@ class RelationshipValidator:
                 info_warnings.append(type_message)
 
         # 2. Validate entity types
-        entities_valid, entity_messages = self.validate_entity_types(
-            source_type, target_type
-        )
+        entities_valid, entity_messages = self.validate_entity_types(source_type, target_type)
         if not entities_valid or entity_messages:
             if self.enable_strict_mode and severity_mode == "strict":
                 errors.extend(entity_messages)
@@ -479,9 +447,7 @@ class RelationshipValidator:
                 info_warnings.extend(entity_messages)
 
         # 3. Validate semantic compatibility
-        semantic_valid, semantic_messages = self.validate_semantic_compatibility(
-            relationship_type, source_type, target_type
-        )
+        semantic_valid, semantic_messages = self.validate_semantic_compatibility(relationship_type, source_type, target_type)
         if not semantic_valid:
             if self.enable_strict_mode:
                 errors.extend(semantic_messages)

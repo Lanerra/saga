@@ -19,6 +19,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
 
     async def test_get_character_profile_by_name_full_details(self, monkeypatch):
         """Profile by name returns core fields + optional collections when present."""
+
         async def mock_read(query, params=None):
             if "MATCH (c:Character {name: $name})" in query:
                 return [
@@ -33,9 +34,7 @@ class TestGetCharacterProfileFetchesNoRowDropping:
                                 "rel_props": {"source_profile_managed": True},
                             }
                         ],
-                        "dev_events": [
-                            {"summary": "Event1", "chapter": 1, "is_provisional": False}
-                        ],
+                        "dev_events": [{"summary": "Event1", "chapter": 1, "is_provisional": False}],
                     }
                 ]
             return []
@@ -61,10 +60,9 @@ class TestGetCharacterProfileFetchesNoRowDropping:
 
         clear_all_data_access_caches()
 
-    async def test_get_character_profile_by_name_preserves_multi_relationships_same_target(
-        self, monkeypatch
-    ):
+    async def test_get_character_profile_by_name_preserves_multi_relationships_same_target(self, monkeypatch):
         """Regression: multiple relationships to the same target must not overwrite each other."""
+
         async def mock_read(query, params=None):
             if "MATCH (c:Character {name: $name})" in query:
                 return [
@@ -116,10 +114,9 @@ class TestGetCharacterProfileFetchesNoRowDropping:
 
         clear_all_data_access_caches()
 
-    async def test_get_character_profile_by_name_no_optional_data_still_returns_profile(
-        self, monkeypatch
-    ):
+    async def test_get_character_profile_by_name_no_optional_data_still_returns_profile(self, monkeypatch):
         """Profile by name should not be dropped when traits/relationships/dev events are absent."""
+
         async def mock_read(query, params=None):
             if "MATCH (c:Character {name: $name})" in query:
                 return [
@@ -146,10 +143,9 @@ class TestGetCharacterProfileFetchesNoRowDropping:
 
         clear_all_data_access_caches()
 
-    async def test_get_character_profile_by_id_no_optional_data_still_returns_profile(
-        self, monkeypatch
-    ):
+    async def test_get_character_profile_by_id_no_optional_data_still_returns_profile(self, monkeypatch):
         """Profile by id should not be dropped when traits/relationships/dev events are absent."""
+
         async def mock_read(query, params=None):
             if "MATCH (c:Character {id: $character_id})" in query:
                 return [

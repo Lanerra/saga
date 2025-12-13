@@ -92,11 +92,9 @@ async def build_context_from_graph(
             characters = await _get_characters_by_names(active_character_names)
         else:
             # Get contextually relevant characters
-            characters = (
-                await character_queries.get_characters_for_chapter_context_native(
-                    chapter_number=current_chapter,
-                    limit=max_characters,
-                )
+            characters = await character_queries.get_characters_for_chapter_context_native(
+                chapter_number=current_chapter,
+                limit=max_characters,
             )
         context["characters"] = characters
 
@@ -216,9 +214,7 @@ async def _get_character_relationships(
     """
 
     try:
-        results = await neo4j_manager.execute_read_query(
-            query, {"char_names": character_names}
-        )
+        results = await neo4j_manager.execute_read_query(query, {"char_names": character_names})
 
         relationships = []
         for record in results:
@@ -275,9 +271,7 @@ async def _get_recent_summaries(
 
     try:
         # Use existing batch retrieval function
-        chapter_data = await chapter_queries.get_chapter_content_batch_native(
-            chapter_numbers
-        )
+        chapter_data = await chapter_queries.get_chapter_content_batch_native(chapter_numbers)
 
         # Extract summaries
         summaries = []

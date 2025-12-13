@@ -12,7 +12,6 @@ Design goals:
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 
@@ -35,12 +34,8 @@ def clear_character_read_caches() -> dict[str, bool]:
     from data_access import character_queries
 
     return {
-        "get_character_profile_by_name": _best_effort_cache_clear(
-            character_queries.get_character_profile_by_name
-        ),
-        "get_character_profile_by_id": _best_effort_cache_clear(
-            character_queries.get_character_profile_by_id
-        ),
+        "get_character_profile_by_name": _best_effort_cache_clear(character_queries.get_character_profile_by_name),
+        "get_character_profile_by_id": _best_effort_cache_clear(character_queries.get_character_profile_by_id),
     }
 
 
@@ -59,9 +54,7 @@ def clear_kg_read_caches() -> dict[str, bool]:
 
     return {
         "query_kg_from_db": _best_effort_cache_clear(kg_queries.query_kg_from_db),
-        "get_novel_info_property_from_db": _best_effort_cache_clear(
-            kg_queries.get_novel_info_property_from_db
-        ),
+        "get_novel_info_property_from_db": _best_effort_cache_clear(kg_queries.get_novel_info_property_from_db),
     }
 
 

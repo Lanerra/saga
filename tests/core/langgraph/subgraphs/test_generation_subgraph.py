@@ -13,9 +13,7 @@ async def test_generation_subgraph_flow():
     # Setup mocks
     with (
         patch("core.langgraph.nodes.scene_planning_node.llm_service") as mock_llm_plan,
-        patch(
-            "core.langgraph.nodes.scene_generation_node.llm_service"
-        ) as mock_llm_draft,
+        patch("core.langgraph.nodes.scene_generation_node.llm_service") as mock_llm_draft,
         patch(
             "core.langgraph.nodes.context_retrieval_node.get_reliable_kg_facts_for_drafting_prompt",
             new_callable=AsyncMock,
@@ -31,9 +29,7 @@ async def test_generation_subgraph_flow():
         )
 
         # Mock drafting response
-        mock_llm_draft.async_call_llm = AsyncMock(
-            side_effect=[("Draft for Scene 1", {}), ("Draft for Scene 2", {})]
-        )
+        mock_llm_draft.async_call_llm = AsyncMock(side_effect=[("Draft for Scene 1", {}), ("Draft for Scene 2", {})])
 
         # Mock KG response
         mock_kg.return_value = "KG Context"
@@ -56,9 +52,7 @@ async def test_generation_subgraph_flow():
         )
 
         content_manager = ContentManager(project_dir)
-        chapter_outlines = {
-            1: {"scene_description": "Test Chapter", "key_beats": ["Beat 1", "Beat 2"]}
-        }
+        chapter_outlines = {1: {"scene_description": "Test Chapter", "key_beats": ["Beat 1", "Beat 2"]}}
         ref = content_manager.save_json(chapter_outlines, "chapter_outlines", "all", 1)
         state["chapter_outlines_ref"] = ref
 

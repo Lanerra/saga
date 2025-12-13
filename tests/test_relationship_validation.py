@@ -148,9 +148,7 @@ class TestRelationshipValidator:
     def test_validate_unknown_target_type(self) -> None:
         """Test validation with unknown target entity type."""
         validator = RelationshipValidator(enable_strict_mode=True)
-        all_valid, warnings = validator.validate_entity_types(
-            "Character", "UnknownType"
-        )
+        all_valid, warnings = validator.validate_entity_types("Character", "UnknownType")
         assert all_valid is False
         assert len(warnings) == 1
         assert "UnknownType" in warnings[0]
@@ -398,13 +396,9 @@ class TestComplexValidationScenarios:
         validator = RelationshipValidator(enable_strict_mode=True)
 
         # Alice is a member of The Guild
-        is_valid1, _, _ = validator.validate(
-            "MEMBER_OF", "Alice", "Character", "The Guild", "Guild", "flexible"
-        )
+        is_valid1, _, _ = validator.validate("MEMBER_OF", "Alice", "Character", "The Guild", "Guild", "flexible")
         # Alice is also a member of The Council
-        is_valid2, _, _ = validator.validate(
-            "MEMBER_OF", "Alice", "Character", "The Council", "Council", "flexible"
-        )
+        is_valid2, _, _ = validator.validate("MEMBER_OF", "Alice", "Character", "The Council", "Council", "flexible")
 
         assert is_valid1 is True
         assert is_valid2 is True
@@ -414,13 +408,9 @@ class TestComplexValidationScenarios:
         validator = RelationshipValidator(enable_strict_mode=True)
 
         # Alice owns The Sword
-        is_valid1, _, _ = validator.validate(
-            "OWNS", "Alice", "Character", "The Sword", "Artifact", "flexible"
-        )
+        is_valid1, _, _ = validator.validate("OWNS", "Alice", "Character", "The Sword", "Artifact", "flexible")
         # The Sword is located in The Castle
-        is_valid2, _, _ = validator.validate(
-            "LOCATED_IN", "The Sword", "Artifact", "The Castle", "Structure", "flexible"
-        )
+        is_valid2, _, _ = validator.validate("LOCATED_IN", "The Sword", "Artifact", "The Castle", "Structure", "flexible")
 
         assert is_valid1 is True
         assert is_valid2 is True
@@ -430,9 +420,7 @@ class TestComplexValidationScenarios:
         validator = RelationshipValidator(enable_strict_mode=True)
 
         # The Sun God is worshipped (using represents/symbolizes)
-        is_valid, _, _ = validator.validate(
-            "SYMBOLIZES", "The Sun God", "Deity", "Power", "Concept", "flexible"
-        )
+        is_valid, _, _ = validator.validate("SYMBOLIZES", "The Sun God", "Deity", "Power", "Concept", "flexible")
 
         assert is_valid is True
 
@@ -441,9 +429,7 @@ class TestComplexValidationScenarios:
         validator = RelationshipValidator(enable_strict_mode=True)
 
         # The Battle happens before The Treaty
-        is_valid1, _, _ = validator.validate(
-            "HAPPENS_BEFORE", "The Battle", "Event", "The Treaty", "Event", "flexible"
-        )
+        is_valid1, _, _ = validator.validate("HAPPENS_BEFORE", "The Battle", "Event", "The Treaty", "Event", "flexible")
         # The Treaty happens before The Coronation
         is_valid2, _, _ = validator.validate(
             "HAPPENS_BEFORE",
@@ -462,9 +448,7 @@ class TestComplexValidationScenarios:
         validator = RelationshipValidator(enable_strict_mode=True)
 
         # Dragon (Creature) can be friends with Alice (Character)
-        is_valid, _, _ = validator.validate(
-            "FRIEND_OF", "Dragon", "Creature", "Alice", "Character", "flexible"
-        )
+        is_valid, _, _ = validator.validate("FRIEND_OF", "Dragon", "Creature", "Alice", "Character", "flexible")
 
         assert is_valid is True
 
@@ -473,8 +457,6 @@ class TestComplexValidationScenarios:
         validator = RelationshipValidator(enable_strict_mode=True)
 
         # Ghost (Spirit) can fear Alice (Character)
-        is_valid, _, _ = validator.validate(
-            "FEARS", "Ghost", "Spirit", "Alice", "Character", "flexible"
-        )
+        is_valid, _, _ = validator.validate("FEARS", "Ghost", "Spirit", "Alice", "Character", "flexible")
 
         assert is_valid is True

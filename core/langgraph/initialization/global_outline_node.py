@@ -29,11 +29,10 @@ class ActOutline(BaseModel):
     act_number: int = Field(description="Act number (1-5)")
     title: str = Field(description="Title or name of the act")
     summary: str = Field(description="Brief summary of the act (1-2 sentences)")
-    key_events: list[str] = Field(
-        default_factory=list, description="List of major events in this act"
-    )
+    key_events: list[str] = Field(default_factory=list, description="List of major events in this act")
     chapters_start: int = Field(description="First chapter number in this act")
     chapters_end: int = Field(description="Last chapter number in this act")
+
 
 class CharacterArc(BaseModel):
     """Character arc progression throughout the story."""
@@ -41,9 +40,7 @@ class CharacterArc(BaseModel):
     character_name: str = Field(description="Name of the character")
     starting_state: str = Field(description="Character's state at story start")
     ending_state: str = Field(description="Character's state at story end")
-    key_moments: list[str] = Field(
-        default_factory=list, description="Key transformation moments"
-    )
+    key_moments: list[str] = Field(default_factory=list, description="Key transformation moments")
 
 
 class GlobalOutlineSchema(BaseModel):
@@ -55,13 +52,10 @@ class GlobalOutlineSchema(BaseModel):
     midpoint: str = Field(description="Major midpoint event or revelation")
     climax: str = Field(description="The story's climax")
     resolution: str = Field(description="How the story resolves")
-    character_arcs: list[CharacterArc] = Field(
-        default_factory=list, description="Character arc progressions"
-    )
-    thematic_progression: str = Field(
-        description="How the theme develops throughout the story"
-    )
+    character_arcs: list[CharacterArc] = Field(default_factory=list, description="Character arc progressions")
+    thematic_progression: str = Field(description="How the theme develops throughout the story")
     pacing_notes: str = Field(default="", description="Notes on pacing and structure")
+
 
 async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     """
@@ -97,10 +91,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
 
     # Validate inputs
     if not character_sheets:
-        logger.warning(
-            "generate_global_outline: no character sheets available, "
-            "generating without character context"
-        )
+        logger.warning("generate_global_outline: no character sheets available, " "generating without character context")
 
     # Build character context for outline generation
     character_context = _build_character_context_from_sheets(character_sheets)
@@ -241,9 +232,7 @@ def _extract_json_from_response(response: str) -> str:
     return response
 
 
-def _validate_chapter_allocations(
-    outline: GlobalOutlineSchema, total_chapters: int
-) -> list[str]:
+def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: int) -> list[str]:
     """
     Validate that chapter allocations in acts are correct.
 

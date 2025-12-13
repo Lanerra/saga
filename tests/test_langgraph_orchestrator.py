@@ -72,9 +72,7 @@ class TestEnsureNeo4jConnection:
 
     async def test_ensure_neo4j_connection_connects(self, orchestrator):
         """Neo4j connection is established and schema created."""
-        with patch(
-            "orchestration.langgraph_orchestrator.neo4j_manager"
-        ) as mock_neo4j:
+        with patch("orchestration.langgraph_orchestrator.neo4j_manager") as mock_neo4j:
             mock_neo4j.connect = AsyncMock()
             mock_neo4j.create_db_schema = AsyncMock()
 
@@ -85,9 +83,7 @@ class TestEnsureNeo4jConnection:
 
     async def test_ensure_neo4j_connection_error_propagates(self, orchestrator):
         """Neo4j connection errors propagate."""
-        with patch(
-            "orchestration.langgraph_orchestrator.neo4j_manager"
-        ) as mock_neo4j:
+        with patch("orchestration.langgraph_orchestrator.neo4j_manager") as mock_neo4j:
             mock_neo4j.connect = AsyncMock(side_effect=Exception("Connection failed"))
 
             with pytest.raises(Exception, match="Connection failed"):
@@ -100,13 +96,16 @@ class TestLoadOrCreateState:
 
     async def test_load_or_create_state_no_existing_chapters(self, orchestrator):
         """State is created with chapter 1 when no chapters exist."""
-        with patch(
-            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-            new_callable=AsyncMock,
-        ) as mock_load, patch(
-            "data_access.character_queries.get_character_profiles",
-            new_callable=AsyncMock,
-        ) as mock_profiles:
+        with (
+            patch(
+                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch(
+                "data_access.character_queries.get_character_profiles",
+                new_callable=AsyncMock,
+            ) as mock_profiles,
+        ):
             mock_load.return_value = 0
             mock_profiles.return_value = []
 
@@ -117,13 +116,16 @@ class TestLoadOrCreateState:
 
     async def test_load_or_create_state_existing_chapters(self, orchestrator):
         """State continues from next chapter when chapters exist."""
-        with patch(
-            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-            new_callable=AsyncMock,
-        ) as mock_load, patch(
-            "data_access.character_queries.get_character_profiles",
-            new_callable=AsyncMock,
-        ) as mock_profiles:
+        with (
+            patch(
+                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch(
+                "data_access.character_queries.get_character_profiles",
+                new_callable=AsyncMock,
+            ) as mock_profiles,
+        ):
             mock_load.return_value = 5
             mock_profiles.return_value = []
 
@@ -135,13 +137,16 @@ class TestLoadOrCreateState:
         """Initialization is detected from character profiles."""
         mock_character = {"name": "Alice", "description": "Hero"}
 
-        with patch(
-            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-            new_callable=AsyncMock,
-        ) as mock_load, patch(
-            "data_access.character_queries.get_character_profiles",
-            new_callable=AsyncMock,
-        ) as mock_profiles:
+        with (
+            patch(
+                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch(
+                "data_access.character_queries.get_character_profiles",
+                new_callable=AsyncMock,
+            ) as mock_profiles,
+        ):
             mock_load.return_value = 0
             mock_profiles.return_value = [mock_character]
 
@@ -149,17 +154,18 @@ class TestLoadOrCreateState:
 
             assert state["initialization_complete"] is True
 
-    async def test_load_or_create_state_fallback_to_file_check(
-        self, orchestrator, tmp_path
-    ):
+    async def test_load_or_create_state_fallback_to_file_check(self, orchestrator, tmp_path):
         """Falls back to file check if profile query fails."""
-        with patch(
-            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-            new_callable=AsyncMock,
-        ) as mock_load, patch(
-            "data_access.character_queries.get_character_profiles",
-            new_callable=AsyncMock,
-        ) as mock_profiles:
+        with (
+            patch(
+                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch(
+                "data_access.character_queries.get_character_profiles",
+                new_callable=AsyncMock,
+            ) as mock_profiles,
+        ):
             mock_load.return_value = 0
             mock_profiles.side_effect = Exception("Database error")
 
@@ -175,13 +181,16 @@ class TestLoadOrCreateState:
 
     async def test_load_or_create_state_includes_models(self, orchestrator):
         """State includes model configuration."""
-        with patch(
-            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-            new_callable=AsyncMock,
-        ) as mock_load, patch(
-            "data_access.character_queries.get_character_profiles",
-            new_callable=AsyncMock,
-        ) as mock_profiles:
+        with (
+            patch(
+                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch(
+                "data_access.character_queries.get_character_profiles",
+                new_callable=AsyncMock,
+            ) as mock_profiles,
+        ):
             mock_load.return_value = 0
             mock_profiles.return_value = []
 
@@ -191,19 +200,19 @@ class TestLoadOrCreateState:
             assert state["extraction_model"] is not None
             assert state["revision_model"] is not None
 
-    async def test_load_or_create_state_validates_artifacts(
-        self, orchestrator, tmp_path
-    ):
+    async def test_load_or_create_state_validates_artifacts(self, orchestrator, tmp_path):
         """Validation check runs on existing project directory."""
-        with patch(
-            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-            new_callable=AsyncMock,
-        ) as mock_load, patch(
-            "data_access.character_queries.get_character_profiles",
-            new_callable=AsyncMock,
-        ) as mock_profiles, patch(
-            "orchestration.langgraph_orchestrator.validate_initialization_artifacts"
-        ) as mock_validate:
+        with (
+            patch(
+                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch(
+                "data_access.character_queries.get_character_profiles",
+                new_callable=AsyncMock,
+            ) as mock_profiles,
+            patch("orchestration.langgraph_orchestrator.validate_initialization_artifacts") as mock_validate,
+        ):
             mock_load.return_value = 0
             mock_profiles.return_value = []
             mock_validate.return_value = (True, [])
@@ -227,9 +236,7 @@ class TestRunChapterGenerationLoop:
 
         async def mock_stream_func(*args, **kwargs):
             events = [
-                {
-                    "generate": {"current_node": "generate", "draft_text": "Chapter text"}
-                },
+                {"generate": {"current_node": "generate", "draft_text": "Chapter text"}},
                 {"finalize": {"current_node": "finalize", "draft_word_count": 2000}},
             ]
             for event in events:
@@ -246,16 +253,12 @@ class TestRunChapterGenerationLoop:
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
-    async def test_run_chapter_generation_loop_respects_total_chapters(
-        self, orchestrator
-    ):
+    async def test_run_chapter_generation_loop_respects_total_chapters(self, orchestrator):
         """Loop stops at total chapter count."""
         mock_graph = MagicMock()
 
         async def mock_stream_func(*args, **kwargs):
-            events = [
-                {"finalize": {"current_node": "finalize", "draft_word_count": 2000}}
-            ]
+            events = [{"finalize": {"current_node": "finalize", "draft_word_count": 2000}}]
             for event in events:
                 yield event
 
@@ -282,9 +285,7 @@ class TestRunChapterGenerationLoop:
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
-    async def test_run_chapter_generation_loop_handles_incomplete_generation(
-        self, orchestrator
-    ):
+    async def test_run_chapter_generation_loop_handles_incomplete_generation(self, orchestrator):
         """Loop stops if generation doesn't reach finalize node."""
         mock_graph = MagicMock()
 
@@ -342,9 +343,7 @@ class TestHandleWorkflowEvent:
         await orchestrator._handle_workflow_event(None, 1)
         await orchestrator._handle_workflow_event("not a dict", 1)
 
-    async def test_handle_workflow_event_validate_with_contradictions(
-        self, orchestrator
-    ):
+    async def test_handle_workflow_event_validate_with_contradictions(self, orchestrator):
         """Validation events log contradictions."""
         contradiction = Contradiction(
             type="trait",
@@ -363,9 +362,7 @@ class TestHandleWorkflowEvent:
 
         await orchestrator._handle_workflow_event(event, 1)
 
-    async def test_handle_workflow_event_validate_with_dict_contradictions(
-        self, orchestrator
-    ):
+    async def test_handle_workflow_event_validate_with_dict_contradictions(self, orchestrator):
         """Validation handles dict-format contradictions."""
         contradiction_dict = {
             "type": "trait",
@@ -396,9 +393,7 @@ class TestHandleWorkflowEvent:
 
     async def test_handle_workflow_event_finalize(self, orchestrator):
         """Finalize events log word count."""
-        event = {
-            "finalize": {"current_node": "finalize", "draft_word_count": 2500}
-        }
+        event = {"finalize": {"current_node": "finalize", "draft_word_count": 2500}}
 
         await orchestrator._handle_workflow_event(event, 1)
 
@@ -435,35 +430,19 @@ class TestGetStepDescription:
 
     def test_get_step_description_initialization_steps(self, orchestrator):
         """Initialization steps are mapped correctly."""
-        assert "Character Sheets" in orchestrator._get_step_description(
-            "node", "character_sheets"
-        )
-        assert "Global Story Outline" in orchestrator._get_step_description(
-            "node", "global_outline"
-        )
-        assert "Act Structures" in orchestrator._get_step_description(
-            "node", "act_outlines"
-        )
-        assert "Knowledge Graph" in orchestrator._get_step_description(
-            "node", "committing"
-        )
-        assert "Initialization Files" in orchestrator._get_step_description(
-            "node", "files_persisted"
-        )
-        assert "Initialization Complete" in orchestrator._get_step_description(
-            "node", "complete"
-        )
+        assert "Character Sheets" in orchestrator._get_step_description("node", "character_sheets")
+        assert "Global Story Outline" in orchestrator._get_step_description("node", "global_outline")
+        assert "Act Structures" in orchestrator._get_step_description("node", "act_outlines")
+        assert "Knowledge Graph" in orchestrator._get_step_description("node", "committing")
+        assert "Initialization Files" in orchestrator._get_step_description("node", "files_persisted")
+        assert "Initialization Complete" in orchestrator._get_step_description("node", "complete")
 
     def test_get_step_description_generation_nodes(self, orchestrator):
         """Generation nodes are mapped correctly."""
-        assert "Chapter Outline" in orchestrator._get_step_description(
-            "chapter_outline"
-        )
+        assert "Chapter Outline" in orchestrator._get_step_description("chapter_outline")
         assert "Chapter Text" in orchestrator._get_step_description("generate")
         assert "Entities" in orchestrator._get_step_description("extract")
-        assert "Normalizing" in orchestrator._get_step_description(
-            "normalize_relationships"
-        )
+        assert "Normalizing" in orchestrator._get_step_description("normalize_relationships")
         assert "Knowledge Graph" in orchestrator._get_step_description("commit")
         assert "Validating" in orchestrator._get_step_description("validate")
         assert "Revising" in orchestrator._get_step_description("revise")
@@ -472,9 +451,7 @@ class TestGetStepDescription:
 
     def test_get_step_description_ignores_chapter_outline_markers(self, orchestrator):
         """Chapter outline completion markers are ignored."""
-        result = orchestrator._get_step_description(
-            "some_node", "chapter_outline_2_complete"
-        )
+        result = orchestrator._get_step_description("some_node", "chapter_outline_2_complete")
 
         assert "Processing" in result or "some_node" in result
 
@@ -520,15 +497,12 @@ class TestRunNovelGenerationLoop:
 
         orchestrator.display.stop = AsyncMock()
 
-        with patch.object(
-            orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock
-        ) as mock_neo4j, patch.object(
-            orchestrator, "_load_or_create_state", new_callable=AsyncMock
-        ) as mock_state, patch(
-            "orchestration.langgraph_orchestrator.create_checkpointer"
-        ) as mock_cp, patch(
-            "orchestration.langgraph_orchestrator.create_full_workflow_graph"
-        ) as mock_graph_creator:
+        with (
+            patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock) as mock_neo4j,
+            patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_state,
+            patch("orchestration.langgraph_orchestrator.create_checkpointer") as mock_cp,
+            patch("orchestration.langgraph_orchestrator.create_full_workflow_graph") as mock_graph_creator,
+        ):
             mock_state.return_value = {
                 "current_chapter": 1,
                 "total_chapters": 20,
@@ -547,9 +521,7 @@ class TestRunNovelGenerationLoop:
         """Generation loop handles errors gracefully."""
         orchestrator.display.stop = AsyncMock()
 
-        with patch.object(
-            orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock
-        ) as mock_neo4j:
+        with patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock) as mock_neo4j:
             mock_neo4j.side_effect = Exception("Connection failed")
 
             with pytest.raises(Exception, match="Connection failed"):
@@ -557,15 +529,11 @@ class TestRunNovelGenerationLoop:
 
             orchestrator.display.stop.assert_called_once()
 
-    async def test_run_novel_generation_loop_stops_display_on_error(
-        self, orchestrator
-    ):
+    async def test_run_novel_generation_loop_stops_display_on_error(self, orchestrator):
         """Display is stopped even when errors occur."""
         orchestrator.display.stop = AsyncMock()
 
-        with patch.object(
-            orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock
-        ) as mock_neo4j:
+        with patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock) as mock_neo4j:
             mock_neo4j.side_effect = Exception("Test error")
 
             try:

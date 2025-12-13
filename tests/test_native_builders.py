@@ -1,4 +1,5 @@
 """Tests for data_access/cypher_builders/native_builders.py"""
+
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models import CharacterProfile, WorldItem
 
@@ -8,9 +9,7 @@ class TestCharacterUpsertCypher:
 
     def test_character_upsert_basic(self):
         """Test basic character upsert Cypher."""
-        profile = CharacterProfile.from_dict(
-            "Alice", {"description": "A hero", "traits": ["brave"]}
-        )
+        profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]})
 
         cypher, params = NativeCypherBuilder.character_upsert_cypher(profile, 1)
 
@@ -32,9 +31,7 @@ class TestCharacterUpsertCypher:
             {
                 "description": "A hero",
                 "traits": ["brave"],
-                "relationships": {
-                    "Bob": {"type": "FRIEND_OF", "description": "Best friends"}
-                },
+                "relationships": {"Bob": {"type": "FRIEND_OF", "description": "Best friends"}},
             },
         )
 
@@ -45,9 +42,7 @@ class TestCharacterUpsertCypher:
 
     def test_character_upsert_empty_traits(self):
         """Test character upsert with no traits."""
-        profile = CharacterProfile.from_dict(
-            "Alice", {"description": "A hero", "traits": []}
-        )
+        profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": []})
 
         cypher, params = NativeCypherBuilder.character_upsert_cypher(profile, 1)
 
@@ -92,9 +87,7 @@ class TestWorldItemUpsertCypher:
 
     def test_world_item_upsert_with_rules(self):
         """Test world item upsert with rules."""
-        item = WorldItem.from_dict(
-            "Locations", "Castle", {"description": "A castle", "rules": ["No running"]}
-        )
+        item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle", "rules": ["No running"]})
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 

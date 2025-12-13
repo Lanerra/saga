@@ -25,17 +25,13 @@ class TestYamlParsing(unittest.TestCase):
 
         self.malformed_yaml_filepath = os.path.join(self.test_dir, "malformed.yaml")
         with open(self.malformed_yaml_filepath, "w", encoding="utf-8") as f:
-            f.write(
-                "Novel Concept: Title: Test Novel\nGenre: [Sci-Fi"
-            )  # Missing closing bracket
+            f.write("Novel Concept: Title: Test Novel\nGenre: [Sci-Fi")  # Missing closing bracket
 
         self.empty_yaml_filepath = os.path.join(self.test_dir, "empty.yaml")
         with open(self.empty_yaml_filepath, "w", encoding="utf-8") as f:
             f.write("")  # Empty file
 
-        self.non_dict_root_yaml_filepath = os.path.join(
-            self.test_dir, "non_dict_root.yaml"
-        )
+        self.non_dict_root_yaml_filepath = os.path.join(self.test_dir, "non_dict_root.yaml")
         with open(self.non_dict_root_yaml_filepath, "w", encoding="utf-8") as f:
             f.write("- item1\n- item2")  # Root is a list
 

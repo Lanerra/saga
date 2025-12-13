@@ -19,9 +19,7 @@ class NativeCypherBuilder:
     """Generate Cypher directly from Pydantic models without dict conversion"""
 
     @staticmethod
-    def character_upsert_cypher(
-        char: "CharacterProfile", chapter_number: int
-    ) -> tuple[str, dict[str, Any]]:
+    def character_upsert_cypher(char: "CharacterProfile", chapter_number: int) -> tuple[str, dict[str, Any]]:
         """
         Generate Cypher for character upsert directly from CharacterProfile model.
 
@@ -166,9 +164,7 @@ class NativeCypherBuilder:
         return cypher, params
 
     @staticmethod
-    def world_item_upsert_cypher(
-        item: "WorldItem", chapter_number: int
-    ) -> tuple[str, dict[str, Any]]:
+    def world_item_upsert_cypher(item: "WorldItem", chapter_number: int) -> tuple[str, dict[str, Any]]:
         """
         Generate Cypher for world item upsert directly from WorldItem model.
 
@@ -323,9 +319,7 @@ class NativeCypherBuilder:
                 rel_desc = str(rel_info) if rel_info else ""
 
             # Normalize relationship type for consistent storage and querying.
-            rel_type = (
-                str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
-            )
+            rel_type = str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
             if not rel_type:
                 rel_type = "RELATED_TO"
 
@@ -469,9 +463,7 @@ class NativeCypherBuilder:
         return cypher, params
 
     @staticmethod
-    def batch_character_upsert_cypher(
-        characters: list["CharacterProfile"], chapter_number: int
-    ) -> list[tuple[str, dict[str, Any]]]:
+    def batch_character_upsert_cypher(characters: list["CharacterProfile"], chapter_number: int) -> list[tuple[str, dict[str, Any]]]:
         """
         Generate batch Cypher statements for multiple characters.
 
@@ -484,16 +476,12 @@ class NativeCypherBuilder:
         """
         statements = []
         for char in characters:
-            cypher, params = NativeCypherBuilder.character_upsert_cypher(
-                char, chapter_number
-            )
+            cypher, params = NativeCypherBuilder.character_upsert_cypher(char, chapter_number)
             statements.append((cypher, params))
         return statements
 
     @staticmethod
-    def batch_world_item_upsert_cypher(
-        world_items: list["WorldItem"], chapter_number: int
-    ) -> list[tuple[str, dict[str, Any]]]:
+    def batch_world_item_upsert_cypher(world_items: list["WorldItem"], chapter_number: int) -> list[tuple[str, dict[str, Any]]]:
         """
         Generate batch Cypher statements for multiple world items.
 
@@ -506,8 +494,6 @@ class NativeCypherBuilder:
         """
         statements = []
         for item in world_items:
-            cypher, params = NativeCypherBuilder.world_item_upsert_cypher(
-                item, chapter_number
-            )
+            cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, chapter_number)
             statements.append((cypher, params))
         return statements

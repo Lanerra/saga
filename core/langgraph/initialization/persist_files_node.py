@@ -570,12 +570,7 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
     history_data: dict = {}
 
     # Accept several potential history/timeline fields without requiring any.
-    raw_events = (
-        state.get("world_history")
-        or state.get("history_events")
-        or state.get("timeline")
-        or []
-    )
+    raw_events = state.get("world_history") or state.get("history_events") or state.get("timeline") or []
 
     events: list = []
     if isinstance(raw_events, list):
@@ -593,9 +588,7 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
                 event_entry["id"] = ev.get("id", f"event_{idx}")
 
                 if "description" in ev:
-                    event_entry["description"] = _normalize_prose(
-                        ev.get("description", "")
-                    )
+                    event_entry["description"] = _normalize_prose(ev.get("description", ""))
                 elif "text" in ev:
                     event_entry["description"] = _normalize_prose(ev.get("text", ""))
                 elif "summary" in ev:
@@ -612,9 +605,7 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
         history_data["events"] = events
     else:
         history_data["events"] = []
-        history_data["note"] = (
-            "Add key historical events, eras, and background lore here."
-        )
+        history_data["note"] = "Add key historical events, eras, and background lore here."
 
     write_yaml_file(history_path, history_data)
 

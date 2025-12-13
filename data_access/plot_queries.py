@@ -15,9 +15,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     # delete PlotPoint nodes missing from the input list. This is destructive by design.
     logger.info("Synchronizing plot outline to Neo4j (destructive sync)...")
     if not plot_data:
-        logger.warning(
-            "save_plot_outline_to_db: plot_data is empty. No changes will be made."
-        )
+        logger.warning("save_plot_outline_to_db: plot_data is empty. No changes will be made.")
         return True
 
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
@@ -59,30 +57,20 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     # we should skip plot point synchronization entirely (including any deletes) to avoid
     # surprising destructive behavior from partial/malformed input.
     if input_plot_points_list is None:
-        logger.info(
-            "plot_data.plot_points not provided. Skipping plot point sync (NovelInfo properties will still be saved)."
-        )
+        logger.info("plot_data.plot_points not provided. Skipping plot point sync (NovelInfo properties will still be saved).")
     elif not isinstance(input_plot_points_list, list):
-        logger.warning(
-            "plot_data.plot_points is not a list. Skipping plot point sync (NovelInfo properties will still be saved)."
-        )
+        logger.warning("plot_data.plot_points is not a list. Skipping plot point sync (NovelInfo properties will still be saved).")
         input_plot_points_list = None
 
     if input_plot_points_list is not None:
-        all_input_pp_ids: set[str] = {
-            f"pp_{novel_id}_{i + 1}" for i in range(len(input_plot_points_list))
-        }
+        all_input_pp_ids: set[str] = {f"pp_{novel_id}_{i + 1}" for i in range(len(input_plot_points_list))}
 
         try:
             existing_pp_records = await neo4j_manager.execute_read_query(
                 "MATCH (:NovelInfo {id: $novel_id_param})-[:HAS_PLOT_POINT]->(pp:PlotPoint) RETURN pp.id AS id",
                 {"novel_id_param": novel_id},
             )
-            existing_db_pp_ids: set[str] = {
-                record["id"]
-                for record in existing_pp_records
-                if record and record["id"]
-            }
+            existing_db_pp_ids: set[str] = {record["id"] for record in existing_pp_records if record and record["id"]}
         except Exception as e:
             logger.error(
                 f"Failed to retrieve existing PlotPoint IDs for novel {novel_id}: {e}",
@@ -115,22 +103,13 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
             if isinstance(point_desc_str_or_dict, str):
                 pp_props["description"] = point_desc_str_or_dict
             elif isinstance(point_desc_str_or_dict, dict):
-                pp_props["description"] = str(
-                    point_desc_str_or_dict.get("description", "")
-                )
-                pp_props["status"] = str(
-                    point_desc_str_or_dict.get("status", "pending")
-                )
+                pp_props["description"] = str(point_desc_str_or_dict.get("description", ""))
+                pp_props["status"] = str(point_desc_str_or_dict.get("status", "pending"))
                 for k_pp, v_pp in point_desc_str_or_dict.items():
-                    if (
-                        isinstance(v_pp, str | int | float | bool)
-                        and k_pp not in pp_props
-                    ):
+                    if isinstance(v_pp, str | int | float | bool) and k_pp not in pp_props:
                         pp_props[k_pp] = v_pp
             else:
-                logger.warning(
-                    f"Skipping invalid plot point item at index {i}: {point_desc_str_or_dict}"
-                )
+                logger.warning(f"Skipping invalid plot point item at index {i}: {point_desc_str_or_dict}")
                 continue
 
             plot_points_data.append(pp_props)
@@ -188,9 +167,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     try:
         if statements:
             await neo4j_manager.execute_cypher_batch(statements)
-        logger.info(
-            f"Successfully synchronized plot outline for novel '{novel_id}' to Neo4j."
-        )
+        logger.info(f"Successfully synchronized plot outline for novel '{novel_id}' to Neo4j.")
         return True
     except Exception as e:
         logger.error(
@@ -207,14 +184,10 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
 
     # Fetch NovelInfo node properties
     novel_info_query = "MATCH (ni:NovelInfo {id: $novel_id_param}) RETURN ni"
-    result_list = await neo4j_manager.execute_read_query(
-        novel_info_query, {"novel_id_param": novel_id}
-    )
+    result_list = await neo4j_manager.execute_read_query(novel_info_query, {"novel_id_param": novel_id})
 
     if not result_list or not result_list[0] or not result_list[0].get("ni"):
-        logger.warning(
-            f"No NovelInfo node found with id '{novel_id}'. Returning empty plot outline."
-        )
+        logger.warning(f"No NovelInfo node found with id '{novel_id}'. Returning empty plot outline.")
         return {}
 
     novel_node = result_list[0]["ni"]
@@ -247,9 +220,7 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
     RETURN pp
     ORDER BY pp.sequence ASC
     """
-    pp_results = await neo4j_manager.execute_read_query(
-        plot_points_query, {"novel_id_param": novel_id}
-    )
+    pp_results = await neo4j_manager.execute_read_query(plot_points_query, {"novel_id_param": novel_id})
 
     # Return plot points as structured dicts end-to-end.
     fetched_plot_points: list[dict[str, Any]] = []
@@ -265,9 +236,7 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
 
     plot_data["plot_points"] = fetched_plot_points
 
-    logger.info(
-        f"Successfully loaded plot outline for novel '{novel_id}'. Plot points: {len(plot_data.get('plot_points', []))}"
-    )
+    logger.info(f"Successfully loaded plot outline for novel '{novel_id}'. Plot points: {len(plot_data.get('plot_points', []))}")
     return plot_data
 
 
@@ -306,9 +275,7 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
     RETURN pp_id AS id
     """
 
-    result = await neo4j_manager.execute_write_query(
-        query, {"novel_id": novel_id, "desc": description, "prev_id": prev_id}
-    )
+    result = await neo4j_manager.execute_write_query(query, {"novel_id": novel_id, "desc": description, "prev_id": prev_id})
     return result[0]["id"] if result and result[0] and result[0].get("id") else ""
 
 
@@ -320,9 +287,7 @@ async def plot_point_exists(description: str) -> bool:
     WHERE toLower(pp.description) = toLower($desc)
     RETURN count(pp) AS cnt
     """
-    result = await neo4j_manager.execute_read_query(
-        query, {"novel_id": novel_id, "desc": description}
-    )
+    result = await neo4j_manager.execute_read_query(query, {"novel_id": novel_id, "desc": description})
     return bool(result and result[0] and result[0].get("cnt", 0) > 0)
 
 

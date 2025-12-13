@@ -32,11 +32,7 @@ class TestRdfTripleParsing(unittest.TestCase):
         self.assertEqual(len(parsed_triples), expected_triples_count)
 
         jax_alias_triple = next(
-            (
-                t
-                for t in parsed_triples
-                if t["subject"]["name"] == "Jax" and t["predicate"] == "HASALIAS"
-            ),
+            (t for t in parsed_triples if t["subject"]["name"] == "Jax" and t["predicate"] == "HASALIAS"),
             None,
         )
         self.assertIsNotNone(jax_alias_triple, "Jax hasAlias triple not found")
@@ -45,11 +41,7 @@ class TestRdfTripleParsing(unittest.TestCase):
             self.assertTrue(jax_alias_triple["is_literal_object"])
 
         jax_livesin_triple = next(
-            (
-                t
-                for t in parsed_triples
-                if t["subject"]["name"] == "Jax" and t["predicate"] == "LIVESIN"
-            ),
+            (t for t in parsed_triples if t["subject"]["name"] == "Jax" and t["predicate"] == "LIVESIN"),
             None,
         )
         self.assertIsNotNone(jax_livesin_triple, "Jax livesIn triple not found")
@@ -58,11 +50,7 @@ class TestRdfTripleParsing(unittest.TestCase):
             self.assertEqual(jax_livesin_triple["object_literal"], "Hourglass Curios")
 
         jax_type_triple = next(
-            (
-                t
-                for t in parsed_triples
-                if t["subject"]["name"] == "Jax" and t["predicate"] == "TYPE"
-            ),
+            (t for t in parsed_triples if t["subject"]["name"] == "Jax" and t["predicate"] == "TYPE"),
             None,
         )
         self.assertIsNotNone(jax_type_triple, "Jax rdf:type Character triple not found")
@@ -70,16 +58,10 @@ class TestRdfTripleParsing(unittest.TestCase):
             self.assertEqual(jax_type_triple["object_literal"], "Character")
 
         lila_type_triple = next(
-            (
-                t
-                for t in parsed_triples
-                if t["subject"]["name"] == "Lila" and t["predicate"] == "TYPE"
-            ),
+            (t for t in parsed_triples if t["subject"]["name"] == "Lila" and t["predicate"] == "TYPE"),
             None,
         )
-        self.assertIsNotNone(
-            lila_type_triple, "Lila rdf:type Character triple not found"
-        )
+        self.assertIsNotNone(lila_type_triple, "Lila rdf:type Character triple not found")
         if lila_type_triple:
             self.assertEqual(lila_type_triple["object_literal"], "Character")
 
@@ -144,59 +126,29 @@ class TestEntityFiltering(unittest.TestCase):
 
     def test_proper_noun_single_mention(self) -> None:
         """Proper nouns should pass with just 1 mention."""
-        self.assertFalse(
-            _should_filter_entity("Alice", entity_type="Character", mention_count=1)
-        )
-        self.assertFalse(
-            _should_filter_entity(
-                "Sunken Library", entity_type="Location", mention_count=1
-            )
-        )
+        self.assertFalse(_should_filter_entity("Alice", entity_type="Character", mention_count=1))
+        self.assertFalse(_should_filter_entity("Sunken Library", entity_type="Location", mention_count=1))
 
     def test_common_noun_single_mention(self) -> None:
         """Common nouns should be filtered with only 1 mention."""
-        self.assertTrue(
-            _should_filter_entity("the girl", entity_type="Character", mention_count=1)
-        )
-        self.assertTrue(
-            _should_filter_entity("the artifact", entity_type="Object", mention_count=1)
-        )
+        self.assertTrue(_should_filter_entity("the girl", entity_type="Character", mention_count=1))
+        self.assertTrue(_should_filter_entity("the artifact", entity_type="Object", mention_count=1))
 
     def test_common_noun_three_mentions(self) -> None:
         """Common nouns should pass with 3+ mentions."""
-        self.assertFalse(
-            _should_filter_entity(
-                "the rebellion", entity_type="Faction", mention_count=3
-            )
-        )
-        self.assertFalse(
-            _should_filter_entity(
-                "the mysterious visitor", entity_type="Character", mention_count=5
-            )
-        )
+        self.assertFalse(_should_filter_entity("the rebellion", entity_type="Faction", mention_count=3))
+        self.assertFalse(_should_filter_entity("the mysterious visitor", entity_type="Character", mention_count=5))
 
     def test_common_noun_two_mentions(self) -> None:
         """Common nouns should still be filtered with only 2 mentions."""
-        self.assertTrue(
-            _should_filter_entity(
-                "the rebellion", entity_type="Faction", mention_count=2
-            )
-        )
+        self.assertTrue(_should_filter_entity("the rebellion", entity_type="Faction", mention_count=2))
 
     def test_blacklisted_entities(self) -> None:
         """Blacklisted patterns should always be filtered."""
         # Even with high mention count and as "proper noun"
-        self.assertTrue(
-            _should_filter_entity(
-                "violet glow", entity_type="Concept", mention_count=10
-            )
-        )
-        self.assertTrue(
-            _should_filter_entity("fear", entity_type="Emotion", mention_count=5)
-        )
-        self.assertTrue(
-            _should_filter_entity("the moment", entity_type="Moment", mention_count=3)
-        )
+        self.assertTrue(_should_filter_entity("violet glow", entity_type="Concept", mention_count=10))
+        self.assertTrue(_should_filter_entity("fear", entity_type="Emotion", mention_count=5))
+        self.assertTrue(_should_filter_entity("the moment", entity_type="Moment", mention_count=3))
 
     def test_very_short_names(self) -> None:
         """Very short names should be filtered."""
@@ -232,11 +184,7 @@ class TestProperNounPreferenceInTriples(unittest.TestCase):
 
         # Check Alice -> Bob triple
         alice_loves = next(
-            (
-                t
-                for t in parsed
-                if t["subject"]["name"] == "Alice" and t["predicate"] == "LOVES"
-            ),
+            (t for t in parsed if t["subject"]["name"] == "Alice" and t["predicate"] == "LOVES"),
             None,
         )
         # mypy check

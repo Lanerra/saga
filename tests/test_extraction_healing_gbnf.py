@@ -54,9 +54,7 @@ def narrative_state():
 
 
 @pytest.mark.asyncio
-async def test_extract_characters_gbnf(
-    mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state
-):
+async def test_extract_characters_gbnf(mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state):
     # Mock LLM response
     mock_response = json.dumps(
         {
@@ -88,9 +86,7 @@ async def test_extract_characters_gbnf(
 
 
 @pytest.mark.asyncio
-async def test_extract_locations_gbnf(
-    mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state
-):
+async def test_extract_locations_gbnf(mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state):
     # Mock LLM response
     mock_response = json.dumps(
         {
@@ -124,19 +120,9 @@ async def test_extract_locations_gbnf(
 
 
 @pytest.mark.asyncio
-async def test_extract_events_gbnf(
-    mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state
-):
+async def test_extract_events_gbnf(mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state):
     # Mock LLM response
-    mock_response = json.dumps(
-        {
-            "world_updates": {
-                "Event": {
-                    "Battle": {"description": "A fierce battle", "key_elements": []}
-                }
-            }
-        }
-    )
+    mock_response = json.dumps({"world_updates": {"Event": {"Battle": {"description": "A fierce battle", "key_elements": []}}}})
     mock_llm_service.async_call_llm.return_value = (mock_response, {})
 
     # Execute
@@ -155,9 +141,7 @@ async def test_extract_events_gbnf(
 
 
 @pytest.mark.asyncio
-async def test_extract_relationships_gbnf(
-    mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state
-):
+async def test_extract_relationships_gbnf(mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state):
     # Mock LLM response
     mock_response = json.dumps(
         {
@@ -200,9 +184,7 @@ async def test_enrich_node_gbnf(mock_healing_llm_service):
     }
 
     # Mock KG query for context - patching the source module since it's imported inside function
-    with patch(
-        "data_access.kg_queries.get_chapter_context_for_entity", new_callable=AsyncMock
-    ) as mock_ctx:
+    with patch("data_access.kg_queries.get_chapter_context_for_entity", new_callable=AsyncMock) as mock_ctx:
         mock_ctx.return_value = [{"chapter": 1, "summary": "Hero did something."}]
 
         # Mock LLM response (tuple)
@@ -217,9 +199,7 @@ async def test_enrich_node_gbnf(mock_healing_llm_service):
         mock_healing_llm_service.async_call_llm.return_value = (mock_response_str, {})
 
         # Execute
-        enriched = await graph_healing_service.enrich_node_from_context(
-            node, "test-model"
-        )
+        enriched = await graph_healing_service.enrich_node_from_context(node, "test-model")
 
         # Verify
         assert enriched["inferred_description"] == "A verified hero"

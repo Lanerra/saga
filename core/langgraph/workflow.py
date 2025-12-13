@@ -61,9 +61,7 @@ def should_revise_or_continue(
 
     # If force_continue is set, skip revision and go to summary
     if force_continue:
-        logger.info(
-            "should_revise_or_continue: force_continue enabled, routing to summarize"
-        )
+        logger.info("should_revise_or_continue: force_continue enabled, routing to summarize")
         return "summarize"
 
     # If we've hit max iterations, go to summary
@@ -77,9 +75,7 @@ def should_revise_or_continue(
 
     # If needs revision and under max iterations, revise
     if needs_revision:
-        logger.info(
-            "should_revise_or_continue: revision needed, routing to revise node"
-        )
+        logger.info("should_revise_or_continue: revision needed, routing to revise node")
         return "revise"
 
     # Otherwise, proceed to summary
@@ -153,9 +149,7 @@ def should_revise_or_handle_error(
     force_continue = state.get("force_continue", False)
 
     if force_continue:
-        logger.info(
-            "should_revise_or_handle_error: force_continue enabled, routing to continue"
-        )
+        logger.info("should_revise_or_handle_error: force_continue enabled, routing to continue")
         return "continue"
 
     if iteration_count >= max_iterations:
@@ -481,14 +475,10 @@ def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"
     )
 
     if not initialization_complete:
-        logger.info(
-            "should_initialize: initialization needed, routing to init workflow"
-        )
+        logger.info("should_initialize: initialization needed, routing to init workflow")
         return "initialize"
     else:
-        logger.info(
-            "should_initialize: initialization complete, routing to chapter generation"
-        )
+        logger.info("should_initialize: initialization complete, routing to chapter generation")
         return "generate"
 
 

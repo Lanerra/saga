@@ -73,15 +73,11 @@ async def test_normalize_relationships_node(tmp_path: Path):
     # Looking at content_manager.get_extracted_relationships implementation (not shown fully), it likely looks up by chapter.
 
     # Let's mock ContentManager.get_extracted_relationships to be safe and simple
-    with patch(
-        "core.langgraph.nodes.relationship_normalization_node.get_extracted_relationships"
-    ) as mock_get:
+    with patch("core.langgraph.nodes.relationship_normalization_node.get_extracted_relationships") as mock_get:
         mock_get.return_value = rels
 
         # Also mock set_extracted_relationships to verify output
-        with patch(
-            "core.langgraph.nodes.relationship_normalization_node.set_extracted_relationships"
-        ) as mock_set:
+        with patch("core.langgraph.nodes.relationship_normalization_node.set_extracted_relationships") as mock_set:
             # Run node
             new_state = await normalize_relationships(state)
 
@@ -100,12 +96,8 @@ async def test_normalize_relationships_node(tmp_path: Path):
 
             assert len(normalized_rels) == 2
             assert normalized_rels[0].relationship_type == "FRIENDS_WITH"
-            assert (
-                normalized_rels[1].relationship_type == "WORKS_WITH"
-            )  # Normalized from works_with
+            assert normalized_rels[1].relationship_type == "WORKS_WITH"  # Normalized from works_with
 
             # Verify stats in state
-            assert (
-                new_state["relationships_normalized_this_chapter"] == 1
-            )  # works_with -> WORKS_WITH
+            assert new_state["relationships_normalized_this_chapter"] == 1  # works_with -> WORKS_WITH
             assert new_state["relationships_novel_this_chapter"] == 1  # FRIENDS_WITH
