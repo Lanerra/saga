@@ -54,32 +54,48 @@ class SchemaValidationService:
         if not self.enabled:
             return True, type_name, None
 
-        if not type_name:
-            return False, type_name, "Entity type cannot be empty"
+        raw = str(type_name).strip() if type_name is not None else ""
+        if not raw:
+            return False, raw, "Entity type cannot be empty"
 
-        # Check exact match first
-        if type_name in VALID_NODE_LABELS:
-            return True, type_name, None
+        # Check exact match first (canonical casing)
+        if raw in VALID_NODE_LABELS:
+            return True, raw, None
 
-        # Check normalization
-        if self.normalize_variants and type_name in LABEL_NORMALIZATION_MAP:
-            canonical = LABEL_NORMALIZATION_MAP[type_name]
-            if self.log_violations:
+        # Case-insensitive canonical match (e.g., "character" -> "Character")
+        canonical_case_map: dict[str, str] = {lbl.lower(): lbl for lbl in VALID_NODE_LABELS}
+        canonical_ci = canonical_case_map.get(raw.lower())
+        if canonical_ci:
+            if self.log_violations and raw != canonical_ci:
                 logger.info(
-                    "Normalizing entity type", original=type_name, normalized=canonical
+                    "Normalizing entity type (case)",
+                    original=raw,
+                    normalized=canonical_ci,
                 )
-            return True, canonical, None
+            return True, canonical_ci, None
+
+        # Check normalization map (legacy aliases + subtype labels -> canonical labels)
+        if self.normalize_variants:
+            mapped = LABEL_NORMALIZATION_MAP.get(raw) or LABEL_NORMALIZATION_MAP.get(raw.lower())
+            if mapped:
+                if self.log_violations:
+                    logger.info(
+                        "Normalizing entity type",
+                        original=raw,
+                        normalized=mapped,
+                    )
+                return True, mapped, None
 
         # If we get here, it's not a valid label
         error_msg = (
-            f"Invalid entity type '{type_name}'. "
+            f"Invalid entity type '{raw}'. "
             f"Must be one of: {', '.join(sorted(VALID_NODE_LABELS))}"
         )
 
         if self.log_violations:
-            logger.warning("Schema violation", error=error_msg, type_name=type_name)
+            logger.warning("Schema violation", error=error_msg, type_name=raw)
 
-        return False, type_name, error_msg
+        return False, raw, error_msg
 
     def validate_category(
         self, type_name: str, category: str

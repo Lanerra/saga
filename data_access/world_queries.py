@@ -15,7 +15,6 @@ from models.kg_constants import (
     KG_NODE_CHAPTER_UPDATED,
     KG_NODE_CREATED_CHAPTER,
     WORLD_ITEM_CANONICAL_LABELS,
-    WORLD_ITEM_LEGACY_LABELS,
 )
 
 from .cypher_builders.native_builders import NativeCypherBuilder
@@ -94,7 +93,12 @@ async def get_world_item_by_id(
     requested_id = item_id
     effective_id: str = item_id
 
-    world_item_labels = WORLD_ITEM_CANONICAL_LABELS + WORLD_ITEM_LEGACY_LABELS
+    # Canonical labeling contract:
+    # - World item nodes are labeled with canonical "world" labels only
+    #   (Location/Item/Event/Organization/Concept).
+    # - Legacy labels (Object/Artifact/Relic/Document) are handled via explicit migration,
+    #   not by widening read predicates indefinitely.
+    world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
     query = (
@@ -225,9 +229,12 @@ async def get_world_item_by_id(
 async def get_world_elements_for_snippet_from_db(
     category: str, chapter_limit: int, item_limit: int, *, include_provisional: bool = False
 ) -> list[dict[str, Any]]:
+    world_item_labels = WORLD_ITEM_CANONICAL_LABELS
+    label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
+
     query = f"""
     MATCH (we {{category: $category_param}})
-    WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+    WHERE {label_predicate}
       AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
       AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
 
@@ -293,9 +300,12 @@ async def get_world_elements_for_snippet_from_db(
 
 async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
     """Find typed world items that are considered 'thin' (e.g., missing description)."""
-    query = """
+    world_item_labels = WORLD_ITEM_CANONICAL_LABELS
+    label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
+
+    query = f"""
     MATCH (we)
-    WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+    WHERE {label_predicate}
       AND toString(we.description) = ''
       AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
     RETURN we.id AS id, we.name AS name, we.category as category
@@ -462,10 +472,13 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
     Returns:
         List of WorldItem models from bootstrap phase, sorted by category then name
     """
+    world_item_labels = WORLD_ITEM_CANONICAL_LABELS
+    label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
+
     # More efficient query that filters out elements without meaningful descriptions earlier
-    query = """
+    query = f"""
     MATCH (we)
-    WHERE (we:Object OR we:Artifact OR we:Location OR we:Document OR we:Item OR we:Relic)
+    WHERE {label_predicate}
       AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
       AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
       AND we.description IS NOT NULL

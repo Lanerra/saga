@@ -338,10 +338,12 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
     # This specific test for query_kg_from_db might be less critical if query_kg_from_db
     # isn't the primary tool for "get all characters".
 
-    # Reset query capture and test a general character retrieval
+    # Reset query capture and test a general character retrieval.
+    #
+    # Guardrail contract: unbounded scans require an explicit opt-in.
     captured_query_string = ""
     captured_query_params = {}
-    await query_kg_from_db(include_provisional=True)
+    await query_kg_from_db(include_provisional=True, allow_unbounded_scan=True)
     # assert "MATCH (s:Entity)-[r" in captured_query_string # Removed Entity label requirement
     assert "MATCH (s)-[r" in captured_query_string
     assert captured_query_params == {}

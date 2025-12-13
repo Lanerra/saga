@@ -7,60 +7,85 @@
 
 **Context:** {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }} | Ch: {{ chapter_number }}
 
-**IMPORTANT - Creative Freedom:**
-You have complete freedom to create entity types and relationship types that best describe the narrative.
-Use specific, descriptive types that capture the semantic meaning. Create new relationship types as needed
-for the narrative context. The examples below are suggestions, not restrictions.
+**IMPORTANT - Schema Contract (No Creative Freedom):**
+You MUST use ONLY the allowed node labels (types) listed below.
+Do NOT invent new node labels or relationship types. Invalid types break the graph.
 
-**Entity Ontology (Select MOST SPECIFIC Type):**
-*   **Living:** `Character` (Active), `Person` (Passive), `Creature`, `Spirit`, `Deity`.
-*   **Object:** `Artifact` (Special/Magical), `Relic` (Sacred), `Document`, `Object` (Generic).
-*   **Location:** `Settlement`, `Structure` (Building), `Room`, `Region`, `Landmark`, `Path`, `Territory`.
-*   **Org:** `Faction` (Political/Agenda), `Guild`, `House` (Noble), `Order`, `Council`, `Organization`.
-*   **Event:** `DevelopmentEvent` (Char Growth), `WorldElaborationEvent` (Lore), `PlotPoint` (Story Beat), `Event`, `Era`, `Moment`.
-*   **System:** `Magic`, `Technology`, `Religion`, `Culture`, `Law`, `Tradition`.
-*   **Info:** `Lore` (Myth), `Secret`, `Knowledge`, `Rumor`.
-*   **Trait:** `Trait` (Personality), `Attribute` (Stat), `Reputation`.
-*   **Other:** `Story` (Nested), `Concept`, `Symbol`, `Resource`, `Currency`.
+**Allowed Node Labels (Types):**
+- `Character`
+- `Location`
+- `Event`
+- `Item`
+- `Organization`
+- `Concept`
+- `Trait`
+- `Chapter`
+- `Novel`
 
-**Mapping Rules:**
-*   Shops/Prisons → `Structure`. Armies → `Faction`. Dreams → `Moment`.
-*   **CRITICAL:** Extract character growth as `DevelopmentEvent` and lore reveals as `WorldElaborationEvent`.
+**Type vs Category (CRITICAL):**
+- **Type** = the node label (from the allowlist above).
+- **Category** = the specific subtype stored in a `category` property (string).
+
+**Canonical Mapping Rules (store subtypes in `category`, not `type`):**
+- Artifacts / relics / documents / generic objects → `Item` with `category` like "Artifact", "Relic", "Document", "Object"
+- Factions / guilds / houses / councils / orders → `Organization` with `category` like "Faction", "Guild", "House", "Council", "Order"
+- Settlements / structures / rooms / regions / landmarks / territories / paths → `Location` with `category` like "Settlement", "Structure", "Room", "Region", etc.
+- Plot points / character development / lore reveals / eras / moments → `Event` with `category` like:
+  - "PlotPoint"
+  - "DevelopmentEvent"
+  - "WorldElaborationEvent"
+  - "Era"
+  - "Moment"
+- Magic / technology / religion / culture / law / tradition / prophecies → `Concept` with `category` like "Magic", "Technology", etc.
 
 **Output Format (JSON Only):**
 Keys: `character_updates`, `world_updates`, `kg_triples`.
-*   `world_updates` keys should be specific node types (e.g., "Artifact", "Faction", or custom types).
-*   `kg_triples`: List of strings "SubjectType:Name | PREDICATE | ObjectType:Name".
-*   **Relationship Types:** Use semantically precise predicates. Create custom relationship types as needed
-    (e.g., "HAUNTED_BY", "PROPHESIED_TO_DESTROY", "CONCEALS_TRUTH_ABOUT", etc.). The more specific, the better.
+
+* `world_updates` keys MUST be canonical node labels only:
+  - `Location`, `Item`, `Event`, `Organization`, `Concept`
+  - (Do NOT use legacy/custom keys like "Artifact", "Faction", "PlotPoint", etc.)
+* `kg_triples`: List of strings in the format:
+  - `"SubjectType:Name | PREDICATE | ObjectType:Name"`
+  - `SubjectType` / `ObjectType` MUST be one of the allowed node labels above.
+* **Relationship Types:** MUST be uppercase with underscores (e.g., `LOCATED_IN`, `MEMBER_OF`, `BETRAYS`).
+  Do NOT invent free-form strings with punctuation/spaces.
 
 **Example:**
 ```json
 {
-  "character_updates": { "Elara": { "description": "Steals the gem.", "status": "Rogue" } },
+  "character_updates": {
+    "Elara": { "description": "Steals the gem.", "status": "Rogue" }
+  },
   "world_updates": {
-    "Artifact": { "Sunstone": { "description": "Ancient glowing gem." } },
-    "PlotPoint": { "The Heist": { "description": "Elara betrays the Order." } }
+    "Item": {
+      "Sunstone": { "description": "Ancient glowing gem.", "category": "Artifact" }
+    },
+    "Event": {
+      "The Heist": { "description": "Elara betrays the Order.", "category": "PlotPoint" }
+    },
+    "Organization": {
+      "The Order": { "description": "A powerful faction.", "category": "Faction" }
+    }
   },
   "kg_triples": [
-    "Character:Elara | ACQUIRED | Artifact:Sunstone",
-    "PlotPoint:The Heist | INVOLVES | Character:Elara",
+    "Character:Elara | ACQUIRED | Item:Sunstone",
+    "Event:The Heist | INVOLVES | Character:Elara",
     "Character:Elara | BETRAYS | Organization:The Order"
   ]
 }
 ```
 
 **Quality Check Before Output:**
-- Did I use SPECIFIC node types instead of generic ones? → Check "DevelopmentEvent", "PlotPoint", "Artifact", etc. instead of just "Event" or "Object"
-- Did I extract character development moments as "DevelopmentEvent"? → These are critical!
-- Did I extract world lore revelations as "WorldElaborationEvent"? → These are critical!
-- Did I extract story turning points as "PlotPoint"? → These are critical!
+- Did I use ONLY allowed node labels for types? → Must be one of: Character/Location/Event/Item/Organization/Concept/Trait/Chapter/Novel
+- Did I put subtypes into `category` (not into the type/label)? → e.g., PlotPoint/DevelopmentEvent/WorldElaborationEvent are `Event.category`
+- Did I avoid legacy labels? → Never output types like "Object", "Artifact", "Relic", "Document", "Person", "Faction"
 - Did I prefer proper nouns over common nouns? → Proper nouns are higher quality
 - Did I extract any atmospheric/emotional/temporary entities? → Remove them
 - For proper nouns (capitalized names): 1+ mention is sufficient
 - For common nouns: Mentioned 3+ times AND stable referent? → If not, remove
 - Could a future chapter reference this entity? → If no, remove
 - Is each triple's direction correct (subject acts on object)? → Fix if needed
+- Are predicates uppercase with underscores only? → e.g., LOCATED_IN, MEMBER_OF, BETRAYS
 
 **Chapter {{ chapter_number }} Text:**
 ```text

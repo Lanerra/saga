@@ -218,16 +218,12 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         world_updates = []
         raw_updates = data.get("world_updates", {})
 
-        # Event-related types that should be skipped (handled by extract_events)
-        event_related_types = {
-            "Event",
-            "DevelopmentEvent",
-            "WorldElaborationEvent",
-            "PlotPoint",
-            "Era",
-            "Moment",
-            "Timeline",
-        }
+        # Event-related types are handled by extract_events.
+        #
+        # Canonical labeling contract: node labels must be one of the 9 canonical labels.
+        # Subtypes like PlotPoint/DevelopmentEvent are represented via `category`, not labels,
+        # so they will be labeled as Event.
+        event_related_types = {"Event"}
 
         for category, items in raw_updates.items():
             if isinstance(items, dict):
@@ -377,16 +373,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         event_updates = []
         raw_updates = data.get("world_updates", {})
 
-        # Look for event-related categories (Event, DevelopmentEvent, WorldElaborationEvent, PlotPoint, etc.)
-        event_related_types = {
-            "Event",
-            "DevelopmentEvent",
-            "WorldElaborationEvent",
-            "PlotPoint",
-            "Era",
-            "Moment",
-            "Timeline",
-        }
+        # Canonical labeling contract: subtypes (PlotPoint/DevelopmentEvent/etc.) are categories,
+        # not labels, and therefore map to the canonical label `Event`.
+        event_related_types = {"Event"}
 
         for category, items in raw_updates.items():
             mapped_type = _map_category_to_type(category)
@@ -626,23 +615,28 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         # but not already in the extraction results
         new_entities_from_relationships = []
         for entity_name, entity_type in relationship_entities.items():
-            # Determine if this is a character or world item
-            is_character = entity_type == "Character"
+            # Normalize/validate the parsed type. Canonical labeling contract requires that
+            # node labels are one of the 9 canonical labels.
+            is_valid, normalized_type, _err = schema_validator.validate_entity_type(entity_type)
 
-            # Double check validation before creation
-            is_valid, normalized_type, err = schema_validator.validate_entity_type(
-                entity_type
-            )
-            final_type = (
-                normalized_type if is_valid else "Object"
-            )  # Fallback to Object if invalid
+            # If we cannot validate/normalize the parsed type, fall back to a canonical world label.
+            # "Item" is the safest generic world-entity label; we preserve the original semantic
+            # type in `category`.
+            final_type = normalized_type if is_valid else "Item"
+
+            is_character = final_type == "Character"
+
+            attributes: dict[str, Any] = {}
+            if not is_character:
+                raw_cat = str(entity_type).strip().lower() if entity_type else ""
+                attributes["category"] = raw_cat or final_type.lower()
 
             entity = ExtractedEntity(
                 name=entity_name,
                 type=final_type,
                 description=f"Entity mentioned in relationships. Type: {final_type}",
                 first_appearance_chapter=state.get("current_chapter", 1),
-                attributes={"category": final_type.lower()} if not is_character else {},
+                attributes=attributes,
             )
             new_entities_from_relationships.append((entity, is_character))
 
@@ -763,164 +757,28 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
 
 def _map_category_to_type(category: str) -> str:
     """
-    Map world item category to entity type for ExtractedEntity.
+    Map a category string to a canonical node label.
 
-    This function now accepts specific node types directly from the ontology.
-    If the category matches a known node label, it returns it as-is.
-    Otherwise, it falls back to heuristic mapping for backward compatibility.
+    Canonical labeling contract:
+    - Node labels MUST be one of the 9 canonical labels in [`VALID_NODE_LABELS`](models/kg_constants.py:64).
+    - Subtypes like "Faction", "Settlement", "PlotPoint", "Artifact", etc. are represented
+      in properties (typically `category`), NOT as Neo4j labels.
 
-    Args:
-        category: Category string from world_updates (should be a specific node type)
-
-    Returns:
-        A valid node type (preferably specific like "DevelopmentEvent", "PlotPoint", etc.)
+    Strategy:
+    1) If the category already matches a canonical label (case-insensitive), return that label.
+    2) Otherwise, classify the category into a canonical label using [`classify_category_label()`](utils/text_processing.py:116),
+       which already maps legacy-ish categories like "artifact"/"relic"/"document" to "Item".
     """
     from models.kg_constants import VALID_NODE_LABELS
+    from utils.text_processing import classify_category_label
 
-    # First, check if category is already a valid node label (case-insensitive match)
+    raw = str(category) if category is not None else ""
+    raw = raw.strip()
+    if not raw:
+        return "Item"
+
     for node_label in VALID_NODE_LABELS:
-        if category.lower() == node_label.lower():
-            return node_label  # Return the canonical form from VALID_NODE_LABELS
+        if raw.lower() == node_label.lower():
+            return node_label
 
-    # Fallback: Try to map using heuristics for backward compatibility
-    category_lower = category.lower()
-
-    # Location-related categories
-    location_keywords = [
-        "location",
-        "place",
-        "settlement",
-        "region",
-        "structure",
-        "landmark",
-        "territory",
-        "room",
-        "path",
-    ]
-    if any(keyword in category_lower for keyword in location_keywords):
-        # Return more specific types if keywords match
-        if "settlement" in category_lower:
-            return "Settlement"
-        elif "structure" in category_lower:
-            return "Structure"
-        elif "region" in category_lower:
-            return "Region"
-        elif "landmark" in category_lower:
-            return "Landmark"
-        elif "room" in category_lower:
-            return "Room"
-        elif "path" in category_lower:
-            return "Path"
-        elif "territory" in category_lower:
-            return "Territory"
-        return "Location"  # Generic fallback
-
-    # Event-related categories
-    event_keywords = [
-        "event",
-        "developmentevent",
-        "worldelaborationevent",
-        "plotpoint",
-        "ceremony",
-        "battle",
-        "incident",
-        "moment",
-        "era",
-    ]
-    if any(keyword in category_lower for keyword in event_keywords):
-        # Return specific event types if available
-        if "development" in category_lower:
-            return "DevelopmentEvent"
-        elif "elaboration" in category_lower or "worldelaboration" in category_lower:
-            return "WorldElaborationEvent"
-        elif "plot" in category_lower:
-            return "PlotPoint"
-        elif "era" in category_lower:
-            return "Era"
-        elif "moment" in category_lower:
-            return "Moment"
-        return "Event"  # Generic fallback
-
-    # Organization-related categories
-    org_keywords = ["faction", "organization", "guild", "house", "order", "council"]
-    if any(keyword in category_lower for keyword in org_keywords):
-        if "faction" in category_lower:
-            return "Faction"
-        elif "guild" in category_lower:
-            return "Guild"
-        elif "house" in category_lower:
-            return "House"
-        elif "order" in category_lower:
-            return "Order"
-        elif "council" in category_lower:
-            return "Council"
-        return "Organization"
-
-    # Character-related (rare in world_updates, but possible)
-    character_keywords = ["character", "person", "creature", "spirit", "deity"]
-    if any(keyword in category_lower for keyword in character_keywords):
-        if "person" in category_lower:
-            return "Person"
-        elif "creature" in category_lower:
-            return "Creature"
-        elif "spirit" in category_lower:
-            return "Spirit"
-        elif "deity" in category_lower:
-            return "Deity"
-        return "Character"
-
-    # Object-related categories
-    object_keywords = [
-        "artifact",
-        "document",
-        "relic",
-        "item",
-        "object",
-        "resource",
-        "currency",
-    ]
-    if any(keyword in category_lower for keyword in object_keywords):
-        if "artifact" in category_lower:
-            return "Artifact"
-        elif "document" in category_lower:
-            return "Document"
-        elif "relic" in category_lower:
-            return "Relic"
-        elif "resource" in category_lower:
-            return "Resource"
-        elif "currency" in category_lower:
-            return "Currency"
-        return "Object"
-
-    # System-related categories
-    system_keywords = ["magic", "technology", "religion", "culture", "system"]
-    if any(keyword in category_lower for keyword in system_keywords):
-        if "magic" in category_lower:
-            return "Magic"
-        elif "technology" in category_lower or "tech" in category_lower:
-            return "Technology"
-        elif "religion" in category_lower:
-            return "Religion"
-        elif "culture" in category_lower:
-            return "Culture"
-        return "System"
-
-    # Information-related categories
-    info_keywords = ["lore", "knowledge", "secret", "rumor", "trait"]
-    if any(keyword in category_lower for keyword in info_keywords):
-        if "lore" in category_lower:
-            return "Lore"
-        elif "secret" in category_lower:
-            return "Secret"
-        elif "rumor" in category_lower:
-            return "Rumor"
-        elif "trait" in category_lower:
-            return "Trait"
-        return "Knowledge"
-
-    # Default to Object for unrecognized categories
-    logger.warning(
-        "_map_category_to_type: unrecognized category, defaulting to Object",
-        category=category,
-    )
-    return "Object"
+    return classify_category_label(raw)

@@ -56,49 +56,152 @@ WORLD_ITEM_LEGACY_LABELS: tuple[str, ...] = (
 
 
 # --- Canonical Schema Definition ---
-# NOTE: These are SUGGESTED types, not required types.
-# LLMs can create custom types as needed for narrative context.
-
-# Set of commonly used node labels in the knowledge graph.
-# The LLM can create new node types beyond this set.
+#
+# Contract (SAGA labeling strategy):
+# - Node labels are a strict schema surface. Application code MUST NOT create arbitrary
+#   new labels in the graph (prevents schema drift / index & constraint mismatch).
+# - The canonical domain label set is the 9 labels below.
+# - Subtypes (e.g., Faction, Settlement, Artifact, PlotPoint) MUST be represented via
+#   properties (typically `category`), not as Neo4j node labels.
 VALID_NODE_LABELS = {
     "Character",
     "Location",
     "Event",
     "Item",
+    "Organization",
+    "Concept",
     "Trait",
     "Chapter",
     "Novel",
 }
 
-# Map common variations to the canonical labels
-LABEL_NORMALIZATION_MAP = {
+# Map common variations / legacy labels / subtype "types" to canonical labels.
+#
+# Notes:
+# - Keep this map intentionally explicit and auditable.
+# - We include some lowercase variants because upstream may supply either casing.
+LABEL_NORMALIZATION_MAP: dict[str, str] = {
+    # ----------------------------
+    # Character-like
+    # ----------------------------
     "Person": "Character",
+    "person": "Character",
     "Creature": "Character",
+    "creature": "Character",
     "Spirit": "Character",
+    "spirit": "Character",
     "Deity": "Character",
+    "deity": "Character",
     "Human": "Character",
+    "human": "Character",
     "NPC": "Character",
+    "npc": "Character",
+
+    # ----------------------------
+    # Location-like subtypes
+    # ----------------------------
     "Place": "Location",
+    "place": "Location",
     "City": "Location",
+    "city": "Location",
     "Town": "Location",
+    "town": "Location",
     "Building": "Location",
+    "building": "Location",
+    "Settlement": "Location",
+    "settlement": "Location",
+    "Structure": "Location",
+    "structure": "Location",
     "Region": "Location",
+    "region": "Location",
     "Landmark": "Location",
+    "landmark": "Location",
     "Room": "Location",
+    "room": "Location",
+    "Path": "Location",
+    "path": "Location",
+    "Territory": "Location",
+    "territory": "Location",
+
+    # ----------------------------
+    # Legacy object-ish labels -> Item
+    # ----------------------------
     "Object": "Item",
+    "object": "Item",
     "Artifact": "Item",
+    "artifact": "Item",
+    "Document": "Item",
+    "document": "Item",
+    "Relic": "Item",
+    "relic": "Item",
+
+    # Common item-ish subtypes
     "Weapon": "Item",
+    "weapon": "Item",
     "Tool": "Item",
+    "tool": "Item",
     "Device": "Item",
+    "device": "Item",
+    "Resource": "Item",
+    "resource": "Item",
+    "Currency": "Item",
+    "currency": "Item",
+
+    # ----------------------------
+    # Organization-like subtypes
+    # ----------------------------
+    "Organization": "Organization",
+    "organization": "Organization",
+    "Faction": "Organization",
+    "faction": "Organization",
+    "Guild": "Organization",
+    "guild": "Organization",
+    "House": "Organization",
+    "house": "Organization",
+    "Order": "Organization",
+    "order": "Organization",
+    "Council": "Organization",
+    "council": "Organization",
+
+    # ----------------------------
+    # Concept-like
+    # ----------------------------
+    "Concept": "Concept",
+    "concept": "Concept",
+
+    # ----------------------------
+    # Trait-like
+    # ----------------------------
     "Skill": "Trait",
+    "skill": "Trait",
     "Ability": "Trait",
+    "ability": "Trait",
     "Quality": "Trait",
+    "quality": "Trait",
     "Attribute": "Trait",
+    "attribute": "Trait",
+
+    # ----------------------------
+    # Event-like subtypes
+    # ----------------------------
     "Scene": "Event",
+    "scene": "Event",
     "Moment": "Event",
+    "moment": "Event",
     "Incident": "Event",
+    "incident": "Event",
     "Happening": "Event",
+    "happening": "Event",
+    "PlotPoint": "Event",
+    "plotpoint": "Event",
+    "DevelopmentEvent": "Event",
+    "developmentevent": "Event",
+    "WorldElaborationEvent": "Event",
+    "worldelaborationevent": "Event",
+    "Era": "Event",
+    "era": "Event",
+    "Timeline": "Event",
+    "timeline": "Event",
 }
 
 # Suggested categories for each valid label to guide the LLM

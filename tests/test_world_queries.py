@@ -10,7 +10,6 @@ from models import WorldItem
 from models.kg_constants import (
     KG_NODE_CREATED_CHAPTER,
     WORLD_ITEM_CANONICAL_LABELS,
-    WORLD_ITEM_LEGACY_LABELS,
 )
 
 
@@ -177,9 +176,10 @@ class TestGetWorldItemById:
         """
         P0.2 regression test: ensure read-by-id uses unified world label taxonomy.
 
-        This guarantees that items written via native builder upsert (which chooses
-        canonical labels like :Location/:Item/...) are retrievable here, while also
-        supporting legacy labels for backward compatibility.
+        Canonical contract:
+        - Reads should match ONLY canonical world labels (Location/Item/Event/Organization/Concept).
+        - Legacy labels (Object/Artifact/Relic/Document) are handled via explicit migration,
+          not by widening read predicates indefinitely.
         """
         world_queries.get_world_item_by_id.cache_clear()
 
@@ -210,8 +210,9 @@ class TestGetWorldItemById:
         for label in WORLD_ITEM_CANONICAL_LABELS:
             assert f"we:{label}" in first_query
 
-        for label in WORLD_ITEM_LEGACY_LABELS:
-            assert f"we:{label}" in first_query
+        # Legacy aliases must not be part of the label predicate anymore.
+        for legacy_label in ["Object", "Artifact", "Relic", "Document"]:
+            assert f"we:{legacy_label}" not in first_query
 
     async def test_get_world_item_by_id_not_found(self, monkeypatch):
         """Test getting world item by ID when not found."""

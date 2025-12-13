@@ -36,18 +36,17 @@ _upgrade_logged = set()
 # as a whitelist when promoting DYNAMIC_REL -> typed relationships.
 VALID_RELATIONSHIP_TYPES = RELATIONSHIP_TYPES
 
-# Lookup table for canonical node labels to ensure consistent casing
-# Restrict to only the 9 VALID_NODE_LABELS plus supporting types
-_CANONICAL_NODE_LABEL_MAP: dict[str, str] = {
-    lbl.lower(): lbl for lbl in VALID_NODE_LABELS
-}
-_CANONICAL_NODE_LABEL_MAP["entity"] = "Entity"
+# Lookup table for canonical node labels to ensure consistent casing.
+#
+# Contract:
+# - Domain node labels are strictly limited to [`VALID_NODE_LABELS`](models/kg_constants.py:64).
+# - A small allowlist of *internal* labels is supported for infrastructure nodes only.
+# - Subtypes (PlotPoint/DevelopmentEvent/etc.) must not be treated as labels; they are represented
+#   via properties (e.g., `category`) and normalized by [`SchemaValidationService.validate_entity_type()`](core/schema_validator.py:41).
+_CANONICAL_NODE_LABEL_MAP: dict[str, str] = {lbl.lower(): lbl for lbl in VALID_NODE_LABELS}
 _CANONICAL_NODE_LABEL_MAP["novelinfo"] = "NovelInfo"
 _CANONICAL_NODE_LABEL_MAP["worldcontainer"] = "WorldContainer"
-_CANONICAL_NODE_LABEL_MAP["plotpoint"] = "PlotPoint"
 _CANONICAL_NODE_LABEL_MAP["valuenode"] = "ValueNode"
-_CANONICAL_NODE_LABEL_MAP["developmentevent"] = "DevelopmentEvent"
-_CANONICAL_NODE_LABEL_MAP["worldelaborationevent"] = "WorldElaborationEvent"
 
 
 def _infer_from_category_simple(category: str, name: str) -> str:
@@ -70,44 +69,47 @@ def _infer_from_category_simple(category: str, name: str) -> str:
 
 
 def _infer_specific_node_type(
-    name: str, category: str = "", fallback_type: str = "Entity"
+    name: str, category: str = "", fallback_type: str = "WorldElement"
 ) -> str:
     """
     Node type inference using schema validator.
 
-    Maps generic or ambiguous types to the 9 valid node labels.
+    Canonical labeling contract:
+    - Domain node labels MUST be one of [`VALID_NODE_LABELS`](models/kg_constants.py:64).
+    - The default behavior should infer a canonical label from `category`.
+    - If the caller provides an explicit canonical `fallback_type` (e.g., "Character"),
+      we respect it.
+
+    Note:
+    - `fallback_type="WorldElement"` is a sentinel meaning "infer from category".
     """
     if not name or not name.strip():
-        return (
-            fallback_type if fallback_type not in ["WorldElement", "Entity"] else "Item"
-        )
+        # No name signal -> use a safe canonical world label.
+        return "Item"
 
-    # Use the schema validator to determine the correct type
-    # If the provided type is already valid, it will be returned.
-    # Otherwise, it attempts to map it based on category/name.
-
-    # First check if the fallback type is already a valid specific label
+    # Respect explicit canonical label provided by caller.
     if fallback_type in VALID_NODE_LABELS:
         return fallback_type
 
-    # Attempt to validate/normalize
-    is_valid, corrected_label, _ = schema_validator.validate_entity_type(fallback_type)
-    if is_valid and corrected_label:
-        return corrected_label
+    # If caller provided a non-sentinel fallback, try to validate/normalize it.
+    # (This catches legacy aliases/subtypes via schema_validator normalization.)
+    if fallback_type and fallback_type not in {"WorldElement"}:
+        is_valid, corrected_label, _ = schema_validator.validate_entity_type(fallback_type)
+        if is_valid and corrected_label:
+            return corrected_label
 
-    # If fallback type is generic, try to infer from category using schema constants
+    # Default path: infer from category.
     inferred = _infer_from_category_simple(category, name)
 
-    # Verify the inferred type is valid (should always be, but check to be safe)
     if inferred in VALID_NODE_LABELS:
         return inferred
 
-    # Final fallback mapping (should never reach here with the new function)
+    # Defensive fallback.
     logger.warning(
         f"Type inference returned invalid label '{inferred}' for entity '{name}'. "
-        f"Falling back to 'Item'."
+        "Falling back to 'Item'."
     )
-    return "Item" if fallback_type == "WorldElement" else "Item"
+    return "Item"
 
 
 def _to_pascal_case(text: str) -> str:
@@ -361,16 +363,12 @@ def _get_cypher_labels(entity_type: str | None) -> str:
         pascal = _to_pascal_case(cleaned)
         canonical = _CANONICAL_NODE_LABEL_MAP.get(pascal.lower())
 
-    # Critical Validation: If still not found or not in allowed set, raise error
-    # We allow a few supporting types like 'Entity' (though usually not primary), 'NovelInfo', etc.
+    # Critical Validation: If still not found or not in allowed set, raise error.
+    # We allow only true internal/support labels here (not domain subtypes).
     supporting_types = {
-        "Entity",
         "NovelInfo",
         "WorldContainer",
-        "PlotPoint",
         "ValueNode",
-        "DevelopmentEvent",
-        "WorldElaborationEvent",
     }
 
     if not canonical:
@@ -437,7 +435,7 @@ def _get_constraint_safe_merge(
         else:
             # Fallback for when no known constraint label matches (should be rare)
             # Use the first label as primary
-            primary_label = labels[0] if labels else "Entity"
+            primary_label = labels[0] if labels else "Item"
             additional_labels = labels[1:] if len(labels) > 1 else []
             merge_query = f"MERGE ({create_ts_var}:{primary_label} {{id: ${id_param}}})"
             return merge_query, additional_labels
@@ -451,9 +449,9 @@ def _get_constraint_safe_merge(
         else:
             additional_labels.append(label)
 
-    # If no constraint-sensitive label found, use first label or Entity
+    # If no constraint-sensitive label found, use first label or a canonical fallback.
     if primary_label is None:
-        primary_label = labels[0] if labels else "Entity"
+        primary_label = labels[0] if labels else "Item"
         additional_labels = labels[1:] if len(labels) > 1 else []
 
     # Build the MERGE query with only the primary constraint label
@@ -1333,7 +1331,7 @@ async def find_candidate_duplicate_entities(
     // ---------- Typed Entity pairs (non-Character; bounded candidate pool) ----------
     CALL {
       MATCH (e)
-      WHERE (e:Object OR e:Artifact OR e:Location OR e:Document OR e:Item OR e:Relic)
+      WHERE (e:Location OR e:Item OR e:Event OR e:Organization OR e:Concept)
         AND e.name IS NOT NULL AND e.id IS NOT NULL
       RETURN e
       ORDER BY toLower(toString(e.name)), toString(e.id)

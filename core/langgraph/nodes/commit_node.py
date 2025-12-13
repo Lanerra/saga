@@ -625,14 +625,20 @@ async def _create_relationships(
 
     # Helper to create subject/object dict with type info
     def _make_entity_dict(name: str, original_name: str) -> dict:
-        """Create entity dict with name, type, and category."""
-        entity_type = entity_type_map.get(original_name, "Object")  # Default to Object
+        """Create entity dict with name, type, and category.
+
+        Canonical labeling contract:
+        - Node labels must be one of the 9 canonical labels.
+        - Legacy aliases/subtypes must not be written as labels.
+        - When type is missing/unknown, fall back to a canonical label (`Item`) and
+          preserve the semantic hint via `category`.
+        """
+        entity_type = entity_type_map.get(original_name, "Item")  # Default to Item
         entity_category = entity_category_map.get(original_name, "")
 
-        # Map extraction types to Neo4j node types
-        # The LLM now provides proper node type names (e.g., "DevelopmentEvent", "PlotPoint")
-        # so we check if it's already capitalized. If not, apply legacy mapping.
-        neo4j_type = "Object"
+        # Map extraction types to Neo4j node types.
+        # Upstream may provide subtype labels; schema_validator will normalize them to canonical.
+        neo4j_type = "Item"
 
         if entity_type:
             # Validate and normalize
@@ -640,17 +646,23 @@ async def _create_relationships(
             if is_valid:
                 neo4j_type = normalized
             elif entity_type[0].isupper():
-                # Already a proper node type from the ontology
+                # Already a proper node type from the ontology; keep as-is (may be internal/support label)
                 neo4j_type = entity_type
             else:
-                # Legacy lowercase type, apply mapping
+                # Legacy lowercase type, apply mapping into canonical labels
                 type_mapping = {
                     "character": "Character",
                     "location": "Location",
                     "event": "Event",
-                    "object": "Object",
+                    "item": "Item",
+                    "organization": "Organization",
+                    "concept": "Concept",
+                    "trait": "Trait",
+                    "chapter": "Chapter",
+                    # Legacy alias -> canonical
+                    "object": "Item",
                 }
-                neo4j_type = type_mapping.get(entity_type.lower(), "Object")
+                neo4j_type = type_mapping.get(entity_type.lower(), "Item")
 
         return {
             "name": name,
@@ -849,18 +861,17 @@ async def _build_relationship_statements(
         name: str, original_name: str, explicit_type: str | None = None
     ) -> dict[str, str]:
         # Use explicit type if provided (from ExtractedRelationship.source_type/target_type)
-        # Otherwise fall back to entity_type_map lookup
+        # Otherwise fall back to entity_type_map lookup.
         if explicit_type:
             entity_type = explicit_type
         else:
-            entity_type = entity_type_map.get(original_name, "Object")
+            entity_type = entity_type_map.get(original_name, "Item")
 
         entity_category = entity_category_map.get(original_name, "")
 
-        # Map extraction types to Neo4j node types
-        # The LLM now provides proper node type names (e.g., "DevelopmentEvent", "PlotPoint")
-        # so we check if it's already capitalized. If not, apply legacy mapping.
-        neo4j_type = "Object"
+        # Canonical labeling contract: never write legacy aliases/subtypes as labels.
+        # Normalize everything into canonical node labels; preserve finer semantics via `category`.
+        neo4j_type = "Item"
 
         if entity_type:
             # Validate and normalize
@@ -868,17 +879,23 @@ async def _build_relationship_statements(
             if is_valid:
                 neo4j_type = normalized
             elif entity_type[0].isupper():
-                # Already a proper node type from the ontology
+                # Already a proper node type from the ontology; keep as-is (may be internal/support label)
                 neo4j_type = entity_type
             else:
-                # Legacy lowercase type, apply mapping
+                # Legacy lowercase type, apply mapping into canonical labels
                 type_mapping = {
                     "character": "Character",
                     "location": "Location",
                     "event": "Event",
-                    "object": "Object",
+                    "item": "Item",
+                    "organization": "Organization",
+                    "concept": "Concept",
+                    "trait": "Trait",
+                    "chapter": "Chapter",
+                    # Legacy alias -> canonical
+                    "object": "Item",
                 }
-                neo4j_type = type_mapping.get(entity_type.lower(), "Object")
+                neo4j_type = type_mapping.get(entity_type.lower(), "Item")
 
         return {
             "name": name,

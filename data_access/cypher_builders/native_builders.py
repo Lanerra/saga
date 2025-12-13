@@ -6,7 +6,7 @@ Eliminates the intermediate dict serialization layer for performance optimizatio
 
 from typing import TYPE_CHECKING, Any
 
-from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS, WORLD_ITEM_LEGACY_LABELS
+from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS
 from processing.entity_deduplication import generate_entity_id
 from utils import classify_category_label
 from utils.common import flatten_dict
@@ -445,9 +445,12 @@ class NativeCypherBuilder:
 
         where_clause = " AND ".join(where_clauses)
 
-        # P0.2: Canonical taxonomy is the builder taxonomy (Location/Item/Event/Organization/Concept).
-        # For backward compatibility, also match older legacy labels that may still exist in persisted graphs.
-        world_item_labels = WORLD_ITEM_CANONICAL_LABELS + WORLD_ITEM_LEGACY_LABELS
+        # Canonical labeling contract:
+        # - World item nodes are labeled with canonical world labels only
+        #   (Location/Item/Event/Organization/Concept).
+        # - Legacy labels (Object/Artifact/Relic/Document) are handled via explicit migration,
+        #   not by widening read predicates indefinitely.
+        world_item_labels = WORLD_ITEM_CANONICAL_LABELS
         label_predicate = "(" + " OR ".join([f"w:{label}" for label in world_item_labels]) + ")"
 
         # Note: Character is handled by character_fetch_cypher

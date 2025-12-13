@@ -91,7 +91,7 @@ async def check_entity_similarity(
             # Relaxed query: Remove strict category check, fetch top matches to filter in Python
             similarity_query = """
             MATCH (w)
-            WHERE (w:Location OR w:Item OR w:Event OR w:Organization OR w:Concept OR w:Object OR w:Artifact)
+            WHERE (w:Location OR w:Item OR w:Event OR w:Organization OR w:Concept)
               AND (w.name = $name OR
                    toLower(w.name) = toLower($name) OR
                    apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > $threshold)
@@ -334,13 +334,13 @@ async def check_relationship_pattern_similarity(
         else:
             query = """
             MATCH (e1)
-            WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+            WHERE (e1:Location OR e1:Item OR e1:Event OR e1:Organization OR e1:Concept)
               AND e1.name = $name1
             OPTIONAL MATCH (e1)-[r1]->(target1)
             WITH e1, collect(DISTINCT {type: type(r1), target: target1.name}) as rels1
 
             MATCH (e2)
-            WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+            WHERE (e2:Location OR e2:Item OR e2:Event OR e2:Organization OR e2:Concept)
               AND e2.name = $name2
             OPTIONAL MATCH (e2)-[r2]->(target2)
             WITH e1, rels1, e2, collect(DISTINCT {type: type(r2), target: target2.name}) as rels2
@@ -440,9 +440,9 @@ async def find_relationship_based_duplicates(
         else:
             query = """
             MATCH (e1)
-            WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+            WHERE (e1:Location OR e1:Item OR e1:Event OR e1:Organization OR e1:Concept)
             MATCH (e2)
-            WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+            WHERE (e2:Location OR e2:Item OR e2:Event OR e2:Organization OR e2:Concept)
               AND e1.name < e2.name  // Prevent duplicate pairs
               AND e1.name <> e2.name  // Not exactly the same
             WITH e1, e2,
@@ -530,10 +530,10 @@ async def merge_duplicate_entities(
             else:
                 query = """
                 MATCH (e1)
-                WHERE (e1:Object OR e1:Artifact OR e1:Location OR e1:Document OR e1:Item OR e1:Relic)
+                WHERE (e1:Location OR e1:Item OR e1:Event OR e1:Organization OR e1:Concept)
                   AND e1.name = $name1
                 MATCH (e2)
-                WHERE (e2:Object OR e2:Artifact OR e2:Location OR e2:Document OR e2:Item OR e2:Relic)
+                WHERE (e2:Location OR e2:Item OR e2:Event OR e2:Organization OR e2:Concept)
                   AND e2.name = $name2
                 RETURN e1.name as name1,
                        e2.name as name2,
@@ -609,10 +609,10 @@ async def merge_duplicate_entities(
         else:
             merge_query = """
             MATCH (canonical)
-            WHERE (canonical:Object OR canonical:Artifact OR canonical:Location OR canonical:Document OR canonical:Item OR canonical:Relic)
+            WHERE (canonical:Location OR canonical:Item OR canonical:Event OR canonical:Organization OR canonical:Concept)
               AND canonical.name = $canonical
             MATCH (duplicate)
-            WHERE (duplicate:Object OR duplicate:Artifact OR duplicate:Location OR duplicate:Document OR duplicate:Item OR duplicate:Relic)
+            WHERE (duplicate:Location OR duplicate:Item OR duplicate:Event OR duplicate:Organization OR duplicate:Concept)
               AND duplicate.name = $duplicate
 
             // Transfer all relationships from duplicate to canonical
