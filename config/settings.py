@@ -198,7 +198,7 @@ class SagaSettings(BaseSettings):
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
     # Concurrency and Rate Limiting
-    MAX_CONCURRENT_LLM_CALLS: int = 4
+    MAX_CONCURRENT_LLM_CALLS: int = 2
     LLM_TOP_P: float = 0.8
 
     # LLM Frequency and Presence Penalties

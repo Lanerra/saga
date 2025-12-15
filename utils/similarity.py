@@ -104,7 +104,7 @@ async def find_semantically_closest_segment(
 
     segment_texts = [s[0] for s in segments_with_indices]
     # Bound concurrency for local hardware friendliness
-    max_concurrent = 4
+    max_concurrent = 2
     try:
         import config
 

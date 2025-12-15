@@ -243,15 +243,6 @@ async def normalize_and_deduplicate_relationships(
               "total": int
             }
     """
-    if config.settings.DISABLE_RELATIONSHIP_NORMALIZATION:
-        logger.info("Relationship normalization disabled - skipping all relationship maintenance")
-        return {
-            "validated": 0,
-            "consolidated": 0,
-            "deduplicated": 0,
-            "promoted": 0,
-            "total": 0,
-        }
 
     counts: dict[str, int] = {
         "validated": 0,
