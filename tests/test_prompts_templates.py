@@ -52,3 +52,31 @@ def test_draft_scene_outputs_text_only(monkeypatch: pytest.MonkeyPatch) -> None:
         },
     )
     assert "BEGIN SCENE" not in out
+
+
+def test_extract_relationships_prompt_contract_requires_wrapper_object() -> None:
+    """
+    Regression guard for audit item 4.2.3 (relationship extraction wrapper drift).
+
+    This test is intentionally a *prompt contract* test (not parser behavior): it
+    renders the real template and asserts the strict output contract is present.
+    """
+    rendered = pr.render_prompt(
+        "knowledge_agent/extract_relationships.j2",
+        {
+            "novel_title": "Test Novel",
+            "novel_genre": "Fantasy",
+            "protagonist": "Hero",
+            "chapter_number": 1,
+            "chapter_text": "Hero meets Bob in the Castle.",
+        },
+    )
+
+    # Wrapper key must be explicitly required.
+    assert '"kg_triples"' in rendered or "kg_triples" in rendered
+
+    # JSON-only output contract must be explicit.
+    assert "Return ONLY valid JSON" in rendered
+
+    # Must forbid returning a bare list (the drift regression we want to catch).
+    assert "Do NOT return a bare list" in rendered

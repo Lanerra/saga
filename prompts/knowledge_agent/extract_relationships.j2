@@ -34,7 +34,19 @@ Your task is to extract SEMANTIC RELATIONSHIPS between entities in the provided 
 
 **Required Information:**
 
-Extract relationship triples with the following JSON structure:
+**Output Contract (STRICT):**
+- Return ONLY valid JSON (no Markdown, no code fences, no prose).
+- Return a top-level JSON object with exactly this wrapper key: `"kg_triples"`.
+  - `"kg_triples"` MUST be a JSON array.
+- Each element of `"kg_triples"` MUST be a JSON object with these keys and string values:
+  - `"subject"`, `"predicate"`, `"object_entity"`, `"description"`
+- Do NOT return a bare list like `[...]` (the wrapper object is required).
+- Do NOT use alternative wrapper keys (forbidden examples: `"relationships"`, `"triples"`).
+
+Mini-example (required shape):
+{"kg_triples":[{"subject":"Elara","predicate":"LOCATED_IN","object_entity":"Sunken Library","description":"Elara is in the Sunken Library."}]}
+
+Extract relationship triples with the following JSON structure (per triple object):
 - subject: The name of the entity that is the source of the relationship
 - predicate: The relationship type (use uppercase with underscores, e.g., LOCATED_IN, DISCOVERS, HUNTS)
 - object_entity: The name of the entity that is the target of the relationship
