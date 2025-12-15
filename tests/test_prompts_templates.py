@@ -36,6 +36,38 @@ def test_narrative_system_prompt_allows_json_only_when_explicitly_requested() ->
     assert "Do not wrap the story in code fences" in system_prompt
  
  
+def test_initialization_system_prompt_prioritizes_json_when_grammar_enforced() -> None:
+    """
+    Prompt contract guard for audit item 5.3 (initialization system prompt vs grammar-enforced JSON).
+
+    Contract:
+    - Initialization agent may have prose-oriented defaults for non-structured tasks.
+    - If a task requests JSON / structured output, OR the runtime enforces a grammar and parses JSON,
+      the system prompt must unambiguously prioritize JSON-only output (no markdown, no fences, no commentary).
+    - Must NOT regress to the older ambiguous phrasing that suggests markdown is the default unless JSON is
+      "specifically requested" (which conflicts with grammar-enforced JSON call-sites).
+    """
+    # Ensure we read current on-disk content (get_system_prompt is cached).
+    pr.get_system_prompt.cache_clear()
+
+    system_prompt = pr.get_system_prompt("initialization")
+
+    # Must explicitly describe the structured-output override and JSON-only requirement.
+    assert "Structured-output override" in system_prompt
+    assert "valid JSON only" in system_prompt or "valid JSON" in system_prompt
+
+    # Must explicitly forbid markdown/code fences/extraneous text for structured tasks.
+    assert "No markdown" in system_prompt
+    assert "No code fences" in system_prompt
+    assert "No extra commentary" in system_prompt
+
+    # Must acknowledge grammar/runtime enforcement as a trigger (not only explicit request wording).
+    assert "enforcing a grammar" in system_prompt or "grammar" in system_prompt
+
+    # Must not include the older ambiguous prose-default language.
+    assert "unless a structured format like JSON is specifically requested" not in system_prompt
+ 
+ 
 def test_renderer_uses_strict_undefined(monkeypatch: pytest.MonkeyPatch) -> None:
     # Use the module's env and verify missing var raises
     env = Environment(

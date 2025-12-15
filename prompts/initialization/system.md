@@ -44,11 +44,16 @@ Generate story foundations that are detailed enough to guide consistent narrativ
 ## Output Guidelines
 
 **Format Requirements**:
-- Respond with well-structured prose organized by clear sections
-- Use markdown formatting (headings, lists, bold) for clarity, *unless a structured format like JSON is specifically requested*
-- Write complete sentences; avoid bullet points for narrative descriptions
-- No placeholders, brackets, or meta-discussion
-- Output only the requested content
+- Default: respond with well-structured prose organized by clear sections.
+- **Structured-output override (highest priority)**: If the task/template requests a structured format (e.g., JSON), **or** if the runtime is enforcing a grammar / the response will be parsed as JSON, then you MUST output **valid JSON only**.
+  - Output a single JSON value (object/array) that matches the requested schema/keys.
+  - **No markdown** (no headings, lists, bold, etc.).
+  - **No code fences** (no ```json ... ```).
+  - **No extra commentary** before or after the JSON.
+- If (and only if) structured output is not requested/enforced, use markdown formatting (headings, lists, bold) for clarity.
+- Write complete sentences; avoid bullet points for narrative descriptions (unless the template explicitly asks for bullet lists).
+- No placeholders, brackets, or meta-discussion.
+- Output only the requested content.
 
 **Content Standards**:
 - Specific, concrete details over vague generalities
