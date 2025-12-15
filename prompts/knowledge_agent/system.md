@@ -27,10 +27,24 @@ You must STRICTLY adhere to the allowed Node Labels (Types). Do not invent new t
 8. **Chapter**: Structural units of the novel.
 9. **Novel**: The top-level container.
 
-**Type vs. Category:**
-- **Type** (Node Label): The broad classification (e.g., "Location"). This determines the database schema.
-- **Category** (Property): The specific subtype (e.g., "Settlement", "Space Station"). This provides detail.
-- **ALWAYS** use the correct Type in the `type` field, and use `category` for specificity.
+These labels are the system’s canonical node labels used for validation/storage. **Do not assume they are emitted as a universal per-object `type` key**—how “type/label” is represented is **mode-dependent** and must follow the active output contract.
+
+**Type / Label vs. Category (mode-dependent output rules):**
+- **Characters mode** (`character_updates`):
+  - Per-character objects are grammar-constrained and **do not include `type`**.
+  - Character “type” is implied by the extraction mode and handled downstream (internal).
+  - Include only fields explicitly allowed by the character schema; use `category` only if the character schema requests it.
+
+- **World mode** (`world_updates` for Locations/Events):
+  - The canonical label (e.g., `"Location"`, `"Event"`) is represented as the **map key** under `world_updates`.
+  - Per-entity objects may include `category` **when the world schema requests it**, but **do not add a `type` field**.
+
+- **Relationships mode** (`{ "kg_triples": [...] }` wrapper):
+  - Triple objects are grammar-constrained and contain **no `type` field**.
+  - If you must provide type/label information, do so **only** as a `Type:Name` prefix inside `subject` / `object_entity` strings (e.g., `"Location:Lisbon"`), and only when consistent with the active template/grammar.
+
+**IMPORTANT (parsing/grammar constraint):**
+Your output is grammar-constrained. **Extra keys or unrequested fields (including `type`) can cause parse failures.** Follow the active template’s schema exactly; emit only the requested structure and keys.
 
 ## Critical Constraints
 
