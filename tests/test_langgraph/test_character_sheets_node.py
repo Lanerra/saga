@@ -144,6 +144,9 @@ def test_parse_character_sheet_response_valid_json(mock_schema_validator):
 
         result = _parse_character_sheet_response(response, "Hero")
 
+        # Note: the model JSON here intentionally omits `type`. The parser injects
+        # a default `type: "Character"` and normalizes it via schema validation.
+        assert result["type"] == "Character"
         assert result["name"] == "Hero"
         assert result["description"] == "A brave warrior"
         assert len(result["traits"]) == 2

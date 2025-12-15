@@ -24,18 +24,37 @@ Create a detailed character sheet for {{ character_name }}. Ensure the character
 
 ## Required Structure
 
-The output must be a JSON object containing the following information:
+Output MUST be a single JSON object (no markdown) with ONLY the following top-level keys (no additional keys):
 
-1. **type**: MUST be "Character"
-2. **name**: The character's name ("{{ character_name }}")
-3. **description**: Comprehensive, evocative description (200-300 words) covering physical appearance, personality, and background. Avoid clichés; focus on unique details that reveal character.
-4. **traits**: List of 5-7 **single-word** personality traits (e.g., "brave", "cynical", "impulsive"). Each trait must be ONE WORD ONLY.
-5. **status**: "Active"
-6. **motivations**: What drives this character? What do they want? (1-2 sentences). Ensure motivations are grounded in their background and drive the plot.
-7. **background**: Brief history and important life events (1-2 sentences) that explain their current state.
-8. **skills**: List of 3-5 key skills or abilities.
-9. **relationships**: Dictionary mapping other character names to relationship descriptions.
-10. **internal_conflict**: What internal struggle will they face? (1 sentence)
+1. **name**: The character's name ("{{ character_name }}")
+2. **description**: Comprehensive, evocative description (200-300 words) covering physical appearance, personality, and background. Avoid clichés; focus on unique details that reveal character.
+3. **traits**: List of 5-7 **single-word** personality traits (e.g., "brave", "cynical", "impulsive"). Each trait must be ONE WORD ONLY.
+4. **status**: "Active"
+5. **motivations**: What drives this character? What do they want? (1-2 sentences). Ensure motivations are grounded in their background and drive the plot.
+6. **background**: Brief history and important life events (1-2 sentences) that explain their current state.
+7. **skills**: List of 3-5 key skills or abilities.
+8. **relationships**: Dictionary mapping other character names to relationship descriptions (string values).
+9. **internal_conflict**: What internal struggle will they face? (1 sentence)
+
+Do NOT include a top-level **type** field; the runtime will inject and normalize `type: "Character"` after parsing.
+
+### Output JSON example
+
+```json
+{
+  "name": "{{ character_name }}",
+  "description": "A vivid, specific description of the character...",
+  "traits": ["brave", "cynical", "impulsive", "patient", "wary"],
+  "status": "Active",
+  "motivations": "What the character wants and why...",
+  "background": "Brief history and key formative events...",
+  "skills": ["negotiation", "marksmanship", "forensics"],
+  "relationships": {
+    "Other Character": "Relationship description..."
+  },
+  "internal_conflict": "A single-sentence internal struggle..."
+}
+```
 
 *Ensure the relationships map uses the names of the other characters provided above where applicable.*
 {{ existing_traits_hint }}
