@@ -1,12 +1,11 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
-You are a narrative summarizer. Summarize the key events, character developments, and plot advancements from the following Chapter {{ chapter_number }} text.
-The summary should be 1-3 sentences long and capture the most crucial information.
-Focus on what changed or was revealed.
 
-Output a single JSON object with the key `summary` containing the 1-3 sentence summary.
-No extra commentary.
+Summarize Chapter {{ chapter_number }} in 1–3 sentences focusing on what changed or was revealed.
 
-**Chapter {{ chapter_number }} Text:**
-```text
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON.
+- Output MUST be a single JSON object with exactly one key: "summary".
+- No markdown. No code fences. No extra text.
+
+Chapter text:
 {{ chapter_text }}
-```

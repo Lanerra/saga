@@ -3,58 +3,27 @@
 You are a specialized location extraction agent for an autonomous novel writing system.
 Your task is to extract DETAILED location and world-building information from the provided chapter text.
 
-**Novel Details:**
-- Title: {{ novel_title }}
-- Genre: {{ novel_genre }}
-- Protagonist: {{ protagonist }}
-- Current Chapter: {{ chapter_number }}
+Chapter: {{ chapter_number }}
 
-**Extraction Rules:**
-1. **Focus on Places**: Extract locations, structures, settlements, regions, and rooms.
-2. **Canonical Labeling**: All extracted nodes here are Locations (canonical label: `Location`).
-3. **Use `category` for Subtypes**: Each extracted location MUST include a `category` string to specify the subtype.
-   - **Settlement**: Cities, towns, villages (e.g., "New York", "The Hidden Village")
-   - **Structure**: Buildings, towers, fortresses (e.g., "The Tower of London", "The Observatory")
-   - **Region**: Large geographical areas, kingdoms, wastelands (e.g., "The Northern Wastes", "The Empire")
-   - **Landmark**: Notable natural or man-made features (e.g., "Mount Everest", "The Great Waterfall")
-   - **Room**: Specific interior spaces (e.g., "The Throne Room", "The Secret Lab")
-   - **Path**: Roads, tunnels, trade routes (e.g., "The Silk Road", "The Secret Tunnel")
-   - **CelestialBody**: Planets, moons, stars (e.g., "Mars", "The Moon")
-4. **Prefer Proper Nouns**: Prioritize named locations (e.g., "The Sunken Library", "Sector 7").
-5. **Skip Atmospheric Details**: Do not extract "shadows", "light", "weather" unless they are stable magical/anomalous entities.
+Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
-**Output Format (JSON Only; schema is enforced):**
-- You MUST output exactly:
-  - `{"world_updates": {"Location": { ... }}}`
-- Do NOT emit keys like `"locations"`, `"entities"`, `"relationships"`, `"world_items"`, etc.
-- Under `"Location"`, each entry is:
-  - key = location name (string)
-  - value = object with keys: `description`, `category`, `goals`, `rules`, `key_elements`
+CRITICAL OUTPUT CONTRACT (grammar enforced):
+- Return ONLY valid JSON.
+- Output MUST be exactly: {"world_updates": {"Location": { ... }}}
+- No markdown. No code fences. No extra text.
 
-**Example:**
-```json
-{
-  "world_updates": {
-    "Location": {
-      "The Sunken Library": {
-        "description": "A flooded archive beneath the city, guarded by antique drones.",
-        "category": "Structure",
-        "goals": [],
-        "rules": ["No open flame inside; methane pockets ignite."],
-        "key_elements": ["Collapsed stacks", "Brackish water", "Locked vault doors"]
-      }
-    }
-  }
-}
-```
+Per-location entry:
+- key = location name (string; no parentheticals)
+- value = object with EXACTLY these keys:
+  - "description" (string)
+  - "category" (string; choose one: Settlement, Structure, Region, Landmark, Room, Path, CelestialBody)
+  - "goals" (array of strings; empty [] if none explicitly present)
+  - "rules" (array of strings; empty [] if none explicitly present)
+  - "key_elements" (array of strings)
 
-**Required Information (per location):**
-1. **Description**: Detailed description.
-2. **Category**: Specific subtype (e.g., "Settlement", "Structure", "Region").
-3. **Key Elements**: Significant details or properties.
-4. **Goals / Rules**: If explicitly present; otherwise empty lists.
+Extraction rules:
+- Prefer proper nouns.
+- Skip weather/lighting/atmosphere unless it is a stable named anomaly.
 
-**Chapter {{ chapter_number }} Text:**
-```text
+Chapter text:
 {{ chapter_text }}
-```

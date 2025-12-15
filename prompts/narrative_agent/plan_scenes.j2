@@ -1,29 +1,32 @@
-You are an expert narrative architect. Your task is to break down a chapter outline into a sequence of detailed scenes.
+You are breaking a chapter outline into {{ num_scenes }} scenes.
 
-## Context
-**Novel Title:** {{ novel_title }}
-**Genre:** {{ novel_genre }}
-**Theme:** {{ novel_theme }}
-**Chapter:** {{ chapter_number }}
+Context: {{ novel_title }} ({{ novel_genre }}) | Theme: {{ novel_theme }} | Chapter {{ chapter_number }}
 
-## Chapter Outline
-**Scene Description:** {{ outline.scene_description }}
-**Key Beats:**
+Chapter outline:
+- scene_description: {{ outline.scene_description }}
+- key_beats:
 {% for beat in outline.key_beats %}
-- {{ beat }}
+  - {{ beat }}
 {% endfor %}
 
-## Instructions
-Break this chapter into {{ num_scenes }} distinct scenes. For each scene, provide:
-1. **Title**: A short, descriptive title.
-2. **POV Character**: The character whose point of view this scene is told from.
-3. **Setting**: Where the scene takes place.
-4. **Characters**: List of characters present in the scene. Use only their names, no parenthetical descriptions (e.g., use "Alice", not "Alice (the protagonist)").
-5. **Plot Point**: The specific plot advancement that happens in this scene.
-6. **Conflict**: The central conflict or tension of the scene.
-7. **Outcome**: How the scene ends and transitions to the next.
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON.
+- Return a single JSON array (not an object).
+- No markdown.
+- No code fences.
+- No commentary.
+- Each scene MUST be an object with EXACTLY these keys:
+  - "title" (string)
+  - "pov_character" (string)
+  - "setting" (string)
+  - "characters" (array of strings)
+  - "plot_point" (string)
+  - "conflict" (string)
+  - "outcome" (string)
+- Use only character names (no parentheticals).
 
-Ensure the scenes flow logically and cover all the key beats from the outline.
+Quality guidance:
+- Scenes must cover all key beats in order.
+- Each scene should have a clear turn (escalation or decision) and a hook into the next.
 
-## Output Format
-Return a JSON list of objects, where each object represents a scene with the keys: `title`, `pov_character`, `setting`, `characters` (list), `plot_point`, `conflict`, `outcome`.
+Return the JSON array now.

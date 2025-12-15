@@ -1,18 +1,17 @@
 ## Story Information
 
-**Title:** {{ title }}
-**Genre:** {{ genre }}
-**Theme:** {{ theme }}
-**Setting:** {{ setting }}
+Title: {{ title }}
+Genre: {{ genre }}
+Theme: {{ theme }}
+Setting: {{ setting }}
 
-## Character to Develop
+## Character
 
-**Name:** {{ character_name }}
-{% if is_protagonist %}**Role:** Protagonist (main character){% else %}**Role:** Supporting character{% endif %}
+Name: {{ character_name }}
+Role: {% if is_protagonist %}Protagonist{% else %}Main character{% endif %}
 
 {% if other_characters %}
-## Other Main Characters
-
+Other main characters:
 {% for char in other_characters %}
 - {{ char }}
 {% endfor %}
@@ -20,41 +19,28 @@
 
 ## Task
 
-Create a detailed character sheet for {{ character_name }}. Ensure the character is multidimensional, with a distinct voice, clear backstory, and logical motivations suitable for a Pulitzer-level narrative.
+You MUST output ONLY valid JSON that matches the enforced grammar for a character sheet.
 
-## Required Structure
+CRITICAL OUTPUT RULES:
+- Output MUST be a single JSON object.
+- Output MUST contain EXACTLY these top-level keys (no more, no less):
+  - "name" (string, MUST be "{{ character_name }}")
+  - "description" (string)
+  - "traits" (array of single-word strings)
+  - "status" (string, MUST be "Active")
+  - "motivations" (string)
+  - "background" (string)
+  - "skills" (array of strings)
+  - "relationships" (object mapping character name -> string)
+  - "internal_conflict" (string)
+- Do NOT include a top-level "type" field; runtime injects it.
+- Do NOT include markdown, code fences, commentary, or any text outside the JSON.
 
-Output MUST be a single JSON object (no markdown) with ONLY the following top-level keys (no additional keys):
+Field guidance (encode inside the JSON fields above):
+- description: vivid and specific; 180–260 words.
+- traits: 5–7 traits; each must be ONE WORD (letters/numbers/hyphen only).
+- motivations/background/internal_conflict: concrete, story-driving.
+- skills: 3–6 concrete skills.
+- relationships: include entries for relevant other main characters (if any).
 
-1. **name**: The character's name ("{{ character_name }}")
-2. **description**: Comprehensive, evocative description (200-300 words) covering physical appearance, personality, and background. Avoid clichés; focus on unique details that reveal character.
-3. **traits**: List of 5-7 **single-word** personality traits (e.g., "brave", "cynical", "impulsive"). Each trait must be ONE WORD ONLY.
-4. **status**: "Active"
-5. **motivations**: What drives this character? What do they want? (1-2 sentences). Ensure motivations are grounded in their background and drive the plot.
-6. **background**: Brief history and important life events (1-2 sentences) that explain their current state.
-7. **skills**: List of 3-5 key skills or abilities.
-8. **relationships**: Dictionary mapping other character names to relationship descriptions (string values).
-9. **internal_conflict**: What internal struggle will they face? (1 sentence)
-
-Do NOT include a top-level **type** field; the runtime will inject and normalize `type: "Character"` after parsing.
-
-### Output JSON example
-
-```json
-{
-  "name": "{{ character_name }}",
-  "description": "A vivid, specific description of the character...",
-  "traits": ["brave", "cynical", "impulsive", "patient", "wary"],
-  "status": "Active",
-  "motivations": "What the character wants and why...",
-  "background": "Brief history and key formative events...",
-  "skills": ["negotiation", "marksmanship", "forensics"],
-  "relationships": {
-    "Other Character": "Relationship description..."
-  },
-  "internal_conflict": "A single-sentence internal struggle..."
-}
-```
-
-*Ensure the relationships map uses the names of the other characters provided above where applicable.*
 {{ existing_traits_hint }}

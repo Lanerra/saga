@@ -3,18 +3,14 @@
 {% block task_description %}writing the complete narrative text for a chapter{% endblock %}
 
 {% block focus_section %}
-**Chapter Focus:**
-- Chapter Number: {{ chapter_number }}
-- Plot Point Focus: "{{ plot_point_focus }}"
+Chapter: {{ chapter_number }}
+Plot point focus: {{ plot_point_focus }}
 {% endblock %}
 
-{% block context_subtitle %} from Previous Chapters (for consistency with established canon and narrative flow){% endblock %}
-
 {% block instructions %}
-1.  **Write the ENTIRE text for Chapter {{ chapter_number }}.**
-2.  Your primary directive is to bring the "Plot Point Focus" to life as a complete, compelling chapter.
-3.  Ensure your writing is consistent with the information provided in the "Hybrid Context" to maintain narrative flow and canonical accuracy.
-4.  Produce a rich, detailed narrative. Incorporate descriptive language, character introspection, dialogue, and action as appropriate for the genre and plot point.
-5.  The chapter should be substantial in length, MUST be at least {{ min_length }} characters of high-quality prose.
-6.  **Output ONLY the chapter text.** Do NOT include a "Chapter {{ chapter_number }}" header, a title, author commentary, or any other meta-discussion. Begin directly with the first sentence of the chapter.
+1. Write the ENTIRE text for Chapter {{ chapter_number }}.
+2. Bring the plot point focus to life as on-page action, dialogue, and interiority.
+3. Maintain continuity with the Hybrid Context.
+4. Output ONLY the chapter text. No chapter header, no title, no analysis, no code fences.
+5. Length: at least {{ min_length }} characters.
 {% endblock %}

@@ -1,29 +1,23 @@
 You are writing a scene for Chapter {{ chapter_number }} of the novel "{{ novel_title }}".
 
-## Scene Context
-**Title:** {{ scene.title }}
-**POV Character:** {{ scene.pov_character }}
-**Setting:** {{ scene.setting }}
-**Characters Present:** {{ scene.characters | join(', ') }}
-**Plot Point:** {{ scene.plot_point }}
-**Conflict:** {{ scene.conflict }}
-**Outcome:** {{ scene.outcome }}
+Scene:
+- title: {{ scene.title }}
+- pov_character: {{ scene.pov_character }}
+- setting: {{ scene.setting }}
+- characters_present: {{ scene.characters | join(", ") }}
+- plot_point: {{ scene.plot_point }}
+- conflict: {{ scene.conflict }}
+- outcome: {{ scene.outcome }}
 
-## Narrative Context
-**Genre:** {{ novel_genre }}
-**Theme:** {{ novel_theme }}
+Novel context: {{ novel_genre }} | Theme: {{ novel_theme }}
 
-## Story So Far (Context)
+Story so far (canon context):
 {{ hybrid_context }}
 
-## Instructions
-Write the prose for this scene, adhering strictly to the system prompt's high standards for depth, immersion, and thematic richness.
-
-- **Immerse the Reader:** Focus deeply on the POV character's internal and external experience. Use sensory details and subtext to reveal their state of mind.
-- **Show, Don't Tell:** Dramatize actions, emotions, and world details. Avoid exposition dumps.
-- **Advance the Plot:** Ensure the scene moves logically towards the defined outcome, maintaining tension and momentum.
-- **Maintain Voice:** Uphold the tone of a {{ novel_genre }} novel and the established character voices.
-- **Format:** Continuous prose, no code fences.
-- **Length:** Write approximately {{ target_word_count }} words.
-
-Begin writing the scene now.
+Instructions:
+- Write continuous prose for this scene.
+- Stay in the POV character’s interior and sensory experience.
+- Show conflict through action and subtext; avoid exposition dumps.
+- End with the stated outcome and a forward hook.
+- Output ONLY the scene prose. No headings. No code fences.
+- Length: ~{{ target_word_count }} words.

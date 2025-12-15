@@ -1,93 +1,32 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
-**Role:** Knowledge Graph Extractor. **Goal:** Extract ONLY narrative-essential entities.
-**Hard Constraints:**
-1. **Prefer Proper Nouns**. For common nouns, only extract if mentioned 3+ times AND stable.
-2. **Skip** atmospheric details, weather, feelings, transitional moments.
-3. **When in doubt, DO NOT extract.**
 
-**Context:** {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }} | Ch: {{ chapter_number }}
+You are a knowledge graph extractor. Extract ONLY narrative-essential canon updates from Chapter {{ chapter_number }}.
 
-**IMPORTANT - Schema Contract (No Creative Freedom):**
-You MUST use ONLY the allowed node labels (types) listed below.
-Do NOT invent new node labels or relationship types. Invalid types break the graph.
+Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
-**Allowed Node Labels (Types):**
-- `Character`
-- `Location`
-- `Event`
-- `Item`
-- `Organization`
-- `Concept`
-- `Trait`
-- `Chapter`
-- `Novel`
+Output MUST be valid JSON only (no markdown, no code fences, no prose).
 
-**Type vs Category (CRITICAL):**
-- **Type** = the node label (from the allowlist above).
-- **Category** = the specific subtype stored in a `category` property (string).
-
-**Canonical Mapping Rules (store subtypes in `category`, not `type`):**
-- Artifacts / relics / documents / generic objects → `Item` with `category` like "Artifact", "Relic", "Document", "Object"
-- Factions / guilds / houses / councils / orders → `Organization` with `category` like "Faction", "Guild", "House", "Council", "Order"
-- Settlements / structures / rooms / regions / landmarks / territories / paths → `Location` with `category` like "Settlement", "Structure", "Room", "Region", etc.
-- Plot points / character development / lore reveals / eras / moments → `Event` with `category` like:
-  - "PlotPoint"
-  - "DevelopmentEvent"
-  - "WorldElaborationEvent"
-  - "Era"
-  - "Moment"
-- Magic / technology / religion / culture / law / tradition / prophecies → `Concept` with `category` like "Magic", "Technology", etc.
-
-**Output Format (JSON Only):**
-Keys: `character_updates`, `world_updates`, `kg_triples`.
-
-* `world_updates` keys MUST be canonical node labels only:
-  - `Location`, `Item`, `Event`, `Organization`, `Concept`
-  - (Do NOT use legacy/custom keys like "Artifact", "Faction", "PlotPoint", etc.)
-* `kg_triples`: List of strings in the format:
-  - `"SubjectType:Name | PREDICATE | ObjectType:Name"`
-  - `SubjectType` / `ObjectType` MUST be one of the allowed node labels above.
-* **Relationship Types:** MUST be uppercase with underscores (e.g., `LOCATED_IN`, `MEMBER_OF`, `BETRAYS`).
-  Do NOT invent free-form strings with punctuation/spaces.
-
-**Example:**
-```json
+Required top-level shape:
 {
-  "character_updates": {
-    "Elara": { "description": "Steals the gem.", "status": "Rogue" }
-  },
-  "world_updates": {
-    "Item": {
-      "Sunstone": { "description": "Ancient glowing gem.", "category": "Artifact" }
-    },
-    "Event": {
-      "The Heist": { "description": "Elara betrays the Order.", "category": "PlotPoint" }
-    },
-    "Organization": {
-      "The Order": { "description": "A powerful faction.", "category": "Faction" }
-    }
-  },
-  "kg_triples": [
-    "Character:Elara | ACQUIRED | Item:Sunstone",
-    "Event:The Heist | INVOLVES | Character:Elara",
-    "Character:Elara | BETRAYS | Organization:The Order"
-  ]
+  "character_updates": { ... },
+  "world_updates": { ... },
+  "kg_triples": [ ... ]
 }
-```
 
-**Quality Check Before Output:**
-- Did I use ONLY allowed node labels for types? → Must be one of: Character/Location/Event/Item/Organization/Concept/Trait/Chapter/Novel
-- Did I put subtypes into `category` (not into the type/label)? → e.g., PlotPoint/DevelopmentEvent/WorldElaborationEvent are `Event.category`
-- Did I avoid legacy labels? → Never output types like "Object", "Artifact", "Relic", "Document", "Person", "Faction"
-- Did I prefer proper nouns over common nouns? → Proper nouns are higher quality
-- Did I extract any atmospheric/emotional/temporary entities? → Remove them
-- For proper nouns (capitalized names): 1+ mention is sufficient
-- For common nouns: Mentioned 3+ times AND stable referent? → If not, remove
-- Could a future chapter reference this entity? → If no, remove
-- Is each triple's direction correct (subject acts on object)? → Fix if needed
-- Are predicates uppercase with underscores only? → e.g., LOCATED_IN, MEMBER_OF, BETRAYS
+Rules:
+- Prefer proper nouns. Skip atmosphere, feelings, and generic concepts.
+- Do not invent labels/fields beyond what is shown below.
 
-**Chapter {{ chapter_number }} Text:**
-```text
+character_updates shape:
+- {"Character Name": {"description": string, "traits": [single-word strings], "status": string, "relationships": {"Other Name": string}}}
+
+world_updates shape:
+- Keys are canonical labels only: "Location", "Event", "Item", "Organization", "Concept".
+- Each label maps to a name->details map.
+- Each details object uses: description (string), category (string), goals (string list), rules (string list), key_elements (string list).
+
+kg_triples shape:
+- A list of objects with string fields: subject, predicate, object_entity, description.
+
+Chapter text:
 {{ chapter_text }}
-```

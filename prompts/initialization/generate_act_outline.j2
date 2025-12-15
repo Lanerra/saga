@@ -1,44 +1,40 @@
 ## Story Information
 
-**Title:** {{ title }}
-**Genre:** {{ genre }}
-**Theme:** {{ theme }}
-**Setting:** {{ setting }}
-**Protagonist:** {{ protagonist_name }}
+Title: {{ title }}
+Genre: {{ genre }}
+Theme: {{ theme }}
+Setting: {{ setting }}
+Protagonist: {{ protagonist_name }}
 
-## Act Information
+## Act
 
-**Act Number:** {{ act_number }} of {{ total_acts }}
-**Act Role:** {{ act_role }}
-**Chapters in This Act:** Approximately {{ chapters_in_act }}
+Act: {{ act_number }} of {{ total_acts }}
+Role in structure: {{ act_role }}
+Chapters in act: ~{{ chapters_in_act }}
 
-## Global Outline Context
-
+## Global outline (context)
 {{ global_outline }}
 
-## Main Characters
-
+## Main characters (context)
 {{ character_context }}
 
 ## Task
 
-Create a detailed outline for Act {{ act_number }}. Your outline should demonstrate Pulitzer-level storytelling depth:
+Write a detailed act outline in prose (no JSON).
 
-1. **Act Summary:** Brief overview (2-3 sentences) of what happens in this act.
-2. **Opening:** How does this act begin? What's the initial situation? Ensure it immediately grounds the reader in the world.
-3. **Key Events:** What are the 5-7 most important events in this act? Focus on "Show, Don't Tell" - describe events that reveal character and theme.
-4. **Character Development:** How do characters grow/change in this act? Highlight internal conflicts and external pressures.
-5. **Conflict Progression:** How does tension build throughout the act? Ensure a logical rise in stakes.
-6. **Act Resolution:** How does this act end? What's the cliffhanger/transition that compels the story forward?
-7. **Thematic Elements:** How is the theme explored in this act? Weave it naturally into the events.
-8. **Pacing Notes:** Which chapters should be fast-paced? Which should be slower?
+Output structure (use these section headers exactly):
+1. Act Summary (2–3 sentences)
+2. Opening Situation
+3. Key Events (5–7 short paragraphs; each paragraph is an on-page event with cause→effect)
+4. Character Development (focus on internal conflict + choices)
+5. Stakes and Tension (how pressure escalates)
+6. Act Ending / Turn (cliffhanger or decisive shift)
+7. Thematic Thread (how theme appears through action/imagery)
+8. Pacing Notes (fast vs slow chapters)
 
-Remember:
-- This is Act {{ act_number }} ({{ act_role }}), so the content should match this role
-- Events should naturally span approximately {{ chapters_in_act }} chapters
-- Maintain consistency with the global outline
-- Set up elements that will be important in later acts
+Constraints:
+- Stay consistent with the global outline.
+- Use named characters and concrete locations.
+- No meta-commentary.
 
-Write a detailed act outline (400-600 words).
-
-## Act {{ act_number }} Outline
+Write the act outline now.

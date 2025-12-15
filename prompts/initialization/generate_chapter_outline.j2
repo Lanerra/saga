@@ -1,35 +1,33 @@
 ## Story Information
 
-**Title:** {{ title }}
-**Genre:** {{ genre }}
-**Theme:** {{ theme }}
-**Setting:** {{ setting }}
-**Protagonist:** {{ protagonist_name }}
+Title: {{ title }}
+Genre: {{ genre }}
+Theme: {{ theme }}
+Setting: {{ setting }}
+Protagonist: {{ protagonist_name }}
 
-## Chapter Information
+## Chapter
 
-**Chapter Number:** {{ chapter_number }} of {{ total_chapters }}
-**Act:** {{ act_number }} (Chapter {{ chapter_in_act }} of this act)
+Chapter: {{ chapter_number }} of {{ total_chapters }}
+Act: {{ act_number }} (Chapter {{ chapter_in_act }} of this act)
 
-## Context from Global Outline
+## Context
 
+Global outline:
 {{ global_outline }}
 
-## Context from Act {{ act_number }} Outline
-
+Act outline:
 {{ act_outline }}
 
-## Main Characters
-
+Main characters:
 {{ character_context }}
 
-## What Happened Previously
-
+Previously:
 {{ previous_context }}
 
 ## Task
 
-You must output ONLY valid JSON that matches the enforced grammar for a chapter outline.
+You MUST output ONLY valid JSON that matches the enforced grammar for a chapter outline.
 
 CRITICAL OUTPUT RULES:
 - Output MUST be a single JSON object.
@@ -38,24 +36,10 @@ CRITICAL OUTPUT RULES:
   - "key_beats" (array of strings)
   - "plot_point" (string)
 - Do NOT include markdown, code fences, commentary, headings, or any text outside the JSON.
-- Do NOT add extra keys such as "opening", "ending", "mood", etc. Encode those ideas inside the allowed fields.
 
-Required JSON shape (copy exactly; only change the string values):
-{
-  "scene_description": "2–4 sentences setting the scene: where/when, who is present, immediate situation, mood/tone.",
-  "key_beats": [
-    "Beat 1: a specific on-page event/action that advances conflict and shows character motivation.",
-    "Beat 2: escalation/complication; include concrete sensory/action details (show, don't tell).",
-    "Beat 3: turning point or reveal; tie to the act and overall arc.",
-    "Beat 4: consequence/decision that sets up the next chapter (optional if you only need 3 beats)."
-  ],
-  "plot_point": "1–2 sentences: the single most important plot advancement or outcome of this chapter."
-}
-
-QUALITY GUIDANCE (still within the JSON fields above):
-- Pacing: This is Chapter {{ chapter_number }} of {{ total_chapters }}; make beats appropriate for story position and act {{ act_number }}.
-- Consistency: Align with the global outline, act outline, character context, and what happened previously.
-- Specificity: Use named characters, concrete locations, and clear cause→effect between beats.
-- Focus: Ensure every beat supports the chapter’s core conflict and the story’s forward momentum.
+Content guidance (encode inside the JSON fields):
+- scene_description: 2–4 sentences grounding where/when/who + immediate tension.
+- key_beats: 3–5 beats, each a concrete on-page action with clear cause→effect.
+- plot_point: 1–2 sentences for the chapter’s single most important change.
 
 Return ONLY the JSON object.

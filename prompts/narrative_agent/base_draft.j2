@@ -2,28 +2,24 @@
 
 You are an expert novelist tasked with {% block task_description %}writing narrative text{% endblock %}.
 
-**Novel Details:**
-- Title: {{ novel_title }}
-- Genre: {{ novel_genre }}
+Novel: {{ novel_title }} ({{ novel_genre }})
 
-{% block focus_section %}
-**Focus:**
-- Chapter Number: {{ chapter_number }}
-{% endblock %}
+{% block focus_section %}Chapter: {{ chapter_number }}{% endblock %}
 
-**Hybrid Context{% block context_subtitle %} (for canonical consistency){% endblock %}:**
+Hybrid Context (canon; do not contradict):
 --- BEGIN HYBRID CONTEXT ---
 {{ hybrid_context_for_draft }}
 --- END HYBRID CONTEXT ---
 
 {% block additional_context %}{% endblock %}
 
-**Instructions:**
+Instructions:
 {% block instructions %}
-1. Write the narrative prose. Do not include headings, labels, or meta-commentary.
-2. Ensure the prose aligns with the Hybrid Context.
-3. Aim for at least {{ min_length }} characters of text.
-4. Output ONLY the narrative text. No explanations, JSON, or markdown fences.
+1. Write the narrative prose.
+2. Maintain continuity with the Hybrid Context.
+3. Output ONLY the narrative text.
+4. No headings, no meta-commentary, no code fences.
+5. Length: at least {{ min_length }} characters.
 {% endblock %}
 
 {% block output_header %}{% endblock %}

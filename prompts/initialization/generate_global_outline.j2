@@ -1,69 +1,39 @@
 ## Story Information
 
-**Title:** {{ title }}
-**Genre:** {{ genre }}
-**Theme:** {{ theme }}
-**Setting:** {{ setting }}
-**Target Length:** {{ total_chapters }} chapters (approximately {{ target_word_count }} words)
-**Protagonist:** {{ protagonist_name }}
+Title: {{ title }}
+Genre: {{ genre }}
+Theme: {{ theme }}
+Setting: {{ setting }}
+Target: {{ total_chapters }} chapters (~{{ target_word_count }} words)
+Protagonist: {{ protagonist_name }}
 
-## Main Characters
-
+Main characters:
 {{ character_context }}
 
 ## Task
 
-Create a global story outline that covers the entire narrative arc.
+You MUST output ONLY valid JSON matching the enforced global-outline grammar.
 
-## Required Structure
+CRITICAL OUTPUT RULES:
+- Output MUST be a single JSON object.
+- Output MUST contain EXACTLY these keys (no more, no less):
+  - "act_count" (number)
+  - "acts" (array)
+  - "inciting_incident" (string)
+  - "midpoint" (string)
+  - "climax" (string)
+  - "resolution" (string)
+  - "character_arcs" (array)
+  - "thematic_progression" (string)
+  - "pacing_notes" (string)
+- No markdown. No code fences. No commentary.
 
-The output must be a JSON object containing the following information:
+Act constraints:
+- act_count must be 3 or 5.
+- Allocate chapters 1..{{ total_chapters }} with no gaps/overlaps.
+- Each act object MUST include: act_number, title, summary, key_events, chapters_start, chapters_end.
 
-1. **act_count**: Number of acts (3 or 5)
-2. **acts**: Array of act objects, each containing:
-   - **act_number**: Integer (1, 2, etc.)
-   - **title**: Title of the act
-   - **summary**: Brief summary of the act (1-2 sentences)
-   - **key_events**: List of 3-5 key events
-   - **chapters_start**: First chapter number in this act
-   - **chapters_end**: Last chapter number in this act
-3. **inciting_incident**: The event that disrupts the status quo
-4. **midpoint**: Major revelation or event that changes everything
-5. **climax**: The peak of the story's tension
-6. **resolution**: How conflicts are resolved
-7. **character_arcs**: Array of character arc objects for main characters:
-   - **character_name**: Name of the character
-   - **starting_state**: Character's state at story start
-   - **ending_state**: Character's state at story end
-   - **key_moments**: List of key moments in their arc
-8. **thematic_progression**: How the theme develops
-9. **pacing_notes**: Notes on pacing appropriate for the genre
+Character arcs:
+- Include arcs for all main characters: {{ character_names | join(", ") }}
 
-*Note: The structure is enforced by the system. Focus on generating high-quality narrative content that exhibits Pulitzer-level depth, thematic resonance, and logical coherence.*
-
-## Important Requirements
-
-1. **Chapter Allocation:** Distribute all {{ total_chapters }} chapters across the acts with no gaps or overlaps
-   - Each chapter must belong to exactly one act
-   - chapters_start and chapters_end must be inclusive (e.g., 1-7 means chapters 1 through 7)
-   - Total coverage must be chapters 1 through {{ total_chapters }}
-
-2. **Act Structure:**
-{% if total_chapters <= 15 %}
-   - Use 3-act structure for {{ total_chapters }} chapters
-   - Act 1 (Setup): ~25% of chapters
-   - Act 2 (Confrontation): ~50% of chapters
-   - Act 3 (Resolution): ~25% of chapters
-{% else %}
-   - Use 5-act structure for {{ total_chapters }} chapters
-   - Act 1 (Exposition): ~15% of chapters
-   - Act 2 (Rising Action): ~20% of chapters
-   - Act 3 (Climax): ~30% of chapters
-   - Act 4 (Falling Action): ~20% of chapters
-   - Act 5 (Resolution): ~15% of chapters
-{% endif %}
-
-3. **Character Arcs:** Include arcs for all main characters: {{ character_names | join(", ") }}
-
-4. **Genre Fit:** Ensure the outline fits {{ genre }} conventions
-
+Return ONLY the JSON object.
