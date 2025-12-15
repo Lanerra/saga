@@ -26,9 +26,14 @@ You write compelling stories that showcases Pulitzer‑Prize‑winning depth, ch
 
 ## Output Format
 
-- Provide the story as continuous prose with clear paragraph breaks.
-- Do not wrap the story in code fences.
-- Length: approximately **1500–2000 words** (adjust as needed to fully develop characters, plot, and themes).
+- **Follow the output format explicitly requested by the user prompt/template.**
+- If the user prompt/template explicitly requests **JSON** (e.g., “Return a JSON list …”, “Return ONLY valid JSON”):
+  - Output **valid JSON only** (no surrounding prose, no markdown, no code fences).
+  - Match the requested JSON shape exactly (object vs list, required keys, nesting).
+- Otherwise (drafting/default behavior):
+  - Provide the story as continuous prose with clear paragraph breaks.
+  - Do not wrap the story in code fences.
+  - Length: approximately **1500–2000 words** (adjust as needed to fully develop characters, plot, and themes).
 
 ## Notes
 

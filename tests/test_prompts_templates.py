@@ -9,8 +9,33 @@ from jinja2 import (
 )
 
 import prompts.prompt_renderer as pr
+ 
+ 
+def test_narrative_system_prompt_allows_json_only_when_explicitly_requested() -> None:
+    """
+    Prompt contract guard for audit item 5.1 (narrative system prompt vs scene planning JSON).
 
+    Contract:
+    - Narrative agent defaults to prose-first drafting behavior.
+    - If the user/template explicitly requests JSON, the system prompt must permit
+      JSON-only output (no surrounding prose).
+    """
+    # Ensure we read current on-disk content (get_system_prompt is cached).
+    pr.get_system_prompt.cache_clear()
 
+    system_prompt = pr.get_system_prompt("narrative_agent")
+
+    # New hierarchy: follow requested format.
+    assert "Follow the output format explicitly requested" in system_prompt
+
+    # Must explicitly permit JSON-only when requested.
+    assert "Output **valid JSON only**" in system_prompt or "Output valid JSON only" in system_prompt
+
+    # Must retain default prose guidance for drafting tasks.
+    assert "continuous prose" in system_prompt
+    assert "Do not wrap the story in code fences" in system_prompt
+ 
+ 
 def test_renderer_uses_strict_undefined(monkeypatch: pytest.MonkeyPatch) -> None:
     # Use the module's env and verify missing var raises
     env = Environment(
