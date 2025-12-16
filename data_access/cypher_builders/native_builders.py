@@ -6,7 +6,9 @@ Eliminates the intermediate dict serialization layer for performance optimizatio
 
 from typing import TYPE_CHECKING, Any
 
+from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS
 from processing.entity_deduplication import generate_entity_id
+from utils import classify_category_label
 from utils.common import flatten_dict
 
 if TYPE_CHECKING:
@@ -17,9 +19,7 @@ class NativeCypherBuilder:
     """Generate Cypher directly from Pydantic models without dict conversion"""
 
     @staticmethod
-    def character_upsert_cypher(
-        char: "CharacterProfile", chapter_number: int
-    ) -> tuple[str, dict[str, Any]]:
+    def character_upsert_cypher(char: "CharacterProfile", chapter_number: int) -> tuple[str, dict[str, Any]]:
         """
         Generate Cypher for character upsert directly from CharacterProfile model.
 
@@ -31,30 +31,89 @@ class NativeCypherBuilder:
             Tuple of (cypher_query, parameters)
         """
         cypher = """
-        MERGE (c:Character:Entity {name: $name})
+        MERGE (c:Character {name: $name})
         SET c.description = $description,
-            c.traits = $traits,
             c.status = $status,
             c.id = CASE WHEN c.id IS NULL OR c.id = '' THEN $id ELSE c.id END,
-            c.created_chapter = CASE 
-                WHEN c.created_chapter IS NULL THEN $created_chapter 
-                ELSE c.created_chapter 
+            c.created_chapter = CASE
+                WHEN c.created_chapter IS NULL THEN $created_chapter
+                ELSE c.created_chapter
             END,
             c.is_provisional = $is_provisional,
             c.chapter_last_updated = $chapter_number,
             c.last_updated = timestamp()
-        
+
+        // Handle traits as separate Trait nodes with HAS_TRAIT relationships
+        // Differential update: only remove traits that are no longer present.
+        WITH c
+        OPTIONAL MATCH (c)-[old_ht:HAS_TRAIT]->(old_t:Trait)
+        WHERE NOT old_t.name IN $trait_data
+        DELETE old_ht
+
+        WITH c
+        FOREACH (trait_name IN $trait_data |
+            MERGE (t:Trait {name: trait_name})
+            ON CREATE SET
+                t.description = '',
+                t.created_at = timestamp(),
+                t.created_chapter = $chapter_number
+            MERGE (c)-[ht:HAS_TRAIT]->(t)
+            ON CREATE SET
+                ht.chapter_added = $chapter_number,
+                ht.last_updated = timestamp()
+            ON MATCH SET
+                ht.last_updated = timestamp()
+        )
+
         // Handle relationships as separate merge operations
         WITH c
         UNWIND $relationship_data AS rel_data
         CALL (c, rel_data) {
             WITH c, rel_data
-            MATCH (other:Entity {name: rel_data.target_name})
-            MERGE (c)-[r:RELATIONSHIP {type: rel_data.rel_type}]->(other)
-            SET r.description = rel_data.description,
-                r.last_updated = timestamp()
+            // Use MERGE instead of MATCH to create provisional nodes if they don't exist
+            // Mark them as Character since they're related to a character
+            MERGE (other:Character {name: rel_data.target_name})
+            ON CREATE SET
+                other.is_provisional = true,
+                other.created_chapter = $chapter_number,
+                other.id = randomUUID(),
+                other.description = 'Character created from relationship. Details to be developed.',
+                other.status = 'Unknown'
+
+            // Use apoc.merge.relationship to create relationships with dynamic types
+            // This allows proper semantic relationship types (KNOWS, LOVES, etc.) instead of generic RELATIONSHIP
+            WITH c, other, rel_data
+            CALL apoc.merge.relationship(
+                c,
+                rel_data.rel_type,
+                {},
+                {
+                    description: rel_data.description,
+                    last_updated: timestamp(),
+                    chapter_added: $chapter_number,
+
+                    // P1.7: Ensure builder-created relationships are visible to profile reads
+                    // (profile reads filter on r.source_profile_managed).
+                    source_profile_managed: true,
+
+                    // P1.7: Transitional compatibility for any readers still using r.type.
+                    type: rel_data.rel_type
+                },
+                other
+            ) YIELD rel
+            SET rel.description = rel_data.description,
+                rel.last_updated = timestamp(),
+                rel.source_profile_managed = true,
+                rel.type = rel_data.rel_type
+
+            // Link provisional node to chapter for context retrieval
+            WITH other
+            OPTIONAL MATCH (chap:Chapter {number: $chapter_number})
+            FOREACH (_ IN CASE WHEN other.is_provisional = true AND chap IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (other)-[:MENTIONED_IN]->(chap)
+            )
         }
-        
+
         RETURN c.name as updated_character
         """
 
@@ -62,11 +121,17 @@ class NativeCypherBuilder:
         relationship_data = []
         for target_name, rel_info in char.relationships.items():
             if isinstance(rel_info, dict):
-                rel_type = rel_info.get("type", "KNOWS")
+                rel_type_raw = rel_info.get("type", "KNOWS")
                 rel_desc = rel_info.get("description", "")
             else:
-                rel_type = "KNOWS"
+                rel_type_raw = "KNOWS"
                 rel_desc = str(rel_info) if rel_info else ""
+
+            # P1.7: Normalize relationship type for consistent storage and querying.
+            # Canonical representation is the Neo4j relationship type itself.
+            rel_type = str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
+            if not rel_type:
+                rel_type = "KNOWS"
 
             relationship_data.append(
                 {
@@ -76,10 +141,13 @@ class NativeCypherBuilder:
                 }
             )
 
+        # Process traits - filter out empty strings
+        trait_data = [t.strip() for t in char.traits if t and t.strip()]
+
         params = {
             "name": char.name,
             "description": char.description,
-            "traits": char.traits,  # Direct field access - no dict conversion
+            "trait_data": trait_data,  # List of trait names for UNWIND
             "status": char.status,
             # Stable deterministic ID for characters (assigned once)
             "id": generate_entity_id(
@@ -96,9 +164,7 @@ class NativeCypherBuilder:
         return cypher, params
 
     @staticmethod
-    def world_item_upsert_cypher(
-        item: "WorldItem", chapter_number: int
-    ) -> tuple[str, dict[str, Any]]:
+    def world_item_upsert_cypher(item: "WorldItem", chapter_number: int) -> tuple[str, dict[str, Any]]:
         """
         Generate Cypher for world item upsert directly from WorldItem model.
 
@@ -113,93 +179,162 @@ class NativeCypherBuilder:
         # all values are primitive types that Neo4j can store
         flattened_additional_props = flatten_dict(item.additional_properties)
 
-        def _classify_label(category: str, name: str) -> str:
-            c = (category or "").strip().lower()
-            mapping = {
-                # Locations & structures
-                "location": "Location",
-                "place": "Location",
-                "region": "Region",
-                "territory": "Territory",
-                "landmark": "Landmark",
-                "path": "Path",
-                "road": "Path",
-                "room": "Room",
-                "settlement": "Settlement",
-                "city": "Settlement",
-                "town": "Settlement",
-                "village": "Settlement",
-                # Organizations
-                "faction": "Faction",
-                "organization": "Organization",
-                "guild": "Guild",
-                "house": "House",
-                "order": "Order",
-                "council": "Council",
-                # Objects & items
-                "object": "Object",
-                "item": "Item",
-                "artifact": "Artifact",
-                "relic": "Relic",
-                "document": "Document",
-                "book": "Document",
-                "scroll": "Document",
-                "letter": "Document",
-                # Systems
-                "system": "System",
-                "magic": "Magic",
-                "technology": "Technology",
-                "religion": "Religion",
-                "culture": "Culture",
-                "education": "Education",
-                "government": "Government",
-                "economy": "Economy",
-                # Resources
-                "resource": "Resource",
-                "material": "Material",
-                "food": "Food",
-                "currency": "Currency",
-                # Information
-                "lore": "Lore",
-                "knowledge": "Knowledge",
-                "secret": "Secret",
-                "rumor": "Rumor",
-                "news": "News",
-                "message": "Message",
-                "signal": "Signal",
-                "record": "Record",
-            }
-            return mapping.get(c, "Object")
+        primary_label = classify_category_label(item.category)
 
-        primary_label = _classify_label(item.category, item.name)
+        # P0.2: Ensure world upserts always select a canonical "world item" label.
+        # This prevents accidentally writing :Trait/:Character/etc. from ambiguous categories,
+        # which would then be invisible to world reads/fetches.
+        if primary_label not in WORLD_ITEM_CANONICAL_LABELS:
+            primary_label = "Item"
+
         # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
-        # Previous implementation used a comma which caused a syntax error before RETURN.
-        labels_clause = f":{primary_label}"
-        # WorldElement legacy label removed – only use specific type + Entity
-        # Keep Entity label to ensure compatibility with queries expecting :Entity
-        labels_clause += ":Entity"
+        # Removed implicit Entity label inheritance
 
+        # MERGE by ID to ensure we match existing entities even if renamed
         cypher = f"""
-        MERGE (w:Entity {{id: $id}})
-        SET w.name = $name,
+        MERGE (w:{primary_label} {{id: $id}})
+        ON CREATE SET
+            w.name = $name,
             w.category = $category,
             w.description = $description,
             w.goals = $goals,
             w.rules = $rules,
             w.key_elements = $key_elements,
-            w.traits = $traits,
-            w.created_chapter = CASE 
-                WHEN w.created_chapter IS NULL THEN $created_chapter 
-                ELSE w.created_chapter 
-            END,
+            w.created_chapter = $created_chapter,
             w.is_provisional = $is_provisional,
             w.chapter_last_updated = $chapter_number,
             w.last_updated = timestamp(),
-            w += $additional_props
-        SET w{labels_clause}
-        
+            w.created_at = timestamp()
+        ON MATCH SET
+            w.name = $name,
+            w.category = $category,
+            w.description = $description,
+            w.goals = $goals,
+            w.rules = $rules,
+            w.key_elements = $key_elements,
+            w.is_provisional = $is_provisional,
+            w.chapter_last_updated = $chapter_number,
+            w.last_updated = timestamp()
+        WITH w
+        SET w += $additional_props
+
+        // Handle traits as separate Trait nodes with HAS_TRAIT relationships
+        // Differential update: only remove traits that are no longer present.
+        WITH w
+        OPTIONAL MATCH (w)-[old_ht:HAS_TRAIT]->(old_t:Trait)
+        WHERE NOT old_t.name IN $trait_data
+        DELETE old_ht
+
+        WITH w
+        FOREACH (trait_name IN $trait_data |
+            MERGE (t:Trait {{name: trait_name}})
+            ON CREATE SET
+                t.description = '',
+                t.created_at = timestamp(),
+                t.created_chapter = $chapter_number
+            MERGE (w)-[ht:HAS_TRAIT]->(t)
+            ON CREATE SET
+                ht.chapter_added = $chapter_number,
+                ht.last_updated = timestamp()
+            ON MATCH SET
+                ht.last_updated = timestamp()
+        )
+
+        // Handle relationships as separate merge operations
+        WITH w
+        UNWIND $relationship_data AS rel_data
+        CALL (w, rel_data) {{
+            // Use apoc.merge.node to create/merge targets with a SAFE allowlisted label.
+            // Default remains :Item if target_label is missing/invalid.
+            WITH
+                w,
+                rel_data,
+                CASE
+                    WHEN rel_data.target_label IN $world_item_target_label_allowlist THEN rel_data.target_label
+                    ELSE 'Item'
+                END AS target_label,
+                CASE
+                    WHEN rel_data.target_id IS NOT NULL AND rel_data.target_id <> '' THEN {{id: rel_data.target_id}}
+                    ELSE {{name: rel_data.target_name}}
+                END AS merge_key_props
+
+            CALL apoc.merge.node(
+                [target_label],
+                merge_key_props,
+                {{
+                    name: rel_data.target_name,
+                    id: coalesce(rel_data.target_id, randomUUID()),
+                    is_provisional: true,
+                    created_chapter: $chapter_number,
+                    description: 'Entity created from world item relationship. Details to be developed.'
+                }},
+                {{}}
+            ) YIELD node AS other
+
+            // Use apoc.merge.relationship to create relationships with dynamic types
+            // This allows proper semantic relationship types (LOCATED_IN, PART_OF, etc.) instead of generic RELATIONSHIP
+            WITH w, other, rel_data
+            CALL apoc.merge.relationship(
+                w,
+                rel_data.rel_type,
+                {{}},
+                {{description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number}},
+                other
+            ) YIELD rel
+            SET rel.description = rel_data.description,
+                rel.last_updated = timestamp()
+
+            // Link provisional node to chapter for context retrieval
+            WITH other
+            OPTIONAL MATCH (chap:Chapter {{number: $chapter_number}})
+            FOREACH (_ IN CASE WHEN other.is_provisional = true AND chap IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (other)-[:MENTIONED_IN]->(chap)
+            )
+        }}
+
         RETURN w.id as updated_world_item
         """
+
+        # Process relationships for batch operations
+        relationship_data = []
+        for target_name, rel_info in item.relationships.items():
+            target_label: str | None = None
+            target_id: str | None = None
+
+            if isinstance(rel_info, dict):
+                rel_type_raw = rel_info.get("type", "RELATED_TO")
+                rel_desc = rel_info.get("description", "")
+
+                # Optional per-relationship target typing / identity (Option A).
+                # These are validated/allowlisted at query time.
+                target_label_raw = rel_info.get("target_label")
+                target_id_raw = rel_info.get("target_id")
+
+                if target_label_raw:
+                    target_label = str(target_label_raw).strip().capitalize() or None
+                if target_id_raw:
+                    target_id = str(target_id_raw).strip() or None
+            else:
+                rel_type_raw = "RELATED_TO"
+                rel_desc = str(rel_info) if rel_info else ""
+
+            # Normalize relationship type for consistent storage and querying.
+            rel_type = str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
+            if not rel_type:
+                rel_type = "RELATED_TO"
+
+            relationship_data.append(
+                {
+                    "target_name": target_name,
+                    "target_label": target_label,
+                    "target_id": target_id,
+                    "rel_type": rel_type,
+                    "description": rel_desc,
+                }
+            )
+
+        # Process traits - filter out empty strings
+        trait_data = [t.strip() for t in item.traits if t and t.strip()]
 
         params = {
             "id": item.id,
@@ -209,18 +344,21 @@ class NativeCypherBuilder:
             "goals": item.goals,  # Direct field access
             "rules": item.rules,
             "key_elements": item.key_elements,
-            "traits": item.traits,
+            "trait_data": trait_data,  # List of trait names for FOREACH
             "created_chapter": item.created_chapter or chapter_number,
             "is_provisional": item.is_provisional,
             "chapter_number": chapter_number,
             "additional_props": flattened_additional_props,  # Flattened to ensure primitive types
+            "relationship_data": relationship_data,
+            # Allowlist for safe label selection in apoc.merge.node
+            "world_item_target_label_allowlist": list(WORLD_ITEM_CANONICAL_LABELS),
         }
 
         return cypher, params
 
     @staticmethod
     def character_fetch_cypher(
-        filters: dict[str, Any] = None,
+        filters: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """
         Generate optimized Cypher for fetching characters with relationships.
@@ -248,18 +386,25 @@ class NativeCypherBuilder:
         where_clause = " AND ".join(where_clauses)
 
         cypher = f"""
-        MATCH (c:Character:Entity)
+        MATCH (c:Character)
         WHERE {where_clause}
-        
-        // Optionally collect relationships (match any type; use r.type property for semantics)
-        OPTIONAL MATCH (c)-[r]->(other:Entity)
-        
-        RETURN c, 
-               collect({{
+
+        // Optionally collect relationships (use actual relationship type)
+        // Exclude HAS_TRAIT relationships as those are collected separately
+        OPTIONAL MATCH (c)-[r]->(other)
+        WHERE NOT type(r) = 'HAS_TRAIT'
+
+        // Collect traits from HAS_TRAIT relationships to Trait nodes
+        OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
+
+        RETURN c,
+               collect(DISTINCT {{
                    target_name: other.name,
-                   type: coalesce(r.type, ''),
+                   // Use actual relationship type; fallback to r.type property for legacy RELATIONSHIP types
+                   type: CASE WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r)) ELSE type(r) END,
                    description: coalesce(r.description, '')
-               }}) as relationships
+               }}) as relationships,
+               collect(DISTINCT t.name) as traits
         ORDER BY c.name
         """
 
@@ -267,7 +412,7 @@ class NativeCypherBuilder:
 
     @staticmethod
     def world_item_fetch_cypher(
-        filters: dict[str, Any] = None,
+        filters: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """
         Generate optimized Cypher for fetching world items.
@@ -294,20 +439,31 @@ class NativeCypherBuilder:
 
         where_clause = " AND ".join(where_clauses)
 
+        # Canonical labeling contract:
+        # - World item nodes are labeled with canonical world labels only
+        #   (Location/Item/Event/Organization/Concept).
+        # - Legacy labels (Object/Artifact/Relic/Document) are handled via explicit migration,
+        #   not by widening read predicates indefinitely.
+        world_item_labels = WORLD_ITEM_CANONICAL_LABELS
+        label_predicate = "(" + " OR ".join([f"w:{label}" for label in world_item_labels]) + ")"
+
+        # Note: Character is handled by character_fetch_cypher
         cypher = f"""
-        MATCH (w:Entity)
-        WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
+        MATCH (w)
+        WHERE {label_predicate}
           AND {where_clause}
-        RETURN w
+
+        // Collect traits from HAS_TRAIT relationships to Trait nodes
+        OPTIONAL MATCH (w)-[:HAS_TRAIT]->(t:Trait)
+
+        RETURN w, collect(DISTINCT t.name) as traits
         ORDER BY w.category, w.name
         """
 
         return cypher, params
 
     @staticmethod
-    def batch_character_upsert_cypher(
-        characters: list["CharacterProfile"], chapter_number: int
-    ) -> list[tuple[str, dict[str, Any]]]:
+    def batch_character_upsert_cypher(characters: list["CharacterProfile"], chapter_number: int) -> list[tuple[str, dict[str, Any]]]:
         """
         Generate batch Cypher statements for multiple characters.
 
@@ -320,16 +476,12 @@ class NativeCypherBuilder:
         """
         statements = []
         for char in characters:
-            cypher, params = NativeCypherBuilder.character_upsert_cypher(
-                char, chapter_number
-            )
+            cypher, params = NativeCypherBuilder.character_upsert_cypher(char, chapter_number)
             statements.append((cypher, params))
         return statements
 
     @staticmethod
-    def batch_world_item_upsert_cypher(
-        world_items: list["WorldItem"], chapter_number: int
-    ) -> list[tuple[str, dict[str, Any]]]:
+    def batch_world_item_upsert_cypher(world_items: list["WorldItem"], chapter_number: int) -> list[tuple[str, dict[str, Any]]]:
         """
         Generate batch Cypher statements for multiple world items.
 
@@ -342,8 +494,6 @@ class NativeCypherBuilder:
         """
         statements = []
         for item in world_items:
-            cypher, params = NativeCypherBuilder.world_item_upsert_cypher(
-                item, chapter_number
-            )
+            cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, chapter_number)
             statements.append((cypher, params))
         return statements

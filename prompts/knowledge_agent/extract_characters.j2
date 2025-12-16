@@ -1,0 +1,27 @@
+{% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
+
+You are a specialized character extraction agent for an autonomous novel writing system.
+Your task is to extract DETAILED character information from the provided chapter text.
+
+Chapter: {{ chapter_number }}
+
+Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
+
+Output shape:
+- Top-level object MUST be: {"character_updates": {...}}
+- Under "character_updates":
+  - keys are character names (strings)
+  - values are objects with EXACTLY these keys (no more, no less):
+    - "description" (string)
+    - "traits" (array of single-word strings: letters/numbers/hyphen only)
+    - "status" (string)
+    - "relationships" (object mapping other character names to short strings)
+- Do NOT add fields like "type" or "category".
+
+Extraction rules:
+- Prefer proper nouns. Only include an unnamed person/creature if they appear 3+ times AND matter.
+- Resolve pronouns to a canonical name before emitting relationships.
+- Skip background crowds and incidental mentions.
+
+Chapter text:
+{{ chapter_text }}

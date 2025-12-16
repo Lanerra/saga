@@ -1,22 +1,85 @@
 # tests/test_prompts_templates.py
 import pytest
-from jinja2 import DictLoader, Environment, StrictUndefined
+from jinja2 import (
+    DictLoader,
+    Environment,
+    StrictUndefined,
+    TemplateError,
+    UndefinedError,
+)
 
 import prompts.prompt_renderer as pr
 
 
-def test_renderer_uses_strict_undefined(monkeypatch):
+def test_narrative_system_prompt_allows_json_only_when_explicitly_requested() -> None:
+    """
+    Prompt contract guard for audit item 5.1 (narrative system prompt vs scene planning JSON).
+
+    Contract:
+    - Narrative agent defaults to prose-first drafting behavior.
+    - If the user/template explicitly requests JSON, the system prompt must permit
+      JSON-only output (no surrounding prose).
+    """
+    # Ensure we read current on-disk content (get_system_prompt is cached).
+    pr.get_system_prompt.cache_clear()
+
+    system_prompt = pr.get_system_prompt("narrative_agent")
+
+    # New hierarchy: follow requested format.
+    assert "Follow the output format explicitly requested" in system_prompt
+
+    # Must explicitly permit JSON-only when requested.
+    assert "Output **valid JSON only**" in system_prompt or "Output valid JSON only" in system_prompt
+
+    # Must retain default prose guidance for drafting tasks.
+    assert "continuous prose" in system_prompt
+    assert "Do not wrap the story in code fences" in system_prompt
+
+
+def test_initialization_system_prompt_prioritizes_json_when_grammar_enforced() -> None:
+    """
+    Prompt contract guard for audit item 5.3 (initialization system prompt vs grammar-enforced JSON).
+
+    Contract:
+    - Initialization agent may have prose-oriented defaults for non-structured tasks.
+    - If a task requests JSON / structured output, OR the runtime enforces a grammar and parses JSON,
+      the system prompt must unambiguously prioritize JSON-only output (no markdown, no fences, no commentary).
+    - Must NOT regress to the older ambiguous phrasing that suggests markdown is the default unless JSON is
+      "specifically requested" (which conflicts with grammar-enforced JSON call-sites).
+    """
+    # Ensure we read current on-disk content (get_system_prompt is cached).
+    pr.get_system_prompt.cache_clear()
+
+    system_prompt = pr.get_system_prompt("initialization")
+
+    # Must explicitly describe the structured-output override and JSON-only requirement.
+    assert "Structured-output override" in system_prompt
+    assert "valid JSON only" in system_prompt or "valid JSON" in system_prompt
+
+    # Must explicitly forbid markdown/code fences/extraneous text for structured tasks.
+    assert "No markdown" in system_prompt
+    assert "No code fences" in system_prompt
+    assert "No extra commentary" in system_prompt
+
+    # Must acknowledge grammar/runtime enforcement as a trigger (not only explicit request wording).
+    assert "enforcing a grammar" in system_prompt or "grammar" in system_prompt
+
+    # Must not include the older ambiguous prose-default language.
+    assert "unless a structured format like JSON is specifically requested" not in system_prompt
+
+
+def test_renderer_uses_strict_undefined(monkeypatch: pytest.MonkeyPatch) -> None:
     # Use the module's env and verify missing var raises
     env = Environment(
         loader=DictLoader({"tpl.j2": "Hello {{ missing }}"}),
         undefined=StrictUndefined,
     )
     monkeypatch.setattr(pr, "_env", env)
-    with pytest.raises(Exception):
+    with pytest.raises((UndefinedError, TemplateError)):
         pr.render_prompt("tpl.j2", {})
 
 
-def test_draft_scene_outputs_text_only(monkeypatch):
+def test_draft_scene_outputs_text_only(monkeypatch: pytest.MonkeyPatch) -> None:
     # Ensure no header is enforced by template header block
     env = Environment(
         loader=DictLoader(
@@ -28,10 +91,7 @@ def test_draft_scene_outputs_text_only(monkeypatch):
                     "{% block instructions %}4. Output ONLY the scene text.{% endblock %}"
                     "{% block output_header %}{% endblock %}"
                 ),
-                "narrative_agent/base_draft.j2": (
-                    "{{ 'context' }}{% block output_header %}{% endblock %}"
-                    "{% block instructions %}{% endblock %}"
-                ),
+                "narrative_agent/base_draft.j2": ("{{ 'context' }}{% block output_header %}{% endblock %}" "{% block instructions %}{% endblock %}"),
             }
         )
     )
@@ -49,3 +109,31 @@ def test_draft_scene_outputs_text_only(monkeypatch):
         },
     )
     assert "BEGIN SCENE" not in out
+
+
+def test_extract_relationships_prompt_contract_requires_wrapper_object() -> None:
+    """
+    Regression guard for audit item 4.2.3 (relationship extraction wrapper drift).
+
+    This test is intentionally a *prompt contract* test (not parser behavior): it
+    renders the real template and asserts the strict output contract is present.
+    """
+    rendered = pr.render_prompt(
+        "knowledge_agent/extract_relationships.j2",
+        {
+            "novel_title": "Test Novel",
+            "novel_genre": "Fantasy",
+            "protagonist": "Hero",
+            "chapter_number": 1,
+            "chapter_text": "Hero meets Bob in the Castle.",
+        },
+    )
+
+    # Wrapper key must be explicitly required.
+    assert '"kg_triples"' in rendered or "kg_triples" in rendered
+
+    # JSON-only output contract must be explicit.
+    assert "Return ONLY valid JSON" in rendered
+
+    # Must forbid returning a bare list (the drift regression we want to catch).
+    assert "Do NOT return a bare list" in rendered

@@ -1,15 +1,11 @@
 # core/db_manager.py
-# core_db/base_db_manager.py
 import asyncio
 from typing import Any
 
 import numpy as np
 import structlog
-from neo4j import (  # type: ignore
-    GraphDatabase,
-    ManagedTransaction,
-)
-from neo4j.exceptions import ServiceUnavailable  # type: ignore
+from neo4j import Driver, GraphDatabase, ManagedTransaction
+from neo4j.exceptions import ServiceUnavailable
 
 import config
 from core.exceptions import (
@@ -17,35 +13,45 @@ from core.exceptions import (
     DatabaseTransactionError,
     handle_database_error,
 )
-from models.kg_constants import NODE_LABELS, RELATIONSHIP_TYPES
+from models.kg_constants import RELATIONSHIP_TYPES, VALID_NODE_LABELS
 
 logger = structlog.get_logger(__name__)
 
 
 class Neo4jManagerSingleton:
-    _instance = None
+    _instance: "Neo4jManagerSingleton" = None  # type: ignore
+    _initialized_flag: bool
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "Neo4jManagerSingleton":
         if not cls._instance:
-            cls._instance = super(Neo4jManagerSingleton, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance._initialized_flag = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if self._initialized_flag:
             return
 
         self.logger = structlog.get_logger(__name__)
-        self.driver: GraphDatabase.driver | None = None  # type: ignore
+        self.driver: Driver | None = None
         # Cache of property keys discovered via CALL db.propertyKeys()
         self._property_keys_cache: set[str] | None = None
         self._property_keys_cache_ts: float | None = None
-        self._initialized_flag = True
-        self.logger.info(
-            "Neo4jManagerSingleton initialized. Call connect() to establish connection."
-        )
 
-    async def connect(self):
+        # Cached APOC capability detection (CORE-010)
+        # - None => not yet checked this process
+        # - bool => cached availability
+        self._apoc_available_cache: bool | None = None
+        self._apoc_availability_warning_logged: bool = False
+
+        # Cached server info (best-effort; used for diagnostics and deprecation targeting)
+        self._neo4j_server_info: dict[str, Any] | None = None
+        self._neo4j_server_info_logged: bool = False
+
+        self._initialized_flag = True
+        self.logger.info("Neo4jManagerSingleton initialized. Call connect() to establish connection.")
+
+    async def connect(self) -> None:
         """Establish a synchronous Neo4j driver and verify connectivity."""
         # Close any existing driver first (mirrors previous async behavior)
         if self.driver:
@@ -53,17 +59,35 @@ class Neo4jManagerSingleton:
 
         try:
             # Synchronous driver creation
-            sync_driver = GraphDatabase.driver(
-                config.NEO4J_URI, auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
-            )
+            sync_driver = GraphDatabase.driver(config.NEO4J_URI, auth=(config.NEO4J_USER, config.NEO4J_PASSWORD))
             # Verify connectivity in a thread to keep the async signature
             await asyncio.to_thread(sync_driver.verify_connectivity)
             self.driver = sync_driver
             self.logger.info(f"Successfully connected to Neo4j at {config.NEO4J_URI}")
+
+            # Best-effort: log server version/edition once to support diagnosing
+            # Cypher deprecations and syntax differences across Neo4j versions.
+            try:
+                info = await asyncio.to_thread(self._sync_fetch_neo4j_server_info)
+                if info and not self._neo4j_server_info_logged:
+                    self._neo4j_server_info_logged = True
+                    self._neo4j_server_info = info
+                    self.logger.info(
+                        "Neo4j server info",
+                        uri=config.NEO4J_URI,
+                        neo4j_component=info.get("component"),
+                        neo4j_version=info.get("version"),
+                        neo4j_edition=info.get("edition"),
+                    )
+            except Exception as info_exc:  # pragma: no cover - diagnostics only
+                self.logger.debug(
+                    "Could not determine Neo4j server version via dbms.components()",
+                    uri=config.NEO4J_URI,
+                    error=str(info_exc),
+                )
+
         except ServiceUnavailable as e:
-            self.logger.critical(
-                "Neo4j service unavailable", uri=config.NEO4J_URI, error=str(e)
-            )
+            self.logger.critical("Neo4j service unavailable", uri=config.NEO4J_URI, error=str(e))
             self.driver = None
             raise DatabaseConnectionError(
                 "Neo4j database is not available",
@@ -72,7 +96,7 @@ class Neo4jManagerSingleton:
                     "original_error": str(e),
                     "suggestion": "Ensure the Neo4j database is running and accessible",
                 },
-            )
+            ) from e
         except Exception as e:
             self.logger.critical(
                 "Unexpected error during Neo4j connection",
@@ -81,24 +105,38 @@ class Neo4jManagerSingleton:
                 exc_info=True,
             )
             self.driver = None
-            raise handle_database_error("connection", e, uri=config.NEO4J_URI)
+            raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
 
-    async def close(self):
+    def _sync_fetch_neo4j_server_info(self) -> dict[str, Any] | None:
+        """Fetch Neo4j server info via dbms.components (best-effort).
+
+        Notes:
+        - This is intentionally synchronous and is meant to be called via asyncio.to_thread().
+        - Procedure availability varies across Neo4j versions; failures are swallowed by caller.
+        """
+        self._ensure_connected_sync()
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
+            # Neo4j 4/5 typically support dbms.components().
+            rec = session.run("CALL dbms.components() YIELD name, versions, edition " "RETURN name AS component, versions[0] AS version, edition " "LIMIT 1").single()
+            if not rec:
+                return None
+            return dict(rec)
+
+    async def close(self) -> None:
         """Close the synchronous driver."""
         if self.driver:
             try:
                 await asyncio.to_thread(self.driver.close)
                 self.logger.info("Neo4j driver closed.")
             except Exception as e:
-                self.logger.error(
-                    f"Error while closing Neo4j driver: {e}", exc_info=True
-                )
+                self.logger.error(f"Error while closing Neo4j driver: {e}", exc_info=True)
             finally:
                 self.driver = None
         else:
             self.logger.info("No active Neo4j driver to close (driver was None).")
 
-    async def _ensure_connected(self):
+    async def _ensure_connected(self) -> None:
         if self.driver is None:
             self.logger.info("Driver is None, attempting to connect.")
             await self.connect()
@@ -106,9 +144,7 @@ class Neo4jManagerSingleton:
         if self.driver is None:
             raise DatabaseConnectionError(
                 "Neo4j driver not initialized",
-                details={
-                    "suggestion": "Call connect() method first to establish database connection"
-                },
+                details={"suggestion": "Call connect() method first to establish database connection"},
             )
 
     # -------------------------------------------------------------------------
@@ -123,40 +159,64 @@ class Neo4jManagerSingleton:
     ) -> list[dict[str, Any]]:
         self.logger.debug(f"Executing Cypher query: {query} with params: {parameters}")
         result_cursor = tx.run(query, parameters)
-        return list(result_cursor)
+        return [dict(record) for record in result_cursor]
 
-    def _sync_execute_read_query(
-        self, query: str, parameters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    def _sync_execute_read_query(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            return session.read_transaction(
-                self._sync_execute_query_tx, query, parameters
-            )
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
+            # Neo4j Python driver v5+ deprecates `read_transaction` in favor of `execute_read`.
+            # We keep the transaction function signature identical (tx, query, parameters)
+            # to preserve behavior and return values.
+            return session.execute_read(self._sync_execute_query_tx, query, parameters)
 
-    def _sync_execute_write_query(
-        self, query: str, parameters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    def _sync_execute_write_query(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
-            return session.write_transaction(
-                self._sync_execute_query_tx, query, parameters
-            )
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
+            # Neo4j Python driver v5+ deprecates `write_transaction` in favor of `execute_write`.
+            return session.execute_write(self._sync_execute_query_tx, query, parameters)
 
-    def _sync_execute_cypher_batch(
-        self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
-    ):
+    def _sync_execute_cypher_batch(self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]) -> None:
         if not cypher_statements_with_params:
             self.logger.info("execute_cypher_batch: No statements to execute.")
             return
 
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
             tx = session.begin_transaction()
             try:
-                for query, params in cypher_statements_with_params:
+                for statement_index, (query, params) in enumerate(cypher_statements_with_params):
                     self.logger.debug(f"Batch Cypher: {query} with params {params}")
-                    tx.run(query, params)
+                    try:
+                        tx.run(query, params)
+                    except Exception as statement_error:
+                        error_code = getattr(statement_error, "code", "UNKNOWN")
+                        error_message = getattr(statement_error, "message", str(statement_error))
+
+                        self.logger.error(
+                            "🔴 CONSTRAINT VALIDATION ERROR - Statement failed in batch",
+                            statement_index=statement_index,
+                            total_statements=len(cypher_statements_with_params),
+                            error_code=error_code,
+                            error_message=error_message,
+                            failing_query=query,
+                            failing_params=params,
+                            exc_info=True,
+                        )
+
+                        self.logger.error(
+                            f"🔍 FULL ERROR DETAILS:\n"
+                            f"  Error Code: {error_code}\n"
+                            f"  Error Message: {error_message}\n"
+                            f"  Statement Index: {statement_index + 1}/{len(cypher_statements_with_params)}\n"
+                            f"  Failing Query:\n{query}\n"
+                            f"  Parameters: {params}"
+                        )
+
+                        raise
+
                 tx.commit()
                 self.logger.info(
                     "Neo4j: Batch processed %d KG triple statements. Constraint validation stats: %d/%d accepted, %d corrected, %d rejected.",
@@ -167,9 +227,14 @@ class Neo4jManagerSingleton:
                     0,
                 )
             except Exception as e:
+                error_code = getattr(e, "code", "UNKNOWN")
+                error_message = getattr(e, "message", str(e))
+
                 self.logger.error(
                     "Error in Cypher batch execution",
                     batch_size=len(cypher_statements_with_params),
+                    error_code=error_code,
+                    error_message=error_message,
                     error=str(e),
                     exc_info=True,
                 )
@@ -179,12 +244,14 @@ class Neo4jManagerSingleton:
                     "Batch Cypher execution failed",
                     details={
                         "batch_size": len(cypher_statements_with_params),
+                        "error_code": error_code,
+                        "error_message": error_message,
                         "original_error": str(e),
                         "operation": "batch_execution",
                     },
-                )
+                ) from e
 
-    def _ensure_connected_sync(self):
+    def _ensure_connected_sync(self) -> None:
         """Synchronous counterpart of _ensure_connected for thread helpers."""
         if self.driver is None:
             # This should only be called from within a thread where we
@@ -199,27 +266,130 @@ class Neo4jManagerSingleton:
     # Public async API – thin wrappers around the sync helpers
     # -------------------------------------------------------------------------
 
-    async def execute_read_query(
-        self, query: str, parameters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    async def execute_read_query(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         await self._ensure_connected()
         return await asyncio.to_thread(self._sync_execute_read_query, query, parameters)
 
-    async def execute_write_query(
-        self, query: str, parameters: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
+    async def execute_write_query(self, query: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         await self._ensure_connected()
-        return await asyncio.to_thread(
-            self._sync_execute_write_query, query, parameters
-        )
+        return await asyncio.to_thread(self._sync_execute_write_query, query, parameters)
 
-    async def execute_cypher_batch(
-        self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]
-    ):
+    async def execute_cypher_batch(self, cypher_statements_with_params: list[tuple[str, dict[str, Any]]]) -> None:
         await self._ensure_connected()
-        return await asyncio.to_thread(
-            self._sync_execute_cypher_batch, cypher_statements_with_params
-        )
+        await asyncio.to_thread(self._sync_execute_cypher_batch, cypher_statements_with_params)
+
+    async def execute_in_transaction(
+        self,
+        transaction_func: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Execute a function within a Neo4j transaction with automatic rollback on errors.
+
+        This method provides transaction safety for complex multi-step operations.
+        If any operation fails, the entire transaction is rolled back to maintain
+        database consistency.
+
+        Usage:
+            async def my_transaction_operations(tx, param1, param2):
+                result1 = tx.run("CREATE (n:Node {id: $id})", id=param1)
+                result2 = tx.run("MATCH (n:Node {id: $id}) RETURN n", id=param1)
+                return result2.single()
+
+            result = await neo4j_manager.execute_in_transaction(
+                my_transaction_operations,
+                "node1",
+                "value2"
+            )
+
+        Args:
+            transaction_func: Synchronous function that takes (tx, *args, **kwargs)
+                            and performs Neo4j operations within the transaction
+            *args: Positional arguments to pass to transaction_func
+            **kwargs: Keyword arguments to pass to transaction_func
+
+        Returns:
+            Result of transaction_func
+
+        Raises:
+            DatabaseTransactionError: If transaction fails and is rolled back
+            DatabaseConnectionError: If driver is not connected
+        """
+        await self._ensure_connected()
+
+        def _run_transaction() -> Any:
+            """Synchronous function to run in thread."""
+            assert self.driver is not None
+            with self.driver.session(database=config.NEO4J_DATABASE) as session:
+                tx = session.begin_transaction()
+                try:
+                    result = transaction_func(tx, *args, **kwargs)
+                    tx.commit()
+                    self.logger.debug("execute_in_transaction: transaction committed successfully")
+                    return result
+                except Exception as e:
+                    self.logger.error(
+                        "execute_in_transaction: transaction failed, rolling back",
+                        error=str(e),
+                        exc_info=True,
+                    )
+                    if not tx.closed():
+                        tx.rollback()
+                    raise DatabaseTransactionError(
+                        "Transaction failed and was rolled back",
+                        details={
+                            "original_error": str(e),
+                            "operation": "execute_in_transaction",
+                        },
+                    ) from e
+
+        return await asyncio.to_thread(_run_transaction)
+
+    # -------------------------------------------------------------------------
+    # Capability discovery helpers (APOC, etc.)
+    # -------------------------------------------------------------------------
+
+    async def is_apoc_available(self, *, log_warning_once: bool = False) -> bool:
+        """Return True if APOC procedures appear to be callable on this deployment.
+
+        Design goals:
+        - Cached once per process (avoids repeated procedure calls).
+        - Safe under restricted environments: any error is interpreted as APOC unavailable.
+        - Version-agnostic: avoids relying on procedure listing permissions (e.g. dbms.procedures()).
+
+        Implementation:
+        - Attempt a trivial `RETURN apoc.version()` which works on common APOC installs.
+        - If the procedure is missing or blocked, Neo4j will raise an error; treat as unavailable.
+
+        Args:
+            log_warning_once: If True, emit a clear warning once per process when APOC is
+                              determined to be unavailable.
+
+        Returns:
+            bool: Whether APOC appears to be available.
+        """
+        if self._apoc_available_cache is not None:
+            return self._apoc_available_cache
+
+        # Ensure we have a driver; execute_read_query() will connect if needed.
+        try:
+            _ = await self.execute_read_query("RETURN apoc.version() AS version")
+            self._apoc_available_cache = True
+            return True
+        except Exception as e:
+            # Treat all errors as "unavailable" to be safe on deployments that
+            # restrict procedure invocation or introspection.
+            self._apoc_available_cache = False
+
+            if log_warning_once and not self._apoc_availability_warning_logged:
+                self._apoc_availability_warning_logged = True
+                self.logger.warning(
+                    "APOC procedures unavailable; continuing without APOC-dependent features",
+                    error=str(e),
+                )
+
+            return False
 
     # -------------------------------------------------------------------------
     # Schema/property key discovery helpers
@@ -232,16 +402,10 @@ class Neo4jManagerSingleton:
         """
         await self._ensure_connected()
         try:
-            results = await asyncio.to_thread(
-                self._sync_execute_read_query, "CALL db.propertyKeys()", None
-            )
+            results = await asyncio.to_thread(self._sync_execute_read_query, "CALL db.propertyKeys()", None)
             keys: set[str] = set()
             for rec in results:
-                val = (
-                    rec.get("propertyKey")
-                    or rec.get("propertyName")
-                    or rec.get("property")
-                )
+                val = rec.get("propertyKey") or rec.get("propertyName") or rec.get("property")
                 if isinstance(val, str):
                     keys.add(val)
             self._property_keys_cache = keys
@@ -269,11 +433,7 @@ class Neo4jManagerSingleton:
         try:
             import time
 
-            if (
-                self._property_keys_cache is None
-                or self._property_keys_cache_ts is None
-                or (time.monotonic() - self._property_keys_cache_ts) > max_age_seconds
-            ):
+            if self._property_keys_cache is None or self._property_keys_cache_ts is None or (time.monotonic() - self._property_keys_cache_ts) > max_age_seconds:
                 await self.refresh_property_keys_cache()
         except Exception:
             await self.refresh_property_keys_cache()
@@ -285,58 +445,79 @@ class Neo4jManagerSingleton:
         Phase 1: Schema-only operations (constraints, indexes)
         Phase 2: Data operations (relationship and node type placeholders)
         """
-        self.logger.info(
-            "Creating/verifying Neo4j schema elements (phased execution)..."
-        )
+        self.logger.info("Creating/verifying Neo4j schema elements (phased execution)...")
         # Phase 1
         await self._create_constraints_and_indexes()
         # Phase 2
         await self._create_type_placeholders()
-        self.logger.info(
-            "Neo4j schema (indexes, constraints, labels, relationship types, vector index) verification process complete."
-        )
+        self.logger.info("Neo4j schema (indexes, constraints, labels, relationship types, vector index) verification process complete.")
 
     async def _create_constraints_and_indexes(self) -> None:
         """Create constraints, indexes, and vector index in schema‑only transactions."""
         self.logger.info("Phase 1: Creating constraints and indexes...")
 
         core_constraints_queries = [
-            "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
-            "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
+            # Canonical labeling contract:
+            # - Domain node labels are ONLY the 9 canonical labels in VALID_NODE_LABELS.
+            # - Subtypes (PlotPoint/DevelopmentEvent/WorldElaborationEvent/etc.) must not be labels.
+            # - A small allowlist of *internal* infrastructure labels is supported:
+            #   NovelInfo, WorldContainer, ValueNode.
+            #
+            # ID Unique Constraints (domain)
+            "CREATE CONSTRAINT novel_id_unique IF NOT EXISTS FOR (n:Novel) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT chapter_id_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.id IS UNIQUE",
+            "CREATE CONSTRAINT character_id_unique IF NOT EXISTS FOR (char:Character) REQUIRE char.id IS UNIQUE",
+            "CREATE CONSTRAINT location_id_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.id IS UNIQUE",
+            "CREATE CONSTRAINT event_id_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.id IS UNIQUE",
+            "CREATE CONSTRAINT item_id_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.id IS UNIQUE",
+            "CREATE CONSTRAINT organization_id_unique IF NOT EXISTS FOR (o:Organization) REQUIRE o.id IS UNIQUE",
+            "CREATE CONSTRAINT concept_id_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
+            "CREATE CONSTRAINT trait_id_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.id IS UNIQUE",
+            # Name Unique Constraints (domain; using name as key for lookup)
+            "CREATE CONSTRAINT novel_title_unique IF NOT EXISTS FOR (n:Novel) REQUIRE n.title IS UNIQUE",
             "CREATE CONSTRAINT chapter_number_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.number IS UNIQUE",
             "CREATE CONSTRAINT character_name_unique IF NOT EXISTS FOR (char:Character) REQUIRE char.name IS UNIQUE",
-            # WorldElement unique id constraint is legacy; only create when enabled
-            # WorldElement legacy constraint removed
-            "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
+            "CREATE CONSTRAINT location_name_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.name IS UNIQUE",
+            "CREATE CONSTRAINT event_name_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.name IS UNIQUE",
+            "CREATE CONSTRAINT item_name_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.name IS UNIQUE",
+            "CREATE CONSTRAINT organization_name_unique IF NOT EXISTS FOR (o:Organization) REQUIRE o.name IS UNIQUE",
+            "CREATE CONSTRAINT concept_name_unique IF NOT EXISTS FOR (c:Concept) REQUIRE c.name IS UNIQUE",
             "CREATE CONSTRAINT trait_name_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.name IS UNIQUE",
-            "CREATE CONSTRAINT plotPoint_id_unique IF NOT EXISTS FOR (pp:PlotPoint) REQUIRE pp.id IS UNIQUE",
+            # Support constraints (internal infrastructure labels)
+            "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
+            "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
             "CREATE CONSTRAINT valueNode_value_type_unique IF NOT EXISTS FOR (vn:ValueNode) REQUIRE (vn.value, vn.type) IS UNIQUE",
-            "CREATE CONSTRAINT developmentEvent_id_unique IF NOT EXISTS FOR (dev:DevelopmentEvent) REQUIRE dev.id IS UNIQUE",
-            "CREATE CONSTRAINT worldElaborationEvent_id_unique IF NOT EXISTS FOR (elab:WorldElaborationEvent) REQUIRE elab.id IS UNIQUE",
         ]
 
-        index_queries = [
-            "CREATE INDEX entity_name_property_idx IF NOT EXISTS FOR (e:Entity) ON (e.name)",
-            "CREATE INDEX entity_is_provisional_idx IF NOT EXISTS FOR (e:Entity) ON (e.is_provisional)",
-            "CREATE INDEX entity_is_deleted_idx IF NOT EXISTS FOR (e:Entity) ON (e.is_deleted)",
-            "CREATE INDEX plotPoint_sequence IF NOT EXISTS FOR (pp:PlotPoint) ON (pp.sequence)",
-            "CREATE INDEX developmentEvent_chapter_updated IF NOT EXISTS FOR (d:DevelopmentEvent) ON (d.chapter_updated)",
-            "CREATE INDEX worldElaborationEvent_chapter_updated IF NOT EXISTS FOR (we:WorldElaborationEvent) ON (we.chapter_updated)",
-            # WorldElement legacy indexes removed
-            "CREATE INDEX chapter_is_provisional IF NOT EXISTS FOR (c:`Chapter`) ON (c.is_provisional)",
-        ]
+        # Generate indexes for common properties across all valid entity types
+        index_queries = []
+        for label in ["Character", "Location", "Event", "Item", "Organization", "Concept", "Trait"]:
+            index_queries.extend(
+                [
+                    f"CREATE INDEX {label.lower()}_name_idx IF NOT EXISTS FOR (n:{label}) ON (n.name)",
+                    f"CREATE INDEX {label.lower()}_category_idx IF NOT EXISTS FOR (n:{label}) ON (n.category)",
+                    f"CREATE INDEX {label.lower()}_type_idx IF NOT EXISTS FOR (n:{label}) ON (n.type)",
+                    f"CREATE INDEX {label.lower()}_is_provisional_idx IF NOT EXISTS FOR (n:{label}) ON (n.is_provisional)",
+                    f"CREATE INDEX {label.lower()}_is_deleted_idx IF NOT EXISTS FOR (n:{label}) ON (n.is_deleted)",
+                ]
+            )
+
+        # Additional specific indexes
+        index_queries.extend(
+            [
+                "CREATE INDEX chapter_is_provisional IF NOT EXISTS FOR (c:`Chapter`) ON (c.is_provisional)",
+            ]
+        )
 
         # Vector index creation – backticks required for map keys with dot
         # First, execute constraints and regular indexes in a batch.
         # Filter out None (when legacy disabled)
-        schema_only_queries = [
-            q for q in (core_constraints_queries + index_queries) if q
-        ]
+        schema_only_queries = [q for q in (core_constraints_queries + index_queries) if q]
         try:
-            await self._execute_schema_batch(schema_only_queries)
-            self.logger.info(
-                f"Phase 1 complete: Successfully created {len(schema_only_queries)} schema elements."
-            )
+            # CORE-001: schema creation must not block the asyncio event loop.
+            # The Neo4j driver used here is synchronous, so run schema batch execution in a worker thread.
+            await asyncio.to_thread(self._execute_schema_batch, schema_only_queries)
+            self.logger.info(f"Phase 1 complete: Successfully created {len(schema_only_queries)} schema elements.")
         except Exception as e:
             self.logger.error(
                 f"Phase 1 batch failed: {e}. Attempting individual operations...",
@@ -357,10 +538,7 @@ class Neo4jManagerSingleton:
             await self.execute_write_query(vector_index_query)
             self.logger.info("Vector index created successfully.")
         except Exception as e:
-            self.logger.warning(
-                "Vector index creation failed (may be unsupported by current Neo4j version). "
-                f"Error: {e}"
-            )
+            self.logger.warning("Vector index creation failed (may be unsupported by current Neo4j version). " f"Error: {e}")
 
     async def _create_type_placeholders(self) -> None:
         """Create relationship type and node label placeholders in separate data transactions."""
@@ -368,43 +546,38 @@ class Neo4jManagerSingleton:
 
         relationship_type_queries = []
         for rel_type in RELATIONSHIP_TYPES:
-            query = (
-                f"CREATE (a:__RelTypePlaceholder)-[:{rel_type}]->"
-                f"(b:__RelTypePlaceholder) WITH a,b DETACH DELETE a,b"
-            )
+            query = f"CREATE (a:__RelTypePlaceholder)-[:{rel_type}]->" f"(b:__RelTypePlaceholder) WITH a,b DETACH DELETE a,b"
             relationship_type_queries.append(query)
 
         node_label_queries = []
-        for label in NODE_LABELS:
+        for label in VALID_NODE_LABELS:
             query = f"CREATE (a:`{label}`) WITH a DELETE a"
             node_label_queries.append(query)
 
         # Property-key warmup: create ephemeral nodes/rels with commonly used properties
         property_warmup_queries = [
             # Warm up node timestamp keys
-            "CREATE (e:__PropWarmup:Entity {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
-            # Warm up common node properties that may be referenced before they exist anywhere
-            "CREATE (e:__PropWarmupNodeProps:Entity {description: '', source: '', is_provisional: false, category: ''}) WITH e DELETE e",
+            "CREATE (e:__PropWarmup {created_ts: timestamp(), updated_ts: timestamp()}) WITH e DELETE e",
+            # Warm up CRITICAL common node properties (name, id, description, category, etc.)
+            ("CREATE (e:__PropWarmupNodeProps {name: '', id: '', description: '', " "source: '', is_provisional: false, category: '', summary: '', text: ''}) WITH e DELETE e"),
+            # Warm up ValueNode-specific properties
+            "CREATE (v:__PropWarmupValueNode:ValueNode {value: ''}) WITH v DELETE v",
+            # Warm up NovelInfo-specific properties
+            ("CREATE (ni:__PropWarmupNovelInfo:NovelInfo {id: '', theme: '', " "central_conflict: ''}) WITH ni DELETE ni"),
             # Warm up typical relationship properties used across queries (ensure keys are registered)
             (
-                "CREATE (a:__PropWarmupA:Entity)-[r:__WARMUP_REL {chapter_added: 0, "
-                "confidence: 1.0, is_provisional: false, source_profile_managed: true, type: '', description: ''}]->(b:__PropWarmupB:Entity) "
+                "CREATE (a:__PropWarmupA)-[r:__WARMUP_REL {chapter_added: 0, "
+                "confidence: 1.0, is_provisional: false, source_profile_managed: true, type: '', description: ''}]->(b:__PropWarmupB) "
                 "WITH a,r,b DELETE r, a, b"
             ),
         ]
 
-        data_operations = (
-            relationship_type_queries + node_label_queries + property_warmup_queries
-        )
-        data_ops_with_params: list[tuple[str, dict[str, Any]]] = [
-            (query, {}) for query in data_operations
-        ]
+        data_operations = relationship_type_queries + node_label_queries + property_warmup_queries
+        data_ops_with_params: list[tuple[str, dict[str, Any]]] = [(query, {}) for query in data_operations]
 
         try:
             await self.execute_cypher_batch(data_ops_with_params)
-            self.logger.info(
-                f"Phase 2 complete: Successfully created {len(data_operations)} type placeholders."
-            )
+            self.logger.info(f"Phase 2 complete: Successfully created {len(data_operations)} type placeholders.")
         except Exception as e:
             self.logger.error(
                 f"Phase 2 batch failed: {e}. Attempting individual operations...",
@@ -413,18 +586,20 @@ class Neo4jManagerSingleton:
             for query_text in data_operations:
                 try:
                     await self.execute_write_query(query_text)
-                    self.logger.debug(
-                        "Phase 2 fallback: Successfully created type placeholder."
-                    )
+                    self.logger.debug("Phase 2 fallback: Successfully created type placeholder.")
                 except Exception as individual_e:
-                    self.logger.warning(
-                        f"Phase 2 fallback: Failed to create type placeholder: {individual_e}"
-                    )
+                    self.logger.warning(f"Phase 2 fallback: Failed to create type placeholder: {individual_e}")
 
-    async def _execute_schema_batch(self, queries: list[str]) -> None:
-        """Execute schema operations in isolation (no data writes)."""
+    def _execute_schema_batch(self, queries: list[str]) -> None:
+        """Execute schema operations in isolation (no data writes).
+
+        Notes:
+        - This uses the synchronous Neo4j driver APIs (session/tx/tx.run).
+        - Callers from async code MUST wrap this via asyncio.to_thread(...) to avoid blocking the event loop.
+        """
         self._ensure_connected_sync()
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:  # type: ignore
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
             tx = session.begin_transaction()
             try:
                 for query in queries:
@@ -441,13 +616,55 @@ class Neo4jManagerSingleton:
         for query_text in queries:
             try:
                 await self.execute_write_query(query_text)
-                self.logger.info(
-                    f"Fallback: Successfully applied schema operation: '{query_text[:100]}...'"
-                )
+                self.logger.info(f"Fallback: Successfully applied schema operation: '{query_text[:100]}...'")
             except Exception as individual_e:
-                self.logger.warning(
-                    f"Fallback: Failed to apply schema operation '{query_text[:100]}...': {individual_e}"
+                self.logger.warning(f"Fallback: Failed to apply schema operation '{query_text[:100]}...': {individual_e}")
+
+    # -------------------------------------------------------------------------
+    # Database maintenance methods
+    # -------------------------------------------------------------------------
+
+    async def cleanup_orphaned_traits(self) -> int:
+        """
+        Remove Trait nodes that have no incoming HAS_TRAIT relationships.
+
+        This cleanup removes orphaned Trait nodes that were created but are no longer
+        referenced by any Character or WorldItem nodes. This can happen when:
+        - Characters/WorldItems are deleted
+        - Traits are updated and old trait relationships are removed
+
+        Returns:
+            Number of orphaned Trait nodes deleted
+        """
+        query = """
+        MATCH (t:Trait)
+        WHERE NOT EXISTS(()-[:HAS_TRAIT]->(t))
+        WITH t, t.name AS trait_name
+        DELETE t
+        RETURN count(trait_name) AS deleted_count
+        """
+
+        try:
+            result = await self.execute_write_query(query)
+            deleted_count = result[0].get("deleted_count", 0) if result else 0
+
+            if deleted_count > 0:
+                self.logger.info(
+                    "cleanup_orphaned_traits: removed orphaned Trait nodes",
+                    deleted_count=deleted_count,
                 )
+            else:
+                self.logger.debug("cleanup_orphaned_traits: no orphaned Trait nodes found")
+
+            return deleted_count
+
+        except Exception as e:
+            self.logger.error(
+                "cleanup_orphaned_traits: error during cleanup",
+                error=str(e),
+                exc_info=True,
+            )
+            raise
 
     # -------------------------------------------------------------------------
     # Helper methods for embeddings – unchanged
@@ -457,28 +674,26 @@ class Neo4jManagerSingleton:
         if embedding is None:
             return None
         if not isinstance(embedding, np.ndarray):
-            self.logger.warning(
-                f"Attempting to convert non-numpy array to list for Neo4j: {type(embedding)}"
-            )
+            self.logger.warning(f"Attempting to convert non-numpy array to list for Neo4j: {type(embedding)}")
             if hasattr(embedding, "tolist"):
-                return embedding.tolist()  # type: ignore
-            self.logger.error(
-                f"Cannot convert type {type(embedding)} to list for Neo4j."
-            )
+                result = embedding.tolist()  # type: ignore[union-attr]
+                if isinstance(result, list):
+                    return result
+            self.logger.error(f"Cannot convert type {type(embedding)} to list for Neo4j.")
             return None
-        return embedding.astype(np.float32).tolist()
+        result = embedding.astype(np.float32).tolist()
+        if isinstance(result, list):
+            return result
+        # If it's a scalar (0-d array), tolist() returns a scalar
+        return [result]
 
-    def list_to_embedding(
-        self, embedding_list: list[float | int] | None
-    ) -> np.ndarray | None:
+    def list_to_embedding(self, embedding_list: list[float | int] | None) -> np.ndarray | None:
         if embedding_list is None:
             return None
         try:
             return np.array(embedding_list, dtype=config.EMBEDDING_DTYPE)
         except Exception as e:
-            self.logger.error(
-                f"Error converting list to numpy embedding: {e}", exc_info=True
-            )
+            self.logger.error(f"Error converting list to numpy embedding: {e}", exc_info=True)
             return None
 
 

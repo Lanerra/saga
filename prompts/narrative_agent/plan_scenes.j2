@@ -1,0 +1,32 @@
+You are breaking a chapter outline into {{ num_scenes }} scenes.
+
+Context: {{ novel_title }} ({{ novel_genre }}) | Theme: {{ novel_theme }} | Chapter {{ chapter_number }}
+
+Chapter outline:
+- scene_description: {{ outline.scene_description }}
+- key_beats:
+{% for beat in outline.key_beats %}
+  - {{ beat }}
+{% endfor %}
+
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON.
+- Return a single JSON array (not an object).
+- No markdown.
+- No code fences.
+- No commentary.
+- Each scene MUST be an object with EXACTLY these keys:
+  - "title" (string)
+  - "pov_character" (string)
+  - "setting" (string)
+  - "characters" (array of strings)
+  - "plot_point" (string)
+  - "conflict" (string)
+  - "outcome" (string)
+- Use only character names (no parentheticals).
+
+Quality guidance:
+- Scenes must cover all key beats in order.
+- Each scene should have a clear turn (escalation or decision) and a hook into the next.
+
+Return the JSON array now.

@@ -1,14 +1,41 @@
 # utils/similarity.py
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import numpy as np
 import structlog
 
-from core.llm_interface_refactored import llm_service
-
 from .text_processing import get_text_segments
 
 logger = structlog.get_logger(__name__)
+
+
+class _LLMServiceProxy:
+    """
+    Lazy proxy for `core.llm_interface_refactored.llm_service`.
+
+    Why:
+    - `tests/test_similarity_segments.py` patches `utils.similarity.llm_service.async_get_embedding`
+    - importing `core.llm_interface_refactored` at module-import time can create circular imports:
+      utils -> core -> data_access -> processing -> utils
+
+    This proxy is always present (never None), but only imports the real service if/when called.
+    """
+
+    async_get_embedding: Callable[[str], Awaitable[np.ndarray | None]]
+
+    def __init__(self) -> None:
+        async def _lazy_async_get_embedding(text: str) -> np.ndarray | None:
+            from core.llm_interface_refactored import llm_service as real_llm_service
+
+            return await real_llm_service.async_get_embedding(text)
+
+        self.async_get_embedding = _lazy_async_get_embedding
+
+
+# Public patch point for tests (and a stable import surface for callers).
+llm_service: Any = _LLMServiceProxy()
 
 
 def numpy_cosine_similarity(vec1: np.ndarray | None, vec2: np.ndarray | None) -> float:
@@ -53,9 +80,7 @@ async def find_semantically_closest_segment(
 ) -> tuple[int, int, float] | None:
     """Find the document segment most semantically similar to ``query_text``."""
     if not original_doc or not query_text:
-        logger.debug(
-            "find_semantically_closest_segment: original_doc or query_text is empty."
-        )
+        logger.debug("find_semantically_closest_segment: original_doc or query_text is empty.")
         return None
 
     query_embedding = await llm_service.async_get_embedding(query_text)
@@ -79,25 +104,25 @@ async def find_semantically_closest_segment(
 
     segment_texts = [s[0] for s in segments_with_indices]
     # Bound concurrency for local hardware friendliness
-    max_concurrent = 4
+    max_concurrent = 2
     try:
         import config
 
-        max_concurrent = max(
-            1, int(getattr(config.settings, "MAX_CONCURRENT_LLM_CALLS", 4))
+        max_concurrent = max(1, int(getattr(config.settings, "MAX_CONCURRENT_LLM_CALLS", 4)))
+    except Exception as e:
+        logger.warning(
+            "Failed to read MAX_CONCURRENT_LLM_CALLS from config, using default",
+            default=max_concurrent,
+            error=str(e),
         )
-    except Exception:
-        pass
 
     semaphore = asyncio.Semaphore(max_concurrent)
 
-    async def _embed_with_limit(text: str):
+    async def _embed_with_limit(text: str) -> np.ndarray | None:
         async with semaphore:
             return await llm_service.async_get_embedding(text)
 
-    tasks = [
-        asyncio.create_task(_embed_with_limit(seg_text)) for seg_text in segment_texts
-    ]
+    tasks = [asyncio.create_task(_embed_with_limit(seg_text)) for seg_text in segment_texts]
     segment_embeddings_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, seg_embedding_or_exc in enumerate(segment_embeddings_results):
@@ -109,7 +134,8 @@ async def find_semantically_closest_segment(
             )
             continue
 
-        seg_embedding = seg_embedding_or_exc
+        # We know it's np.ndarray here
+        seg_embedding: np.ndarray = seg_embedding_or_exc  # type: ignore[assignment]
         similarity = numpy_cosine_similarity(query_embedding, seg_embedding)
 
         if similarity > highest_similarity:

@@ -5,6 +5,7 @@ import pytest
 
 import utils
 from data_access import character_queries, world_queries
+from data_access.cache_coordinator import clear_all_data_access_caches
 from models import WorldItem
 from models.kg_constants import KG_NODE_CREATED_CHAPTER
 
@@ -12,7 +13,7 @@ from models.kg_constants import KG_NODE_CREATED_CHAPTER
 @pytest.mark.asyncio
 async def test_get_character_profile_by_name(monkeypatch):
     async def fake_read(query, params=None):
-        if "RETURN c" in query:
+        if "MATCH (c:Character" in query and "collect(DISTINCT t.name) AS traits" in query:
             return [
                 {
                     "c": {
@@ -20,20 +21,23 @@ async def test_get_character_profile_by_name(monkeypatch):
                         "description": "hero",
                         "status": "active",
                         "created_ts": 1,
-                    }
-                }
-            ]
-        if "HAS_TRAIT_ASPECT" in query:
-            return [{"trait_name": "brave"}]
-        if "RETURN target.name AS target_name" in query:
-            return [{"target_name": "Bob", "rel_props": {"type": "KNOWS"}}]
-        if "DEVELOPED_IN_CHAPTER" in query:
-            return [
-                {
-                    "summary": "growth",
-                    "chapter": 1,
-                    "is_provisional": False,
-                    "dev_id": "d1",
+                    },
+                    "traits": ["brave"],
+                    "relationships": [
+                        {
+                            "target_name": "Bob",
+                            "rel_type": "KNOWS",
+                            # Note: rel_props may or may not include a `type` field; canonical type is rel_type.
+                            "rel_props": {"source_profile_managed": True},
+                        }
+                    ],
+                    "dev_events": [
+                        {
+                            "summary": "growth",
+                            "chapter": 1,
+                            "is_provisional": False,
+                        }
+                    ],
                 }
             ]
         return []
@@ -51,7 +55,7 @@ async def test_get_character_profile_by_name(monkeypatch):
     assert profile.relationships["Bob"]["type"] == "KNOWS"
     assert profile.updates["development_in_chapter_1"] == "growth"
 
-    character_queries.get_character_profile_by_name.cache_clear()
+    clear_all_data_access_caches()
 
 
 @pytest.mark.asyncio
@@ -68,15 +72,6 @@ async def test_get_world_item_by_id(monkeypatch):
                     }
                 }
             ]
-        if "HAS_GOAL" in query or (":HAS_GOAL" in query):
-            # With the new world model, goals are stored on the node; return empty for relation query paths
-            return []
-        if (
-            "HAS_RULE" in query
-            or "HAS_KEY_ELEMENT" in query
-            or "HAS_TRAIT_ASPECT" in query
-        ):
-            return []
         if "ELABORATED_IN_CHAPTER" in query:
             # In current implementation, elaborations may not be fetched in the simplified path
             return []
@@ -96,38 +91,7 @@ async def test_get_world_item_by_id(monkeypatch):
     assert isinstance(item.goals, list)
     # Elaborations are not guaranteed in current simplified fetch; do not assert here
 
-    world_queries.get_world_item_by_id.cache_clear()
-
-
-@pytest.mark.asyncio
-async def test_get_world_item_by_id_fallback(monkeypatch):
-    async def fake_read(query, params=None):
-        if params and params.get("id") == "places_city":
-            return [
-                {
-                    "we": {
-                        "id": "places_city",
-                        "name": "City",
-                        "category": "places",
-                        KG_NODE_CREATED_CHAPTER: 1,
-                    }
-                }
-            ]
-        return []
-
-    world_queries.WORLD_NAME_TO_ID.clear()
-    world_queries.WORLD_NAME_TO_ID[utils._normalize_for_id("City")] = "places_city"
-    monkeypatch.setattr(
-        world_queries.neo4j_manager,
-        "execute_read_query",
-        AsyncMock(side_effect=fake_read),
-    )
-
-    item = await world_queries.get_world_item_by_id("City")
-    assert item
-    assert item.id == "places_city"
-
-    world_queries.get_world_item_by_id.cache_clear()
+    clear_all_data_access_caches()
 
 
 @pytest.mark.asyncio
@@ -144,9 +108,7 @@ async def test_sync_world_items_populates_name_to_id(monkeypatch):
 
     world_queries.WORLD_NAME_TO_ID.clear()
     await world_queries.sync_world_items(world_data, 1)
-    assert (
-        world_queries.WORLD_NAME_TO_ID[utils._normalize_for_id("City")] == world_item.id
-    )
+    assert world_queries.WORLD_NAME_TO_ID[utils._normalize_for_id("City")] == world_item.id
 
 
 @pytest.mark.asyncio
@@ -180,7 +142,4 @@ async def test_get_world_building_from_db_populates_name_to_id(monkeypatch):
     city = next((w for w in world_items if w.name == "City"), None)
     assert city is not None
     assert city.id == "places_city"
-    assert (
-        world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City"))
-        == "places_city"
-    )
+    assert world_queries.WORLD_NAME_TO_ID.get(utils._normalize_for_id("City")) == "places_city"

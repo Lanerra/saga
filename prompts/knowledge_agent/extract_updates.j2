@@ -1,228 +1,32 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
 
-CRITICAL EXTRACTION RULES (Hard Constraints):
-1. Only extract NAMED entities or entities mentioned 2+ times
-2. Skip ALL: atmospheric details, feelings, sounds, lights, weather, transitional moments
-3. Skip descriptive concepts—only extract concepts that could have their own Wikipedia page
-4. When in doubt, DON'T extract
+You are a knowledge graph extractor. Extract ONLY narrative-essential canon updates from Chapter {{ chapter_number }}.
 
-You are a knowledge graph extractor for an autonomous novel writing system tasked. Extract ONLY entities essential to the narrative—skip atmospheric details, temporary states, and descriptive elements.
+Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
-**Novel Details:**
-- Title: {{ novel_title }}
-- Genre: {{ novel_genre }}
-- Protagonist: {{ protagonist }}
-- Current Chapter: {{ chapter_number }}
+Output MUST be valid JSON only (no markdown, no code fences, no prose).
 
-**Canonical Schema Information (Your output MUST conform to this):**
-- **Available Node Labels:** {{ available_node_labels | join(', ') }}
-- **Available Relationship Types:** {{ available_relationship_types | join(', ') }}
-
-**Enhanced Entity Type Selection Guide:**
-Choose the node type that best fits the entity. Avoid generic types like "Entity".
-
-**IMPORTANT FILTERING RULES:**
-- DO NOT create entities for: colors, sounds, lights, feelings, descriptive adjectives, temporary states
-- DO NOT create entities for: atmospheric descriptions, sensory details, metaphors, or literary devices
-- FOCUS ON: concrete characters, objects, locations, organizations, and major story concepts only
-- Only extract entities that are NAMED or have significant story impact beyond the current scene
-
-**Living Beings:**
-- Character: Main story characters (active participants)
-- Person: Historical figures, mentioned people, inactive individuals
-- Creature: Animals, monsters, non-human beings
-- Spirit: Ghosts, ethereal beings, supernatural entities
-- Deity: Gods, divine beings, worshipped entities
-
-**Physical Objects & Items:**
-- Object: General physical items, tools, weapons
-- Artifact: Special/magical/historical objects of significance
-- Document: Books, scrolls, letters, written records
-- Item: General items (synonym for Object)
-- Relic: Ancient/sacred objects with historical importance
-
-**Places & Locations:**
-- Location: General places
-- Structure: Buildings, constructions, man-made locations
-- Settlement: Cities, towns, villages
-- Region: Large geographical areas, territories
-- Landmark: Notable geographical features
-- Room: Interior spaces within structures
-- Path: Roads, routes, passages, connections
-- Territory: Claimed/controlled areas
-
-**Resources & Materials:**
-- Resource: Materials, natural resources, commodities
-- Currency: Money, trade systems, units of value
-- Trade: Economic relationships, trade routes
-- Food: Consumable resources, sustenance
-- Material: Building materials, crafting components
-- Energy: Power sources, magical energy, fuel
-
-**Abstract Concepts (Use Sparingly - Only for Major Story Elements):**
-- Concept: Major philosophical ideas central to the plot (NOT emotions or descriptive concepts)
-- Law: Important rules, regulations, natural laws that drive story events
-- Tradition: Significant cultural practices that affect characters or plot
-- Language: Named languages, dialects important to worldbuilding
-- Symbol: Specific named symbols with story significance (NOT general descriptions)
-- Story: Important tales, legends referenced by characters
-- Song: Named songs, ballads with cultural significance
-- Dream: Prophetic dreams or visions that affect the plot
-- Memory: Specific named memories crucial to character development
-- Skill: Named abilities, specific competencies with story impact
-
-**Information & Knowledge:**
-- Lore: Myths, legends, historical knowledge
-- Knowledge: Specific knowledge, information, data
-- Secret: Hidden information, classified knowledge
-- Rumor: Unconfirmed information, gossip
-- News: Current information, recent events
-- Message: Communications, signals, transmissions
-- Record: Official records, documentation
-- ValueNode: Literal values, data
-
-**Organizations & Groups:**
-- Faction: Political groups, organizations with agendas
-- Organization: Generic organizations, institutions
-- Guild: Professional organizations, trade groups
-- House: Noble houses, family organizations
-- Order: Religious or knightly orders
-- Council: Governing bodies, decision-making groups
-- Role: Positions, titles, functions within organizations
-- Rank: Hierarchical positions, military ranks
-
-**Systems & Frameworks:**
-- System: General systems, frameworks
-- Magic: Magical systems, schools of magic
-- Technology: Technological systems, innovations
-- Religion: Religious systems, belief structures
-- Culture: Cultural systems, ways of life
-- Government: Governing systems, political structures
-- Education: Learning systems, schools, curricula
-- Economy: Economic systems, trade networks
-
-**Time & Events:**
-- Event: Historical events, battles, ceremonies
-- Era: Time periods, ages, epochs
-- Timeline: Temporal sequences, chronologies
-- DevelopmentEvent: Character development events
-- WorldElaborationEvent: World expansion events
-- Season: Natural cycles, recurring periods
-- Moment: Specific points in time, instances
-- Chapter: Chapter entities
-
-**Character Qualities & Attributes:**
-- Trait: Character traits, personality aspects
-- Attribute: Physical or mental attributes
-- Quality: Characteristics, properties
-- Reputation: Social standing, renown
-- Status: Current state, condition
-
-**Containers & Collections:**
-- WorldContainer: Containers for world elements
-- PlotPoint: Plot/story points
-- Collection: Groups of related items
-- Archive: Storage of documents/information
-- Treasury: Storage of valuable resources
-- Library: Collection of documents/knowledge
-
-**Instructions for Output:**
-- Your entire response MUST be a single, valid JSON object.
-- The JSON object must have three top-level keys: `character_updates`, `world_updates`, and `kg_triples`.
-- For `world_updates`: Each category should contain items as keys, and each item should have properties like `description`, `goals`, `rules`, etc. Do NOT create items named "elaborations" or "elaboration" - these should be properties within actual items.
-- For `kg_triples`, provide a list of strings, where each string is a triple in the format: "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | ObjectEntityType:ObjectName" or "SubjectEntityType:SubjectName | PREDICATE_IN_SNAKE_CASE | LiteralValue".
-
-**Relationship Selection Guidelines:**
-Choose semantically appropriate relationships that make sense for the entity types involved.
-
-**Emotional & Social (require sentient beings):**
-- LOVES, HATES, FEARS, RESPECTS - Only conscious entities can have emotions
-- FAMILY_OF, FRIEND_OF, ENEMY_OF, ALLY_OF - Social relationships between sentient beings
-- ROMANTIC_WITH - Romance between sentient beings
-
-**Spatial & Physical:**
-- LOCATED_IN, LOCATED_AT - Physical entities in physical spaces
-- CONTAINS - Containers holding objects (not characters containing characters)
-- NEAR, ADJACENT_TO - Proximity relationships
-
-**Ownership & Creation:**
-- OWNS, POSSESSES - Sentient beings owning/possessing objects (never other people)
-- CREATED_BY - Objects/structures created by makers
-
-**Hierarchical & Authority:**
-- LEADS, WORKS_FOR, SERVES - Authority relationships between sentient beings
-- MENTOR_TO, STUDENT_OF - Learning relationships
-
-**Cognitive (require consciousness):**
-- BELIEVES, REALIZES, REMEMBERS, UNDERSTANDS - Mental states and knowledge
-
-**Organizational:**
-- MEMBER_OF, LEADER_OF - Group membership and leadership
-
-**Temporal & Causal:**
-- CAUSES, PREVENTS, ENABLES, TRIGGERS - Causal relationships
-- OCCURRED_IN - Events happening at times/places
-
-**Information & Communication:**
-- RECORDS, PRESERVES - Information storage relationships
-- DISPLAYS, EMITS - Presentation or emission of information
-- SPEAKS, SPOKEN_BY - Language communication relationships
-
-**System & Resource:**
-- POWERED_BY, CONSUMES, PRODUCES - Energy and resource relationships
-- TEACHES, PRACTICES - Knowledge and skill relationships
-- TRADES_WITH, GOVERNS - Economic and political relationships
-
-**Enhanced Relationships (specific to entity types):**
-- WIELDS - Characters actively using objects/tools
-- CRAFTED_BY - Objects created by conscious beings or organizations
-- FORGED_FROM - Material composition relationships
-- HOLDS_RANK - Characters holding specific positions
-- CELEBRATES - Cultural/religious ceremonial relationships
-- ENCHANTED_BY - Magical enhancement relationships
-- BORDERS - Geographical boundary relationships
-- REVEALS, CONCEALS - Information disclosure relationships
-
-**Output Format (Valid JSON Only):**
-
-Return a single JSON object with three keys: `character_updates`, `world_updates`, `kg_triples`
-
-```json
+Required top-level shape:
 {
-  "character_updates": {
-    "CharacterName": {
-      "description": "Brief description focusing on new information from this chapter",
-      "traits": ["trait1", "trait2"],
-      "status": "current state",
-      "relationships": {
-        "OtherCharacter": "nature of relationship"
-      }
-    }
-  },
-  "world_updates": {
-    "CategoryName": {
-      "ItemName": {
-        "description": "What this element is and why it matters"
-      }
-    }
-  },
-  "kg_triples": [
-    "Character:Elara | LOCATED_IN | Location:Sunken Library",
-    "Character:Elara | SEEKS | Artifact:Starfall Map",
-    "Location:Sunken Library | CONTAINS | Document:Ancient Scrolls"
-  ]
+  "character_updates": { ... },
+  "world_updates": { ... },
+  "kg_triples": [ ... ]
 }
-```
 
-**Quality Check Before Output:**
-- Did I extract any atmospheric/emotional/temporary entities? → Remove them
-- Are all entities named OR mentioned 2+ times? → If not, remove
-- Could a future chapter reference this entity? → If no, remove
-- Is each triple's direction correct (subject acts on object)? → Fix if needed
+Rules:
+- Prefer proper nouns. Skip atmosphere, feelings, and generic concepts.
+- Do not invent labels/fields beyond what is shown below.
 
-**Chapter {{ chapter_number }} Text to Analyze:**
-```text
+character_updates shape:
+- {"Character Name": {"description": string, "traits": [single-word strings], "status": string, "relationships": {"Other Name": string}}}
+
+world_updates shape:
+- Keys are canonical labels only: "Location", "Event", "Item", "Organization", "Concept".
+- Each label maps to a name->details map.
+- Each details object uses: description (string), category (string), goals (string list), rules (string list), key_elements (string list).
+
+kg_triples shape:
+- A list of objects with string fields: subject, predicate, object_entity, description.
+
+Chapter text:
 {{ chapter_text }}
-```
-
-**Extract only essential narrative elements. When uncertain, skip it.**

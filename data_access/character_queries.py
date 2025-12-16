@@ -1,26 +1,43 @@
 # data_access/character_queries.py
-import hashlib
+from collections import defaultdict
 from typing import Any
 
 import structlog
-from async_lru import alru_cache  # type: ignore
-from neo4j.exceptions import ServiceUnavailable  # type: ignore
+from async_lru import alru_cache  # type: ignore[import-untyped]
+from neo4j.exceptions import ServiceUnavailable
 
-import config
 import utils
 from core.db_manager import neo4j_manager
 from core.schema_validator import validate_kg_object
 from models import CharacterProfile
-from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CHAPTER_UPDATED
 
-from .cypher_builders.character_cypher import (
-    TRAIT_NAME_TO_CANONICAL,
-    generate_character_node_cypher,
-)
 from .cypher_builders.native_builders import NativeCypherBuilder
 
 # Mapping from normalized character names to canonical display names
+#
+# Lifecycle contract (P1):
+# - `resolve_character_name()` is best-effort ONLY (purely in-memory; no DB IO).
+# - The authoritative map population happens in explicit "populate" flows:
+#   - write-path: `sync_characters()` (from provided models)
+#   - read-path:  `get_character_profiles()` (from fetched models)
+# - Callers/tests may clear/reset explicitly via the helpers below.
 CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
+
+
+def clear_character_name_map() -> None:
+    """Clear the in-process character name canonicalization map."""
+    CHAR_NAME_TO_CANONICAL.clear()
+
+
+def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
+    """Rebuild the character name canonicalization map from a list of profiles.
+
+    This clears existing entries to avoid stale accumulation across runs/tests.
+    """
+    CHAR_NAME_TO_CANONICAL.clear()
+    for char in characters:
+        if isinstance(char, CharacterProfile) and char.name:
+            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
 
 
 def resolve_character_name(name: str) -> str:
@@ -33,540 +50,393 @@ def resolve_character_name(name: str) -> str:
 logger = structlog.get_logger(__name__)
 
 
-async def sync_characters(
-    profiles: dict[str, CharacterProfile],
-    chapter_number: int,
-    full_sync: bool = False,
-) -> bool:
-    # DEPRECATION: This dict-based signature is maintained for backward compatibility.
-    # Prefer the native model version in this module (accepts list[CharacterProfile]).
-    """Persist character data to Neo4j."""
-    # Validate all profiles before syncing
-    for name, profile in profiles.items():
-        errors = validate_kg_object(profile)
-        if errors:
-            logger.warning(f"Invalid CharacterProfile for '{name}': {errors}")
-
-    if full_sync:
-        profile_dicts = {k: v.to_dict() for k, v in profiles.items()}
-        return await sync_full_state_from_object_to_db(profile_dicts)
-
-    statements: list[tuple[str, dict[str, Any]]] = []
-    for profile in profiles.values():
-        statements.extend(generate_character_node_cypher(profile, chapter_number))
-
-    try:
-        if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
-        logger.info(
-            "Persisted %d character updates for chapter %d.",
-            len(profiles),
-            chapter_number,
-        )
-        for profile in profiles.values():
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(profile.name)] = profile.name
-        # Invalidate caches related to characters
-        try:
-            get_character_profile_by_name.cache_clear()  # type: ignore[attr-defined]
-        except Exception:
-            pass
-        try:
-            get_all_character_names.cache_clear()  # type: ignore[attr-defined]
-        except Exception:
-            pass
-        return True
-    except Exception as exc:  # pragma: no cover - log and return failure
-        logger.error(
-            "Error persisting character updates for chapter %d: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return False
-
-
-async def sync_full_state_from_object_to_db(profiles_data: dict[str, Any]) -> bool:
-    logger.info("Synchronizing character profiles to Neo4j (non-destructive)...")
-
-    novel_id_param = config.MAIN_NOVEL_INFO_NODE_ID
-    statements: list[tuple[str, dict[str, Any]]] = []
-
-    all_input_char_names: set[str] = set(profiles_data.keys())
-
-    try:
-        existing_char_records = await neo4j_manager.execute_read_query(
-            "MATCH (c:Character:Entity)"
-            " WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE"
-            " RETURN c.name AS name"
-        )
-        existing_db_char_names: set[str] = {
-            record["name"]
-            for record in existing_char_records
-            if record and record["name"]
-        }
-    except Exception as e:
-        logger.error(
-            f"Failed to retrieve existing character names from DB: {e}", exc_info=True
-        )
-        return False
-
-    chars_to_delete = existing_db_char_names - all_input_char_names
-    if chars_to_delete:
-        statements.append(
-            (
-                """
-            MATCH (c:Character:Entity)
-            WHERE c.name IN $char_names_to_delete
-            SET c.is_deleted = TRUE
-            """,
-                {"char_names_to_delete": list(chars_to_delete)},
-            )
-        )
-
-    for char_name, profile_dict in profiles_data.items():
-        if not isinstance(profile_dict, dict):
-            logger.warning(f"Skipping invalid profile for '{char_name}' (not a dict).")
-            continue
-
-        # Validate the profile before syncing
-        profile = CharacterProfile.from_dict(char_name, profile_dict)
-        errors = validate_kg_object(profile)
-        if errors:
-            logger.warning(f"Invalid CharacterProfile for '{char_name}': {errors}")
-
-        char_direct_props = {
-            k: v
-            for k, v in profile_dict.items()
-            if isinstance(v, (str, int, float, bool)) and k != "name"
-        }
-        char_direct_props["is_deleted"] = False
-
-        statements.append(
-            (
-                """
-            MERGE (c:Character:Entity {name: $char_name_val})
-            ON CREATE SET
-                c += $props,
-                c.created_ts = timestamp()
-            ON MATCH SET
-                c += $props,
-                c.updated_ts = timestamp()
-            """,
-                {"char_name_val": char_name, "props": char_direct_props},
-            )
-        )
-
-        statements.append(
-            (
-                """
-            MATCH (ni:NovelInfo:Entity {id: $novel_id_param})
-            MATCH (c:Character:Entity {name: $char_name_val})
-            MERGE (ni)-[:HAS_CHARACTER]->(c)
-            """,
-                {"novel_id_param": novel_id_param, "char_name_val": char_name},
-            )
-        )
-
-        current_profile_traits: set[str] = {
-            utils.normalize_trait_name(str(t))
-            for t in profile_dict.get("traits", [])
-            if isinstance(t, str) and utils.normalize_trait_name(str(t))
-        }
-        for trait in current_profile_traits:
-            TRAIT_NAME_TO_CANONICAL[trait] = trait  # canonical mapping to itself
-
-        statements.append(
-            (
-                """
-            MATCH (c:Character:Entity {name: $char_name_val})-[r:HAS_TRAIT_ASPECT]->(t:Trait:Entity)
-            WHERE NOT t.name IN $current_traits_list
-            DELETE r
-            """,
-                {
-                    "char_name_val": char_name,
-                    "current_traits_list": list(current_profile_traits),
-                },
-            )
-        )
-
-        if current_profile_traits:
-            statements.append(
-                (
-                    """
-                MATCH (c:Character:Entity {name: $char_name_val})
-                UNWIND $current_traits_list AS trait_name_val
-                MERGE (t:Trait:Entity {name: trait_name_val})
-                    ON CREATE SET t.created_ts = timestamp()
-                MERGE (c)-[:HAS_TRAIT_ASPECT]->(t)
-                """,
-                    {
-                        "char_name_val": char_name,
-                        "current_traits_list": list(current_profile_traits),
-                    },
-                )
-            )
-
-        statements.append(
-            (
-                """
-            MATCH (c:Character:Entity {name: $char_name_val})-[r:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
-            DETACH DELETE dev, r
-            """,
-                {"char_name_val": char_name},
-            )
-        )
-
-        for key, value_str in profile_dict.items():
-            if (
-                key.startswith("development_in_chapter_")
-                and isinstance(value_str, str)
-                and value_str.strip()
-            ):
-                try:
-                    chap_num_int_str = key.split("_")[-1]
-                    chap_num_int = (
-                        int(chap_num_int_str) if chap_num_int_str.isdigit() else -1
-                    )
-                    if chap_num_int == -1:
-                        continue
-
-                    dev_event_summary = value_str.strip()
-                    stable_hash = hashlib.sha1(
-                        f"{char_name}|{chap_num_int}|{dev_event_summary}".encode()
-                    ).hexdigest()[:16]
-                    dev_event_id = f"dev_{utils._normalize_for_id(char_name)}_ch{chap_num_int}_{stable_hash}"
-
-                    dev_event_props = {
-                        "id": dev_event_id,
-                        "summary": dev_event_summary,
-                        KG_NODE_CHAPTER_UPDATED: chap_num_int,
-                        KG_IS_PROVISIONAL: profile_dict.get(
-                            f"source_quality_chapter_{chap_num_int}"
-                        )
-                        == "provisional_from_unrevised_draft",
-                    }
-
-                    statements.append(
-                        (
-                            """
-                        MATCH (c:Character:Entity {name: $char_name_val})
-                        CREATE (dev:Entity:DevelopmentEvent)
-                        SET dev = $props, dev.created_ts = timestamp()
-                        CREATE (c)-[:DEVELOPED_IN_CHAPTER]->(dev)
-                        """,
-                            {"char_name_val": char_name, "props": dev_event_props},
-                        )
-                    )
-                except (ValueError, IndexError):
-                    logger.warning(
-                        f"Could not parse chapter number from dev key: {key} for char {char_name}"
-                    )
-
-        profile_defined_rels = profile_dict.get("relationships", {})
-        target_chars_in_profile_rels: set[str] = set()
-        if isinstance(profile_defined_rels, dict):
-            target_chars_in_profile_rels = {
-                str(k).strip() for k in profile_defined_rels.keys() if str(k).strip()
-            }
-
-        statements.append(
-            (
-                """
-            MATCH (c1:Character:Entity {name: $char_name_val})-[r]->(c2:Entity)
-            WHERE coalesce(r.source_profile_managed, false) = true AND NOT c2.name IN $target_chars_list
-            DELETE r
-            """,
-                {
-                    "char_name_val": char_name,
-                    "target_chars_list": list(target_chars_in_profile_rels),
-                },
-            )
-        )
-
-        if isinstance(profile_defined_rels, dict):
-            for target_char_name_str, rel_detail in profile_defined_rels.items():
-                target_char_name = str(target_char_name_str).strip()
-                if not target_char_name:
-                    continue
-
-                rel_type_str = "RELATED_TO"
-                rel_cypher_props = {
-                    "source_profile_managed": True,
-                    "confidence": 1.0,
-                }
-
-                chapter_added_val = config.KG_PREPOPULATION_CHAPTER_NUM
-                if isinstance(rel_detail, dict) and "chapter_added" in rel_detail:
-                    try:
-                        chapter_added_val = int(rel_detail["chapter_added"])
-                    except (ValueError, TypeError):
-                        pass
-                rel_cypher_props["chapter_added"] = chapter_added_val
-
-                if isinstance(rel_detail, str) and rel_detail.strip():
-                    rel_cypher_props["description"] = rel_detail.strip()
-                    if rel_detail.isupper() and " " not in rel_detail:
-                        rel_type_str = rel_detail
-                elif isinstance(rel_detail, dict):
-                    rel_type_str = (
-                        str(rel_detail.get("type", rel_type_str))
-                        .upper()
-                        .replace(" ", "_")
-                    )
-                    for k_rel, v_rel in rel_detail.items():
-                        if (
-                            isinstance(v_rel, (str, int, float, bool))
-                            and k_rel != "type"
-                            and k_rel != "chapter_added"
-                        ):
-                            rel_cypher_props[k_rel] = v_rel
-
-                rel_cypher_props[KG_IS_PROVISIONAL] = (
-                    profile_dict.get(f"source_quality_chapter_{chapter_added_val}")
-                    == "provisional_from_unrevised_draft"
-                )
-
-                # Build Cypher with concrete relationship type; types can't be parameterized
-                query_rel_merge = f"""
-            MATCH (s:Character:Entity {{name: $subject_param}})
-            MERGE (o:Entity {{name: $object_param}})
-                ON CREATE SET o.description = 'Auto-created via relationship from ' + $subject_param, o.created_ts = timestamp(), o.updated_ts = timestamp()
-            MERGE (s)-[r:`{rel_type_str}`]->(o)
-            ON CREATE SET r = $props_param, r.created_ts = timestamp(), r.updated_ts = timestamp()
-            ON MATCH SET  r += $props_param, r.updated_ts = timestamp()
-            """
-                statements.append(
-                    (
-                        query_rel_merge,
-                        {
-                            "subject_param": char_name,
-                            "object_param": target_char_name,
-                            "chapter_added_val": chapter_added_val,
-                            "props_param": rel_cypher_props,
-                        },
-                    )
-                )
-
-    statements.append(
-        (
-            """
-        MATCH (t:Trait:Entity)
-        WHERE NOT EXISTS((:Character:Entity)-[:HAS_TRAIT_ASPECT]->(t))
-        DETACH DELETE t
-        """,
-            {},
-        )
-    )
-
-    try:
-        if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
-        logger.info(
-            f"Successfully synchronized {len(all_input_char_names)} character profiles to Neo4j."
-        )
-        for name in all_input_char_names:
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(name)] = name
-        return True
-    except Exception as e:
-        logger.error(f"Error synchronizing character profiles: {e}", exc_info=True)
-        return False
-
-
 @alru_cache(maxsize=128)
-async def get_character_profile_by_name(name: str) -> CharacterProfile | None:
-    """Retrieve a single ``CharacterProfile`` from Neo4j by character name."""
+async def get_character_profile_by_name(name: str, *, include_provisional: bool = False) -> CharacterProfile | None:
+    """
+    Retrieve a single CharacterProfile from Neo4j by character name.
+
+    Provisional contract (P0):
+    - Default excludes provisional relationship + event data unless include_provisional=True.
+    - Node-level provisional status is preserved on the returned profile (callers can decide).
+    """
     canonical_name = resolve_character_name(name)
     logger.info(f"Loading character profile '{canonical_name}' from Neo4j...")
 
-    query = (
-        "MATCH (c:Character:Entity {name: $name})"
-        " WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE"
-        " RETURN c"
-    )
-    results = await neo4j_manager.execute_read_query(query, {"name": canonical_name})
+    query = """
+        MATCH (c:Character {name: $name})
+        WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
+
+        OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
+
+        // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
+        OPTIONAL MATCH (c)-[r]->(target)
+
+        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
+
+        WITH
+            c,
+            collect(DISTINCT t.name) AS traits,
+            collect(
+                DISTINCT CASE
+                    WHEN coalesce(r.source_profile_managed, false) = true
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(r.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
+                        target_name: target.name,
+                        rel_type: type(r),
+                        rel_props: properties(r)
+                    }
+                END
+            ) AS relationships_raw,
+            collect(
+                DISTINCT CASE
+                    WHEN dev IS NOT NULL
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(dev.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
+                        summary: dev.summary,
+                        chapter: dev.chapter_updated,
+                        is_provisional: coalesce(dev.is_provisional, FALSE)
+                    }
+                END
+            ) AS dev_events_raw
+
+        RETURN
+            c,
+            traits,
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
+            [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events
+    """
+
+    results = await neo4j_manager.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
     if not results or not results[0].get("c"):
         logger.info(f"No character profile found for '{canonical_name}'.")
         return None
 
-    char_node = results[0]["c"]
+    record = results[0]
+    char_node = record["c"]
     profile: dict[str, Any] = dict(char_node)
     profile.pop("name", None)
     profile.pop("created_ts", None)
     profile.pop("updated_ts", None)
 
-    traits_query = (
-        "MATCH (:Character:Entity {name: $char_name})-[:HAS_TRAIT_ASPECT]->(t:Trait:Entity)"
-        " RETURN t.name AS trait_name"
-    )
-    trait_results = await neo4j_manager.execute_read_query(
-        traits_query, {"char_name": name}
-    )
-    profile["traits"] = sorted(
-        [tr["trait_name"] for tr in trait_results if tr and tr.get("trait_name")]
-    )
+    profile["traits"] = sorted([t for t in record["traits"] if t])
 
-    rels_query = """
-        MATCH (:Character:Entity {name: $char_name})-[r]->(target:Entity)
-        WHERE coalesce(r.source_profile_managed, false) = true
-        RETURN target.name AS target_name, type(r) AS rel_type, properties(r) AS rel_props
-    """
-    rel_results = await neo4j_manager.execute_read_query(
-        rels_query, {"char_name": name}
-    )
+    # Relationships are represented as a dict keyed by target_name.
+    #
+    # Remediation: relationship projection must NOT be lossy when there are multiple
+    # relationships to the same target (e.g., FRIEND_OF + ENEMY_OF to "Bob").
+    #
+    # Representation choice (least-breaking):
+    # - If there is exactly one relationship to a target, keep the legacy shape:
+    #     relationships[target_name] -> { ...props..., "type": "REL_TYPE" }
+    # - If there are multiple relationships to a target, store a list:
+    #     relationships[target_name] -> [{...}, {...}, ...]
+    #
+    # This preserves existing callers/tests for the common single-relationship case,
+    # while making collisions explicit rather than overwriting.
+    rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for rel_rec in record["relationships"]:
+        if not rel_rec or not rel_rec.get("target_name"):
+            continue
+
+        target_name = rel_rec["target_name"]
+
+        rel_props_full = rel_rec.get("rel_props", {})
+        rel_props_cleaned: dict[str, Any] = {}
+
+        if isinstance(rel_props_full, dict):
+            rel_props_cleaned = {
+                k: v
+                for k, v in rel_props_full.items()
+                if k
+                not in [
+                    "created_ts",
+                    "updated_ts",
+                    "source_profile_managed",
+                    "chapter_added",
+                ]
+            }
+
+        # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
+        # Fall back to legacy property-based typing if present.
+        rel_type = rel_rec.get("rel_type")
+        if rel_type:
+            rel_props_cleaned["type"] = rel_type
+        elif isinstance(rel_props_full, dict) and "type" in rel_props_full:
+            rel_props_cleaned["type"] = rel_props_full["type"]
+
+        # Preserve chapter_added when present (callers sometimes use it).
+        if isinstance(rel_props_full, dict) and "chapter_added" in rel_props_full:
+            rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
+
+        rels_by_target[target_name].append(rel_props_cleaned)
+
+    # Deterministic/stable output:
+    # - sort targets
+    # - sort multi-relationship lists within each target
     relationships: dict[str, Any] = {}
-    if rel_results:
-        for rel_rec in rel_results:
-            target_name = rel_rec.get("target_name")
-            rel_props_full = rel_rec.get("rel_props", {})
-            rel_props_cleaned = {}
-            if isinstance(rel_props_full, dict):
-                rel_props_cleaned = {
-                    k: v
-                    for k, v in rel_props_full.items()
-                    if k
-                    not in [
-                        "created_ts",
-                        "updated_ts",
-                        "source_profile_managed",
-                        "chapter_added",
-                    ]
-                }
-            if "type" in rel_props_full:
-                rel_props_cleaned["type"] = rel_props_full["type"]
-            if "chapter_added" in rel_props_full:
-                rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
-            if target_name:
-                relationships[target_name] = rel_props_cleaned
+    for target_name in sorted(rels_by_target.keys()):
+        rel_list = rels_by_target[target_name]
+        rel_list_sorted = sorted(
+            rel_list,
+            key=lambda r: (
+                str(r.get("type", "")),
+                str(r.get("description", "")),
+                str(r.get("chapter_added", "")),
+            ),
+        )
+        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
+
     profile["relationships"] = relationships
 
-    dev_query = (
-        "MATCH (:Character:Entity {name: $char_name})-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)\n"
-        f"RETURN dev.summary AS summary, dev.{KG_NODE_CHAPTER_UPDATED} AS chapter, dev.{KG_IS_PROVISIONAL} AS is_provisional, dev.id as dev_id\n"
-        "ORDER BY dev.chapter_updated ASC"
-    )
-    dev_results = await neo4j_manager.execute_read_query(dev_query, {"char_name": name})
-    if dev_results:
-        for dev_rec in dev_results:
-            chapter_num = dev_rec.get("chapter")
-            summary = dev_rec.get("summary")
-            if chapter_num is not None and summary is not None:
-                dev_key = f"development_in_chapter_{chapter_num}"
-                profile[dev_key] = summary
-                if dev_rec.get(KG_IS_PROVISIONAL):
-                    profile[f"source_quality_chapter_{chapter_num}"] = (
-                        "provisional_from_unrevised_draft"
-                    )
+    for dev_rec in record["dev_events"]:
+        if not dev_rec or dev_rec.get("summary") is None:
+            continue
+        chapter_num = dev_rec.get("chapter")
+        summary = dev_rec.get("summary")
+        if chapter_num is not None and summary is not None:
+            dev_key = f"development_in_chapter_{chapter_num}"
+            profile[dev_key] = summary
+            if dev_rec.get("is_provisional"):
+                profile[f"source_quality_chapter_{chapter_num}"] = "provisional_from_unrevised_draft"
 
     return CharacterProfile.from_dict(name, profile)
 
 
 @alru_cache(maxsize=128)
+async def get_character_profile_by_id(character_id: str, *, include_provisional: bool = False) -> CharacterProfile | None:
+    """
+    Retrieve a single CharacterProfile from Neo4j by character ID.
+
+    Provisional contract (P0):
+    - Default excludes provisional relationship + event data unless include_provisional=True.
+    - Node-level provisional status is preserved on the returned profile (callers can decide).
+    """
+    logger.info(f"Loading character profile with ID '{character_id}' from Neo4j...")
+
+    query = """
+        MATCH (c:Character {id: $character_id})
+        WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
+
+        OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
+
+        // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
+        OPTIONAL MATCH (c)-[r]->(target)
+
+        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
+
+        WITH
+            c,
+            collect(DISTINCT t.name) AS traits,
+            collect(
+                DISTINCT CASE
+                    WHEN coalesce(r.source_profile_managed, false) = true
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(r.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
+                        target_name: target.name,
+                        rel_type: type(r),
+                        rel_props: properties(r)
+                    }
+                END
+            ) AS relationships_raw,
+            collect(
+                DISTINCT CASE
+                    WHEN dev IS NOT NULL
+                     AND (
+                          $include_provisional = true
+                          OR coalesce(dev.is_provisional, FALSE) = FALSE
+                     )
+                    THEN {
+                        summary: dev.summary,
+                        chapter: dev.chapter_updated,
+                        is_provisional: coalesce(dev.is_provisional, FALSE)
+                    }
+                END
+            ) AS dev_events_raw
+
+        RETURN
+            c,
+            traits,
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
+            [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events
+    """
+
+    results = await neo4j_manager.execute_read_query(
+        query,
+        {"character_id": character_id, "include_provisional": include_provisional},
+    )
+    if not results or not results[0].get("c"):
+        logger.info(f"No character profile found with ID '{character_id}'.")
+        return None
+
+    record = results[0]
+    char_node = record["c"]
+    name = char_node.get("name", "")
+
+    profile: dict[str, Any] = dict(char_node)
+    profile.pop("name", None)
+    profile.pop("created_ts", None)
+    profile.pop("updated_ts", None)
+
+    profile["traits"] = sorted([t for t in record["traits"] if t])
+
+    relationships: dict[str, Any] = {}
+    for rel_rec in record["relationships"]:
+        if not rel_rec or not rel_rec.get("target_name"):
+            continue
+        target_name = rel_rec["target_name"]
+        rel_props_full = rel_rec.get("rel_props", {})
+        rel_props_cleaned = {}
+        if isinstance(rel_props_full, dict):
+            rel_props_cleaned = {k: v for k, v in rel_props_full.items() if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]}
+        # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
+        # Fall back to legacy property-based typing if present.
+        rel_type = rel_rec.get("rel_type")
+        if rel_type:
+            rel_props_cleaned["type"] = rel_type
+        elif isinstance(rel_props_full, dict) and "type" in rel_props_full:
+            rel_props_cleaned["type"] = rel_props_full["type"]
+
+        if "chapter_added" in rel_props_full:
+            rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
+        relationships[target_name] = rel_props_cleaned
+    profile["relationships"] = relationships
+
+    for dev_rec in record["dev_events"]:
+        if not dev_rec or dev_rec.get("summary") is None:
+            continue
+        chapter_num = dev_rec.get("chapter")
+        summary = dev_rec.get("summary")
+        if chapter_num is not None and summary is not None:
+            dev_key = f"development_in_chapter_{chapter_num}"
+            profile[dev_key] = summary
+            if dev_rec.get("is_provisional"):
+                profile[f"source_quality_chapter_{chapter_num}"] = "provisional_from_unrevised_draft"
+
+    return CharacterProfile.from_dict(name, profile)
+
+
 async def get_all_character_names() -> list[str]:
     """Return a list of all character names from Neo4j."""
-    query = (
-        "MATCH (c:Character:Entity) "
-        "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE "
-        "RETURN c.name AS name ORDER BY c.name"
-    )
+    query = "MATCH (c:Character) " "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE " "RETURN c.name AS name ORDER BY c.name"
     results = await neo4j_manager.execute_read_query(query)
     return [record["name"] for record in results if record.get("name")]
 
 
-# NOTE: Legacy get_character_profiles_from_db() removed. Use get_character_profiles().
+def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool) -> dict[str, Any]:
+    """Process snippet query result into standardized format.
+
+    Provisional contract (P0):
+    - Default behavior (include_provisional=False) should NOT surface provisional development
+      notes as the "most recent" signal.
+    - Still compute and return `is_provisional_overall` so callers can understand data quality.
+    """
+    dev_events = record.get("dev_events", [])
+
+    valid_events = [e for e in dev_events if isinstance(e, dict) and e.get("summary")]
+
+    non_provisional = [e for e in valid_events if not e.get("is_provisional")]
+    provisional = [e for e in valid_events if e.get("is_provisional")]
+
+    most_recent_non_prov = max(non_provisional, key=lambda e: e["chapter"]) if non_provisional else None
+    most_recent_prov = max(provisional, key=lambda e: e["chapter"]) if provisional else None
+
+    if include_provisional:
+        if most_recent_prov and (not most_recent_non_prov or most_recent_prov["chapter"] >= most_recent_non_prov["chapter"]):
+            most_current = most_recent_prov
+        else:
+            most_current = most_recent_non_prov
+        dev_note = most_current.get("summary", "N/A") if most_current else "N/A"
+    else:
+        # Exclude provisional notes by default.
+        dev_note = most_recent_non_prov.get("summary", "N/A") if most_recent_non_prov else "N/A"
+
+    char_is_provisional = record.get("char_is_provisional", False)
+    has_provisional_relationships = record.get("provisional_rel_count", 0) > 0
+    has_provisional_events = len(provisional) > 0
+    is_provisional_overall = char_is_provisional or has_provisional_relationships or has_provisional_events
+
+    return {
+        "description": record.get("description"),
+        "current_status": record.get("current_status"),
+        "most_recent_development_note": dev_note,
+        "is_provisional_overall": is_provisional_overall,
+    }
 
 
-async def get_character_info_for_snippet_from_db(
-    char_name: str, chapter_limit: int
-) -> dict[str, Any] | None:
+async def get_character_info_for_snippet_from_db(char_name: str, chapter_limit: int, *, include_provisional: bool = False) -> dict[str, Any] | None:
+    """Get character info for snippet with chapter limit.
+
+    Provisional contract (P0):
+    - Default excludes provisional development notes from the returned "most recent" view.
+    - Still computes and returns `is_provisional_overall` based on underlying graph data.
+    """
     canonical_name = resolve_character_name(char_name)
+
     query = """
-    MATCH (c:Character:Entity {name: $char_name_param})
+    MATCH (c:Character {name: $char_name_param})
     WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
-    // Subquery to get the most recent non-provisional development event
-    CALL (c) {
-        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
-        WHERE dev.chapter_updated <= $chapter_limit_param
-          AND (dev.is_provisional IS NULL OR dev.is_provisional = FALSE)
-        RETURN dev AS dev_np
-        ORDER BY dev.chapter_updated DESC
-        LIMIT 1
-    }
+    // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
+    OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
 
-    // Subquery to get the most recent provisional development event
-    CALL (c) {
-        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
-        WHERE dev.chapter_updated <= $chapter_limit_param
-          AND dev.is_provisional = TRUE
-        RETURN dev AS dev_p
-        ORDER BY dev.chapter_updated DESC
-        LIMIT 1
-    }
+    // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
+    OPTIONAL MATCH (c)-[r]-()
 
-    // Subquery to check for the existence of any provisional data related to the character
-    CALL (c) {
-        RETURN (
-            c.is_provisional = TRUE OR
-            EXISTS {
-                MATCH (c)-[r]-(:Entity)
-                WHERE coalesce(r.is_provisional, FALSE) = TRUE AND coalesce(r.chapter_added, -1) <= $chapter_limit_param
-            } OR
-            EXISTS {
-                MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent:Entity)
-                WHERE coalesce(dev.is_provisional, FALSE) = TRUE AND coalesce(dev.chapter_updated, -1) <= $chapter_limit_param
-            }
-        ) AS is_provisional_flag
-    }
+    WITH
+        c,
+        collect(
+            DISTINCT CASE
+                WHEN dev.chapter_updated <= $chapter_limit_param THEN {
+                    summary: dev.summary,
+                    chapter: dev.chapter_updated,
+                    is_provisional: coalesce(dev.is_provisional, FALSE)
+                }
+            END
+        ) AS dev_events_raw,
+        count(
+            DISTINCT CASE
+                WHEN coalesce(r.is_provisional, FALSE) = TRUE
+                 AND coalesce(r.chapter_added, -1) <= $chapter_limit_param
+                THEN r
+            END
+        ) AS provisional_rel_count
 
-    WITH c, dev_np, dev_p, is_provisional_flag
-
-    // Determine the single most current development event
-    WITH c, is_provisional_flag,
-         CASE
-           WHEN dev_p IS NOT NULL AND (dev_np IS NULL OR dev_p.chapter_updated >= dev_np.chapter_updated)
-           THEN dev_p
-           ELSE dev_np
-         END AS most_current_dev_event
+    WITH
+        c,
+        [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events,
+        provisional_rel_count
 
     RETURN c.description AS description,
            c.status AS current_status,
-           most_current_dev_event,
-           is_provisional_flag AS is_provisional_overall
+           c.is_provisional AS char_is_provisional,
+           dev_events,
+           provisional_rel_count
     """
+
     params = {"char_name_param": canonical_name, "chapter_limit_param": chapter_limit}
+
     try:
         result = await neo4j_manager.execute_read_query(query, params)
     except ServiceUnavailable as e:
         logger.warning(
-            "Neo4j service unavailable when fetching snippet for '%s': %s."
-            " Attempting single reconnect.",
+            "Neo4j service unavailable when fetching snippet for '%s': %s. Attempting single reconnect.",
             char_name,
             e,
         )
         try:
             await neo4j_manager.connect()
             result = await neo4j_manager.execute_read_query(query, params)
-            if result and result[0]:
-                record = result[0]
-                most_current_dev_event_node = record.get("most_current_dev_event")
-                dev_note = (
-                    most_current_dev_event_node.get("summary", "N/A")
-                    if most_current_dev_event_node
-                    else "N/A"
-                )
-
-                return {
-                    "description": record.get("description"),
-                    "current_status": record.get("current_status"),
-                    "most_recent_development_note": dev_note,
-                    "is_provisional_overall": record.get(
-                        "is_provisional_overall", False
-                    ),
-                }
-            logger.debug(
-                f"No detailed snippet info found for character '{char_name}' up to chapter {chapter_limit}."
-            )
-        except Exception as retry_exc:  # pragma: no cover - log and return
+        except Exception as retry_exc:
             logger.error(
                 "Retry after reconnect failed for character '%s': %s",
                 char_name,
@@ -581,27 +451,15 @@ async def get_character_info_for_snippet_from_db(
         )
         return None
 
-    if result and result[0]:
-        record = result[0]
-        most_current_dev_event_node = record.get("most_current_dev_event")
-        dev_note = (
-            most_current_dev_event_node.get("summary", "N/A")
-            if most_current_dev_event_node
-            else "N/A"
+    if not result or not result[0]:
+        logger.debug(
+            "No detailed snippet info found for character '%s' up to chapter %d.",
+            char_name,
+            chapter_limit,
         )
+        return None
 
-        return {
-            "description": record.get("description"),
-            "current_status": record.get("current_status"),
-            "most_recent_development_note": dev_note,
-            "is_provisional_overall": record.get("is_provisional_overall", False),
-        }
-    logger.debug(
-        "No detailed snippet info found for character '%s' up to chapter %d.",
-        char_name,
-        chapter_limit,
-    )
-    return None
+    return _process_snippet_result(result[0], include_provisional=include_provisional)
 
 
 async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
@@ -650,9 +508,7 @@ async def sync_characters(
 
     try:
         cypher_builder = NativeCypherBuilder()
-        statements = cypher_builder.batch_character_upsert_cypher(
-            characters, chapter_number
-        )
+        statements = cypher_builder.batch_character_upsert_cypher(characters, chapter_number)
 
         if statements:
             await neo4j_manager.execute_cypher_batch(statements)
@@ -663,9 +519,14 @@ async def sync_characters(
             chapter_number,
         )
 
-        # Update canonical name mapping
-        for char in characters:
-            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
+        # Update canonical name mapping deterministically (avoid stale accumulation).
+        rebuild_character_name_map(characters)
+
+        # P1.6: Post-write cache invalidation
+        # Local import avoids circular import / eager import side effects.
+        from data_access.cache_coordinator import clear_character_read_caches
+
+        clear_character_read_caches()
 
         return True
 
@@ -696,8 +557,11 @@ async def get_character_profiles() -> list[CharacterProfile]:
 
         for record in results:
             if record and record.get("c"):
-                char = CharacterProfile.from_db_record(record)
+                char = CharacterProfile.from_dict_record(record)
                 characters.append(char)
+
+        # Populate canonical name map for best-effort resolve helpers.
+        rebuild_character_name_map(characters)
 
         logger.info("Fetched %d characters using native models", len(characters))
         return characters
@@ -707,9 +571,7 @@ async def get_character_profiles() -> list[CharacterProfile]:
         return []
 
 
-async def get_characters_for_chapter_context_native(
-    chapter_number: int, limit: int = 10
-) -> list[CharacterProfile]:
+async def get_characters_for_chapter_context_native(chapter_number: int, limit: int = 10) -> list[CharacterProfile]:
     """
     Get characters relevant for chapter context using native models.
 
@@ -722,29 +584,30 @@ async def get_characters_for_chapter_context_native(
     """
     try:
         query = """
-        MATCH (c:Character:Entity)-[:APPEARS_IN]->(ch:Chapter)
+        MATCH (c:Character)-[:APPEARS_IN]->(ch:Chapter)
         WHERE ch.number < $chapter_number
         WITH c, max(ch.number) as last_appearance
         ORDER BY last_appearance DESC
         LIMIT $limit
-        
-        OPTIONAL MATCH (c)-[r]->(other:Entity)
-        RETURN c, 
+
+        OPTIONAL MATCH (c)-[r]->(other)
+        RETURN c,
                collect({
                    target_name: other.name,
-                   type: r.type,
+                   type: CASE
+                       WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r))
+                       ELSE type(r)
+                   END,
                    description: r.description
                }) as relationships
         """
 
-        results = await neo4j_manager.execute_read_query(
-            query, {"chapter_number": chapter_number, "limit": limit}
-        )
+        results = await neo4j_manager.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
 
         characters = []
         for record in results:
             if record and record.get("c"):
-                char = CharacterProfile.from_db_record(record)
+                char = CharacterProfile.from_dict_record(record)
                 characters.append(char)
 
         logger.debug(

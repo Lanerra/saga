@@ -1,11 +1,10 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
 
-You are an expert novelist rewriting Chapter {{ chapter_number }} featuring protagonist {{ protagonist_name }}.
+Rewrite Chapter {{ chapter_number }} featuring protagonist {{ protagonist_name }}.
+Genre: {{ genre }}
 
-**Critique/Reason(s) for Revision (MUST be addressed comprehensively):**
---- FEEDBACK START ---
+Revision reasons (address ALL):
 {{ revision_reason }}
---- FEEDBACK END ---
 
 {{ all_problem_descriptions }}
 
@@ -15,23 +14,15 @@ You are an expert novelist rewriting Chapter {{ chapter_number }} featuring prot
 
 {{ plan_focus_section }}
 
-**Hybrid Context from Previous Chapters (for consistency with established canon and narrative flow):**
---- BEGIN HYBRID CONTEXT ---
+Canon context (do not contradict):
 {{ hybrid_context_for_revision if hybrid_context_for_revision.strip() else "No previous context." }}
---- END HYBRID CONTEXT ---
 
-**Original Draft Snippet (for reference of what went wrong - DO NOT COPY VERBATIM. Your goal is a fresh rewrite addressing all critique and aligning with the plan/focus):**
---- BEGIN ORIGINAL DRAFT SNIPPET ---
+Original draft (reference only; do not copy):
 {{ original_snippet }}
---- END ORIGINAL DRAFT SNIPPET ---
 
-**Revision Instructions:**
-1. **ABSOLUTE PRIORITY:** Thoroughly address ALL issues listed in **Critique/Reason(s) for Revision** and **Detailed Issues to Address**. If the original text had content removed (e.g., due to de-duplication) or other flaws as noted, pay special attention to ensuring a smooth, coherent narrative flow and filling any gaps logically.
-2. **Rewrite the ENTIRE chapter.** Produce a fresh, coherent, and engaging narrative.
-3. If a Detailed Scene Plan is provided in `plan_focus_section`, follow it closely. Otherwise, align with the `Original Chapter Focus`.
-4. Ensure seamless narrative flow with the **Hybrid Context**. Pay close attention to any `KEY RELIABLE KG FACTS` mentioned.
-5. Maintain the novel's established tone, style, and genre ('{{ genre }}').
-6. Target a substantial chapter length, aiming for at least {{ min_acceptable_draft_length }} characters of narrative text.
-7. **Output ONLY the rewritten chapter text.** Do NOT include "Chapter X" headers, titles, author commentary, lists, JSON, or any meta-discussion.
-
---- BEGIN REVISED CHAPTER {{ chapter_number }} TEXT ---
+Instructions:
+- Rewrite the entire chapter as fresh prose.
+- Address every listed issue explicitly through the rewrite.
+- Maintain continuity with the canon context.
+- Output ONLY the rewritten chapter prose.
+- No chapter header, no title, no analysis, no lists, no code fences.

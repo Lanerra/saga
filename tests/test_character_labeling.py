@@ -21,33 +21,21 @@ from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 @pytest.mark.parametrize(
     "entity_type, expected_labels",
     [
-        ("Character", ":Character:Entity"),
+        ("Character", ":Character"),
         (
             "character",
-            ":Character:Entity",
+            ":Character",
         ),  # Test case-insensitivity for "Character"
         (
             "Person",
-            ":Character:Person:Entity",
-        ),  # Person should get Character first, then Person
-        (
-            "person",
-            ":Character:Person:Entity",
-        ),  # Test case-insensitivity for "Person"
-        ("Location", ":Location:Entity"),
-        ("Event", ":Event:Entity"),
-        ("  Item ", ":Item:Entity"),  # Test stripping whitespace
-        (
-            "Complex_Type",
-            ":ComplexType:Entity",
-        ),  # Test with underscore converted to PascalCase
-        (
-            "Invalid!@#Type",
-            ":InvalidType:Entity",
-        ),  # Test sanitization preserving camel case
-        ("Entity", ":Entity"),  # Explicit "Entity" type
-        ("", ":Entity"),  # Empty type
-        (None, ":Entity"),  # None type
+            ":Character",
+        ),  # Person should get normalized to Character
+        # "person" removed as lowercase types are rejected by strict schema validation
+        ("Location", ":Location"),
+        ("Event", ":Event"),
+        ("  Item ", ":Item"),  # Test stripping whitespace
+        # Removed complex and invalid types as they are now rejected by schema enforcement
+        # Empty/None types are now rejected by strict schema validation
     ],
 )
 def test_get_cypher_labels_various_types(entity_type, expected_labels):
@@ -56,17 +44,15 @@ def test_get_cypher_labels_various_types(entity_type, expected_labels):
 
 def test_get_cypher_labels_character_is_primary():
     # Ensure if type is "Character", it doesn't become :Character:Character:Entity
-    assert _get_cypher_labels("Character") == ":Character:Entity"
-    # Ensure if type is "Person", :Character comes before :Person
-    assert _get_cypher_labels("Person") == ":Character:Person:Entity"
+    assert _get_cypher_labels("Character") == ":Character"
+    # Ensure if type is "Person", it is normalized to Character
+    assert _get_cypher_labels("Person") == ":Character"
 
 
 # Mocking Neo4j interactions for add_kg_triples_batch_to_db and query_kg_from_db
 @pytest.fixture
 def mock_neo4j_manager():
-    with patch(
-        "data_access.kg_queries.neo4j_manager", spec=Neo4jManagerSingleton
-    ) as mock_manager:
+    with patch("data_access.kg_queries.neo4j_manager", spec=Neo4jManagerSingleton) as mock_manager:
         mock_manager.execute_cypher_batch = AsyncMock(return_value=None)
         # Simplistic mock for query_kg_from_db, will be updated by test logic
         mock_manager.execute_read_query = AsyncMock(return_value=[])
@@ -89,9 +75,7 @@ async def capture_statements_mock(
 async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     captured_statements_for_tests.clear()
     # Override the mock for execute_cypher_batch for this test to capture statements
-    mock_neo4j_manager.execute_cypher_batch = AsyncMock(
-        side_effect=capture_statements_mock
-    )
+    mock_neo4j_manager.execute_cypher_batch = AsyncMock(side_effect=capture_statements_mock)
 
     triples_data = [
         # Scenario 1: Explicit Character type
@@ -117,21 +101,22 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
         },
         # Scenario 4: Character as object
         {
-            "subject": {"name": "Story1", "type": "Narrative"},
+            "subject": {"name": "Story1", "type": "Concept"},  # Narrative -> Concept
             "predicate": "FEATURES",
             "object_entity": {"name": "Charles", "type": "Character"},
         },
         # Scenario 5: Person as object
         {
-            "subject": {"name": "ProjectX", "type": "Project"},
+            "subject": {
+                "name": "ProjectX",
+                "type": "Organization",
+            },  # Project -> Organization
             "predicate": "MANAGED_BY",
             "object_entity": {"name": "Diana", "type": "Person"},
         },
     ]
 
-    await add_kg_triples_batch_to_db(
-        triples_data, chapter_number=1, is_from_flawed_draft=False
-    )
+    await add_kg_triples_batch_to_db(triples_data, chapter_number=1, is_from_flawed_draft=False)
 
     # Debug: Print captured statements
     # for i, (query, params) in enumerate(captured_statements_for_tests):
@@ -145,29 +130,21 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     for query, params in captured_statements_for_tests:
         if params.get("subject_name_param") == "Alice":
             # Accept either name-based merge or id-based merge (stable ids for Characters)
-            assert (
-                "MERGE (s:Character:Entity {name: $subject_name_param})" in query
-                or "MERGE (s:Entity {id: $subject_id_param})" in query
-            )
+            assert "MERGE (s:Character {name: $subject_name_param})" in query or "MERGE (s:Character {id: $subject_id_param})" in query
             alice_statement_found = True
             break
-    assert (
-        alice_statement_found
-    ), "Cypher statement for Alice as Character not found or incorrect."
+    assert alice_statement_found, "Cypher statement for Alice as Character not found or incorrect."
 
-    # Verify generated Cypher for Bob (Person -> Character:Person)
+    # Verify generated Cypher for Bob (Person -> Character)
     bob_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("subject_name_param") == "Bob":
-            # Accept either label applied in MERGE or applied via SET clause
-            assert (
-                "MERGE (s:Character" in query and "$subject_name_param" in query
-            ) and (":Person" in query or "s:`Person`" in query)
+            # Normalization updates the type parameter, so we check for the normalized label
+            # The MERGE will be on :Character (from normalized type)
+            assert "MERGE (s:Character {name: $subject_name_param})" in query or "MERGE (s:Character {id: $subject_id_param})" in query
             bob_statement_found = True
             break
-    assert (
-        bob_statement_found
-    ), "Cypher statement for Bob as Person:Character not found or incorrect."
+    assert bob_statement_found, "Cypher statement for Bob as Person->Character not found or incorrect."
 
     # Verify generated Cypher for Castle (Location)
     castle_statement_found = False
@@ -177,40 +154,28 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
             assert "$subject_name_param" in query
             castle_statement_found = True
             break
-    assert (
-        castle_statement_found
-    ), "Cypher statement for Castle as Location not found or incorrect."
+    assert castle_statement_found, "Cypher statement for Castle as Location not found or incorrect."
 
     # Verify Charles (Object, Character)
     charles_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("object_name_param") == "Charles":
             # Accept either name-based merge with Character label or id-based merge for stable IDs
-            assert (
-                "MERGE (o:Character:Entity {name: $object_name_param})" in query
-                or "MERGE (o:Entity {id: $object_id_param})" in query
-            )
+            assert "MERGE (o:Character {name: $object_name_param})" in query or "MERGE (o:Character {id: $object_id_param})" in query
             charles_statement_found = True
             break
-    assert (
-        charles_statement_found
-    ), "Cypher statement for Charles as Character (object) not found or incorrect."
+    assert charles_statement_found, "Cypher statement for Charles as Character (object) not found or incorrect."
 
-    # Verify Diana (Object, Person -> Character:Person)
+    # Verify Diana (Object, Person -> Character)
     diana_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("object_name_param") == "Diana":
-            # Accept either explicit Character:Person MERGE or id-based MERGE with labels applied via SET
-            assert (
-                "MERGE (o:Character" in query
-                and "$object_name_param" in query
-                and (":Person" in query or "o:`Person`" in query)
-            ) or ("MERGE (o:Entity {id: $object_id_param})" in query)
+            # Normalization updates the type parameter, so we check for the normalized label
+            # The MERGE will be on :Character (from normalized type)
+            assert ("MERGE (o:Character" in query and "$object_name_param" in query) or ("MERGE (o:Character {id: $object_id_param})" in query)
             diana_statement_found = True
             break
-    assert (
-        diana_statement_found
-    ), "Cypher statement for Diana as Person:Character (object) not found or incorrect."
+    assert diana_statement_found, "Cypher statement for Diana as Person->Character (object) not found or incorrect."
 
 
 # Placeholder for a more comprehensive query test.
@@ -239,9 +204,7 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
         captured_query_string = query
         captured_query_params = params
         # Simulate finding relevant nodes
-        if (
-            ":Character" in query and params.get("subject_param") is None
-        ):  # General Character query
+        if ":Character" in query and params.get("subject_param") is None:  # General Character query
             return [
                 {
                     "subject": "Alice",
@@ -282,9 +245,7 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
             ]
         return []
 
-    mock_neo4j_manager.execute_read_query = AsyncMock(
-        side_effect=capture_read_query_mock
-    )
+    mock_neo4j_manager.execute_read_query = AsyncMock(side_effect=capture_read_query_mock)
 
     # Query for all subjects that are Characters (implicit by querying for :Character)
     # query_kg_from_db structure might need adjustment if we want to query nodes by type directly
@@ -311,7 +272,8 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
     # query_kg_from_db in current SAGA normalizes predicate internally and does not
     # pass it as a parameter; only subject is parameterized here.
     assert captured_query_params.get("subject_param") == "Alice"
-    assert "MATCH (s:Entity)-[r:" in captured_query_string
+    # assert "MATCH (s:Entity)-[r:" in captured_query_string # Removed Entity label requirement
+    assert "MATCH (s)-[r:" in captured_query_string
     # The test for _get_cypher_labels and add_kg_triples_batch_to_db already ensure Alice is a :Character.
     # So, if Neo4j has Alice as :Character, the query will work.
 
@@ -346,9 +308,12 @@ async def test_query_retrieves_all_character_types(mock_neo4j_manager):
     # This specific test for query_kg_from_db might be less critical if query_kg_from_db
     # isn't the primary tool for "get all characters".
 
-    # Reset query capture and test a general character retrieval
+    # Reset query capture and test a general character retrieval.
+    #
+    # Guardrail contract: unbounded scans require an explicit opt-in.
     captured_query_string = ""
     captured_query_params = {}
-    await query_kg_from_db(include_provisional=True)
-    assert "MATCH (s:Entity)-[r" in captured_query_string
+    await query_kg_from_db(include_provisional=True, allow_unbounded_scan=True)
+    # assert "MATCH (s:Entity)-[r" in captured_query_string # Removed Entity label requirement
+    assert "MATCH (s)-[r" in captured_query_string
     assert captured_query_params == {}

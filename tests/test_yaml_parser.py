@@ -11,7 +11,7 @@ from utils.common import (
 
 
 class TestYamlParsing(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.test_dir = "temp_test_yaml_files"
         os.makedirs(self.test_dir, exist_ok=True)
 
@@ -25,21 +25,17 @@ class TestYamlParsing(unittest.TestCase):
 
         self.malformed_yaml_filepath = os.path.join(self.test_dir, "malformed.yaml")
         with open(self.malformed_yaml_filepath, "w", encoding="utf-8") as f:
-            f.write(
-                "Novel Concept: Title: Test Novel\nGenre: [Sci-Fi"
-            )  # Missing closing bracket
+            f.write("Novel Concept: Title: Test Novel\nGenre: [Sci-Fi")  # Missing closing bracket
 
         self.empty_yaml_filepath = os.path.join(self.test_dir, "empty.yaml")
         with open(self.empty_yaml_filepath, "w", encoding="utf-8") as f:
             f.write("")  # Empty file
 
-        self.non_dict_root_yaml_filepath = os.path.join(
-            self.test_dir, "non_dict_root.yaml"
-        )
+        self.non_dict_root_yaml_filepath = os.path.join(self.test_dir, "non_dict_root.yaml")
         with open(self.non_dict_root_yaml_filepath, "w", encoding="utf-8") as f:
             f.write("- item1\n- item2")  # Root is a list
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         if os.path.exists(self.valid_yaml_filepath):
             os.remove(self.valid_yaml_filepath)
         if os.path.exists(self.malformed_yaml_filepath):
@@ -51,39 +47,41 @@ class TestYamlParsing(unittest.TestCase):
         if os.path.exists(self.test_dir):
             os.rmdir(self.test_dir)
 
-    def test_load_valid_yaml_normalized_keys(self):
+    def test_load_valid_yaml_normalized_keys(self) -> None:
         data = load_yaml_file(self.valid_yaml_filepath, normalize_keys=True)
         self.assertIsNotNone(data)
+        # Explicit check for mypy
+        assert data is not None
         self.assertIn("novel_concept", data)
-        if data:  # for mypy
-            self.assertEqual(data["novel_concept"]["title"], "Test Novel")
-            self.assertEqual(data["protagonist_traits"], ["Brave", "Smart"])
+        self.assertEqual(data["novel_concept"]["title"], "Test Novel")
+        self.assertEqual(data["protagonist_traits"], ["Brave", "Smart"])
 
-    def test_load_valid_yaml_raw_keys(self):
+    def test_load_valid_yaml_raw_keys(self) -> None:
         data = load_yaml_file(self.valid_yaml_filepath, normalize_keys=False)
         self.assertIsNotNone(data)
+        # Explicit check for mypy
+        assert data is not None
         self.assertIn("Novel Concept", data)
-        if data:  # for mypy
-            self.assertEqual(data["Novel Concept"]["Title"], "Test Novel")
+        self.assertEqual(data["Novel Concept"]["Title"], "Test Novel")
 
-    def test_load_non_existent_file(self):
+    def test_load_non_existent_file(self) -> None:
         data = load_yaml_file("non_existent.yaml")
         self.assertIsNone(data)
 
-    def test_load_malformed_yaml(self):
+    def test_load_malformed_yaml(self) -> None:
         data = load_yaml_file(self.malformed_yaml_filepath)
         self.assertIsNone(data)
 
-    def test_load_empty_yaml(self):
+    def test_load_empty_yaml(self) -> None:
         data = load_yaml_file(self.empty_yaml_filepath)
         self.assertEqual(data, {})  # Expecting an empty dictionary for an empty file
 
-    def test_load_non_dict_root_yaml(self):
+    def test_load_non_dict_root_yaml(self) -> None:
         # Current implementation of load_yaml_file logs error and returns None if root is not dict
         data = load_yaml_file(self.non_dict_root_yaml_filepath)
         self.assertIsNone(data)
 
-    def test_normalize_keys_recursive(self):
+    def test_normalize_keys_recursive(self) -> None:
         data = {
             "First Key": {"Second Level Key": "value1"},
             "Another Top Key": [{"List Key One": 1}, {"List Key Two": 2}],

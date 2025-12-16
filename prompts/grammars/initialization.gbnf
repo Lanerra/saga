@@ -1,0 +1,25 @@
+# Initialization Grammars
+# Includes: Global Outline, Character List, Character Sheet, Chapter Outline
+
+root ::= global-outline | character-list | character-sheet | chapter-outline
+
+# 1. Global Outline
+global-outline ::= "{" ws "\"act_count\"" ws ":" ws json-number "," ws "\"acts\"" ws ":" ws act-list "," ws "\"inciting_incident\"" ws ":" ws json-string "," ws "\"midpoint\"" ws ":" ws json-string "," ws "\"climax\"" ws ":" ws json-string "," ws "\"resolution\"" ws ":" ws json-string "," ws "\"character_arcs\"" ws ":" ws char-arc-list "," ws "\"thematic_progression\"" ws ":" ws json-string "," ws "\"pacing_notes\"" ws ":" ws json-string ws "}"
+
+act-list ::= "[" ws (act-object ("," ws act-object)*)? ws "]"
+act-object ::= "{" ws "\"act_number\"" ws ":" ws json-number "," ws "\"title\"" ws ":" ws json-string "," ws "\"summary\"" ws ":" ws json-string "," ws "\"key_events\"" ws ":" ws string-list "," ws "\"chapters_start\"" ws ":" ws json-number "," ws "\"chapters_end\"" ws ":" ws json-number ws "}"
+
+char-arc-list ::= "[" ws (char-arc-object ("," ws char-arc-object)*)? ws "]"
+char-arc-object ::= "{" ws "\"character_name\"" ws ":" ws json-string "," ws "\"starting_state\"" ws ":" ws json-string "," ws "\"ending_state\"" ws ":" ws json-string "," ws "\"key_moments\"" ws ":" ws string-list ws "}"
+
+# 2. Character List
+character-list ::= string-list
+
+# 3. Character Sheet (CharacterProfile)
+character-sheet ::= "{" ws "\"name\"" ws ":" ws json-string "," ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws trait-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"motivations\"" ws ":" ws json-string "," ws "\"background\"" ws ":" ws json-string "," ws "\"skills\"" ws ":" ws string-list "," ws "\"relationships\"" ws ":" ws relationship-map "," ws "\"internal_conflict\"" ws ":" ws json-string ws "}"
+
+relationship-map ::= "{" ws (relationship-entry ("," ws relationship-entry)*)? ws "}"
+relationship-entry ::= json-string ws ":" ws json-string
+
+# 4. Chapter Outline
+chapter-outline ::= "{" ws "\"scene_description\"" ws ":" ws json-string "," ws "\"key_beats\"" ws ":" ws string-list "," ws "\"plot_point\"" ws ":" ws json-string ws "}"

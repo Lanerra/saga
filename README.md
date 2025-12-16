@@ -1,136 +1,30 @@
-# SAGA - Semantic And Graph‑enhanced Authoring
+# SAGA
 
-**WARNING**: SAGA is currently in a state of (mostly) functional flux as it is undergoing a significant refactor and overhaul. Things may not work as intended.
+SAGA (Semantic And Graph-enhanced Authoring) is a **local-first**, single-user Python CLI for **AI-driven long-form fiction generation**. It uses:
 
-**NOTE**: `MAX_REVISION_CYCLES_PER_CHAPTER` currently defaults to `0`, effectively disabling the revision cycle during chapter generation. It is currently broken and imminently going to be refactored.
+- **LangGraph** for workflow orchestration (checkpointed, resumable)
+- **Neo4j** as a persistent knowledge graph to store canon (characters, locations, relationships, events)
+- The local filesystem for human-readable artifacts and outputs
 
-SAGA is a local‑first, single‑process Python CLI that uses a Neo4j knowledge graph and a small set of cooperating agents to plan, draft, and revise long‑form fiction while preserving continuity across chapters.
+Core philosophy: single machine, no web app, no microservices (see `docs/PROJECT_CONSTRAINTS.md`).
 
+## For writers: what you get
 
-## What SAGA Does
+SAGA’s goal is to help you generate a novel while staying consistent with established story facts.
 
-- Local knowledge graph continuity
-  - Persists entities, relationships, plot points, and chapter metadata in a local Neo4j database.
-  - Maintains coherence via periodic “healing/enrichment” passes and duplicate prevention/merging.
-- Agentic writing pipeline
-  - Plans scenes, drafts prose, and runs patch‑based revisions with automated evaluation gates.
-  - Generates continuation plot points when the outline runs out, based on recent chapter summaries.
-- Multi‑phase bootstrap (optional)
-  - World → Characters → Plot, each with lightweight validation and optional graph healing.
-  - Can run standalone or as an integrated prelude to generation.
-- Semantic context and search
-  - Embeddings stored on chapter nodes with a Neo4j vector index for fast similarity search.
-  - “Zero‑copy” context assembly pulls just the snippets needed for the current chapter.
-- Rich CLI progress
-  - Live panel shows novel title, chapter progress, current step, elapsed time, and request rate.
+Running it produces (under `output/`):
 
+- Drafted and finalized chapters (`output/chapters/`)
+- Chapter summaries (`output/summaries/`)
+- Exportable compiled manuscript (`output/exports/`)
+- Human-readable YAML artifacts (`output/characters/`, `output/world/`, `output/outline/`)
+- Resumable workflow checkpoints (`output/.saga/checkpoints.db`)
 
-## Quick Start
+The intended design is: **your canon lives in Neo4j**, while **your artifacts live in files**, so you can inspect and version outputs easily.
 
-Prereqs
-- Python 3.12
-- Neo4j 5.x running locally (standalone or via `docker-compose`)
-- A local LLM endpoint for completions and embeddings (OpenAI‑compatible HTTP, e.g., local gateway). Configure endpoints in `.env`.
+## Status: not production-ready
 
-*Note: SAGA also supports connecting to cloud endpoints as well, but is local-first by design.*
-
-Setup
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # then edit values as needed
-```
-
-Start Neo4j (optional helper)
-```bash
-docker-compose up -d   # uses docker-compose.yml in this repo
-```
-
-Run the generator
-```bash
-python main.py
-```
-
-Optional: Run the bootstrap independent of the novel generation cycle (world → characters → plot)
-```bash
-# Full pipeline
-python main.py --bootstrap
-
-# Limit to a phase
-python main.py --bootstrap --bootstrap-phase world     # or characters|plot
-
-# Tuning and safety
-python main.py --bootstrap --bootstrap-level basic     # basic|enhanced|max
-python main.py --bootstrap --bootstrap-dry-run
-python main.py --bootstrap --bootstrap-kg-heal
-python main.py --bootstrap --bootstrap-reset-kg
-```
-
-Optional: Ingest existing text (experimental)
-```bash
-python main.py --ingest path/to/novel.txt
-```
-
-
-## Key Features
-
-- Knowledge Graph backbone (Neo4j)
-  - Schema creation with constraints/indexes, including a vector index on chapter embeddings.
-  - Entity merge helpers and enrichment to reduce duplication and fill gaps over time.
-- Agents, not services
-  - NarrativeAgent: scene planning and chapter drafting using KG‑aware context.
-  - RevisionAgent: evaluation + small, targeted patch cycles to improve drafts.
-  - KnowledgeAgent: KG extraction/persistence, healing/enrichment, and outline sync.
-- Continuation planning
-  - When all concrete plot points are used, SAGA plans additional points from prior summaries.
-- Output artifacts
-  - Chapter text files, per‑chapter logs, and debug JSON under `output/`.
-- Local‑first architecture
-  - No web servers or distributed components; single user on a single machine.
-
-
-## CLI Overview
-
-`python main.py` — start the chapter generation loop.
-
-`python main.py --bootstrap [options]` — run the multi‑phase bootstrap and exit.
-- `--bootstrap-phase {world|characters|plot|all}`
-- `--bootstrap-level {basic|enhanced|max}`
-- `--bootstrap-dry-run` (validate only; do not write to Neo4j)
-- `--bootstrap-kg-heal` (heal/enrich after each phase write)
-- `--bootstrap-reset-kg` (wipe Neo4j before bootstrapping; destructive)
-
-`python main.py --ingest <file>` — ingest a text file into the KG (experimental).
-
-
-## Configuration
-
-- Edit `.env` or adjust `config/settings.py`. Important keys:
-  - `OPENAI_API_BASE`, `OPENAI_API_KEY` — OpenAI‑compatible completion endpoint (local recommended)
-  - `EMBEDDING_API_BASE`, `EMBEDDING_MODEL`, `EXPECTED_EMBEDDING_DIM` — embedding service and dimensions
-  - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` — local Neo4j connection
-  - `CHAPTERS_PER_RUN`, `CONTEXT_CHAPTER_COUNT`, `TARGET_PLOT_POINTS_INITIAL_GENERATION` — core behavior
-  - Bootstrap toggles: `BOOTSTRAP_*` settings (healing, levels, fail‑fast, etc.)
-
-Outputs are written under `output/`:
-- `output/chapters/` — final chapter text
-- `output/chapter_logs/` — chapter‑specific logs
-- `output/debug_outputs/` — saved prompts, scene plans, validation reports, etc.
-
-
-## How It Works (High Level)
-
-1) Bootstrap (optional, independent loop)
-- Generate a minimal world, a cast of characters, and a plot outline; validate and persist to the KG.
-
-2) Per‑chapter loop
-- Build KG‑aware context (recent summaries, reliable facts, relevant world/character snippets).
-- Plan scenes, draft prose, evaluate, and apply small patch cycles if needed.
-- Save chapter text, summary, and embedding; periodically heal/enrich the graph.
-
-3) Continuation
-- If the outline runs out of concrete plot points, generate more from recent narrative context.
-
+SAGA currently has known critical issues and is **not production-ready**.
 
 ## Screenshots
 
@@ -138,17 +32,129 @@ Progress window (Rich CLI):
 
 ![SAGA Progress Window](SAGA.png)
 
-Example KG snapshot (4 chapters):
+Example KG snapshot (5 chapters):
 
-![SAGA KG Visualization](SAGA-KG-Ch4.png)
+![SAGA KG Visualization](SAGA-KG-Ch5.png)
 
+## Developer quickstart
 
-## Light Dev Notes
+### Prerequisites
 
-- Single user, single machine; no web servers or remote services are introduced by SAGA.
-- Run tests with `pytest`; lint/format with `ruff check .` and `ruff format .`.
+- Python **3.12** (see `pyproject.toml`)
+- A running Neo4j instance (Docker is provided via `docker-compose.yml`)
+- A local OpenAI-compatible LLM endpoint (for text generation)
+- A local embeddings endpoint
 
+### Setup
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Edit your `.env` to match your local services (see `.env.example`).
+
+### Start Neo4j (Docker)
+
+```bash
+docker-compose up -d
+```
+
+Neo4j defaults in this repo:
+- user: `neo4j`
+- password: `saga_password`
+
+### Run SAGA
+
+```bash
+python main.py
+```
+
+## Configuration
+
+SAGA uses Pydantic settings loaded from `.env` (see `config/settings.py`).
+
+Key environment variables (examples in `.env.example`):
+
+- `OPENAI_API_BASE`: OpenAI-compatible base URL (example: `http://127.0.0.1:8080/v1`)
+- `OPENAI_API_KEY`: token (can be dummy for purely local gateways)
+- `EMBEDDING_API_BASE`: embeddings endpoint base URL (example: `http://127.0.0.1:11434`)
+- `EMBEDDING_MODEL`: embedding model name
+- `EXPECTED_EMBEDDING_DIM` and `NEO4J_VECTOR_DIMENSIONS`: must match your embedding model’s output dimension
+
+Important:
+- Defaults in `config/settings.py` assume a **1024-dim** embedding model unless overridden.
+- The sample `.env.example` uses **768**.
+
+Keep embedding dimensions consistent across:
+`EXPECTED_EMBEDDING_DIM`, `NEO4J_VECTOR_DIMENSIONS`, and your embedding model.
+
+## Local LLM endpoint examples
+
+SAGA assumes generation is done via an **OpenAI-compatible HTTP API** on your machine (configured via `OPENAI_API_BASE`).
+
+Common local patterns:
+
+- **vLLM (OpenAI-compatible server)**  
+  Run vLLM in OpenAI server mode and point `OPENAI_API_BASE` at it.
+
+- **llama.cpp server (OpenAI-compatible)**  
+  Run llama.cpp’s server mode and point `OPENAI_API_BASE` at it.
+
+- **OpenAI-compatible gateways (local)**  
+  If you run a local gateway that exposes `/v1` endpoints, point `OPENAI_API_BASE` at the gateway.
+
+Embeddings are configured separately via `EMBEDDING_API_BASE`. Any embedding service that matches your configured model and dimension works.
+
+## Outputs
+
+High-level output layout:
+
+```
+output/
+├── .saga/               # checkpoints + externalized content
+├── chapters/            # finalized chapters (markdown)
+├── summaries/           # per-chapter summaries
+├── outline/             # story/act/chapter outline YAML
+├── characters/          # character profiles YAML
+├── world/               # world items + rules YAML
+└── exports/             # compiled manuscript exports
+```
+
+## How it works (high level)
+
+```mermaid
+flowchart TD
+    Start[Run CLI] --> Route[Route]
+    Route --> Init[Initialize story]
+    Route --> Plan[Plan chapter]
+    Init --> Plan
+    Plan --> Generate[Generate prose]
+    Generate --> Embed[Generate embedding]
+    Embed --> Extract[Extract canon]
+    Extract --> Commit[Commit to Neo4j]
+    Commit --> Validate[Validate]
+    Validate --> Finalize[Finalize files]
+    Finalize --> Next[Next chapter]
+```
+
+For the deep dive, start here:
+- Architecture overview: `docs/langgraph-architecture.md`
+- Workflow walkthrough: `docs/WORKFLOW_WALKTHROUGH.md`
+- Workflow visualization tooling: `docs/WORKFLOW_VISUALIZATION.md`
+
+## Troubleshooting
+
+- Logs and debug artifacts:
+  - Check `output/chapter_logs/` and `output/debug_outputs/`
+- Neo4j reset (destructive):
+  - Run `python reset_neo4j.py`
+- Neo4j connection failures:
+  - Confirm `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` match `.env.example`
 
 ## License
 
-Apache-2.0 — see `LICENSE`.
+Apache-2.0 - See `LICENSE`.
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Lanerra/saga)

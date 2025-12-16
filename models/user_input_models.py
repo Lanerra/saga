@@ -88,9 +88,7 @@ class UserStoryInputModel(BaseModel):
 
 def user_story_to_objects(
     model: UserStoryInputModel,
-) -> tuple[
-    dict[str, Any], dict[str, CharacterProfile], dict[str, dict[str, WorldItem]]
-]:
+) -> tuple[dict[str, Any], dict[str, CharacterProfile], dict[str, dict[str, WorldItem]]]:
     """Convert ``UserStoryInputModel`` to internal dataclass objects."""
 
     plot_outline: dict[str, Any] = {}
@@ -111,10 +109,7 @@ def user_story_to_objects(
         cp = CharacterProfile(name=main_char_model.name)
         cp.description = main_char_model.description or ""
         cp.traits = main_char_model.traits
-        cp.relationships = {
-            rel_key: rel.model_dump(exclude_none=True)
-            for rel_key, rel in main_char_model.relationships.items()
-        }
+        cp.relationships = {rel_key: rel.model_dump(exclude_none=True) for rel_key, rel in main_char_model.relationships.items()}
         cp.status = "As described"
         cp.updates["role"] = main_char_model.role or "protagonist"
         cp.updates["motivation"] = main_char_model.motivation or ""
@@ -127,16 +122,13 @@ def user_story_to_objects(
         ant_cp = CharacterProfile(name=antagonist_model.name)
         ant_cp.description = antagonist_model.description or ""
         ant_cp.traits = antagonist_model.traits
-        ant_cp.relationships = {
-            rel_key: rel.model_dump(exclude_none=True)
-            for rel_key, rel in antagonist_model.relationships.items()
-        }
+        ant_cp.relationships = {rel_key: rel.model_dump(exclude_none=True) for rel_key, rel in antagonist_model.relationships.items()}
         ant_cp.status = "As described"
         ant_cp.updates["role"] = antagonist_model.role or "antagonist"
         characters[ant_cp.name] = ant_cp
 
     if model.other_key_characters:
-        for name, info in model.other_key_characters.items():
+        for _name, info in model.other_key_characters.items():
             cp = CharacterProfile(name=info.name)
             cp.description = info.description or ""
             cp.traits = info.traits
@@ -186,8 +178,6 @@ def user_story_to_objects(
             world_items.setdefault(category, {})
             if isinstance(items, dict):
                 for item_name, item_details in items.items():
-                    world_items[category][item_name] = WorldItem.from_dict(
-                        category, item_name, item_details
-                    )
+                    world_items[category][item_name] = WorldItem.from_dict(category, item_name, item_details)
 
     return plot_outline, characters, world_items if world_items else {}

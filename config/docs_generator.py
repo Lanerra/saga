@@ -41,9 +41,9 @@ def _format_default(value: Any) -> str:
     """Represent a default value as a readable string for markdown."""
     if isinstance(value, str):
         return f'"{value}"'
-    if isinstance(value, (int, float, bool)):
+    if isinstance(value, int | float | bool):
         return str(value)
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return f"{list(value)}"
     # Fallback for other types
     return repr(value)
@@ -84,11 +84,7 @@ def generate_docs(
         default_val = getattr(current_settings, field_name, None)
         default_str = _format_default(default_val)
 
-        description = (
-            field_info.description.replace("\n", " ").strip()
-            if field_info.description
-            else ""
-        )
+        description = field_info.description.replace("\n", " ").strip() if field_info.description else ""
 
         description = description.replace("|", "\\|")
 

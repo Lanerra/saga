@@ -50,7 +50,7 @@ class MockService:
 class TestLightweightCache:
     """Test suite for lightweight cache functionality."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Set up test environment."""
         # Clear any existing test caches by clearing service caches
         test_service_names = [
@@ -69,7 +69,7 @@ class TestLightweightCache:
         for service_name in test_service_names:
             clear_service_cache(service_name)
 
-    def test_service_registration(self):
+    def test_service_registration(self) -> None:
         """Test service registration with cache."""
         service_name = "test_service"
 
@@ -85,7 +85,7 @@ class TestLightweightCache:
 
         assert retrieved_value == value
 
-    def test_cache_operations(self):
+    def test_cache_operations(self) -> None:
         """Test basic cache operations."""
         service_name = "test_service"
         register_cache_service(service_name)
@@ -99,7 +99,7 @@ class TestLightweightCache:
 
         assert retrieved_value == value
 
-    def test_cache_invalidation(self):
+    def test_cache_invalidation(self) -> None:
         """Test cache invalidation."""
         service_name = "test_service"
         register_cache_service(service_name)
@@ -120,7 +120,7 @@ class TestLightweightCache:
         retrieved_value = get_cached_value(key, service_name)
         assert retrieved_value is None
 
-    def test_cache_metrics(self):
+    def test_cache_metrics(self) -> None:
         """Test cache metrics collection."""
         service_name = "test_service"
         register_cache_service(service_name)
@@ -144,7 +144,7 @@ class TestLightweightCache:
         # Minimal metrics are supported; ensure size reflects entries
         assert metrics.get("size", 0) >= 1
 
-    def test_cross_service_cache_isolation(self):
+    def test_cross_service_cache_isolation(self) -> None:
         """Test cross-service cache isolation."""
         service1_name = "service1"
         service2_name = "service2"
@@ -167,7 +167,7 @@ class TestLightweightCache:
         assert retrieved_value2 == value2
         assert retrieved_value1 != retrieved_value2
 
-    def test_tag_based_operations(self):
+    def test_tag_based_operations(self) -> None:
         """Tagging removed: ensure tag APIs are not supported."""
         service_name = "test_service_tag"
         register_cache_service(service_name)
@@ -180,12 +180,12 @@ class TestLightweightCache:
         metrics = get_cache_metrics(service_name)
         assert metrics.get("size", 0) >= 1
 
-    def test_concurrent_cache_access(self):
+    def test_concurrent_cache_access(self) -> None:
         """Test concurrent cache access from multiple threads."""
         service_name = "concurrent_service"
         register_cache_service(service_name)
 
-        def worker(worker_id: int, results: list[Any]):
+        def worker(worker_id: int, results: list[Any]) -> None:
             """Worker function for concurrent testing."""
             key = f"key_{worker_id}"
             value = f"value_{worker_id}"
@@ -199,7 +199,7 @@ class TestLightweightCache:
 
         # Run multiple workers concurrently
         threads = []
-        results = []
+        results: list[tuple[str, Any]] = []
 
         for i in range(10):
             thread = threading.Thread(target=worker, args=(i, results))
@@ -216,7 +216,7 @@ class TestLightweightCache:
             assert value is not None
             assert value == f"value_{key.split('_')[1]}"
 
-    def test_mock_service_integration(self):
+    def test_mock_service_integration(self) -> None:
         """Test integration with mock service."""
         service_name = "mock_service"
         register_cache_service(service_name)

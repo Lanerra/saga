@@ -5,8 +5,12 @@ import asyncio
 import time
 from typing import Any
 
+import structlog
+
 import config
 from core.llm_interface_refactored import llm_service
+
+logger = structlog.get_logger(__name__)
 
 try:
     from rich.console import Console, Group
@@ -18,7 +22,8 @@ try:
 except Exception:  # pragma: no cover - fallback when Rich isn't installed
     RICH_AVAILABLE = False
 
-    class Live:  # type: ignore
+    # Fallback stub classes when rich is not installed
+    class Live:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
@@ -28,15 +33,15 @@ except Exception:  # pragma: no cover - fallback when Rich isn't installed
         def stop(self) -> None:  # pragma: no cover - noop fallback
             pass
 
-    class Text:  # type: ignore
+    class Text:  # type: ignore[no-redef]
         def __init__(self, initial_text: str = "") -> None:
             self.plain = initial_text
 
-    class Group:  # type: ignore
+    class Group:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-    class Panel:  # type: ignore
+    class Panel:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
@@ -113,17 +118,15 @@ class RichDisplayManager:
 
     def update(
         self,
-        plot_outline: dict[str, Any] | None = None,
+        novel_title: str | None = None,
         chapter_num: int | None = None,
         step: str | None = None,
         run_start_time: float | None = None,
     ) -> None:
         if not (self.live and self.group):
             return
-        if plot_outline is not None:
-            self.status_text_novel_title.plain = (
-                f"Novel: {plot_outline.get('title', 'N/A')}"
-            )
+        if novel_title is not None:
+            self.status_text_novel_title.plain = f"Novel: {novel_title}"
         if chapter_num is not None:
             self.status_text_current_chapter.plain = f"Current Chapter: {chapter_num}"
         if step is not None:
@@ -133,22 +136,17 @@ class RichDisplayManager:
         # Get request count from the refactored service statistics
         try:
             stats = llm_service.get_combined_statistics()
-            request_count = stats.get("completion_service", {}).get(
-                "completions_requested", 0
-            )
-            requests_per_minute = (
-                request_count / (elapsed_seconds / 60) if elapsed_seconds > 0 else 0.0
-            )
+            request_count = stats.get("completion_service", {}).get("completions_requested", 0)
+            requests_per_minute = request_count / (elapsed_seconds / 60) if elapsed_seconds > 0 else 0.0
         except (AttributeError, KeyError):
             requests_per_minute = 0.0
-        self.status_text_requests_per_minute.plain = (
-            f"Requests/Min: {requests_per_minute:.2f}"
-        )
-        self.status_text_elapsed_time.plain = (
-            f"Elapsed Time: {time.strftime('%H:%M:%S', time.gmtime(elapsed_seconds))}"
-        )
+        self.status_text_requests_per_minute.plain = f"Requests/Min: {requests_per_minute:.2f}"
+        self.status_text_elapsed_time.plain = f"Elapsed Time: {time.strftime('%H:%M:%S', time.gmtime(elapsed_seconds))}"
         # Force a refresh to keep the live panel anchored and updated
         try:
             self.live.refresh()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "Failed to refresh Rich live display",
+                error=str(e),
+            )

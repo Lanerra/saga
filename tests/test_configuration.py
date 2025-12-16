@@ -10,10 +10,12 @@ These tests verify:
 from __future__ import annotations
 
 # Import the config package (the public API lives in ``config.__init__``)
+import pytest
+
 import config
 
 
-def test_validation_report_is_healthy():
+def test_validation_report_is_healthy() -> None:
     """The default configuration should be reported as healthy."""
     from config.validator import validate_all
 
@@ -24,7 +26,7 @@ def test_validation_report_is_healthy():
     assert not report["issues"]["warnings"]
 
 
-def test_reload_applies_environment_changes(monkeypatch):
+def test_reload_applies_environment_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     """Changing an env var followed by ``config.reload()`` updates the settings."""
     # Preserve the original value to restore after the test
     original_value = config.settings.EMBEDDING_MODEL
