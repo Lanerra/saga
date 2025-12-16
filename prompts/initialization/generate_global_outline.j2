@@ -12,21 +12,16 @@ Main characters:
 
 ## Task
 
-You MUST output ONLY valid JSON matching the enforced global-outline grammar.
-
-CRITICAL OUTPUT RULES:
-- Output MUST be a single JSON object.
-- Output MUST contain EXACTLY these keys (no more, no less):
-  - "act_count" (number)
-  - "acts" (array)
-  - "inciting_incident" (string)
-  - "midpoint" (string)
-  - "climax" (string)
-  - "resolution" (string)
-  - "character_arcs" (array)
-  - "thematic_progression" (string)
-  - "pacing_notes" (string)
-- No markdown. No code fences. No commentary.
+Return a single JSON object with EXACTLY these keys (no more, no less):
+- "act_count" (number)
+- "acts" (array)
+- "inciting_incident" (string)
+- "midpoint" (string)
+- "climax" (string)
+- "resolution" (string)
+- "character_arcs" (array)
+- "thematic_progression" (string)
+- "pacing_notes" (string)
 
 Act constraints:
 - act_count must be 3 or 5.
@@ -36,4 +31,4 @@ Act constraints:
 Character arcs:
 - Include arcs for all main characters: {{ character_names | join(", ") }}
 
-Return ONLY the JSON object.
+Return the JSON object.

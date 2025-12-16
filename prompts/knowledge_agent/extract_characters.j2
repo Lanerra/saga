@@ -7,10 +7,8 @@ Chapter: {{ chapter_number }}
 
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
-CRITICAL OUTPUT CONTRACT (grammar enforced):
-- Return ONLY valid JSON.
-- Top-level JSON object MUST be: {"character_updates": {...}}
-- Do NOT include markdown, code fences, or any text outside the JSON.
+Output shape:
+- Top-level object MUST be: {"character_updates": {...}}
 - Under "character_updates":
   - keys are character names (strings)
   - values are objects with EXACTLY these keys (no more, no less):

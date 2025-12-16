@@ -239,11 +239,11 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_locations: failed to hash/log prompt for debugging")
 
     try:
-        # Load grammar for world extraction
+        # Load grammar for location extraction
         grammar_content = load_grammar("extraction")
-        # Prepend root rule for world extraction
+        # Prepend root rule for strict location extraction
         grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-        grammar = f"root ::= world-extraction\n{grammar}"
+        grammar = f"root ::= location-extraction\n{grammar}"
 
         logger.debug("extract_locations: using grammar", grammar_head=grammar[:100])
 
@@ -532,11 +532,11 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_events: failed to hash/log prompt for debugging")
 
     try:
-        # Load grammar for world extraction (includes events)
+        # Load grammar for event extraction
         grammar_content = load_grammar("extraction")
-        # Prepend root rule for world extraction
+        # Prepend root rule for strict event extraction
         grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-        grammar = f"root ::= world-extraction\n{grammar}"
+        grammar = f"root ::= event-extraction\n{grammar}"
 
         logger.debug("extract_events: using grammar", grammar_head=grammar[:100])
 

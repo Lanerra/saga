@@ -9,6 +9,7 @@ the narrative generation process.
 
 from __future__ import annotations
 
+import json
 import re
 
 import structlog
@@ -280,6 +281,10 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
         },
     )
 
+    grammar = load_grammar("initialization")
+    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
+    grammar = f"root ::= character-list\n{grammar}"
+
     try:
         response, _ = await llm_service.async_call_llm(
             model_name=state.get("large_model", ""),
@@ -289,35 +294,64 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),
+            grammar=grammar,
         )
 
-        # Parse response to extract character names
-        # Expected format: one character per line or comma-separated
         if not response:
-            logger.error("_generate_character_list: empty response from LLM")
-            return []
+            raise ValueError("LLM returned empty response for character list")
 
-        # Try to parse as list
-        character_names = []
-        for line in response.strip().split("\n"):
-            line = line.strip()
-            # Remove common prefixes and numbers
-            line = line.lstrip("-*•123456789. ")
-            if line and len(line) < 100:  # Sanity check
-                character_names.append(line)
+        data = json.loads(response)
 
-        # Ensure protagonist is included
-        protagonist = state.get("protagonist_name", "")
-        if protagonist and protagonist not in character_names:
-            character_names.insert(0, protagonist)
+        if not isinstance(data, list):
+            raise ValueError("Character list must be a JSON array")
+
+        protagonist_name = state.get("protagonist_name", "")
+        minimum_count = 3 if protagonist_name else 1
+
+        if len(data) < minimum_count:
+            raise ValueError("Character list is too short")
+
+        if len(data) > 10:
+            raise ValueError("Character list is too long")
+
+        validated_names: list[str] = []
+        seen: set[str] = set()
+
+        for element in data:
+            if not isinstance(element, str):
+                raise ValueError("Character list elements must be strings")
+
+            if element != element.strip():
+                raise ValueError("Character names must not have leading/trailing whitespace")
+
+            if not element:
+                raise ValueError("Character names must be non-empty")
+
+            if len(element) > 80:
+                raise ValueError("Character names must be a reasonable length")
+
+            if "\n" in element or "\r" in element:
+                raise ValueError("Character names must be a single line")
+
+            if "(" in element or ")" in element:
+                raise ValueError("Character names must not include parenthetical text")
+
+            if element in seen:
+                raise ValueError("Character names must be unique")
+
+            validated_names.append(element)
+            seen.add(element)
+
+        if protagonist_name and protagonist_name not in validated_names:
+            raise ValueError("Character list must include the protagonist name exactly")
 
         logger.info(
             "_generate_character_list: generated list",
-            count=len(character_names),
-            names=character_names,
+            count=len(validated_names),
+            names=validated_names,
         )
 
-        return character_names[:10]  # Limit to 10 main characters
+        return validated_names
 
     except Exception as e:
         logger.error(
@@ -325,7 +359,6 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
             error=str(e),
             exc_info=True,
         )
-        # Fallback: return just protagonist
         return [state.get("protagonist_name", "Protagonist")]
 
 

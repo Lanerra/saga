@@ -7,10 +7,8 @@ Chapter: {{ chapter_number }}
 
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
-CRITICAL OUTPUT CONTRACT (grammar enforced):
-- Return ONLY valid JSON.
-- Output MUST be exactly: {"world_updates": {"Event": { ... }}}
-- No markdown. No code fences. No extra text.
+Output shape:
+- {"world_updates": {"Event": { ... }}}
 
 Per-event entry:
 - key = event name (string; descriptive)

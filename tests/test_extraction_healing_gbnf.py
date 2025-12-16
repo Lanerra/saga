@@ -94,6 +94,7 @@ async def test_extract_locations_gbnf(mock_llm_service, mock_content_manager, mo
                 "Location": {
                     "Castle": {
                         "description": "A big castle",
+                        "category": "Structure",
                         "goals": [],
                         "rules": [],
                         "key_elements": [],
@@ -110,7 +111,7 @@ async def test_extract_locations_gbnf(mock_llm_service, mock_content_manager, mo
     # Verify LLM call used grammar
     call_kwargs = mock_llm_service.async_call_llm.call_args[1]
     assert "grammar" in call_kwargs
-    assert "root ::= world-extraction" in call_kwargs["grammar"]
+    assert "root ::= location-extraction" in call_kwargs["grammar"]
 
     # Verify result
     assert "extracted_entities" in result
@@ -146,7 +147,7 @@ async def test_extract_events_gbnf(mock_llm_service, mock_content_manager, mock_
     # Verify LLM call used grammar
     call_kwargs = mock_llm_service.async_call_llm.call_args[1]
     assert "grammar" in call_kwargs
-    assert "root ::= world-extraction" in call_kwargs["grammar"]
+    assert "root ::= event-extraction" in call_kwargs["grammar"]
 
     # Verify result
     assert "extracted_entities" in result

@@ -41,7 +41,7 @@ GLOBAL_OUTLINE_JSON = """
 }
 """
 
-CHARACTER_LIST_RESPONSE = "Commander Shepard\nGarrus\nLiara"
+CHARACTER_LIST_RESPONSE = '["Commander Shepard","Garrus","Liara"]'
 
 CHARACTER_SHEET_JSON = """
 {

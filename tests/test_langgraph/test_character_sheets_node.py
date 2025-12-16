@@ -248,21 +248,19 @@ async def test_generate_character_list_success(base_state, mock_llm_service):
     """Verify successful generation of character list."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
-            "Hero\nMentor\nVillain\nSidekick",
+            json.dumps(["Hero", "Mentor", "Villain", "Sidekick"]),
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
     )
 
     result = await _generate_character_list(base_state)
 
-    assert len(result) >= 3
-    assert "Hero" in result
-    assert "Mentor" in result or "Villain" in result
+    assert result == ["Hero", "Mentor", "Villain", "Sidekick"]
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_with_formatting(base_state, mock_llm_service):
-    """Verify handling of different formatting styles."""
+async def test_generate_character_list_rejects_non_json(base_state, mock_llm_service):
+    """Verify strict JSON-only contract for character list."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
             "1. Hero\n2. Mentor\n- Villain\n* Sidekick",
@@ -272,45 +270,43 @@ async def test_generate_character_list_with_formatting(base_state, mock_llm_serv
 
     result = await _generate_character_list(base_state)
 
-    assert "Hero" in result
-    assert "Mentor" in result
+    assert result == [base_state["protagonist_name"]]
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_ensures_protagonist(base_state, mock_llm_service):
-    """Verify protagonist is always included in list."""
+async def test_generate_character_list_requires_protagonist(base_state, mock_llm_service):
+    """Verify protagonist name must be included exactly when provided."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
-            "Mentor\nVillain\nSidekick",
+            json.dumps(["Mentor", "Villain", "Sidekick"]),
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
     )
 
     result = await _generate_character_list(base_state)
 
-    assert base_state["protagonist_name"] in result
-    assert result[0] == base_state["protagonist_name"]
+    assert result == [base_state["protagonist_name"]]
 
 
 @pytest.mark.asyncio
-async def test_generate_character_list_limits_to_ten(base_state, mock_llm_service):
-    """Verify character list is limited to 10 characters."""
-    character_names = "\n".join([f"Character{i}" for i in range(20)])
-    mock_llm_service.async_call_llm = AsyncMock(return_value=(character_names, {"prompt_tokens": 100, "completion_tokens": 50}))
+async def test_generate_character_list_rejects_more_than_ten(base_state, mock_llm_service):
+    """Verify character list rejects more than 10 characters (no silent truncation)."""
+    payload = ["Hero"] + [f"Character{i}" for i in range(20)]
+    mock_llm_service.async_call_llm = AsyncMock(return_value=(json.dumps(payload), {"prompt_tokens": 100, "completion_tokens": 50}))
 
     result = await _generate_character_list(base_state)
 
-    assert len(result) <= 10
+    assert result == [base_state["protagonist_name"]]
 
 
 @pytest.mark.asyncio
 async def test_generate_character_list_empty_response(base_state, mock_llm_service):
-    """Verify handling of empty LLM response."""
+    """Verify fallback to protagonist when LLM returns an empty response."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
     result = await _generate_character_list(base_state)
 
-    assert result == []
+    assert result == [base_state["protagonist_name"]]
 
 
 @pytest.mark.asyncio
@@ -449,13 +445,13 @@ async def test_generate_character_sheets_missing_genre(base_state):
 
 @pytest.mark.asyncio
 async def test_generate_character_sheets_character_list_fails(base_state, mock_llm_service, mock_neo4j):
-    """Verify error when character list generation fails."""
+    """Verify failure when character list generation cannot produce usable sheets."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
     result = await generate_character_sheets(base_state)
 
     assert result["initialization_step"] == "character_sheets_failed"
-    assert "Failed to generate character list" in result["last_error"]
+    assert "Failed to generate any character sheets" in result["last_error"]
 
 
 @pytest.mark.asyncio

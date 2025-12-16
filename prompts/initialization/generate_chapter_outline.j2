@@ -27,19 +27,14 @@ Previously:
 
 ## Task
 
-You MUST output ONLY valid JSON that matches the enforced grammar for a chapter outline.
-
-CRITICAL OUTPUT RULES:
-- Output MUST be a single JSON object.
-- Output MUST contain EXACTLY these three keys (no more, no less):
-  - "scene_description" (string)
-  - "key_beats" (array of strings)
-  - "plot_point" (string)
-- Do NOT include markdown, code fences, commentary, headings, or any text outside the JSON.
+Return a single JSON object with EXACTLY these three keys (no more, no less):
+- "scene_description" (string)
+- "key_beats" (array of strings)
+- "plot_point" (string)
 
 Content guidance (encode inside the JSON fields):
 - scene_description: 2-4 sentences grounding where/when/who + immediate tension.
 - key_beats: 3-5 beats, each a concrete on-page action with clear cause→effect.
 - plot_point: 1-2 sentences for the chapter's single most important change.
 
-Return ONLY the JSON object.
+Return the JSON object.

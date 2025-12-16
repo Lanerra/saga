@@ -10,17 +10,14 @@ Setting: {{ setting }}
 
 Generate the main character names for this story.
 
-OUTPUT RULES (parse-friendly):
-- Output ONLY names.
-- One name per line.
-- No bullets, no numbering, no commas.
-- No descriptions.
-- No parenthetical text.
+Return a single JSON array of strings (character names), nothing else.
+- Example: ["{{ protagonist_name or "Protagonist" }}","Name Two","Name Three"]
+
+Rules:
+- Each element is a character name string (no descriptions, no parenthetical text).
 - Use unique, genre-appropriate names.
 
 Include:
 - The protagonist{% if protagonist_name %} (must include exactly "{{ protagonist_name }}"){% endif %}
 - 3-5 supporting main characters
 - 1-2 antagonists (if appropriate)
-
-Return the names now.

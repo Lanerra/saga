@@ -15,15 +15,12 @@ Current known attributes:
 Chapter summaries mentioning this entity:
 {{ summaries_text }}
 
-CRITICAL OUTPUT CONTRACT (grammar enforced):
-- Return ONLY valid JSON.
-- Output MUST be a single JSON object.
-- Output MUST contain EXACTLY these keys in EXACTLY this order (no more, no less):
+Output schema:
+- Output is a single JSON object with EXACTLY these keys in EXACTLY this order (no more, no less):
   1) "inferred_description" (string)
   2) "inferred_traits" (array of single-word traits; may be empty [])
   3) "inferred_role" (string)
   4) "confidence" (number 0.0 to 1.0)
-- No markdown. No code fences. No additional commentary.
 
 Guidance:
 - If the current description is "Unknown" or clearly incomplete, provide a better inferred_description grounded in the summaries.
