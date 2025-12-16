@@ -122,7 +122,22 @@ async def test_extract_locations_gbnf(mock_llm_service, mock_content_manager, mo
 @pytest.mark.asyncio
 async def test_extract_events_gbnf(mock_llm_service, mock_content_manager, mock_get_draft_text, narrative_state):
     # Mock LLM response
-    mock_response = json.dumps({"world_updates": {"Event": {"Battle": {"description": "A fierce battle", "key_elements": []}}}})
+    # Align with extraction schema: entity-details requires at least description/goals/rules/key_elements.
+    mock_response = json.dumps(
+        {
+            "world_updates": {
+                "Event": {
+                    "Battle": {
+                        "description": "A fierce battle",
+                        "category": "Battle",
+                        "goals": [],
+                        "rules": [],
+                        "key_elements": [],
+                    }
+                }
+            }
+        }
+    )
     mock_llm_service.async_call_llm.return_value = (mock_response, {})
 
     # Execute
@@ -205,8 +220,13 @@ async def test_enrich_node_gbnf(mock_healing_llm_service):
         assert enriched["inferred_description"] == "A verified hero"
         assert enriched["confidence"] == 0.9
 
-        # Verify grammar usage
+        # Verify grammar usage + system prompt forwarding
         call_kwargs = mock_healing_llm_service.async_call_llm.call_args[1]
         assert "grammar" in call_kwargs
         # The grammar loader reads the file, checking content length to ensure it's loaded
         assert len(call_kwargs["grammar"]) > 0
+
+        # Healing enrichment now uses a Jinja2 template and supplies a system prompt for the knowledge agent.
+        assert "system_prompt" in call_kwargs
+        assert isinstance(call_kwargs["system_prompt"], str)
+        assert call_kwargs["system_prompt"].strip() != ""

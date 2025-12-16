@@ -256,6 +256,36 @@ class CompletionHTTPClient:
         if grammar:
             payload["grammar"] = grammar
 
+        # DEBUG (safe): log grammar presence + hash/len/head/tail to diagnose
+        # llama-server "token does not meet grammar rules" issues (avoid logging prompts/content).
+        try:
+            import hashlib
+            import json as _json
+
+            grammar_present = bool(grammar)
+            grammar_len = len(grammar) if isinstance(grammar, str) else 0
+            grammar_sha256_12 = hashlib.sha256(grammar.encode("utf-8")).hexdigest()[:12] if isinstance(grammar, str) else None
+            grammar_head = grammar[:120].replace("\n", "\\n") if isinstance(grammar, str) else None
+            grammar_tail = grammar[-120:].replace("\n", "\\n") if isinstance(grammar, str) and len(grammar) > 120 else grammar.replace("\n", "\\n") if isinstance(grammar, str) else None
+            grammar_root_line = (grammar.splitlines()[0] if isinstance(grammar, str) and grammar.splitlines() else "").strip()
+
+            payload_bytes_est = len(_json.dumps(payload))
+            logger.debug(
+                "Completion payload prepared (grammar diagnostics)",
+                model=model,
+                messages_count=len(messages),
+                grammar_present=grammar_present,
+                grammar_len=grammar_len,
+                grammar_sha256_12=grammar_sha256_12,
+                grammar_root_line=grammar_root_line,
+                grammar_head=grammar_head,
+                grammar_tail=grammar_tail,
+                payload_bytes_estimate=payload_bytes_est,
+            )
+        except Exception:
+            # Never allow debug logging to break requests
+            logger.debug("Completion payload prepared (grammar diagnostics failed)")
+
         headers = {
             "Authorization": f"Bearer {config.OPENAI_API_KEY}",
             "Content-Type": "application/json",

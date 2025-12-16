@@ -116,9 +116,7 @@ async def test_commit_initialization_to_graph_success(
     """Verify successful commit of initialization data."""
     state = {**base_state}
 
-    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
-        "data_access.cache_coordinator.clear_world_read_caches"
-    ) as mock_clear_world:
+    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world:
         mock_clear_chars.return_value = {
             "get_character_profile_by_name": True,
             "get_character_profile_by_id": True,
@@ -154,9 +152,7 @@ async def test_commit_initialization_no_writes_does_not_invalidate_caches(
 
     state = {**base_state}
 
-    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
-        "data_access.cache_coordinator.clear_world_read_caches"
-    ) as mock_clear_world:
+    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world:
         result = await commit_initialization_to_graph(state)
 
     assert result["initialization_step"] == "committed_to_graph"

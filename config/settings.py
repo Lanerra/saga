@@ -176,14 +176,14 @@ class SagaSettings(BaseSettings):
     NARRATIVE_MODEL: str = "qwen3-a3b"
 
     # Temperature Settings
-    TEMPERATURE_INITIAL_SETUP: float = 0.8
-    TEMPERATURE_DRAFTING: float = 0.8
+    TEMPERATURE_INITIAL_SETUP: float = 0.7
+    TEMPERATURE_DRAFTING: float = 0.7
     TEMPERATURE_REVISION: float = 0.65
     TEMPERATURE_PLANNING: float = 0.6
     TEMPERATURE_EVALUATION: float = 0.3
     TEMPERATURE_CONSISTENCY_CHECK: float = 0.2
     TEMPERATURE_KG_EXTRACTION: float = 0.1
-    TEMPERATURE_SUMMARY: float = 0.5
+    TEMPERATURE_SUMMARY: float = 0.3
     TEMPERATURE_PATCH: float = 0.7
 
     # Placeholder fill-in
@@ -223,7 +223,7 @@ class SagaSettings(BaseSettings):
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 2
-    TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 20
+    TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 12
     MAX_CONCURRENT_CHAPTERS: int = 1
 
     # Caching
@@ -271,8 +271,8 @@ class SagaSettings(BaseSettings):
 
     # Phase 2 Deduplication (Relationship-Based)
     ENABLE_PHASE2_DEDUPLICATION: bool = True
-    PHASE2_NAME_SIMILARITY_THRESHOLD: float = 0.6
-    PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD: float = 0.7
+    PHASE2_NAME_SIMILARITY_THRESHOLD: float = 0.5
+    PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD: float = 0.6
 
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
@@ -363,7 +363,7 @@ Temperatures.CONSISTENCY_CHECK = settings.TEMPERATURE_CONSISTENCY_CHECK
 Temperatures.KG_EXTRACTION = settings.TEMPERATURE_KG_EXTRACTION
 Temperatures.SUMMARY = settings.TEMPERATURE_SUMMARY
 Temperatures.PATCH = settings.TEMPERATURE_PATCH
-Temperatures.DEFAULT = 0.6  # Set default explicitly
+Temperatures.DEFAULT = 0.7  # Set default explicitly
 
 
 # Update module level variables for backward compatibility

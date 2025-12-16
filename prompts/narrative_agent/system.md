@@ -14,8 +14,3 @@ If the user prompt/template requests JSON (or any structured format) you MUST:
 - No markdown.
 - No code fences.
 - No extra commentary.
-
-Otherwise (drafting / rewriting prose):
-- Output continuous prose.
-- Do not wrap the story in code fences.
-- Do not include headings, labels, or meta-commentary.

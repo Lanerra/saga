@@ -46,9 +46,11 @@ class TestCommitToGraph:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
                 # P0: post-write cache invalidation (even if only the Chapter upsert is written)
-                with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
-                    "data_access.cache_coordinator.clear_world_read_caches"
-                ) as mock_clear_world, patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg:
+                with (
+                    patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
+                    patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
+                    patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
+                ):
                     result = await commit_to_graph(state)
 
                 assert result["current_node"] == "commit_to_graph"
@@ -83,9 +85,11 @@ class TestCommitToGraph:
                         new=AsyncMock(return_value=None),
                     ):
                         # P0: post-write cache invalidation after KG writes
-                        with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
-                            "data_access.cache_coordinator.clear_world_read_caches"
-                        ) as mock_clear_world, patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg:
+                        with (
+                            patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
+                            patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
+                            patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
+                        ):
                             result = await commit_to_graph(state)
 
                         assert result["current_node"] == "commit_to_graph"

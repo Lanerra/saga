@@ -9,8 +9,8 @@ from jinja2 import (
 )
 
 import prompts.prompt_renderer as pr
- 
- 
+
+
 def test_narrative_system_prompt_allows_json_only_when_explicitly_requested() -> None:
     """
     Prompt contract guard for audit item 5.1 (narrative system prompt vs scene planning JSON).
@@ -34,8 +34,8 @@ def test_narrative_system_prompt_allows_json_only_when_explicitly_requested() ->
     # Must retain default prose guidance for drafting tasks.
     assert "continuous prose" in system_prompt
     assert "Do not wrap the story in code fences" in system_prompt
- 
- 
+
+
 def test_initialization_system_prompt_prioritizes_json_when_grammar_enforced() -> None:
     """
     Prompt contract guard for audit item 5.3 (initialization system prompt vs grammar-enforced JSON).
@@ -66,8 +66,8 @@ def test_initialization_system_prompt_prioritizes_json_when_grammar_enforced() -
 
     # Must not include the older ambiguous prose-default language.
     assert "unless a structured format like JSON is specifically requested" not in system_prompt
- 
- 
+
+
 def test_renderer_uses_strict_undefined(monkeypatch: pytest.MonkeyPatch) -> None:
     # Use the module's env and verify missing var raises
     env = Environment(

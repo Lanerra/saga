@@ -21,6 +21,7 @@ import structlog
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
 from prompts.grammar_loader import load_grammar
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 
@@ -152,7 +153,6 @@ class GraphHealingService:
             )
             return {}
 
-        # Build enrichment prompt
         current_description = node.get("description") or "Unknown"
         current_traits = node.get("traits") or []
 
@@ -164,23 +164,18 @@ class GraphHealingService:
             if chap_num and summary:
                 summaries_text += f"Chapter {chap_num}: {summary}\n"
 
-        prompt = f"""Based on the following chapter summaries mentioning "{node['name']}",
-infer any missing attributes for this {node['type'].lower()}.
-
-Current known attributes:
-- Description: {current_description}
-- Traits: {current_traits}
-
-Chapter summaries mentioning this entity:
-{summaries_text}
-
-Provide the following information (only include fields where you have reasonable confidence):
-1. **inferred_description**: string - improved description if current is Unknown or incomplete
-2. **inferred_traits**: list of strings - personality traits
-3. **inferred_role**: string - character's role in the story
-4. **confidence**: float (0.0-1.0) - confidence in these inferences
-
-*Note: The system enforces the output structure. Focus on inferring accurate attributes.*"""
+        # IMPORTANT: This is a grammar-enforced call. Use a Jinja2 template (not an f-string)
+        # so prompt contracts stay centralized and don't drift vs GBNF schemas.
+        prompt = render_prompt(
+            "knowledge_agent/enrich_node_from_context.j2",
+            {
+                "entity_name": node["name"],
+                "entity_type": node["type"],
+                "current_description": current_description,
+                "current_traits": current_traits,
+                "summaries_text": summaries_text.strip(),
+            },
+        )
 
         try:
             # Load healing grammar
@@ -194,6 +189,7 @@ Provide the following information (only include fields where you have reasonable
                 temperature=0.3,
                 max_tokens=1024,
                 grammar=grammar,
+                system_prompt=get_system_prompt("knowledge_agent"),
             )
 
             enriched = json.loads(response_text)

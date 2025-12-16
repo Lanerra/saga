@@ -12,5 +12,3 @@ If the task/template requests structured output (for example JSON), OR the runti
 - No markdown.
 - No code fences.
 - No extra commentary.
-
-If (and only if) structured output is not requested/enforced, output well-structured prose with clear sections and no meta commentary.
