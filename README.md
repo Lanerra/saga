@@ -1,288 +1,160 @@
-# SAGA - Semantic And Graph‑enhanced Authoring
+# SAGA
 
-**NOTE**: `MAX_REVISION_CYCLES_PER_CHAPTER` currently defaults to `0`, effectively disabling the revision cycle during chapter generation. It is currently broken and imminently going to be refactored.
+SAGA (Semantic And Graph-enhanced Authoring) is a **local-first**, single-user Python CLI for **AI-driven long-form fiction generation**. It uses:
 
-**SAGA** is a local‑first, single‑process Python CLI that uses **LangGraph workflow orchestration** with a Neo4j knowledge graph to plan, draft, and revise long‑form fiction while preserving continuity across chapters.
+- **LangGraph** for workflow orchestration (checkpointed, resumable)
+- **Neo4j** as a persistent knowledge graph to store canon (characters, locations, relationships, events)
+- The local filesystem for human-readable artifacts and outputs
 
-## What SAGA Does
+Core philosophy: single machine, no web app, no microservices (see `docs/PROJECT_CONSTRAINTS.md`).
 
-### LangGraph Workflow Orchestration
-- **Declarative graph-based workflow** with 15 specialized nodes
-- **Automatic state persistence** via LangGraph checkpointing (replaces 3,400+ lines of custom orchestration)
-- **Resume from interruption** without data loss through SQLite-based checkpointing
-- **Conditional routing** for initialization vs. generation workflows
-- **Built-in parallelism** for entity extraction (5 parallel extractions)
-- **Visual debugging** through graph visualization tools
+## For writers: what you get
 
-### Knowledge Graph Continuity
-- Persists entities, relationships, plot points, and chapter metadata in a local Neo4j database
-- Maintains coherence via duplicate prevention/merging
-- **Entity deduplication** with fuzzy matching + embeddings
-- **Relationship validation** and constraint enforcement
-- **Vector index** for semantic similarity search
+SAGA’s goal is to help you generate a novel while staying consistent with established story facts.
 
-### Initialization Framework (First Run Only)
-- **Character sheets**: Generates 3-5 detailed character profiles via LLM
-- **Global outline**: Creates 3 or 5-act story structure
-- **Act outlines**: Generates detailed chapter breakdowns per act
-- **On-demand chapter outlines**: Creates scene-specific outlines during generation
-- **Human-readable YAML files**: `characters/`, `outline/`, `world/`
+Running it produces (under `output/`):
 
-### Quality Assurance Pipeline
-- **Chapter generation** with KG-aware context building
-- **Entity extraction** (characters, locations, events, objects, relationships)
-- **Consistency validation** with contradiction detection
-- **Revision loops** with configurable iteration limits
-- **Chapter summarization** for future context
+- Drafted and finalized chapters (`output/chapters/`)
+- Chapter summaries (`output/summaries/`)
+- Exportable compiled manuscript (`output/exports/`)
+- Human-readable YAML artifacts (`output/characters/`, `output/world/`, `output/outline/`)
+- Resumable workflow checkpoints (`output/.saga/checkpoints.db`)
 
-### Rich CLI Experience
-- **Live progress tracking** with Rich panels
-- **Event streaming** for real-time node status
-- **Chapter-by-chapter progress** with elapsed time and request rates
-- **Detailed logging** with structured output
+The intended design is: **your canon lives in Neo4j**, while **your artifacts live in files**, so you can inspect and version outputs easily.
 
-## Quick Start
+## Status: not production-ready
+
+SAGA currently has known critical issues and is **not production-ready**.
+
+## Screenshots
+
+Progress window (Rich CLI):
+
+![SAGA Progress Window](SAGA.png)
+
+Example KG snapshot (5 chapters):
+
+![SAGA KG Visualization](SAGA-KG-Ch5.png)
+
+## Developer quickstart
 
 ### Prerequisites
-- Python 3.12+
-- Neo4j 5.x running locally (standalone or via `docker-compose`)
-- A local LLM endpoint (OpenAI‑compatible HTTP, e.g., Ollama, vLLM)
-- Configure endpoints in `.env`
 
-*Note: SAGA is local-first by design, but supports cloud endpoints via configuration.*
+- Python **3.12** (see `pyproject.toml`)
+- A running Neo4j instance (Docker is provided via `docker-compose.yml`)
+- A local OpenAI-compatible LLM endpoint (for text generation)
+- A local embeddings endpoint
 
 ### Setup
-```bash
-# Clone and setup
-git clone https://github.com/Lanerra/saga
-cd saga
 
-# Create virtual environment
+```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env   # Edit values as needed
+cp .env.example .env
 ```
 
-### Start Neo4j
+Edit your `.env` to match your local services (see `.env.example`).
+
+### Start Neo4j (Docker)
+
 ```bash
-# Using Docker (recommended)
 docker-compose up -d
 ```
 
+Neo4j defaults in this repo:
+- user: `neo4j`
+- password: `saga_password`
+
 ### Run SAGA
 
-**First run (includes initialization):**
 ```bash
 python main.py
 ```
 
-## Key Architecture Features
+## Configuration
 
-### LangGraph Node-Based Design
-```
-Initialization Workflow:
-route → character_sheets → global_outline → act_outlines → 
-commit_to_graph → persist_files → initialization_complete
+SAGA uses Pydantic settings loaded from `.env` (see `config/settings.py`).
 
-Chapter Generation Workflow:
-chapter_outline → generate → extract → commit → validate → 
-[revision_loop] → summarize → finalize
-```
+Key environment variables (examples in `.env.example`):
 
-**15 Specialized Nodes:**
-1. **Routing** - Conditional entry point management
-2. **Initialization Nodes** (5): Character sheets, global outline, act outlines, graph commit, file persistence
-3. **Generation Nodes** (8): Chapter outline, generation, extraction, commit, validation, revision, summarization, finalization
+- `OPENAI_API_BASE`: OpenAI-compatible base URL (example: `http://127.0.0.1:8080/v1`)
+- `OPENAI_API_KEY`: token (can be dummy for purely local gateways)
+- `EMBEDDING_API_BASE`: embeddings endpoint base URL (example: `http://127.0.0.1:11434`)
+- `EMBEDDING_MODEL`: embedding model name
+- `EXPECTED_EMBEDDING_DIM` and `NEO4J_VECTOR_DIMENSIONS`: must match your embedding model’s output dimension
 
-### State Management
-- **Automatic persistence** to SQLite checkpoints
-- **Resume from interruption** at any node
-- **State includes**: Character sheets, outlines, current chapter, active characters, extracted entities
-- **Neo4j integration**: Automatic connection restoration on resume
+Important:
+- Defaults in `config/settings.py` assume a **1024-dim** embedding model unless overridden.
+- The sample `.env.example` uses **768**.
 
-### Performance Optimizations
-- **Parallel entity extraction** (5 concurrent LLM calls)
-- **Efficient context assembly** via targeted Neo4j queries
-- **Model specialization**: Different models for generation vs. extraction vs. revision
-- **Streaming updates** for real-time progress tracking
+Keep embedding dimensions consistent across:
+`EXPECTED_EMBEDDING_DIM`, `NEO4J_VECTOR_DIMENSIONS`, and your embedding model.
 
-## Configuration Reference
+## Local LLM endpoint examples
 
-### Environment Variables (.env)
+SAGA assumes generation is done via an **OpenAI-compatible HTTP API** on your machine (configured via `OPENAI_API_BASE`).
 
-**LLM Configuration:**
-- `NARRATIVE_MODEL` - Main generation model (e.g., "qwen3-80b-q4")
-- `OPENAI_API_BASE` - OpenAI-compatible endpoint URL
-- `OPENAI_API_KEY` - API key for completions
+Common local patterns:
 
-**Neo4j Connection:**
-- `NEO4J_URI` - Neo4j connection URI (e.g., "bolt://localhost:7687")
-- `NEO4J_USER` - Database username
-- `NEO4J_PASSWORD` - Database password
+- **vLLM (OpenAI-compatible server)**  
+  Run vLLM in OpenAI server mode and point `OPENAI_API_BASE` at it.
 
-**Generation Settings:**
-- `CHAPTERS_PER_RUN` - Chapters to generate per session (default: 2)
-- `CONTEXT_CHAPTER_COUNT` - Chapters of context for similarity search
-- `MAX_REVISION_CYCLES_PER_CHAPTER` - Revision attempts per chapter
+- **llama.cpp server (OpenAI-compatible)**  
+  Run llama.cpp’s server mode and point `OPENAI_API_BASE` at it.
 
-### Output Structure
+- **OpenAI-compatible gateways (local)**  
+  If you run a local gateway that exposes `/v1` endpoints, point `OPENAI_API_BASE` at the gateway.
+
+Embeddings are configured separately via `EMBEDDING_API_BASE`. Any embedding service that matches your configured model and dimension works.
+
+## Outputs
+
+High-level output layout:
 
 ```
 output/
-├── .saga/
-│   ├── checkpoints.db      # LangGraph state persistence
-│   └── generation.log      # Detailed execution logs
-├── characters/
-│   ├── {name}.yaml         # Character profiles
-│   └── characters.yaml     # Character list
-├── outline/
-│   ├── structure.yaml      # Act structure
-│   └── beats.yaml          # Detailed act outlines
-├── world/
-│   └── items.yaml          # Locations, factions, systems
-├── chapters/
-│   ├── chapter_001.md      # Generated chapters
-│   └── chapter_002.md
-├── summaries/
-│   └── chapter_001.txt     # Chapter summaries
-└── debug_outputs/
-    ├── prompts/            # Saved prompts
-    ├── validation/         # Consistency reports
-    └── extraction/         # Entity extraction results
+├── .saga/               # checkpoints + externalized content
+├── chapters/            # finalized chapters (markdown)
+├── summaries/           # per-chapter summaries
+├── outline/             # story/act/chapter outline YAML
+├── characters/          # character profiles YAML
+├── world/               # world items + rules YAML
+└── exports/             # compiled manuscript exports
 ```
 
-## How It Works (Technical Deep Dive)
+## How it works (high level)
 
-### 1. Initialization Workflow (First Run)
-
-**Automatic Structure Generation:**
-1. **Character Sheets** - Generate 3-5 main characters with detailed profiles
-2. **Global Outline** - Create 3 or 5-act structure based on target length
-3. **Act Outlines** - Generate detailed chapter breakdowns per act
-4. **Neo4j Persistence** - Parse and deduplicate entities, create relationships
-5. **File Persistence** - Write human-readable YAML files for editing
-
-**State Checkpointing:**
-- All initialization data saved to SQLite
-- `initialization_complete` flag prevents re-initialization
-- Resume support at any point
-
-### 2. Chapter Generation Cycle
-
-**Per-Chapter Workflow:**
-```python
-# State-driven workflow
-state = {
-    "current_chapter": 1,
-    "outline": {...},          # From initialization
-    "active_characters": [...], # From KG
-    "chapter_outlines": {...}   # Generated on-demand
-}
-
-# 8-step generation cycle
-result = graph.ainvoke(state, config=config_dict)
-# route → chapter_outline → generate → extract → 
-# commit → validate → [revision_loop] → summarize → finalize
+```mermaid
+flowchart TD
+    Start[Run CLI] --> Route[Route]
+    Route --> Init[Initialize story]
+    Route --> Plan[Plan chapter]
+    Init --> Plan
+    Plan --> Generate[Generate prose]
+    Generate --> Embed[Generate embedding]
+    Embed --> Extract[Extract canon]
+    Extract --> Commit[Commit to Neo4j]
+    Commit --> Validate[Validate]
+    Validate --> Finalize[Finalize files]
+    Finalize --> Next[Next chapter]
 ```
 
-**Context Building:**
-1. Query Neo4j for active characters in current scene
-2. Get summaries of last 5 chapters for continuity
-3. Retrieve key events from recent chapters
-4. Build relationships relevant to current scene
-5. Include location/world context
+For the deep dive, start here:
+- Architecture overview: `docs/langgraph-architecture.md`
+- Workflow walkthrough: `docs/WORKFLOW_WALKTHROUGH.md`
+- Workflow visualization tooling: `docs/WORKFLOW_VISUALIZATION.md`
 
-**Quality Gates:**
-- **Entity extraction validation** - Ensure meaningful content
-- **Consistency checking** - Detect contradictions against KG
-- **Plot advancement** - Verify chapter progresses story
-- **Revision triggers** - Auto-revision on quality issues
+## Troubleshooting
 
-### 3. State Persistence & Resume
-
-**Automatic Checkpointing:**
-- LangGraph saves state after each node completion
-- SQLite-based persistence (no custom save/load logic)
-- Resume from interruption without data loss
-- Chapter progress tracked in Neo4j
-
-**Resume Logic:**
-1. Load `chapter_count` from Neo4j database
-2. Set `current_chapter = chapter_count + 1`
-3. Check `initialization_complete` flag
-4. Resume generation from appropriate workflow node
-
-### 4. Error Handling & Recovery
-
-**Failure Modes & Recovery:**
-- **LLM timeout** - Retry with exponential backoff
-- **Neo4j disconnection** - Automatic reconnection
-- **Validation deadlock** - Escalate to user after max iterations
-- **Disk space** - Warning and pause generation
-- **Context overflow** - Smart truncation of oldest content
-
-### Workflow Visualization
-```bash
-# Generate workflow graph visualization
-python core/langgraph/visualization.py --output workflow.png
-
-# Debug checkpoint state
-python -c "from core.langgraph.export import export_state; export_state()"
-```
-
-## Architecture Benefits
-
-### Compared to Previous Version
-- **Automatic orchestration** vs. custom state machines
-- **Built-in checkpointing** vs. 1,500+ lines of save/load code
-- **Visual debugging** vs. log parsing
-- **Declarative workflow** vs. imperative coordination
-
-### LangGraph Advantages
-- **State persistence** - Automatic serialization/deserialization
-- **Conditional routing** - Complex branching without spaghetti code
-- **Parallel execution** - 5x faster entity extraction
-- **Checkpointing** - Resume from interruption without data loss
-- **Event streaming** - Real-time progress updates
-- **Visualization** - Graph debugging and optimization
-
-### Neo4j Integration
-- **Graph queries** - Efficient relationship traversal
-- **Vector search** - Semantic similarity for context
-- **Constraint enforcement** - Data integrity at database level
-- **Cypher queries** - Expressive pattern matching for narrative relationships
-
-## Screenshots
-
-**LangGraph Workflow Visualization:**
-
-![SAGA Workflow](SAGA.png)
-
-**Knowledge Graph After 4 Chapters:**
-
-![SAGA KG Visualization](SAGA-KG-Ch4.png)
-
-## Performance Metrics
-
-- **Generation speed**: 5x faster entity extraction (parallel vs. sequential)
-- **Memory efficiency**: Streaming state vs. full object graphs
-- **Reliability**: Automatic checkpointing vs. manual state management
-- **Debuggability**: Visual graphs vs. log parsing
-
-## Future Enhancements
-
-- **Human-in-the-Loop Intervention** with configurable break points in the workflow
-- **Web UI** with HTMX for visualization and editing
+- Logs and debug artifacts:
+  - Check `output/chapter_logs/` and `output/debug_outputs/`
+- Neo4j reset (destructive):
+  - Run `python reset_neo4j.py`
+- Neo4j connection failures:
+  - Confirm `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` match `.env.example`
 
 ## License
 
-Apache-2.0 — see `LICENSE`.
+Apache-2.0 - See `LICENSE`.
 
----
-
-**For detailed architecture documentation, see:**
-- `docs/langgraph-architecture.md` - Complete technical architecture
-- `docs/WORKFLOW_WALKTHROUGH.md` - Step-by-step workflow analysis
-- `docs/LANGGRAPH_USAGE.md` - Usage patterns and examples
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Lanerra/saga)
