@@ -95,9 +95,24 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
 
             if statements:
                 await neo4j_manager.execute_cypher_batch(statements)
+
+                # P0-1: Cache invalidation after Neo4j writes
+                # Local import avoids eager import side effects / circular deps.
+                from data_access.cache_coordinator import (
+                    clear_character_read_caches,
+                    clear_world_read_caches,
+                )
+
+                cleared_character = clear_character_read_caches()
+                cleared_world = clear_world_read_caches()
+
                 logger.debug(
-                    "commit_initialization_to_graph: executed batch",
+                    "commit_initialization_to_graph: executed batch and invalidated caches",
                     total_statements=len(statements),
+                    cache_cleared={
+                        "character": cleared_character,
+                        "world": cleared_world,
+                    },
                 )
 
         logger.info(

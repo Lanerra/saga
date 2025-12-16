@@ -40,7 +40,20 @@ def _minimal_state(tmp_path: Path) -> NarrativeState:
 async def test_saga_yaml_created_with_paths_and_metadata(tmp_path: Path) -> None:
     state = _minimal_state(tmp_path)
 
-    result_state = await persist_initialization_files(state)
+    # P0-2: file-write cache invalidation hook should be invoked after writing artifacts.
+    #
+    # This test does not require refs, so the ContentManager is only used for construction +
+    # the final clear_cache() call (no reads required).
+    from unittest.mock import MagicMock, patch
+
+    with patch("core.langgraph.initialization.persist_files_node.ContentManager") as mock_cm:
+        cm_instance = MagicMock()
+        cm_instance.clear_cache = MagicMock()
+        mock_cm.return_value = cm_instance
+
+        result_state = await persist_initialization_files(state)
+
+        assert cm_instance.clear_cache.called
 
     # Node should report success
     assert result_state["last_error"] is None

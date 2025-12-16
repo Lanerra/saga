@@ -45,10 +45,19 @@ class TestCommitToGraph:
             with patch("core.db_manager.neo4j_manager") as mock_neo4j:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                result = await commit_to_graph(state)
+                # P0: post-write cache invalidation (even if only the Chapter upsert is written)
+                with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
+                    "data_access.cache_coordinator.clear_world_read_caches"
+                ) as mock_clear_world, patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg:
+                    result = await commit_to_graph(state)
 
                 assert result["current_node"] == "commit_to_graph"
                 assert result["last_error"] is None
+
+                assert mock_neo4j.execute_cypher_batch.called
+                assert mock_clear_chars.called
+                assert mock_clear_world.called
+                assert mock_clear_kg.called
 
     async def test_commit_with_entities_and_relationships(
         self,
@@ -73,13 +82,22 @@ class TestCommitToGraph:
                         "core.langgraph.nodes.commit_node.check_entity_similarity",
                         new=AsyncMock(return_value=None),
                     ):
-                        result = await commit_to_graph(state)
+                        # P0: post-write cache invalidation after KG writes
+                        with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
+                            "data_access.cache_coordinator.clear_world_read_caches"
+                        ) as mock_clear_world, patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg:
+                            result = await commit_to_graph(state)
 
                         assert result["current_node"] == "commit_to_graph"
                         assert result["last_error"] is None
 
                         # Verify Neo4j execution
                         assert mock_neo4j.execute_cypher_batch.called
+
+                        # Verify caches are invalidated after write
+                        assert mock_clear_chars.called
+                        assert mock_clear_world.called
+                        assert mock_clear_kg.called
 
     async def test_extraction_normalization_commit_reads_normalized_ref(self, tmp_path):
         """

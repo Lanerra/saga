@@ -166,6 +166,13 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
             world_items=len(world_items),
         )
 
+        # P0-2: Cache invalidation after file writes
+        #
+        # Today `ContentManager` does direct filesystem reads and does not cache.
+        # This call is a no-op, but it provides a stable invalidation hook if/when
+        # `ContentManager` adds memoization (e.g., mtimes/exists/directory listings).
+        content_manager.clear_cache()
+
         return {
             **state,
             "current_node": "persist_files",

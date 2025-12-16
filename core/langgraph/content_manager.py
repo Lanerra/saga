@@ -61,6 +61,21 @@ class ContentManager:
         self.content_dir = self.project_dir / ".saga" / "content"
         self.content_dir.mkdir(parents=True, exist_ok=True)
 
+    def clear_cache(self) -> None:
+        """
+        Best-effort cache invalidation hook.
+
+        Why this exists:
+        - Some workflow nodes write files that are later read in the same process.
+        - If `ContentManager` grows in-process caching later (mtimes, directory listings,
+          memoized reads, etc.), callers need a stable invalidation API.
+        - Today, `ContentManager` performs direct filesystem reads and does not cache,
+          so this is intentionally a no-op.
+
+        This method is safe to call unconditionally after file writes.
+        """
+        return None
+
     def _get_content_path(
         self,
         content_type: str,

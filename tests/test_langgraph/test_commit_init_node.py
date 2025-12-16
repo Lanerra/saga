@@ -116,7 +116,18 @@ async def test_commit_initialization_to_graph_success(
     """Verify successful commit of initialization data."""
     state = {**base_state}
 
-    result = await commit_initialization_to_graph(state)
+    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
+        "data_access.cache_coordinator.clear_world_read_caches"
+    ) as mock_clear_world:
+        mock_clear_chars.return_value = {
+            "get_character_profile_by_name": True,
+            "get_character_profile_by_id": True,
+        }
+        mock_clear_world.return_value = {
+            "get_world_item_by_id": True,
+        }
+
+        result = await commit_initialization_to_graph(state)
 
     assert result["initialization_step"] == "committed_to_graph"
     assert result["current_node"] == "commit_initialization"
@@ -124,6 +135,37 @@ async def test_commit_initialization_to_graph_success(
     assert "active_characters" in result
     assert len(result["active_characters"]) <= 5
     assert mock_neo4j_manager.execute_cypher_batch.called
+
+    # P0-1: write path must invalidate read caches so downstream reads aren't stale.
+    assert mock_clear_chars.called
+    assert mock_clear_world.called
+
+
+@pytest.mark.asyncio
+async def test_commit_initialization_no_writes_does_not_invalidate_caches(
+    base_state,
+    mock_content_manager,
+    mock_get_functions,
+    mock_neo4j_manager,
+):
+    """If nothing is written to Neo4j, we shouldn't invalidate read caches."""
+    mock_get_functions["chars"].return_value = {}
+    mock_get_functions["global"].return_value = None
+
+    state = {**base_state}
+
+    with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch(
+        "data_access.cache_coordinator.clear_world_read_caches"
+    ) as mock_clear_world:
+        result = await commit_initialization_to_graph(state)
+
+    assert result["initialization_step"] == "committed_to_graph"
+    assert result["current_node"] == "commit_initialization"
+    assert result["last_error"] is None
+
+    assert not mock_neo4j_manager.execute_cypher_batch.called
+    assert not mock_clear_chars.called
+    assert not mock_clear_world.called
 
 
 @pytest.mark.asyncio

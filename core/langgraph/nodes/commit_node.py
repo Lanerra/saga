@@ -258,6 +258,25 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
             await neo4j_manager.execute_cypher_batch(all_statements)
 
+            # Cache invalidation after Neo4j writes
+            #
+            # Rationale:
+            # - `data_access.*_queries` read functions are cached via async_lru.
+            # - This node is the primary persistence boundary for Phase 2, so failing to clear
+            #   caches here can cause stale reads (e.g., recently created characters/world items
+            #   not visible; KG triple reads not reflecting new relationships).
+            #
+            # Local import avoids eager import side effects / circular deps.
+            from data_access.cache_coordinator import (
+                clear_character_read_caches,
+                clear_kg_read_caches,
+                clear_world_read_caches,
+            )
+
+            cleared_character = clear_character_read_caches()
+            cleared_world = clear_world_read_caches()
+            cleared_kg = clear_kg_read_caches()
+
             logger.info(
                 "commit_to_graph: successfully committed to knowledge graph in single transaction",
                 chapter=state.get("current_chapter", 1),
@@ -265,6 +284,11 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 world_items=len(world_item_models),
                 relationships=len(relationships),
                 total_statements=len(all_statements),
+                cache_cleared={
+                    "character": cleared_character,
+                    "world": cleared_world,
+                    "kg": cleared_kg,
+                },
             )
 
         # Step 6: Phase 2 Deduplication - Relationship-based duplicate detection
