@@ -1,3 +1,4 @@
+# core/langgraph/__init__.py
 """
 LangGraph integration module for SAGA.
 
@@ -12,13 +13,15 @@ Components:
     nodes: Individual processing nodes (extraction, validation, generation, etc.)
     graph_context: Neo4j context construction (wraps existing data_access queries)
     workflow: Graph definition and workflow orchestration
+    visualization: Visual debugging tools for workflows
 
 Usage:
     from core.langgraph import (
         NarrativeState,
         create_initial_state,
-        create_phase1_graph,
-        create_checkpointer
+        create_phase2_graph,
+        create_checkpointer,
+        visualize_workflow
     )
 
     # Create initial state
@@ -36,14 +39,24 @@ Usage:
 
     # Create and run workflow
     checkpointer = create_checkpointer("./checkpoints/my-novel.db")
-    graph = create_phase1_graph(checkpointer=checkpointer)
+    graph = create_phase2_graph(checkpointer=checkpointer)
+
+    # Visualize workflow (for debugging)
+    visualize_workflow(graph, "docs/workflow.md", format="mermaid")
 
     # Execute workflow
     result = await graph.ainvoke(state, config={"configurable": {"thread_id": "my-novel-ch1"}})
 """
 
 from core.langgraph.graph_context import build_context_from_graph, get_key_events
-from core.langgraph.nodes import commit_to_graph, extract_entities, validate_consistency
+from core.langgraph.nodes import (
+    commit_to_graph,
+    finalize_chapter,
+    generate_chapter_single_shot,
+    revise_chapter,
+    summarize_chapter,
+    validate_consistency,
+)
 from core.langgraph.state import (
     Contradiction,
     ExtractedEntity,
@@ -52,10 +65,15 @@ from core.langgraph.state import (
     State,
     create_initial_state,
 )
+from core.langgraph.subgraphs.generation import generate_chapter
+from core.langgraph.visualization import (
+    print_workflow_summary,
+    visualize_workflow,
+)
 from core.langgraph.workflow import (
     create_checkpointer,
-    create_phase1_graph,
-    should_revise,
+    create_phase2_graph,
+    should_revise_or_continue,
 )
 
 __all__ = [
@@ -67,16 +85,25 @@ __all__ = [
     "Contradiction",
     "create_initial_state",
     # Nodes
-    "extract_entities",
     "commit_to_graph",
     "validate_consistency",
+    # Canonical generation API (scene-based subgraph)
+    "generate_chapter",
+    # Backcompat: explicit single-shot node (async)
+    "generate_chapter_single_shot",
+    "revise_chapter",
+    "summarize_chapter",
+    "finalize_chapter",
     # Context
     "build_context_from_graph",
     "get_key_events",
     # Workflow
-    "create_phase1_graph",
+    "create_phase2_graph",
     "create_checkpointer",
-    "should_revise",
+    "should_revise_or_continue",
+    # Visualization
+    "visualize_workflow",
+    "print_workflow_summary",
 ]
 
 __version__ = "0.1.0"

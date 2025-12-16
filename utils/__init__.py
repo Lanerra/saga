@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from core.llm_interface_refactored import llm_service
-
 from .common import (
     _is_fill_in,
     extract_json_from_text,
@@ -23,6 +21,7 @@ from .text_processing import (
     SpaCyModelManager,
     _normalize_for_id,
     _normalize_text_for_matching,
+    classify_category_label,
     find_quote_and_sentence_offsets_with_spacy,
     get_context_snippet_for_patch,
     get_text_segments,
@@ -71,13 +70,12 @@ def format_scene_plan_for_prompt(
         scene_segment = "\n".join(scene_lines)
         prospective_plan = "\n".join(current_plan_parts + [scene_segment])
 
-        if (
-            llm_service.count_tokens(prospective_plan, model_name_for_tokens)
-            > max_tokens_budget
-        ):
-            current_plan_parts.append(
-                "... (plan truncated in prompt due to token limit)"
-            )
+        # Local import to avoid circular import chain:
+        # utils -> core -> data_access -> processing -> utils
+        from core.llm_interface_refactored import llm_service
+
+        if llm_service.count_tokens(prospective_plan, model_name_for_tokens) > max_tokens_budget:
+            current_plan_parts.append("... (plan truncated in prompt due to token limit)")
             logger.warning(
                 "Chapter plan was token-truncated for the prompt. Max tokens for plan: %d. Stopped before scene %s.",
                 max_tokens_budget,
@@ -130,5 +128,6 @@ __all__ = [
     "get_text_segments",
     "format_scene_plan_for_prompt",
     "remove_spans_from_text",
+    "classify_category_label",
     "validate_world_item_fields",
 ]

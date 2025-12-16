@@ -1,14 +1,18 @@
 # tests/test_llm_interface_content_extraction.py
+from typing import Any
+
+import numpy as np
 import pytest
 
-from core.llm_interface_refactored import CompletionService
+import config
+from core.llm_interface_refactored import CompletionService, EmbeddingService
 
 
 class _DummyCompletionClient:
-    def __init__(self):
+    def __init__(self) -> None:
         self.called = False
 
-    async def get_completion(self, *args, **kwargs):
+    async def get_completion(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         self.called = True
         # Simulate provider that returns reasoning_content instead of content
         return {
@@ -29,23 +33,9 @@ class _DummyCompletionClient:
             "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         }
 
-    async def get_streaming_completion(self, *args, **kwargs):
-        # Yield two chunks that stream reasoning_content in the delta
-        async def _gen():
-            yield {
-                "choices": [
-                    {"delta": {"reasoning_content": "Hello "}, "finish_reason": None}
-                ]
-            }
-            yield {
-                "choices": [
-                    {"delta": {"reasoning_content": "World"}, "finish_reason": None}
-                ]
-            }
-
-        # Make this an async generator function by yielding from the inner generator
-        async for item in _gen():
-            yield item
+    # NOTE:
+    # Streaming was removed from the public LLM surface (CORE-006 remediation),
+    # so we intentionally do not provide a get_streaming_completion() helper here.
 
 
 class _DummyTextProcessor:
@@ -53,26 +43,82 @@ class _DummyTextProcessor:
         def clean_response(self, text: str) -> str:
             return text.strip()
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.response_cleaner = self._Cleaner()
 
-    def get_combined_statistics(self):
+    def get_combined_statistics(self) -> dict[str, Any]:
         return {}
 
 
 @pytest.mark.asyncio
-async def test_extracts_reasoning_content_when_missing_content():
-    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())
+async def test_extracts_reasoning_content_when_missing_content() -> None:
+    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
     text, usage = await svc.get_completion("model", "prompt")
     assert text == "Reasoned output JSON"
     assert usage and usage.get("total_tokens") == 3
 
 
 @pytest.mark.asyncio
-async def test_streaming_delta_reasoning_content_accumulates():
-    # Streaming API removed; skip if method not available
-    if not hasattr(CompletionService, "get_streaming_completion"):
-        pytest.skip("Streaming completion is not supported in the current API")
-    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())
-    text, usage = await svc.get_streaming_completion("model", "prompt")
-    assert text == "Hello World"
+async def test_get_completion_strict_raises_on_missing_model_or_prompt() -> None:
+    """
+    CORE-007: CompletionService.get_completion() must not return ambiguous sentinels
+    on input validation failures by default.
+    """
+    from core.exceptions import LLMServiceError
+
+    svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
+
+    with pytest.raises(LLMServiceError):
+        await svc.get_completion("", "prompt")
+
+    with pytest.raises(LLMServiceError):
+        await svc.get_completion("model", "")
+
+
+@pytest.mark.asyncio
+async def test_get_completion_non_strict_returns_legacy_sentinel_on_error() -> None:
+    """
+    CORE-007 compatibility: strict=False preserves the legacy ("", None) sentinel.
+    """
+
+    class _ExplodingClient:
+        async def get_completion(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            raise RuntimeError("provider down")
+
+    svc = CompletionService(_ExplodingClient(), _DummyTextProcessor())  # type: ignore
+    text, usage = await svc.get_completion("model", "prompt", strict=False)
+
+    assert text == ""
+    assert usage is None
+
+
+def test_streaming_api_surface_removed() -> None:
+    """
+    CORE-006: Streaming support was removed; ensure we don't expose misleading streaming APIs.
+    """
+    assert not hasattr(CompletionService, "get_streaming_completion")
+
+
+def test_embedding_fallback_accepts_numeric_list_under_non_embedding_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Exercise the fallback branch in EmbeddingService._extract_and_validate_embedding():
+
+    - Response does NOT include "embedding" key
+    - Response includes a numeric list under some other key
+    - Should validate and return a numpy array without raising TypeError
+    """
+    # Keep the test fast and deterministic by shrinking the expected dim.
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+    monkeypatch.setattr(config, "EMBEDDING_DTYPE", np.float32)
+
+    class _DummyEmbeddingClient:
+        pass
+
+    svc = EmbeddingService(_DummyEmbeddingClient())  # type: ignore[arg-type]
+
+    response = {"vector": [1, 2.5, 3]}
+    embedding = svc._extract_and_validate_embedding(response)
+
+    assert isinstance(embedding, np.ndarray)
+    assert embedding.shape == (3,)
+    assert embedding.dtype == np.float32

@@ -1,0 +1,42 @@
+## Story Information
+
+Title: {{ title }}
+Genre: {{ genre }}
+Theme: {{ theme }}
+Setting: {{ setting }}
+
+## Character
+
+Name: {{ character_name }}
+Role: {% if is_protagonist %}Protagonist{% else %}Main character{% endif %}
+
+{% if other_characters %}
+Other main characters:
+{% for char in other_characters %}
+- {{ char }}
+{% endfor %}
+{% endif %}
+
+## Task
+
+Return a single JSON object with EXACTLY these top-level keys (no more, no less):
+- "name" (string; MUST be "{{ character_name }}")
+- "description" (string)
+- "traits" (array of single-word strings)
+- "status" (string; MUST be "Active")
+- "motivations" (string)
+- "background" (string)
+- "skills" (array of strings)
+- "relationships" (object mapping character name -> string)
+- "internal_conflict" (string)
+
+Do NOT include a top-level "type" field; runtime injects it.
+
+Field guidance (encode inside the JSON fields above):
+- description: vivid and specific; 180-260 words.
+- traits: 5-7 traits; each must be ONE WORD (letters/numbers/hyphen only).
+- motivations/background/internal_conflict: concrete, story-driving.
+- skills: 3-6 concrete skills.
+- relationships: include entries for relevant other main characters (if any).
+
+{{ existing_traits_hint }}

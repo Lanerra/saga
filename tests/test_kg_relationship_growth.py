@@ -33,12 +33,8 @@ async def test_relationships_are_unique_per_chapter(monkeypatch):
     }
 
     # Add for chapter 1 and 2
-    await kg_queries.add_kg_triples_batch_to_db(
-        [triple], chapter_number=1, is_from_flawed_draft=False
-    )
-    await kg_queries.add_kg_triples_batch_to_db(
-        [triple], chapter_number=2, is_from_flawed_draft=False
-    )
+    await kg_queries.add_kg_triples_batch_to_db([triple], chapter_number=1, is_from_flawed_draft=False)
+    await kg_queries.add_kg_triples_batch_to_db([triple], chapter_number=2, is_from_flawed_draft=False)
 
     # We expect two batches (one per call)
     assert len(captured_batches) == 2

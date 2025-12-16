@@ -1,63 +1,154 @@
-# config/__init__.py
-"""
-Config package – central configuration for SAGA.
+"""Config package – central configuration for SAGA."""
 
-Provides:
-- `settings`: the loaded SagaSettings instance.
-- `get(key)`: retrieve a configuration value.
-- `set(key, value)`: update a configuration value at runtime.
-- `reload()`: reload settings from the environment / .env file.
+# Explicit exports for MyPy compatibility
+from typing import Any
 
-All fields from the settings are also exposed as module‑level globals for
-backward compatibility (e.g. `EMBEDDING_CACHE_SIZE`).
-"""
+from . import settings as settings_mod
+from .settings import (
+    Models,
+    Temperatures,
+    rich_formatter,
+    settings,
+    simple_formatter,
+)
 
-from .settings import settings as settings
+BASE_OUTPUT_DIR = settings.BASE_OUTPUT_DIR
+BOOTSTRAP_MIN_TRAITS_ANTAGONIST = settings.BOOTSTRAP_MIN_TRAITS_ANTAGONIST
+BOOTSTRAP_MIN_TRAITS_PROTAGONIST = settings.BOOTSTRAP_MIN_TRAITS_PROTAGONIST
+BOOTSTRAP_MIN_TRAITS_SUPPORTING = settings.BOOTSTRAP_MIN_TRAITS_SUPPORTING
+CHAPTERS_DIR = settings_mod.CHAPTERS_DIR
+CHAPTERS_PER_RUN = settings.CHAPTERS_PER_RUN
+CHAPTER_LOGS_DIR = settings_mod.CHAPTER_LOGS_DIR
+CHARACTER_PROFILES_FILE = settings_mod.CHARACTER_PROFILES_FILE
+CONFIGURED_GENRE = settings.CONFIGURED_GENRE
+CONFIGURED_SETTING_DESCRIPTION = settings.CONFIGURED_SETTING_DESCRIPTION
+CONFIGURED_THEME = settings.CONFIGURED_THEME
+CONTEXT_CHAPTER_COUNT = settings.CONTEXT_CHAPTER_COUNT
+DEDUPLICATION_MIN_SEGMENT_LENGTH = settings.DEDUPLICATION_MIN_SEGMENT_LENGTH
+DEDUPLICATION_SEMANTIC_THRESHOLD = settings.DEDUPLICATION_SEMANTIC_THRESHOLD
+DEDUPLICATION_USE_SEMANTIC = settings.DEDUPLICATION_USE_SEMANTIC
+DEFAULT_PLOT_OUTLINE_TITLE = settings.DEFAULT_PLOT_OUTLINE_TITLE
+DEFAULT_PROTAGONIST_NAME = settings.DEFAULT_PROTAGONIST_NAME
+DISABLE_RELATIONSHIP_NORMALIZATION = settings.DISABLE_RELATIONSHIP_NORMALIZATION
+EMBEDDING_API_BASE = settings.EMBEDDING_API_BASE
+EMBEDDING_API_KEY = settings.EMBEDDING_API_KEY
+EMBEDDING_CACHE_SIZE = settings.EMBEDDING_CACHE_SIZE
+EMBEDDING_DTYPE = settings.EMBEDDING_DTYPE
+EMBEDDING_MODEL = settings.EMBEDDING_MODEL
+ENABLE_LLM_NO_THINK_DIRECTIVE = settings.ENABLE_LLM_NO_THINK_DIRECTIVE
+ENABLE_PHASE2_DEDUPLICATION = settings.ENABLE_PHASE2_DEDUPLICATION
+ENABLE_RICH_PROGRESS = settings.ENABLE_RICH_PROGRESS
+ENTITY_MENTION_THRESHOLD_COMMON_NOUN = settings.ENTITY_MENTION_THRESHOLD_COMMON_NOUN
+ENTITY_MENTION_THRESHOLD_PROPER_NOUN = settings.ENTITY_MENTION_THRESHOLD_PROPER_NOUN
+EXPECTED_EMBEDDING_DIM = settings.EXPECTED_EMBEDDING_DIM
+FALLBACK_CHARS_PER_TOKEN = settings.FALLBACK_CHARS_PER_TOKEN
+FILL_IN = settings.FILL_IN
+FREQUENCY_PENALTY_DRAFTING = settings.FREQUENCY_PENALTY_DRAFTING
+FREQUENCY_PENALTY_KG_EXTRACTION = settings.FREQUENCY_PENALTY_KG_EXTRACTION
+HTTPX_TIMEOUT = settings.HTTPX_TIMEOUT
+KG_PREPOPULATION_CHAPTER_NUM = settings.KG_PREPOPULATION_CHAPTER_NUM
+KG_TRIPLE_EXTRACTION_CACHE_SIZE = settings.KG_TRIPLE_EXTRACTION_CACHE_SIZE
+LARGE_MODEL = settings.LARGE_MODEL
+LLM_RETRY_ATTEMPTS = settings.LLM_RETRY_ATTEMPTS
+LLM_RETRY_DELAY_SECONDS = settings.LLM_RETRY_DELAY_SECONDS
+LLM_TOP_P = settings.LLM_TOP_P
+LOG_DATE_FORMAT = settings.LOG_DATE_FORMAT
+LOG_FILE = settings.LOG_FILE
+LOG_FORMAT = settings.LOG_FORMAT
+LOG_LEVEL_STR = settings.LOG_LEVEL_STR
+MAIN_NOVEL_INFO_NODE_ID = settings.MAIN_NOVEL_INFO_NODE_ID
+MAIN_WORLD_CONTAINER_NODE_ID = settings.MAIN_WORLD_CONTAINER_NODE_ID
+MAX_CONCURRENT_CHAPTERS = settings.MAX_CONCURRENT_CHAPTERS
+MAX_CONCURRENT_LLM_CALLS = settings.MAX_CONCURRENT_LLM_CALLS
+MAX_CONTEXT_TOKENS = settings.MAX_CONTEXT_TOKENS
+MAX_GENERATION_TOKENS = settings.MAX_GENERATION_TOKENS
+MAX_KG_TRIPLE_TOKENS = settings.MAX_KG_TRIPLE_TOKENS
+MAX_PLANNING_TOKENS = settings.MAX_PLANNING_TOKENS
+MAX_PREPOP_KG_TOKENS = settings.MAX_PREPOP_KG_TOKENS
+MAX_REVISION_CYCLES_PER_CHAPTER = settings.MAX_REVISION_CYCLES_PER_CHAPTER
+MAX_SUMMARY_TOKENS = settings.MAX_SUMMARY_TOKENS
+MEDIUM_MODEL = settings.MEDIUM_MODEL
+MIN_CHAPTER_LENGTH_CHARS = settings.MIN_CHAPTER_LENGTH_CHARS
+NARRATIVE_MODEL = settings.NARRATIVE_MODEL
+NEO4J_DATABASE = settings.NEO4J_DATABASE
+NEO4J_PASSWORD = settings.NEO4J_PASSWORD
+NEO4J_URI = settings.NEO4J_URI
+NEO4J_USER = settings.NEO4J_USER
+NEO4J_VECTOR_DIMENSIONS = settings.NEO4J_VECTOR_DIMENSIONS
+NEO4J_VECTOR_INDEX_NAME = settings.NEO4J_VECTOR_INDEX_NAME
+NEO4J_VECTOR_SIMILARITY_FUNCTION = settings.NEO4J_VECTOR_SIMILARITY_FUNCTION
+OPENAI_API_BASE = settings.OPENAI_API_BASE
+OPENAI_API_KEY = settings.OPENAI_API_KEY
+PHASE2_NAME_SIMILARITY_THRESHOLD = settings.PHASE2_NAME_SIMILARITY_THRESHOLD
+PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD = settings.PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD
+PLOT_OUTLINE_FILE = settings_mod.PLOT_OUTLINE_FILE
+PRESENCE_PENALTY_DRAFTING = settings.PRESENCE_PENALTY_DRAFTING
+PRESENCE_PENALTY_KG_EXTRACTION = settings.PRESENCE_PENALTY_KG_EXTRACTION
+SIMPLE_LOGGING_MODE = settings.SIMPLE_LOGGING_MODE
+SMALL_MODEL = settings.SMALL_MODEL
+SPACY_MODEL = settings.SPACY_MODEL
+SUMMARY_CACHE_SIZE = settings.SUMMARY_CACHE_SIZE
+TARGET_PLOT_POINTS_INITIAL_GENERATION = settings.TARGET_PLOT_POINTS_INITIAL_GENERATION
+TARGET_SCENES_MAX = settings.TARGET_SCENES_MAX
+TARGET_SCENES_MIN = settings.TARGET_SCENES_MIN
+TEMPERATURE_CONSISTENCY_CHECK = settings.TEMPERATURE_CONSISTENCY_CHECK
+TEMPERATURE_DRAFTING = settings.TEMPERATURE_DRAFTING
+TEMPERATURE_EVALUATION = settings.TEMPERATURE_EVALUATION
+TEMPERATURE_INITIAL_SETUP = settings.TEMPERATURE_INITIAL_SETUP
+TEMPERATURE_KG_EXTRACTION = settings.TEMPERATURE_KG_EXTRACTION
+TEMPERATURE_PATCH = settings.TEMPERATURE_PATCH
+TEMPERATURE_PLANNING = settings.TEMPERATURE_PLANNING
+TEMPERATURE_REVISION = settings.TEMPERATURE_REVISION
+TEMPERATURE_SUMMARY = settings.TEMPERATURE_SUMMARY
+TIKTOKEN_DEFAULT_ENCODING = settings.TIKTOKEN_DEFAULT_ENCODING
+TOKENIZER_CACHE_SIZE = settings.TOKENIZER_CACHE_SIZE
+USER_STORY_ELEMENTS_FILE_PATH = settings.USER_STORY_ELEMENTS_FILE_PATH
+WORLD_BUILDER_FILE = settings_mod.WORLD_BUILDER_FILE
+
+ENABLE_DUPLICATE_PREVENTION = settings.ENABLE_DUPLICATE_PREVENTION
+DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD = settings.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD
+DUPLICATE_PREVENTION_CHARACTER_ENABLED = settings.DUPLICATE_PREVENTION_CHARACTER_ENABLED
+DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED = settings.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED
+ENABLE_PHASE2_DEDUPLICATION = settings.ENABLE_PHASE2_DEDUPLICATION
+PHASE2_NAME_SIMILARITY_THRESHOLD = settings.PHASE2_NAME_SIMILARITY_THRESHOLD
+PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD = settings.PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD
+ENABLE_STATUS_IS_ALIAS = settings.ENABLE_STATUS_IS_ALIAS
+# REVISION_EVALUATION_THRESHOLD is defined directly in settings.py as a module-level variable
+# and is already available via the automatic globals() loop in settings.py
+REVISION_EVALUATION_THRESHOLD = 0.85
+
+# Relationship Normalization Settings
+ENABLE_RELATIONSHIP_NORMALIZATION = settings.relationship_normalization.ENABLE_RELATIONSHIP_NORMALIZATION
+REL_NORM_SIMILARITY_THRESHOLD = settings.relationship_normalization.SIMILARITY_THRESHOLD
+REL_NORM_SIMILARITY_THRESHOLD_AMBIGUOUS_MIN = settings.relationship_normalization.SIMILARITY_THRESHOLD_AMBIGUOUS_MIN
+REL_NORM_MIN_USAGE_FOR_AUTHORITY = settings.relationship_normalization.MIN_USAGE_FOR_AUTHORITY
+REL_NORM_PRUNE_SINGLE_USE_AFTER_CHAPTERS = settings.relationship_normalization.PRUNE_SINGLE_USE_AFTER_CHAPTERS
+REL_NORM_MAX_VOCABULARY_SIZE = settings.relationship_normalization.MAX_VOCABULARY_SIZE
+REL_NORM_MAX_EXAMPLES_PER_RELATIONSHIP = settings.relationship_normalization.MAX_EXAMPLES_PER_RELATIONSHIP
+REL_NORM_USE_LLM_DISAMBIGUATION = settings.relationship_normalization.USE_LLM_DISAMBIGUATION
+REL_NORM_NORMALIZE_CASE_VARIANTS = settings.relationship_normalization.NORMALIZE_CASE_VARIANTS
+REL_NORM_NORMALIZE_PUNCTUATION_VARIANTS = settings.relationship_normalization.NORMALIZE_PUNCTUATION_VARIANTS
+
+# Schema Enforcement Settings
+ENFORCE_SCHEMA_VALIDATION = settings.schema_enforcement.ENFORCE_SCHEMA_VALIDATION
+REJECT_INVALID_ENTITIES = settings.schema_enforcement.REJECT_INVALID_ENTITIES
+NORMALIZE_COMMON_VARIANTS = settings.schema_enforcement.NORMALIZE_COMMON_VARIANTS
+LOG_SCHEMA_VIOLATIONS = settings.schema_enforcement.LOG_SCHEMA_VIOLATIONS
 
 
-def get(key: str):
+# Legacy compatibility functions
+def get(key: str) -> Any:
     """Return the value of a configuration key."""
     return getattr(settings, key)
 
 
-def set(key: str, value):
+def set(key: str, value: Any) -> None:
     """Set a configuration key at runtime."""
     setattr(settings, key, value)
 
 
-def reload():
+def reload() -> None:
     """Reload the configuration from the environment and .env file."""
     from .loader import reload_settings
 
     reload_settings()
-
-
-# Expose configuration values for legacy imports.
-#
-# 1) Publish all Pydantic model fields (e.g. BASE_OUTPUT_DIR, CHAPTERS_DIR as
-#    raw field values).
-# 2) Then, override with any UPPERCASE constants defined at module scope in
-#    config.settings (these include the fully-joined output paths like
-#    CHAPTERS_DIR, CHAPTER_LOGS_DIR, DEBUG_OUTPUTS_DIR). This ensures modules
-#    importing `config.CHAPTERS_DIR` get the resolved path under BASE_OUTPUT_DIR
-#    rather than the raw field value "chapters".
-import importlib
-
-# Step 1: export raw fields
-for _field_name in settings.model_fields:
-    globals()[_field_name] = getattr(settings, _field_name)
-
-# Step 2: override with settings module UPPERCASE constants (joined paths, etc.)
-_settings_mod = importlib.import_module(".settings", __package__)
-for _name in dir(_settings_mod):
-    if _name.isupper():
-        globals()[_name] = getattr(_settings_mod, _name)
-
-# Export legacy compatibility objects (Models, Temperatures) if they exist
-for _obj_name in ("Models", "Temperatures"):
-    if hasattr(_settings_mod, _obj_name):
-        globals()[_obj_name] = getattr(_settings_mod, _obj_name)
-
-# Export additional objects needed for backward compatibility (e.g., structlog formatter)
-if hasattr(_settings_mod, "formatter"):
-    globals()["simple_formatter"] = _settings_mod.simple_formatter

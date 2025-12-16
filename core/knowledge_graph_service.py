@@ -1,228 +1,136 @@
 # core/knowledge_graph_service.py
 """
-Unified KnowledgeGraph service that handles all KG operations with native models.
-Eliminates serialization overhead by working directly with Pydantic models.
+Knowledge Graph persistence service (compatibility layer).
+
+Why this exists:
+- Some LangGraph code/tests patch `core.knowledge_graph_service.knowledge_graph_service`.
+- During the P0 refactors, the old module appears to have been removed/relocated.
+- `unittest.mock.patch()` resolves dotted names by attribute-walking the package, so
+  we must provide both:
+  1) a real submodule `core.knowledge_graph_service`, and
+  2) a `core.__init__` attribute pointing to it (handled separately).
+
+This module provides a minimal, safe persistence facade around the new Cypher builder
+approach (NativeCypherBuilder + execute_cypher_batch).
+
+It intentionally does NOT perform any dynamic Cypher interpolation beyond what the
+builder already guarantees.
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
 
 from core.db_manager import neo4j_manager
+from core.exceptions import KnowledgeGraphPersistenceError, create_error_context
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
 
 logger = structlog.get_logger(__name__)
 
 
+@dataclass(slots=True)
 class KnowledgeGraphService:
-    """Single service handling all KG operations with native models"""
+    """
+    Minimal persistence service used by legacy call-sites and tests.
 
-    def __init__(self):
-        self.cypher_builder = NativeCypherBuilder()
+    The primary method, persist_entities(), builds upsert Cypher statements for
+    characters and world items and executes them in a single batch transaction.
+    """
+
+    cypher_builder: NativeCypherBuilder
 
     async def persist_entities(
         self,
-        characters: list[CharacterProfile],
-        world_items: list[WorldItem],
-        chapter_number: int,
+        *,
+        characters: list[CharacterProfile] | None = None,
+        world_items: list[WorldItem] | None = None,
+        chapter_number: int = 0,
+        extra_statements: list[tuple[str, dict[str, Any]]] | None = None,
+        strict: bool = True,
     ) -> bool:
         """
-        Persist entities directly from models without dict conversion.
+        Persist entity nodes into Neo4j.
 
         Args:
-            characters: List of CharacterProfile models
-            world_items: List of WorldItem models
-            chapter_number: Current chapter for tracking
+            characters: CharacterProfile models to upsert.
+            world_items: WorldItem models to upsert.
+            chapter_number: Chapter number for metadata tracking.
+            extra_statements: Optional additional (query, params) statements to include
+                in the same batch transaction.
 
         Returns:
-            True if successful, False otherwise
+            True on success.
+
+            Compatibility behavior:
+            - If `strict=False`, returns False on failure instead of raising.
+            - CORE-007: `strict=True` is the default and raises a typed exception on failure.
         """
+        characters = characters or []
+        world_items = world_items or []
+        extra_statements = extra_statements or []
+
         statements: list[tuple[str, dict[str, Any]]] = []
 
         try:
-            # Generate Cypher directly from models
             for char in characters:
-                cypher, params = self.cypher_builder.character_upsert_cypher(
-                    char, chapter_number
-                )
+                cypher, params = self.cypher_builder.character_upsert_cypher(char, chapter_number)
                 statements.append((cypher, params))
 
             for item in world_items:
-                cypher, params = self.cypher_builder.world_item_upsert_cypher(
-                    item, chapter_number
-                )
+                cypher, params = self.cypher_builder.world_item_upsert_cypher(item, chapter_number)
                 statements.append((cypher, params))
 
-            if statements:
-                await neo4j_manager.execute_cypher_batch(statements)
+            statements.extend(extra_statements)
+
+            if not statements:
+                logger.debug(
+                    "knowledge_graph_service.persist_entities: nothing to persist",
+                    chapter=chapter_number,
+                )
+                return True
+
+            await neo4j_manager.execute_cypher_batch(statements)
 
             logger.info(
-                "Persisted %d characters and %d world items for chapter %d using native models",
-                len(characters),
-                len(world_items),
-                chapter_number,
+                "knowledge_graph_service.persist_entities: persisted entities",
+                chapter=chapter_number,
+                characters=len(characters),
+                world_items=len(world_items),
+                statements=len(statements),
             )
             return True
 
         except Exception as exc:
+            error_details = create_error_context(
+                chapter=chapter_number,
+                characters=len(characters),
+                world_items=len(world_items),
+                statements=len(statements),
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+
             logger.error(
-                "Error persisting entities for chapter %d: %s",
-                chapter_number,
-                exc,
+                "knowledge_graph_service.persist_entities: failed",
+                **error_details,
                 exc_info=True,
             )
+
+            if strict:
+                raise KnowledgeGraphPersistenceError(
+                    "Failed to persist entities to knowledge graph",
+                    details=error_details,
+                ) from exc
+
+            # Compatibility: explicit non-strict mode preserves legacy boolean failure signal.
             return False
 
-    async def fetch_characters(
-        self, filters: dict[str, Any] = None
-    ) -> list[CharacterProfile]:
-        """
-        Fetch characters directly as models without dict conversion.
 
-        Args:
-            filters: Optional filters for the query
+# Singleton service instance (as expected by tests patching this symbol)
+knowledge_graph_service = KnowledgeGraphService(cypher_builder=NativeCypherBuilder())
 
-        Returns:
-            List of CharacterProfile models
-        """
-        try:
-            query = """
-            MATCH (c:Character:Entity)
-            WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
-            RETURN c
-            ORDER BY c.name
-            """
-
-            results = await neo4j_manager.execute_read_query(query, filters or {})
-            characters = []
-
-            for record in results:
-                if record and record.get("c"):
-                    char = CharacterProfile.from_db_record(record)
-                    characters.append(char)
-
-            logger.debug("Fetched %d characters using native models", len(characters))
-            return characters
-
-        except Exception as exc:
-            logger.error(f"Error fetching characters: {exc}", exc_info=True)
-            return []
-
-    async def fetch_world_items(
-        self, filters: dict[str, Any] = None
-    ) -> list[WorldItem]:
-        """
-        Fetch world items directly as models without dict conversion.
-
-        Args:
-            filters: Optional filters for the query
-
-        Returns:
-            List of WorldItem models
-        """
-        try:
-            query = """
-            MATCH (w:Entity)
-            WHERE (w:Object OR w:Artifact OR w:Location OR w:Document OR w:Item OR w:Relic)
-              AND (w.is_deleted IS NULL OR w.is_deleted = FALSE)
-            RETURN w
-            ORDER BY w.category, w.name
-            """
-
-            results = await neo4j_manager.execute_read_query(query, filters or {})
-            world_items = []
-
-            for record in results:
-                if record and record.get("w"):
-                    item = WorldItem.from_db_record(record)
-                    world_items.append(item)
-
-            logger.debug("Fetched %d world items using native models", len(world_items))
-            return world_items
-
-        except Exception as exc:
-            logger.error(f"Error fetching world items: {exc}", exc_info=True)
-            return []
-
-    async def fetch_entities_for_context(
-        self, chapter_number: int, character_limit: int = 10, world_item_limit: int = 10
-    ) -> tuple[list[CharacterProfile], list[WorldItem]]:
-        """
-        Fetch entities relevant for context generation without conversion overhead.
-
-        Args:
-            chapter_number: Current chapter being processed
-            character_limit: Max characters to return
-            world_item_limit: Max world items to return
-
-        Returns:
-            Tuple of (characters, world_items)
-        """
-        try:
-            # Single query to get both characters and world items with relevance
-            query = """
-            // Get characters that appeared in recent chapters
-            MATCH (c:Character:Entity)-[:APPEARS_IN]->(ch:Chapter)
-            WHERE ch.number < $chapter_number
-            WITH c, max(ch.number) as last_appearance
-            ORDER BY last_appearance DESC
-            LIMIT $character_limit
-            
-            WITH collect({type: 'character', node: c}) as character_nodes
-            
-            // Get world items referenced in recent chapters  
-            MATCH (w:Entity)-[:REFERENCED_IN]->(ch:Chapter)
-            WHERE ch.number < $chapter_number
-            WITH character_nodes, w, max(ch.number) as last_reference
-            ORDER BY last_reference DESC
-            LIMIT $world_item_limit
-            
-            WITH character_nodes, collect({type: 'world', node: w}) as world_nodes
-            
-            RETURN character_nodes + world_nodes as entities
-            """
-
-            results = await neo4j_manager.execute_read_query(
-                query,
-                {
-                    "chapter_number": chapter_number,
-                    "character_limit": character_limit,
-                    "world_item_limit": world_item_limit,
-                },
-            )
-
-            characters = []
-            world_items = []
-
-            if results and results[0]:
-                entities = results[0].get("entities", [])
-                for entity_data in entities:
-                    if entity_data["type"] == "character":
-                        char = CharacterProfile.from_db_node(entity_data["node"])
-                        characters.append(char)
-                    elif entity_data["type"] == "world":
-                        item = WorldItem.from_db_node(entity_data["node"])
-                        world_items.append(item)
-
-            logger.debug(
-                "Fetched %d characters and %d world items for context (chapter %d)",
-                len(characters),
-                len(world_items),
-                chapter_number,
-            )
-
-            return characters, world_items
-
-        except Exception as exc:
-            logger.error(
-                "Error fetching entities for context (chapter %d): %s",
-                chapter_number,
-                exc,
-                exc_info=True,
-            )
-            return [], []
-
-
-# Singleton instance
-knowledge_graph_service = KnowledgeGraphService()
+__all__ = ["KnowledgeGraphService", "knowledge_graph_service"]

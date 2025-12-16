@@ -1,0 +1,34 @@
+## Story Information
+
+Title: {{ title }}
+Genre: {{ genre }}
+Theme: {{ theme }}
+Setting: {{ setting }}
+Target: {{ total_chapters }} chapters (~{{ target_word_count }} words)
+Protagonist: {{ protagonist_name }}
+
+Main characters:
+{{ character_context }}
+
+## Task
+
+Return a single JSON object with EXACTLY these keys (no more, no less):
+- "act_count" (number)
+- "acts" (array)
+- "inciting_incident" (string)
+- "midpoint" (string)
+- "climax" (string)
+- "resolution" (string)
+- "character_arcs" (array)
+- "thematic_progression" (string)
+- "pacing_notes" (string)
+
+Act constraints:
+- act_count must be 3 or 5.
+- Allocate chapters 1..{{ total_chapters }} with no gaps/overlaps.
+- Each act object MUST include: act_number, title, summary, key_events, chapters_start, chapters_end.
+
+Character arcs:
+- Include arcs for all main characters: {{ character_names | join(", ") }}
+
+Return the JSON object.

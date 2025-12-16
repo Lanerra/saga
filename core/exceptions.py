@@ -35,39 +35,25 @@ class DatabaseTransactionError(DatabaseError):
     """Errors related to database transaction handling."""
 
 
+class KnowledgeGraphPersistenceError(DatabaseError):
+    """
+    Errors related to knowledge graph persistence operations.
+
+    CORE-007: Core persistence services must not swallow exceptions or return ambiguous
+    sentinel values as the primary failure signal. This exception type allows
+    workflows to catch and handle persistence failures explicitly.
+    """
+
+
 class ValidationError(SAGACoreError):
     """Errors related to data validation."""
-
-
-class SchemaValidationError(ValidationError):
-    """Errors related to schema validation."""
-
-
-class RelationshipValidationError(ValidationError):
-    """Errors related to relationship validation."""
 
 
 class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
 
 
-class LLMConnectionError(LLMServiceError):
-    """Errors related to LLM service connectivity."""
-
-
-class LLMResponseError(LLMServiceError):
-    """Errors related to LLM response processing."""
-
-
-class ConfigurationError(SAGACoreError):
-    """Errors related to system configuration."""
-
-
-class SecurityError(SAGACoreError):
-    """Errors related to security violations."""
-
-
-def create_error_context(**kwargs) -> dict[str, Any]:
+def create_error_context(**kwargs: Any) -> dict[str, Any]:
     """
     Helper function to create standardized error context dictionaries.
 
@@ -80,9 +66,7 @@ def create_error_context(**kwargs) -> dict[str, Any]:
     return {k: v for k, v in kwargs.items() if v is not None}
 
 
-def handle_database_error(
-    operation: str, original_error: Exception, **context
-) -> DatabaseError:
+def handle_database_error(operation: str, original_error: Exception, **context: Any) -> DatabaseError:
     """
     Convert generic exceptions to standardized database errors.
 
@@ -102,52 +86,8 @@ def handle_database_error(
     )
 
     if "connection" in str(original_error).lower():
-        return DatabaseConnectionError(
-            f"Database connection failed during {operation}", details=error_details
-        )
+        return DatabaseConnectionError(f"Database connection failed during {operation}", details=error_details)
     elif "transaction" in str(original_error).lower():
-        return DatabaseTransactionError(
-            f"Database transaction failed during {operation}", details=error_details
-        )
+        return DatabaseTransactionError(f"Database transaction failed during {operation}", details=error_details)
     else:
-        return DatabaseError(
-            f"Database error during {operation}", details=error_details
-        )
-
-
-def handle_llm_error(
-    operation: str, original_error: Exception, **context
-) -> LLMServiceError:
-    """
-    Convert generic exceptions to standardized LLM service errors.
-
-    Args:
-        operation: Description of the LLM operation that failed
-        original_error: The original exception that was caught
-        **context: Additional context information
-
-    Returns:
-        Appropriate LLMServiceError subclass
-    """
-    error_details = create_error_context(
-        operation=operation,
-        original_error=str(original_error),
-        error_type=type(original_error).__name__,
-        **context,
-    )
-
-    if any(
-        keyword in str(original_error).lower()
-        for keyword in ["connection", "timeout", "network"]
-    ):
-        return LLMConnectionError(
-            f"LLM service connection failed during {operation}", details=error_details
-        )
-    elif "response" in str(original_error).lower():
-        return LLMResponseError(
-            f"LLM response processing failed during {operation}", details=error_details
-        )
-    else:
-        return LLMServiceError(
-            f"LLM service error during {operation}", details=error_details
-        )
+        return DatabaseError(f"Database error during {operation}", details=error_details)

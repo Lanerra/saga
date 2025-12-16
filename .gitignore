@@ -10,9 +10,6 @@ htmlcov/
 # Runtime logs and debug outputs
 output/
 
-# Generated novel output
-novel_output/
-
 # OS files
 .DS_Store
 .venv/
@@ -29,4 +26,10 @@ user_story_elements.ba*
 chorus.md
 story-test.txt
 .aider*
-CLAUDE.md
+.gitignore
+add_paths.sh
+.clinerules/PROJECT_CONSTRAINTS.md
+Bootstrap-KG-Ch4.png
+.gitignore
+User-KG-Ch4.png
+src/

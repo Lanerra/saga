@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ class CharacterProfile(BaseModel):
     """Structured information about a character."""
 
     name: str
+    type: str = "Character"
     description: str = ""
     traits: list[str] = Field(default_factory=list)
     relationships: dict[str, Any] = Field(default_factory=dict)
@@ -48,19 +50,13 @@ class CharacterProfile(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
-        """Construct directly from Neo4j record - no dict conversion."""
+    def from_dict_record(cls, record: Mapping[str, Any]) -> CharacterProfile:
+        """Construct directly from dictionary record."""
         node = record["c"]  # Assuming 'c' is the character node alias
 
         # Extract relationships if available
         relationships = {}
-        rels = (
-            record.get("relationships")
-            if hasattr(record, "get")
-            else record.get("relationships")
-            if isinstance(record, dict)
-            else None
-        )
+        rels = record.get("relationships")
         if rels:
             for rel in rels:
                 if rel and rel.get("target_name"):
@@ -69,30 +65,45 @@ class CharacterProfile(BaseModel):
                         "description": rel.get("description", ""),
                     }
 
-        node_dict = dict(node)
+        # Extract traits from query result (HAS_TRAIT relationships)
+        # Fallback to node property for backward compatibility
+        traits = record.get("traits", [])
+        if not traits:
+            node_dict = node if isinstance(node, dict) else dict(node)
+            traits = node_dict.get("traits", [])
+        # Filter out None/empty values
+        traits = [t for t in traits if t]
+
+        # Node is already a dict if coming from db_manager
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             name=node_dict.get("name", ""),
             description=node_dict.get("description", ""),
-            traits=node_dict.get("traits", []),
+            traits=traits,
             status=node_dict.get("status", "Unknown"),
             relationships=relationships,
-            created_chapter=node.get("created_chapter", 0),
-            is_provisional=node.get("is_provisional", False),
+            created_chapter=node_dict.get("created_chapter", 0),
+            is_provisional=node_dict.get("is_provisional", False),
             updates={},  # Will be populated as needed
         )
 
     @classmethod
-    def from_db_node(cls, node: neo4j.Node) -> CharacterProfile:
-        """Construct directly from Neo4j node - no dict conversion."""
-        node_dict = dict(node)
+    def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
+        """Construct directly from Neo4j record - no dict conversion. (Legacy/Direct driver)"""
+        return cls.from_dict_record(record)
+
+    @classmethod
+    def from_db_node(cls, node: Any) -> CharacterProfile:
+        """Construct directly from Neo4j node/dict - no dict conversion."""
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             name=node_dict.get("name", ""),
             description=node_dict.get("description", ""),
             traits=node_dict.get("traits", []),
             status=node_dict.get("status", "Unknown"),
             relationships={},  # Relationships handled separately
-            created_chapter=node.get("created_chapter", 0),
-            is_provisional=node.get("is_provisional", False),
+            created_chapter=node_dict.get("created_chapter", 0),
+            is_provisional=node_dict.get("is_provisional", False),
             updates={},
         )
 
@@ -115,6 +126,7 @@ class WorldItem(BaseModel):
     id: str
     category: str
     name: str
+    type: str = "Item"
     created_chapter: int = 0
     is_provisional: bool = False
     description: str = ""
@@ -122,6 +134,7 @@ class WorldItem(BaseModel):
     rules: list[str] = Field(default_factory=list)
     key_elements: list[str] = Field(default_factory=list)
     traits: list[str] = Field(default_factory=list)
+    relationships: dict[str, Any] = Field(default_factory=dict)
     # Additional properties can still be stored in a dictionary for flexibility
     additional_properties: dict[str, Any] = Field(default_factory=dict)
 
@@ -139,14 +152,10 @@ class WorldItem(BaseModel):
         item_id = data.get("id", "")
 
         # Validate and normalize all core fields
-        category, name, item_id = validate_world_item_fields(
-            category, name, item_id, allow_empty_name
-        )
+        category, name, item_id = validate_world_item_fields(category, name, item_id, allow_empty_name)
 
         # Extract and validate created_chapter using shared utility
-        created_chapter = Neo4jExtractor.safe_int_extract(
-            data.get(KG_NODE_CREATED_CHAPTER, 0)
-        )
+        created_chapter = Neo4jExtractor.safe_int_extract(data.get(KG_NODE_CREATED_CHAPTER, 0))
 
         # Extract and validate is_provisional
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
@@ -157,6 +166,9 @@ class WorldItem(BaseModel):
         rules = data.get("rules", [])
         key_elements = data.get("key_elements", [])
         traits = data.get("traits", [])
+
+        # Extract relationships if present
+        relationships = data.get("relationships", {})
 
         # Collect remaining properties
         additional_properties = {
@@ -174,6 +186,7 @@ class WorldItem(BaseModel):
                 "rules",
                 "key_elements",
                 "traits",
+                "relationships",
             }
         }
 
@@ -188,6 +201,7 @@ class WorldItem(BaseModel):
             rules=rules,
             key_elements=key_elements,
             traits=traits,
+            relationships=relationships,
             additional_properties=additional_properties,
         )
 
@@ -200,8 +214,8 @@ class WorldItem(BaseModel):
         return data
 
     @classmethod
-    def from_db_record(cls, record: neo4j.Record) -> WorldItem:
-        """Construct directly from Neo4j record - no dict conversion."""
+    def from_dict_record(cls, record: Mapping[str, Any]) -> WorldItem:
+        """Construct directly from dictionary record."""
         # Try both 'w' and 'we' node aliases for compatibility
         node = record.get("w") or record.get("we")
         if not node:
@@ -224,34 +238,52 @@ class WorldItem(BaseModel):
         }
 
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(
-            node, core_fields
-        )
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
-        node_dict = dict(node)
+        # Extract relationships if available
+        relationships = {}
+        rels = record.get("relationships")
+        if rels:
+            for rel in rels:
+                if rel and rel.get("target_name"):
+                    relationships[rel["target_name"]] = {
+                        "type": rel.get("type", "RELATED_TO"),
+                        "description": rel.get("description", ""),
+                    }
+
+        # Extract traits from query result (HAS_TRAIT relationships)
+        # Fallback to node property for backward compatibility
+        traits = record.get("traits", [])
+        if not traits:
+            node_dict = node if isinstance(node, dict) else dict(node)
+            traits = Neo4jExtractor.safe_list_extract(node_dict.get("traits", []))
+        # Filter out None/empty values
+        traits = [t for t in traits if t]
+
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
             name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(
-                node_dict.get("description", "")
-            ),
+            description=Neo4jExtractor.safe_string_extract(node_dict.get("description", "")),
             goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
             rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(
-                node_dict.get("key_elements", [])
-            ),
-            traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(
-                node_dict.get("created_chapter", 0)
-            ),
+            key_elements=Neo4jExtractor.safe_list_extract(node_dict.get("key_elements", [])),
+            traits=traits,
+            created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            relationships=relationships,
             additional_properties=additional_props,
         )
 
     @classmethod
-    def from_db_node(cls, node: neo4j.Node) -> WorldItem:
-        """Construct directly from Neo4j node - no dict conversion."""
+    def from_db_record(cls, record: neo4j.Record) -> WorldItem:
+        """Construct directly from Neo4j record - no dict conversion."""
+        return cls.from_dict_record(record)
+
+    @classmethod
+    def from_db_node(cls, node: Any) -> WorldItem:
+        """Construct directly from Neo4j node/dict - no dict conversion."""
 
         # Define core fields that shouldn't go into additional_properties
         core_fields = {
@@ -270,28 +302,21 @@ class WorldItem(BaseModel):
         }
 
         # Extract additional properties using shared utility
-        additional_props = Neo4jExtractor.extract_core_fields_from_node(
-            node, core_fields
-        )
+        additional_props = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
 
-        node_dict = dict(node)
+        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),
             name=Neo4jExtractor.safe_string_extract(node_dict.get("name", "")),
-            description=Neo4jExtractor.safe_string_extract(
-                node_dict.get("description", "")
-            ),
+            description=Neo4jExtractor.safe_string_extract(node_dict.get("description", "")),
             goals=Neo4jExtractor.safe_list_extract(node_dict.get("goals", [])),
             rules=Neo4jExtractor.safe_list_extract(node_dict.get("rules", [])),
-            key_elements=Neo4jExtractor.safe_list_extract(
-                node_dict.get("key_elements", [])
-            ),
+            key_elements=Neo4jExtractor.safe_list_extract(node_dict.get("key_elements", [])),
             traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
-            created_chapter=Neo4jExtractor.safe_int_extract(
-                node_dict.get("created_chapter", 0)
-            ),
+            created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            relationships={},  # Relationships handled separately
             additional_properties=additional_props,
         )
 
@@ -309,4 +334,64 @@ class WorldItem(BaseModel):
             "created_chapter": self.created_chapter,
             "is_provisional": self.is_provisional,
             "additional_props": self.additional_properties,
+            # Note: relationships handled separately
         }
+
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class RelationshipUsage:
+    """
+    Tracks usage of a relationship type in the narrative.
+
+    Used by relationship normalization to maintain consistent vocabulary
+    while allowing creative flexibility for genuinely novel relationships.
+    """
+
+    canonical_type: str  # The normalized form (e.g., "WORKS_WITH")
+    first_used_chapter: int  # When first introduced
+    usage_count: int  # How many times used across narrative
+    example_descriptions: list[str] = field(default_factory=list)  # Sample usage contexts
+    embedding: list[float] | None = None  # Cached embedding for fast comparison
+    synonyms: list[str] = field(default_factory=list)  # Variant forms normalized to this
+    last_used_chapter: int = 0  # Most recent usage
+
+    class Config:
+        """Pydantic configuration."""
+
+        frozen = False
+        validate_assignment = True
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "canonical_type": self.canonical_type,
+            "first_used_chapter": self.first_used_chapter,
+            "usage_count": self.usage_count,
+            "example_descriptions": self.example_descriptions,
+            "embedding": self.embedding,
+            "synonyms": self.synonyms,
+            "last_used_chapter": self.last_used_chapter,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RelationshipUsage:
+        """Create from dictionary (for deserialization)."""
+        return cls(
+            canonical_type=data["canonical_type"],
+            first_used_chapter=data["first_used_chapter"],
+            usage_count=data["usage_count"],
+            example_descriptions=data.get("example_descriptions", []),
+            embedding=data.get("embedding"),
+            synonyms=data.get("synonyms", []),
+            last_used_chapter=data.get("last_used_chapter", 0),
+        )
+
+
+__all__ = [
+    "CharacterProfile",
+    "WorldItem",
+    "RelationshipUsage",
+]

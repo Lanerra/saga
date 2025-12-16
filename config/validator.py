@@ -48,9 +48,7 @@ def validate_all() -> dict:
     #    was created.  If the instance exists, we assume fields are of the correct type.
     #    However, we still guard against a completely missing instance.
     if current_settings is None:
-        _add_issue(
-            issues, "errors", "settings", "Configuration object not initialized."
-        )
+        _add_issue(issues, "errors", "settings", "Configuration object not initialized.")
         return {
             "overall_health": "error",
             "issues": issues,
@@ -64,17 +62,11 @@ def validate_all() -> dict:
             issues,
             "errors",
             "MAX_CONTEXT_TOKENS",
-            (
-                f"MAX_CONTEXT_TOKENS ({current_settings.MAX_CONTEXT_TOKENS}) must be "
-                f"greater than MAX_GENERATION_TOKENS ({current_settings.MAX_GENERATION_TOKENS})."
-            ),
+            (f"MAX_CONTEXT_TOKENS ({current_settings.MAX_CONTEXT_TOKENS}) must be " f"greater than MAX_GENERATION_TOKENS ({current_settings.MAX_GENERATION_TOKENS})."),
         )
 
     # Embedding dimension consistency
-    if (
-        current_settings.NEO4J_VECTOR_DIMENSIONS
-        != current_settings.EXPECTED_EMBEDDING_DIM
-    ):
+    if current_settings.NEO4J_VECTOR_DIMENSIONS != current_settings.EXPECTED_EMBEDDING_DIM:
         _add_issue(
             issues,
             "warnings",
@@ -96,9 +88,7 @@ def validate_all() -> dict:
     for name, min_val, max_val in cache_fields:
         value = getattr(current_settings, name)
         if value < min_val:
-            _add_issue(
-                issues, "errors", name, f"{name} must be >= {min_val}; got {value}."
-            )
+            _add_issue(issues, "errors", name, f"{name} must be >= {min_val}; got {value}.")
         elif value > max_val:
             _add_issue(
                 issues,

@@ -1,3 +1,4 @@
+# core/langgraph/state.py
 """
 LangGraph State Schema for SAGA Narrative Generation.
 
@@ -6,13 +7,45 @@ designed to minimize disruption to existing SAGA code while enabling
 the migration to LangGraph architecture.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.1.1
+
+State Field Organization:
+- Metadata: Immutable project configuration
+- Progress: Current position in the narrative
+- Content: Generated text and drafts (mostly externalized via ContentRef)
+- Extraction: Entities and relationships extracted from text
+- Validation: Quality scores and contradiction detection
+- Models: LLM model configuration
+- Workflow: Control flow and iteration tracking
+- Error Handling: Error state and recovery
+- Filesystem: Directory paths
+- Context: Dynamic context for generation
+- Planning: Chapter and scene planning
+- Revision: Revision state and feedback
+- World Building: World items and rules
+- Characters: Protagonist and character profiles
+- Initialization: Initialization workflow state
+- Graph Healing: Provisional node enrichment and merging
 """
 
 from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+# Import settings for model configuration
+from config.settings import settings
+
+# Import ContentRef for externalized content
+from core.langgraph.content_manager import ContentRef
+from core.schema_validator import schema_validator
+
+# Import TypedDict structures for proper type annotations
+from models.agent_models import (
+    EvaluationResult,
+    PatchInstruction,
+    SceneDetail,
+)
 
 # Import existing SAGA models for compatibility
 from models.kg_models import CharacterProfile, WorldItem
@@ -27,10 +60,26 @@ class ExtractedEntity(BaseModel):
     """
 
     name: str
-    type: Literal["character", "location", "event", "object"]
+    type: str  # Allows specific types from ontology (e.g. "Person", "Place")
     description: str
     first_appearance_chapter: int
     attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_entity_type(self) -> ExtractedEntity:
+        """Validate and normalize the entity type."""
+        current_type = self.type
+        is_valid, normalized_type, _ = schema_validator.validate_entity_type(current_type)
+
+        # Preserve the original specific type in attributes before normalization
+        if is_valid and normalized_type != current_type:
+            if "original_type" not in self.attributes:
+                self.attributes["original_type"] = current_type
+            if "category" not in self.attributes:
+                self.attributes["category"] = current_type.lower()
+            self.type = normalized_type
+
+        return self
 
     class Config:
         """Pydantic configuration."""
@@ -53,6 +102,8 @@ class ExtractedRelationship(BaseModel):
     description: str
     chapter: int
     confidence: float = 0.8
+    source_type: str | None = None
+    target_type: str | None = None
 
     class Config:
         """Pydantic configuration."""
@@ -90,11 +141,43 @@ class NarrativeState(TypedDict, total=False):
     This schema is designed to align with existing SAGA data structures
     to minimize migration disruption.
 
-    Migration Strategy:
-    - Preserves existing field names where possible (e.g., plot_outline)
-    - Maintains compatibility with CharacterProfile and WorldItem models
-    - Adds new fields for entity extraction and validation workflows
-    - Uses Optional types for flexibility during gradual migration
+    ## State Update Patterns
+
+    ### Sequential Extraction
+    Extraction runs sequentially without reducers:
+    1. `extract_characters`: CLEARS extraction state, extracts characters
+    2. `extract_locations`: APPENDS locations to world_items
+    3. `extract_events`: APPENDS events to world_items
+    4. `extract_relationships`: Sets relationships
+
+    This sequential approach prevents cross-chapter accumulation that occurred
+    with reducer-based parallel extraction.
+
+    ### Content Externalization
+    Large content fields are externalized via ContentRef to avoid bloating the
+    SQLite checkpoint database:
+    - `draft_ref`: Reference to externalized draft text
+    - `embedding_ref`: Reference to externalized embeddings
+    - `scene_drafts_ref`: Reference to externalized scene drafts
+    - And other `*_ref` fields
+
+    ### Field Categories
+    Fields are organized into logical categories (see module docstring):
+    - Metadata: Immutable project configuration (project_id, genre, etc.)
+    - Progress: Current position (current_chapter, current_act)
+    - Content: Generated text (externalized via ContentRef)
+    - Extraction: Entities and relationships from text
+    - Validation: Quality scores and contradiction detection
+    - Models: LLM model configuration
+    - Workflow: Control flow and iteration tracking
+    - Error Handling: Error state and recovery
+    - And more (see individual sections below)
+
+    ## Type Safety Notes
+    This TypedDict uses `total=False`, making all fields technically optional.
+    However, the `create_initial_state` factory function initializes all required
+    fields with sensible defaults. Some fields are truly optional (e.g., error fields),
+    while others should always be present after initialization.
     """
 
     # =========================================================================
@@ -120,29 +203,43 @@ class NarrativeState(TypedDict, total=False):
     current_act: int
 
     # =========================================================================
-    # Plot Outline (compatible with existing plot_outline structure)
-    # =========================================================================
-    plot_outline: dict[int, dict[str, Any]]
-
-    # =========================================================================
     # Active Context (for prompt construction)
     # =========================================================================
     active_characters: list[CharacterProfile]  # Reuses existing model
     current_location: dict[str, Any] | None
-    previous_chapter_summaries: list[str]
     key_events: list[dict[str, Any]]
+
+    # Externalized context references
+    summaries_ref: ContentRef | None  # Reference to externalized summaries
+    active_characters_ref: ContentRef | None  # Reference to externalized active characters
 
     # =========================================================================
     # Generated Content (current chapter)
     # =========================================================================
-    draft_text: str | None
     draft_word_count: int
 
+    # Externalized content references
+    draft_ref: ContentRef | None  # Reference to externalized draft text
+    embedding_ref: ContentRef | None  # Reference to externalized embedding
+    draft_text: str | None  # Inline draft text (for non-externalized usage or tests)
+    generated_embedding: list[float] | None  # Inline embedding (before externalization)
+
     # =========================================================================
-    # Entity Extraction Results (NEW: centralized extraction state)
+    # Entity Extraction Results
     # =========================================================================
+    # Sequential extraction (no reducers needed):
+    # - extract_characters: Clears and populates extracted_entities["characters"]
+    # - extract_locations: Appends to extracted_entities["world_items"]
+    # - extract_events: Appends to extracted_entities["world_items"]
+    # - extract_relationships: Populates extracted_relationships
+    #
+    # Each extraction cycle starts fresh by clearing these fields in the first node.
     extracted_entities: dict[str, list[ExtractedEntity]]
     extracted_relationships: list[ExtractedRelationship]
+
+    # Externalized extraction references (to reduce state bloat)
+    extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities
+    extracted_relationships_ref: ContentRef | None  # Reference to externalized extracted relationships
 
     # =========================================================================
     # Validation and Quality Control (NEW: formalized validation state)
@@ -150,6 +247,17 @@ class NarrativeState(TypedDict, total=False):
     contradictions: list[Contradiction]
     needs_revision: bool
     revision_feedback: str | None
+    is_from_flawed_draft: bool  # True if deduplication removed text or other quality issues detected
+
+    # =========================================================================
+    # Quality Metrics (LLM-evaluated quality scores)
+    # =========================================================================
+    coherence_score: float | None  # 0.0-1.0 score for narrative coherence
+    prose_quality_score: float | None  # 0.0-1.0 score for prose quality
+    plot_advancement_score: float | None  # 0.0-1.0 score for plot advancement
+    pacing_score: float | None  # 0.0-1.0 score for narrative pacing
+    tone_consistency_score: float | None  # 0.0-1.0 score for tone consistency
+    quality_feedback: str | None  # Free-form feedback summarizing strengths/weaknesses
 
     # =========================================================================
     # Model Configuration
@@ -157,6 +265,11 @@ class NarrativeState(TypedDict, total=False):
     generation_model: str
     extraction_model: str
     revision_model: str
+    # New tiered model configuration
+    large_model: str
+    medium_model: str
+    small_model: str
+    narrative_model: str
 
     # =========================================================================
     # Workflow Control
@@ -170,6 +283,10 @@ class NarrativeState(TypedDict, total=False):
     # Error Handling
     # =========================================================================
     last_error: str | None
+    has_fatal_error: bool  # True if workflow should stop due to unrecoverable error
+    workflow_failed: bool  # Overall workflow failure status
+    failure_reason: str | None  # Reason for overall workflow failure
+    error_node: str | None  # Which node encountered the fatal error
     retry_count: int
 
     # =========================================================================
@@ -183,20 +300,27 @@ class NarrativeState(TypedDict, total=False):
     # Context Management (maintains compatibility with existing context system)
     # =========================================================================
     context_epoch: int  # Compatible with NarrativeState.context_epoch
-    hybrid_context: str | None  # Compatible with ContextSnapshot
-    kg_facts_block: str | None  # Compatible with ContextSnapshot
+
+    # Externalized context references
+    hybrid_context_ref: ContentRef | None  # Reference to externalized hybrid context
+    kg_facts_ref: ContentRef | None  # Reference to externalized KG facts
 
     # =========================================================================
-    # Chapter Planning (compatible with existing SceneDetail structure)
+    # Chapter Planning (properly typed with SceneDetail TypedDict)
     # =========================================================================
-    chapter_plan: list[dict[str, Any]] | None  # List of SceneDetail dicts
+    chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
     plot_point_focus: str | None
+    current_scene_index: int  # Index of the scene currently being processed
+
+    # Externalized scene drafts reference
+    scene_drafts_ref: ContentRef | None  # Reference to externalized scene drafts
+    chapter_plan_ref: ContentRef | None  # Reference to externalized chapter plan
 
     # =========================================================================
-    # Revision State (compatible with existing evaluation workflow)
+    # Revision State (properly typed with TypedDict structures)
     # =========================================================================
-    evaluation_result: dict[str, Any] | None  # EvaluationResult structure
-    patch_instructions: list[dict[str, Any]] | None  # PatchInstruction list
+    evaluation_result: EvaluationResult | None  # EvaluationResult TypedDict
+    patch_instructions: list[PatchInstruction] | None  # List of PatchInstruction TypedDicts
 
     # =========================================================================
     # World Building Context
@@ -209,6 +333,47 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     protagonist_name: str
     protagonist_profile: CharacterProfile | None
+
+    # =========================================================================
+    # Initialization Phase State (for initialization workflow)
+    # =========================================================================
+    # Externalized initialization content references
+    character_sheets_ref: ContentRef | None  # Reference to externalized character sheets
+    global_outline_ref: ContentRef | None  # Reference to externalized global outline
+    act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
+    chapter_outlines_ref: ContentRef | None  # Reference to externalized chapter outlines
+
+    # Inline initialization artifacts (for tests or before persistence)
+    character_sheets: dict[str, Any] | None
+    global_outline: str | dict[str, Any] | None
+    act_outlines: dict[str, Any] | None
+    world_history: str | None
+
+    # Initialization state tracking
+    initialization_complete: bool
+    initialization_step: str | None  # Current initialization step
+
+    # =========================================================================
+    # Relationship Vocabulary (for normalization)
+    # =========================================================================
+    relationship_vocabulary: dict[str, Any]  # Maps canonical_type -> RelationshipUsage dict
+    relationship_vocabulary_size: int  # Track vocabulary growth
+    relationships_normalized_this_chapter: int  # Monitoring metric
+    relationships_novel_this_chapter: int  # Monitoring metric
+
+    # =========================================================================
+    # Graph Healing State (for provisional node enrichment and merging)
+    # =========================================================================
+    provisional_count: int  # Number of provisional nodes in the graph
+    last_healing_chapter: int  # Last chapter where healing was run
+    merge_candidates: list[dict[str, Any]]  # Potential merge pairs with scores
+    pending_merges: list[dict[str, Any]]  # Merges awaiting user approval
+    auto_approved_merges: list[dict[str, Any]]  # High-confidence auto-approved merges
+    healing_history: list[dict[str, Any]]  # Log of healing actions taken
+    nodes_graduated: int  # Count of nodes graduated from provisional status
+    nodes_merged: int  # Count of nodes merged in this session
+    nodes_enriched: int  # Count of nodes enriched in this session
+    nodes_removed: int  # Count of nodes removed during healing
 
 
 # Type alias for improved readability in node signatures
@@ -226,9 +391,14 @@ def create_initial_state(
     total_chapters: int,
     project_dir: str,
     protagonist_name: str,
-    generation_model: str = "qwen3-a3b",
-    extraction_model: str = "qwen3-a3b",
-    revision_model: str = "qwen3-a3b",
+    generation_model: str = settings.NARRATIVE_MODEL,
+    extraction_model: str = settings.SMALL_MODEL,
+    revision_model: str = settings.MEDIUM_MODEL,
+    # New model params with defaults
+    large_model: str = settings.LARGE_MODEL,
+    medium_model: str = settings.MEDIUM_MODEL,
+    small_model: str = settings.SMALL_MODEL,
+    narrative_model: str = settings.NARRATIVE_MODEL,
     max_iterations: int = 3,
 ) -> NarrativeState:
     """
@@ -271,16 +441,27 @@ def create_initial_state(
         "current_act": 1,
         # Neo4j connection (will be set by workflow)
         "neo4j_conn": None,
-        # Outline (will be populated by planning node)
-        "plot_outline": {},
         # Active context (initially empty)
         "active_characters": [],
         "current_location": None,
-        "previous_chapter_summaries": [],
         "key_events": [],
         # Generated content
-        "draft_text": None,
         "draft_word_count": 0,
+        # Externalized content references
+        "draft_ref": None,
+        "embedding_ref": None,
+        "summaries_ref": None,
+        "scene_drafts_ref": None,
+        "hybrid_context_ref": None,
+        "kg_facts_ref": None,
+        "character_sheets_ref": None,
+        "global_outline_ref": None,
+        "act_outlines_ref": None,
+        "chapter_outlines_ref": None,
+        "extracted_entities_ref": None,
+        "extracted_relationships_ref": None,
+        "active_characters_ref": None,
+        "chapter_plan_ref": None,
         # Entity extraction
         "extracted_entities": {},
         "extracted_relationships": [],
@@ -288,10 +469,22 @@ def create_initial_state(
         "contradictions": [],
         "needs_revision": False,
         "revision_feedback": None,
+        "is_from_flawed_draft": False,
+        # Quality metrics
+        "coherence_score": None,
+        "prose_quality_score": None,
+        "plot_advancement_score": None,
+        "pacing_score": None,
+        "tone_consistency_score": None,
+        "quality_feedback": None,
         # Model configuration
         "generation_model": generation_model,
         "extraction_model": extraction_model,
         "revision_model": revision_model,
+        "large_model": large_model,
+        "medium_model": medium_model,
+        "small_model": small_model,
+        "narrative_model": narrative_model,
         # Workflow control
         "current_node": "init",
         "iteration_count": 0,
@@ -299,6 +492,10 @@ def create_initial_state(
         "force_continue": False,
         # Error handling
         "last_error": None,
+        "has_fatal_error": False,
+        "workflow_failed": False,
+        "failure_reason": None,
+        "error_node": None,
         "retry_count": 0,
         # Filesystem paths
         "project_dir": project_dir,
@@ -306,11 +503,10 @@ def create_initial_state(
         "summaries_dir": os.path.join(project_dir, "summaries"),
         # Context management
         "context_epoch": 0,
-        "hybrid_context": None,
-        "kg_facts_block": None,
         # Chapter planning
         "chapter_plan": None,
         "plot_point_focus": None,
+        "current_scene_index": 0,
         # Revision state
         "evaluation_result": None,
         "patch_instructions": None,
@@ -320,6 +516,24 @@ def create_initial_state(
         # Protagonist
         "protagonist_name": protagonist_name,
         "protagonist_profile": None,
+        # Initialization phase
+        "initialization_complete": False,
+        "initialization_step": None,
+        # Relationship normalization
+        "relationship_vocabulary": {},
+        "relationship_vocabulary_size": 0,
+        "relationships_normalized_this_chapter": 0,
+        "relationships_novel_this_chapter": 0,
+        # Graph healing
+        "provisional_count": 0,
+        "last_healing_chapter": 0,
+        "merge_candidates": [],
+        "pending_merges": [],
+        "auto_approved_merges": [],
+        "healing_history": [],
+        "nodes_graduated": 0,
+        "nodes_merged": 0,
+        "nodes_enriched": 0,
     }
 
     return state

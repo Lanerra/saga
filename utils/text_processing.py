@@ -6,14 +6,34 @@ import structlog
 
 # Optional imports. We keep them out of module import path to avoid hard deps.
 try:  # pragma: no cover - optional dependency
-    from rapidfuzz.fuzz import partial_ratio_alignment  # type: ignore
+    from rapidfuzz.fuzz import partial_ratio_alignment
 except Exception:  # pragma: no cover - if rapidfuzz missing
-    partial_ratio_alignment = None  # type: ignore
+    partial_ratio_alignment = None  # type: ignore[assignment]
 
 logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover - for type hints only
     pass
+
+
+def normalize_entity_name(text: str) -> str:
+    """
+    Clean and normalize an entity name.
+
+    1. Removes parenthetical content (e.g. "Name (description)" -> "Name")
+    2. Normalizes smart quotes to straight quotes
+    3. Strips whitespace
+    """
+    if not isinstance(text, str):
+        return str(text) if text is not None else ""
+
+    # Remove parenthetical content
+    text = re.sub(r"\s*\(.*?\)", "", text)
+
+    # Normalize smart quotes
+    text = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+
+    return text.strip()
 
 
 def _normalize_for_id(text: str) -> str:
@@ -32,9 +52,7 @@ def _normalize_for_id(text: str) -> str:
     return text
 
 
-async def get_context_snippet_for_patch(
-    original_text: str, problem: dict[str, Any], max_chars: int
-) -> str:
+async def get_context_snippet_for_patch(original_text: str, problem: dict[str, Any], max_chars: int) -> str:
     """Return a context snippet around the problem’s quote or start of text.
 
     Replaces the old _get_context_window_for_patch_llm shim with a proper helper
@@ -45,25 +63,19 @@ async def get_context_snippet_for_patch(
         return ""
     quote = None
     if isinstance(problem, dict):
-        quote = problem.get("original_problem_quote_text") or problem.get(
-            "quote_from_original_text"
-        )
+        quote = problem.get("original_problem_quote_text") or problem.get("quote_from_original_text")
     if isinstance(quote, str) and quote:
         idx = original_text.find(quote)
         if idx != -1:
             left = max_chars // 2
             start = max(0, idx - left)
-            end = min(
-                len(original_text), idx + len(quote) + (max_chars - (idx - start))
-            )
+            end = min(len(original_text), idx + len(quote) + (max_chars - (idx - start)))
             snippet = original_text[start:end]
             return snippet[:max_chars]
     return original_text[:max_chars]
 
 
-def validate_world_item_fields(
-    category: str, name: str, item_id: str, allow_empty_name: bool = False
-) -> tuple[str, str, str]:
+def validate_world_item_fields(category: str, name: str, item_id: str, allow_empty_name: bool = False) -> tuple[str, str, str]:
     """Validate and normalize WorldItem core fields, providing defaults for missing values."""
     # Validate category
     if not category or not isinstance(category, str) or not category.strip():
@@ -71,9 +83,7 @@ def validate_world_item_fields(
 
     # Validate name
     # Only set default name if allow_empty_name is False and name is actually missing/empty
-    if (not allow_empty_name) and (
-        not name or not isinstance(name, str) or not name.strip()
-    ):
+    if (not allow_empty_name) and (not name or not isinstance(name, str) or not name.strip()):
         name = "unnamed_element"
 
     # Validate ID: ensure deterministic, human-readable if possible
@@ -93,13 +103,308 @@ def validate_world_item_fields(
     return category, name, item_id
 
 
+def classify_category_label(category: str) -> str:
+    """
+    Classify a category string to a canonical Neo4j node label.
+
+    This is the authoritative category classification function used across the codebase
+    for consistent label assignment. Supports 118 keyword variants across 7 label types.
+
+    Args:
+        category: The category string to classify
+
+    Returns:
+        Canonical Neo4j label: "Location", "Item", "Organization", "Event",
+        "Concept", "Trait", "Character", or "Chapter". Defaults to "Item" if ambiguous.
+
+    Examples:
+        >>> classify_category_label("place")
+        'Location'
+        >>> classify_category_label("weapon")
+        'Item'
+        >>> classify_category_label("battle")
+        'Event'
+    """
+    c = (category or "").strip().lower()
+
+    if c.title() in [
+        "Location",
+        "Event",
+        "Item",
+        "Trait",
+        "Character",
+        "Chapter",
+    ]:
+        return c.title()
+
+    if c in [
+        "location",
+        "locations",
+        "place",
+        "site",
+        "area",
+        "region",
+        "settlement",
+        "landmark",
+        "room",
+        "structure",
+        "territory",
+        "city",
+        "town",
+        "village",
+        "path",
+        "road",
+        "planet",
+        "landscape",
+        "building",
+    ]:
+        return "Location"
+
+    if c in [
+        "item",
+        "items",
+        "object",
+        "objects",
+        "thing",
+        "things",
+        "artifact",
+        "artifacts",
+        "tool",
+        "tools",
+        "weapon",
+        "weapons",
+        "document",
+        "documents",
+        "relic",
+        "relics",
+        "book",
+        "books",
+        "scroll",
+        "scrolls",
+        "letter",
+        "letters",
+        "device",
+        "devices",
+        "vehicle",
+        "vehicles",
+        "resource",
+        "resources",
+        "material",
+        "materials",
+        "food",
+        "clothing",
+        "currency",
+        "money",
+        "treasure",
+    ]:
+        return "Item"
+
+    if c in [
+        "faction",
+        "guild",
+        "group",
+        "order",
+        "house",
+        "council",
+        "family",
+        "government",
+        "military",
+        "religious",
+        "commercial",
+        "criminal",
+        "academic",
+        "social",
+        "army",
+        "company",
+    ]:
+        return "Organization"
+
+    if c in [
+        "event",
+        "events",
+        "happening",
+        "happenings",
+        "occurrence",
+        "occurrences",
+        "incident",
+        "incidents",
+        "development",
+        "developments",
+        "battle",
+        "battles",
+        "meeting",
+        "meetings",
+        "journey",
+        "journeys",
+        "ceremony",
+        "ceremonies",
+        "discovery",
+        "discoveries",
+        "conflict",
+        "conflicts",
+        "conversation",
+        "conversations",
+        "flashback",
+        "flashbacks",
+        "scene",
+        "scenes",
+        "moment",
+        "moments",
+    ]:
+        return "Event"
+
+    if c in [
+        "idea",
+        "philosophy",
+        "theme",
+        "law",
+        "tradition",
+        "system",
+        "magic",
+        "technology",
+        "religion",
+        "culture",
+        "history",
+        "lore",
+        "knowledge",
+        "secret",
+        "rumor",
+        "news",
+        "message",
+        "signal",
+        "record",
+        "education",
+        "economy",
+        "language",
+        "symbol",
+        "story",
+        "song",
+        "dream",
+        "memory",
+        "emotion",
+    ]:
+        return "Concept"
+
+    if c in [
+        "skill",
+        "ability",
+        "quality",
+        "attribute",
+        "status",
+        "personality",
+        "physical",
+        "supernatural",
+        "background",
+    ]:
+        return "Trait"
+
+    if c in [
+        "person",
+        "people",
+        "creature",
+        "being",
+        "spirit",
+        "deity",
+        "human",
+        "npc",
+        "protagonist",
+        "antagonist",
+        "supporting",
+        "minor",
+        "historical",
+    ]:
+        return "Character"
+
+    return "Item"
+
+
+def is_single_word_trait(trait: str) -> bool:
+    """
+    Check if a trait is a valid single-word trait.
+
+    A valid single-word trait:
+    - Contains only letters, numbers, and hyphens (no spaces)
+    - Starts with a letter
+    - Is not empty
+
+    Args:
+        trait: The trait to validate
+
+    Returns:
+        True if the trait is a valid single-word trait, False otherwise
+    """
+    if not isinstance(trait, str) or not trait:
+        return False
+
+    # Remove quotes if present (from JSON)
+    trait = trait.strip('"').strip("'").strip()
+
+    # Check pattern: must start with letter, can contain letters, numbers, hyphens
+    pattern = r"^[a-zA-Z][a-zA-Z0-9-]*$"
+    return bool(re.match(pattern, trait)) and " " not in trait
+
+
 def normalize_trait_name(trait: str) -> str:
-    """Return a canonical representation of a trait name."""
+    """
+    Return a canonical representation of a trait name.
+
+    Enforces single-word trait requirement by:
+    1. Converting to lowercase
+    2. Removing spaces and replacing with hyphens (for multi-word traits)
+    3. Removing special characters except hyphens
+    4. Returning empty string if invalid
+
+    Args:
+        trait: The trait to normalize
+
+    Returns:
+        Normalized trait name or empty string if invalid
+    """
     if not isinstance(trait, str):
         trait = str(trait)
-    cleaned = re.sub(r"[^a-z0-9 ]", "", trait.strip().lower())
-    cleaned = re.sub(r"\s+", " ", cleaned)
+
+    # Strip quotes and whitespace
+    cleaned = trait.strip('"').strip("'").strip().lower()
+
+    # Remove special characters except hyphens and spaces (temporarily)
+    cleaned = re.sub(r"[^a-z0-9 -]", "", cleaned)
+
+    # Replace multiple spaces with single hyphen
+    cleaned = re.sub(r"\s+", "-", cleaned)
+
+    # Remove leading/trailing hyphens
+    cleaned = cleaned.strip("-")
+
+    # Validate it's a single word (no spaces after normalization)
+    if not cleaned or not is_single_word_trait(cleaned):
+        return ""
+
     return cleaned
+
+
+def validate_and_filter_traits(traits: list[str]) -> list[str]:
+    """
+    Validate and filter a list of traits to ensure all are single-word.
+
+    Args:
+        traits: List of trait strings to validate
+
+    Returns:
+        List of valid, normalized, unique traits
+    """
+    if not isinstance(traits, list):
+        return []
+
+    valid_traits = []
+    seen = set()
+
+    for trait in traits:
+        normalized = normalize_trait_name(trait)
+        if normalized and normalized not in seen:
+            valid_traits.append(normalized)
+            seen.add(normalized)
+
+    return valid_traits
 
 
 class SpaCyModelManager:
@@ -122,12 +427,9 @@ class SpaCyModelManager:
         if self._nlp is not None:
             return
         try:  # import spacy lazily
-            import spacy  # type: ignore
+            import spacy
         except Exception:
-            logger.error(
-                "spaCy library not installed. Install with: pip install spacy. "
-                "spaCy-dependent features will be disabled."
-            )
+            logger.error("spaCy library not installed. Install with: pip install spacy. " "spaCy-dependent features will be disabled.")
             self._nlp = None
             return
 
@@ -143,12 +445,11 @@ class SpaCyModelManager:
             model_name = "en_core_web_sm"
 
         try:
-            self._nlp = spacy.load(model_name)  # type: ignore[name-defined]
+            self._nlp = spacy.load(model_name)
             logger.info("spaCy model '%s' loaded.", model_name)
         except OSError:
             logger.error(
-                "spaCy model '%s' not found. Install with: python -m spacy download %s. "
-                "spaCy-dependent features will be disabled.",
+                "spaCy model '%s' not found. Install with: python -m spacy download %s. " "spaCy-dependent features will be disabled.",
                 model_name,
                 model_name,
             )
@@ -171,9 +472,7 @@ def _normalize_text_for_matching(text: str) -> str:
     if not text:
         return ""
     text = text.lower()
-    text = re.sub(
-        r"^[ '\"\(]*(\.\.\.)?[ '\"\(]*|[ '\"\(]*(\.\.\.)?[ '\"\(]*$", "", text
-    )
+    text = re.sub(r"^[ '\"\(]*(\.\.\.)?[ '\"\(]*|[ '\"\(]*(\.\.\.)?[ '\"\(]*$", "", text)
     text = re.sub(r"[^\w\s]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -188,9 +487,7 @@ def _token_similarity(a: str, b: str) -> float:
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
 
 
-async def find_quote_and_sentence_offsets_with_spacy(
-    doc_text: str, quote_text_from_llm: str
-) -> tuple[int, int, int, int] | None:
+async def find_quote_and_sentence_offsets_with_spacy(doc_text: str, quote_text_from_llm: str) -> tuple[int, int, int, int] | None:
     """Locate quote and sentence offsets within ``doc_text``."""
     load_spacy_model_if_needed()
     if not quote_text_from_llm.strip() or not doc_text.strip():
@@ -198,16 +495,12 @@ async def find_quote_and_sentence_offsets_with_spacy(
         return None
 
     if "N/A - General Issue" in quote_text_from_llm:
-        logger.debug(
-            "Quote is '%s', treating as general issue. No offsets.", quote_text_from_llm
-        )
+        logger.debug("Quote is '%s', treating as general issue. No offsets.", quote_text_from_llm)
         return None
 
     cleaned_llm_quote_for_direct_search = quote_text_from_llm.strip(" \"'.")
     if not cleaned_llm_quote_for_direct_search:
-        logger.debug(
-            "LLM quote became empty after basic stripping for direct search, cannot match."
-        )
+        logger.debug("LLM quote became empty after basic stripping for direct search, cannot match.")
         return None
 
     # Prepare sentence segments regardless of spaCy availability
@@ -215,15 +508,13 @@ async def find_quote_and_sentence_offsets_with_spacy(
 
     current_pos = 0
     while current_pos < len(doc_text):
-        match_start = doc_text.lower().find(
-            cleaned_llm_quote_for_direct_search.lower(), current_pos
-        )
+        match_start = doc_text.lower().find(cleaned_llm_quote_for_direct_search.lower(), current_pos)
         if match_start == -1:
             break
 
         match_end = match_start + len(cleaned_llm_quote_for_direct_search)
         found_sentence_span = None
-        for sent_text, s_start, s_end in sentences:
+        for _sent_text, s_start, s_end in sentences:
             if s_start <= match_start < s_end and s_start < match_end <= s_end:
                 found_sentence_span = (s_start, s_end)
                 break
@@ -247,10 +538,8 @@ async def find_quote_and_sentence_offsets_with_spacy(
         current_pos = match_end
 
     if partial_ratio_alignment is not None:
-        alignment = partial_ratio_alignment(
-            cleaned_llm_quote_for_direct_search, doc_text
-        )
-        if getattr(alignment, "score", 0.0) >= 85.0:
+        alignment = partial_ratio_alignment(cleaned_llm_quote_for_direct_search, doc_text)
+        if alignment is not None and getattr(alignment, "score", 0.0) >= 85.0:
             match_start = alignment.dest_start
             match_end = alignment.dest_end
             for _sent_text, s_start, s_end in sentences:
@@ -325,9 +614,7 @@ async def find_quote_and_sentence_offsets_with_spacy(
     return None
 
 
-def get_text_segments(
-    text: str, segment_level: str = "paragraph"
-) -> list[tuple[str, int, int]]:
+def get_text_segments(text: str, segment_level: str = "paragraph") -> list[tuple[str, int, int]]:
     """Segment text into paragraphs or sentences with offsets."""
     load_spacy_model_if_needed()
     segments: list[tuple[str, int, int]] = []
@@ -379,13 +666,9 @@ def get_text_segments(
             for sent in doc.sents:
                 sent_text_stripped = sent.text.strip()
                 if sent_text_stripped:
-                    segments.append(
-                        (sent_text_stripped, sent.start_char, sent.end_char)
-                    )
+                    segments.append((sent_text_stripped, sent.start_char, sent.end_char))
         else:
-            logger.warning(
-                "get_text_segments: spaCy model not loaded. Falling back to basic sentence segmentation (less accurate)."
-            )
+            logger.warning("get_text_segments: spaCy model not loaded. Falling back to basic sentence segmentation (less accurate).")
             for match in re.finditer(r"([^\.!?]+(?:[\.!?]|$))", text):
                 sent_text_stripped = match.group(1).strip()
                 if sent_text_stripped:
@@ -393,8 +676,6 @@ def get_text_segments(
             if not segments and text.strip():
                 segments.append((text.strip(), 0, len(text)))
     else:
-        raise ValueError(
-            f"Unsupported segment_level for get_text_segments: {segment_level}"
-        )
+        raise ValueError(f"Unsupported segment_level for get_text_segments: {segment_level}")
 
     return segments

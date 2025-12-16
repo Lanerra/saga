@@ -3,6 +3,6 @@ import config
 from utils.common import _is_fill_in
 
 
-def test_is_fill_in_helper():
+def test_is_fill_in_helper() -> None:
     assert not _is_fill_in("abc")
     assert _is_fill_in(config.FILL_IN)
