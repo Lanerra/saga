@@ -1,9 +1,11 @@
 # tests/test_langgraph/test_persist_files_node_initialization_artifacts.py
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 
+from core.langgraph.content_manager import ContentManager
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
@@ -13,7 +15,9 @@ from core.langgraph.state import NarrativeState
 def _minimal_state(tmp_path: Path) -> NarrativeState:
     """Construct a minimal NarrativeState for testing initialization artifacts.
 
-    Only include fields required by persist_initialization_files and saga.yaml.
+    This intentionally does NOT include externalized `*_ref` fields, so the
+    persist node will be unable to write outline/character artifacts and the
+    post-write validation will fail.
     """
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
@@ -26,44 +30,78 @@ def _minimal_state(tmp_path: Path) -> NarrativeState:
         "setting": "Ringworld frontier",
         "total_chapters": 10,
         "target_word_count": 120000,
-        # Required initialization collections (can be empty for this test)
-        "character_sheets": {},
-        "global_outline": None,
-        "act_outlines": {},
+        # Intentionally omit: character_sheets_ref, global_outline_ref, act_outlines_ref
         "world_items": [],
         # Fields referenced by NarrativeState but not needed here are intentionally omitted
     }
     return state
 
 
+def _state_with_required_init_refs(tmp_path: Path) -> NarrativeState:
+    """Construct a state that allows persist node to write all required artifacts.
+
+    [`persist_initialization_files()`](core/langgraph/initialization/persist_files_node.py:104)
+    reads character sheets / outlines from externalized refs, so tests that
+    expect validation success must populate those refs.
+    """
+    state = _minimal_state(tmp_path)
+    project_dir = Path(state["project_dir"])
+
+    cm = ContentManager(str(project_dir))
+
+    character_sheets = {
+        "Hero": {
+            "description": "**Background:** Raised on the ringworld frontier.\n\n**Motivations:** Protect home.",
+            "is_protagonist": True,
+        }
+    }
+    global_outline = {
+        "raw_text": "A sweeping saga across the ringworld frontier.",
+        "act_count": 3,
+        "structure_type": "3-act",
+    }
+    act_outlines = {
+        1: {
+            "raw_text": "Act I: The call to adventure.",
+            "act_role": "setup",
+            "chapters_in_act": 3,
+        }
+    }
+
+    state["character_sheets_ref"] = cm.save_json(character_sheets, "character_sheets", "all", version=1)
+    state["global_outline_ref"] = cm.save_json(global_outline, "global_outline", "global", version=1)
+    state["act_outlines_ref"] = cm.save_json(act_outlines, "act_outlines", "all", version=1)
+
+    return state
+
+
 @pytest.mark.asyncio
 async def test_saga_yaml_created_with_paths_and_metadata(tmp_path: Path) -> None:
-    state = _minimal_state(tmp_path)
+    state = _state_with_required_init_refs(tmp_path)
 
     # P0-2: file-write cache invalidation hook should be invoked after writing artifacts.
-    #
-    # This test does not require refs, so the ContentManager is only used for construction +
-    # the final clear_cache() call (no reads required).
-    from unittest.mock import MagicMock, patch
-
-    with patch("core.langgraph.initialization.persist_files_node.ContentManager") as mock_cm:
-        cm_instance = MagicMock()
-        cm_instance.clear_cache = MagicMock()
-        mock_cm.return_value = cm_instance
-
+    # Patch the method on the real class (persist node constructs its own instance).
+    with patch.object(ContentManager, "clear_cache", autospec=True) as mock_clear_cache:
         result_state = await persist_initialization_files(state)
-
-        assert cm_instance.clear_cache.called
+        assert mock_clear_cache.called
 
     # Node should report success
     assert result_state["last_error"] is None
     assert result_state["initialization_step"] == "files_persisted"
+    assert result_state.get("has_fatal_error", False) is False
 
     project_dir = Path(state["project_dir"])
 
-    saga_path = project_dir / "saga.yaml"
-    assert saga_path.is_file(), "saga.yaml was not created at project root"
+    # Validation success implies required artifacts exist
+    assert (project_dir / "outline" / "structure.yaml").is_file()
+    assert (project_dir / "outline" / "beats.yaml").is_file()
+    assert any((project_dir / "characters").glob("*.yaml"))
+    assert (project_dir / "world" / "items.yaml").is_file()
+    assert (project_dir / "world" / "rules.yaml").is_file()
+    assert (project_dir / "world" / "history.yaml").is_file()
+    assert (project_dir / "saga.yaml").is_file()
 
+    saga_path = project_dir / "saga.yaml"
     data = yaml.safe_load(saga_path.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
 
@@ -88,9 +126,10 @@ async def test_saga_yaml_created_with_paths_and_metadata(tmp_path: Path) -> None
 
 @pytest.mark.asyncio
 async def test_world_rules_and_history_stubs_when_missing(tmp_path: Path) -> None:
-    state = _minimal_state(tmp_path)
+    state = _state_with_required_init_refs(tmp_path)
 
-    await persist_initialization_files(state)
+    result = await persist_initialization_files(state)
+    assert result["last_error"] is None
 
     project_dir = Path(state["project_dir"])
 
@@ -125,7 +164,7 @@ async def test_world_rules_and_history_stubs_when_missing(tmp_path: Path) -> Non
 @pytest.mark.asyncio
 async def test_world_rules_and_history_populated_when_present(tmp_path: Path) -> None:
     """Optional coverage: ensure provided rules/history surface into YAML."""
-    state = _minimal_state(tmp_path)
+    state = _state_with_required_init_refs(tmp_path)
 
     # Inject sample rules and history-like structures
     state["current_world_rules"] = [
@@ -141,7 +180,8 @@ async def test_world_rules_and_history_populated_when_present(tmp_path: Path) ->
         },
     ]
 
-    await persist_initialization_files(state)
+    result = await persist_initialization_files(state)
+    assert result["last_error"] is None
 
     project_dir = Path(state["project_dir"])
 
@@ -175,3 +215,26 @@ async def test_world_rules_and_history_populated_when_present(tmp_path: Path) ->
     assert events[1]["id"] == "founding"
     assert "Founding of the frontier habitats." in events[1]["description"]
     assert events[1].get("era") == "Post-Shattering"
+
+
+@pytest.mark.asyncio
+async def test_persist_initialization_files_validation_failure_sets_fatal_error(tmp_path: Path) -> None:
+    """Validation failure should halt the workflow via fatal-error fields."""
+    state = _minimal_state(tmp_path)
+
+    result = await persist_initialization_files(state)
+
+    assert result["current_node"] == "persist_files"
+    assert result["initialization_step"] == "validation_failed"
+
+    assert result["last_error"] is not None
+    assert "Initialization artifacts validation failed" in result["last_error"]
+
+    # Fatal-error pattern (consistent with other nodes like finalize)
+    assert result["has_fatal_error"] is True
+    assert result["error_node"] == "persist_files"
+
+    # Ensure missing artifacts are surfaced in the message (stable helper phrasing)
+    assert "Missing outline/structure.yaml" in result["last_error"]
+    assert "Missing outline/beats.yaml" in result["last_error"]
+    assert "Missing any characters/*.yaml files" in result["last_error"]

@@ -32,6 +32,7 @@ from core.langgraph.content_manager import (
     get_character_sheets,
     get_global_outline,
 )
+from core.langgraph.initialization.validation import validate_initialization_artifacts
 from core.langgraph.state import NarrativeState
 from utils.file_io import write_yaml_file
 
@@ -172,6 +173,26 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         # This call is a no-op, but it provides a stable invalidation hook if/when
         # `ContentManager` adds memoization (e.g., mtimes/exists/directory listings).
         content_manager.clear_cache()
+
+        # P0-6: Validate that the expected initialization artifacts exist after persistence.
+        # This must run after all file writes complete.
+        ok, missing = validate_initialization_artifacts(project_dir)
+        if not ok:
+            error_msg = f"Initialization artifacts validation failed. Missing: {', '.join(missing)}"
+            logger.error(
+                "persist_initialization_files: initialization artifacts validation failed",
+                missing=missing,
+            )
+            return {
+                **state,
+                "current_node": "persist_files",
+                "last_error": error_msg,
+                "has_fatal_error": True,
+                "error_node": "persist_files",
+                "initialization_step": "validation_failed",
+            }
+
+        logger.info("persist_initialization_files: initialization artifacts validation passed")
 
         return {
             **state,
