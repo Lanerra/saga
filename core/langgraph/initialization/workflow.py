@@ -36,6 +36,7 @@ from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
 from core.langgraph.state import NarrativeState
+from core.langgraph.workflow import should_continue_init
 
 logger = structlog.get_logger(__name__)
 
@@ -76,6 +77,24 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("commit_to_graph", commit_initialization_to_graph)
     workflow.add_node("persist_files", persist_initialization_files)
 
+    def handle_init_error(state: NarrativeState) -> NarrativeState:
+        """Handle initialization errors and terminate workflow gracefully."""
+        error = state.get("last_error", "Unknown initialization error")
+        step = state.get("initialization_step", "unknown")
+        logger.error(
+            "handle_init_error: initialization failed, terminating workflow",
+            error=error,
+            step=step,
+        )
+        return {
+            **state,
+            "workflow_failed": True,
+            "failure_reason": f"Initialization failed at step {step}: {error}",
+            "current_node": "init_error",
+        }
+
+    workflow.add_node("init_error", handle_init_error)
+
     # Add finalization node to mark initialization complete
     def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
         """Mark the initialization phase as complete.
@@ -101,12 +120,49 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
 
     workflow.add_node("complete", mark_initialization_complete)
 
-    # Define linear flow
-    workflow.add_edge("character_sheets", "global_outline")
-    workflow.add_edge("global_outline", "act_outlines")
-    workflow.add_edge("act_outlines", "commit_to_graph")
-    workflow.add_edge("commit_to_graph", "persist_files")
-    workflow.add_edge("persist_files", "complete")
+    # Gate every init node on should_continue_init so failures halt deterministically.
+    workflow.add_conditional_edges(
+        "character_sheets",
+        should_continue_init,
+        {
+            "continue": "global_outline",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "global_outline",
+        should_continue_init,
+        {
+            "continue": "act_outlines",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "act_outlines",
+        should_continue_init,
+        {
+            "continue": "commit_to_graph",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "commit_to_graph",
+        should_continue_init,
+        {
+            "continue": "persist_files",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "persist_files",
+        should_continue_init,
+        {
+            "continue": "complete",
+            "error": "init_error",
+        },
+    )
+
+    workflow.add_edge("init_error", END)
     workflow.add_edge("complete", END)
 
     # Set entry point

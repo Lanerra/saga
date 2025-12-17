@@ -96,10 +96,7 @@ def mock_llm_service():
     with patch("core.langgraph.initialization.commit_init_node.llm_service") as mock:
         mock.async_call_llm = AsyncMock(
             return_value=(
-                """TRAITS: brave, loyal, strong
-STATUS: Active
-MOTIVATIONS: Protect the innocent
-BACKGROUND: Trained as a knight from childhood""",
+                '{"traits":["brave","loyal","strong"],"status":"Active","motivations":"Protect the innocent.","background":"Trained as a knight from childhood."}',
                 {"prompt_tokens": 100, "completion_tokens": 50},
             )
         )
@@ -112,8 +109,16 @@ async def test_commit_initialization_to_graph_success(
     mock_content_manager,
     mock_get_functions,
     mock_neo4j_manager,
+    mock_llm_service,
 ):
     """Verify successful commit of initialization data."""
+    mock_llm_service.async_call_llm = AsyncMock(
+        return_value=(
+            '[{"name":"Royal Castle","category":"location","description":"The seat of power."}]',
+            {"prompt_tokens": 100, "completion_tokens": 50},
+        )
+    )
+
     state = {**base_state}
 
     with patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars, patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world:
@@ -206,8 +211,15 @@ async def test_commit_initialization_batch_execution_failure(
     mock_content_manager,
     mock_get_functions,
     mock_neo4j_manager,
+    mock_llm_service,
 ):
     """Verify handling when batch execution fails."""
+    mock_llm_service.async_call_llm = AsyncMock(
+        return_value=(
+            '[{"name":"Royal Castle","category":"location","description":"The seat of power."}]',
+            {"prompt_tokens": 100, "completion_tokens": 50},
+        )
+    )
     mock_neo4j_manager.execute_cypher_batch = AsyncMock(side_effect=Exception("Batch execution failed"))
 
     state = {**base_state}
@@ -216,6 +228,8 @@ async def test_commit_initialization_batch_execution_failure(
 
     assert result["initialization_step"] == "commit_failed"
     assert "Failed to commit initialization data" in result["last_error"]
+    assert result["has_fatal_error"] is True
+    assert result["error_node"] == "commit_initialization"
 
 
 @pytest.mark.asyncio
@@ -223,8 +237,16 @@ async def test_commit_initialization_exception(
     base_state,
     mock_content_manager,
     mock_get_functions,
+    mock_llm_service,
 ):
     """Verify exception handling during batch execution."""
+    mock_llm_service.async_call_llm = AsyncMock(
+        return_value=(
+            '[{"name":"Royal Castle","category":"location","description":"The seat of power."}]',
+            {"prompt_tokens": 100, "completion_tokens": 50},
+        )
+    )
+
     with patch("core.langgraph.initialization.commit_init_node.neo4j_manager") as mock_manager:
         mock_manager.execute_cypher_batch = AsyncMock(side_effect=Exception("Database error"))
 
@@ -235,6 +257,8 @@ async def test_commit_initialization_exception(
         assert result["initialization_step"] == "commit_failed"
         assert result["current_node"] == "commit_initialization"
         assert "Failed to commit initialization data" in result["last_error"]
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "commit_initialization"
 
 
 @pytest.mark.asyncio
@@ -333,23 +357,16 @@ async def test_extract_structured_character_data_success(mock_llm_service):
 
 @pytest.mark.asyncio
 async def test_extract_structured_character_data_exception(mock_llm_service):
-    """Verify fallback when extraction fails."""
+    """LLM failures should propagate (init is hard-fail on contract violations)."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
-    result = await _extract_structured_character_data("Hero", "A brave knight")
-
-    assert result["traits"] == []
-    assert result["status"] == "Active"
-    assert result["motivations"] == ""
-    assert result["background"] == ""
+    with pytest.raises(Exception, match="LLM error"):
+        await _extract_structured_character_data("Hero", "A brave knight")
 
 
 def test_parse_character_extraction_response():
-    """Verify parsing of character extraction response."""
-    response = """TRAITS: brave, loyal, determined, strong
-STATUS: Active
-MOTIVATIONS: Protect the innocent and uphold justice
-BACKGROUND: Trained as a knight from childhood"""
+    """Verify parsing of character extraction response (strict JSON)."""
+    response = '{"traits":["brave","loyal","determined","strong"],"status":"Active","motivations":"Protect the innocent and uphold justice.","background":"Trained as a knight from childhood."}'
 
     result = _parse_character_extraction_response(response)
 
@@ -360,28 +377,20 @@ BACKGROUND: Trained as a knight from childhood"""
     assert "Trained as a knight" in result["background"]
 
 
-def test_parse_character_extraction_response_limits_traits():
-    """Verify trait count is limited to 7."""
-    response = """TRAITS: trait1, trait2, trait3, trait4, trait5, trait6, trait7, trait8, trait9
-STATUS: Active
-MOTIVATIONS: Test
-BACKGROUND: Test"""
+def test_parse_character_extraction_response_rejects_more_than_seven_traits():
+    """Trait list must be 3-7 items (no silent truncation)."""
+    response = '{"traits":["t1","t2","t3","t4","t5","t6","t7","t8"],"status":"Active","motivations":"Test","background":"Test"}'
 
-    result = _parse_character_extraction_response(response)
-
-    assert len(result["traits"]) == 7
+    with pytest.raises(ValueError, match="3-7"):
+        _parse_character_extraction_response(response)
 
 
 def test_parse_character_extraction_response_empty():
-    """Verify handling of empty response."""
+    """Empty output is invalid JSON."""
     response = ""
 
-    result = _parse_character_extraction_response(response)
-
-    assert result["traits"] == []
-    assert result["status"] == "Active"
-    assert result["motivations"] == ""
-    assert result["background"] == ""
+    with pytest.raises(Exception):
+        _parse_character_extraction_response(response)
 
 
 @pytest.mark.asyncio
@@ -389,9 +398,9 @@ async def test_extract_world_items_from_outline_success(mock_llm_service):
     """Verify successful extraction of world items."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
-            """[Location] Royal Castle: The seat of power in the kingdom
-[Object] Sword of Light: A magical blade that defeats darkness
-[Location] Dark Forest: A dangerous woodland filled with monsters""",
+            '[{"name":"Royal Castle","category":"location","description":"The seat of power in the kingdom."},'
+            '{"name":"Sword of Light","category":"object","description":"A magical blade that defeats darkness."},'
+            '{"name":"Dark Forest","category":"location","description":"A dangerous woodland filled with monsters."}]',
             {"prompt_tokens": 100, "completion_tokens": 50},
         )
     )
@@ -400,7 +409,7 @@ async def test_extract_world_items_from_outline_success(mock_llm_service):
 
     result = await _extract_world_items_from_outline(global_outline, "Medieval fantasy kingdom")
 
-    assert len(result) >= 1
+    assert len(result) == 3
     assert any(item.name == "Royal Castle" for item in result)
 
 
@@ -416,21 +425,22 @@ async def test_extract_world_items_from_outline_empty():
 
 @pytest.mark.asyncio
 async def test_extract_world_items_from_outline_exception(mock_llm_service):
-    """Verify exception handling during extraction."""
+    """LLM failures should propagate (init is hard-fail on contract violations)."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
     global_outline = {"raw_text": "Test outline"}
 
-    result = await _extract_world_items_from_outline(global_outline, "Test setting")
-
-    assert result == []
+    with pytest.raises(Exception, match="LLM error"):
+        await _extract_world_items_from_outline(global_outline, "Test setting")
 
 
 def test_parse_world_items_extraction():
-    """Verify parsing of world items from LLM response."""
-    response = """[Location] Royal Castle: The seat of power
-[Object] Magic Sword: A legendary blade
-[Location] Dark Forest: A dangerous place"""
+    """Verify parsing of world items from LLM response (strict JSON)."""
+    response = (
+        '[{"name":"Royal Castle","category":"location","description":"The seat of power"},'
+        '{"name":"Magic Sword","category":"object","description":"A legendary blade"},'
+        '{"name":"Dark Forest","category":"location","description":"A dangerous place"}]'
+    )
 
     with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
@@ -444,49 +454,29 @@ def test_parse_world_items_extraction():
         assert result[0].is_provisional is False
 
 
-def test_parse_world_items_extraction_invalid_lines():
-    """Verify handling of invalid lines in response."""
-    response = """[Location] Valid Item: Description
-Invalid line without brackets
-[Invalid] Missing colon
-[Object] No description here
-[Location] Valid Item 2: Another description"""
+def test_parse_world_items_extraction_rejects_invalid_category():
+    """Category must be constrained to allowed enum values."""
+    response = '[{"name":"Valid Item","category":"invalid","description":"Description"}]'
 
-    with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
-        mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
-
-        result = _parse_world_items_extraction(response)
-
-        assert len(result) >= 1
-        assert all(item.name and item.description for item in result)
+    with pytest.raises(ValueError, match="category"):
+        _parse_world_items_extraction(response)
 
 
 def test_parse_world_items_extraction_empty():
-    """Verify handling of empty response."""
+    """Empty output is invalid JSON."""
     response = ""
+
+    with pytest.raises(Exception):
+        _parse_world_items_extraction(response)
+
+
+def test_parse_world_items_extraction_allows_empty_list():
+    """An empty JSON list is valid and should produce no items."""
+    response = "[]"
 
     result = _parse_world_items_extraction(response)
 
     assert result == []
-
-
-def test_parse_world_items_extraction_whitespace_lines():
-    """Verify handling of response with whitespace."""
-    response = """
-
-[Location] Castle: A fortress
-
-
-[Object] Sword: A weapon
-
-"""
-
-    with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
-        mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
-
-        result = _parse_world_items_extraction(response)
-
-        assert len(result) == 2
 
 
 @pytest.mark.asyncio

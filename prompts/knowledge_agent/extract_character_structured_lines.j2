@@ -5,15 +5,21 @@ Character Name: {{ name }}
 Character Sheet:
 {{ description }}
 
-Extract the following in a structured format:
-1. **Traits** (list 3-7 **single-word** personality traits, e.g., "brave", "cynical", "impulsive")
-2. **Status** (their current state: Active, Deceased, Missing, etc.)
-3. **Motivations** (what drives them, in 1-2 sentences)
-4. **Background** (brief summary of history, 1-2 sentences)
+Extract the following:
+1) Traits: list 3-7 single-word personality traits (examples: "brave", "cynical", "impulsive")
+2) Status: their current state (examples: "Active", "Deceased", "Missing")
+3) Motivations: what drives them (1-2 sentences)
+4) Background: brief history (1-2 sentences)
 
-Output contract (bespoke parser):
-- Output MUST be plain text in EXACTLY this format, one field per line:
-TRAITS: trait1, trait2, trait3
-STATUS: Active
-MOTIVATIONS: What the character wants and why
-BACKGROUND: Brief history
+Output contract (STRICT JSON, no exceptions):
+- Output MUST be valid JSON only.
+- Output MUST be a single JSON object with EXACTLY these keys:
+  - "traits" (array of strings)
+  - "status" (string)
+  - "motivations" (string)
+  - "background" (string)
+- Do NOT output markdown, code fences, or commentary.
+- Do NOT include any extra keys.
+
+Example:
+{"traits":["brave","loyal","determined"],"status":"Active","motivations":"Protect the innocent and restore honor.","background":"Trained as a knight from childhood."}

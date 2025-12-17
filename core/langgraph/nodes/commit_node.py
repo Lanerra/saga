@@ -870,32 +870,13 @@ async def _build_relationship_statements(
     logged_world_item_ids: set[str] = set()
 
     for rel in relationships:
-        is_source_world_item = rel.source_name in world_mappings
-        is_target_world_item = rel.target_name in world_mappings
+        # `world_mappings` is a name canonicalization/dedup mapping (not an id mapping).
+        # It is applied symmetrically with `char_mappings`.
+        source_name = char_mappings.get(rel.source_name, rel.source_name)
+        target_name = char_mappings.get(rel.target_name, rel.target_name)
 
-        source_stable_id = world_mappings.get(rel.source_name) if is_source_world_item else None
-        target_stable_id = world_mappings.get(rel.target_name) if is_target_world_item else None
-
-        if is_source_world_item and isinstance(source_stable_id, str) and source_stable_id not in logged_world_item_ids:
-            logger.debug(
-                "_build_relationship_statements: world item will be matched by id",
-                entity_name=rel.source_name,
-                entity_id=source_stable_id,
-                chapter=chapter,
-            )
-            logged_world_item_ids.add(source_stable_id)
-
-        if is_target_world_item and isinstance(target_stable_id, str) and target_stable_id not in logged_world_item_ids:
-            logger.debug(
-                "_build_relationship_statements: world item will be matched by id",
-                entity_name=rel.target_name,
-                entity_id=target_stable_id,
-                chapter=chapter,
-            )
-            logged_world_item_ids.add(target_stable_id)
-
-        source_name = rel.source_name if is_source_world_item else char_mappings.get(rel.source_name, rel.source_name)
-        target_name = rel.target_name if is_target_world_item else char_mappings.get(rel.target_name, rel.target_name)
+        source_name = world_mappings.get(source_name, source_name)
+        target_name = world_mappings.get(target_name, target_name)
 
         # Use explicit types from relationship if available (from parsing "Type:Name" format)
         # Otherwise _make_entity_dict will fall back to entity_type_map
@@ -907,14 +888,14 @@ async def _build_relationship_statements(
                 name=source_name,
                 original_name=rel.source_name,
                 explicit_type=source_type,
-                stable_id=source_stable_id,
+                stable_id=None,
             ),
             "predicate": rel.relationship_type,
             "object_entity": _make_entity_dict(
                 name=target_name,
                 original_name=rel.target_name,
                 explicit_type=target_type,
-                stable_id=target_stable_id,
+                stable_id=None,
             ),
             "is_literal_object": False,
             "description": rel.description,
@@ -965,16 +946,8 @@ async def _build_relationship_statements(
             subject_merge_by_id = bool(subject_id)
             object_merge_by_id = bool(object_id)
 
-            subject_merge_clause = (
-                f"MERGE (subj{subject_labels} {{id: $subject_id}})"
-                if subject_merge_by_id
-                else f"MERGE (subj{subject_labels} {{name: $subject_name}})"
-            )
-            object_merge_clause = (
-                f"MERGE (obj{object_labels} {{id: $object_id}})"
-                if object_merge_by_id
-                else f"MERGE (obj{object_labels} {{name: $object_name}})"
-            )
+            subject_merge_clause = f"MERGE (subj{subject_labels} {{id: $subject_id}})" if subject_merge_by_id else f"MERGE (subj{subject_labels} {{name: $subject_name}})"
+            object_merge_clause = f"MERGE (obj{object_labels} {{id: $object_id}})" if object_merge_by_id else f"MERGE (obj{object_labels} {{name: $object_name}})"
 
             subject_on_create_sets = (
                 """

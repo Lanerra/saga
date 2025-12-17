@@ -6,20 +6,24 @@ Story Outline:
 {{ outline_text }}
 
 Identify and list:
-1. Important LOCATIONS (cities, buildings, regions)
-2. Important OBJECTS (artifacts, items, technology)
+1) Important locations (cities, buildings, regions)
+2) Important objects (artifacts, items, technology)
+3) Important concepts (institutions, factions, rules of the world) ONLY if they are story-critical
 
 For each item, provide:
-- Name
-- Category (Location, Object, Concept)
-- Brief description (1 sentence)
+- name (string)
+- category (string; MUST be exactly one of: "location", "object", "concept")
+- description (string; 1 sentence)
 
-Output contract (bespoke parser):
-- Output MUST be plain text.
-- Output MUST contain one item per line, and each line MUST match:
-[CATEGORY] Name: Description
-- CATEGORY MUST be one of: Location, Object, Concept
+Output contract (STRICT JSON, no exceptions):
+- Output MUST be valid JSON only.
+- Output MUST be a single JSON array of objects.
+- Each object MUST have EXACTLY these keys: "name", "category", "description".
+- Do NOT output markdown, code fences, or commentary.
+- Do NOT include any extra keys.
 
 Example:
-[Location] Seattle Public Library Ruins: Abandoned library now home to rogue AI
-[Object] Memory Implant: Device that allows AI to implant false memories
+[
+  {"name":"Seattle Public Library Ruins","category":"location","description":"An abandoned library now home to a rogue AI."},
+  {"name":"Memory Implant","category":"object","description":"A device that allows an AI to implant false memories."}
+]

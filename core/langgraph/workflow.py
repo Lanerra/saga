@@ -615,7 +615,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     )
 
     # Initialization flow with error handling
-    # After character_sheets, check if it succeeded
+    # Gate every init node on should_continue_init so failures halt deterministically.
     workflow.add_conditional_edges(
         "init_character_sheets",
         should_continue_init,
@@ -624,15 +624,42 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
             "error": "init_error",
         },
     )
+    workflow.add_conditional_edges(
+        "init_global_outline",
+        should_continue_init,
+        {
+            "continue": "init_act_outlines",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_act_outlines",
+        should_continue_init,
+        {
+            "continue": "init_commit_to_graph",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_commit_to_graph",
+        should_continue_init,
+        {
+            "continue": "init_persist_files",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_persist_files",
+        should_continue_init,
+        {
+            "continue": "init_complete",
+            "error": "init_error",
+        },
+    )
 
     # Add error → END edge to terminate workflow gracefully
     workflow.add_edge("init_error", END)
 
-    # Continue with rest of initialization flow
-    workflow.add_edge("init_global_outline", "init_act_outlines")
-    workflow.add_edge("init_act_outlines", "init_commit_to_graph")
-    workflow.add_edge("init_commit_to_graph", "init_persist_files")
-    workflow.add_edge("init_persist_files", "init_complete")
     workflow.add_edge("init_complete", "chapter_outline")
 
     # Chapter outline → generate

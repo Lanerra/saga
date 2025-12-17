@@ -9,6 +9,8 @@ and committing them to the knowledge graph.
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 import structlog
@@ -24,6 +26,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
+from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import validate_and_filter_traits
 
@@ -137,7 +140,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
     except Exception as e:
         error_msg = f"Failed to commit initialization data: {e}"
         logger.error(
-            "commit_initialization_to_graph: error during commit",
+            "commit_initialization_to_graph: fatal error during commit",
             error=str(e),
             exc_info=True,
         )
@@ -145,6 +148,8 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             **state,
             "current_node": "commit_initialization",
             "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "commit_initialization",
             "initialization_step": "commit_failed",
         }
 
@@ -236,6 +241,9 @@ async def _extract_structured_character_data(name: str, description: str, model_
     """
     Use LLM to extract structured data from character sheet description.
 
+    This is a grammar-enforced, JSON-only contract.
+    Contract violations are fatal to initialization.
+
     Args:
         name: Character name
         description: Free-form character description
@@ -243,6 +251,9 @@ async def _extract_structured_character_data(name: str, description: str, model_
 
     Returns:
         Dictionary with extracted structured data (traits, status, motivations, etc.)
+
+    Raises:
+        ValueError: If the LLM output violates the JSON/schema contract.
     """
     prompt = render_prompt(
         "knowledge_agent/extract_character_structured_lines.j2",
@@ -252,69 +263,78 @@ async def _extract_structured_character_data(name: str, description: str, model_
         },
     )
 
-    try:
-        model = model_name or config.NARRATIVE_MODEL
-        response, _ = await llm_service.async_call_llm(
-            model_name=model,
-            prompt=prompt,
-            temperature=0.3,  # Low temp for extraction
-            max_tokens=1024,
-            allow_fallback=True,
-            auto_clean_response=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-        )
+    model = model_name or config.NARRATIVE_MODEL
 
-        # Parse the response
-        structured = _parse_character_extraction_response(response)
-        return structured
+    grammar_content = load_grammar("initialization")
+    grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
+    grammar = f"root ::= structured-character-extraction\n{grammar}"
 
-    except Exception as e:
-        logger.warning(
-            "_extract_structured_character_data: extraction failed, using defaults",
-            character=name,
-            error=str(e),
-        )
-        # Return defaults on failure
-        return {
-            "traits": [],
-            "status": "Active",
-            "motivations": "",
-            "background": "",
-        }
+    response, _ = await llm_service.async_call_llm(
+        model_name=model,
+        prompt=prompt,
+        temperature=0.3,  # Low temp for extraction
+        max_tokens=1024,
+        allow_fallback=True,
+        auto_clean_response=True,
+        system_prompt=get_system_prompt("knowledge_agent"),
+        grammar=grammar,
+    )
+
+    return _parse_character_extraction_response(response)
 
 
 def _parse_character_extraction_response(response: str) -> dict[str, Any]:
     """
-    Parse the LLM's structured character extraction response.
+    Parse the LLM's structured character extraction response (strict JSON contract).
 
     Args:
-        response: LLM response with structured data
+        response: LLM response (JSON object)
 
     Returns:
         Dictionary with parsed structured data
+
+    Raises:
+        ValueError: If the output violates the JSON/schema contract.
     """
-    structured = {
-        "traits": [],
-        "status": "Active",
-        "motivations": "",
-        "background": "",
+    raw_text = response.strip()
+    data = json.loads(raw_text)
+
+    if not isinstance(data, dict):
+        raise ValueError("Structured character extraction must be a JSON object")
+
+    required_keys = {"traits", "status", "motivations", "background"}
+    data_keys = set(data.keys())
+    if data_keys != required_keys:
+        raise ValueError("Structured character extraction must contain exactly keys " f"{sorted(required_keys)} (got {sorted(data_keys)})")
+
+    traits = data["traits"]
+    if not isinstance(traits, list) or any(not isinstance(t, str) for t in traits):
+        raise ValueError("Structured character extraction 'traits' must be a JSON array of strings")
+
+    validated_traits = validate_and_filter_traits(traits)
+    if validated_traits != traits:
+        raise ValueError("Structured character extraction 'traits' must be single-word traits only")
+
+    if not (3 <= len(traits) <= 7):
+        raise ValueError("Structured character extraction 'traits' must contain 3-7 items")
+
+    status = data["status"]
+    motivations = data["motivations"]
+    background = data["background"]
+
+    if not isinstance(status, str) or not status.strip():
+        raise ValueError("Structured character extraction 'status' must be a non-empty string")
+    if not isinstance(motivations, str):
+        raise ValueError("Structured character extraction 'motivations' must be a string")
+    if not isinstance(background, str):
+        raise ValueError("Structured character extraction 'background' must be a string")
+
+    return {
+        "traits": traits,
+        "status": status.strip(),
+        "motivations": motivations.strip(),
+        "background": background.strip(),
     }
-
-    lines = response.split("\n")
-    for line in lines:
-        line = line.strip()
-        if line.startswith("TRAITS:"):
-            traits_str = line.replace("TRAITS:", "").strip()
-            traits = [t.strip() for t in traits_str.split(",") if t.strip()]
-            structured["traits"] = traits[:7]  # Limit to 7 traits
-        elif line.startswith("STATUS:"):
-            structured["status"] = line.replace("STATUS:", "").strip()
-        elif line.startswith("MOTIVATIONS:"):
-            structured["motivations"] = line.replace("MOTIVATIONS:", "").strip()
-        elif line.startswith("BACKGROUND:"):
-            structured["background"] = line.replace("BACKGROUND:", "").strip()
-
-    return structured
 
 
 async def _extract_world_items_from_outline(global_outline: dict, setting: str, model_name: str | None = None) -> list[WorldItem]:
@@ -344,84 +364,81 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
         },
     )
 
-    try:
-        model = model_name or config.NARRATIVE_MODEL
-        response, _ = await llm_service.async_call_llm(
-            model_name=model,
-            prompt=prompt,
-            temperature=0.5,
-            max_tokens=2000,
-            allow_fallback=True,
-            auto_clean_response=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-        )
+    model = model_name or config.NARRATIVE_MODEL
 
-        # Parse the response into WorldItem models
-        world_items = _parse_world_items_extraction(response)
-        return world_items
+    grammar_content = load_grammar("initialization")
+    grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
+    grammar = f"root ::= world-items-extraction\n{grammar}"
 
-    except Exception as e:
-        logger.warning(
-            "_extract_world_items_from_outline: extraction failed",
-            error=str(e),
-        )
-        return []
+    response, _ = await llm_service.async_call_llm(
+        model_name=model,
+        prompt=prompt,
+        temperature=0.5,
+        max_tokens=2000,
+        allow_fallback=True,
+        auto_clean_response=True,
+        system_prompt=get_system_prompt("knowledge_agent"),
+        grammar=grammar,
+    )
+
+    return _parse_world_items_extraction(response)
 
 
 def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     """
-    Parse LLM response into WorldItem models.
+    Parse LLM response into WorldItem models (strict JSON contract).
 
     Args:
-        response: LLM response with world items
+        response: LLM response (JSON array)
 
     Returns:
         List of WorldItem models
+
+    Raises:
+        ValueError: If the output violates the JSON/schema contract.
     """
-    items = []
-    lines = response.split("\n")
+    raw_text = response.strip()
+    data = json.loads(raw_text)
 
-    for line in lines:
-        line = line.strip()
-        if not line or not line.startswith("["):
-            continue
+    if not isinstance(data, list):
+        raise ValueError("World items extraction must be a JSON array")
 
-        # Parse format: [CATEGORY] Name: Description
-        try:
-            # Extract category
-            cat_end = line.index("]")
-            category = line[1:cat_end].strip().lower()
+    items: list[WorldItem] = []
 
-            # Extract name and description
-            rest = line[cat_end + 1 :].strip()
-            if ":" not in rest:
-                continue
+    allowed_categories = {"location", "object", "concept"}
 
-            name, description = rest.split(":", 1)
-            name = name.strip()
-            description = description.strip()
+    from processing.entity_deduplication import generate_entity_id
 
-            # Create WorldItem model
-            from processing.entity_deduplication import generate_entity_id
+    for index, item in enumerate(data):
+        if not isinstance(item, dict):
+            raise ValueError(f"World item at index {index} must be a JSON object")
 
-            item = WorldItem(
-                id=generate_entity_id(name, category, chapter=0),  # chapter=0 for initialization
-                name=name,
-                description=description,
+        required_keys = {"name", "category", "description"}
+        item_keys = set(item.keys())
+        if item_keys != required_keys:
+            raise ValueError(f"World item at index {index} must contain exactly keys {sorted(required_keys)} " f"(got {sorted(item_keys)})")
+
+        name = item["name"]
+        category = item["category"]
+        description = item["description"]
+
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"World item at index {index} 'name' must be a non-empty string")
+        if not isinstance(category, str) or category not in allowed_categories:
+            raise ValueError(f"World item at index {index} 'category' must be one of {sorted(allowed_categories)}")
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError(f"World item at index {index} 'description' must be a non-empty string")
+
+        items.append(
+            WorldItem(
+                id=generate_entity_id(name.strip(), category, chapter=0),
+                name=name.strip(),
+                description=description.strip(),
                 category=category,
-                created_chapter=0,  # Initialization items created before chapters
+                created_chapter=0,
                 is_provisional=False,
             )
-
-            items.append(item)
-
-        except (ValueError, IndexError) as e:
-            logger.debug(
-                "_parse_world_items_extraction: failed to parse line",
-                line=line,
-                error=str(e),
-            )
-            continue
+        )
 
     logger.info(
         "_parse_world_items_extraction: extracted world items",

@@ -1,7 +1,8 @@
 # Initialization Grammars
-# Includes: Global Outline, Character List, Character Sheet, Chapter Outline
+# Includes: Global Outline, Character List, Character Sheet, Chapter Outline,
+# plus init-time extraction helpers (structured character fields + world items).
 
-root ::= global-outline | character-list | character-sheet | chapter-outline
+root ::= global-outline | character-list | character-sheet | chapter-outline | structured-character-extraction | world-items-extraction
 
 # 1. Global Outline
 global-outline ::= "{" ws "\"act_count\"" ws ":" ws json-number "," ws "\"acts\"" ws ":" ws act-list "," ws "\"inciting_incident\"" ws ":" ws json-string "," ws "\"midpoint\"" ws ":" ws json-string "," ws "\"climax\"" ws ":" ws json-string "," ws "\"resolution\"" ws ":" ws json-string "," ws "\"character_arcs\"" ws ":" ws char-arc-list "," ws "\"thematic_progression\"" ws ":" ws json-string "," ws "\"pacing_notes\"" ws ":" ws json-string ws "}"
@@ -23,3 +24,15 @@ relationship-entry ::= json-string ws ":" ws json-string
 
 # 4. Chapter Outline
 chapter-outline ::= "{" ws "\"scene_description\"" ws ":" ws json-string "," ws "\"key_beats\"" ws ":" ws string-list "," ws "\"plot_point\"" ws ":" ws json-string ws "}"
+
+# 5. Structured Character Extraction (init-time, derived from character sheet prose)
+# Root shape:
+# {"traits":[...],"status":"...","motivations":"...","background":"..."}
+structured-character-extraction ::= "{" ws "\"traits\"" ws ":" ws trait-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"motivations\"" ws ":" ws json-string "," ws "\"background\"" ws ":" ws json-string ws "}"
+
+# 6. World Items Extraction (init-time, derived from global outline prose)
+# Root shape:
+# [{"name":"...","category":"location|object|concept","description":"..."}, ...]
+world-items-extraction ::= "[" ws (world-item-object ("," ws world-item-object)*)? ws "]"
+world-item-object ::= "{" ws "\"name\"" ws ":" ws json-string "," ws "\"category\"" ws ":" ws world-item-category "," ws "\"description\"" ws ":" ws json-string ws "}"
+world-item-category ::= "\"location\"" | "\"object\"" | "\"concept\""
