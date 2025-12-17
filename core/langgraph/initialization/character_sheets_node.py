@@ -9,6 +9,7 @@ the narrative generation process.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 
@@ -281,6 +282,16 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
         },
     )
 
+    prompt_sha1 = hashlib.sha1(prompt.encode("utf-8")).hexdigest()[:12]
+    logger.debug(
+        "_generate_character_list: prompt prepared",
+        prompt_sha1=prompt_sha1,
+        prompt_len=len(prompt),
+        has_protagonist=bool(state.get("protagonist_name", "")),
+        title=state.get("title", ""),
+        genre=state.get("genre", ""),
+    )
+
     grammar = load_grammar("initialization")
     grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
     grammar = f"root ::= character-list\n{grammar}"
@@ -299,6 +310,13 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
         if not response:
             raise ValueError("LLM returned empty response for character list")
+
+        logger.debug(
+            "_generate_character_list: llm response received",
+            prompt_sha1=prompt_sha1,
+            response_len=len(response),
+            response_preview=response[:200],
+        )
 
         data = json.loads(response)
 
@@ -344,6 +362,19 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
         if protagonist_name and protagonist_name not in validated_names:
             raise ValueError("Character list must include the protagonist name exactly")
+
+        placeholder_names = [
+            name
+            for name in validated_names
+            if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)
+        ]
+        if placeholder_names:
+            logger.error(
+                "_generate_character_list: placeholder names detected",
+                prompt_sha1=prompt_sha1,
+                placeholders=placeholder_names,
+                names=validated_names,
+            )
 
         logger.info(
             "_generate_character_list: generated list",
