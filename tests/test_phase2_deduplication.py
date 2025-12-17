@@ -226,8 +226,17 @@ class TestMergeDuplicateEntities:
             success = await merge_duplicate_entities("Alice", "Alice Chen", entity_type="character")
 
             assert success is True
-            # Verify merge query was called
             assert mock_neo4j.execute_write_query.called
+
+            call_args = mock_neo4j.execute_write_query.call_args
+            query = call_args[0][0]
+
+            # Regression: Phase 2 merge must not destroy relationship types or collapse edges.
+            # The previous implementation rewrote every relationship to GENERIC_REL and used MERGE.
+            assert "GENERIC_REL" not in query
+            assert "apoc.create.relationship" in query
+            assert "apoc.do.when" in query
+            assert "DETACH DELETE duplicate" in query
 
     async def test_keeps_earlier_entity(self):
         """Test that the entity created earlier is kept."""
@@ -350,6 +359,44 @@ class TestPhase2Integration:
 
                     assert result["characters"] == 2
                     assert result["world_items"] == 1
+
+    async def test_phase2_invalidates_caches_when_merges_occur(self):
+        """Phase 2 must invalidate data_access caches after merges to prevent stale reads."""
+        from core.langgraph.nodes.commit_node import _run_phase2_deduplication
+
+        mock_char_duplicates = [
+            ("Alice", "Alice Chen", 0.75, 0.85),
+        ]
+
+        with patch("config.ENABLE_PHASE2_DEDUPLICATION", True):
+            with patch(
+                "processing.entity_deduplication.find_relationship_based_duplicates",
+                side_effect=[mock_char_duplicates, []],
+            ):
+                with patch(
+                    "processing.entity_deduplication.merge_duplicate_entities",
+                    new=AsyncMock(return_value=True),
+                ):
+                    with patch(
+                        "data_access.cache_coordinator.clear_character_read_caches",
+                        return_value={"get_character_profile_by_name": True, "get_character_profile_by_id": True},
+                    ) as clear_character:
+                        with patch(
+                            "data_access.cache_coordinator.clear_world_read_caches",
+                            return_value={"get_world_item_by_id": True},
+                        ) as clear_world:
+                            with patch(
+                                "data_access.cache_coordinator.clear_kg_read_caches",
+                                return_value={"query_kg_from_db": True, "get_novel_info_property_from_db": True},
+                            ) as clear_kg:
+                                result = await _run_phase2_deduplication(chapter=5)
+
+                                assert result["characters"] == 1
+                                assert result["world_items"] == 0
+
+                                assert clear_character.call_count == 1
+                                assert clear_world.call_count == 1
+                                assert clear_kg.call_count == 1
 
     async def test_phase2_handles_partial_failures(self):
         """Test that Phase 2 handles when some merges fail."""

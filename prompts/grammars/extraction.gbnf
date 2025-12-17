@@ -22,7 +22,7 @@ entity-map ::= "{" ws (entity-entry ("," ws entity-entry)*)? ws "}"
 entity-entry ::= json-string ws ":" ws entity-details
 
 # Entity schema (category is mandatory)
-# Subtype semantics live in "category" while the canonical label/bucket remains Location/Event/Item/Organization/Concept.
+# Subtype semantics live in "category" while the canonical label/bucket remains Location/Event/Item.
 entity-details ::= "{" ws "\"description\"" ws ":" ws json-string "," ws "\"category\"" ws ":" ws json-string "," ws "\"goals\"" ws ":" ws string-list "," ws "\"rules\"" ws ":" ws string-list "," ws "\"key_elements\"" ws ":" ws string-list ws "}"
 
 # 3. Relationship Extraction (Triples)

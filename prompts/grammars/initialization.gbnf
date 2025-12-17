@@ -17,10 +17,18 @@ char-arc-object ::= "{" ws "\"character_name\"" ws ":" ws json-string "," ws "\"
 character-list ::= string-list
 
 # 3. Character Sheet (CharacterProfile)
-character-sheet ::= "{" ws "\"name\"" ws ":" ws json-string "," ws "\"description\"" ws ":" ws json-string "," ws "\"traits\"" ws ":" ws trait-list "," ws "\"status\"" ws ":" ws json-string "," ws "\"motivations\"" ws ":" ws json-string "," ws "\"background\"" ws ":" ws json-string "," ws "\"skills\"" ws ":" ws string-list "," ws "\"relationships\"" ws ":" ws relationship-map "," ws "\"internal_conflict\"" ws ":" ws json-string ws "}"
+# Bounded strings to prevent runaway generations that get truncated mid-JSON-string.
+character-sheet ::= "{" ws "\"name\"" ws ":" ws character-name-string "," ws "\"description\"" ws ":" ws character-description-string "," ws "\"traits\"" ws ":" ws trait-list "," ws "\"status\"" ws ":" ws "\"Active\"" "," ws "\"motivations\"" ws ":" ws character-short-string "," ws "\"background\"" ws ":" ws character-short-string "," ws "\"skills\"" ws ":" ws character-skill-list "," ws "\"relationships\"" ws ":" ws relationship-map "," ws "\"internal_conflict\"" ws ":" ws character-short-string ws "}"
 
+character-name-string ::= "\"" ( [^"\\\n\r] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) ){1,80} "\""
+character-description-string ::= "\"" ( [^"\\\n\r] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) ){1,1200} "\""
+character-short-string ::= "\"" ( [^"\\\n\r] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) ){0,320} "\""
+character-skill-string ::= "\"" ( [^"\\\n\r] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) ){1,40} "\""
+character-skill-list ::= "[" ws (character-skill-string ("," ws character-skill-string)*)? ws "]"
+
+character-relationship-string ::= "\"" ( [^"\\\n\r] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}) ){1,220} "\""
 relationship-map ::= "{" ws (relationship-entry ("," ws relationship-entry)*)? ws "}"
-relationship-entry ::= json-string ws ":" ws json-string
+relationship-entry ::= character-name-string ws ":" ws character-relationship-string
 
 # 4. Chapter Outline
 chapter-outline ::= "{" ws "\"scene_description\"" ws ":" ws json-string "," ws "\"key_beats\"" ws ":" ws string-list "," ws "\"plot_point\"" ws ":" ws json-string ws "}"
@@ -32,7 +40,7 @@ structured-character-extraction ::= "{" ws "\"traits\"" ws ":" ws trait-list ","
 
 # 6. World Items Extraction (init-time, derived from global outline prose)
 # Root shape:
-# [{"name":"...","category":"location|object|concept","description":"..."}, ...]
+# [{"name":"...","category":"location|object","description":"..."}, ...]
 world-items-extraction ::= "[" ws (world-item-object ("," ws world-item-object)*)? ws "]"
 world-item-object ::= "{" ws "\"name\"" ws ":" ws json-string "," ws "\"category\"" ws ":" ws world-item-category "," ws "\"description\"" ws ":" ws json-string ws "}"
-world-item-category ::= "\"location\"" | "\"object\"" | "\"concept\""
+world-item-category ::= "\"location\"" | "\"object\""

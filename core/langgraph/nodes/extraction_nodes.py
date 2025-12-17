@@ -312,9 +312,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                         "characters",
                         "world_items",
                         "chapters",
-                        "concepts",
                         "items",
-                        "organizations",
                         "traits",
                     }
                 )
@@ -337,7 +335,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         raw_updates = data.get("world_updates", {})
 
         # We only want Locations here. Events are handled by extract_events, and other
-        # canonical types (Item/Organization/Concept) must not be created by the
+        # canonical types (Item) must not be created by the
         # dedicated location extractor.
         allowed_type = "Location"
 
@@ -351,9 +349,7 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
             "world_items",
             "kg_triples",
             "chapters",
-            "concepts",
             "items",
-            "organizations",
             "traits",
         }
 
@@ -605,9 +601,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                         "characters",
                         "world_items",
                         "chapters",
-                        "concepts",
                         "items",
-                        "organizations",
                         "traits",
                     }
                 )
@@ -640,9 +634,7 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             "world_items",
             "kg_triples",
             "chapters",
-            "concepts",
             "items",
-            "organizations",
             "traits",
         }
 

@@ -76,15 +76,6 @@ EVENT_TYPES = {
     "Moment",
 }
 
-ORGANIZATION_TYPES = {
-    "Faction",
-    "Organization",
-    "Guild",
-    "House",
-    "Order",
-    "Council",
-}
-
 ABSTRACT_TYPES = {
     "Concept",
     "Law",
@@ -212,7 +203,7 @@ VALIDATION_RULES = [
     RelationshipValidationRule(
         relationship_types={"LOCATED_IN", "LOCATED_AT"},
         valid_source_types="ANY",
-        valid_target_types=LOCATION_TYPES | PHYSICAL_OBJECT_TYPES | ORGANIZATION_TYPES | SENTIENT_TYPES,
+        valid_target_types=LOCATION_TYPES | PHYSICAL_OBJECT_TYPES | SENTIENT_TYPES,
         rule_name="spatial_containment",
         rationale="[INFO] Location relationships typically reference places or containers",
     ),
@@ -225,23 +216,14 @@ VALIDATION_RULES = [
         rule_name="temporal_sequence",
         rationale="[INFO] Temporal relationships typically connect events or time periods",
     ),
-    # Organizational membership - typically sentient beings and organizations
-    # (informational only - not enforced)
-    RelationshipValidationRule(
-        relationship_types={"MEMBER_OF", "LEADER_OF", "FOUNDED"},
-        valid_source_types=SENTIENT_TYPES,
-        valid_target_types=ORGANIZATION_TYPES,
-        rule_name="organizational_membership",
-        rationale="[INFO] Organizational relationships typically involve sentient beings and organizations",
-    ),
     # Possession relationships - typically sentient owners
     # (informational only - not enforced)
     RelationshipValidationRule(
         relationship_types={"OWNS", "POSSESSES"},
-        valid_source_types=SENTIENT_TYPES | ORGANIZATION_TYPES,
+        valid_source_types=SENTIENT_TYPES,
         valid_target_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES,
         rule_name="ownership",
-        rationale="[INFO] Ownership typically involves sentient beings or organizations",
+        rationale="[INFO] Ownership typically involves sentient beings",
     ),
     # Physical and informational containment
     # (informational only - not enforced)
@@ -265,10 +247,10 @@ VALIDATION_RULES = [
     # (informational only - not enforced)
     RelationshipValidationRule(
         relationship_types=STATUS_RELATIONSHIPS,
-        valid_source_types=SENTIENT_TYPES | ORGANIZATION_TYPES,
+        valid_source_types=SENTIENT_TYPES,
         valid_target_types="ANY",
         rule_name="status",
-        rationale="[INFO] Status relationships typically describe states of sentient beings or organizations",
+        rationale="[INFO] Status relationships typically describe states of sentient beings",
     ),
 ]
 
@@ -356,7 +338,7 @@ class RelationshipValidator:
             messages.append(
                 f"Unknown entity type '{source_type}'. "
                 "Node labels are canonical at persistence boundaries; "
-                "use a canonical label (e.g., Character/Location/Event/Item/Organization/Concept/Trait/Chapter/Novel) "
+                "use a canonical label (e.g., Character/Location/Event/Item/Trait/Chapter) "
                 "or ensure it maps to one."
             )
 
@@ -504,7 +486,6 @@ __all__ = [
     "PHYSICAL_OBJECT_TYPES",
     "LOCATION_TYPES",
     "EVENT_TYPES",
-    "ORGANIZATION_TYPES",
     "ABSTRACT_TYPES",
     "SYSTEM_TYPES",
     "QUALITY_TYPES",

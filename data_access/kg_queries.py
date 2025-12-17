@@ -1174,7 +1174,7 @@ async def find_candidate_duplicate_entities(
     // ---------- Typed Entity pairs (non-Character; bounded candidate pool) ----------
     CALL {
       MATCH (e)
-      WHERE (e:Location OR e:Item OR e:Event OR e:Organization OR e:Concept)
+      WHERE (e:Location OR e:Item OR e:Event)
         AND e.name IS NOT NULL AND e.id IS NOT NULL
       RETURN e
       ORDER BY toLower(toString(e.name)), toString(e.id)

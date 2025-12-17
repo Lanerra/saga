@@ -91,7 +91,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
 
     # Canonical labeling contract:
     # - World item nodes are labeled with canonical "world" labels only
-    #   (Location/Item/Event/Organization/Concept).
+    #   (Location/Item/Event).
     # - Legacy labels (Object/Artifact/Relic/Document) are handled via explicit migration,
     #   not by widening read predicates indefinitely.
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS

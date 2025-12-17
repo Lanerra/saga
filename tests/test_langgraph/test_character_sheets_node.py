@@ -190,16 +190,14 @@ def test_parse_character_sheet_response_missing_name(mock_schema_validator):
 
 
 def test_parse_character_sheet_response_invalid_json(mock_schema_validator):
-    """Verify fallback when JSON parsing fails."""
+    """Verify strict failure when JSON parsing fails (no prose fallback)."""
     response = "This is not valid JSON but a plain text description"
 
     with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
         mock_validate.return_value = []
 
-        result = _parse_character_sheet_response(response, "Hero")
-
-        assert result["name"] == "Hero"
-        assert result["description"] == response
+        with pytest.raises(ValueError, match=r"Character sheet JSON parsing failed"):
+            _parse_character_sheet_response(response, "Hero")
 
 
 def test_parse_character_sheet_response_filters_traits(mock_schema_validator):
@@ -260,7 +258,7 @@ async def test_generate_character_list_success(base_state, mock_llm_service):
 
 @pytest.mark.asyncio
 async def test_generate_character_list_rejects_non_json(base_state, mock_llm_service):
-    """Verify strict JSON-only contract for character list."""
+    """Verify strict JSON-only contract for character list (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
             "1. Hero\n2. Mentor\n- Villain\n* Sidekick",
@@ -270,12 +268,12 @@ async def test_generate_character_list_rejects_non_json(base_state, mock_llm_ser
 
     result = await _generate_character_list(base_state)
 
-    assert result == [base_state["protagonist_name"]]
+    assert result == []
 
 
 @pytest.mark.asyncio
 async def test_generate_character_list_requires_protagonist(base_state, mock_llm_service):
-    """Verify protagonist name must be included exactly when provided."""
+    """Verify protagonist name must be included exactly when provided (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(
         return_value=(
             json.dumps(["Mentor", "Villain", "Sidekick"]),
@@ -285,38 +283,38 @@ async def test_generate_character_list_requires_protagonist(base_state, mock_llm
 
     result = await _generate_character_list(base_state)
 
-    assert result == [base_state["protagonist_name"]]
+    assert result == []
 
 
 @pytest.mark.asyncio
 async def test_generate_character_list_rejects_more_than_ten(base_state, mock_llm_service):
-    """Verify character list rejects more than 10 characters (no silent truncation)."""
+    """Verify character list rejects more than 10 characters (no fallback)."""
     payload = ["Hero"] + [f"Character{i}" for i in range(20)]
     mock_llm_service.async_call_llm = AsyncMock(return_value=(json.dumps(payload), {"prompt_tokens": 100, "completion_tokens": 50}))
 
     result = await _generate_character_list(base_state)
 
-    assert result == [base_state["protagonist_name"]]
+    assert result == []
 
 
 @pytest.mark.asyncio
 async def test_generate_character_list_empty_response(base_state, mock_llm_service):
-    """Verify fallback to protagonist when LLM returns an empty response."""
+    """Verify empty response yields failure (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
     result = await _generate_character_list(base_state)
 
-    assert result == [base_state["protagonist_name"]]
+    assert result == []
 
 
 @pytest.mark.asyncio
 async def test_generate_character_list_exception(base_state, mock_llm_service):
-    """Verify fallback to protagonist on exception."""
+    """Verify exception yields failure (no fallback)."""
     mock_llm_service.async_call_llm = AsyncMock(side_effect=Exception("LLM error"))
 
     result = await _generate_character_list(base_state)
 
-    assert result == [base_state["protagonist_name"]]
+    assert result == []
 
 
 @pytest.mark.asyncio
@@ -392,7 +390,7 @@ async def test_generate_character_sheets_success(
     mock_schema_validator,
 ):
     """Verify successful generation of all character sheets."""
-    char_list_response = "Hero\nMentor\nVillain"
+    char_list_response = json.dumps(["Hero", "Mentor", "Villain"])
     char_sheet_response = json.dumps(
         {
             "name": "Test",
@@ -445,13 +443,13 @@ async def test_generate_character_sheets_missing_genre(base_state):
 
 @pytest.mark.asyncio
 async def test_generate_character_sheets_character_list_fails(base_state, mock_llm_service, mock_neo4j):
-    """Verify failure when character list generation cannot produce usable sheets."""
+    """Verify failure when character list generation cannot produce usable output."""
     mock_llm_service.async_call_llm = AsyncMock(return_value=("", {}))
 
     result = await generate_character_sheets(base_state)
 
     assert result["initialization_step"] == "character_sheets_failed"
-    assert "Failed to generate any character sheets" in result["last_error"]
+    assert "Failed to generate character list" in result["last_error"]
 
 
 @pytest.mark.asyncio
@@ -462,10 +460,17 @@ async def test_generate_character_sheets_all_sheets_fail(
     mock_schema_validator,
 ):
     """Verify error when all character sheet generations fail."""
-    char_list_response = "Hero\nMentor"
+    char_list_response = json.dumps(["Hero", "Mentor", "Villain"])
     mock_llm_service.async_call_llm = AsyncMock(
         side_effect=[
             (char_list_response, {}),
+            ("", {}),
+            ("", {}),
+            ("", {}),
+            ("", {}),
+            ("", {}),
+            ("", {}),
+            ("", {}),
             ("", {}),
             ("", {}),
         ]

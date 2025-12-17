@@ -139,9 +139,10 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
 
     # Step 3: Save to Neo4j
     try:
-        # Get summary from previous_chapter_summaries if available
-        summaries = get_previous_summaries(state, content_manager)
-        current_summary = summaries[-1] if summaries else None
+        current_summary = state.get("current_summary")
+        if current_summary is None:
+            previous_summaries = get_previous_summaries(state, content_manager)
+            current_summary = previous_summaries[-1] if previous_summaries else None
 
         await save_chapter_data_to_db(
             chapter_number=chapter_number,

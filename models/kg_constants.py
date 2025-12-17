@@ -40,8 +40,6 @@ WORLD_ITEM_CANONICAL_LABELS: tuple[str, ...] = (
     "Location",
     "Item",
     "Event",
-    "Organization",
-    "Concept",
 )
 
 # Legacy labels seen in older graphs and legacy read paths. These are supported
@@ -68,11 +66,8 @@ VALID_NODE_LABELS = {
     "Location",
     "Event",
     "Item",
-    "Organization",
-    "Concept",
     "Trait",
     "Chapter",
-    "Novel",
 }
 
 # Map common variations / legacy labels / subtype "types" to canonical labels.
@@ -143,26 +138,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "resource": "Item",
     "Currency": "Item",
     "currency": "Item",
-    # ----------------------------
-    # Organization-like subtypes
-    # ----------------------------
-    "Organization": "Organization",
-    "organization": "Organization",
-    "Faction": "Organization",
-    "faction": "Organization",
-    "Guild": "Organization",
-    "guild": "Organization",
-    "House": "Organization",
-    "house": "Organization",
-    "Order": "Organization",
-    "order": "Organization",
-    "Council": "Organization",
-    "council": "Organization",
-    # ----------------------------
-    # Concept-like
-    # ----------------------------
-    "Concept": "Concept",
-    "concept": "Concept",
     # ----------------------------
     # Trait-like
     # ----------------------------

@@ -1211,6 +1211,35 @@ async def _run_phase2_deduplication(chapter: int) -> dict[str, int]:
                     chapter=chapter,
                 )
 
+        if merge_counts["characters"] > 0 or merge_counts["world_items"] > 0:
+            # Cache invalidation after Phase 2 merges
+            #
+            # Rationale:
+            # - Phase 2 merges mutate Neo4j state *after* the main commit transaction.
+            # - data_access read APIs are cached (async_lru), so failing to clear caches
+            #   here can cause stale reads of now-merged/deleted entities.
+            #
+            # Local import avoids eager import side effects / circular deps.
+            from data_access.cache_coordinator import (
+                clear_character_read_caches,
+                clear_kg_read_caches,
+                clear_world_read_caches,
+            )
+
+            cleared_character = clear_character_read_caches()
+            cleared_world = clear_world_read_caches()
+            cleared_kg = clear_kg_read_caches()
+
+            logger.debug(
+                "_run_phase2_deduplication: invalidated caches after merges",
+                chapter=chapter,
+                cache_cleared={
+                    "character": cleared_character,
+                    "world": cleared_world,
+                    "kg": cleared_kg,
+                },
+            )
+
         logger.info(
             "_run_phase2_deduplication: completed Phase 2 deduplication",
             chapter=chapter,

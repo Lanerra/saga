@@ -132,13 +132,44 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         parsed["type"] = normalized if is_valid else "Character"
 
     except json.JSONDecodeError as e:
+        try:
+            response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
+            response_len = len(response)
+            cleaned_sha1 = hashlib.sha1(cleaned_response.encode("utf-8")).hexdigest()[:12]
+            cleaned_len = len(cleaned_response)
+            response_last_codepoint = ord(response[-1]) if response else None
+            cleaned_last_codepoint = ord(cleaned_response[-1]) if cleaned_response else None
+        except Exception:  # pragma: no cover
+            response_sha1 = None
+            response_len = None
+            cleaned_sha1 = None
+            cleaned_len = None
+            response_last_codepoint = None
+            cleaned_last_codepoint = None
+
         logger.warning(
             "_parse_character_sheet_response: JSON parsing failed",
             character=character_name,
             error=str(e),
+            error_pos=getattr(e, "pos", None),
+            error_lineno=getattr(e, "lineno", None),
+            error_colno=getattr(e, "colno", None),
+            response_sha1=response_sha1,
+            response_len=response_len,
+            cleaned_sha1=cleaned_sha1,
+            cleaned_len=cleaned_len,
+            has_json_fence=("```json" in response),
+            has_fence=("```" in response),
+            cleaned_startswith=cleaned_response[:1] if cleaned_response else None,
+            cleaned_endswith=cleaned_response[-1:] if cleaned_response else None,
+            response_last_codepoint=response_last_codepoint,
+            cleaned_last_codepoint=cleaned_last_codepoint,
         )
-        # Fallback to description = raw response
-        parsed["description"] = response
+
+        raise ValueError(
+            "Character sheet JSON parsing failed "
+            f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})"
+        ) from e
 
     return parsed
 
@@ -296,101 +327,123 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
     grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
     grammar = f"root ::= character-list\n{grammar}"
 
-    try:
-        response, _ = await llm_service.async_call_llm(
-            model_name=state.get("large_model", ""),
-            prompt=prompt,
-            temperature=0.7,
-            max_tokens=1000,
-            allow_fallback=True,
-            auto_clean_response=True,
-            system_prompt=get_system_prompt("initialization"),
-            grammar=grammar,
-        )
+    temperatures = [0.7, 0.3, 0.1]
+    last_exception = None
 
-        if not response:
-            raise ValueError("LLM returned empty response for character list")
+    for attempt_index, temperature in enumerate(temperatures, start=1):
+        try:
+            response, _ = await llm_service.async_call_llm(
+                model_name=state.get("large_model", ""),
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=8192,
+                allow_fallback=False,
+                auto_clean_response=True,
+                system_prompt=get_system_prompt("initialization"),
+                grammar=grammar,
+            )
 
-        logger.debug(
-            "_generate_character_list: llm response received",
-            prompt_sha1=prompt_sha1,
-            response_len=len(response),
-            response_preview=response[:200],
-        )
+            if not response:
+                raise ValueError("LLM returned empty response for character list")
 
-        data = json.loads(response)
-
-        if not isinstance(data, list):
-            raise ValueError("Character list must be a JSON array")
-
-        protagonist_name = state.get("protagonist_name", "")
-        minimum_count = 3 if protagonist_name else 1
-
-        if len(data) < minimum_count:
-            raise ValueError("Character list is too short")
-
-        if len(data) > 10:
-            raise ValueError("Character list is too long")
-
-        validated_names: list[str] = []
-        seen: set[str] = set()
-
-        for element in data:
-            if not isinstance(element, str):
-                raise ValueError("Character list elements must be strings")
-
-            if element != element.strip():
-                raise ValueError("Character names must not have leading/trailing whitespace")
-
-            if not element:
-                raise ValueError("Character names must be non-empty")
-
-            if len(element) > 80:
-                raise ValueError("Character names must be a reasonable length")
-
-            if "\n" in element or "\r" in element:
-                raise ValueError("Character names must be a single line")
-
-            if "(" in element or ")" in element:
-                raise ValueError("Character names must not include parenthetical text")
-
-            if element in seen:
-                raise ValueError("Character names must be unique")
-
-            validated_names.append(element)
-            seen.add(element)
-
-        if protagonist_name and protagonist_name not in validated_names:
-            raise ValueError("Character list must include the protagonist name exactly")
-
-        placeholder_names = [
-            name
-            for name in validated_names
-            if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)
-        ]
-        if placeholder_names:
-            logger.error(
-                "_generate_character_list: placeholder names detected",
+            response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
+            logger.debug(
+                "_generate_character_list: llm response received",
                 prompt_sha1=prompt_sha1,
-                placeholders=placeholder_names,
+                attempt=attempt_index,
+                response_sha1=response_sha1,
+                response_len=len(response),
+            )
+
+            data = json.loads(response)
+
+            if not isinstance(data, list):
+                raise ValueError("Character list must be a JSON array")
+
+            protagonist_name = state.get("protagonist_name", "")
+            minimum_count = 3 if protagonist_name else 1
+
+            if len(data) < minimum_count:
+                raise ValueError("Character list is too short")
+
+            if len(data) > 10:
+                raise ValueError("Character list is too long")
+
+            validated_names: list[str] = []
+            seen: set[str] = set()
+
+            for element in data:
+                if not isinstance(element, str):
+                    raise ValueError("Character list elements must be strings")
+
+                if element != element.strip():
+                    raise ValueError("Character names must not have leading/trailing whitespace")
+
+                if not element:
+                    raise ValueError("Character names must be non-empty")
+
+                if len(element) > 80:
+                    raise ValueError("Character names must be a reasonable length")
+
+                if "\n" in element or "\r" in element:
+                    raise ValueError("Character names must be a single line")
+
+                if "(" in element or ")" in element:
+                    raise ValueError("Character names must not include parenthetical text")
+
+                if element in seen:
+                    logger.error(
+                        "_generate_character_list: duplicate character name detected",
+                        prompt_sha1=prompt_sha1,
+                        attempt=attempt_index,
+                        duplicate_name=element,
+                        validated_count=len(validated_names),
+                    )
+                    raise ValueError("Character names must be unique")
+
+                validated_names.append(element)
+                seen.add(element)
+
+            if protagonist_name and protagonist_name not in validated_names:
+                raise ValueError("Character list must include the protagonist name exactly")
+
+            placeholder_names = [
+                name
+                for name in validated_names
+                if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)
+            ]
+            if placeholder_names:
+                logger.error(
+                    "_generate_character_list: placeholder names detected",
+                    prompt_sha1=prompt_sha1,
+                    placeholders=placeholder_names,
+                    names=validated_names,
+                )
+
+            logger.info(
+                "_generate_character_list: generated list",
+                count=len(validated_names),
                 names=validated_names,
             )
 
-        logger.info(
-            "_generate_character_list: generated list",
-            count=len(validated_names),
-            names=validated_names,
-        )
+            return validated_names
 
-        return validated_names
+        except Exception as exception:
+            last_exception = exception
+            logger.error(
+                "_generate_character_list: attempt failed",
+                prompt_sha1=prompt_sha1,
+                attempt=attempt_index,
+                error=str(exception),
+                exc_info=True,
+            )
 
-    except Exception as e:
-        logger.error(
-            "_generate_character_list: exception during generation",
-            error=str(e),
-            exc_info=True,
-        )
-        return [state.get("protagonist_name", "Protagonist")]
+    logger.error(
+        "_generate_character_list: all attempts failed",
+        prompt_sha1=prompt_sha1,
+        error=str(last_exception) if last_exception else None,
+    )
+    return []
 
 
 async def _generate_character_sheet(
@@ -440,50 +493,68 @@ async def _generate_character_sheet(
     # Be sure to include the replaced root at the top
     grammar = f"root ::= character-sheet\n{grammar}"
 
-    try:
-        response, usage = await llm_service.async_call_llm(
-            model_name=state.get("large_model", ""),
-            prompt=prompt,
-            temperature=0.7,
-            max_tokens=2000,
-            allow_fallback=True,
-            auto_clean_response=True,
-            system_prompt=get_system_prompt("initialization"),
-            grammar=grammar,
-        )
+    temperatures = [0.7, 0.3, 0.1]
+    last_exception = None
 
-        if not response:
-            logger.error(
-                "_generate_character_sheet: empty response",
-                character=character_name,
+    for attempt_index, temperature in enumerate(temperatures, start=1):
+        try:
+            response, usage = await llm_service.async_call_llm(
+                model_name=state.get("large_model", ""),
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=8192,
+                allow_fallback=False,
+                auto_clean_response=True,
+                system_prompt=get_system_prompt("initialization"),
+                grammar=grammar,
             )
-            return None
 
-        # Parse the structured response into CharacterProfile-compatible format
-        sheet = _parse_character_sheet_response(response, character_name)
+            if not response:
+                raise ValueError("LLM returned empty response for character sheet")
 
-        # Add metadata
-        sheet["is_protagonist"] = is_protagonist
-        sheet["generated_at"] = "initialization"
-        sheet["raw_response"] = response  # Keep raw response for reference
+            response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
+            logger.debug(
+                "_generate_character_sheet: llm response received",
+                character=character_name,
+                attempt=attempt_index,
+                response_sha1=response_sha1,
+                response_len=len(response),
+                usage=usage,
+            )
 
-        logger.debug(
-            "_generate_character_sheet: sheet generated",
-            character=character_name,
-            traits_count=len(sheet.get("traits", [])),
-            has_relationships=bool(sheet.get("relationships")),
-        )
+            # Parse the structured response into CharacterProfile-compatible format
+            sheet = _parse_character_sheet_response(response, character_name)
 
-        return sheet
+            # Add metadata
+            sheet["is_protagonist"] = is_protagonist
+            sheet["generated_at"] = "initialization"
+            sheet["raw_response"] = response  # Keep raw response for reference
 
-    except Exception as e:
-        logger.error(
-            "_generate_character_sheet: exception during generation",
-            character=character_name,
-            error=str(e),
-            exc_info=True,
-        )
-        return None
+            logger.debug(
+                "_generate_character_sheet: sheet generated",
+                character=character_name,
+                traits_count=len(sheet.get("traits", [])),
+                has_relationships=bool(sheet.get("relationships")),
+            )
+
+            return sheet
+
+        except Exception as exception:
+            last_exception = exception
+            logger.error(
+                "_generate_character_sheet: attempt failed",
+                character=character_name,
+                attempt=attempt_index,
+                error=str(exception),
+                exc_info=True,
+            )
+
+    logger.error(
+        "_generate_character_sheet: all attempts failed",
+        character=character_name,
+        error=str(last_exception) if last_exception else None,
+    )
+    return None
 
 
 __all__ = ["generate_character_sheets"]

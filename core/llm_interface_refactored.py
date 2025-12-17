@@ -357,7 +357,20 @@ class CompletionService:
             )
 
             content = self._extract_completion_content(response_data)
+
+            finish_reason = None
+            try:
+                if response_data.get("choices") and len(response_data["choices"]) > 0:
+                    finish_reason = response_data["choices"][0].get("finish_reason")
+            except Exception:  # pragma: no cover
+                finish_reason = None
+
             usage_data = response_data.get("usage")
+            if usage_data is None:
+                usage_data = {}
+
+            if isinstance(usage_data, dict) and finish_reason is not None:
+                usage_data = {**usage_data, "finish_reason": finish_reason}
 
             if auto_clean_response:
                 content = self._text_processor.response_cleaner.clean_response(content)
@@ -406,7 +419,20 @@ class CompletionService:
                     )
 
                     content = self._extract_completion_content(response_data)
+
+                    finish_reason = None
+                    try:
+                        if response_data.get("choices") and len(response_data["choices"]) > 0:
+                            finish_reason = response_data["choices"][0].get("finish_reason")
+                    except Exception:  # pragma: no cover
+                        finish_reason = None
+
                     usage_data = response_data.get("usage")
+                    if usage_data is None:
+                        usage_data = {}
+
+                    if isinstance(usage_data, dict) and finish_reason is not None:
+                        usage_data = {**usage_data, "finish_reason": finish_reason}
 
                     if auto_clean_response:
                         content = self._text_processor.response_cleaner.clean_response(content)

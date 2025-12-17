@@ -405,7 +405,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
     items: list[WorldItem] = []
 
-    allowed_categories = {"location", "object", "concept"}
+    allowed_categories = {"location", "object"}
 
     from processing.entity_deduplication import generate_entity_id
 

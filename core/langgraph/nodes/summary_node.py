@@ -182,6 +182,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         return {
             **state,
             "summaries_ref": summaries_ref,
+            "current_summary": summary,
             "current_node": "summarize",
         }
 

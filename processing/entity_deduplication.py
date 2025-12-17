@@ -89,7 +89,7 @@ async def check_entity_similarity(name: str, entity_type: str, category: str = "
             # Relaxed query: Remove strict category check, fetch top matches to filter in Python
             similarity_query = """
             MATCH (w)
-            WHERE (w:Location OR w:Item OR w:Event OR w:Organization OR w:Concept)
+            WHERE (w:Location OR w:Item OR w:Event)
               AND (w.name = $name OR
                    toLower(w.name) = toLower($name) OR
                    apoc.text.levenshteinSimilarity(toLower(w.name), toLower($name)) > $threshold)
@@ -287,13 +287,13 @@ async def check_relationship_pattern_similarity(entity1_name: str, entity2_name:
         else:
             query = """
             MATCH (e1)
-            WHERE (e1:Location OR e1:Item OR e1:Event OR e1:Organization OR e1:Concept)
+            WHERE (e1:Location OR e1:Item OR e1:Event)
               AND e1.name = $name1
             OPTIONAL MATCH (e1)-[r1]->(target1)
             WITH e1, collect(DISTINCT {type: type(r1), target: target1.name}) as rels1
 
             MATCH (e2)
-            WHERE (e2:Location OR e2:Item OR e2:Event OR e2:Organization OR e2:Concept)
+            WHERE (e2:Location OR e2:Item OR e2:Event)
               AND e2.name = $name2
             OPTIONAL MATCH (e2)-[r2]->(target2)
             WITH e1, rels1, e2, collect(DISTINCT {type: type(r2), target: target2.name}) as rels2
@@ -390,9 +390,9 @@ async def find_relationship_based_duplicates(
         else:
             query = """
             MATCH (e1)
-            WHERE (e1:Location OR e1:Item OR e1:Event OR e1:Organization OR e1:Concept)
+            WHERE (e1:Location OR e1:Item OR e1:Event)
             MATCH (e2)
-            WHERE (e2:Location OR e2:Item OR e2:Event OR e2:Organization OR e2:Concept)
+            WHERE (e2:Location OR e2:Item OR e2:Event)
               AND e1.name < e2.name  // Prevent duplicate pairs
               AND e1.name <> e2.name  // Not exactly the same
             WITH e1, e2,
@@ -475,10 +475,10 @@ async def merge_duplicate_entities(
             else:
                 query = """
                 MATCH (e1)
-                WHERE (e1:Location OR e1:Item OR e1:Event OR e1:Organization OR e1:Concept)
+                WHERE (e1:Location OR e1:Item OR e1:Event)
                   AND e1.name = $name1
                 MATCH (e2)
-                WHERE (e2:Location OR e2:Item OR e2:Event OR e2:Organization OR e2:Concept)
+                WHERE (e2:Location OR e2:Item OR e2:Event)
                   AND e2.name = $name2
                 RETURN e1.name as name1,
                        e2.name as name2,
@@ -506,41 +506,53 @@ async def merge_duplicate_entities(
             MATCH (canonical:Character {name: $canonical})
             MATCH (duplicate:Character {name: $duplicate})
 
-            // Transfer all relationships from duplicate to canonical
-            // Incoming relationships
-            OPTIONAL MATCH (other)-[r_in]->(duplicate)
-            WHERE other <> canonical
-            WITH canonical, duplicate, collect({other: other, rel: r_in, type: type(r_in), props: properties(r_in)}) as incoming
+            // Transfer all relationships from duplicate to canonical while preserving relationship types.
+            //
+            // Deduplication rule:
+            // - If the canonical node already has a relationship of the same type to the same other node,
+            //   keep the canonical relationship as-is and only add missing properties from the duplicate.
+            // - Otherwise, recreate the relationship with the original type and full properties.
+            CALL {
+                WITH canonical, duplicate
+                OPTIONAL MATCH (other)-[r_in]->(duplicate)
+                WHERE other <> canonical
+                WITH canonical, collect({other: other, rel_type: type(r_in), rel_props: properties(r_in)}) AS incoming
+                UNWIND incoming AS rel
+                WITH canonical, rel.other AS other, rel.rel_type AS rel_type, rel.rel_props AS rel_props
+                WHERE other IS NOT NULL AND rel_type IS NOT NULL
+                OPTIONAL MATCH (other)-[existing]->(canonical)
+                WHERE type(existing) = rel_type
+                CALL apoc.do.when(
+                    existing IS NULL,
+                    'CALL apoc.create.relationship($other, $rel_type, $rel_props, $canonical) YIELD rel RETURN rel',
+                    'SET existing = apoc.map.merge($rel_props, properties(existing)) RETURN existing AS rel',
+                    {other: other, rel_type: rel_type, rel_props: rel_props, canonical: canonical, existing: existing}
+                ) YIELD value
+                RETURN count(*) AS incoming_processed
+            }
 
-            // Outgoing relationships
-            OPTIONAL MATCH (duplicate)-[r_out]->(other)
-            WHERE other <> canonical
-            WITH canonical, duplicate, incoming, collect({other: other, rel: r_out, type: type(r_out), props: properties(r_out)}) as outgoing
+            CALL {
+                WITH canonical, duplicate
+                OPTIONAL MATCH (duplicate)-[r_out]->(other)
+                WHERE other <> canonical
+                WITH canonical, collect({other: other, rel_type: type(r_out), rel_props: properties(r_out)}) AS outgoing
+                UNWIND outgoing AS rel
+                WITH canonical, rel.other AS other, rel.rel_type AS rel_type, rel.rel_props AS rel_props
+                WHERE other IS NOT NULL AND rel_type IS NOT NULL
+                OPTIONAL MATCH (canonical)-[existing]->(other)
+                WHERE type(existing) = rel_type
+                CALL apoc.do.when(
+                    existing IS NULL,
+                    'CALL apoc.create.relationship($canonical, $rel_type, $rel_props, $other) YIELD rel RETURN rel',
+                    'SET existing = apoc.map.merge($rel_props, properties(existing)) RETURN existing AS rel',
+                    {other: other, rel_type: rel_type, rel_props: rel_props, canonical: canonical, existing: existing}
+                ) YIELD value
+                RETURN count(*) AS outgoing_processed
+            }
 
-            // Create new relationships
-            FOREACH (rel IN incoming |
-                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
-                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
-                        MERGE (o)-[new_rel:GENERIC_REL]->(canonical)
-                        SET new_rel = rel.props
-                    )
-                )
-            )
-
-            FOREACH (rel IN outgoing |
-                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
-                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
-                        MERGE (canonical)-[new_rel:GENERIC_REL]->(o)
-                        SET new_rel = rel.props
-                    )
-                )
-            )
-
-            // Merge properties (keep canonical's properties, add any missing from duplicate)
             SET canonical.deduplication_merged_from = coalesce(canonical.deduplication_merged_from, []) + [$duplicate],
                 canonical.last_updated = timestamp()
 
-            // Delete the duplicate and its relationships
             DETACH DELETE duplicate
 
             RETURN canonical.name as merged_name
@@ -548,47 +560,59 @@ async def merge_duplicate_entities(
         else:
             merge_query = """
             MATCH (canonical)
-            WHERE (canonical:Location OR canonical:Item OR canonical:Event OR canonical:Organization OR canonical:Concept)
+            WHERE (canonical:Location OR canonical:Item OR canonical:Event)
               AND canonical.name = $canonical
             MATCH (duplicate)
-            WHERE (duplicate:Location OR duplicate:Item OR duplicate:Event OR duplicate:Organization OR duplicate:Concept)
+            WHERE (duplicate:Location OR duplicate:Item OR duplicate:Event)
               AND duplicate.name = $duplicate
 
-            // Transfer all relationships from duplicate to canonical
-            // Incoming relationships
-            OPTIONAL MATCH (other)-[r_in]->(duplicate)
-            WHERE other <> canonical
-            WITH canonical, duplicate, collect({other: other, rel: r_in, type: type(r_in), props: properties(r_in)}) as incoming
+            // Transfer all relationships from duplicate to canonical while preserving relationship types.
+            //
+            // Deduplication rule:
+            // - If the canonical node already has a relationship of the same type to the same other node,
+            //   keep the canonical relationship as-is and only add missing properties from the duplicate.
+            // - Otherwise, recreate the relationship with the original type and full properties.
+            CALL {
+                WITH canonical, duplicate
+                OPTIONAL MATCH (other)-[r_in]->(duplicate)
+                WHERE other <> canonical
+                WITH canonical, collect({other: other, rel_type: type(r_in), rel_props: properties(r_in)}) AS incoming
+                UNWIND incoming AS rel
+                WITH canonical, rel.other AS other, rel.rel_type AS rel_type, rel.rel_props AS rel_props
+                WHERE other IS NOT NULL AND rel_type IS NOT NULL
+                OPTIONAL MATCH (other)-[existing]->(canonical)
+                WHERE type(existing) = rel_type
+                CALL apoc.do.when(
+                    existing IS NULL,
+                    'CALL apoc.create.relationship($other, $rel_type, $rel_props, $canonical) YIELD rel RETURN rel',
+                    'SET existing = apoc.map.merge($rel_props, properties(existing)) RETURN existing AS rel',
+                    {other: other, rel_type: rel_type, rel_props: rel_props, canonical: canonical, existing: existing}
+                ) YIELD value
+                RETURN count(*) AS incoming_processed
+            }
 
-            // Outgoing relationships
-            OPTIONAL MATCH (duplicate)-[r_out]->(other)
-            WHERE other <> canonical
-            WITH canonical, duplicate, incoming, collect({other: other, rel: r_out, type: type(r_out), props: properties(r_out)}) as outgoing
+            CALL {
+                WITH canonical, duplicate
+                OPTIONAL MATCH (duplicate)-[r_out]->(other)
+                WHERE other <> canonical
+                WITH canonical, collect({other: other, rel_type: type(r_out), rel_props: properties(r_out)}) AS outgoing
+                UNWIND outgoing AS rel
+                WITH canonical, rel.other AS other, rel.rel_type AS rel_type, rel.rel_props AS rel_props
+                WHERE other IS NOT NULL AND rel_type IS NOT NULL
+                OPTIONAL MATCH (canonical)-[existing]->(other)
+                WHERE type(existing) = rel_type
+                CALL apoc.do.when(
+                    existing IS NULL,
+                    'CALL apoc.create.relationship($canonical, $rel_type, $rel_props, $other) YIELD rel RETURN rel',
+                    'SET existing = apoc.map.merge($rel_props, properties(existing)) RETURN existing AS rel',
+                    {other: other, rel_type: rel_type, rel_props: rel_props, canonical: canonical, existing: existing}
+                ) YIELD value
+                RETURN count(*) AS outgoing_processed
+            }
 
-            // Create new relationships
-            FOREACH (rel IN incoming |
-                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
-                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
-                        MERGE (o)-[new_rel:GENERIC_REL]->(canonical)
-                        SET new_rel = rel.props
-                    )
-                )
-            )
-
-            FOREACH (rel IN outgoing |
-                FOREACH (o IN CASE WHEN rel.other IS NOT NULL THEN [rel.other] ELSE [] END |
-                    FOREACH (t IN CASE WHEN rel.type IS NOT NULL THEN [rel.type] ELSE [] END |
-                        MERGE (canonical)-[new_rel:GENERIC_REL]->(o)
-                        SET new_rel = rel.props
-                    )
-                )
-            )
-
-            // Merge properties
             SET canonical.deduplication_merged_from = coalesce(canonical.deduplication_merged_from, []) + [$duplicate],
                 canonical.last_updated = timestamp()
 
-            // Delete the duplicate and its relationships
             DETACH DELETE duplicate
 
             RETURN canonical.name as merged_name

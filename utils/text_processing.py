@@ -114,8 +114,8 @@ def classify_category_label(category: str) -> str:
         category: The category string to classify
 
     Returns:
-        Canonical Neo4j label: "Location", "Item", "Organization", "Event",
-        "Concept", "Trait", "Character", or "Chapter". Defaults to "Item" if ambiguous.
+        Canonical Neo4j label: "Location", "Item" "Event",
+        "Trait", "Character", or "Chapter". Defaults to "Item" if ambiguous.
 
     Examples:
         >>> classify_category_label("place")
@@ -200,26 +200,6 @@ def classify_category_label(category: str) -> str:
         return "Item"
 
     if c in [
-        "faction",
-        "guild",
-        "group",
-        "order",
-        "house",
-        "council",
-        "family",
-        "government",
-        "military",
-        "religious",
-        "commercial",
-        "criminal",
-        "academic",
-        "social",
-        "army",
-        "company",
-    ]:
-        return "Organization"
-
-    if c in [
         "event",
         "events",
         "happening",
@@ -252,38 +232,6 @@ def classify_category_label(category: str) -> str:
         "moments",
     ]:
         return "Event"
-
-    if c in [
-        "idea",
-        "philosophy",
-        "theme",
-        "law",
-        "tradition",
-        "system",
-        "magic",
-        "technology",
-        "religion",
-        "culture",
-        "history",
-        "lore",
-        "knowledge",
-        "secret",
-        "rumor",
-        "news",
-        "message",
-        "signal",
-        "record",
-        "education",
-        "economy",
-        "language",
-        "symbol",
-        "story",
-        "song",
-        "dream",
-        "memory",
-        "emotion",
-    ]:
-        return "Concept"
 
     if c in [
         "skill",
