@@ -24,7 +24,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
-from prompts.prompt_renderer import get_system_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
@@ -244,25 +244,13 @@ async def _extract_structured_character_data(name: str, description: str, model_
     Returns:
         Dictionary with extracted structured data (traits, status, motivations, etc.)
     """
-    # Simple prompt to extract structured info
-    prompt = f"""Extract structured character information from this character sheet.
-
-Character Name: {name}
-
-Character Sheet:
-{description}
-
-Extract the following in a structured format:
-1. **Traits** (list 3-7 **single-word** personality traits, e.g., "brave", "cynical", "impulsive")
-2. **Status** (their current state: Active, Deceased, Missing, etc.)
-3. **Motivations** (what drives them, in 1-2 sentences)
-4. **Background** (brief summary of history, 1-2 sentences)
-
-Format your response as:
-TRAITS: trait1, trait2, trait3
-STATUS: Active
-MOTIVATIONS: What the character wants and why
-BACKGROUND: Brief history"""
+    prompt = render_prompt(
+        "knowledge_agent/extract_character_structured_lines.j2",
+        {
+            "name": name,
+            "description": description,
+        },
+    )
 
     try:
         model = model_name or config.NARRATIVE_MODEL
@@ -348,28 +336,13 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
     if not outline_text:
         return []
 
-    # Use LLM to extract world items
-    prompt = f"""Extract key world-building elements from this story outline.
-
-Setting: {setting}
-
-Story Outline:
-{outline_text}
-
-Identify and list:
-1. Important LOCATIONS (cities, buildings, regions)
-2. Important OBJECTS (artifacts, items, technology)
-
-For each item, provide:
-- Name
-- Category (Location, Object, Concept)
-- Brief description (1 sentence)
-
-Format each as: [CATEGORY] Name: Description
-
-Example:
-[Location] Seattle Public Library Ruins: Abandoned library now home to rogue AI
-[Object] Memory Implant: Device that allows AI to implant false memories"""
+    prompt = render_prompt(
+        "knowledge_agent/extract_world_items_lines.j2",
+        {
+            "setting": setting,
+            "outline_text": outline_text,
+        },
+    )
 
     try:
         model = model_name or config.NARRATIVE_MODEL

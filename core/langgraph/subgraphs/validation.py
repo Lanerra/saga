@@ -40,6 +40,7 @@ from core.langgraph.nodes.validation_node import (
 )
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
+from prompts.prompt_renderer import render_prompt
 
 logger = structlog.get_logger(__name__)
 
@@ -233,61 +234,17 @@ Key Beats: {', '.join(chapter_outline.get('key_beats', ['N/A']))}
 Plot Point: {chapter_outline.get('plot_point', 'N/A')}
 """
 
-    prompt = f"""You are an expert literary critic and editor. Evaluate the following chapter from a {genre} novel with the theme "{theme}".
-
-## Chapter {chapter_number}
-
-{draft_text}
-
-## Previous Chapter Context
-{summary_context if summary_context else "This is the first chapter."}
-
-## Chapter Outline/Goals
-{outline_context if outline_context else "No specific outline provided."}
-
-## Evaluation Criteria
-
-Please evaluate this chapter on the following dimensions, scoring each from 0.0 to 1.0:
-
-1. **Coherence Score** (0.0-1.0): Does the narrative flow logically? Are there any confusing transitions or unclear passages?
-
-2. **Prose Quality Score** (0.0-1.0): Evaluate the writing craft including:
-   - Sentence variety and rhythm
-   - Dialogue naturalness and character voice
-   - Descriptive language and imagery
-   - Show vs tell balance
-
-3. **Plot Advancement Score** (0.0-1.0): Does this chapter meaningfully advance the story?
-   - Are key plot beats addressed?
-   - Does the protagonist face challenges or make decisions?
-   - Is there narrative momentum?
-
-4. **Pacing Score** (0.0-1.0): Is the pacing appropriate for this point in the story?
-   - Is there a good balance of action, dialogue, and reflection?
-   - Does tension build appropriately?
-   - Are there unnecessary slow sections?
-
-5. **Tone Consistency Score** (0.0-1.0): Does the tone match the {genre} genre?
-   - Is the tone consistent throughout the chapter?
-   - Does it align with the established story tone?
-
-## Response Format
-
-Return your evaluation as a JSON object with the following structure:
-```json
-{{
-    "coherence_score": 0.85,
-    "prose_quality_score": 0.75,
-    "plot_advancement_score": 0.80,
-    "pacing_score": 0.70,
-    "tone_consistency_score": 0.90,
-    "feedback": "Brief 2-3 sentence summary of the main strengths and areas for improvement."
-}}
-```
-
-Provide only the JSON object, no additional text."""
-
-    return prompt
+    return render_prompt(
+        "validation_agent/evaluate_quality.j2",
+        {
+            "draft_text": draft_text,
+            "chapter_number": chapter_number,
+            "genre": genre,
+            "theme": theme,
+            "summary_context": summary_context,
+            "outline_context": outline_context,
+        },
+    )
 
 
 def _parse_quality_scores(response: str) -> dict[str, Any]:

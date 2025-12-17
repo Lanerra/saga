@@ -833,15 +833,21 @@ async def _build_relationship_statements(
         entity_types=list(entity_type_map.items())[:10],  # Log first 10 for debugging
     )
 
-    # Helper to create subject/object dict with type info
-    def _make_entity_dict(name: str, original_name: str, explicit_type: str | None = None) -> dict[str, str]:
+    # Helper to create subject/object dict with type + optional stable id.
+    def _make_entity_dict(
+        *,
+        name: str,
+        original_name: str,
+        explicit_type: str | None = None,
+        stable_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Create entity dict with canonical `type` label for Cypher label interpolation.
 
-        CORE-011 contract: enforce canonical labels at persistence boundaries.
-        - If an explicit type is provided (from ExtractedRelationship.source_type/target_type),
-          it MUST be canonicalizable to one of VALID_NODE_LABELS.
-        - If type is missing, we fall back to canonical "Item".
+        Contract:
+        - `name` remains human-readable.
+        - `stable_id` (when present) is used for identity matching (MERGE by id).
+        - If type is missing, fall back to canonical "Item".
         """
         entity_type = explicit_type if explicit_type is not None else entity_type_map.get(original_name, None)
         entity_category = entity_category_map.get(original_name, "")
@@ -853,6 +859,7 @@ async def _build_relationship_statements(
 
         return {
             "name": name,
+            "id": stable_id,
             "type": neo4j_type,
             "category": entity_category,
         }
@@ -860,12 +867,35 @@ async def _build_relationship_statements(
     # Convert to triple format
     structured_triples: list[dict[str, Any]] = []
 
-    for rel in relationships:
-        source_name = char_mappings.get(rel.source_name, rel.source_name)
-        target_name = char_mappings.get(rel.target_name, rel.target_name)
+    logged_world_item_ids: set[str] = set()
 
-        if rel.target_name in world_mappings:
-            target_name = world_mappings[rel.target_name]
+    for rel in relationships:
+        is_source_world_item = rel.source_name in world_mappings
+        is_target_world_item = rel.target_name in world_mappings
+
+        source_stable_id = world_mappings.get(rel.source_name) if is_source_world_item else None
+        target_stable_id = world_mappings.get(rel.target_name) if is_target_world_item else None
+
+        if is_source_world_item and isinstance(source_stable_id, str) and source_stable_id not in logged_world_item_ids:
+            logger.debug(
+                "_build_relationship_statements: world item will be matched by id",
+                entity_name=rel.source_name,
+                entity_id=source_stable_id,
+                chapter=chapter,
+            )
+            logged_world_item_ids.add(source_stable_id)
+
+        if is_target_world_item and isinstance(target_stable_id, str) and target_stable_id not in logged_world_item_ids:
+            logger.debug(
+                "_build_relationship_statements: world item will be matched by id",
+                entity_name=rel.target_name,
+                entity_id=target_stable_id,
+                chapter=chapter,
+            )
+            logged_world_item_ids.add(target_stable_id)
+
+        source_name = rel.source_name if is_source_world_item else char_mappings.get(rel.source_name, rel.source_name)
+        target_name = rel.target_name if is_target_world_item else char_mappings.get(rel.target_name, rel.target_name)
 
         # Use explicit types from relationship if available (from parsing "Type:Name" format)
         # Otherwise _make_entity_dict will fall back to entity_type_map
@@ -873,9 +903,19 @@ async def _build_relationship_statements(
         target_type = getattr(rel, "target_type", None)
 
         triple = {
-            "subject": _make_entity_dict(source_name, rel.source_name, source_type),
+            "subject": _make_entity_dict(
+                name=source_name,
+                original_name=rel.source_name,
+                explicit_type=source_type,
+                stable_id=source_stable_id,
+            ),
             "predicate": rel.relationship_type,
-            "object_entity": _make_entity_dict(target_name, rel.target_name, target_type),
+            "object_entity": _make_entity_dict(
+                name=target_name,
+                original_name=rel.target_name,
+                explicit_type=target_type,
+                stable_id=target_stable_id,
+            ),
             "is_literal_object": False,
             "description": rel.description,
             "confidence": rel.confidence,
@@ -895,18 +935,16 @@ async def _build_relationship_statements(
             predicate = triple["predicate"]
             obj = triple["object_entity"]
 
-            # Explicit casting for mypy
             if not isinstance(subject, dict) or not isinstance(obj, dict):
                 continue
 
             subject_name = subject["name"]
             subject_type = subject["type"]
+            subject_id = subject.get("id")
+
             if not isinstance(predicate, str):
                 predicate = str(predicate)
 
-            # CORE-011 contract: canonicalize at persistence boundary.
-            # - Normalize (uppercase + underscores)
-            # - Then validate strict safety for Cypher interpolation (reject unsafe types)
             predicate_normalized = validate_relationship_type(predicate)
             predicate_clean = validate_relationship_type_for_cypher_interpolation(predicate_normalized)
 
@@ -919,28 +957,102 @@ async def _build_relationship_statements(
 
             object_name = obj["name"]
             object_type = obj["type"]
+            object_id = obj.get("id")
 
-            # Get Cypher labels for nodes (already imported at module scope).
             subject_labels = _get_cypher_labels(subject_type)
             object_labels = _get_cypher_labels(object_type)
 
-            # Build relationship Cypher with proper ON CREATE SET for provisional nodes
-            # NOTE: We must use backticks around the relationship type to handle special characters
-            query = f"""
-            MERGE (subj{subject_labels} {{name: $subject_name}})
+            subject_merge_by_id = bool(subject_id)
+            object_merge_by_id = bool(object_id)
+
+            subject_merge_clause = (
+                f"MERGE (subj{subject_labels} {{id: $subject_id}})"
+                if subject_merge_by_id
+                else f"MERGE (subj{subject_labels} {{name: $subject_name}})"
+            )
+            object_merge_clause = (
+                f"MERGE (obj{object_labels} {{id: $object_id}})"
+                if object_merge_by_id
+                else f"MERGE (obj{object_labels} {{name: $object_name}})"
+            )
+
+            subject_on_create_sets = (
+                """
+            ON CREATE SET
+                subj.id = $subject_id,
+                subj.name = $subject_name,
+                subj.is_provisional = true,
+                subj.created_chapter = $chapter,
+                subj.description = 'Entity created from relationship extraction. Details to be developed.',
+                subj.created_at = timestamp()
+                """
+                if subject_merge_by_id
+                else """
             ON CREATE SET
                 subj.id = randomUUID(),
                 subj.is_provisional = true,
                 subj.created_chapter = $chapter,
                 subj.description = 'Entity created from relationship extraction. Details to be developed.',
                 subj.created_at = timestamp()
-            MERGE (obj{object_labels} {{name: $object_name}})
+                """
+            )
+
+            object_on_create_sets = (
+                """
+            ON CREATE SET
+                obj.id = $object_id,
+                obj.name = $object_name,
+                obj.is_provisional = true,
+                obj.created_chapter = $chapter,
+                obj.description = 'Entity created from relationship extraction. Details to be developed.',
+                obj.created_at = timestamp()
+                """
+                if object_merge_by_id
+                else """
             ON CREATE SET
                 obj.id = randomUUID(),
                 obj.is_provisional = true,
                 obj.created_chapter = $chapter,
                 obj.description = 'Entity created from relationship extraction. Details to be developed.',
                 obj.created_at = timestamp()
+                """
+            )
+
+            subject_on_match_sets = (
+                """
+            ON MATCH SET
+                subj.name =
+                    CASE
+                        WHEN subj.name IS NULL OR toString(subj.name) = '' OR toLower(toString(subj.name)) STARTS WITH 'entity_'
+                        THEN $subject_name
+                        ELSE subj.name
+                    END
+                """
+                if subject_merge_by_id
+                else ""
+            )
+
+            object_on_match_sets = (
+                """
+            ON MATCH SET
+                obj.name =
+                    CASE
+                        WHEN obj.name IS NULL OR toString(obj.name) = '' OR toLower(toString(obj.name)) STARTS WITH 'entity_'
+                        THEN $object_name
+                        ELSE obj.name
+                    END
+                """
+                if object_merge_by_id
+                else ""
+            )
+
+            query = f"""
+            {subject_merge_clause}
+            {subject_on_create_sets}
+            {subject_on_match_sets}
+            {object_merge_clause}
+            {object_on_create_sets}
+            {object_on_match_sets}
             MERGE (subj)-[r:`{predicate_clean}`]->(obj)
             SET r.chapter_added = $chapter,
                 r.is_provisional = $is_provisional,
@@ -948,7 +1060,6 @@ async def _build_relationship_statements(
                 r.description = $description,
                 r.last_updated = timestamp()
 
-            // Link newly created provisional nodes to their chapter
             WITH subj, obj
             OPTIONAL MATCH (c:Chapter {{number: $chapter}})
             FOREACH (_ IN CASE WHEN subj.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
@@ -961,7 +1072,9 @@ async def _build_relationship_statements(
 
             params = {
                 "subject_name": subject_name,
+                "subject_id": subject_id,
                 "object_name": object_name,
+                "object_id": object_id,
                 "chapter": chapter,
                 "is_provisional": is_from_flawed_draft,
                 "confidence": triple.get("confidence", 1.0),

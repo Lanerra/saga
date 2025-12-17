@@ -30,7 +30,7 @@ from prompts.prompt_data_getters import (
     get_filtered_character_profiles_for_prompt_plain_text,
     get_reliable_kg_facts_for_drafting_prompt,
 )
-from prompts.prompt_renderer import get_system_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 
@@ -38,7 +38,7 @@ logger = structlog.get_logger(__name__)
 # These can be tuned based on model context window
 DEFAULT_CONTEXT_BUDGET_TOKENS = config.settings.MAX_CONTEXT_TOKENS // 2  # Reserve half for generation
 PREVIOUS_SCENES_TOKEN_BUDGET = 2000  # Max tokens for previous scene context
-SUMMARY_MAX_TOKENS = 150  # Target tokens per scene summary
+SUMMARY_MAX_TOKENS = 500  # Target tokens per scene summary
 CHARACTER_PROFILES_TOKEN_BUDGET = 3000  # Max tokens for character profiles
 KG_FACTS_TOKEN_BUDGET = 1500  # Max tokens for KG facts
 SEMANTIC_CONTEXT_TOKEN_BUDGET = 2000  # Max tokens for semantic search results
@@ -477,18 +477,13 @@ async def _summarize_scene_text(
         Summary text
     """
     try:
-        # Build summarization prompt
-        prompt = f"""Summarize the following scene in 2-3 sentences, focusing on:
-- Key plot events and actions
-- Character decisions and emotional beats
-- Important information for narrative continuity
-
-Scene Title: {scene_title}
-
-Scene Text:
-{scene_text}  # Limit input to avoid overwhelming context
-
-Provide a concise summary (max 100 words):"""
+        prompt = render_prompt(
+            "knowledge_agent/summarize_scene_for_continuity.j2",
+            {
+                "scene_title": scene_title,
+                "scene_text": scene_text,
+            },
+        )
 
         summary_text, _ = await llm_service.async_call_llm(
             model_name=extraction_model,

@@ -1,0 +1,63 @@
+You are an expert literary critic and editor. Evaluate the following chapter from a {{ genre }} novel with the theme "{{ theme }}".
+
+## Chapter {{ chapter_number }}
+
+{{ draft_text }}
+
+## Previous Chapter Context
+{% if summary_context %}{{ summary_context }}{% else %}This is the first chapter.{% endif %}
+
+## Chapter Outline/Goals
+{% if outline_context %}{{ outline_context }}{% else %}No specific outline provided.{% endif %}
+
+## Evaluation Criteria
+
+Please evaluate this chapter on the following dimensions, scoring each from 0.0 to 1.0:
+
+1. **Coherence Score** (0.0-1.0): Does the narrative flow logically? Are there any confusing transitions or unclear passages?
+
+2. **Prose Quality Score** (0.0-1.0): Evaluate the writing craft including:
+   - Sentence variety and rhythm
+   - Dialogue naturalness and character voice
+   - Descriptive language and imagery
+   - Show vs tell balance
+
+3. **Plot Advancement Score** (0.0-1.0): Does this chapter meaningfully advance the story?
+   - Are key plot beats addressed?
+   - Does the protagonist face challenges or make decisions?
+   - Is there narrative momentum?
+
+4. **Pacing Score** (0.0-1.0): Is the pacing appropriate for this point in the story?
+   - Is there a good balance of action, dialogue, and reflection?
+   - Does tension build appropriately?
+   - Are there unnecessary slow sections?
+
+5. **Tone Consistency Score** (0.0-1.0): Does the tone match the {{ genre }} genre?
+   - Is the tone consistent throughout the chapter?
+   - Does it align with the established story tone?
+
+## Output contract
+
+Return a single JSON object with EXACTLY these top-level keys (no more, no less):
+- "coherence_score"
+- "prose_quality_score"
+- "plot_advancement_score"
+- "pacing_score"
+- "tone_consistency_score"
+- "feedback"
+
+{% raw %}
+Example shape:
+```json
+{
+  "coherence_score": 0.85,
+  "prose_quality_score": 0.75,
+  "plot_advancement_score": 0.80,
+  "pacing_score": 0.70,
+  "tone_consistency_score": 0.90,
+  "feedback": "Brief 2-3 sentence summary of the main strengths and areas for improvement."
+}
+```
+{% endraw %}
+
+Return ONLY the JSON object. No additional text.

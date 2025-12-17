@@ -16,6 +16,7 @@ import structlog
 
 import config
 from core.llm_interface_refactored import llm_service
+from prompts.prompt_renderer import render_prompt
 from utils.similarity import numpy_cosine_similarity
 
 logger = structlog.get_logger(__name__)
@@ -234,27 +235,18 @@ class RelationshipNormalizationService:
         # Get examples of existing usage
         examples = existing_usage.get("example_descriptions", [])[:3]
         examples_str = "\n".join(f"  - {ex}" for ex in examples)
+        existing_usage_count = existing_usage.get("usage_count", 0)
 
-        prompt = f"""You are helping maintain consistent relationship types in a narrative.
-
-NEW RELATIONSHIP:
-Type: "{new_type}"
-Description: "{new_description}"
-
-EXISTING RELATIONSHIP IN VOCABULARY:
-Type: "{existing_type}"
-Used {existing_usage.get('usage_count', 0)} times
-Example usage:
-{examples_str}
-
-Question: Should "{new_type}" be normalized to "{existing_type}", or are they semantically distinct?
-
-Rules:
-- Normalize if they express the SAME core relationship (e.g., "WORKS_WITH" and "COLLABORATES_WITH")
-- Keep distinct if they have different semantic nuances (e.g., "MENTORS" vs "TEACHES")
-- Consider context from the descriptions
-
-Answer with EXACTLY one word: NORMALIZE or DISTINCT"""
+        prompt = render_prompt(
+            "knowledge_agent/relationship_disambiguate_normalize_or_distinct.j2",
+            {
+                "new_type": new_type,
+                "new_description": new_description,
+                "existing_type": existing_type,
+                "existing_usage_count": existing_usage_count,
+                "examples_str": examples_str,
+            },
+        )
 
         try:
             response, _ = await llm_service.async_call_llm(

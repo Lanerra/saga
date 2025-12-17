@@ -1,0 +1,25 @@
+Extract key world-building elements from this story outline.
+
+Setting: {{ setting }}
+
+Story Outline:
+{{ outline_text }}
+
+Identify and list:
+1. Important LOCATIONS (cities, buildings, regions)
+2. Important OBJECTS (artifacts, items, technology)
+
+For each item, provide:
+- Name
+- Category (Location, Object, Concept)
+- Brief description (1 sentence)
+
+Output contract (bespoke parser):
+- Output MUST be plain text.
+- Output MUST contain one item per line, and each line MUST match:
+[CATEGORY] Name: Description
+- CATEGORY MUST be one of: Location, Object, Concept
+
+Example:
+[Location] Seattle Public Library Ruins: Abandoned library now home to rogue AI
+[Object] Memory Implant: Device that allows AI to implant false memories

@@ -320,7 +320,7 @@ class GraphHealingService:
 
             kg_candidates = await find_candidate_duplicate_entities(
                 similarity_threshold=self.MERGE_SIMILARITY_THRESHOLD,
-                limit=50,
+                limit=75,
             )
 
             # Convert to our format and map id fields to element IDs

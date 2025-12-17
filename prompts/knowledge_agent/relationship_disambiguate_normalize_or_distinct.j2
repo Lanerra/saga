@@ -1,0 +1,21 @@
+You are helping maintain consistent relationship types in a narrative.
+
+NEW RELATIONSHIP:
+Type: "{{ new_type }}"
+Description: "{{ new_description }}"
+
+EXISTING RELATIONSHIP IN VOCABULARY:
+Type: "{{ existing_type }}"
+Used {{ existing_usage_count }} times
+Example usage:
+{{ examples_str }}
+
+Question: Should "{{ new_type }}" be normalized to "{{ existing_type }}", or are they semantically distinct?
+
+Rules:
+- Normalize if they express the SAME core relationship (e.g., "WORKS_WITH" and "COLLABORATES_WITH")
+- Keep distinct if they have different semantic nuances (e.g., "MENTORS" vs "TEACHES")
+- Consider context from the descriptions
+
+Output contract:
+- Answer with EXACTLY one word: NORMALIZE or DISTINCT
