@@ -521,20 +521,59 @@ class Neo4jManagerSingleton:
             )
             await self._execute_schema_individually(schema_only_queries)
 
-        # Then, create the vector index separately with defensive handling.
-        vector_index_query = (
-            f"CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS "
-            f"FOR (c:Chapter) ON (c.embedding_vector) "
-            f"OPTIONS {{indexConfig: {{"
-            f"`vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS}, "
-            f"`vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'"
-            f"}}}}"
-        )
-        try:
-            await self.execute_write_query(vector_index_query)
-            self.logger.info("Vector index created successfully.")
-        except Exception as e:
-            self.logger.warning("Vector index creation failed (may be unsupported by current Neo4j version). " f"Error: {e}")
+        # Then, create vector indexes separately with defensive handling.
+        #
+        # Rationale:
+        # - Neo4j vector index creation can be unsupported depending on version/config.
+        # - Treat index creation as best-effort: log failures and continue so SAGA remains usable.
+        vector_index_specs: list[tuple[str, str, str]] = [
+            (config.NEO4J_VECTOR_INDEX_NAME, "Chapter", "embedding_vector"),
+            (
+                config.NEO4J_CHARACTER_ENTITY_VECTOR_INDEX_NAME,
+                "Character",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+            (
+                config.NEO4J_LOCATION_ENTITY_VECTOR_INDEX_NAME,
+                "Location",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+            (
+                config.NEO4J_ITEM_ENTITY_VECTOR_INDEX_NAME,
+                "Item",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+            (
+                config.NEO4J_EVENT_ENTITY_VECTOR_INDEX_NAME,
+                "Event",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+        ]
+        for index_name, node_label, vector_property in vector_index_specs:
+            vector_index_query = (
+                f"CREATE VECTOR INDEX {index_name} IF NOT EXISTS "
+                f"FOR (n:{node_label}) ON (n.{vector_property}) "
+                f"OPTIONS {{indexConfig: {{"
+                f"`vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS}, "
+                f"`vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'"
+                f"}}}}"
+            )
+            try:
+                await self.execute_write_query(vector_index_query)
+                self.logger.info(
+                    "Vector index created successfully.",
+                    index_name=index_name,
+                    node_label=node_label,
+                    vector_property=vector_property,
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "Vector index creation failed (may be unsupported by current Neo4j version).",
+                    index_name=index_name,
+                    node_label=node_label,
+                    vector_property=vector_property,
+                    error=str(e),
+                )
 
     async def _create_type_placeholders(self) -> None:
         """Create relationship type and node label placeholders in separate data transactions."""

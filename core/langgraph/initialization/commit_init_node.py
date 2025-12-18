@@ -90,7 +90,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
 
         # Step 3: Commit to Neo4j using direct batch approach
         if character_profiles or world_items:
-            statements = _build_entity_persistence_statements(
+            statements = await _build_entity_persistence_statements(
                 character_profiles,
                 world_items,
                 chapter_number=0,  # Initialization entities exist before any chapters
@@ -448,7 +448,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     return items
 
 
-def _build_entity_persistence_statements(
+async def _build_entity_persistence_statements(
     characters: list[CharacterProfile],
     world_items: list[WorldItem],
     chapter_number: int,
@@ -479,10 +479,22 @@ def _build_entity_persistence_statements(
         cypher, params = cypher_builder.world_item_upsert_cypher(item, chapter_number)
         statements.append((cypher, params))
 
+    embedding_statements_count = 0
+    if config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE:
+        from core.entity_embedding_service import build_entity_embedding_update_statements
+
+        embedding_statements = await build_entity_embedding_update_statements(
+            characters=characters,
+            world_items=world_items,
+        )
+        embedding_statements_count = len(embedding_statements)
+        statements.extend(embedding_statements)
+
     logger.info(
         "_build_entity_persistence_statements: built statements",
         characters=len(characters),
         world_items=len(world_items),
+        embedding_statements=embedding_statements_count,
         total_statements=len(statements),
     )
 

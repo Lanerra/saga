@@ -380,7 +380,11 @@ async def _deduplicate_character(name: str, description: str, chapter: int) -> s
         return name
 
     # Check for similar existing character
-    similar_entity = await check_entity_similarity(name, "character")
+    similar_entity = await check_entity_similarity(
+        name,
+        "character",
+        description=description,
+    )
 
     if similar_entity:
         # Determine if we should merge based on similarity
@@ -430,7 +434,12 @@ async def _deduplicate_world_item(name: str, category: str, description: str, ch
         return generate_entity_id(name, category, chapter)
 
     # Check for similar existing world item
-    similar_entity = await check_entity_similarity(name, "world_element", category)
+    similar_entity = await check_entity_similarity(
+        name,
+        "world_element",
+        category,
+        description=description,
+    )
 
     if similar_entity:
         # Determine if we should merge based on similarity
@@ -775,10 +784,22 @@ async def _build_entity_persistence_statements(
         cypher, params = cypher_builder.world_item_upsert_cypher(item, chapter_number)
         statements.append((cypher, params))
 
+    embedding_statements_count = 0
+    if config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE:
+        from core.entity_embedding_service import build_entity_embedding_update_statements
+
+        embedding_statements = await build_entity_embedding_update_statements(
+            characters=characters,
+            world_items=world_items,
+        )
+        embedding_statements_count = len(embedding_statements)
+        statements.extend(embedding_statements)
+
     logger.info(
         "_build_entity_persistence_statements: built statements",
         characters=len(characters),
         world_items=len(world_items),
+        embedding_statements=embedding_statements_count,
         total_statements=len(statements),
     )
 

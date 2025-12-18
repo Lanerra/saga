@@ -164,10 +164,36 @@ class SagaSettings(BaseSettings):
     NEO4J_PASSWORD: str = "saga_password"
     NEO4J_DATABASE: str | None = "neo4j"
 
-    # Neo4j Vector Index Configuration
+    # Neo4j Vector Index Configuration (Chapters)
     NEO4J_VECTOR_INDEX_NAME: str = "chapterEmbeddings"
     NEO4J_VECTOR_DIMENSIONS: int = 1024
     NEO4J_VECTOR_SIMILARITY_FUNCTION: str = "cosine"
+
+    # Neo4j Vector Index Configuration (Entities)
+    #
+    # Entity embeddings are stored on domain entities (Character/Location/Item/Event)
+    # under a separate property to avoid confusion with Chapter embeddings.
+    ENTITY_EMBEDDING_VECTOR_PROPERTY: str = "entity_embedding_vector"
+    ENTITY_EMBEDDING_TEXT_HASH_PROPERTY: str = "entity_embedding_text_hash"
+    ENTITY_EMBEDDING_MODEL_PROPERTY: str = "entity_embedding_model"
+
+    NEO4J_CHARACTER_ENTITY_VECTOR_INDEX_NAME: str = "characterEntityEmbeddings"
+    NEO4J_LOCATION_ENTITY_VECTOR_INDEX_NAME: str = "locationEntityEmbeddings"
+    NEO4J_ITEM_ENTITY_VECTOR_INDEX_NAME: str = "itemEntityEmbeddings"
+    NEO4J_EVENT_ENTITY_VECTOR_INDEX_NAME: str = "eventEntityEmbeddings"
+
+    # Entity embeddings feature flags
+    #
+    # Default off to keep unit tests deterministic and to avoid introducing new
+    # embedding-service dependencies into unrelated workflows. Enable explicitly
+    # when you want entity-level semantic deduplication and merge scoring.
+    ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = False
+    ENABLE_ENTITY_EMBEDDING_DEDUPLICATION: bool = False
+    ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING: bool = False
+
+    # Entity embedding similarity configuration
+    ENTITY_EMBEDDING_DEDUPLICATION_TOP_K: int = 15
+    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.88
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"

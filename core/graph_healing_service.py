@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 import structlog
 
+import config
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
 from prompts.grammar_loader import load_grammar
@@ -323,6 +324,25 @@ class GraphHealingService:
                 limit=75,
             )
 
+            # Optional: enrich fuzzy candidates with embedding similarity using stored entity embeddings.
+            embedding_by_id: dict[str, Any] = {}
+            if config.ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING and kg_candidates:
+                candidate_ids = sorted({c["id1"] for c in kg_candidates} | {c["id2"] for c in kg_candidates})
+                embedding_query = f"""
+                    MATCH (n)
+                    WHERE n.id IN $ids
+                    RETURN
+                        n.id AS id,
+                        labels(n) AS labels,
+                        n.`{config.ENTITY_EMBEDDING_VECTOR_PROPERTY}` AS embedding_vector
+                """
+                embedding_rows = await neo4j_manager.execute_read_query(embedding_query, {"ids": candidate_ids})
+                for row in embedding_rows:
+                    node_id = row.get("id")
+                    embedding_vector = row.get("embedding_vector")
+                    if node_id and embedding_vector:
+                        embedding_by_id[str(node_id)] = embedding_vector
+
             # Convert to our format and map id fields to element IDs
             candidates = []
             for c in kg_candidates:
@@ -339,6 +359,20 @@ class GraphHealingService:
                 if not primary_results or not duplicate_results:
                     continue
 
+                name_similarity = float(c["similarity"])
+
+                embedding_similarity = 0.0
+                if config.ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING:
+                    emb1 = embedding_by_id.get(str(c["id1"]))
+                    emb2 = embedding_by_id.get(str(c["id2"]))
+                    if emb1 is not None and emb2 is not None:
+                        embedding_similarity = self._cosine_similarity(np.array(emb1, dtype=np.float32), np.array(emb2, dtype=np.float32))
+
+                if config.ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING and embedding_similarity > 0.0:
+                    combined_similarity = (0.4 * name_similarity) + (0.6 * embedding_similarity)
+                else:
+                    combined_similarity = name_similarity
+
                 candidates.append(
                     {
                         "primary_id": primary_results[0]["element_id"],
@@ -346,16 +380,19 @@ class GraphHealingService:
                         "duplicate_id": duplicate_results[0]["element_id"],
                         "duplicate_name": c["name2"],
                         "type": c["labels1"][0] if c.get("labels1") else "Unknown",
-                        "similarity": c["similarity"],
-                        "name_similarity": c["similarity"],  # kg_queries uses name similarity
-                        "embedding_similarity": 0.0,  # Not computed in kg_queries version
+                        "similarity": combined_similarity,
+                        "name_similarity": name_similarity,  # kg_queries uses name similarity
+                        "embedding_similarity": embedding_similarity,
                         "is_alias": self._is_likely_alias(c["name1"], c["name2"]),
                     }
                 )
 
+            candidates.sort(key=lambda x: -x["similarity"])
+
             logger.info(
                 "Found merge candidates via advanced fuzzy matching",
                 count=len(candidates),
+                embedding_scored=config.ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING,
             )
 
             return candidates

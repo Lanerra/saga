@@ -37,13 +37,19 @@ def generate_entity_id(name: str, category: str, chapter: int) -> str:
     return f"entity_{content_hash}"
 
 
-async def check_entity_similarity(name: str, entity_type: str, category: str = "") -> dict[str, Any] | None:
+async def check_entity_similarity(
+    name: str,
+    entity_type: str,
+    category: str = "",
+    description: str = "",
+) -> dict[str, Any] | None:
     """Check for existing entities with same semantic content.
 
     Args:
         name: Name of the entity to check
         entity_type: Either "character" or "world_element"
         category: For world elements, the category
+        description: Optional description/context for semantic comparison
 
     Returns:
         Dict with existing entity info if similar entity found, None otherwise
@@ -51,23 +57,22 @@ async def check_entity_similarity(name: str, entity_type: str, category: str = "
     try:
         import config
 
-        threshold = config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD
+        if entity_type not in ["character", "world_element"]:
+            raise ValueError("entity_type must be 'character' or 'world_element'")
 
+        name_threshold = config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD
+
+        # Keep the existing first-name matching behavior for Characters.
         if entity_type == "character":
-            # Enhanced query with first name matching
-            # Extracts first name from existing character names and checks for match
             similarity_query = """
             MATCH (c:Character)
             WITH c,
-                 // Extract first name (everything before first space, or full name if no space)
                  CASE
                    WHEN c.name CONTAINS ' '
                    THEN split(c.name, ' ')[0]
                    ELSE c.name
                  END as first_name
             WITH c, first_name,
-                 // Check if query is exactly the first name (case-insensitive)
-                 // Give first name matches high similarity (0.95) to ensure deduplication
                  CASE
                    WHEN toLower(first_name) = toLower($name)
                    THEN 0.95
@@ -77,16 +82,131 @@ async def check_entity_similarity(name: str, entity_type: str, category: str = "
                   toLower(c.name) = toLower($name) OR
                   toLower(first_name) = toLower($name) OR
                   computed_similarity > $threshold
-            RETURN c.name as existing_name,
+            RETURN c.id as existing_id,
+                   c.name as existing_name,
                    labels(c) as existing_labels,
                    c.description as existing_description,
                    computed_similarity as similarity
             ORDER BY similarity DESC
             LIMIT 1
             """
-            params = {"name": name, "threshold": threshold}
-        else:
-            # Relaxed query: Remove strict category check, fetch top matches to filter in Python
+            params = {"name": name, "threshold": name_threshold}
+            results = await neo4j_manager.execute_read_query(similarity_query, params)
+            if results:
+                similar_entity = results[0]
+                similarity_score = similar_entity.get("similarity", 0.0)
+                is_first_name_match = similarity_score == 0.95 and isinstance(similar_entity.get("existing_name"), str) and similar_entity["existing_name"].split()[0].lower() == name.lower()
+                match_type = "first name match" if is_first_name_match else "similarity match"
+                logger.info(f"Entity similarity check for '{name}' (type: {entity_type}): " f"Found {match_type} with '{similar_entity['existing_name']}' " f"(similarity: {similarity_score:.2f})")
+                return {
+                    "existing_id": similar_entity.get("existing_id"),
+                    "existing_name": similar_entity["existing_name"],
+                    "existing_category": None,
+                    "existing_labels": similar_entity.get("existing_labels", []),
+                    "existing_description": similar_entity.get("existing_description", ""),
+                    "similarity": similarity_score,
+                    "similarity_source": "name",
+                }
+
+        # Semantic (embedding) similarity path, gated behind config so unit tests remain deterministic.
+        if config.ENABLE_ENTITY_EMBEDDING_DEDUPLICATION:
+            from core.entity_embedding_service import compute_entity_embedding_text
+            from core.llm_interface_refactored import llm_service
+
+            if entity_type == "character":
+                index_name = config.NEO4J_CHARACTER_ENTITY_VECTOR_INDEX_NAME
+                embedding_text = compute_entity_embedding_text(
+                    name=name,
+                    category="",
+                    description=description,
+                )
+                cypher_query = """
+                CALL db.index.vector.queryNodes($index_name, $top_k, $query_vector)
+                YIELD node, score
+                RETURN
+                    node.id AS existing_id,
+                    node.name AS existing_name,
+                    node.category AS existing_category,
+                    labels(node) AS existing_labels,
+                    node.description AS existing_description,
+                    score AS similarity
+                ORDER BY similarity DESC
+                LIMIT 5
+                """
+                params = {
+                    "index_name": index_name,
+                    "top_k": int(config.ENTITY_EMBEDDING_DEDUPLICATION_TOP_K),
+                }
+            else:
+                target_label = classify_category_label(category)
+                if target_label not in ["Location", "Item", "Event"]:
+                    target_label = "Item"
+
+                if target_label == "Location":
+                    index_name = config.NEO4J_LOCATION_ENTITY_VECTOR_INDEX_NAME
+                elif target_label == "Event":
+                    index_name = config.NEO4J_EVENT_ENTITY_VECTOR_INDEX_NAME
+                else:
+                    index_name = config.NEO4J_ITEM_ENTITY_VECTOR_INDEX_NAME
+
+                embedding_text = compute_entity_embedding_text(
+                    name=name,
+                    category=category,
+                    description=description,
+                )
+                cypher_query = """
+                CALL db.index.vector.queryNodes($index_name, $top_k, $query_vector)
+                YIELD node, score
+                RETURN
+                    node.id AS existing_id,
+                    node.name AS existing_name,
+                    node.category AS existing_category,
+                    labels(node) AS existing_labels,
+                    node.description AS existing_description,
+                    score AS similarity
+                ORDER BY similarity DESC
+                LIMIT 5
+                """
+                params = {
+                    "index_name": index_name,
+                    "top_k": int(config.ENTITY_EMBEDDING_DEDUPLICATION_TOP_K),
+                }
+
+            query_embedding = await llm_service.async_get_embedding(embedding_text)
+            if query_embedding is not None:
+                query_vector = neo4j_manager.embedding_to_list(query_embedding)
+                if query_vector:
+                    vector_results = await neo4j_manager.execute_read_query(
+                        cypher_query,
+                        {
+                            **params,
+                            "query_vector": query_vector,
+                        },
+                    )
+
+                    if vector_results:
+                        best = vector_results[0]
+                        similarity_score = float(best.get("similarity", 0.0) or 0.0)
+                        if similarity_score >= float(config.ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD):
+                            logger.info(
+                                "Entity similarity check via embeddings",
+                                name=name,
+                                entity_type=entity_type,
+                                similarity=similarity_score,
+                                existing_name=best.get("existing_name"),
+                            )
+                            return {
+                                "existing_id": best.get("existing_id"),
+                                "existing_name": best.get("existing_name"),
+                                "existing_category": best.get("existing_category"),
+                                "existing_labels": best.get("existing_labels", []),
+                                "existing_description": best.get("existing_description", ""),
+                                "similarity": similarity_score,
+                                "similarity_source": "embedding",
+                            }
+
+        # Fallback to legacy name similarity behavior for world elements (and for characters when no match found).
+        if entity_type != "character":
             similarity_query = """
             MATCH (w)
             WHERE (w:Location OR w:Item OR w:Event)
@@ -102,56 +222,38 @@ async def check_entity_similarity(name: str, entity_type: str, category: str = "
             ORDER BY similarity DESC
             LIMIT 5
             """
-            params = {"name": name, "threshold": threshold}
+            params = {"name": name, "threshold": name_threshold}
 
-        results = await neo4j_manager.execute_read_query(similarity_query, params)
+            results = await neo4j_manager.execute_read_query(similarity_query, params)
+            if not results:
+                return None
 
-        if not results:
-            return None
+            target_label = classify_category_label(category)
 
-        # Filter results for compatibility
-        target_label = classify_category_label(category) if entity_type != "character" else "Character"
-
-        for similar_entity in results:
-            # Check compatibility for world elements
-            if entity_type != "character":
+            for similar_entity in results:
                 existing_cat = similar_entity.get("existing_category", "")
                 existing_labels = similar_entity.get("existing_labels", [])
-
                 existing_label = classify_category_label(existing_cat)
-
-                # Check if labels match OR if existing node has the target label
-                # This handles cases where 'Region' maps to 'Location'
                 is_compatible = (existing_label == target_label) or (target_label in existing_labels)
-
                 if not is_compatible:
-                    logger.debug(f"Skipping incompatible match: '{similar_entity['existing_name']}' " f"(Category: {existing_cat}, Label: {existing_label}) != Target: {target_label}")
                     continue
 
-            similarity_score = similar_entity.get("similarity", 0.0)
-
-            # Check if this is a first name match (similarity = 0.95)
-            is_first_name_match = entity_type == "character" and similarity_score == 0.95 and similar_entity["existing_name"].split()[0].lower() == name.lower()
-
-            # Log the similarity check
-            match_type = "first name match" if is_first_name_match else "similarity match"
-            logger.info(f"Entity similarity check for '{name}' (type: {entity_type}): " f"Found {match_type} with '{similar_entity['existing_name']}' " f"(similarity: {similarity_score:.2f})")
-
-            # Return the similar entity info
-            return {
-                "existing_id": similar_entity.get("existing_id"),
-                "existing_name": similar_entity["existing_name"],
-                "existing_category": similar_entity.get("existing_category"),
-                "existing_labels": similar_entity["existing_labels"],
-                "existing_description": similar_entity.get("existing_description", ""),
-                "similarity": similarity_score,
-            }
+                similarity_score = similar_entity.get("similarity", 0.0)
+                logger.info(f"Entity similarity check for '{name}' (type: {entity_type}): " f"Found similarity match with '{similar_entity['existing_name']}' " f"(similarity: {similarity_score:.2f})")
+                return {
+                    "existing_id": similar_entity.get("existing_id"),
+                    "existing_name": similar_entity["existing_name"],
+                    "existing_category": similar_entity.get("existing_category"),
+                    "existing_labels": similar_entity.get("existing_labels", []),
+                    "existing_description": similar_entity.get("existing_description", ""),
+                    "similarity": similarity_score,
+                    "similarity_source": "name",
+                }
 
         return None
 
     except Exception as e:
         logger.error(f"Error checking entity similarity for '{name}': {e}", exc_info=True)
-        # On error, don't block creation - return None to allow normal processing
         return None
 
 

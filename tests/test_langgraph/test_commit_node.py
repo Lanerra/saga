@@ -1073,10 +1073,10 @@ class TestBuildRelationshipStatements:
 
     async def test_canonicalizes_subtype_labels_for_persistence(self):
         """
-        CORE-011: Subtype labels (e.g., "Guild") must be canonicalized at persistence boundary.
+        CORE-011: Subtype labels (e.g., "Guild") must not cross persistence boundaries.
 
-        This test verifies the commit-node relationship statement builder canonicalizes
-        the object node label to a canonical schema label (Guild -> Organization).
+        With the current canonical label set, "Guild" is not a valid node label and must be
+        rejected at the persistence boundary.
         """
         relationships = [
             ExtractedRelationship(
@@ -1102,26 +1102,23 @@ class TestBuildRelationshipStatements:
         world_entities = [
             ExtractedEntity(
                 name="The Guild",
-                type="Guild",  # subtype/alias, must canonicalize
+                type="Guild",
                 description="A guild",
                 first_appearance_chapter=1,
                 attributes={"category": "Guild"},
             )
         ]
 
-        statements = await _build_relationship_statements(
-            relationships,
-            char_entities,
-            world_entities,
-            {"Alice": "Alice"},
-            {"The Guild": "The Guild"},
-            1,
-            False,
-        )
-
-        assert len(statements) == 1
-        query, _params = statements[0]
-        assert "(obj:Organization" in query  # canonical label, not ":Guild"
+        with pytest.raises(ValueError, match=r"Invalid entity type 'Guild' at persistence boundary"):
+            await _build_relationship_statements(
+                relationships,
+                char_entities,
+                world_entities,
+                {"Alice": "Alice"},
+                {"The Guild": "The Guild"},
+                1,
+                False,
+            )
 
     async def test_commit_rejects_unknown_entity_label_at_persistence_boundary(self, tmp_path):
         """

@@ -166,10 +166,7 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
             cleaned_last_codepoint=cleaned_last_codepoint,
         )
 
-        raise ValueError(
-            "Character sheet JSON parsing failed "
-            f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})"
-        ) from e
+        raise ValueError("Character sheet JSON parsing failed " f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})") from e
 
     return parsed
 
@@ -407,11 +404,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
             if protagonist_name and protagonist_name not in validated_names:
                 raise ValueError("Character list must include the protagonist name exactly")
 
-            placeholder_names = [
-                name
-                for name in validated_names
-                if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)
-            ]
+            placeholder_names = [name for name in validated_names if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)]
             if placeholder_names:
                 logger.error(
                     "_generate_character_list: placeholder names detected",

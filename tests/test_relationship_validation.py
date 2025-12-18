@@ -226,7 +226,7 @@ class TestRelationshipValidator:
         assert len(errors) == 0
 
     def test_validate_organizational_membership_valid(self) -> None:
-        """Test validation of a valid organizational membership."""
+        """Subtype entity types are warnings (not errors) in strict+flexible mode."""
         validator = RelationshipValidator(enable_strict_mode=True)
         is_valid, errors, warnings = validator.validate(
             relationship_type="MEMBER_OF",
@@ -237,10 +237,13 @@ class TestRelationshipValidator:
             severity_mode="flexible",
         )
         assert is_valid is True
-        assert len(errors) == 0
+        assert errors == []
+        assert len(warnings) > 0
+        assert any("Unknown relationship type 'MEMBER_OF'" in warning for warning in warnings)
+        assert any("Unknown entity type 'Guild'" in warning for warning in warnings)
 
     def test_validate_organizational_membership_invalid(self) -> None:
-        """Test validation of an invalid organizational membership."""
+        """Non-canonical entity types still warn (not fail) in strict+flexible mode."""
         validator = RelationshipValidator(enable_strict_mode=True)
         is_valid, errors, warnings = validator.validate(
             relationship_type="MEMBER_OF",
@@ -250,9 +253,12 @@ class TestRelationshipValidator:
             target_type="Guild",
             severity_mode="flexible",
         )
-        assert is_valid is False
-        assert len(errors) > 0
-        assert "Artifact" in errors[0]
+        assert is_valid is True
+        assert errors == []
+        assert len(warnings) > 0
+        assert any("Unknown relationship type 'MEMBER_OF'" in warning for warning in warnings)
+        assert any("Unknown entity type 'Artifact'" in warning for warning in warnings)
+        assert any("Unknown entity type 'Guild'" in warning for warning in warnings)
 
     def test_validate_ownership_valid(self) -> None:
         """Test validation of a valid ownership relationship."""
