@@ -152,8 +152,8 @@ async def test_heal_graph_surfaces_healing_warnings_in_state_and_logs_once(tmp_p
     """
     Regression test for LANGGRAPH-025 / remediation plan item 11.
 
-    If graph healing returns warnings (e.g., APOC unavailable), the node must not
-    "silently degrade"—it must surface warnings into state and log them.
+    If graph healing returns warnings, the node must not "silently degrade"—it must
+    surface warnings into state and log them.
     """
     state = create_initial_state(
         project_id="test_project",
@@ -175,8 +175,8 @@ async def test_heal_graph_surfaces_healing_warnings_in_state_and_logs_once(tmp_p
         "nodes_removed": 0,
         "provisional_count": 0,
         "actions": [],
-        "apoc_available": False,
-        "warnings": [{"type": "apoc_unavailable", "message": "APOC procedures unavailable"}],
+        "apoc_available": True,
+        "warnings": [{"type": "healing_warning", "message": "Example healing warning"}],
     }
 
     with (
@@ -191,7 +191,7 @@ async def test_heal_graph_surfaces_healing_warnings_in_state_and_logs_once(tmp_p
     assert out["current_node"] == "heal_graph"
     assert out["last_error"] is None
     assert out["last_healing_warnings"] == results["warnings"]
-    assert out["last_apoc_available"] is False
+    assert out["last_apoc_available"] is True
 
     # The node should log warnings (at least once for this call).
     assert warn.call_count == 1

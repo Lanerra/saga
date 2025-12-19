@@ -496,18 +496,6 @@ def test_fallback_parse_outline_roman_numerals(base_state):
     assert result["act_count"] == 5
 
 
-@pytest.mark.asyncio
-async def test_generate_global_outline_uses_grammar(base_state, mock_content_manager, mock_llm_service, mock_get_character_sheets):
-    """Verify generation uses GBNF grammar."""
-    state = {**base_state}
-
-    await generate_global_outline(state)
-
-    call_args = mock_llm_service.async_call_llm.call_args
-    assert call_args is not None
-    kwargs = call_args.kwargs
-    assert "grammar" in kwargs
-    assert "root ::= global-outline" in kwargs["grammar"]
 
 
 def test_parse_global_outline_preserves_all_fields(base_state, sample_outline_json):

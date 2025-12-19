@@ -102,12 +102,11 @@ class TestLoadOrCreateState:
                 new_callable=AsyncMock,
             ) as mock_load,
             patch(
-                "data_access.character_queries.get_character_profiles",
-                new_callable=AsyncMock,
-            ) as mock_profiles,
+                "orchestration.langgraph_orchestrator.validate_initialization_artifacts",
+                return_value=(False, ["Missing saga.yaml"]),
+            ),
         ):
             mock_load.return_value = 0
-            mock_profiles.return_value = []
 
             state = await orchestrator._load_or_create_state()
 
@@ -116,64 +115,56 @@ class TestLoadOrCreateState:
 
     async def test_load_or_create_state_existing_chapters(self, orchestrator):
         """State continues from next chapter when chapters exist."""
-        with (
-            patch(
-                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-                new_callable=AsyncMock,
-            ) as mock_load,
-            patch(
-                "data_access.character_queries.get_character_profiles",
-                new_callable=AsyncMock,
-            ) as mock_profiles,
-        ):
+        with patch(
+            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+            new_callable=AsyncMock,
+        ) as mock_load:
             mock_load.return_value = 5
-            mock_profiles.return_value = []
 
             state = await orchestrator._load_or_create_state()
 
             assert state["current_chapter"] == 6
+            assert state["initialization_complete"] is True
 
     async def test_load_or_create_state_detects_initialization(self, orchestrator):
-        """Initialization is detected from character profiles."""
-        mock_character = {"name": "Alice", "description": "Hero"}
-
+        """Initialization is detected from filesystem artifacts on chapter 1."""
         with (
             patch(
                 "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
                 new_callable=AsyncMock,
             ) as mock_load,
             patch(
-                "data_access.character_queries.get_character_profiles",
-                new_callable=AsyncMock,
-            ) as mock_profiles,
+                "orchestration.langgraph_orchestrator.validate_initialization_artifacts",
+                return_value=(True, []),
+            ),
         ):
             mock_load.return_value = 0
-            mock_profiles.return_value = [mock_character]
 
             state = await orchestrator._load_or_create_state()
 
             assert state["initialization_complete"] is True
 
     async def test_load_or_create_state_fallback_to_file_check(self, orchestrator, tmp_path):
-        """Falls back to file check if profile query fails."""
-        with (
-            patch(
-                "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
-                new_callable=AsyncMock,
-            ) as mock_load,
-            patch(
-                "data_access.character_queries.get_character_profiles",
-                new_callable=AsyncMock,
-            ) as mock_profiles,
-        ):
+        """Chapter 1 uses filesystem artifacts; a minimal complete set marks init complete."""
+        with patch(
+            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+            new_callable=AsyncMock,
+        ) as mock_load:
             mock_load.return_value = 0
-            mock_profiles.side_effect = Exception("Database error")
 
             orchestrator.project_dir = tmp_path
-            outline_dir = tmp_path / "outline"
-            outline_dir.mkdir()
-            structure_file = outline_dir / "structure.yaml"
-            structure_file.write_text("acts: []")
+
+            (tmp_path / "outline").mkdir(parents=True, exist_ok=True)
+            (tmp_path / "characters").mkdir(parents=True, exist_ok=True)
+            (tmp_path / "world").mkdir(parents=True, exist_ok=True)
+
+            (tmp_path / "saga.yaml").write_text("project: saga\n")
+            (tmp_path / "outline" / "structure.yaml").write_text("acts: []\n")
+            (tmp_path / "outline" / "beats.yaml").write_text("beats: []\n")
+            (tmp_path / "characters" / "hero.yaml").write_text("name: Hero\n")
+            (tmp_path / "world" / "items.yaml").write_text("items: []\n")
+            (tmp_path / "world" / "rules.yaml").write_text("rules: []\n")
+            (tmp_path / "world" / "history.yaml").write_text("history: []\n")
 
             state = await orchestrator._load_or_create_state()
 
@@ -187,12 +178,11 @@ class TestLoadOrCreateState:
                 new_callable=AsyncMock,
             ) as mock_load,
             patch(
-                "data_access.character_queries.get_character_profiles",
-                new_callable=AsyncMock,
-            ) as mock_profiles,
+                "orchestration.langgraph_orchestrator.validate_initialization_artifacts",
+                return_value=(False, ["Missing saga.yaml"]),
+            ),
         ):
             mock_load.return_value = 0
-            mock_profiles.return_value = []
 
             state = await orchestrator._load_or_create_state()
 
@@ -207,14 +197,9 @@ class TestLoadOrCreateState:
                 "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
                 new_callable=AsyncMock,
             ) as mock_load,
-            patch(
-                "data_access.character_queries.get_character_profiles",
-                new_callable=AsyncMock,
-            ) as mock_profiles,
             patch("orchestration.langgraph_orchestrator.validate_initialization_artifacts") as mock_validate,
         ):
             mock_load.return_value = 0
-            mock_profiles.return_value = []
             mock_validate.return_value = (True, [])
 
             orchestrator.project_dir = tmp_path

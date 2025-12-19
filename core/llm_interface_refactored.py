@@ -10,6 +10,7 @@ Licensed under the Apache License, Version 2.0
 
 import asyncio
 import hashlib
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -304,7 +305,6 @@ class CompletionService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
-        grammar: str | None = None,
         *,
         system_prompt: str | None = None,
         strict: bool = True,
@@ -352,7 +352,6 @@ class CompletionService:
                 messages,
                 effective_temperature,
                 effective_max_tokens,
-                grammar=grammar,
                 **kwargs,
             )
 
@@ -414,7 +413,6 @@ class CompletionService:
                         messages,
                         effective_temperature,
                         effective_max_tokens,
-                        grammar=grammar,
                         **kwargs,
                     )
 
@@ -562,7 +560,6 @@ class RefactoredLLMService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
-        grammar: str | None = None,
         *,
         system_prompt: str | None = None,
         strict: bool = True,
@@ -584,11 +581,128 @@ class RefactoredLLMService:
             max_tokens,
             allow_fallback,
             auto_clean_response,
-            grammar=grammar,
             system_prompt=system_prompt,
             strict=strict,
             **kwargs,
         )
+
+    async def async_call_llm_json_object(
+        self,
+        model_name: str,
+        prompt: str,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        allow_fallback: bool = False,
+        auto_clean_response: bool = True,
+        *,
+        system_prompt: str | None = None,
+        strict: bool = True,
+        max_attempts: int = 2,
+        **kwargs: Any,
+    ) -> tuple[dict[str, Any], dict[str, int] | None]:
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+
+        last_decode_error: json.JSONDecodeError | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            text, usage = await self.async_call_llm(
+                model_name=model_name,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                allow_fallback=allow_fallback,
+                auto_clean_response=auto_clean_response,
+                system_prompt=system_prompt,
+                strict=strict,
+                **kwargs,
+            )
+
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as decode_error:
+                last_decode_error = decode_error
+
+                response_sha1 = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+                logger.warning(
+                    "LLM returned invalid JSON (object expected)",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    response_sha1=response_sha1,
+                    response_len=len(text),
+                    line=decode_error.lineno,
+                    column=decode_error.colno,
+                )
+                continue
+
+            if not isinstance(data, dict):
+                raise ValueError("LLM returned JSON but root value was not an object")
+
+            return data, usage
+
+        if last_decode_error is not None:
+            raise ValueError("LLM returned invalid JSON") from last_decode_error
+
+        raise ValueError("LLM returned invalid JSON")
+
+    async def async_call_llm_json_array(
+        self,
+        model_name: str,
+        prompt: str,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        allow_fallback: bool = False,
+        auto_clean_response: bool = True,
+        *,
+        system_prompt: str | None = None,
+        strict: bool = True,
+        max_attempts: int = 2,
+        **kwargs: Any,
+    ) -> tuple[list[Any], dict[str, int] | None]:
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+
+        last_decode_error: json.JSONDecodeError | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            text, usage = await self.async_call_llm(
+                model_name=model_name,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                allow_fallback=allow_fallback,
+                auto_clean_response=auto_clean_response,
+                system_prompt=system_prompt,
+                strict=strict,
+                **kwargs,
+            )
+
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as decode_error:
+                last_decode_error = decode_error
+
+                response_sha1 = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+                logger.warning(
+                    "LLM returned invalid JSON (array expected)",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    response_sha1=response_sha1,
+                    response_len=len(text),
+                    line=decode_error.lineno,
+                    column=decode_error.colno,
+                )
+                continue
+
+            if not isinstance(data, list):
+                raise ValueError("LLM returned JSON but root value was not an array")
+
+            return data, usage
+
+        if last_decode_error is not None:
+            raise ValueError("LLM returned invalid JSON") from last_decode_error
+
+        raise ValueError("LLM returned invalid JSON")
 
     async def async_get_embedding(self, text: str) -> np.ndarray | None:
         """

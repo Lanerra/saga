@@ -30,7 +30,6 @@ from core.langgraph.initialization.chapter_allocation import (
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
-from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -226,12 +225,6 @@ async def _generate_single_chapter_outline(
         },
     )
 
-    # Load and configure grammar
-    grammar = load_grammar("initialization")
-    # Enforce chapter_outline as root by replacing the default root
-    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
-    grammar = f"root ::= chapter-outline\n{grammar}"
-
     try:
         response, usage = await llm_service.async_call_llm(
             model_name=state.get("large_model", ""),
@@ -241,7 +234,6 @@ async def _generate_single_chapter_outline(
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),
-            grammar=grammar,
         )
 
         if not response or not response.strip():

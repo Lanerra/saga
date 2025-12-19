@@ -88,6 +88,7 @@ class TestConnection:
         mock_graph_database.driver.return_value = mock_driver
 
         monkeypatch.setattr("core.db_manager.GraphDatabase", mock_graph_database)
+        monkeypatch.setattr(Neo4jManagerSingleton, "_sync_probe_apoc_version", lambda _self: "5.0.0")
 
         manager = Neo4jManagerSingleton()
         await manager.connect()
@@ -138,6 +139,7 @@ class TestConnection:
         mock_graph_database.driver.return_value = new_driver
 
         monkeypatch.setattr("core.db_manager.GraphDatabase", mock_graph_database)
+        monkeypatch.setattr(Neo4jManagerSingleton, "_sync_probe_apoc_version", lambda _self: "5.0.0")
 
         manager = Neo4jManagerSingleton()
         manager.driver = old_driver
@@ -675,7 +677,7 @@ class TestPropertyKeyCache:
 class TestApocCapabilityDetection:
     """APOC capability detection / caching (CORE-010)."""
 
-    async def test_is_apoc_available_returns_false_and_warns_once_when_unavailable(self) -> None:
+    async def test_is_apoc_available_returns_false_and_is_cached_when_unavailable(self) -> None:
         manager = Neo4jManagerSingleton()
 
         # Reset caches explicitly for determinism within this unit test.
@@ -683,25 +685,19 @@ class TestApocCapabilityDetection:
         manager._apoc_availability_warning_logged = False
 
         # Avoid any real connectivity attempts by patching execute_read_query directly.
-        with (
-            patch.object(
-                manager,
-                "execute_read_query",
-                new=AsyncMock(side_effect=RuntimeError("Procedure not found")),
-            ) as exec_read,
-            patch.object(manager.logger, "warning", new=MagicMock()) as warn,
-        ):
-            out1 = await manager.is_apoc_available(log_warning_once=True)
-            out2 = await manager.is_apoc_available(log_warning_once=True)
+        with patch.object(
+            manager,
+            "execute_read_query",
+            new=AsyncMock(side_effect=RuntimeError("Procedure not found")),
+        ) as exec_read:
+            out1 = await manager.is_apoc_available()
+            out2 = await manager.is_apoc_available()
 
         assert out1 is False
         assert out2 is False
 
         # Cached once per process => only one underlying probe.
         assert exec_read.await_count == 1
-
-        # Warning should be emitted only once per process/run.
-        assert warn.call_count == 1
 
 
 @pytest.mark.asyncio

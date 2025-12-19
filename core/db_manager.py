@@ -86,6 +86,25 @@ class Neo4jManagerSingleton:
                     error=str(info_exc),
                 )
 
+            try:
+                apoc_version = await asyncio.to_thread(self._sync_probe_apoc_version)
+                self._apoc_available_cache = True
+                self.logger.info(
+                    "APOC procedures available",
+                    apoc_version=apoc_version,
+                )
+            except Exception as apoc_exc:
+                self._apoc_available_cache = False
+                await self.close()
+                raise DatabaseConnectionError(
+                    "APOC procedures are required but unavailable",
+                    details={
+                        "uri": config.NEO4J_URI,
+                        "original_error": str(apoc_exc),
+                        "suggestion": "Install/enable APOC and allowlist procedures (e.g. NEO4J_dbms_security_procedures_allowlist=apoc.*)",
+                    },
+                ) from apoc_exc
+
         except ServiceUnavailable as e:
             self.logger.critical("Neo4j service unavailable", uri=config.NEO4J_URI, error=str(e))
             self.driver = None
@@ -97,6 +116,8 @@ class Neo4jManagerSingleton:
                     "suggestion": "Ensure the Neo4j database is running and accessible",
                 },
             ) from e
+        except DatabaseConnectionError:
+            raise
         except Exception as e:
             self.logger.critical(
                 "Unexpected error during Neo4j connection",
@@ -106,6 +127,18 @@ class Neo4jManagerSingleton:
             )
             self.driver = None
             raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+
+    def _sync_probe_apoc_version(self) -> str:
+        self._ensure_connected_sync()
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
+            rec = session.run("RETURN apoc.version() AS version").single()
+            if not rec:
+                raise RuntimeError("APOC probe returned no rows")
+            version = rec.get("version")
+            if not isinstance(version, str) or not version.strip():
+                raise RuntimeError("APOC probe returned empty version")
+            return version
 
     def _sync_fetch_neo4j_server_info(self) -> dict[str, Any] | None:
         """Fetch Neo4j server info via dbms.components (best-effort).

@@ -26,7 +26,6 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
-from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import validate_and_filter_traits
 
@@ -241,7 +240,7 @@ async def _extract_structured_character_data(name: str, description: str, model_
     """
     Use LLM to extract structured data from character sheet description.
 
-    This is a grammar-enforced, JSON-only contract.
+    This is a JSON-only contract.
     Contract violations are fatal to initialization.
 
     Args:
@@ -265,22 +264,46 @@ async def _extract_structured_character_data(name: str, description: str, model_
 
     model = model_name or config.NARRATIVE_MODEL
 
-    grammar_content = load_grammar("initialization")
-    grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-    grammar = f"root ::= structured-character-extraction\n{grammar}"
+    for attempt in range(1, 3):
+        response, _ = await llm_service.async_call_llm(
+            model_name=model,
+            prompt=prompt,
+            temperature=0.3,  # Low temp for extraction
+            max_tokens=1024,
+            allow_fallback=True,
+            auto_clean_response=True,
+            system_prompt=get_system_prompt("knowledge_agent"),
+        )
 
-    response, _ = await llm_service.async_call_llm(
-        model_name=model,
-        prompt=prompt,
-        temperature=0.3,  # Low temp for extraction
-        max_tokens=1024,
-        allow_fallback=True,
-        auto_clean_response=True,
-        system_prompt=get_system_prompt("knowledge_agent"),
-        grammar=grammar,
+        try:
+            return _parse_character_extraction_response(response)
+        except json.JSONDecodeError:
+            if attempt == 2:
+                raise
+
+
+def _log_json_decode_error(
+    *,
+    context: str,
+    raw_text: str,
+    error: json.JSONDecodeError,
+) -> None:
+    start = max(error.pos - 160, 0)
+    end = min(error.pos + 160, len(raw_text))
+    snippet = raw_text[start:end]
+
+    logger.error(
+        "initialization JSON decode failed",
+        context=context,
+        error=str(error),
+        line=error.lineno,
+        column=error.colno,
+        position=error.pos,
+        raw_text_length=len(raw_text),
+        contains_code_fence="```" in raw_text,
+        snippet_range={"start": start, "end": end},
+        snippet=repr(snippet),
     )
-
-    return _parse_character_extraction_response(response)
 
 
 def _parse_character_extraction_response(response: str) -> dict[str, Any]:
@@ -297,7 +320,16 @@ def _parse_character_extraction_response(response: str) -> dict[str, Any]:
         ValueError: If the output violates the JSON/schema contract.
     """
     raw_text = response.strip()
-    data = json.loads(raw_text)
+
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError as error:
+        _log_json_decode_error(
+            context="structured_character_extraction",
+            raw_text=raw_text,
+            error=error,
+        )
+        raise
 
     if not isinstance(data, dict):
         raise ValueError("Structured character extraction must be a JSON object")
@@ -366,22 +398,22 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
 
     model = model_name or config.NARRATIVE_MODEL
 
-    grammar_content = load_grammar("initialization")
-    grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-    grammar = f"root ::= world-items-extraction\n{grammar}"
+    for attempt in range(1, 3):
+        response, _ = await llm_service.async_call_llm(
+            model_name=model,
+            prompt=prompt,
+            temperature=0.5,
+            max_tokens=2000,
+            allow_fallback=True,
+            auto_clean_response=True,
+            system_prompt=get_system_prompt("knowledge_agent"),
+        )
 
-    response, _ = await llm_service.async_call_llm(
-        model_name=model,
-        prompt=prompt,
-        temperature=0.5,
-        max_tokens=2000,
-        allow_fallback=True,
-        auto_clean_response=True,
-        system_prompt=get_system_prompt("knowledge_agent"),
-        grammar=grammar,
-    )
-
-    return _parse_world_items_extraction(response)
+        try:
+            return _parse_world_items_extraction(response)
+        except json.JSONDecodeError:
+            if attempt == 2:
+                raise
 
 
 def _parse_world_items_extraction(response: str) -> list[WorldItem]:
@@ -398,7 +430,16 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
         ValueError: If the output violates the JSON/schema contract.
     """
     raw_text = response.strip()
-    data = json.loads(raw_text)
+
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError as error:
+        _log_json_decode_error(
+            context="world_items_extraction",
+            raw_text=raw_text,
+            error=error,
+        )
+        raise
 
     if not isinstance(data, list):
         raise ValueError("World items extraction must be a JSON array")

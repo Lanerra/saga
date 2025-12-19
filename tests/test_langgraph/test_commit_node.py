@@ -235,11 +235,18 @@ class TestCommitToGraph:
                             statements = args[0]
 
                             # Find relationship statements and assert predicate type is normalized.
-                            rel_queries = [q for (q, _p) in statements if isinstance(q, str) and "-[r:`" in q]
+                            rel_statements = [
+                                (q, p)
+                                for (q, p) in statements
+                                if isinstance(q, str) and "CALL apoc.merge.relationship" in q
+                            ]
 
-                            assert any("`WORKS_WITH`" in q for q in rel_queries)
-                            assert all("`COLLABORATES_WITH`" not in q for q in rel_queries)
-                            assert all("`SHOULD_NOT_SEE`" not in q for q in rel_queries)
+                            assert rel_statements, "Expected at least one relationship statement"
+
+                            # Contract: relationship type is passed as a parameter (not interpolated into the query string).
+                            assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
+                            assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
+                            assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
 
     async def test_commit_handles_errors_gracefully(
         self,
@@ -916,8 +923,10 @@ class TestBuildRelationshipStatements:
 
             assert len(statements) == 1
             query, params = statements[0]
-            assert "MERGE" in query
-            assert "KNOWS" in query
+
+            assert "CALL apoc.merge.relationship" in query
+            assert params["predicate_clean"] == "KNOWS"
+
             assert params["subject_name"] == "Alice"
             assert params["object_name"] == "Bob"
 

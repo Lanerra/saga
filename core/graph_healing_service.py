@@ -21,7 +21,6 @@ import structlog
 import config
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
-from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -165,8 +164,6 @@ class GraphHealingService:
             if chap_num and summary:
                 summaries_text += f"Chapter {chap_num}: {summary}\n"
 
-        # IMPORTANT: This is a grammar-enforced call. Use a Jinja2 template (not an f-string)
-        # so prompt contracts stay centralized and don't drift vs GBNF schemas.
         prompt = render_prompt(
             "knowledge_agent/enrich_node_from_context.j2",
             {
@@ -179,17 +176,11 @@ class GraphHealingService:
         )
 
         try:
-            # Load healing grammar
-            grammar_content = load_grammar("healing")
-            # Load the grammar content directly as it already defines the correct root
-            grammar = grammar_content
-
             response_text, _ = await llm_service.async_call_llm(
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
                 max_tokens=1024,
-                grammar=grammar,
                 system_prompt=get_system_prompt("knowledge_agent"),
             )
 
@@ -212,12 +203,7 @@ class GraphHealingService:
             return {}
 
     async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
-        """Apply enriched attributes to a node.
-
-        HARDENING (CORE-010):
-        - Do not assume APOC is installed. Enrichment must work on Neo4j deployments
-          without APOC by using pure Cypher equivalents.
-        """
+        """Apply enriched attributes to a node."""
         if not enriched or enriched.get("confidence", 0) < 0.6:
             return False
 
@@ -229,10 +215,7 @@ class GraphHealingService:
             params["description"] = enriched["inferred_description"]
 
         if enriched.get("inferred_traits"):
-            # Pure Cypher "set semantics" for list concatenation:
-            # preserve first occurrence order while removing duplicates.
-            # Equivalent intent to: apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)
-            updates.append("n.traits = reduce(acc = [], t IN (coalesce(n.traits, []) + $new_traits) | " "CASE WHEN t IN acc THEN acc ELSE acc + t END)")
+            updates.append("n.traits = apoc.coll.toSet(coalesce(n.traits, []) + $new_traits)")
             params["new_traits"] = enriched["inferred_traits"]
 
         if enriched.get("inferred_role"):
@@ -719,9 +702,7 @@ class GraphHealingService:
         results: dict[str, Any] = {
             "chapter": current_chapter,
             "timestamp": datetime.now().isoformat(),
-            # Capability snapshot (CORE-010 / LANGGRAPH-025 hardening)
-            # Used for diagnostics and to prevent silent degradation on APOC-less deployments.
-            "apoc_available": None,
+            "apoc_available": True,
             "nodes_enriched": 0,
             "nodes_graduated": 0,
             "nodes_merged": 0,
@@ -730,18 +711,6 @@ class GraphHealingService:
             "actions": [],
             "warnings": [],
         }
-
-        # Capability check (cached once per process; safe on restricted deployments).
-        # We log a clear warning ONCE per process if APOC is unavailable, but we do not
-        # fail healing since enrichment no longer depends on APOC (pure Cypher).
-        results["apoc_available"] = await neo4j_manager.is_apoc_available(log_warning_once=True)
-        if results["apoc_available"] is False:
-            results["warnings"].append(
-                {
-                    "type": "apoc_unavailable",
-                    "message": "APOC procedures unavailable; graph healing enrichment uses pure Cypher fallback.",
-                }
-            )
 
         # Step 1: Process provisional nodes
         provisional_nodes = await self.identify_provisional_nodes()

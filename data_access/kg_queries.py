@@ -466,84 +466,91 @@ async def add_kg_triples_batch_to_db(
             logger.warning(f"Neo4j (Batch): Empty subject name or predicate after stripping: {triple_dict}")
             continue
 
-        subject_labels_cypher = _get_cypher_labels(subject_type)
+        subject_label = _get_cypher_labels(subject_type).lstrip(":")
 
         # Base parameters for the relationship
         rel_props = {
             "type": predicate_clean,
             KG_REL_CHAPTER_ADDED: chapter_number,
             KG_IS_PROVISIONAL: is_from_flawed_draft,
-            "confidence": 1.0,  # Default confidence
-            # Add other relationship metadata if available
+            "confidence": 1.0,
         }
 
-        params = {"subject_name_param": subject_name, "rel_props_param": rel_props}
+        params: dict[str, Any] = {
+            "subject_label": subject_label,
+            "subject_name_param": subject_name,
+            "rel_props_param": rel_props,
+            "predicate_clean_param": predicate_clean,
+            "chapter_number_param": int(chapter_number),
+        }
+
+        subject_id: str | None = None
+        if subject_type == "Character":
+            try:
+                from processing.entity_deduplication import generate_entity_id
+
+                subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
+            except Exception:
+                subject_id = None
+        params["subject_id_param"] = subject_id
 
         if is_literal_object:
             if object_literal_val is None:
                 logger.warning(f"Neo4j (Batch): Literal object is None for triple: {triple_dict}")
                 continue
 
-            # For literal objects, merge/create a ValueNode.
-            # The ValueNode is unique by its string value and type 'Literal'.
-            params["object_literal_value_param"] = str(object_literal_val)  # Ensure it's a string for ValueNode value
-            params["value_node_type_param"] = "Literal"  # Generic type for these literal ValueNodes
+            params["object_literal_value_param"] = str(object_literal_val)
+            params["value_node_type_param"] = "Literal"
 
-            # Generate stable id for Characters if possible
-            subject_id_param_key = None
-            if subject_type == "Character":
-                try:
-                    from processing.entity_deduplication import generate_entity_id
-
-                    params["subject_id_param"] = generate_entity_id(subject_name, "character", int(chapter_number))
-                    subject_id_param_key = "subject_id_param"
-                except Exception:
-                    subject_id_param_key = None
-
-            # Generate constraint-safe MERGE for subject (prefer id when available)
-            subject_merge, subject_additional_labels = _get_constraint_safe_merge(subject_labels_cypher, "subject_name_param", "s", subject_id_param_key)
-
-            # Combine ON CREATE SET clauses for subject
-            subject_create_sets = f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
-            if subject_additional_labels:
-                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
-                subject_create_sets += ", " + ", ".join(label_clauses)
-            # If we generated a stable id for Character, set it on create
-            if subject_id_param_key:
-                subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
-
-            # Create a stable relationship id to avoid flattening history across chapters
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|" f"{str(object_literal_val).strip()}|{chapter_number}"
+            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{str(object_literal_val).strip()}|{chapter_number}"
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
-            # Ensure any additional labels are applied even if node existed
-            subject_label_set_clause = "SET " + ", ".join([f"s:`{label}`" for label in subject_additional_labels]) if subject_additional_labels else ""
+            query = """
+            CALL apoc.merge.node(
+                [$subject_label],
+                CASE
+                    WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN {name: $subject_name_param}
+                    ELSE {id: $subject_id_param}
+                END,
+                {
+                    created_ts: timestamp(),
+                    updated_ts: timestamp(),
+                    type: $subject_label,
+                    name: $subject_name_param,
+                    id: CASE
+                        WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN randomUUID()
+                        ELSE $subject_id_param
+                    END
+                },
+                {updated_ts: timestamp()}
+            ) YIELD node AS s
 
-            query = f"""
-            {subject_merge}
-                ON CREATE SET {subject_create_sets}
-            {subject_label_set_clause}
-            MERGE (o:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
-                ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
+            MERGE (o:ValueNode {value: $object_literal_value_param, type: $value_node_type_param})
+            ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
+            ON MATCH SET o.updated_ts = timestamp()
 
-            MERGE (s)-[r:`{predicate_clean}` {{id: $rel_id_param}}]->(o)
-                ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
-                ON MATCH SET r += $rel_props_param, r.updated_ts = timestamp()
+            WITH s, o
+            CALL apoc.merge.relationship(
+                s,
+                $predicate_clean_param,
+                {id: $rel_id_param},
+                apoc.map.merge($rel_props_param, {created_ts: timestamp(), updated_ts: timestamp()}),
+                o,
+                apoc.map.merge($rel_props_param, {updated_ts: timestamp()})
+            ) YIELD rel
             """
             statements_with_params.append((query, params))
 
         elif object_entity_info and isinstance(object_entity_info, dict) and object_entity_info.get("name"):
             object_name = str(object_entity_info["name"]).strip()
-            object_type = object_entity_info.get("type")  # String like "Location", "Item"
+            object_type = object_entity_info.get("type")
             if not object_name:
                 logger.warning(f"Neo4j (Batch): Empty object name for entity object in triple: {triple_dict}")
                 continue
 
-            # Strict Type Validation & Inference for object
             if object_name:
                 object_category = object_entity_info.get("category", "")
-                # Always run inference/validation
                 validated_object_type = _infer_specific_node_type(object_name, object_category, object_type)
 
                 if validated_object_type != object_type:
@@ -553,73 +560,72 @@ async def add_kg_triples_batch_to_db(
                         _upgrade_logged.add(upgrade_key)
                     object_type = validated_object_type
 
-            object_labels_cypher = _get_cypher_labels(object_type)
+            object_label = _get_cypher_labels(object_type).lstrip(":")
+            params["object_label"] = object_label
             params["object_name_param"] = object_name
 
-            # Prefer stable ids for Characters when available
-            subject_id_param_key = None
-            if subject_type == "Character":
-                try:
-                    from processing.entity_deduplication import generate_entity_id
-
-                    params["subject_id_param"] = generate_entity_id(subject_name, "character", int(chapter_number))
-                    subject_id_param_key = "subject_id_param"
-                except Exception:
-                    subject_id_param_key = None
-
-            object_id_param_key = None
+            object_id: str | None = None
             if object_type == "Character":
                 try:
                     from processing.entity_deduplication import generate_entity_id
 
-                    params["object_id_param"] = generate_entity_id(object_name, "character", int(chapter_number))
-                    object_id_param_key = "object_id_param"
+                    object_id = generate_entity_id(object_name, "character", int(chapter_number))
                 except Exception:
-                    object_id_param_key = None
+                    object_id = None
+            params["object_id_param"] = object_id
 
-            # Generate constraint-safe MERGE for both subject and object
-            subject_merge, subject_additional_labels = _get_constraint_safe_merge(subject_labels_cypher, "subject_name_param", "s", subject_id_param_key)
-            object_merge, object_additional_labels = _get_constraint_safe_merge(object_labels_cypher, "object_name_param", "o", object_id_param_key)
-
-            # Combine ON CREATE SET clauses for both nodes
-            subject_create_sets = f"s.created_ts = timestamp(), s.updated_ts = timestamp(), s.type = '{subject_type}', s.name = $subject_name_param"
-            if subject_additional_labels:
-                label_clauses = [f"s:`{label}`" for label in subject_additional_labels]
-                subject_create_sets += ", " + ", ".join(label_clauses)
-
-            # If we generated a stable id for Character subject, set it
-            if subject_id_param_key:
-                subject_create_sets += ", s.id = coalesce(s.id, $subject_id_param)"
-
-            object_create_sets = f"o.created_ts = timestamp(), o.updated_ts = timestamp(), o.type = '{object_type}', o.name = $object_name_param"
-            if object_additional_labels:
-                label_clauses = [f"o:`{label}`" for label in object_additional_labels]
-                object_create_sets += ", " + ", ".join(label_clauses)
-
-            # If we generated a stable id for Character object, set it
-            if object_id_param_key:
-                object_create_sets += ", o.id = coalesce(o.id, $object_id_param)"
-
-            # Create a stable relationship id to avoid flattening history across chapters
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|" f"{object_name.strip().lower()}|{chapter_number}"
+            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}|{chapter_number}"
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
-            # Ensure any additional labels are applied even if nodes existed
-            subject_label_set_clause = "SET " + ", ".join([f"s:`{label}`" for label in subject_additional_labels]) if subject_additional_labels else ""
-            object_label_set_clause = "SET " + ", ".join([f"o:`{label}`" for label in object_additional_labels]) if object_additional_labels else ""
+            query = """
+            CALL apoc.merge.node(
+                [$subject_label],
+                CASE
+                    WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN {name: $subject_name_param}
+                    ELSE {id: $subject_id_param}
+                END,
+                {
+                    created_ts: timestamp(),
+                    updated_ts: timestamp(),
+                    type: $subject_label,
+                    name: $subject_name_param,
+                    id: CASE
+                        WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN randomUUID()
+                        ELSE $subject_id_param
+                    END
+                },
+                {updated_ts: timestamp()}
+            ) YIELD node AS s
 
-            query = f"""
-            {subject_merge}
-                ON CREATE SET {subject_create_sets}
-            {subject_label_set_clause}
-            {object_merge}
-                ON CREATE SET {object_create_sets}
-            {object_label_set_clause}
+            CALL apoc.merge.node(
+                [$object_label],
+                CASE
+                    WHEN $object_id_param IS NULL OR toString($object_id_param) = '' THEN {name: $object_name_param}
+                    ELSE {id: $object_id_param}
+                END,
+                {
+                    created_ts: timestamp(),
+                    updated_ts: timestamp(),
+                    type: $object_label,
+                    name: $object_name_param,
+                    id: CASE
+                        WHEN $object_id_param IS NULL OR toString($object_id_param) = '' THEN randomUUID()
+                        ELSE $object_id_param
+                    END
+                },
+                {updated_ts: timestamp()}
+            ) YIELD node AS o
 
-            MERGE (s)-[r:`{predicate_clean}` {{id: $rel_id_param}}]->(o)
-                ON CREATE SET r = $rel_props_param, r.created_ts = timestamp()
-                ON MATCH SET r += $rel_props_param, r.updated_ts = timestamp()
+            WITH s, o
+            CALL apoc.merge.relationship(
+                s,
+                $predicate_clean_param,
+                {id: $rel_id_param},
+                apoc.map.merge($rel_props_param, {created_ts: timestamp(), updated_ts: timestamp()}),
+                o,
+                apoc.map.merge($rel_props_param, {updated_ts: timestamp()})
+            ) YIELD rel
             """
             statements_with_params.append((query, params))
         else:
@@ -1326,99 +1332,46 @@ async def merge_entities(source_id: str, target_id: str, reason: str, max_retrie
 
 
 async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> bool:
-    """Execute entity merge using multiple queries in a single transaction to handle Neo4j constraints."""
-
-    # Break the merge into separate queries that avoid complex Cypher constructs
-
-    # Step 1: Copy properties
-    copy_props_query = """
+    merge_query = """
     MATCH (source {id: $source_id}), (target {id: $target_id})
-    SET target.description = COALESCE(target.description + ', ' + source.description, source.description, target.description)
-    RETURN count(*) as props_copied
+    WITH
+        target,
+        source,
+        coalesce(toString(source.description), '') AS source_description
+    CALL apoc.refactor.mergeNodes(
+        [target, source],
+        {
+            properties: 'discard',
+            mergeRels: true,
+            produceSelfRel: false,
+            preserveExistingSelfRels: true,
+            countMerge: true
+        }
+    ) YIELD node
+
+    SET node.merge_reason = $reason,
+        node.merge_timestamp = timestamp(),
+        node.last_updated = timestamp(),
+        node.description =
+            CASE
+                WHEN source_description = '' THEN node.description
+                WHEN node.description IS NULL OR toString(node.description) = '' THEN source_description
+                WHEN toString(node.description) CONTAINS source_description THEN node.description
+                ELSE toString(node.description) + ', ' + source_description
+            END
+
+    RETURN node.id AS id
     """
 
-    # Step 2: Move outgoing relationships
-    move_outgoing_query = """
-    MATCH (source {id: $source_id}), (target {id: $target_id})
-    MATCH (source)-[r]->(other)
-    WHERE other.id <> target.id
-    WITH source, target, r, other, properties(r) as rel_props, type(r) as rel_type
-    CREATE (target)-[new_r:DYNAMIC_REL]->(other)
-    SET new_r = rel_props,
-        // P1.7: Preserve original typed relationship type so promotion can work.
-        new_r.type = coalesce(rel_props.type, rel_type),
-        new_r.merged_from = $source_id,
-        new_r.merge_reason = $reason,
-        new_r.merge_timestamp = timestamp()
-    DELETE r
-    RETURN count(*) as outgoing_moved
-    """
-
-    # Step 3: Move incoming relationships
-    move_incoming_query = """
-    MATCH (source {id: $source_id}), (target {id: $target_id})
-    MATCH (other)-[r]->(source)
-    WHERE other.id <> target.id
-    WITH source, target, r, other, properties(r) as rel_props, type(r) as rel_type
-    CREATE (other)-[new_r:DYNAMIC_REL]->(target)
-    SET new_r = rel_props,
-        // P1.7: Preserve original typed relationship type so promotion can work.
-        new_r.type = coalesce(rel_props.type, rel_type),
-        new_r.merged_from = $source_id,
-        new_r.merge_reason = $reason,
-        new_r.merge_timestamp = timestamp()
-    DELETE r
-    RETURN count(*) as incoming_moved
-    """
-
-    # Step 4: Delete source node
-    delete_source_query = """
-    MATCH (source {id: $source_id})
-    DETACH DELETE source
-    RETURN count(*) as deleted
-    """
-
-    params = {"target_id": target_id, "source_id": source_id, "reason": reason}
-
-    try:
-        logger.info(f"Attempting multi-step atomic merge: {source_id} -> {target_id}")
-
-        # Execute all operations within the session's auto-commit transaction
-        outgoing_count = 0
-        incoming_count = 0
-
-        # Copy properties
-        await neo4j_manager.execute_write_query(copy_props_query, params)
-
-        # Move outgoing relationships (may be zero)
-        try:
-            outgoing_result = await neo4j_manager.execute_write_query(move_outgoing_query, params)
-            outgoing_count = outgoing_result[0]["outgoing_moved"] if outgoing_result else 0
-        except Exception:
-            # No outgoing relationships to move
-            pass
-
-        # Move incoming relationships (may be zero)
-        try:
-            incoming_result = await neo4j_manager.execute_write_query(move_incoming_query, params)
-            incoming_count = incoming_result[0]["incoming_moved"] if incoming_result else 0
-        except Exception:
-            # No incoming relationships to move
-            pass
-
-        # Delete source node
-        await neo4j_manager.execute_write_query(delete_source_query, {"source_id": source_id})
-
-        total_moved = outgoing_count + incoming_count
-        logger.info(f"Successfully merged {source_id} -> {target_id} ({total_moved} relationships moved, reason: {reason})")
-        return True
-
-    except Exception as e:
-        logger.error(
-            f"Multi-step merge failed ({source_id} -> {target_id}): {e}",
-            exc_info=True,
-        )
-        raise
+    results = await neo4j_manager.execute_write_query(
+        merge_query,
+        {
+            "source_id": source_id,
+            "target_id": target_id,
+            "reason": reason,
+        },
+    )
+    return bool(results and results[0] and results[0].get("id"))
 
 
 async def promote_dynamic_relationships() -> int:
@@ -1488,27 +1441,17 @@ async def _validate_and_correct_relationship_types() -> int:
 
 
 async def deduplicate_relationships() -> int:
-    """Merge duplicate relationships of the same type between nodes."""
-    # Merge the relationships by combining properties and deleting duplicates
     query = """
     MATCH (s)-[r]->(o)
-    WITH s, type(r) AS t, o, collect(r) AS rels
+    WITH s, type(r) AS rel_type, o, collect(r) AS rels
     WHERE size(rels) > 1
-    WITH s, t, o, rels
-    // Keep the first relationship and delete the rest
-    WITH s, t, o, head(rels) AS keepRel, tail(rels) AS deleteRels
-    UNWIND deleteRels AS deleteRel
-    // Combine properties from deleteRel into keepRel
-    WITH s, t, o, keepRel, deleteRel, properties(deleteRel) AS deleteProps
-    // For simplicity, we'll just delete the duplicate relationships
-    // A more complex implementation would combine properties
-    DELETE deleteRel
-    RETURN count(*) AS removed
+    CALL apoc.refactor.mergeRelationships(rels, {properties: 'combine'}) YIELD rel
+    RETURN count(rel) AS deduplicated
     """
 
     try:
         results = await neo4j_manager.execute_write_query(query)
-        return results[0].get("removed", 0) if results else 0
+        return results[0].get("deduplicated", 0) if results else 0
     except Exception as exc:  # pragma: no cover - narrow DB errors
         logger.error(f"Failed to deduplicate relationships: {exc}", exc_info=True)
         return 0
@@ -1553,18 +1496,20 @@ async def consolidate_similar_relationships() -> int:
             if current_type == canonical_type:
                 continue
 
-            # Consolidate relationships using parameterized APOC call for safety
             consolidate_query = """
-            MATCH (s)-[r]-(o)
-            WHERE type(r) = $current_type
-            WITH s, r, o, properties(r) AS rel_props
-            CALL apoc.create.relationship(s, $canonical_type, rel_props, o) YIELD rel
-            DELETE r
-            RETURN count(rel) AS consolidated
+            CALL apoc.periodic.iterate(
+                "MATCH (s)-[r]-(o) WHERE type(r) = $current_type RETURN s, r, o",
+                "WITH s, r, o CALL apoc.create.relationship(s, $canonical_type, properties(r), o) YIELD rel DELETE r RETURN count(*) AS changed",
+                {batchSize: 1000, parallel: false, params: {current_type: $current_type, canonical_type: $canonical_type}}
+            ) YIELD total
+            RETURN total AS consolidated
             """
 
             try:
-                consolidate_results = await neo4j_manager.execute_write_query(consolidate_query, {"current_type": current_type, "canonical_type": canonical_type})
+                consolidate_results = await neo4j_manager.execute_write_query(
+                    consolidate_query,
+                    {"current_type": current_type, "canonical_type": canonical_type},
+                )
                 count = consolidate_results[0].get("consolidated", 0) if consolidate_results else 0
                 consolidation_count += count
 

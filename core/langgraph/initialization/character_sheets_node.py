@@ -20,7 +20,6 @@ from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from core.schema_validator import schema_validator
-from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import validate_and_filter_traits
 
@@ -61,7 +60,6 @@ async def _get_existing_traits() -> list[str]:
 def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, any]:
     """
     Parse the structured character sheet response into CharacterProfile-compatible format.
-    Refactored to handle JSON response enforced by GBNF grammar.
 
     Args:
         response: Raw LLM response with structured character data (JSON)
@@ -320,10 +318,6 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
         genre=state.get("genre", ""),
     )
 
-    grammar = load_grammar("initialization")
-    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
-    grammar = f"root ::= character-list\n{grammar}"
-
     temperatures = [0.7, 0.3, 0.1]
     last_exception = None
 
@@ -337,7 +331,6 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),
-                grammar=grammar,
             )
 
             if not response:
@@ -479,13 +472,6 @@ async def _generate_character_sheet(
         },
     )
 
-    # Load and configure grammar
-    grammar = load_grammar("initialization")
-    # Enforce character_sheet as root by replacing the default root
-    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
-    # Be sure to include the replaced root at the top
-    grammar = f"root ::= character-sheet\n{grammar}"
-
     temperatures = [0.7, 0.3, 0.1]
     last_exception = None
 
@@ -499,7 +485,6 @@ async def _generate_character_sheet(
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),
-                grammar=grammar,
             )
 
             if not response:

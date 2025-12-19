@@ -1,5 +1,4 @@
 # data_access/plot_queries.py
-import json
 from typing import Any
 
 import structlog
@@ -21,33 +20,36 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     statements: list[tuple[str, dict[str, Any]]] = []
 
-    # Persist primitive NovelInfo properties as-is, and persist any structured/list/dict
-    # properties as JSON under a deterministic *_json key so we can round-trip them.
-    #
-    # This avoids silently ignoring input schema (acts/chapters/etc) while staying within
-    # Neo4j property type constraints.
-    novel_props_for_set: dict[str, Any] = {}
-    for k, v in plot_data.items():
-        if v is None or k == "id" or k == "plot_points":
+    primitive_props: dict[str, Any] = {}
+    structured_props: dict[str, Any] = {}
+
+    for key, value in plot_data.items():
+        if value is None or key == "id" or key == "plot_points":
             continue
 
-        if isinstance(v, list | dict):
-            # Neo4j properties can't store nested maps/lists-of-maps directly.
-            novel_props_for_set[f"{k}_json"] = json.dumps(v)
+        if isinstance(value, list | dict):
+            structured_props[key] = value
         else:
-            novel_props_for_set[k] = v
-
-    novel_props_for_set["id"] = novel_id
+            primitive_props[key] = value
 
     statements.append(
         (
             """
         MERGE (ni:NovelInfo {id: $id_val})
         ON CREATE SET ni.created_ts = timestamp()
-        SET ni += $props
         SET ni.updated_ts = timestamp()
+
+        SET ni += $primitive_props
+
+        WITH ni, $structured_props AS structured
+        WITH
+            ni,
+            apoc.map.fromPairs(
+                [k IN keys(structured) | [k + "_json", apoc.convert.toJson(structured[k])]]
+            ) AS json_props
+        SET ni += json_props
         """,
-            {"id_val": novel_id, "props": novel_props_for_set},
+            {"id_val": novel_id, "primitive_props": primitive_props, "structured_props": structured_props},
         )
     )
 
@@ -182,37 +184,36 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     plot_data: dict[str, Any] = {}
 
-    # Fetch NovelInfo node properties
-    novel_info_query = "MATCH (ni:NovelInfo {id: $novel_id_param}) RETURN ni"
+    novel_info_query = """
+    MATCH (ni:NovelInfo {id: $novel_id_param})
+    WITH apoc.map.removeKeys(properties(ni), ["id", "created_ts", "updated_ts"]) AS base
+    WITH base, [k IN keys(base) WHERE k ENDS WITH "_json"] AS json_keys
+    WITH
+        apoc.map.removeKeys(base, json_keys) AS primitives,
+        apoc.map.fromPairs(
+            [
+                k IN json_keys |
+                [
+                    substring(k, 0, size(k) - 5),
+                    CASE
+                        WHEN base[k] STARTS WITH "[" THEN apoc.convert.fromJsonList(base[k])
+                        ELSE apoc.convert.fromJsonMap(base[k])
+                    END
+                ]
+            ]
+        ) AS decoded
+    RETURN apoc.map.merge(primitives, decoded) AS plot_data
+    """
     result_list = await neo4j_manager.execute_read_query(novel_info_query, {"novel_id_param": novel_id})
 
-    if not result_list or not result_list[0] or not result_list[0].get("ni"):
+    if not result_list or not result_list[0] or not result_list[0].get("plot_data"):
         logger.warning(f"No NovelInfo node found with id '{novel_id}'. Returning empty plot outline.")
         return {}
 
-    novel_node = result_list[0]["ni"]
-    plot_data.update(dict(novel_node))
-
-    # Remove internal DB IDs/timestamps from returned dict
-    plot_data.pop("id", None)
-    plot_data.pop("created_ts", None)
-    plot_data.pop("updated_ts", None)
-
-    # Round-trip any *_json NovelInfo properties back into their structured form.
-    # (e.g., acts_json -> acts)
-    json_keys = [k for k in list(plot_data.keys()) if k.endswith("_json")]
-    for json_key in json_keys:
-        raw = plot_data.get(json_key)
-        if not isinstance(raw, str):
-            continue
-        try:
-            decoded = json.loads(raw)
-        except Exception:
-            # Leave the raw string untouched if decode fails.
-            continue
-
-        plot_data[json_key[: -len("_json")]] = decoded
-        plot_data.pop(json_key, None)
+    plot_data = result_list[0]["plot_data"]
+    if not isinstance(plot_data, dict):
+        logger.warning(f"NovelInfo query returned non-map plot_data for id '{novel_id}'. Returning empty plot outline.")
+        return {}
 
     # Fetch PlotPoints linked to this NovelInfo, ordered by sequence
     plot_points_query = """

@@ -227,8 +227,6 @@ python visualize_workflow.py
 **LLM Interface:**
 - `llm_interface_refactored.py`: OpenAI-compatible API client for local LLMs
 - Supports multiple model tiers (narrative, reasoning, extraction)
-- Integrates GBNF grammar-constrained generation
-
 **Type Inference & Validation:**
 - `simple_type_inference.py`: Lightweight entity type inference (replaced `intelligent_type_inference.py`)
 - `relationship_validation.py`: Relationship constraint enforcement
@@ -265,14 +263,6 @@ python visualize_workflow.py
 - `knowledge_agent/`: Entity extraction (characters, locations, events, relationships)
 - `narrative_agent/`: Scene planning and drafting
 - `revision_agent/`: Full chapter rewrite prompts
-
-**Grammar-Based Constrained Generation:**
-- `grammars/`: GBNF grammar definitions for structured output
-  - `common.gbnf`: Shared grammar rules
-  - `extraction.gbnf`: Entity extraction grammars
-  - `initialization.gbnf`: Initialization phase grammars
-  - `healing.gbnf`: Graph healing grammars
-- `grammar_loader.py`: Loads and combines grammar files
 
 **Prompt Utilities:**
 - `prompt_data_getters.py`: Context assembly for prompt templates
@@ -413,9 +403,6 @@ output/
 - `tests/test_langgraph/test_validation_node.py`: Validation logic tests
 - `tests/test_langgraph/test_revision_node.py`: Revision flow tests
 - `tests/test_langgraph/test_state.py`: State management tests
-- `tests/test_initialization_gbnf.py`: Grammar-constrained initialization tests
-- `tests/test_extraction_healing_gbnf.py`: Grammar-constrained extraction tests
-
 ## Project Constraints (CRITICAL)
 
 From `docs/PROJECT_CONSTRAINTS.md`:
@@ -452,7 +439,6 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 4. **KG Operations**: For Neo4j queries/schema changes, work in `data_access/` or `core/knowledge_graph_service.py`
 5. **Workflow Changes**: For graph structure/routing, edit `core/langgraph/workflow.py`
 6. **Prompts**: Add/edit Jinja2 templates in `prompts/` (organized by phase)
-7. **Grammars**: For constrained generation, add GBNF grammars to `prompts/grammars/`
 
 ### When Debugging
 
@@ -477,8 +463,7 @@ from core.llm_interface_refactored import call_llm_async
 response = await call_llm_async(
     prompt=prompt,
     model=settings.NARRATIVE_MODEL,
-    temperature=settings.TEMPERATURE_DRAFTING,
-    grammar=grammar  # Optional: GBNF grammar for constrained generation
+    temperature=settings.TEMPERATURE_DRAFTING
 )
 ```
 
@@ -531,12 +516,6 @@ return {**state, "draft_ref": ref}
 - Reduces SQLite checkpoint size from megabytes to kilobytes
 - Enables efficient versioning and diffing
 
-### Grammar-Based Generation (GBNF)
-- Constrains LLM output to valid structured formats
-- Used for initialization (character sheets, outlines)
-- Used for extraction (entities, relationships)
-- Grammar files in `prompts/grammars/`, loaded via `grammar_loader.py`
-
 ## Known Issues & Current State
 
 Current state:
@@ -554,7 +533,6 @@ Key docs in `docs/`:
 - `schema-map.md`: Neo4j schema documentation
 - `ontology.md`: Entity type ontology and relationship types
 - `content-externalization-implementation.md`: Content externalization design
-- `gbnf-implementation-plan.md`: Grammar-constrained generation design
 - `proper-noun-preference.md`: Entity name handling guidelines
 - `complexity-hotspots.md`: Performance and complexity analysis
 - `critcodeanalysis.md`: Critical code analysis and technical debt
@@ -571,5 +549,4 @@ Key docs in `docs/`:
 8. **Async/await**: Most operations are async; use `asyncio.run()` for entry points
 9. **State immutability**: LangGraph nodes should return new state dicts, not mutate existing state
 10. **Content externalization**: For large content, use ContentManager instead of storing in state
-11. **GBNF grammars**: For structured output, define grammars in `prompts/grammars/`
-12. **Scene-level generation**: New chapters use scene-by-scene generation, not monolithic drafting
+11. **Scene-level generation**: New chapters use scene-by-scene generation, not monolithic drafting

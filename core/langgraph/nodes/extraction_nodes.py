@@ -26,7 +26,6 @@ from core.langgraph.state import (
 from core.llm_interface_refactored import llm_service
 from core.schema_validator import schema_validator
 from processing.entity_deduplication import generate_entity_id
-from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.text_processing import validate_and_filter_traits
 
@@ -69,52 +68,15 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
     )
 
     try:
-        # Load grammar for character extraction
-        grammar_content = load_grammar("extraction")
-        # Prepend root rule for character extraction
-        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-        grammar = f"root ::= character-extraction\n{grammar}"
-
-        logger.debug("extract_characters: using grammar", grammar_head=grammar[:100])
-
-        raw_text, _ = await llm_service.async_call_llm(
+        data, _ = await llm_service.async_call_llm_json_object(
             model_name=state.get("medium_model", ""),
             prompt=prompt,
             temperature=config.Temperatures.KG_EXTRACTION,
             max_tokens=config.MAX_KG_TRIPLE_TOKENS,
             allow_fallback=True,
             system_prompt=get_system_prompt("knowledge_agent"),
-            grammar=grammar,
+            max_attempts=2,
         )
-
-        try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
-            try:
-                import hashlib
-
-                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
-                raw_len = len(raw_text)
-            except Exception:  # pragma: no cover
-                raw_sha = None
-                raw_len = None
-
-            logger.error(
-                "extract_characters: failed to parse JSON",
-                response_sha1=raw_sha,
-                response_len=raw_len,
-            )
-
-            # CORE-007: invalid extraction output is a hard failure (avoid continuing with empty state).
-            return {
-                "current_node": "extract_characters",
-                "last_error": "Character extraction failed: LLM returned invalid JSON",
-                "has_fatal_error": True,
-                "error_node": "extract_characters",
-                "extracted_entities": {"characters": [], "world_items": []},
-                "extracted_relationships": [],
-            }
 
         if not data:
             return {
@@ -239,59 +201,52 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_locations: failed to hash/log prompt for debugging")
 
     try:
-        # Load grammar for location extraction
-        grammar_content = load_grammar("extraction")
-        # Prepend root rule for strict location extraction
-        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-        grammar = f"root ::= location-extraction\n{grammar}"
+        data: dict[str, Any] | None = None
 
-        logger.debug("extract_locations: using grammar", grammar_head=grammar[:100])
-
-        raw_text, _ = await llm_service.async_call_llm(
-            model_name=state.get("medium_model", ""),
-            prompt=prompt,
-            temperature=config.Temperatures.KG_EXTRACTION,
-            max_tokens=config.MAX_KG_TRIPLE_TOKENS,
-            allow_fallback=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-            grammar=grammar,
-        )
-
-        # DEBUG: capture response shape (hash+len) to diagnose schema mismatches.
-        # Do NOT log response fragments (they can contain narrative/manuscript text).
-        try:
-            import hashlib
-
-            raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
-            logger.debug(
-                "extract_locations: LLM response received",
-                response_sha1=raw_sha,
-                response_len=len(raw_text),
-                chapter=state.get("current_chapter", 1),
+        for attempt in range(1, 3):
+            raw_text, _ = await llm_service.async_call_llm(
+                model_name=state.get("medium_model", ""),
+                prompt=prompt,
+                temperature=config.Temperatures.KG_EXTRACTION,
+                max_tokens=config.MAX_KG_TRIPLE_TOKENS,
+                allow_fallback=True,
+                system_prompt=get_system_prompt("knowledge_agent"),
             )
-        except Exception:  # pragma: no cover - debug logging must never break extraction
-            logger.debug("extract_locations: failed to hash/log response for debugging")
 
-        try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
             try:
+                decoded = json.loads(raw_text)
+            except json.JSONDecodeError:
                 import hashlib
 
-                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
-                raw_len = len(raw_text)
-            except Exception:  # pragma: no cover
-                raw_sha = None
-                raw_len = None
+                response_sha1 = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
+                logger.error(
+                    "extract_locations: failed to parse JSON",
+                    response_sha1=response_sha1,
+                    response_len=len(raw_text),
+                )
 
-            logger.error(
-                "extract_locations: failed to parse JSON",
-                response_sha1=raw_sha,
-                response_len=raw_len,
-            )
+                if attempt == 2:
+                    return {
+                        "current_node": "extract_locations",
+                        "last_error": "Location extraction failed: LLM returned invalid JSON",
+                        "has_fatal_error": True,
+                        "error_node": "extract_locations",
+                    }
 
-            # CORE-007: invalid extraction output is a hard failure (avoid continuing with partial state).
+                continue
+
+            if not isinstance(decoded, dict):
+                return {
+                    "current_node": "extract_locations",
+                    "last_error": "Location extraction failed: LLM returned invalid JSON",
+                    "has_fatal_error": True,
+                    "error_node": "extract_locations",
+                }
+
+            data = decoded
+            break
+
+        if data is None:
             return {
                 "current_node": "extract_locations",
                 "last_error": "Location extraction failed: LLM returned invalid JSON",
@@ -301,8 +256,8 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
 
         # DEBUG: log parsed top-level keys and world_updates keys to confirm expected schema.
         try:
-            top_keys = sorted(list(data.keys())) if isinstance(data, dict) else []
-            raw_updates = data.get("world_updates", {}) if isinstance(data, dict) else {}
+            top_keys = sorted(list(data.keys()))
+            raw_updates = data.get("world_updates", {})
             wu_keys = sorted(list(raw_updates.keys()))[:30] if isinstance(raw_updates, dict) else []
             suspicious = sorted(
                 set(wu_keys).intersection(
@@ -486,12 +441,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
 
     logger.info("extract_events: starting")
 
-    # Initialize content manager and get draft text
     content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
 
-    # Get existing world_items to append to
-    # Deep copy to avoid mutating original state
     existing_entities = copy.deepcopy(state.get("extracted_entities", {}))
     existing_world_items = existing_entities.get("world_items", [])
     existing_characters = existing_entities.get("characters", [])
@@ -511,8 +463,6 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
         },
     )
 
-    # DEBUG: validate prompt/template wiring and detect schema mismatches early.
-    # Do NOT log any prompt fragments (they can contain narrative/manuscript text).
     try:
         import hashlib
 
@@ -524,63 +474,21 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             prompt_len=len(prompt),
             chapter=state.get("current_chapter", 1),
         )
-    except Exception as _e:  # pragma: no cover - debug logging must never break extraction
+    except Exception:  # pragma: no cover
         logger.debug("extract_events: failed to hash/log prompt for debugging")
 
     try:
-        # Load grammar for event extraction
-        grammar_content = load_grammar("extraction")
-        # Prepend root rule for strict event extraction
-        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-        grammar = f"root ::= event-extraction\n{grammar}"
-
-        logger.debug("extract_events: using grammar", grammar_head=grammar[:100])
-
-        raw_text, _ = await llm_service.async_call_llm(
-            model_name=state.get("medium_model", ""),
-            prompt=prompt,
-            temperature=config.Temperatures.KG_EXTRACTION,
-            max_tokens=config.MAX_KG_TRIPLE_TOKENS,
-            allow_fallback=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-            grammar=grammar,
-        )
-
-        # DEBUG: capture response shape (hash+len) to diagnose schema mismatches.
-        # Do NOT log response fragments (they can contain narrative/manuscript text).
         try:
-            import hashlib
-
-            raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
-            logger.debug(
-                "extract_events: LLM response received",
-                response_sha1=raw_sha,
-                response_len=len(raw_text),
-                chapter=state.get("current_chapter", 1),
+            data, _ = await llm_service.async_call_llm_json_object(
+                model_name=state.get("medium_model", ""),
+                prompt=prompt,
+                temperature=config.Temperatures.KG_EXTRACTION,
+                max_tokens=config.MAX_KG_TRIPLE_TOKENS,
+                allow_fallback=True,
+                system_prompt=get_system_prompt("knowledge_agent"),
+                max_attempts=2,
             )
-        except Exception:  # pragma: no cover - debug logging must never break extraction
-            logger.debug("extract_events: failed to hash/log response for debugging")
-
-        try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
-            try:
-                import hashlib
-
-                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
-                raw_len = len(raw_text)
-            except Exception:  # pragma: no cover
-                raw_sha = None
-                raw_len = None
-
-            logger.error(
-                "extract_events: failed to parse JSON",
-                response_sha1=raw_sha,
-                response_len=raw_len,
-            )
-
-            # CORE-007: invalid extraction output is a hard failure (avoid continuing with partial state).
+        except ValueError:
             return {
                 "current_node": "extract_events",
                 "last_error": "Event extraction failed: LLM returned invalid JSON",
@@ -588,7 +496,6 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 "error_node": "extract_events",
             }
 
-        # DEBUG: log parsed top-level keys and world_updates keys to confirm expected schema.
         try:
             top_keys = sorted(list(data.keys())) if isinstance(data, dict) else []
             raw_updates = data.get("world_updates", {}) if isinstance(data, dict) else {}
@@ -613,19 +520,21 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 world_updates_keys_head=wu_keys,
                 suspicious_world_updates_keys=suspicious,
             )
-        except Exception:  # pragma: no cover - debug logging must never break extraction
+        except Exception:  # pragma: no cover
             logger.debug("extract_events: failed to log parsed response shape")
 
         if not data:
             return {}
 
-        event_updates: list[ExtractedEntity] = []
         raw_updates = data.get("world_updates", {})
+        if not isinstance(raw_updates, dict):
+            logger.warning(
+                "extract_events: world_updates is not a dict; skipping",
+                world_updates_type=type(raw_updates).__name__,
+            )
+            raw_updates = {}
 
         allowed_type = "Event"
-
-        # These keys are structural buckets sometimes emitted by the model. They are not
-        # semantic categories/subtypes and must never be classified into canonical labels.
         ignored_world_update_buckets = {
             "entities",
             "relationships",
@@ -637,19 +546,12 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             "items",
             "traits",
         }
-
-        # Backward compatible acceptance for earlier plural bucket names.
         bucket_aliases = {
             "event": "Event",
             "events": "Event",
         }
 
-        if not isinstance(raw_updates, dict):
-            logger.warning(
-                "extract_events: world_updates is not a dict; skipping",
-                world_updates_type=type(raw_updates).__name__,
-            )
-            raw_updates = {}
+        event_updates: list[ExtractedEntity] = []
 
         for bucket_key, items in raw_updates.items():
             bucket_raw = str(bucket_key).strip() if bucket_key is not None else ""
@@ -662,12 +564,9 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 )
                 continue
 
-            # Prompt contract: world_updates must be keyed by canonical label "Event".
-            # If we see something else, we treat it as drift and skip rather than misclassify.
             if bucket_norm != allowed_type:
                 mapped = _map_category_to_type(bucket_norm)
                 if mapped == allowed_type and isinstance(items, dict):
-                    # Accept "subtype-as-bucket" drift (e.g., "Battle": {...}) for backward compatibility.
                     logger.warning(
                         "extract_events: non-canonical bucket accepted as subtype",
                         bucket=bucket_norm,
@@ -688,31 +587,21 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 if not isinstance(info, dict):
                     continue
 
-                entity_type = allowed_type
-
-                # Prefer per-entity subtype category, fall back to bucket if we accepted
-                # a subtype-as-bucket drift pattern.
                 subtype_category = info.get("category")
-                if isinstance(subtype_category, str):
-                    subtype_category = subtype_category.strip()
-                else:
-                    subtype_category = ""
-
+                subtype_category = subtype_category.strip() if isinstance(subtype_category, str) else ""
                 if not subtype_category and bucket_norm != allowed_type:
                     subtype_category = bucket_norm
 
-                # Soft category validation (warning only)
                 if subtype_category:
-                    _, cat_msg = schema_validator.validate_category(entity_type, subtype_category)
+                    _, cat_msg = schema_validator.validate_category(allowed_type, subtype_category)
                     if cat_msg:
                         logger.warning(
                             "extract_events: category validation warning",
-                            type=entity_type,
+                            type=allowed_type,
                             category=subtype_category,
                             message=cat_msg,
                         )
 
-                # Use category (when present) for deterministic IDs; otherwise fall back.
                 id_category = subtype_category or allowed_type.lower()
                 item_id = generate_entity_id(name, id_category, state.get("current_chapter", 1))
 
@@ -725,14 +614,13 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
                 event_updates.append(
                     ExtractedEntity(
                         name=name,
-                        type=entity_type,
+                        type=allowed_type,
                         description=info.get("description", ""),
                         first_appearance_chapter=state.get("current_chapter", 1),
                         attributes=attributes,
                     )
                 )
 
-        # Append to existing world_items, preserving characters
         return {
             "extracted_entities": {
                 "characters": existing_characters,
@@ -771,12 +659,9 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
 
     logger.info("extract_relationships: starting")
 
-    # Initialize content manager and get draft text
     content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)
 
-    # Get existing entities to check if we need to create new ones
-    # Deep copy to avoid mutating original state
     existing_entities = copy.deepcopy(state.get("extracted_entities", {}))
     existing_characters = existing_entities.get("characters", [])
     existing_world_items = existing_entities.get("world_items", [])
@@ -797,44 +682,17 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
     )
 
     try:
-        # Load grammar for relationship extraction
-        grammar_content = load_grammar("extraction")
-        # Prepend root rule for relationship extraction
-        grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-        grammar = f"root ::= relationship-extraction\n{grammar}"
-
-        logger.debug("extract_relationships: using grammar", grammar_head=grammar[:100])
-
-        raw_text, _ = await llm_service.async_call_llm(
-            model_name=state.get("medium_model", ""),
-            prompt=prompt,
-            temperature=config.Temperatures.KG_EXTRACTION,
-            max_tokens=config.MAX_KG_TRIPLE_TOKENS,
-            allow_fallback=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-            grammar=grammar,
-        )
-
         try:
-            data = json.loads(raw_text)
-        except json.JSONDecodeError:
-            # Never log raw LLM output (can contain copyrighted/sensitive narrative text).
-            try:
-                import hashlib
-
-                raw_sha = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
-                raw_len = len(raw_text)
-            except Exception:  # pragma: no cover
-                raw_sha = None
-                raw_len = None
-
-            logger.error(
-                "extract_relationships: failed to parse JSON",
-                response_sha1=raw_sha,
-                response_len=raw_len,
+            data, _ = await llm_service.async_call_llm_json_object(
+                model_name=state.get("medium_model", ""),
+                prompt=prompt,
+                temperature=config.Temperatures.KG_EXTRACTION,
+                max_tokens=config.MAX_KG_TRIPLE_TOKENS,
+                allow_fallback=True,
+                system_prompt=get_system_prompt("knowledge_agent"),
+                max_attempts=2,
             )
-
-            # CORE-007: invalid extraction output is a hard failure (avoid continuing with partial state).
+        except ValueError:
             return {
                 "current_node": "extract_relationships",
                 "last_error": "Relationship extraction failed: LLM returned invalid JSON",
@@ -846,28 +704,23 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
         if not data:
             return {"extracted_relationships": []}
 
-        relationships = []
         kg_triples_list = data.get("kg_triples", [])
-
         if not isinstance(kg_triples_list, list):
             logger.warning("extract_relationships: kg_triples is not a list", raw_data=data)
             return {"extracted_relationships": []}
 
-        # Import parsing utility
         from processing.parsing_utils import _get_entity_type_and_name_from_text
 
-        # Track entities found in relationships to create ExtractedEntity objects
-        # Map: entity_name -> entity_type
-        relationship_entities = {}
+        relationships: list[ExtractedRelationship] = []
+        relationship_entities: dict[str, str] = {}
 
-        # Build set of already extracted entity names for quick lookup
-        existing_entity_names = set()
-        for e in existing_characters:
-            name = e.name if hasattr(e, "name") else e.get("name", "")
+        existing_entity_names: set[str] = set()
+        for entity in existing_characters:
+            name = entity.name if hasattr(entity, "name") else entity.get("name", "")
             if name:
                 existing_entity_names.add(name)
-        for e in existing_world_items:
-            name = e.name if hasattr(e, "name") else e.get("name", "")
+        for entity in existing_world_items:
+            name = entity.name if hasattr(entity, "name") else entity.get("name", "")
             if name:
                 existing_entity_names.add(name)
 
@@ -875,61 +728,49 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
             if not isinstance(triple, dict):
                 continue
 
-            subject = triple.get("subject", "")
-            predicate = triple.get("predicate", "RELATES_TO")
-            object_entity = triple.get("object_entity", "")
+            subject: Any = triple.get("subject", "")
+            predicate: Any = triple.get("predicate", "RELATES_TO")
+            object_entity: Any = triple.get("object_entity", "")
 
-            # Note: Grammar doesn't support object_literal in triple_object, only object_entity
-            # triple_object ::= "{" ws "\"subject\"" ws ":" ws json_string "," ws "\"predicate\"" ws ":" ws json_string "," ws "\"object_entity\"" ws ":" ws json_string "," ws "\"description\"" ws ":" ws json_string ws "}"
-
-            # Handle edge cases where values might be dicts despite grammar (though grammar enforces strings)
-            # Keeping safe casting just in case
             if isinstance(subject, dict):
                 subject = subject.get("name", str(subject))
             if isinstance(object_entity, dict):
                 object_entity = object_entity.get("name", str(object_entity))
 
-            subject = str(subject) if subject else ""
-            target = str(object_entity) if object_entity else ""
+            subject_text = str(subject) if subject else ""
+            target_text = str(object_entity) if object_entity else ""
+            predicate_text = str(predicate) if predicate else ""
 
-            # Parse "Type:Name" format from subject and object
-            # The prompt asks for format like "Character:Elara" or "Location:Sunken Library"
-            # We need to extract the name and type separately
-            subject_type = None
-            target_type = None
+            subject_type: str | None = None
+            target_type: str | None = None
 
-            if ":" in subject:
-                subject_parsed = _get_entity_type_and_name_from_text(subject)
+            if ":" in subject_text:
+                subject_parsed = _get_entity_type_and_name_from_text(subject_text)
                 raw_type = subject_parsed.get("type")
                 if raw_type:
                     is_valid, normalized, _ = schema_validator.validate_entity_type(raw_type)
                     subject_type = normalized if is_valid else raw_type
-                else:
-                    subject_type = None
-                subject = subject_parsed.get("name") or subject
+                subject_text = subject_parsed.get("name") or subject_text
 
-            if ":" in target:
-                target_parsed = _get_entity_type_and_name_from_text(target)
+            if ":" in target_text:
+                target_parsed = _get_entity_type_and_name_from_text(target_text)
                 raw_type = target_parsed.get("type")
                 if raw_type:
                     is_valid, normalized, _ = schema_validator.validate_entity_type(raw_type)
                     target_type = normalized if is_valid else raw_type
-                else:
-                    target_type = None
-                target = target_parsed.get("name") or target
+                target_text = target_parsed.get("name") or target_text
 
-            # Track entity types for entities not already extracted
-            if subject and subject_type and subject not in existing_entity_names:
-                relationship_entities[subject] = subject_type
-            if target and target_type and target not in existing_entity_names:
-                relationship_entities[target] = target_type
+            if subject_text and subject_type and subject_text not in existing_entity_names:
+                relationship_entities[subject_text] = subject_type
+            if target_text and target_type and target_text not in existing_entity_names:
+                relationship_entities[target_text] = target_type
 
-            if subject and target and predicate:
+            if subject_text and target_text and predicate_text:
                 relationships.append(
                     ExtractedRelationship(
-                        source_name=subject,
-                        target_name=target,
-                        relationship_type=predicate,
+                        source_name=subject_text,
+                        target_name=target_text,
+                        relationship_type=predicate_text,
                         description=triple.get("description", ""),
                         chapter=state.get("current_chapter", 1),
                         confidence=0.8,
@@ -938,19 +779,10 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                     )
                 )
 
-        # Create ExtractedEntity objects for entities found in relationships
-        # but not already in the extraction results
-        new_entities_from_relationships = []
+        new_entities_from_relationships: list[tuple[ExtractedEntity, bool]] = []
         for entity_name, entity_type in relationship_entities.items():
-            # Normalize/validate the parsed type. Canonical labeling contract requires that
-            # node labels are one of the 9 canonical labels.
             is_valid, normalized_type, _err = schema_validator.validate_entity_type(entity_type)
-
-            # If we cannot validate/normalize the parsed type, fall back to a canonical world label.
-            # "Item" is the safest generic world-entity label; we preserve the original semantic
-            # type in `category`.
             final_type = normalized_type if is_valid else "Item"
-
             is_character = final_type == "Character"
 
             attributes: dict[str, Any] = {}
@@ -958,18 +790,21 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
                 raw_cat = str(entity_type).strip().lower() if entity_type else ""
                 attributes["category"] = raw_cat or final_type.lower()
 
-            entity = ExtractedEntity(
-                name=entity_name,
-                type=final_type,
-                description=f"Entity mentioned in relationships. Type: {final_type}",
-                first_appearance_chapter=state.get("current_chapter", 1),
-                attributes=attributes,
+            new_entities_from_relationships.append(
+                (
+                    ExtractedEntity(
+                        name=entity_name,
+                        type=final_type,
+                        description=f"Entity mentioned in relationships. Type: {final_type}",
+                        first_appearance_chapter=state.get("current_chapter", 1),
+                        attributes=attributes,
+                    ),
+                    is_character,
+                )
             )
-            new_entities_from_relationships.append((entity, is_character))
 
-        # Add new entities to the appropriate lists
-        new_characters = [e for e, is_char in new_entities_from_relationships if is_char]
-        new_world_items = [e for e, is_char in new_entities_from_relationships if not is_char]
+        new_characters = [entity for entity, is_char in new_entities_from_relationships if is_char]
+        new_world_items = [entity for entity, is_char in new_entities_from_relationships if not is_char]
 
         logger.info(
             "extract_relationships: created entities from relationship parsing",

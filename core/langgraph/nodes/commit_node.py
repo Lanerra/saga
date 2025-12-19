@@ -58,6 +58,7 @@ Source Code Ported From:
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import numpy as np
@@ -961,101 +962,101 @@ async def _build_relationship_statements(
             object_type = obj["type"]
             object_id = obj.get("id")
 
-            subject_labels = _get_cypher_labels(subject_type)
-            object_labels = _get_cypher_labels(object_type)
+            subject_label = _get_cypher_labels(subject_type).lstrip(":")
+            object_label = _get_cypher_labels(object_type).lstrip(":")
 
-            subject_merge_by_id = bool(subject_id)
-            object_merge_by_id = bool(object_id)
+            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}|{chapter}"
+            rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
 
-            subject_merge_clause = f"MERGE (subj{subject_labels} {{id: $subject_id}})" if subject_merge_by_id else f"MERGE (subj{subject_labels} {{name: $subject_name}})"
-            object_merge_clause = f"MERGE (obj{object_labels} {{id: $object_id}})" if object_merge_by_id else f"MERGE (obj{object_labels} {{name: $object_name}})"
+            query = """
+            CALL apoc.merge.node(
+                [$subject_label],
+                CASE
+                    WHEN $subject_id IS NULL OR toString($subject_id) = '' THEN {name: $subject_name}
+                    ELSE {id: $subject_id}
+                END,
+                {
+                    id: CASE
+                        WHEN $subject_id IS NULL OR toString($subject_id) = '' THEN randomUUID()
+                        ELSE $subject_id
+                    END,
+                    name: $subject_name,
+                    is_provisional: true,
+                    created_chapter: $chapter,
+                    description: 'Entity created from relationship extraction. Details to be developed.',
+                    created_at: timestamp()
+                },
+                {}
+            ) YIELD node AS subj
 
-            subject_on_create_sets = (
-                """
-            ON CREATE SET
-                subj.id = $subject_id,
-                subj.name = $subject_name,
-                subj.is_provisional = true,
-                subj.created_chapter = $chapter,
-                subj.description = 'Entity created from relationship extraction. Details to be developed.',
-                subj.created_at = timestamp()
-                """
-                if subject_merge_by_id
-                else """
-            ON CREATE SET
-                subj.id = randomUUID(),
-                subj.is_provisional = true,
-                subj.created_chapter = $chapter,
-                subj.description = 'Entity created from relationship extraction. Details to be developed.',
-                subj.created_at = timestamp()
-                """
-            )
-
-            object_on_create_sets = (
-                """
-            ON CREATE SET
-                obj.id = $object_id,
-                obj.name = $object_name,
-                obj.is_provisional = true,
-                obj.created_chapter = $chapter,
-                obj.description = 'Entity created from relationship extraction. Details to be developed.',
-                obj.created_at = timestamp()
-                """
-                if object_merge_by_id
-                else """
-            ON CREATE SET
-                obj.id = randomUUID(),
-                obj.is_provisional = true,
-                obj.created_chapter = $chapter,
-                obj.description = 'Entity created from relationship extraction. Details to be developed.',
-                obj.created_at = timestamp()
-                """
-            )
-
-            subject_on_match_sets = (
-                """
-            ON MATCH SET
-                subj.name =
+            FOREACH (_ IN CASE WHEN $subject_id IS NULL OR toString($subject_id) = '' THEN [] ELSE [1] END |
+                SET subj.name =
                     CASE
                         WHEN subj.name IS NULL OR toString(subj.name) = '' OR toLower(toString(subj.name)) STARTS WITH 'entity_'
                         THEN $subject_name
                         ELSE subj.name
                     END
-                """
-                if subject_merge_by_id
-                else ""
             )
 
-            object_on_match_sets = (
-                """
-            ON MATCH SET
-                obj.name =
+            CALL apoc.merge.node(
+                [$object_label],
+                CASE
+                    WHEN $object_id IS NULL OR toString($object_id) = '' THEN {name: $object_name}
+                    ELSE {id: $object_id}
+                END,
+                {
+                    id: CASE
+                        WHEN $object_id IS NULL OR toString($object_id) = '' THEN randomUUID()
+                        ELSE $object_id
+                    END,
+                    name: $object_name,
+                    is_provisional: true,
+                    created_chapter: $chapter,
+                    description: 'Entity created from relationship extraction. Details to be developed.',
+                    created_at: timestamp()
+                },
+                {}
+            ) YIELD node AS obj
+
+            FOREACH (_ IN CASE WHEN $object_id IS NULL OR toString($object_id) = '' THEN [] ELSE [1] END |
+                SET obj.name =
                     CASE
                         WHEN obj.name IS NULL OR toString(obj.name) = '' OR toLower(toString(obj.name)) STARTS WITH 'entity_'
                         THEN $object_name
                         ELSE obj.name
                     END
-                """
-                if object_merge_by_id
-                else ""
             )
 
-            query = f"""
-            {subject_merge_clause}
-            {subject_on_create_sets}
-            {subject_on_match_sets}
-            {object_merge_clause}
-            {object_on_create_sets}
-            {object_on_match_sets}
-            MERGE (subj)-[r:`{predicate_clean}`]->(obj)
-            SET r.chapter_added = $chapter,
-                r.is_provisional = $is_provisional,
-                r.confidence = $confidence,
-                r.description = $description,
-                r.last_updated = timestamp()
+            WITH subj, obj
+            CALL apoc.merge.relationship(
+                subj,
+                $predicate_clean,
+                {id: $rel_id},
+                apoc.map.merge(
+                    {
+                        chapter_added: $chapter,
+                        is_provisional: $is_provisional,
+                        confidence: $confidence,
+                        description: $description,
+                        last_updated: timestamp()
+                    },
+                    {created_ts: timestamp(), updated_ts: timestamp()}
+                ),
+                obj,
+                apoc.map.merge(
+                    {
+                        chapter_added: $chapter,
+                        is_provisional: $is_provisional,
+                        confidence: $confidence,
+                        description: $description,
+                        last_updated: timestamp()
+                    },
+                    {updated_ts: timestamp()}
+                )
+            ) YIELD rel
 
             WITH subj, obj
-            OPTIONAL MATCH (c:Chapter {{number: $chapter}})
+            OPTIONAL MATCH (c:Chapter {number: $chapter})
             FOREACH (_ IN CASE WHEN subj.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
                 MERGE (subj)-[:MENTIONED_IN]->(c)
             )
@@ -1065,10 +1066,14 @@ async def _build_relationship_statements(
             """
 
             params = {
+                "subject_label": subject_label,
                 "subject_name": subject_name,
                 "subject_id": subject_id,
+                "object_label": object_label,
                 "object_name": object_name,
                 "object_id": object_id,
+                "predicate_clean": predicate_clean,
+                "rel_id": rel_id,
                 "chapter": chapter,
                 "is_provisional": is_from_flawed_draft,
                 "confidence": triple.get("confidence", 1.0),

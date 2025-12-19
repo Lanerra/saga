@@ -201,26 +201,32 @@ class LangGraphOrchestrator:
 
         logger.info(f"Current chapter: {current_chapter} (existing: {chapter_count})")
 
-        # Check if initialization was already completed by checking for
-        # initialization artifacts (character profiles in Neo4j or YAML files)
-        from data_access.character_queries import get_character_profiles
+        # Determine whether initialization should run.
+        #
+        # Contract:
+        # - For chapter 1 (chapter_count == 0), initialization is artifact-driven. We must run init unless
+        #   the expected initialization artifacts exist on disk. This avoids skipping init just because
+        #   Neo4j contains leftover :Character nodes from a prior run.
+        # - For continuation runs (chapter_count > 0), initialization is treated as complete.
+        initialization_artifacts_ok = False
+        missing_artifacts: list[str] = []
+        if self.project_dir.exists():
+            initialization_artifacts_ok, missing_artifacts = validate_initialization_artifacts(self.project_dir)
 
-        try:
-            character_profiles = await get_character_profiles()
-            initialization_complete = len(character_profiles) > 0
+        if chapter_count == 0:
+            initialization_complete = initialization_artifacts_ok
             logger.info(
-                f"Initialization detection: {len(character_profiles)} characters found",
+                "Initialization detection (chapter 1): using filesystem artifacts",
                 initialization_complete=initialization_complete,
+                missing_artifacts=missing_artifacts,
             )
-        except Exception as e:
-            logger.warning(
-                f"Could not check for existing initialization: {e}",
-                exc_info=True,
+        else:
+            initialization_complete = True
+            logger.info(
+                "Initialization detection (continuation): chapters already exist",
+                initialization_complete=initialization_complete,
+                existing_chapters=chapter_count,
             )
-            # Fallback: check for initialization files
-            init_file = self.project_dir / "outline" / "structure.yaml"
-            initialization_complete = init_file.exists()
-            logger.info(f"Initialization detection (fallback): structure.yaml exists={initialization_complete}")
 
         # Create initial state
         state = create_initial_state(
@@ -250,8 +256,7 @@ class LangGraphOrchestrator:
 
         # Advisory validation of initialization artifacts (non-breaking)
         if self.project_dir.exists():
-            ok, missing = validate_initialization_artifacts(self.project_dir)
-            if ok:
+            if initialization_artifacts_ok:
                 logger.info(
                     "Initialization artifacts appear complete",
                     project_dir=str(self.project_dir),
@@ -260,7 +265,7 @@ class LangGraphOrchestrator:
                 logger.warning(
                     "Initialization artifacts incomplete for %s: %s",
                     str(self.project_dir),
-                    "; ".join(missing),
+                    "; ".join(missing_artifacts),
                 )
 
         return state
