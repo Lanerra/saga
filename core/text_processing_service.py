@@ -236,6 +236,7 @@ class ResponseCleaningService:
             "think_self_closing": [],
             "think_opening": [],
             "think_closing": [],
+            "think_boundary": [],
             "code_blocks": [],
             "chapter_headers": [],
             "common_phrases": [],
@@ -252,6 +253,8 @@ class ResponseCleaningService:
             patterns["think_self_closing"].append(re.compile(rf"<\s*{tag_name}\s*/\s*>", flags=re.IGNORECASE))
             patterns["think_opening"].append(re.compile(rf"<\s*{tag_name}\s*>", flags=re.IGNORECASE))
             patterns["think_closing"].append(re.compile(rf"<\s*/\s*{tag_name}\s*>", flags=re.IGNORECASE))
+
+        patterns["think_boundary"].append(re.compile(r"<\s*/\s*think\s*>", flags=re.IGNORECASE))
 
         # Code blocks
         patterns["code_blocks"].append(
@@ -309,6 +312,15 @@ class ResponseCleaningService:
 
         # Remove think tags and similar content
         text_before_think_removal = cleaned_text
+
+        last_think_closing_tag_end_index = -1
+        for pattern in self._compiled_patterns["think_boundary"]:
+            for match in pattern.finditer(cleaned_text):
+                last_think_closing_tag_end_index = match.end()
+
+        if last_think_closing_tag_end_index != -1:
+            cleaned_text = cleaned_text[last_think_closing_tag_end_index:]
+
         for pattern_list in [
             self._compiled_patterns["think_blocks"],
             self._compiled_patterns["think_self_closing"],
