@@ -235,11 +235,7 @@ class TestCommitToGraph:
                             statements = args[0]
 
                             # Find relationship statements and assert predicate type is normalized.
-                            rel_statements = [
-                                (q, p)
-                                for (q, p) in statements
-                                if isinstance(q, str) and "CALL apoc.merge.relationship" in q
-                            ]
+                            rel_statements = [(q, p) for (q, p) in statements if isinstance(q, str) and "CALL apoc.merge.relationship" in q]
 
                             assert rel_statements, "Expected at least one relationship statement"
 

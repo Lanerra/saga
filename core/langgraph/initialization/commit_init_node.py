@@ -10,7 +10,6 @@ and committing them to the knowledge graph.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 import structlog

@@ -502,5 +502,3 @@ async def test_generate_character_sheet_uses_existing_traits(base_state, mock_ll
         assert call_args is not None
         prompt = call_args.kwargs.get("prompt", "")
         assert "brave" in prompt or "Existing traits" in prompt or len(prompt) > 0
-
-

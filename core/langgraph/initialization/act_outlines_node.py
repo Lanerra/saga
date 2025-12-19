@@ -9,6 +9,7 @@ providing more granular structure for the narrative.
 from __future__ import annotations
 
 import structlog
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.langgraph.content_manager import (
     ContentManager,
@@ -21,6 +22,103 @@ from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+
+class ActOutlineKeyEventSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    sequence: int = Field(description="1-indexed sequence number")
+    event: str = Field(description="On-page, concrete event")
+    cause: str = Field(description="What directly causes the event")
+    effect: str = Field(description="What directly changes because of the event")
+
+
+class ActOutlineSectionsSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    act_summary: str
+    opening_situation: str
+    key_events: list[ActOutlineKeyEventSchema]
+    character_development: str
+    stakes_and_tension: str
+    act_ending_turn: str
+    thematic_thread: str
+    pacing_notes: str
+
+    @field_validator("key_events")
+    @classmethod
+    def validate_key_events_length_and_sequence(
+        cls,
+        key_events: list[ActOutlineKeyEventSchema],
+    ) -> list[ActOutlineKeyEventSchema]:
+        if not (5 <= len(key_events) <= 7):
+            raise ValueError("Act outline sections.key_events must contain 5-7 items")
+
+        expected_sequence_numbers = list(range(1, len(key_events) + 1))
+        actual_sequence_numbers = [event.sequence for event in key_events]
+        if actual_sequence_numbers != expected_sequence_numbers:
+            raise ValueError("Act outline sections.key_events sequence numbers must be contiguous starting at 1. " f"expected={expected_sequence_numbers} actual={actual_sequence_numbers}")
+
+        return key_events
+
+
+class ActOutlineSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    act_number: int
+    total_acts: int
+    act_role: str
+    chapters_in_act: int
+    sections: ActOutlineSectionsSchema
+
+
+def _synthesize_act_outline_raw_text(outline: ActOutlineSchema) -> str:
+    sections = outline.sections
+
+    parts: list[str] = [
+        f"Act {outline.act_number}: {outline.act_role}",
+        "",
+        "1. Act Summary (2-3 sentences)",
+        sections.act_summary.strip(),
+        "",
+        "2. Opening Situation",
+        sections.opening_situation.strip(),
+        "",
+        "3. Key Events",
+    ]
+
+    for key_event in sections.key_events:
+        parts.append(
+            "\n".join(
+                [
+                    f"{key_event.sequence}. {key_event.event.strip()}",
+                    f"Cause: {key_event.cause.strip()}",
+                    f"Effect: {key_event.effect.strip()}",
+                ]
+            ).strip()
+        )
+        parts.append("")
+
+    parts.extend(
+        [
+            "4. Character Development (focus on internal conflict + choices)",
+            sections.character_development.strip(),
+            "",
+            "5. Stakes and Tension (how pressure escalates)",
+            sections.stakes_and_tension.strip(),
+            "",
+            "6. Act Ending / Turn (cliffhanger or decisive shift)",
+            sections.act_ending_turn.strip(),
+            "",
+            "7. Thematic Thread (how theme appears through action/imagery)",
+            sections.thematic_thread.strip(),
+            "",
+            "8. Pacing Notes (fast vs slow chapters)",
+            sections.pacing_notes.strip(),
+        ]
+    )
+
+    return "\n".join(parts).strip()
 
 
 async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
@@ -93,12 +191,20 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         act_range = act_ranges.get(act_num)
         chapters_in_act = act_range.chapters_in_act if act_range else 0
 
-        act_outline = await _generate_single_act_outline(
-            state=state,
-            act_number=act_num,
-            total_acts=act_count,
-            chapters_in_act=chapters_in_act,
-        )
+        try:
+            act_outline = await _generate_single_act_outline(
+                state=state,
+                act_number=act_num,
+                total_acts=act_count,
+                chapters_in_act=chapters_in_act,
+            )
+        except ValueError as error:
+            logger.warning(
+                "generate_act_outlines: act outline JSON/schema contract violated",
+                act_number=act_num,
+                error=str(error),
+            )
+            act_outline = None
 
         if act_outline:
             # Record chapter allocation alongside the outline so downstream logic can
@@ -129,9 +235,27 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         act_count=len(act_outlines),
     )
 
-    # Externalize act_outlines to reduce state bloat
+    # Externalize act_outlines to reduce state bloat.
+    #
+    # PR4: Use a JSON-safe externalized container format (v2) that is deterministic and
+    # does not rely on dict keys that may be coerced to strings during JSON serialization.
+    acts_externalized: list[dict[str, object]] = []
+    for act_number in sorted(act_outlines.keys()):
+        act_outline = act_outlines[act_number]
+
+        # Ensure each entry is self-describing (required for v2 list format).
+        if act_outline.get("act_number") != act_number:
+            act_outline = {**act_outline, "act_number": act_number}
+
+        acts_externalized.append(act_outline)
+
+    act_outlines_externalized = {
+        "format_version": 2,
+        "acts": acts_externalized,
+    }
+
     act_outlines_ref = content_manager.save_json(
-        act_outlines,
+        act_outlines_externalized,
         "act_outlines",
         "all",
         version=1,
@@ -156,7 +280,7 @@ async def _generate_single_act_outline(
     act_number: int,
     total_acts: int,
     chapters_in_act: int,
-) -> dict[str, any] | None:
+) -> dict[str, object] | None:
     """
     Generate an outline for a single act.
 
@@ -201,7 +325,7 @@ async def _generate_single_act_outline(
     )
 
     try:
-        response, usage = await llm_service.async_call_llm(
+        data, usage = await llm_service.async_call_llm_json_object(
             model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
@@ -209,31 +333,42 @@ async def _generate_single_act_outline(
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),
+            max_attempts=2,
         )
 
-        if not response or not response.strip():
-            logger.error(
-                "_generate_single_act_outline: empty response",
-                act_number=act_number,
-            )
-            return None
+        outline = ActOutlineSchema.model_validate(data)
+
+        if outline.act_number != act_number:
+            raise ValueError(f"Act outline act_number mismatch. expected={act_number} actual={outline.act_number}")
+        if outline.total_acts != total_acts:
+            raise ValueError(f"Act outline total_acts mismatch. expected={total_acts} actual={outline.total_acts}")
+        if outline.act_role != act_role:
+            raise ValueError(f"Act outline act_role mismatch. expected={act_role!r} actual={outline.act_role!r}")
+        if outline.chapters_in_act != chapters_in_act:
+            raise ValueError(f"Act outline chapters_in_act mismatch. expected={chapters_in_act} actual={outline.chapters_in_act}")
+
+        raw_text = _synthesize_act_outline_raw_text(outline)
 
         act_outline = {
-            "act_number": act_number,
-            "raw_text": response,
-            "chapters_in_act": chapters_in_act,
-            "act_role": act_role,
+            "act_number": outline.act_number,
+            "total_acts": outline.total_acts,
+            "act_role": outline.act_role,
+            "chapters_in_act": outline.chapters_in_act,
+            "sections": outline.sections.model_dump(),
+            "raw_text": raw_text,
             "generated_at": "initialization",
         }
 
         logger.debug(
             "_generate_single_act_outline: act generated",
             act_number=act_number,
-            length=len(response),
+            length=len(raw_text),
         )
 
         return act_outline
 
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(
             "_generate_single_act_outline: exception during generation",

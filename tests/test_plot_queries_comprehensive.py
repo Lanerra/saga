@@ -1,6 +1,5 @@
 """Comprehensive tests for data_access/plot_queries.py"""
 
-import json
 from unittest.mock import AsyncMock
 
 import pytest

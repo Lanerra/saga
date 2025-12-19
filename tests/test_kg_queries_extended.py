@@ -184,6 +184,7 @@ class TestMergeEntitiesExtended:
 
     async def test_merge_entities_success(self, monkeypatch):
         """Test successful atomic merge."""
+
         async def mock_write(query, params):
             if "apoc.refactor.mergeNodes" in query:
                 return [{"id": params["target_id"]}]

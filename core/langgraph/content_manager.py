@@ -845,30 +845,94 @@ def get_act_outlines(state: Mapping[str, Any], manager: ContentManager) -> dict[
 
     Phase 3: No fallback to in-state content. External files are required.
 
-    Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+    PR4: Dual-read v1/v2 externalized formats.
+
+    Accepted externalized shapes:
+    - v1: dict mapping act number (int or str int) -> act outline dict
+    - v2: list of act outline dicts, each containing `act_number: int`
+    - v2 container: {"format_version": 2, "acts": [ ... ]}
 
     Returns:
-        Act outlines dict (empty dict if not available)
+        Act outlines dict keyed by act number (empty dict if not available)
 
     Raises:
         FileNotFoundError: If external file reference exists but file is missing
+        ValueError: If externalized data is malformed
     """
+
+    def _normalize_v1_mapping(raw: dict[object, object]) -> dict[int, dict]:
+        result_by_act_number: dict[int, dict] = {}
+        for key, value in raw.items():
+            if isinstance(key, bool):
+                raise ValueError("Act outlines v1 key must be an integer act number; got bool")
+
+            if isinstance(key, int):
+                act_number = key
+            elif isinstance(key, str):
+                try:
+                    act_number = int(key)
+                except ValueError as error:
+                    raise ValueError(f"Act outlines v1 key must be an integer act number; got {key!r}") from error
+            else:
+                raise ValueError(f"Act outlines v1 key must be an integer act number; got {type(key)}")
+
+            if isinstance(act_number, bool) or act_number <= 0:
+                raise ValueError(f"Act outlines v1 key must be a positive integer; got {act_number!r}")
+
+            if not isinstance(value, dict):
+                raise ValueError(f"Act outlines v1 value must be a dict for act_number={act_number}; got {type(value)}")
+
+            if act_number in result_by_act_number:
+                raise ValueError(f"Duplicate act_number in act outlines v1 mapping: {act_number}")
+
+            result_by_act_number[act_number] = value
+
+        return {act_number: result_by_act_number[act_number] for act_number in sorted(result_by_act_number.keys())}
+
+    def _normalize_v2_list(raw: list[object]) -> dict[int, dict]:
+        result_by_act_number: dict[int, dict] = {}
+        for index, item in enumerate(raw):
+            if not isinstance(item, dict):
+                raise ValueError(f"Act outlines v2 list items must be dict; index={index}, got {type(item)}")
+
+            act_number = item.get("act_number")
+            if not isinstance(act_number, int) or isinstance(act_number, bool) or act_number <= 0:
+                raise ValueError(f"Act outlines v2 items must include act_number as positive int; index={index}, got {act_number!r}")
+
+            if act_number in result_by_act_number:
+                raise ValueError(f"Duplicate act_number in act outlines v2 list: {act_number}")
+
+            result_by_act_number[act_number] = item
+
+        return {act_number: result_by_act_number[act_number] for act_number in sorted(result_by_act_number.keys())}
+
     act_outlines_ref = state.get("act_outlines_ref")
     if not act_outlines_ref:
         return {}
 
     data = manager.load_json(act_outlines_ref)
-    # Convert string keys to int keys if needed
-    result = {}
-    if isinstance(data, dict):
-        for k, v in data.items():
-            try:
-                result[int(k)] = v
-            except (ValueError, TypeError):
-                pass
-    return result
+
+    if isinstance(data, list):
+        return _normalize_v2_list(cast(list[object], data))
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Act outlines externalized content must be dict or list; got {type(data)}")
+
+    format_version = data.get("format_version")
+    if format_version is not None:
+        if not isinstance(format_version, int) or isinstance(format_version, bool):
+            raise ValueError(f"Act outlines container format_version must be int; got {type(format_version)}")
+
+        if format_version != 2:
+            raise ValueError(f"Unsupported act outlines container format_version: {format_version}")
+
+        acts = data.get("acts")
+        if not isinstance(acts, list):
+            raise ValueError(f"Act outlines v2 container must contain 'acts' list; got {type(acts)}")
+
+        return _normalize_v2_list(cast(list[object], acts))
+
+    return _normalize_v1_mapping(cast(dict[object, object], data))
 
 
 def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) -> dict[str, list[dict[str, Any]]]:

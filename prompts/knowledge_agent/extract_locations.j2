@@ -8,7 +8,8 @@ Chapter: {{ chapter_number }}
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
 Output shape:
-- {"world_updates": {"Location": { ... }}}
+- Return valid JSON only; no markdown; no code fences; no commentary.
+- Top-level object MUST be: {"world_updates": {"Location": {...}}}
 
 Per-location entry:
 - key = location name (string; no parentheticals)

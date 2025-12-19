@@ -496,8 +496,6 @@ def test_fallback_parse_outline_roman_numerals(base_state):
     assert result["act_count"] == 5
 
 
-
-
 def test_parse_global_outline_preserves_all_fields(base_state, sample_outline_json):
     """Verify all fields from outline are preserved."""
     response = json.dumps(sample_outline_json)

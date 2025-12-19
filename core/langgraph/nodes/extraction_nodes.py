@@ -9,11 +9,11 @@ to extract characters, locations, events, and relationships.
 from __future__ import annotations
 
 import copy
-import json
 import re
 from typing import Any
 
 import structlog
+from pydantic import BaseModel, ConfigDict, StrictStr, ValidationError, field_validator
 
 import config
 from core.exceptions import LLMServiceError
@@ -27,9 +27,115 @@ from core.llm_interface_refactored import llm_service
 from core.schema_validator import schema_validator
 from processing.entity_deduplication import generate_entity_id
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
+
+
+_TRAIT_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
+
+
+class _CharacterUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    description: StrictStr
+    traits: list[StrictStr]
+    status: StrictStr
+    relationships: dict[StrictStr, StrictStr]
+
+    @field_validator("traits")
+    @classmethod
+    def _validate_traits(cls, traits: list[StrictStr]) -> list[StrictStr]:
+        for trait in traits:
+            if not _TRAIT_PATTERN.fullmatch(trait):
+                raise ValueError("Trait must be a single word with letters/numbers/hyphen only")
+        return traits
+
+
+class _CharactersExtractionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    character_updates: dict[StrictStr, _CharacterUpdatePayload]
+
+
+class _WorldUpdateEventPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    description: StrictStr
+    category: StrictStr
+    goals: list[StrictStr]
+    rules: list[StrictStr]
+    key_elements: list[StrictStr]
+
+
+class _WorldUpdatesEventRootPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    Event: dict[StrictStr, _WorldUpdateEventPayload]
+
+
+class _EventsExtractionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    world_updates: _WorldUpdatesEventRootPayload
+
+
+class _WorldUpdateLocationPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    description: StrictStr
+    category: StrictStr
+    goals: list[StrictStr]
+    rules: list[StrictStr]
+    key_elements: list[StrictStr]
+
+
+class _WorldUpdatesLocationRootPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    Location: dict[StrictStr, _WorldUpdateLocationPayload]
+
+
+class _LocationsExtractionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    world_updates: _WorldUpdatesLocationRootPayload
+
+
+def _safe_validation_error_details(*, data: Any) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"root_type": type(data).__name__}
+
+    details: dict[str, Any] = {"top_keys": sorted([str(key) for key in data.keys()])[:50]}
+
+    world_updates = data.get("world_updates")
+    if isinstance(world_updates, dict):
+        details["world_updates_keys"] = sorted([str(key) for key in world_updates.keys()])[:50]
+
+        event_bucket = world_updates.get("Event")
+        if isinstance(event_bucket, dict):
+            details["event_count"] = len(event_bucket)
+
+        location_bucket = world_updates.get("Location")
+        if isinstance(location_bucket, dict):
+            details["location_count"] = len(location_bucket)
+
+    character_updates = data.get("character_updates")
+    if isinstance(character_updates, dict):
+        details["character_count"] = len(character_updates)
+
+    return details
+
+
+def _safe_pydantic_error_summary(error: ValidationError) -> list[dict[str, Any]]:
+    summary: list[dict[str, Any]] = []
+    for entry in error.errors()[:10]:
+        summary.append(
+            {
+                "loc": [str(x) for x in entry.get("loc", [])],
+                "type": str(entry.get("type", "")),
+            }
+        )
+    return summary
 
 
 async def extract_characters(state: NarrativeState) -> dict[str, Any]:
@@ -78,49 +184,50 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
             max_attempts=2,
         )
 
-        if not data:
+        try:
+            payload = _CharactersExtractionPayload.model_validate(data)
+        except ValidationError as validation_error:
+            logger.error(
+                "extract_characters: schema validation failed",
+                details=_safe_validation_error_details(data=data),
+                validation_errors=_safe_pydantic_error_summary(validation_error),
+            )
             return {
+                "current_node": "extract_characters",
+                "last_error": "Character extraction failed: LLM response schema validation failed",
+                "has_fatal_error": True,
+                "error_node": "extract_characters",
                 "extracted_entities": {"characters": [], "world_items": []},
                 "extracted_relationships": [],
             }
 
-        # Process character updates into ExtractedEntity objects
-        char_updates = []
-        raw_updates = data.get("character_updates", {})
+        char_updates: list[ExtractedEntity] = []
+        for name, info in payload.character_updates.items():
+            attributes = {
+                "traits": list(info.traits),
+                "status": str(info.status),
+                "relationships": dict(info.relationships),
+            }
 
-        for name, info in raw_updates.items():
-            if isinstance(info, dict):
-                # Validate and filter traits
-                raw_traits = info.get("traits", [])
-                validated_traits = validate_and_filter_traits(raw_traits)
+            is_valid, normalized_type, err = schema_validator.validate_entity_type("Character")
+            if not is_valid:
+                logger.warning(
+                    "extract_characters: invalid entity type",
+                    type="Character",
+                    error=err,
+                )
+                continue
 
-                attributes = {
-                    "traits": validated_traits,
-                    "status": info.get("status", "Unknown"),
-                    "relationships": info.get("relationships", {}),
-                }
+            char_updates.append(
+                ExtractedEntity(
+                    name=str(name),
+                    type=normalized_type,
+                    description=str(info.description),
+                    first_appearance_chapter=state.get("current_chapter", 1),
+                    attributes=attributes,
+                )
+            )
 
-                # Validate entity type (Characters are always "Character")
-                is_valid, normalized_type, err = schema_validator.validate_entity_type("Character")
-
-                if is_valid:
-                    char_updates.append(
-                        ExtractedEntity(
-                            name=name,
-                            type=normalized_type,
-                            description=info.get("description", ""),
-                            first_appearance_chapter=state.get("current_chapter", 1),
-                            attributes=attributes,
-                        )
-                    )
-                else:
-                    logger.warning(
-                        "extract_characters: invalid entity type",
-                        type="Character",
-                        error=err,
-                    )
-
-        # Clear extraction state and set characters
         return {
             "extracted_entities": {"characters": char_updates, "world_items": []},
             "extracted_relationships": [],
@@ -201,52 +308,17 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
         logger.debug("extract_locations: failed to hash/log prompt for debugging")
 
     try:
-        data: dict[str, Any] | None = None
-
-        for attempt in range(1, 3):
-            raw_text, _ = await llm_service.async_call_llm(
+        try:
+            data, _ = await llm_service.async_call_llm_json_object(
                 model_name=state.get("medium_model", ""),
                 prompt=prompt,
                 temperature=config.Temperatures.KG_EXTRACTION,
                 max_tokens=config.MAX_KG_TRIPLE_TOKENS,
                 allow_fallback=True,
                 system_prompt=get_system_prompt("knowledge_agent"),
+                max_attempts=2,
             )
-
-            try:
-                decoded = json.loads(raw_text)
-            except json.JSONDecodeError:
-                import hashlib
-
-                response_sha1 = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
-                logger.error(
-                    "extract_locations: failed to parse JSON",
-                    response_sha1=response_sha1,
-                    response_len=len(raw_text),
-                )
-
-                if attempt == 2:
-                    return {
-                        "current_node": "extract_locations",
-                        "last_error": "Location extraction failed: LLM returned invalid JSON",
-                        "has_fatal_error": True,
-                        "error_node": "extract_locations",
-                    }
-
-                continue
-
-            if not isinstance(decoded, dict):
-                return {
-                    "current_node": "extract_locations",
-                    "last_error": "Location extraction failed: LLM returned invalid JSON",
-                    "has_fatal_error": True,
-                    "error_node": "extract_locations",
-                }
-
-            data = decoded
-            break
-
-        if data is None:
+        except ValueError:
             return {
                 "current_node": "extract_locations",
                 "last_error": "Location extraction failed: LLM returned invalid JSON",
@@ -254,157 +326,56 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
                 "error_node": "extract_locations",
             }
 
-        # DEBUG: log parsed top-level keys and world_updates keys to confirm expected schema.
         try:
-            top_keys = sorted(list(data.keys()))
-            raw_updates = data.get("world_updates", {})
-            wu_keys = sorted(list(raw_updates.keys()))[:30] if isinstance(raw_updates, dict) else []
-            suspicious = sorted(
-                set(wu_keys).intersection(
-                    {
-                        "entities",
-                        "relationships",
-                        "characters",
-                        "world_items",
-                        "chapters",
-                        "items",
-                        "traits",
-                    }
-                )
+            payload = _LocationsExtractionPayload.model_validate(data)
+        except ValidationError as validation_error:
+            logger.error(
+                "extract_locations: schema validation failed",
+                details=_safe_validation_error_details(data=data),
+                validation_errors=_safe_pydantic_error_summary(validation_error),
             )
-            logger.info(
-                "extract_locations: parsed response shape",
-                top_keys=top_keys,
-                world_updates_type=type(raw_updates).__name__,
-                world_updates_keys_head=wu_keys,
-                suspicious_world_updates_keys=suspicious,
-            )
-        except Exception:  # pragma: no cover - debug logging must never break extraction
-            logger.debug("extract_locations: failed to log parsed response shape")
+            return {
+                "current_node": "extract_locations",
+                "last_error": "Location extraction failed: LLM response schema validation failed",
+                "has_fatal_error": True,
+                "error_node": "extract_locations",
+            }
 
-        if not data:
-            return {}
-
-        # Process world updates into ExtractedEntity objects
         world_updates: list[ExtractedEntity] = []
-        raw_updates = data.get("world_updates", {})
-
-        # We only want Locations here. Events are handled by extract_events, and other
-        # canonical types (Item) must not be created by the
-        # dedicated location extractor.
         allowed_type = "Location"
 
-        # These keys have historically shown up when the model emits a "rolled-up"
-        # structure. They are *structural buckets*, not semantic categories/subtypes.
-        ignored_world_update_buckets = {
-            "entities",
-            "relationships",
-            "character_updates",
-            "characters",
-            "world_items",
-            "kg_triples",
-            "chapters",
-            "items",
-            "traits",
-        }
-
-        # Backward compatible acceptance for earlier plural bucket names.
-        bucket_aliases = {
-            "location": "Location",
-            "locations": "Location",
-        }
-
-        if not isinstance(raw_updates, dict):
-            logger.warning(
-                "extract_locations: world_updates is not a dict; skipping",
-                world_updates_type=type(raw_updates).__name__,
-            )
-            raw_updates = {}
-
-        for bucket_key, items in raw_updates.items():
-            bucket_raw = str(bucket_key).strip() if bucket_key is not None else ""
-            bucket_norm = bucket_aliases.get(bucket_raw.lower(), bucket_raw)
-
-            if bucket_norm.lower() in ignored_world_update_buckets:
+        for name, info in payload.world_updates.Location.items():
+            subtype_category = str(info.category).strip()
+            _, cat_msg = schema_validator.validate_category(allowed_type, subtype_category)
+            if cat_msg:
                 logger.warning(
-                    "extract_locations: ignoring unexpected world_updates bucket",
-                    bucket=bucket_raw,
-                )
-                continue
-
-            # The prompt contract is: world_updates must be keyed by canonical label "Location".
-            # If we see something else, we treat it as drift and skip rather than misclassify.
-            if bucket_norm != allowed_type:
-                mapped = _map_category_to_type(bucket_norm)
-                if mapped == allowed_type and isinstance(items, dict):
-                    # Accept "subtype-as-bucket" drift (e.g., "Settlement": {...}) for backward compatibility.
-                    logger.warning(
-                        "extract_locations: non-canonical bucket accepted as subtype",
-                        bucket=bucket_norm,
-                        mapped_type=mapped,
-                    )
-                else:
-                    logger.warning(
-                        "extract_locations: skipping non-location bucket",
-                        bucket=bucket_norm,
-                        mapped_type=mapped,
-                    )
-                    continue
-
-            if not isinstance(items, dict):
-                continue
-
-            for name, info in items.items():
-                if not isinstance(info, dict):
-                    continue
-
-                entity_type = allowed_type
-
-                # Prefer per-entity subtype category, fall back to bucket if we accepted
-                # a subtype-as-bucket drift pattern.
-                subtype_category = info.get("category")
-                if isinstance(subtype_category, str):
-                    subtype_category = subtype_category.strip()
-                else:
-                    subtype_category = ""
-
-                if not subtype_category and bucket_norm != allowed_type:
-                    subtype_category = bucket_norm
-
-                # Soft category validation (warning only)
-                if subtype_category:
-                    _, cat_msg = schema_validator.validate_category(entity_type, subtype_category)
-                    if cat_msg:
-                        logger.warning(
-                            "extract_locations: category validation warning",
-                            type=entity_type,
-                            category=subtype_category,
-                            message=cat_msg,
-                        )
-
-                # Use category (when present) for deterministic IDs; otherwise fall back.
-                id_category = subtype_category or allowed_type.lower()
-                item_id = generate_entity_id(name, id_category, state.get("current_chapter", 1))
-
-                attributes = {
-                    "category": subtype_category or id_category,
-                    "id": item_id,
-                    "goals": info.get("goals", []),
-                    "rules": info.get("rules", []),
-                    "key_elements": info.get("key_elements", []),
-                }
-
-                world_updates.append(
-                    ExtractedEntity(
-                        name=name,
-                        type=entity_type,
-                        description=info.get("description", ""),
-                        first_appearance_chapter=state.get("current_chapter", 1),
-                        attributes=attributes,
-                    )
+                    "extract_locations: category validation warning",
+                    type=allowed_type,
+                    category=subtype_category,
+                    message=cat_msg,
                 )
 
-        # Append to existing world_items, preserving characters
+            id_category = subtype_category or allowed_type.lower()
+            item_id = generate_entity_id(str(name), id_category, state.get("current_chapter", 1))
+
+            attributes = {
+                "category": subtype_category or id_category,
+                "id": item_id,
+                "goals": list(info.goals),
+                "rules": list(info.rules),
+                "key_elements": list(info.key_elements),
+            }
+
+            world_updates.append(
+                ExtractedEntity(
+                    name=str(name),
+                    type=allowed_type,
+                    description=str(info.description),
+                    first_appearance_chapter=state.get("current_chapter", 1),
+                    attributes=attributes,
+                )
+            )
+
         return {
             "extracted_entities": {
                 "characters": existing_characters,
@@ -497,129 +468,54 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
             }
 
         try:
-            top_keys = sorted(list(data.keys())) if isinstance(data, dict) else []
-            raw_updates = data.get("world_updates", {}) if isinstance(data, dict) else {}
-            wu_keys = sorted(list(raw_updates.keys()))[:30] if isinstance(raw_updates, dict) else []
-            suspicious = sorted(
-                set(wu_keys).intersection(
-                    {
-                        "entities",
-                        "relationships",
-                        "characters",
-                        "world_items",
-                        "chapters",
-                        "items",
-                        "traits",
-                    }
-                )
+            payload = _EventsExtractionPayload.model_validate(data)
+        except ValidationError as validation_error:
+            logger.error(
+                "extract_events: schema validation failed",
+                details=_safe_validation_error_details(data=data),
+                validation_errors=_safe_pydantic_error_summary(validation_error),
             )
-            logger.info(
-                "extract_events: parsed response shape",
-                top_keys=top_keys,
-                world_updates_type=type(raw_updates).__name__,
-                world_updates_keys_head=wu_keys,
-                suspicious_world_updates_keys=suspicious,
-            )
-        except Exception:  # pragma: no cover
-            logger.debug("extract_events: failed to log parsed response shape")
-
-        if not data:
-            return {}
-
-        raw_updates = data.get("world_updates", {})
-        if not isinstance(raw_updates, dict):
-            logger.warning(
-                "extract_events: world_updates is not a dict; skipping",
-                world_updates_type=type(raw_updates).__name__,
-            )
-            raw_updates = {}
+            return {
+                "current_node": "extract_events",
+                "last_error": "Event extraction failed: LLM response schema validation failed",
+                "has_fatal_error": True,
+                "error_node": "extract_events",
+            }
 
         allowed_type = "Event"
-        ignored_world_update_buckets = {
-            "entities",
-            "relationships",
-            "character_updates",
-            "characters",
-            "world_items",
-            "kg_triples",
-            "chapters",
-            "items",
-            "traits",
-        }
-        bucket_aliases = {
-            "event": "Event",
-            "events": "Event",
-        }
-
         event_updates: list[ExtractedEntity] = []
 
-        for bucket_key, items in raw_updates.items():
-            bucket_raw = str(bucket_key).strip() if bucket_key is not None else ""
-            bucket_norm = bucket_aliases.get(bucket_raw.lower(), bucket_raw)
-
-            if bucket_norm.lower() in ignored_world_update_buckets:
+        for name, info in payload.world_updates.Event.items():
+            subtype_category = str(info.category).strip()
+            _, cat_msg = schema_validator.validate_category(allowed_type, subtype_category)
+            if cat_msg:
                 logger.warning(
-                    "extract_events: ignoring unexpected world_updates bucket",
-                    bucket=bucket_raw,
+                    "extract_events: category validation warning",
+                    type=allowed_type,
+                    category=subtype_category,
+                    message=cat_msg,
                 )
-                continue
 
-            if bucket_norm != allowed_type:
-                mapped = _map_category_to_type(bucket_norm)
-                if mapped == allowed_type and isinstance(items, dict):
-                    logger.warning(
-                        "extract_events: non-canonical bucket accepted as subtype",
-                        bucket=bucket_norm,
-                        mapped_type=mapped,
-                    )
-                else:
-                    logger.warning(
-                        "extract_events: skipping non-event bucket",
-                        bucket=bucket_norm,
-                        mapped_type=mapped,
-                    )
-                    continue
+            id_category = subtype_category or allowed_type.lower()
+            item_id = generate_entity_id(str(name), id_category, state.get("current_chapter", 1))
 
-            if not isinstance(items, dict):
-                continue
+            attributes = {
+                "category": subtype_category or id_category,
+                "id": item_id,
+                "goals": list(info.goals),
+                "rules": list(info.rules),
+                "key_elements": list(info.key_elements),
+            }
 
-            for name, info in items.items():
-                if not isinstance(info, dict):
-                    continue
-
-                subtype_category = info.get("category")
-                subtype_category = subtype_category.strip() if isinstance(subtype_category, str) else ""
-                if not subtype_category and bucket_norm != allowed_type:
-                    subtype_category = bucket_norm
-
-                if subtype_category:
-                    _, cat_msg = schema_validator.validate_category(allowed_type, subtype_category)
-                    if cat_msg:
-                        logger.warning(
-                            "extract_events: category validation warning",
-                            type=allowed_type,
-                            category=subtype_category,
-                            message=cat_msg,
-                        )
-
-                id_category = subtype_category or allowed_type.lower()
-                item_id = generate_entity_id(name, id_category, state.get("current_chapter", 1))
-
-                attributes = {
-                    "category": subtype_category or id_category,
-                    "id": item_id,
-                    "key_elements": info.get("key_elements", []),
-                }
-
-                event_updates.append(
-                    ExtractedEntity(
-                        name=name,
-                        type=allowed_type,
-                        description=info.get("description", ""),
-                        first_appearance_chapter=state.get("current_chapter", 1),
-                        attributes=attributes,
-                    )
+            event_updates.append(
+                ExtractedEntity(
+                    name=str(name),
+                    type=allowed_type,
+                    description=str(info.description),
+                    first_appearance_chapter=state.get("current_chapter", 1),
+                    attributes=attributes,
                 )
+            )
 
         return {
             "extracted_entities": {
@@ -706,7 +602,11 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
 
         kg_triples_list = data.get("kg_triples", [])
         if not isinstance(kg_triples_list, list):
-            logger.warning("extract_relationships: kg_triples is not a list", raw_data=data)
+            logger.warning(
+                "extract_relationships: kg_triples is not a list",
+                details=_safe_validation_error_details(data=data),
+                kg_triples_type=type(kg_triples_list).__name__,
+            )
             return {"extracted_relationships": []}
 
         from processing.parsing_utils import _get_entity_type_and_name_from_text

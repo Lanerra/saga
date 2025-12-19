@@ -20,21 +20,36 @@ Chapters in act: ~{{ chapters_in_act }}
 
 ## Task
 
-Write a detailed act outline in prose (no JSON).
+Return valid JSON only; no markdown; no code fences; no commentary.
 
-Output structure (use these section headers exactly):
-1. Act Summary (2-3 sentences)
-2. Opening Situation
-3. Key Events (5-7 short paragraphs; each paragraph is an on-page event with cause→effect)
-4. Character Development (focus on internal conflict + choices)
-5. Stakes and Tension (how pressure escalates)
-6. Act Ending / Turn (cliffhanger or decisive shift)
-7. Thematic Thread (how theme appears through action/imagery)
-8. Pacing Notes (fast vs slow chapters)
+The JSON root MUST be an object with EXACTLY these keys:
+- "act_number" (int): MUST equal {{ act_number }}
+- "total_acts" (int): MUST equal {{ total_acts }}
+- "act_role" (str): MUST equal "{{ act_role }}"
+- "chapters_in_act" (int): MUST equal {{ chapters_in_act }}
+- "sections" (object)
+
+The "sections" object MUST have EXACTLY these keys:
+- "act_summary" (str)
+- "opening_situation" (str)
+- "key_events" (array of 5 to 7 objects)
+- "character_development" (str)
+- "stakes_and_tension" (str)
+- "act_ending_turn" (str)
+- "thematic_thread" (str)
+- "pacing_notes" (str)
+
+Each object in "key_events" MUST have EXACTLY these keys:
+- "sequence" (int): starts at 1 and increases by 1
+- "event" (str): an on-page, concrete event
+- "cause" (str): what directly causes the event
+- "effect" (str): what directly changes because of the event
 
 Constraints:
 - Stay consistent with the global outline.
 - Use named characters and concrete locations.
 - No meta-commentary.
+- Do not include any keys not listed above.
+- Do not wrap the JSON in any surrounding text.
 
-Write the act outline now.
+Return the JSON object now.

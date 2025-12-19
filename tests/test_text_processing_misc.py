@@ -49,8 +49,8 @@ def test_get_text_segments_sentence_without_spacy(
 
 def test_response_cleaning_think_boundary_only_closing_tag() -> None:
     cleaner = ResponseCleaningService()
-    text = "internal reasoning...\n</think>\n\n{\"ok\": true}\n"
-    assert cleaner.clean_response(text) == "{\"ok\": true}"
+    text = 'internal reasoning...\n</think>\n\n{"ok": true}\n'
+    assert cleaner.clean_response(text) == '{"ok": true}'
 
 
 def test_response_cleaning_think_boundary_with_think_block() -> None:

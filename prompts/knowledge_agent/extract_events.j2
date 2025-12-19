@@ -8,7 +8,8 @@ Chapter: {{ chapter_number }}
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
 Output shape:
-- {"world_updates": {"Event": { ... }}}
+- Return valid JSON only; no markdown; no code fences; no commentary.
+- Top-level object MUST be: {"world_updates": {"Event": {...}}}
 
 Per-event entry:
 - key = event name (string; descriptive)

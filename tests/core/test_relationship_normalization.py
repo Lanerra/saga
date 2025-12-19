@@ -139,3 +139,152 @@ def test_prune_vocabulary(service):
     assert "KEEP_ME" in pruned
     assert "KEEP_ME_TOO" in pruned
     assert "PRUNE_ME" not in pruned
+
+
+@pytest.mark.asyncio
+async def test_llm_disambiguate_json_normalize(service):
+    existing_usage = {
+        "usage_count": 3,
+        "example_descriptions": ["Example one", "Example two"],
+    }
+
+    with patch(
+        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+        new_callable=AsyncMock,
+    ) as mock_call:
+        mock_call.return_value = ({"decision": "NORMALIZE"}, None)
+
+        should_normalize = await service._llm_disambiguate(
+            new_type="ALLIES_WITH",
+            new_description="They cooperate in secret",
+            existing_type="WORKS_WITH",
+            existing_usage=existing_usage,
+            use_json_mode=True,
+        )
+
+    assert should_normalize is True
+
+
+@pytest.mark.asyncio
+async def test_llm_disambiguate_json_distinct(service):
+    existing_usage = {
+        "usage_count": 3,
+        "example_descriptions": ["Example one", "Example two"],
+    }
+
+    with patch(
+        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+        new_callable=AsyncMock,
+    ) as mock_call:
+        mock_call.return_value = ({"decision": "DISTINCT"}, None)
+
+        should_normalize = await service._llm_disambiguate(
+            new_type="ALLIES_WITH",
+            new_description="They cooperate in secret",
+            existing_type="WORKS_WITH",
+            existing_usage=existing_usage,
+            use_json_mode=True,
+        )
+
+    assert should_normalize is False
+
+
+@pytest.mark.asyncio
+async def test_llm_disambiguate_json_rejects_invalid_keyset(service):
+    existing_usage = {"usage_count": 1, "example_descriptions": []}
+
+    with patch(
+        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+        new_callable=AsyncMock,
+    ) as mock_call:
+        mock_call.return_value = ({"decision": "NORMALIZE", "extra": "nope"}, None)
+
+        with pytest.raises(ValueError, match=r"exactly one key.*decision"):
+            await service._llm_disambiguate(
+                new_type="ALLIES_WITH",
+                new_description="They cooperate in secret",
+                existing_type="WORKS_WITH",
+                existing_usage=existing_usage,
+                use_json_mode=True,
+            )
+
+
+@pytest.mark.asyncio
+async def test_llm_disambiguate_json_rejects_missing_decision(service):
+    existing_usage = {"usage_count": 1, "example_descriptions": []}
+
+    with patch(
+        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+        new_callable=AsyncMock,
+    ) as mock_call:
+        mock_call.return_value = ({}, None)
+
+        with pytest.raises(ValueError, match=r"exactly one key.*decision"):
+            await service._llm_disambiguate(
+                new_type="ALLIES_WITH",
+                new_description="They cooperate in secret",
+                existing_type="WORKS_WITH",
+                existing_usage=existing_usage,
+                use_json_mode=True,
+            )
+
+
+@pytest.mark.asyncio
+async def test_llm_disambiguate_json_rejects_non_string_decision(service):
+    existing_usage = {"usage_count": 1, "example_descriptions": []}
+
+    with patch(
+        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+        new_callable=AsyncMock,
+    ) as mock_call:
+        mock_call.return_value = ({"decision": 123}, None)
+
+        with pytest.raises(ValueError, match=r"must be a string"):
+            await service._llm_disambiguate(
+                new_type="ALLIES_WITH",
+                new_description="They cooperate in secret",
+                existing_type="WORKS_WITH",
+                existing_usage=existing_usage,
+                use_json_mode=True,
+            )
+
+
+@pytest.mark.asyncio
+async def test_llm_disambiguate_json_rejects_invalid_enum(service):
+    existing_usage = {"usage_count": 1, "example_descriptions": []}
+
+    with patch(
+        "core.relationship_normalization_service.llm_service.async_call_llm_json_object",
+        new_callable=AsyncMock,
+    ) as mock_call:
+        mock_call.return_value = ({"decision": "normalize"}, None)
+
+        with pytest.raises(ValueError, match=r"NORMALIZE.*DISTINCT"):
+            await service._llm_disambiguate(
+                new_type="ALLIES_WITH",
+                new_description="They cooperate in secret",
+                existing_type="WORKS_WITH",
+                existing_usage=existing_usage,
+                use_json_mode=True,
+            )
+
+
+@pytest.mark.asyncio
+async def test_llm_disambiguate_legacy_substring_behavior(service):
+    existing_usage = {"usage_count": 1, "example_descriptions": []}
+
+    with patch(
+        "core.relationship_normalization_service.llm_service.async_call_llm",
+        new_callable=AsyncMock,
+    ) as mock_call:
+        mock_call.return_value = ("normalize", None)
+
+        should_normalize = await service._llm_disambiguate(
+            new_type="ALLIES_WITH",
+            new_description="They cooperate in secret",
+            existing_type="WORKS_WITH",
+            existing_usage=existing_usage,
+            use_json_mode=False,
+        )
+
+    assert should_normalize is True

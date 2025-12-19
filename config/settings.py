@@ -131,6 +131,11 @@ class RelationshipNormalizationSettings(BaseSettings):
     # Advanced features
     USE_LLM_DISAMBIGUATION: bool = Field(default=False, description="Use LLM to disambiguate ambiguous similarity cases")
 
+    LLM_DISAMBIGUATION_JSON_MODE: bool = Field(
+        default=False,
+        description="If True, require strict JSON output for relationship normalization disambiguation",
+    )
+
     NORMALIZE_CASE_VARIANTS: bool = Field(
         default=True,
         description="Treat case variations as identical (WORKS_WITH == works_with)",

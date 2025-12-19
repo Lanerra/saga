@@ -1,4 +1,6 @@
 # tests/test_prompts_templates.py
+import re
+
 import pytest
 from jinja2 import (
     DictLoader,
@@ -134,3 +136,154 @@ def test_extract_relationships_prompt_contract_requires_wrapper_object() -> None
 
     # Must forbid returning a bare list (the drift regression we want to catch).
     assert "Do NOT return a bare list" in rendered
+
+
+def test_relationship_disambiguation_prompt_contract_requires_decision_object() -> None:
+    """
+    Prompt contract guard: relationship disambiguation MUST request strict JSON output
+    matching the runtime JSON parsing contract.
+
+    Contract:
+    - JSON only (no markdown/fences/commentary).
+    - Root object with EXACTLY one key: "decision".
+    - "decision" MUST be EXACTLY "NORMALIZE" or "DISTINCT".
+    """
+    rendered = pr.render_prompt(
+        "knowledge_agent/relationship_disambiguate_normalize_or_distinct.j2",
+        {
+            "new_type": "WORKS_WITH",
+            "new_description": "Two characters collaborate on a task.",
+            "existing_type": "COLLABORATES_WITH",
+            "existing_usage_count": 12,
+            "examples_str": "Alice COLLABORATES_WITH Bob",
+        },
+    )
+
+    assert "Output MUST be valid JSON only." in rendered
+    assert "No markdown." in rendered
+    assert "No code fences." in rendered
+    assert "No commentary." in rendered
+
+    assert 'EXACTLY one key: "decision"' in rendered
+    assert '"decision" MUST be EXACTLY one of: "NORMALIZE" or "DISTINCT".' in rendered
+    assert '{"decision":"NORMALIZE"}' in rendered
+    assert '{"decision":"DISTINCT"}' in rendered
+
+
+def test_extract_characters_prompt_contract_requires_json_only_and_canonical_root() -> None:
+    rendered = pr.render_prompt(
+        "knowledge_agent/extract_characters.j2",
+        {
+            "novel_title": "Test Novel",
+            "novel_genre": "Fantasy",
+            "protagonist": "Hero",
+            "chapter_number": 1,
+            "chapter_text": "Hero meets Bob in the Castle.",
+        },
+    )
+
+    assert re.search(r"Return\s+valid\s+JSON\s+only", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+markdown", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+code\s+fences", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+commentary", rendered, flags=re.IGNORECASE)
+
+    assert "character_updates" in rendered
+    assert re.search(
+        r'\{\s*"character_updates"\s*:\s*\{\s*\.\.\.\s*\}\s*\}',
+        rendered,
+    )
+
+
+def test_extract_events_prompt_contract_requires_json_only_and_canonical_root() -> None:
+    rendered = pr.render_prompt(
+        "knowledge_agent/extract_events.j2",
+        {
+            "novel_title": "Test Novel",
+            "novel_genre": "Fantasy",
+            "protagonist": "Hero",
+            "chapter_number": 1,
+            "chapter_text": "Hero meets Bob in the Castle.",
+        },
+    )
+
+    assert re.search(r"Return\s+valid\s+JSON\s+only", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+markdown", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+code\s+fences", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+commentary", rendered, flags=re.IGNORECASE)
+
+    assert "world_updates" in rendered
+    assert "Event" in rendered
+    assert re.search(
+        r'\{\s*"world_updates"\s*:\s*\{\s*"Event"\s*:\s*\{\s*\.\.\.\s*\}\s*\}\s*\}',
+        rendered,
+    )
+
+
+def test_extract_locations_prompt_contract_requires_json_only_and_canonical_root() -> None:
+    rendered = pr.render_prompt(
+        "knowledge_agent/extract_locations.j2",
+        {
+            "novel_title": "Test Novel",
+            "novel_genre": "Fantasy",
+            "protagonist": "Hero",
+            "chapter_number": 1,
+            "chapter_text": "Hero meets Bob in the Castle.",
+        },
+    )
+
+    assert re.search(r"Return\s+valid\s+JSON\s+only", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+markdown", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+code\s+fences", rendered, flags=re.IGNORECASE)
+    assert re.search(r"no\s+commentary", rendered, flags=re.IGNORECASE)
+
+    assert "world_updates" in rendered
+    assert "Location" in rendered
+    assert re.search(
+        r'\{\s*"world_updates"\s*:\s*\{\s*"Location"\s*:\s*\{\s*\.\.\.\s*\}\s*\}\s*\}',
+        rendered,
+    )
+
+
+def test_generate_act_outline_prompt_contract_requires_json_schema() -> None:
+    rendered = pr.render_prompt(
+        "initialization/generate_act_outline.j2",
+        {
+            "title": "Test Novel",
+            "genre": "Fantasy",
+            "theme": "Adventure",
+            "setting": "Medieval world",
+            "protagonist_name": "Hero",
+            "act_number": 1,
+            "total_acts": 3,
+            "act_role": "Setup/Introduction",
+            "chapters_in_act": 7,
+            "global_outline": "Global outline context",
+            "character_context": "Hero: A brave warrior",
+        },
+    )
+
+    assert "Return valid JSON only" in rendered
+    assert "no markdown" in rendered or "No markdown" in rendered
+    assert "no code fences" in rendered or "No code fences" in rendered
+    assert "no commentary" in rendered or "No commentary" in rendered
+
+    for required in [
+        '"act_number"',
+        '"total_acts"',
+        '"act_role"',
+        '"chapters_in_act"',
+        '"sections"',
+        '"act_summary"',
+        '"opening_situation"',
+        '"key_events"',
+        '"character_development"',
+        '"stakes_and_tension"',
+        '"act_ending_turn"',
+        '"thematic_thread"',
+        '"pacing_notes"',
+        '"sequence"',
+        '"event"',
+        '"cause"',
+        '"effect"',
+    ]:
+        assert required in rendered

@@ -8,6 +8,7 @@ novel relationships to emerge.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any
 
@@ -110,6 +111,7 @@ class RelationshipNormalizationService:
                 rel_description,
                 best_match,
                 vocabulary[best_match],
+                use_json_mode=config.REL_NORM_LLM_DISAMBIGUATION_JSON_MODE,
             )
 
             if should_normalize:
@@ -219,6 +221,8 @@ class RelationshipNormalizationService:
         new_description: str,
         existing_type: str,
         existing_usage: dict[str, Any],
+        *,
+        use_json_mode: bool = False,
     ) -> bool:
         """
         Use LLM to determine if relationships are semantically equivalent.
@@ -228,6 +232,7 @@ class RelationshipNormalizationService:
             new_description: Description of new relationship
             existing_type: Existing vocabulary type
             existing_usage: Usage data for existing type
+            use_json_mode: If True, require a strict JSON object decision payload
 
         Returns:
             True if should normalize to existing type
@@ -248,6 +253,37 @@ class RelationshipNormalizationService:
             },
         )
 
+        if use_json_mode:
+            data, _ = await llm_service.async_call_llm_json_object(
+                model_name=config.SMALL_MODEL,
+                prompt=prompt,
+                max_tokens=10,
+            )
+
+            allowed_keys = {"decision"}
+            actual_keys = set(data.keys())
+            if actual_keys != allowed_keys:
+                raise ValueError("LLM JSON decision must have exactly one key: 'decision'. " f"actual_keys={sorted(actual_keys)}")
+
+            decision_value = data["decision"]
+            if not isinstance(decision_value, str):
+                raise ValueError("LLM JSON decision value must be a string")
+
+            if decision_value == "NORMALIZE":
+                decision_should_normalize = True
+            elif decision_value == "DISTINCT":
+                decision_should_normalize = False
+            else:
+                raise ValueError('LLM JSON decision must be "NORMALIZE" or "DISTINCT"')
+
+            logger.info(
+                "LLM disambiguation JSON decision",
+                new_type=new_type,
+                existing_type=existing_type,
+                decision=decision_value,
+            )
+            return decision_should_normalize
+
         try:
             response, _ = await llm_service.async_call_llm(
                 model_name=config.SMALL_MODEL,
@@ -255,15 +291,16 @@ class RelationshipNormalizationService:
                 max_tokens=10,
             )
 
-            decision = response.strip().upper()
-
+            response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
             logger.info(
-                "LLM disambiguation result",
+                "LLM disambiguation legacy response",
                 new_type=new_type,
                 existing_type=existing_type,
-                decision=decision,
+                response_sha1=response_sha1,
+                response_len=len(response),
             )
 
+            decision = response.strip().upper()
             return "NORMALIZE" in decision
 
         except Exception as e:
@@ -272,7 +309,6 @@ class RelationshipNormalizationService:
                 error=str(e),
                 exc_info=True,
             )
-            # Conservative fallback - treat as distinct
             return False
 
     def update_vocabulary_usage(
