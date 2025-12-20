@@ -26,6 +26,7 @@ from core.llm_interface_refactored import llm_service
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import ensure_exact_keys, try_load_json_from_response
 from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
@@ -268,7 +269,7 @@ async def _extract_structured_character_data(name: str, description: str, model_
             model_name=model,
             prompt=prompt,
             temperature=0.3,  # Low temp for extraction
-            max_tokens=1024,
+            max_tokens=16384,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),
@@ -305,6 +306,37 @@ def _log_json_decode_error(
     )
 
 
+def _load_json_with_contract_then_salvage(
+    *,
+    context: str,
+    raw_text: str,
+    expected_root: type,
+) -> Any:
+    try:
+        return json.loads(raw_text)
+    except json.JSONDecodeError as error:
+        _log_json_decode_error(
+            context=context,
+            raw_text=raw_text,
+            error=error,
+        )
+
+        salvaged, _candidates, _parse_errors = try_load_json_from_response(
+            raw_text,
+            expected_root=expected_root,
+        )
+        if salvaged is None:
+            raise
+
+        logger.warning(
+            "initialization JSON contract violated; salvaged embedded JSON",
+            context=context,
+            raw_text_length=len(raw_text),
+            contains_code_fence="```" in raw_text,
+        )
+        return salvaged
+
+
 def _parse_character_extraction_response(response: str) -> dict[str, Any]:
     """
     Parse the LLM's structured character extraction response (strict JSON contract).
@@ -320,23 +352,21 @@ def _parse_character_extraction_response(response: str) -> dict[str, Any]:
     """
     raw_text = response.strip()
 
-    try:
-        data = json.loads(raw_text)
-    except json.JSONDecodeError as error:
-        _log_json_decode_error(
-            context="structured_character_extraction",
-            raw_text=raw_text,
-            error=error,
-        )
-        raise
+    data = _load_json_with_contract_then_salvage(
+        context="structured_character_extraction",
+        raw_text=raw_text,
+        expected_root=dict,
+    )
 
     if not isinstance(data, dict):
         raise ValueError("Structured character extraction must be a JSON object")
 
     required_keys = {"traits", "status", "motivations", "background"}
-    data_keys = set(data.keys())
-    if data_keys != required_keys:
-        raise ValueError("Structured character extraction must contain exactly keys " f"{sorted(required_keys)} (got {sorted(data_keys)})")
+    ensure_exact_keys(
+        value=data,
+        required_keys=required_keys,
+        context="Structured character extraction",
+    )
 
     traits = data["traits"]
     if not isinstance(traits, list) or any(not isinstance(t, str) for t in traits):
@@ -402,7 +432,7 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
             model_name=model,
             prompt=prompt,
             temperature=0.5,
-            max_tokens=2000,
+            max_tokens=16384,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),
@@ -430,15 +460,11 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     """
     raw_text = response.strip()
 
-    try:
-        data = json.loads(raw_text)
-    except json.JSONDecodeError as error:
-        _log_json_decode_error(
-            context="world_items_extraction",
-            raw_text=raw_text,
-            error=error,
-        )
-        raise
+    data = _load_json_with_contract_then_salvage(
+        context="world_items_extraction",
+        raw_text=raw_text,
+        expected_root=list,
+    )
 
     if not isinstance(data, list):
         raise ValueError("World items extraction must be a JSON array")
@@ -454,9 +480,11 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
             raise ValueError(f"World item at index {index} must be a JSON object")
 
         required_keys = {"name", "category", "description"}
-        item_keys = set(item.keys())
-        if item_keys != required_keys:
-            raise ValueError(f"World item at index {index} must contain exactly keys {sorted(required_keys)} " f"(got {sorted(item_keys)})")
+        ensure_exact_keys(
+            value=item,
+            required_keys=required_keys,
+            context=f"World item at index {index}",
+        )
 
         name = item["name"]
         category = item["category"]

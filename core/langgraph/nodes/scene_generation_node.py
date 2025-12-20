@@ -63,7 +63,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             model_name=state.get("narrative_model", ""),
             prompt=prompt,
             temperature=0.7,
-            max_tokens=4000,  # Allow enough for a full scene
+            max_tokens=16384,  # Allow enough for a full scene
             system_prompt=get_system_prompt("narrative_agent"),
         )
 

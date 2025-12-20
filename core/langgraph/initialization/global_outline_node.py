@@ -8,9 +8,6 @@ narrative arc, key plot points, and story structure.
 
 from __future__ import annotations
 
-import json
-import re
-
 import structlog
 from pydantic import BaseModel, Field
 
@@ -18,6 +15,7 @@ from core.langgraph.content_manager import ContentManager, get_character_sheets
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import try_load_json_from_response
 
 logger = structlog.get_logger(__name__)
 
@@ -116,7 +114,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
-            max_tokens=4000,
+            max_tokens=16384,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),
@@ -201,27 +199,6 @@ def _build_character_context_from_sheets(character_sheets: dict) -> str:
     return "\n\n".join(context_parts)
 
 
-def _extract_json_from_response(response: str) -> str:
-    """
-    Extract JSON from LLM response that may contain markdown or other text.
-
-    Args:
-        response: Raw LLM response
-
-    Returns:
-        Extracted JSON string
-    """
-    # Try to find JSON in code blocks
-    json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL)
-    if json_match:
-        return json_match.group(1).strip()
-
-    # Try to find raw JSON object
-    json_match = re.search(r"\{[\s\S]*\}", response)
-    if json_match:
-        return json_match.group(0)
-
-    return response
 
 
 def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: int) -> list[str]:
@@ -283,15 +260,21 @@ def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, any
     """
     total_chapters = state.get("total_chapters", 20)
 
-    # Extract JSON from response
-    json_str = _extract_json_from_response(response)
+    parsed, candidates, parse_errors = try_load_json_from_response(
+        response,
+        expected_root=dict,
+    )
+    if parsed is None:
+        logger.warning(
+            "_parse_global_outline: JSON parsing failed, using fallback",
+            tried_sources=[source for source, _candidate in candidates[:5]],
+            errors=parse_errors[:5],
+        )
+        return _fallback_parse_outline(response, state)
 
     try:
-        # Parse JSON
-        data = json.loads(json_str)
-
         # Validate with Pydantic schema
-        outline = GlobalOutlineSchema.model_validate(data)
+        outline = GlobalOutlineSchema.model_validate(parsed)
 
         # Validate chapter allocations
         validation_errors = _validate_chapter_allocations(outline, total_chapters)
@@ -326,13 +309,6 @@ def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, any
         )
 
         return global_outline
-
-    except json.JSONDecodeError as e:
-        logger.warning(
-            "_parse_global_outline: JSON parsing failed, using fallback",
-            error=str(e),
-        )
-        return _fallback_parse_outline(response, state)
 
     except Exception as e:
         logger.warning(

@@ -9,12 +9,17 @@ import structlog
 
 from .common import (
     _is_fill_in,
+    ensure_exact_keys,
+    ensure_required_keys,
+    extract_json_candidates_from_response,
     extract_json_from_text,
+    load_json_with_contract_then_salvage,
     load_yaml_file,
     normalize_keys_recursive,
     safe_json_loads,
     split_text_into_chapters,
     truncate_for_log,
+    try_load_json_from_response,
 )
 from .similarity import find_semantically_closest_segment, numpy_cosine_similarity
 from .text_processing import (
@@ -114,7 +119,12 @@ __all__ = [
     "spacy_manager",
     "_is_fill_in",
     "extract_json_from_text",
+    "extract_json_candidates_from_response",
+    "try_load_json_from_response",
+    "load_json_with_contract_then_salvage",
     "safe_json_loads",
+    "ensure_exact_keys",
+    "ensure_required_keys",
     "truncate_for_log",
     "load_yaml_file",
     "normalize_keys_recursive",

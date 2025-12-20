@@ -270,7 +270,7 @@ class SagaSettings(BaseSettings):
 
     # Revision and Validation
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 0
-    MAX_SUMMARY_TOKENS: int = 8192
+    MAX_SUMMARY_TOKENS: int = 16384
     MAX_KG_TRIPLE_TOKENS: int = 16384
     MAX_PREPOP_KG_TOKENS: int = 16384
 

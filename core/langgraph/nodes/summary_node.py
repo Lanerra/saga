@@ -14,7 +14,6 @@ New Functionality:
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -30,6 +29,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access import chapter_queries
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import try_load_json_from_response
 from utils.file_io import write_text_file
 
 logger = structlog.get_logger(__name__)
@@ -98,7 +98,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             model_name=state.get("small_model", ""),  # Use fast model
             prompt=prompt,
             temperature=0.3,  # Low temperature for consistency
-            max_tokens=200,  # Short summary
+            max_tokens=16384,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("knowledge_agent"),
@@ -207,41 +207,22 @@ def _parse_summary_response(response_text: str) -> str | None:
 
     The template expects a JSON object with a "summary" key.
     Falls back to treating the entire response as the summary.
-
-    Args:
-        response_text: Raw LLM response text
-
-    Returns:
-        Extracted summary string, or None if parsing fails
     """
-    # Try to parse as JSON first
-    try:
-        # Clean common JSON wrapper issues
-        cleaned = response_text.strip()
+    parsed, _candidates, _parse_errors = try_load_json_from_response(
+        response_text,
+        expected_root=(dict, str),
+    )
 
-        # Remove markdown code blocks if present
-        if cleaned.startswith("```"):
-            # Find the first newline after ```
-            start = cleaned.find("\n")
-            if start != -1:
-                # Find the last ```
-                end = cleaned.rfind("```")
-                if end != -1:
-                    cleaned = cleaned[start + 1 : end].strip()
+    if isinstance(parsed, dict):
+        summary = parsed.get("summary")
+        if isinstance(summary, str):
+            return summary.strip()
 
-        data = json.loads(cleaned)
-        if isinstance(data, dict) and "summary" in data:
-            return data["summary"].strip()
-        elif isinstance(data, str):
-            # Sometimes LLM returns just a string
-            return data.strip()
-    except json.JSONDecodeError:
-        # Not valid JSON, treat entire response as summary
-        pass
+    if isinstance(parsed, str):
+        return parsed.strip()
 
-    # Fallback: return the response as-is if it looks reasonable
     cleaned = response_text.strip()
-    if cleaned and len(cleaned) > 10:  # Minimum reasonable summary length
+    if cleaned and len(cleaned) > 10:
         return cleaned
 
     return None

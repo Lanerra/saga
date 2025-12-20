@@ -180,7 +180,7 @@ class GraphHealingService:
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
-                max_tokens=1024,
+                max_tokens=16384,
                 system_prompt=get_system_prompt("knowledge_agent"),
             )
 

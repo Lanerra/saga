@@ -21,6 +21,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from core.schema_validator import schema_validator
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import try_load_json_from_response
 from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
@@ -68,8 +69,6 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
     Returns:
         Dictionary with CharacterProfile-compatible fields
     """
-    import json
-
     # Defaults
     parsed = {
         "name": character_name,
@@ -84,87 +83,92 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         "internal_conflict": "",
     }
 
-    try:
-        # Clean potential markdown
-        cleaned_response = response.strip()
-        if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response[7:]
-        if cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[:-3]
+    cleaned_response = response.strip()
+    parsed_json, candidates, parse_errors = try_load_json_from_response(
+        response,
+        expected_root=dict,
+    )
 
-        data = json.loads(cleaned_response)
+    if parsed_json is None:
+        try:
+            json.loads(cleaned_response)
+        except json.JSONDecodeError as e:
+            try:
+                response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
+                response_len = len(response)
+                cleaned_sha1 = hashlib.sha1(cleaned_response.encode("utf-8")).hexdigest()[:12]
+                cleaned_len = len(cleaned_response)
+                response_last_codepoint = ord(response[-1]) if response else None
+                cleaned_last_codepoint = ord(cleaned_response[-1]) if cleaned_response else None
+            except Exception:  # pragma: no cover
+                response_sha1 = None
+                response_len = None
+                cleaned_sha1 = None
+                cleaned_len = None
+                response_last_codepoint = None
+                cleaned_last_codepoint = None
 
-        # Merge data into defaults
-        parsed.update(data)
-
-        # Ensure name matches requested character if not provided or empty
-        if not parsed.get("name"):
-            parsed["name"] = character_name
-
-        # Validate and filter traits to ensure single-word format
-        raw_traits = parsed.get("traits", [])
-        parsed["traits"] = validate_and_filter_traits(raw_traits)
-
-        if len(parsed["traits"]) != len(raw_traits):
             logger.warning(
-                "_parse_character_sheet_response: filtered invalid traits",
+                "_parse_character_sheet_response: JSON parsing failed",
                 character=character_name,
-                original_count=len(raw_traits),
-                filtered_count=len(parsed["traits"]),
-                removed=set(raw_traits) - set(parsed["traits"]),
+                error=str(e),
+                error_pos=getattr(e, "pos", None),
+                error_lineno=getattr(e, "lineno", None),
+                error_colno=getattr(e, "colno", None),
+                response_sha1=response_sha1,
+                response_len=response_len,
+                cleaned_sha1=cleaned_sha1,
+                cleaned_len=cleaned_len,
+                has_json_fence=("```json" in response),
+                has_fence=("```" in response),
+                cleaned_startswith=cleaned_response[:1] if cleaned_response else None,
+                cleaned_endswith=cleaned_response[-1:] if cleaned_response else None,
+                response_last_codepoint=response_last_codepoint,
+                cleaned_last_codepoint=cleaned_last_codepoint,
+                tried_sources=[source for source, _candidate in candidates[:5]],
+                parse_errors=parse_errors[:5],
             )
 
-        # Transform relationships if needed to internal structure
-        structured_relationships = {}
-        if isinstance(parsed.get("relationships"), dict):
-            for target, desc in parsed["relationships"].items():
-                # Try to extract type from description if possible, or default
-                structured_relationships[target] = {
-                    "type": "ASSOCIATE",  # Default
-                    "description": desc,
-                }
-            parsed["relationships"] = structured_relationships
+            raise ValueError(
+                "Character sheet JSON parsing failed "
+                f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})"
+            ) from e
 
-        # Double check that we are using a valid type (should be 'Character')
-        is_valid, normalized, err = schema_validator.validate_entity_type("Character")
-        parsed["type"] = normalized if is_valid else "Character"
+        raise ValueError(f"Character sheet JSON parsing failed (character={character_name})")
 
-    except json.JSONDecodeError as e:
-        try:
-            response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
-            response_len = len(response)
-            cleaned_sha1 = hashlib.sha1(cleaned_response.encode("utf-8")).hexdigest()[:12]
-            cleaned_len = len(cleaned_response)
-            response_last_codepoint = ord(response[-1]) if response else None
-            cleaned_last_codepoint = ord(cleaned_response[-1]) if cleaned_response else None
-        except Exception:  # pragma: no cover
-            response_sha1 = None
-            response_len = None
-            cleaned_sha1 = None
-            cleaned_len = None
-            response_last_codepoint = None
-            cleaned_last_codepoint = None
+    # Merge data into defaults
+    parsed.update(parsed_json)
 
+    # Ensure name matches requested character if not provided or empty
+    if not parsed.get("name"):
+        parsed["name"] = character_name
+
+    # Validate and filter traits to ensure single-word format
+    raw_traits = parsed.get("traits", [])
+    parsed["traits"] = validate_and_filter_traits(raw_traits)
+
+    if len(parsed["traits"]) != len(raw_traits):
         logger.warning(
-            "_parse_character_sheet_response: JSON parsing failed",
+            "_parse_character_sheet_response: filtered invalid traits",
             character=character_name,
-            error=str(e),
-            error_pos=getattr(e, "pos", None),
-            error_lineno=getattr(e, "lineno", None),
-            error_colno=getattr(e, "colno", None),
-            response_sha1=response_sha1,
-            response_len=response_len,
-            cleaned_sha1=cleaned_sha1,
-            cleaned_len=cleaned_len,
-            has_json_fence=("```json" in response),
-            has_fence=("```" in response),
-            cleaned_startswith=cleaned_response[:1] if cleaned_response else None,
-            cleaned_endswith=cleaned_response[-1:] if cleaned_response else None,
-            response_last_codepoint=response_last_codepoint,
-            cleaned_last_codepoint=cleaned_last_codepoint,
+            original_count=len(raw_traits),
+            filtered_count=len(parsed["traits"]),
+            removed=set(raw_traits) - set(parsed["traits"]),
         )
 
-        raise ValueError("Character sheet JSON parsing failed " f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})") from e
+    # Transform relationships if needed to internal structure
+    structured_relationships = {}
+    if isinstance(parsed.get("relationships"), dict):
+        for target, desc in parsed["relationships"].items():
+            structured_relationships[target] = {
+                "type": "ASSOCIATE",
+                "description": desc,
+            }
+        parsed["relationships"] = structured_relationships
+
+    # Double check that we are using a valid type (should be 'Character')
+    is_valid, normalized, err = schema_validator.validate_entity_type("Character")
+    parsed["type"] = normalized if is_valid else "Character"
 
     return parsed
 
@@ -327,7 +331,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
                 model_name=state.get("large_model", ""),
                 prompt=prompt,
                 temperature=temperature,
-                max_tokens=8192,
+                max_tokens=16384,
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),
@@ -481,7 +485,7 @@ async def _generate_character_sheet(
                 model_name=state.get("large_model", ""),
                 prompt=prompt,
                 temperature=temperature,
-                max_tokens=8192,
+                max_tokens=16384,
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),

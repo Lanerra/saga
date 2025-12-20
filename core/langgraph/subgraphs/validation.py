@@ -41,6 +41,7 @@ from core.langgraph.nodes.validation_node import (
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import render_prompt
+from utils.common import try_load_json_from_response
 
 logger = structlog.get_logger(__name__)
 
@@ -122,7 +123,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
             model_name=model_name,
             prompt=evaluation_prompt,
             temperature=0.1,  # Low temperature for consistent evaluation
-            max_tokens=2048,
+            max_tokens=16384,
             auto_clean_response=True,
         )
 
@@ -257,37 +258,28 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
     Returns:
         Dictionary with parsed scores and feedback
     """
-    # Try to extract JSON from the response
-    try:
-        # Look for JSON block in the response
-        json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group()
-            scores = json.loads(json_str)
+    parsed, _candidates, _parse_errors = try_load_json_from_response(
+        response,
+        expected_root=dict,
+    )
+    if isinstance(parsed, dict):
+        # Validate and normalize scores
+        normalized: dict[str, Any] = {}
+        for key in [
+            "coherence_score",
+            "prose_quality_score",
+            "plot_advancement_score",
+            "pacing_score",
+            "tone_consistency_score",
+        ]:
+            value = parsed.get(key)
+            if isinstance(value, (int, float)):
+                normalized[key] = max(0.0, min(1.0, float(value)))
+            else:
+                normalized[key] = 0.7  # Default fallback
 
-            # Validate and normalize scores
-            normalized = {}
-            for key in [
-                "coherence_score",
-                "prose_quality_score",
-                "plot_advancement_score",
-                "pacing_score",
-                "tone_consistency_score",
-            ]:
-                value = scores.get(key)
-                if isinstance(value, (int, float)):
-                    normalized[key] = max(0.0, min(1.0, float(value)))
-                else:
-                    normalized[key] = 0.7  # Default fallback
-
-            normalized["feedback"] = scores.get("feedback", "No feedback provided")
-            return normalized
-
-    except (json.JSONDecodeError, AttributeError) as e:
-        logger.warning(
-            "_parse_quality_scores: failed to parse JSON response",
-            error=str(e),
-        )
+        normalized["feedback"] = parsed.get("feedback", "No feedback provided")
+        return normalized
 
     # Fallback: try to extract scores from text
     fallback_scores = {
@@ -612,7 +604,7 @@ async def _check_world_rules(
             model_name=model_name,
             prompt=rule_check_prompt,
             temperature=0.1,
-            max_tokens=1024,
+            max_tokens=16384,
             auto_clean_response=True,
         )
 
@@ -688,23 +680,12 @@ Return only the JSON array:"""
 
 def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
     """Parse rule violations from LLM response."""
-    try:
-        # Find JSON array in response
-        json_match = re.search(r"\[.*\]", response, re.DOTALL)
-        if json_match:
-            violations = json.loads(json_match.group())
-            if isinstance(violations, list):
-                return violations
-    except json.JSONDecodeError as e:
-        logger.warning(
-            "Failed to parse rule violations JSON from LLM response",
-            error=str(e),
-        )
-    except AttributeError as e:
-        logger.warning(
-            "Failed to extract rule violations from LLM response (regex failure)",
-            error=str(e),
-        )
+    parsed, _candidates, _parse_errors = try_load_json_from_response(
+        response,
+        expected_root=list,
+    )
+    if isinstance(parsed, list):
+        return parsed
 
     return []
 

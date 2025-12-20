@@ -1,6 +1,5 @@
 # core/langgraph/nodes/scene_planning_node.py
 import json
-import re
 from json import JSONDecodeError
 from typing import Any
 
@@ -16,6 +15,7 @@ from core.llm_interface_refactored import llm_service
 from data_access.character_queries import get_all_character_names, sync_characters
 from models.kg_models import CharacterProfile
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import extract_json_candidates_from_response
 from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
@@ -32,55 +32,6 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
 )
 
 
-def _extract_json_candidates(response: str) -> list[tuple[str, str]]:
-    """
-    Extract candidate JSON strings from a possibly-chatty LLM response.
-
-    Supports:
-    - Pure JSON (object or list)
-    - JSON in markdown fences ```json ... ```
-    - JSON preceded/followed by commentary
-
-    Returns a list of (source, json_string) candidates, ordered from most likely
-    to least likely.
-    """
-    text = (response or "").strip()
-    if not text:
-        return []
-
-    candidates: list[tuple[str, str]] = [("raw", text)]
-
-    # 1) Markdown fenced blocks (can appear multiple times).
-    for i, m in enumerate(re.finditer(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL | re.IGNORECASE), start=1):
-        block = (m.group(1) or "").strip()
-        if block:
-            candidates.append((f"fence[{i}]", block))
-
-    # 2) Use JSONDecoder.raw_decode to parse embedded JSON starting at any '{' or '['.
-    # This is robust to leading commentary, as long as the JSON itself is valid.
-    decoder = json.JSONDecoder()
-    for m in re.finditer(r"[\{\[]", response):
-        idx = m.start()
-        try:
-            obj, end = decoder.raw_decode(response, idx)
-        except Exception:
-            continue
-        # Keep the exact substring that parsed successfully.
-        snippet = response[idx:end].strip()
-        if snippet:
-            candidates.append((f"raw_decode@{idx}", snippet))
-
-    # De-duplicate while preserving order
-    seen: set[str] = set()
-    unique: list[tuple[str, str]] = []
-    for source, cand in candidates:
-        key = cand
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append((source, cand))
-
-    return unique
 
 
 def _validate_scene_plan_structure(scenes: Any) -> list[str]:
@@ -113,7 +64,7 @@ def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, An
 
     Raises ValueError with actionable messages on failure.
     """
-    candidates = _extract_json_candidates(response)
+    candidates = extract_json_candidates_from_response(response)
     if not candidates:
         raise ValueError("LLM returned an empty response; expected a JSON list of scene objects. " "Required keys per scene: " + ", ".join(_SCENE_REQUIRED_KEYS))
 
@@ -312,7 +263,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
             model_name=state.get("large_model", ""),
             prompt=prompt,
             temperature=0.7,
-            max_tokens=2000,
+            max_tokens=16384,
             system_prompt=get_system_prompt("narrative_agent"),
         )
 

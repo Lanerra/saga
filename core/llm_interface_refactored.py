@@ -474,35 +474,66 @@ class CompletionService:
 
     def _extract_completion_content(self, response_data: dict[str, Any]) -> str:
         """Extract completion content from API response."""
+
+        def _extract_text_from_content(content_value: Any) -> str | None:
+            if isinstance(content_value, str):
+                return content_value if content_value.strip() else None
+
+            if isinstance(content_value, list):
+                text_parts: list[str] = []
+                for item in content_value:
+                    if isinstance(item, str):
+                        if item:
+                            text_parts.append(item)
+                        continue
+
+                    if not isinstance(item, dict):
+                        continue
+
+                    item_type = item.get("type")
+                    if isinstance(item_type, str) and item_type != "text":
+                        continue
+
+                    text_field = item.get("text")
+                    if isinstance(text_field, str):
+                        if text_field:
+                            text_parts.append(text_field)
+                        continue
+
+                    if isinstance(text_field, dict):
+                        nested_value = text_field.get("value")
+                        if isinstance(nested_value, str) and nested_value:
+                            text_parts.append(nested_value)
+                        continue
+
+                combined_text = "".join(text_parts)
+                return combined_text if combined_text.strip() else None
+
+            return None
+
         # Prefer the standard OpenAI schema first
         try:
             if response_data.get("choices") and len(response_data["choices"]) > 0:
                 choice0 = response_data["choices"][0]
                 message = choice0.get("message") or {}
 
-                # 1) Standard content
-                content = message.get("content")
-                if isinstance(content, str) and content.strip():
-                    return content
+                # 1) Standard content (string or list-of-parts)
+                content_text = _extract_text_from_content(message.get("content"))
+                if content_text is not None:
+                    return content_text
 
-                # 2) Some providers (e.g., Qwen reasoning models) expose 'reasoning_content'
-                reasoning_content = message.get("reasoning_content")
-                if isinstance(reasoning_content, str) and reasoning_content.strip():
-                    logger.warning("LLM response missing 'content'; using 'reasoning_content' fallback")
-                    return reasoning_content
-
-                # 3) Occasionally providers place content directly under the choice
-                direct_choice_content = choice0.get("content")
-                if isinstance(direct_choice_content, str) and direct_choice_content.strip():
+                # 2) Occasionally providers place content directly under the choice
+                direct_choice_content_text = _extract_text_from_content(choice0.get("content"))
+                if direct_choice_content_text is not None:
                     logger.warning("LLM response missing message.content; using choice['content'] fallback")
-                    return direct_choice_content
+                    return direct_choice_content_text
 
-                # 4) Last resorts: top-level convenience fields sometimes appear
+                # 3) Last resorts: top-level convenience fields sometimes appear
                 for key in ("output_text", "text", "response", "content"):
-                    top = response_data.get(key)
-                    if isinstance(top, str) and top.strip():
+                    top_text = _extract_text_from_content(response_data.get(key))
+                    if top_text is not None:
                         logger.warning(f"LLM response using top-level '{key}' fallback for content")
-                        return top
+                        return top_text
 
         except Exception as e:
             logger.error(f"Completion content extraction failed: {e}", exc_info=True)
