@@ -12,10 +12,80 @@ import structlog
 
 import config
 from core.exceptions import LLMServiceError
+from core.langgraph.content_manager import ContentManager, get_scene_drafts
+from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+
+def consolidate_scene_extractions(
+    scene_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Merge and deduplicate extraction results from multiple scenes.
+
+    Deduplication strategy:
+    - Characters: Dedupe by name (case-insensitive), keep longest description
+    - World items: Dedupe by name (case-insensitive), keep longest description
+    - Relationships: Dedupe by (source, target, type) tuple
+
+    Args:
+        scene_results: List of extraction results from individual scenes.
+
+    Returns:
+        Consolidated dict with deduplicated characters, world_items, relationships.
+    """
+    characters_map: dict[str, dict[str, Any]] = {}
+    world_items_map: dict[str, dict[str, Any]] = {}
+    relationships_set: set[tuple[str, str, str]] = set()
+    relationships: list[dict[str, Any]] = []
+
+    for scene_result in scene_results:
+        for character in scene_result.get("characters", []):
+            name = character["name"]
+            name_lower = name.lower()
+
+            if name_lower in characters_map:
+                existing = characters_map[name_lower]
+                existing_desc_len = len(existing.get("description", ""))
+                new_desc_len = len(character.get("description", ""))
+
+                if new_desc_len > existing_desc_len:
+                    characters_map[name_lower] = character
+            else:
+                characters_map[name_lower] = character
+
+        for world_item in scene_result.get("world_items", []):
+            name = world_item["name"]
+            name_lower = name.lower()
+
+            if name_lower in world_items_map:
+                existing = world_items_map[name_lower]
+                existing_desc_len = len(existing.get("description", ""))
+                new_desc_len = len(world_item.get("description", ""))
+
+                if new_desc_len > existing_desc_len:
+                    world_items_map[name_lower] = world_item
+            else:
+                world_items_map[name_lower] = world_item
+
+        for relationship in scene_result.get("relationships", []):
+            source = relationship.get("source_name", "")
+            target = relationship.get("target_name", "")
+            rel_type = relationship.get("relationship_type", "")
+
+            relationship_key = (source.lower(), target.lower(), rel_type.upper())
+
+            if relationship_key not in relationships_set:
+                relationships_set.add(relationship_key)
+                relationships.append(relationship)
+
+    return {
+        "characters": list(characters_map.values()),
+        "world_items": list(world_items_map.values()),
+        "relationships": relationships,
+    }
 
 
 async def extract_from_scene(
@@ -550,3 +620,129 @@ async def _extract_relationships_from_scene(
             error=str(e),
         )
         return []
+
+
+async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
+    """Extract entities from individual scenes, then consolidate.
+
+    This node replaces chapter-level extraction to avoid 135K+ char prompts.
+
+    Args:
+        state: Workflow state with scene_drafts_ref.
+
+    Returns:
+        Partial state update with extracted_entities and extracted_relationships.
+    """
+    logger.info(
+        "extract_from_scenes: starting scene-level extraction",
+        chapter=state.get("current_chapter", 1),
+    )
+
+    if state.get("has_fatal_error"):
+        logger.warning("extract_from_scenes: skipping due to fatal error")
+        return {"current_node": "extract_from_scenes"}
+
+    content_manager = ContentManager(state.get("project_dir", ""))
+
+    try:
+        scene_drafts = get_scene_drafts(state, content_manager)
+    except Exception as e:
+        error_msg = f"Failed to load scene drafts: {e}"
+        logger.error("extract_from_scenes: fatal error", error=error_msg)
+        return {
+            **state,
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "extract_from_scenes",
+            "current_node": "extract_from_scenes",
+        }
+
+    if not scene_drafts:
+        logger.warning("extract_from_scenes: no scene drafts found, returning empty extraction")
+        return {
+            "extracted_entities": [],
+            "extracted_relationships": [],
+            "current_node": "extract_from_scenes",
+        }
+
+    chapter_number = state.get("current_chapter", 1)
+    novel_title = state.get("title", "")
+    novel_genre = state.get("genre", "")
+    protagonist_name = state.get("protagonist_name", "")
+    model_name = state.get("extraction_model", config.MEDIUM_MODEL)
+
+    logger.info(
+        "extract_from_scenes: processing scenes",
+        chapter=chapter_number,
+        scene_count=len(scene_drafts),
+    )
+
+    scene_results: list[dict[str, Any]] = []
+    for scene_index, scene_text in enumerate(scene_drafts):
+        scene_result = await extract_from_scene(
+            scene_text=scene_text,
+            scene_index=scene_index,
+            chapter_number=chapter_number,
+            novel_title=novel_title,
+            novel_genre=novel_genre,
+            protagonist_name=protagonist_name,
+            model_name=model_name,
+        )
+        scene_results.append(scene_result)
+
+    logger.info(
+        "extract_from_scenes: consolidating results",
+        chapter=chapter_number,
+        scene_results_count=len(scene_results),
+    )
+
+    consolidated = consolidate_scene_extractions(scene_results)
+
+    extracted_entities: list[ExtractedEntity] = []
+    for character_dict in consolidated.get("characters", []):
+        extracted_entities.append(
+            ExtractedEntity(
+                name=character_dict["name"],
+                type=character_dict["type"],
+                description=character_dict["description"],
+                first_appearance_chapter=character_dict.get("first_appearance_chapter", chapter_number),
+                attributes=character_dict.get("attributes", {}),
+            )
+        )
+
+    for world_item_dict in consolidated.get("world_items", []):
+        extracted_entities.append(
+            ExtractedEntity(
+                name=world_item_dict["name"],
+                type=world_item_dict["type"],
+                description=world_item_dict["description"],
+                first_appearance_chapter=world_item_dict.get("first_appearance_chapter", chapter_number),
+                attributes=world_item_dict.get("attributes", {}),
+            )
+        )
+
+    extracted_relationships: list[ExtractedRelationship] = []
+    for rel_dict in consolidated.get("relationships", []):
+        extracted_relationships.append(
+            ExtractedRelationship(
+                source_name=rel_dict["source_name"],
+                target_name=rel_dict["target_name"],
+                relationship_type=rel_dict["relationship_type"],
+                description=rel_dict.get("description", ""),
+                chapter=rel_dict.get("chapter", chapter_number),
+                confidence=rel_dict.get("confidence", 0.8),
+            )
+        )
+
+    logger.info(
+        "extract_from_scenes: extraction complete",
+        chapter=chapter_number,
+        entities_count=len(extracted_entities),
+        relationships_count=len(extracted_relationships),
+    )
+
+    return {
+        "extracted_entities": extracted_entities,
+        "extracted_relationships": extracted_relationships,
+        "current_node": "extract_from_scenes",
+    }
