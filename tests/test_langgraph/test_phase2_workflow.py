@@ -106,7 +106,7 @@ def mock_all_nodes() -> Any:
             return_value=mock_gen_node,
         ) as mock_create_gen,
         patch(
-            "core.langgraph.subgraphs.extraction.create_extraction_subgraph",
+            "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract_node,
         ) as mock_create_extract,
         patch(
