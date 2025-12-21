@@ -86,9 +86,19 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             model_name=state.get("narrative_model", ""),
             prompt=prompt,
             temperature=0.7,
-            max_tokens=16384,  # Allow enough for a full scene
+            max_tokens=6000,
             system_prompt=get_system_prompt("narrative_agent"),
         )
+
+        draft_word_count = len(draft_text.split())
+        if draft_word_count > scene_target * 2:
+            logger.warning(
+                "draft_scene: scene output exceeded target",
+                scene_index=scene_index,
+                target_words=scene_target,
+                actual_words=draft_word_count,
+                ratio=round(draft_word_count / scene_target, 1) if scene_target > 0 else 0,
+            )
 
         # Update state
         current_drafts = get_scene_drafts(state, content_manager)
