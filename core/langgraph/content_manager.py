@@ -137,7 +137,6 @@ class ContentManager:
         """
         path = self._get_content_path(content_type, identifier, version, "txt")
 
-        # Write content atomically (write to temp, then rename)
         temp_path = path.with_suffix(".tmp")
         temp_path.write_text(content, encoding="utf-8")
         temp_path.replace(path)
@@ -194,7 +193,6 @@ class ContentManager:
     def _write_bytes_atomically(self, path: Path, data_bytes: bytes) -> None:
         """
         Write bytes atomically (write to temp file, then rename).
-
         This is the lowest-level writer used by safe "binary" and JSON serialization
         to ensure checksums are computed from the exact bytes written on disk.
         """

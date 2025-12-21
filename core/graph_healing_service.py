@@ -82,12 +82,11 @@ class GraphHealingService:
         # Evidence 2: Attribute completeness
         completeness_score = 0.0
         if node.get("description") and node["description"] not in ["Unknown", "", None]:
-            # Check if description is meaningful (not just a stub)
             desc = node["description"]
             if len(desc) > 20 and "to be developed" not in desc.lower():
                 completeness_score += 0.2
             else:
-                completeness_score += 0.1  # Partial credit for stub descriptions
+                completeness_score += 0.1
 
         if node.get("traits") and len(node["traits"]) > 0:
             completeness_score += 0.1

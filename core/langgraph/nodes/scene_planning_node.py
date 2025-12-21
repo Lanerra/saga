@@ -152,7 +152,6 @@ async def _ensure_scene_characters_exist(
         )
         return
 
-    # Find new characters that need stub profiles
     new_characters = scene_characters - existing_names_set
 
     if not new_characters:
@@ -168,7 +167,6 @@ async def _ensure_scene_characters_exist(
         count=len(new_characters),
     )
 
-    # Create stub profiles for new characters
     stub_profiles = []
     for char_name in new_characters:
         stub = CharacterProfile(
@@ -182,7 +180,6 @@ async def _ensure_scene_characters_exist(
         )
         stub_profiles.append(stub)
 
-    # Persist stub profiles to Neo4j
     try:
         success = await sync_characters(stub_profiles, chapter_number)
         if success:
@@ -191,7 +188,6 @@ async def _ensure_scene_characters_exist(
                 count=len(stub_profiles),
             )
 
-            # Link stub profiles to their chapter for context retrieval during enrichment
             from core.db_manager import neo4j_manager
 
             for char_name in new_characters:

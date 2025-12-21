@@ -142,7 +142,7 @@ def generate_full_export(project_dir: str | Path) -> Path:
         raw = chapter_path.read_text(encoding="utf-8", errors="replace")
         body = _extract_body(raw)
         # Skip if body is empty after normalization; we still include a placeholder
-        # empty segment via rstrip/joining rules, which is acceptable.
+        # empty segment via rstrip/joining rules, which is acceptable
         bodies.append(body)
 
     # Prepare final payload:

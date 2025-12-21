@@ -314,7 +314,6 @@ def _should_filter_entity(entity_name: str | None, entity_type: str | None = Non
     if name_lower in descriptive_words:
         return True
 
-    # Filter ephemeral/internal placeholder ids like 'entity_4097e8ba'
     if name_lower.startswith("entity_"):
         return True
 

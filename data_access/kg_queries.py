@@ -1376,8 +1376,7 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
 async def promote_dynamic_relationships() -> int:
     """
-    Deprecated entrypoint: use ``normalize_and_deduplicate_relationships`` instead.
-
+    Deprecated entrypoint: use ``normalize_and_deduplicate_relationships`` instead
     This function historically performed:
     - validation/correction of ``DYNAMIC_REL.type`` strings, then
     - promotion of ``DYNAMIC_REL`` -> typed relationships.

@@ -22,7 +22,6 @@ try:
 except Exception:  # pragma: no cover - fallback when Rich isn't installed
     RICH_AVAILABLE = False
 
-    # Fallback stub classes when rich is not installed
     class Live:  # type: ignore[no-redef]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass

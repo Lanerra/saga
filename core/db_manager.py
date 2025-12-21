@@ -654,7 +654,7 @@ class Neo4jManagerSingleton:
             for query_text in data_operations:
                 try:
                     await self.execute_write_query(query_text)
-                    self.logger.debug("Phase 2 fallback: Successfully created type placeholder.")
+                    self.logger.debug("Phase 2 fallback: Successfully created type placeholder")
                 except Exception as individual_e:
                     self.logger.warning(f"Phase 2 fallback: Failed to create type placeholder: {individual_e}")
 

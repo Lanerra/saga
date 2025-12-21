@@ -157,7 +157,6 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         _write_world_rules_file(project_dir, state)
         _write_world_history_file(project_dir, state)
 
-        # Write placeholder summaries README
         _write_summaries_readme(project_dir)
 
         logger.info(
@@ -525,8 +524,7 @@ def _write_world_rules_file(project_dir: Path, state: NarrativeState) -> None:
             description: ...
         note: "..."
 
-    Falls back to an empty stub that guides the user when no data is present.
-
+    Falls back to an empty stub that guides the user when no data is present
     Args:
         project_dir: Root project directory path.
         state: Current narrative state with world rules data.
@@ -586,8 +584,7 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
             era: ...
         note: "..."
 
-    Falls back to an empty stub when no history data is present.
-
+    Falls back to an empty stub when no history data is present
     Args:
         project_dir: Root project directory path.
         state: Current narrative state with historical events data.
@@ -648,8 +645,7 @@ def _write_summaries_readme(project_dir: Path) -> None:
     """Write README file in summaries/ directory.
 
     The summaries directory is populated during chapter generation,
-    not initialization. This creates a placeholder README to explain that.
-
+    not initialization. This creates a placeholder README to explain that
     Args:
         project_dir: Root project directory path.
     """

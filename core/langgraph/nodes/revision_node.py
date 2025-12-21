@@ -169,7 +169,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         revised_text, usage = await llm_service.async_call_llm(
             model_name=model_name,
             prompt=prompt,
-            temperature=getattr(config.Temperatures, "REVISION", 0.5),  # Lower temp for consistency
+            temperature=getattr(config.Temperatures, "REVISION", 0.5),
             max_tokens=max_gen_tokens,
             allow_fallback=True,
             frequency_penalty=getattr(config, "FREQUENCY_PENALTY_DRAFTING", 0.3),

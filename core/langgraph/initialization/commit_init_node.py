@@ -268,7 +268,7 @@ async def _extract_structured_character_data(name: str, description: str, model_
         response, _ = await llm_service.async_call_llm(
             model_name=model,
             prompt=prompt,
-            temperature=0.3,  # Low temp for extraction
+            temperature=0.3,
             max_tokens=16384,
             allow_fallback=True,
             auto_clean_response=True,

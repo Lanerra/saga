@@ -217,7 +217,6 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_SUMMARY: float = 0.3
     TEMPERATURE_PATCH: float = 0.7
 
-    # Placeholder fill-in
     FILL_IN: str = ""
 
     # LLM Call Settings & Fallbacks
