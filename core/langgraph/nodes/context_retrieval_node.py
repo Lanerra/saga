@@ -1,16 +1,13 @@
 # core/langgraph/nodes/context_retrieval_node.py
-"""
-Context retrieval node for LangGraph scene generation.
+"""Retrieve scene-specific context for scene-based drafting.
 
-This module retrieves scene-specific context from the knowledge graph
-and previous scenes to build the hybrid context used for scene drafting.
-
-Key Features:
-- Scene-specific character filtering
-- Token-aware context budget management
-- Intelligent previous scene summarization
-- Targeted Neo4j queries for efficiency
+This module defines the context retrieval node used by the scene-based generation
+workflow. It builds a token-budgeted "hybrid context" composed of character profiles,
+knowledge-graph facts, recent chapter summaries, prior scene context, location context,
+and semantic search results.
 """
+
+from typing import Any, cast
 
 import structlog
 
@@ -26,6 +23,7 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from core.text_processing_service import count_tokens, truncate_text_by_tokens
 from data_access import chapter_queries, kg_queries
+from models.agent_models import SceneDetail
 from prompts.prompt_data_getters import (
     get_filtered_character_profiles_for_prompt_plain_text,
     get_reliable_kg_facts_for_drafting_prompt,
@@ -45,20 +43,26 @@ SEMANTIC_CONTEXT_TOKEN_BUDGET = 2000  # Max tokens for semantic search results
 
 
 async def retrieve_context(state: NarrativeState) -> NarrativeState:
-    """
-    Retrieve scene-specific context for chapter generation.
+    """Build and externalize hybrid context for the current scene.
 
-    This node builds the hybrid_context by:
-    1. Filtering KG facts by characters mentioned in the current scene
-    2. Querying Neo4j for scene-specific entities and relationships
-    3. Building token-aware context from previous scenes
-    4. Summarizing previous scene content when necessary
+    The hybrid context is a single text block assembled from multiple sources and
+    truncated to respect a token budget.
 
     Args:
-        state: Current narrative state with chapter_plan and scene index
+        state: Workflow state. Requires a valid chapter plan and `current_scene_index`.
 
     Returns:
-        Updated state with hybrid_context populated
+        Partial state update containing:
+        - hybrid_context_ref: Externalized hybrid context for the current scene.
+        - current_node: `"retrieve_context"`.
+
+        On fatal retrieval failures (for example, character profile retrieval or KG
+        facts retrieval), returns an update with `has_fatal_error` set and `last_error`
+        populated.
+
+    Notes:
+        This node performs I/O (Neo4j reads and LLM calls for summarization/semantic
+        context) and writes externalized context to disk.
     """
     logger.info("retrieve_context: fetching scene-specific context")
 
@@ -216,17 +220,17 @@ async def _get_scene_character_context(
     chapter_outlines: dict[int, dict],
     model_name: str,
 ) -> str | None:
-    """
-    Get character profiles filtered by scene-specific characters.
+    """Build a token-budgeted character profile block for the current scene.
 
     Args:
-        current_scene: Scene dict with 'characters' or 'characters_involved' field
-        chapter_number: Current chapter number for filtering
-        chapter_outlines: Chapter outlines dictionary from content manager
-        model_name: Model name for token counting
+        current_scene: Scene plan entry that may include a character list.
+        chapter_number: Current chapter number for limiting profile retrieval.
+        chapter_outlines: Chapter outlines used by profile retrieval helpers.
+        model_name: Model name used for token counting.
 
     Returns:
-        Formatted character profiles string or None
+        Formatted character profiles block, or `None` when the scene does not specify
+        characters or no profiles are available.
     """
     # Extract character names from scene
     scene_characters = _extract_scene_characters(current_scene)
@@ -326,12 +330,13 @@ async def _get_scene_specific_kg_facts(
     """
     scene_characters = _extract_scene_characters(current_scene)
 
-    # Build scene detail for the KG facts function
-    # The function expects SceneDetail-like dicts
-    scene_detail = {
+    # Build scene detail for the KG facts function.
+    # The function expects SceneDetail-like dicts.
+    scene_detail_untyped: dict[str, Any] = {
         "characters_involved": scene_characters,
         **current_scene,
     }
+    scene_detail = cast(SceneDetail, scene_detail_untyped)
 
     # Get KG facts with scene-specific filtering - let exceptions propagate
     # Import config to get protagonist_name

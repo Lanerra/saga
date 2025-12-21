@@ -1,20 +1,14 @@
 # core/knowledge_graph_service.py
-"""
-Knowledge Graph persistence service (compatibility layer).
+"""Provide a knowledge graph persistence compatibility layer.
 
-Why this exists:
-- Some LangGraph code/tests patch `core.knowledge_graph_service.knowledge_graph_service`.
-- During the P0 refactors, the old module appears to have been removed/relocated.
-- `unittest.mock.patch()` resolves dotted names by attribute-walking the package, so
-  we must provide both:
-  1) a real submodule `core.knowledge_graph_service`, and
-  2) a `core.__init__` attribute pointing to it (handled separately).
+This module exists to preserve legacy import paths that are patched by tests and older
+LangGraph call sites (for example, patching
+[`core.knowledge_graph_service.knowledge_graph_service`](core/knowledge_graph_service.py:140)).
 
-This module provides a minimal, safe persistence facade around the new Cypher builder
-approach (NativeCypherBuilder + execute_cypher_batch).
-
-It intentionally does NOT perform any dynamic Cypher interpolation beyond what the
-builder already guarantees.
+Notes:
+    Persistence is implemented using [`NativeCypherBuilder`](data_access/cypher_builders/native_builders.py:1)
+    and [`neo4j_manager.execute_cypher_batch()`](core/db_manager.py:1). This module does not perform
+    dynamic Cypher interpolation beyond what the builder guarantees.
 """
 
 from __future__ import annotations
@@ -34,12 +28,7 @@ logger = structlog.get_logger(__name__)
 
 @dataclass(slots=True)
 class KnowledgeGraphService:
-    """
-    Minimal persistence service used by legacy call-sites and tests.
-
-    The primary method, persist_entities(), builds upsert Cypher statements for
-    characters and world items and executes them in a single batch transaction.
-    """
+    """Persist entity nodes to Neo4j for legacy call sites."""
 
     cypher_builder: NativeCypherBuilder
 
@@ -52,22 +41,25 @@ class KnowledgeGraphService:
         extra_statements: list[tuple[str, dict[str, Any]]] | None = None,
         strict: bool = True,
     ) -> bool:
-        """
-        Persist entity nodes into Neo4j.
+        """Persist entity nodes into Neo4j.
 
         Args:
-            characters: CharacterProfile models to upsert.
-            world_items: WorldItem models to upsert.
-            chapter_number: Chapter number for metadata tracking.
-            extra_statements: Optional additional (query, params) statements to include
-                in the same batch transaction.
+            characters: Characters to upsert.
+            world_items: World items to upsert.
+            chapter_number: Chapter number recorded on persisted entities.
+            extra_statements: Additional `(query, params)` statements to run in the same
+                batch transaction.
+            strict: Whether to raise a typed exception on failure.
 
         Returns:
-            True on success.
+            True on success. When `strict=False`, returns False on failure.
 
-            Compatibility behavior:
-            - If `strict=False`, returns False on failure instead of raising.
-            - CORE-007: `strict=True` is the default and raises a typed exception on failure.
+        Raises:
+            KnowledgeGraphPersistenceError: When `strict=True` and batch persistence fails.
+
+        Notes:
+            CORE-007: `strict=True` is the default and raises a typed exception rather
+            than returning ambiguous sentinels.
         """
         characters = characters or []
         world_items = world_items or []

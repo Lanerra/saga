@@ -50,18 +50,19 @@ _CANONICAL_NODE_LABEL_MAP["valuenode"] = "ValueNode"
 
 
 def _infer_from_category_simple(category: str, name: str) -> str:
-    """
-    Lightweight category-based type inference using consolidated classification.
-
-    Uses the authoritative classify_category_label() function which provides
-    comprehensive keyword matching (118 variants across 7 label types).
+    """Infer a canonical node label from a category string.
 
     Args:
-        category: The category string to infer from
-        name: The entity name (for logging purposes)
+        category: A free-form category string used as the primary inference signal.
+        name: Entity name used only for logging/debugging.
 
     Returns:
-        A valid node label from VALID_NODE_LABELS, or "Item" as fallback
+        A canonical node label from `VALID_NODE_LABELS`. Falls back to `"Item"` when the
+        classifier returns an unknown label.
+
+    Notes:
+        This helper is not a Cypher interpolation boundary. It exists to normalize model/
+        extraction output to application labels before any Cypher label selection occurs.
     """
     result = classify_category_label(category)
     logger.debug(f"Mapped category '{category}' to '{result}' for entity '{name}'")
@@ -69,17 +70,23 @@ def _infer_from_category_simple(category: str, name: str) -> str:
 
 
 def _infer_specific_node_type(name: str, category: str = "", fallback_type: str = "WorldElement") -> str:
-    """
-    Node type inference using schema validator.
+    """Select a canonical node label for an entity.
 
-    Canonical labeling contract:
-    - Domain node labels MUST be one of [`VALID_NODE_LABELS`](models/kg_constants.py:64).
-    - The default behavior should infer a canonical label from `category`.
-    - If the caller provides an explicit canonical `fallback_type` (e.g., "Character"),
-      we respect it.
+    Args:
+        name: Entity name. Must be non-empty to infer from category.
+        category: Free-form category signal used for inference when `fallback_type` does not
+            specify a canonical label.
+        fallback_type: Caller-supplied type hint. When it matches a canonical label in
+            `VALID_NODE_LABELS`, it is used as-is. `"WorldElement"` is treated as a sentinel
+            meaning "infer from category".
 
-    Note:
-    - `fallback_type="WorldElement"` is a sentinel meaning "infer from category".
+    Returns:
+        A canonical node label from `VALID_NODE_LABELS`.
+
+    Notes:
+        This function normalizes domain labels to the application schema. It is not itself a
+        Cypher interpolation site; downstream Cypher builders must still enforce strict label
+        allowlists before interpolating labels.
     """
     if not name or not name.strip():
         # No name signal -> use a safe canonical world label.
@@ -117,17 +124,20 @@ _SAFE_RELATIONSHIP_TYPE_RE = re.compile(r"^[A-Z0-9_]+$")
 
 
 def validate_relationship_type(proposed_type: str) -> str:
-    """
-    Normalize a relationship type to a consistent format.
-
-    NOTE: This function is lenient and intended for general normalization (e.g., analytics
-    or downstream storage). It MUST NOT be used for Cypher relationship-type interpolation.
+    """Normalize a relationship type for storage and display.
 
     Args:
-        proposed_type: The relationship type to normalize
+        proposed_type: A relationship type string that may be mixed-case and/or contain
+            spaces.
 
     Returns:
-        Normalized relationship type (uppercase, underscores instead of spaces)
+        A normalized relationship type string (uppercase, spaces replaced with underscores).
+
+    Notes:
+        This function is intentionally lenient. It MUST NOT be used at Cypher relationship
+        type interpolation boundaries. Use
+        `validate_relationship_type_for_cypher_interpolation()` when a type is placed into
+        a query string.
     """
     if not proposed_type or not proposed_type.strip():
         return "RELATES_TO"
@@ -137,19 +147,26 @@ def validate_relationship_type(proposed_type: str) -> str:
 
 
 def validate_relationship_type_for_cypher_interpolation(proposed_type: str) -> str:
-    """
-    Validate a relationship type *for direct interpolation into Cypher*.
+    """Validate a relationship type for direct interpolation into Cypher.
 
-    Neo4j does not parameterize relationship types, so we must strictly validate before
-    placing a relationship type inside backticks in a query.
+    Neo4j does not support parameterizing relationship types. Any relationship type that is
+    inserted into a query string (even inside backticks) must be strictly validated to
+    prevent Cypher injection.
 
-    Security policy (P0.4):
-    - Must be non-empty
-    - Must already be uppercase (no silent normalization)
-    - Must match `^[A-Z0-9_]+$`
+    Args:
+        proposed_type: A relationship type that will be interpolated into the query string.
+
+    Returns:
+        The validated relationship type string, unchanged.
 
     Raises:
-        ValueError: if the relationship type is unsafe for interpolation.
+        ValueError: If the relationship type is empty, not already uppercase, or contains
+            characters outside `[A-Z0-9_]`.
+
+    Notes:
+        This function enforces a strict allow-pattern and rejects unsafe inputs instead of
+        silently normalizing them. Callers should treat `proposed_type` as untrusted unless
+        it is sourced from application-controlled constants.
     """
     raw = str(proposed_type).strip() if proposed_type is not None else ""
     if not raw:
@@ -299,23 +316,27 @@ async def normalize_and_deduplicate_relationships(
 
 
 def _get_cypher_labels(entity_type: str | None) -> str:
-    """
-    Build a Cypher label clause for a single node label (e.g. ``":Character"``).
+    """Return a schema-allowlisted Cypher label clause for query interpolation.
 
-    **Policy: STRICT label enforcement.**
-    This helper is used at Cypher interpolation sites; it will only return labels that are
-    known to the application schema.
+    This helper is a Cypher interpolation boundary: the returned value is inserted into
+    query strings as a label (for example, `:Character`). Labels are not parameterizable in
+    Neo4j, so callers MUST NOT accept arbitrary user input here.
 
-    Accepted inputs:
-    - Any canonical label in VALID_NODE_LABELS
-    - A small set of "supporting" internal labels (e.g., NovelInfo, ValueNode, etc.)
-    - Common variants that the schema validator can normalize (e.g., "Person" -> "Character")
-
-    Raises:
-        ValueError: if `entity_type` is empty/None or cannot be normalized to an allowed label.
+    Args:
+        entity_type: A domain label input to normalize. Must be non-empty.
 
     Returns:
-        A string of the form ``":<CanonicalLabel>"``.
+        A string of the form `":<CanonicalLabel>"`.
+
+    Raises:
+        ValueError: If `entity_type` is empty/None or cannot be normalized to a label in the
+            application allowlist.
+
+    Notes:
+        Allowed values include:
+        - canonical domain labels from `VALID_NODE_LABELS`
+        - a small allowlist of infrastructure labels (for example, `NovelInfo`, `ValueNode`)
+        Subtypes should be represented as properties (for example, `category`), not labels.
     """
     if not entity_type or not entity_type.strip():
         raise ValueError("Entity type must be provided")
@@ -360,10 +381,26 @@ def _get_constraint_safe_merge(
     create_ts_var: str = "s",
     id_param: str | None = None,
 ) -> tuple[str, list[str]]:
-    """Generate constraint-safe MERGE queries that handle multiple labels correctly.
+    """Build a constraint-safe `MERGE` clause for multi-label nodes.
+
+    Args:
+        labels_cypher: A colon-delimited label string (for example, `":Character:Item"`).
+            This value is expected to be constructed from allowlisted labels upstream.
+        name_param: The Cypher parameter name used for the node's `name` match key when
+            `id_param` is not provided.
+        create_ts_var: The variable name used for the merged node in the returned Cypher.
+        id_param: Optional Cypher parameter name used for a stable identity merge key.
 
     Returns:
-        tuple: (merge_query, additional_set_labels)
+        A tuple of:
+        - merge_query: A `MERGE (...)` clause that uses a single constraint-sensitive primary
+          label to avoid violating Neo4j schema constraints.
+        - additional_set_labels: Any remaining labels that should be applied via `SET` after
+          the merge.
+
+    Notes:
+        This function does not validate labels; it assumes `labels_cypher` was produced from
+        schema-allowlisted label sources. Do not pass untrusted labels to this helper.
     """
     # Parse the labels to identify constraint-sensitive ones
     labels = [label.strip() for label in labels_cypher.split(":") if label.strip()]
@@ -426,6 +463,34 @@ async def add_kg_triples_batch_to_db(
     chapter_number: int,
     is_from_flawed_draft: bool,
 ) -> None:
+    """Persist extracted KG triples to Neo4j in a single batch.
+
+    Args:
+        structured_triples_data: A list of extracted triple dictionaries. Each item must
+            contain a subject dict and predicate, plus either an object entity dict or a
+            literal object value (represented as a `ValueNode` in the graph).
+        chapter_number: Chapter number used for `chapter_added` provenance.
+        is_from_flawed_draft: Whether persisted relationships should be marked provisional.
+
+    Returns:
+        None.
+
+    Raises:
+        Exception: Propagates batch execution failures from the Neo4j driver so callers can
+            distinguish operational failures from "no data" cases.
+
+    Notes:
+        Security and Cypher interpolation:
+        - Relationship types are interpolated (Neo4j cannot parameterize them). This function
+          enforces `validate_relationship_type_for_cypher_interpolation()` for every predicate
+          before it is placed into Cypher.
+        - Node labels are selected via `_get_cypher_labels()` which enforces a schema allowlist.
+          Do not widen this allowlist without reviewing Cypher injection implications.
+
+        Cache semantics:
+        - This is a write path. On successful completion it triggers KG read cache invalidation
+          via [`clear_kg_read_caches()`](data_access/cache_coordinator.py:1).
+    """
     if not structured_triples_data:
         logger.info("Neo4j: add_kg_triples_batch_to_db: No structured triples to add.")
         return
@@ -761,7 +826,7 @@ async def _query_kg_from_db_cached(
             e,
             query_preview=full_query[:200],
             params=parameters,
-        )
+        ) from e
 
 
 async def query_kg_from_db(
@@ -807,6 +872,27 @@ async def get_most_recent_value_from_db(
     chapter_limit: int | None = None,
     include_provisional: bool = False,
 ) -> Any | None:
+    """Return the most recent object value for a `(subject, predicate)` pair.
+
+    Args:
+        subject: Subject entity name. Must be non-empty.
+        predicate: Relationship type to match. This value is interpolated into Cypher (inside
+            backticks) after strict validation.
+        chapter_limit: Optional upper bound on `chapter_added` used to scope "most recent".
+        include_provisional: Whether to consider provisional relationships when selecting the
+            most recent value.
+
+    Returns:
+        The object value for the most recent matching relationship. The value may be a string
+        or a best-effort conversion to `int`/`float`/`bool` when the stored value is a string.
+        Returns None when inputs are invalid or when no matching value exists.
+
+    Notes:
+        Security:
+            Neo4j does not parameterize relationship types. This function uses
+            `validate_relationship_type_for_cypher_interpolation()` and rejects unsafe
+            predicates. Do not pass raw user input as `predicate`.
+    """
     if not subject.strip() or not predicate.strip():
         logger.warning(f"Neo4j: get_most_recent_value_from_db: empty subject or predicate. S='{subject}', P='{predicate}'")
         return None
@@ -868,7 +954,24 @@ async def get_most_recent_value_from_db(
 
 @alru_cache(maxsize=64, ttl=600)  # Cache novel info properties for 10 minutes
 async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | None:
-    """Return a property value from the NovelInfo node."""
+    """Return a property value from the NovelInfo node (cached).
+
+    Args:
+        property_key: A NovelInfo property key. This key is interpolated into the query
+            string and therefore MUST be allowlisted.
+
+    Returns:
+        The property value when present. Returns None when `property_key` is empty, when the
+        NovelInfo node is missing, or when the property is unset.
+
+    Raises:
+        ValueError: If `property_key` is not in `NOVEL_INFO_ALLOWED_PROPERTY_KEYS`.
+
+    Notes:
+        Security:
+            Neo4j does not parameterize property access in a `RETURN ni.<property>` clause.
+            This function enforces a strict allowlist and must not accept arbitrary keys.
+    """
     key = property_key.strip() if property_key is not None else ""
     if not key:
         logger.warning("Neo4j: empty property key for NovelInfo query")
@@ -894,8 +997,25 @@ async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | No
 async def get_novel_info_property_from_db(property_key: str) -> Any | None:
     """Return a NovelInfo property value.
 
-    Wrapper around the cached implementation that returns a defensive deep copy so callers
-    can't mutate cached state when the stored property is a mutable structure (e.g., list/dict).
+    Args:
+        property_key: A NovelInfo property key. This value is validated against a strict
+            allowlist because it is interpolated into Cypher.
+
+    Returns:
+        The NovelInfo property value. Returns a defensive deep copy so callers can safely
+        mutate the returned structure without contaminating future cache hits.
+
+    Raises:
+        ValueError: If `property_key` is not in `NOVEL_INFO_ALLOWED_PROPERTY_KEYS`.
+
+    Notes:
+        Cache semantics:
+            This is a read-through cache via `async_lru`. The wrapper returns a deep copy
+            because `async_lru` returns the same object instance on repeated calls.
+
+        Security:
+            Do not pass untrusted input as `property_key`. The function rejects keys that
+            are not explicitly allowlisted.
     """
     cached = await _get_novel_info_property_from_db_cached(property_key)
     return copy.deepcopy(cached)
@@ -918,15 +1038,42 @@ async def get_chapter_context_for_entity(
     max_event_chapters: int = 50,
     max_rel_chapters: int = 200,
 ) -> list[dict[str, Any]]:
-    """
-    Find recent chapter context for an entity (bounded/deterministic).
+    """Return recent chapter context for a single entity.
 
-    Guardrail contract:
-    - Avoids OPTIONAL MATCH cartesian row explosion by collecting chapter numbers in isolated
-      subqueries, then combining the results.
-    - Output is deterministic and bounded:
-      - chapter numbers are sorted descending
-      - at most `chapter_context_limit` chapters are returned
+    Args:
+        entity_name: Entity name lookup key. Exactly one of `entity_name` or `entity_id`
+            must be provided.
+        entity_id: Entity id lookup key. Exactly one of `entity_name` or `entity_id`
+            must be provided.
+        chapter_context_limit: Maximum number of chapters to return. Hard-capped to keep the
+            query bounded and deterministic.
+        max_event_chapters: Maximum number of event-derived chapter numbers to consider
+            before truncation.
+        max_rel_chapters: Maximum number of relationship-derived chapter numbers to consider
+            before truncation.
+
+    Returns:
+        A list of dictionaries with keys:
+        - `chapter_number`
+        - `summary`
+        - `text`
+
+        Returns an empty list when the entity is not provided or no context exists.
+
+    Raises:
+        ValueError: If limits are non-positive or if `chapter_context_limit` exceeds the hard
+            cap.
+
+    Notes:
+        Query guardrails:
+            This query avoids OPTIONAL MATCH cartesian row explosion by collecting candidate
+            chapter numbers in isolated subqueries and combining the results. The output is
+            sorted by chapter descending and limited to `chapter_context_limit`.
+
+        Error behavior:
+            This function is best-effort and returns an empty list on Neo4j/query failures
+            (it logs the exception). Callers should treat an empty list as "no context or
+            not available" rather than a definitive absence.
     """
     if not entity_name and not entity_id:
         return []
@@ -1009,9 +1156,22 @@ async def get_chapter_context_for_entity(
 async def find_contradictory_trait_characters(
     contradictory_trait_pairs: list[tuple[str, str]],
 ) -> list[dict[str, Any]]:
-    """
-    Finds characters who have contradictory traits based on a provided list of pairs.
-    e.g. [('Brave', 'Cowardly'), ('Honest', 'Deceitful')]
+    """Find characters that have both traits in any of the provided contradictory pairs.
+
+    Args:
+        contradictory_trait_pairs: A list of `(trait_a, trait_b)` pairs.
+
+    Returns:
+        A list of dictionaries containing:
+        - `character_name`
+        - `trait1`
+        - `trait2`
+
+        Returns an empty list when no pairs are provided or no matches exist.
+
+    Notes:
+        This is a diagnostic query intended for validation/QA flows rather than core
+        runtime reads.
     """
     if not contradictory_trait_pairs:
         return []
@@ -1038,9 +1198,17 @@ async def find_contradictory_trait_characters(
 
 
 async def find_post_mortem_activity() -> list[dict[str, Any]]:
-    """
-    Finds characters who have relationships or activities recorded in chapters
-    after they were marked as dead.
+    """Find characters with relationship activity after an `IS_DEAD` chapter.
+
+    Returns:
+        A list of dictionaries including:
+        - `character_name`
+        - `death_chapter`
+        - `post_mortem_activities` (a list of `{activity_type, activity_chapter}`)
+
+    Notes:
+        This is a diagnostic query. It filters out retrospective relationships (for example,
+        remembrance links) so the result focuses on potentially inconsistent timeline facts.
     """
     query = """
     MATCH (c:Character)-[death_rel:`IS_DEAD`]->()

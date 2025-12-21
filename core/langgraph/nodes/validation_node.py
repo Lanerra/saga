@@ -1,20 +1,17 @@
 # core/langgraph/nodes/validation_node.py
-"""
-Consistency validation node for LangGraph workflow.
+"""Validate generated narrative for internal consistency.
 
-This module contains the validation logic for checking generated content
-against the knowledge graph and established narrative rules.
+This module defines the Phase 2 validation node used by the LangGraph workflow.
+It checks the current chapter draft and extracted facts for issues that should
+trigger a revision loop (for example, contradictory character traits or plot
+stagnation).
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.4.1
 
-Validation Checks:
-1. Relationship semantic validation - ensures relationships make sense for entity types
-2. Character trait consistency - detects contradictory character traits
-3. Plot stagnation - ensures chapters advance the narrative
-
-The relationship validation system uses flexible semantic rules defined in
-core/relationship_validation.py to prevent obviously nonsensical relationships
-while maintaining creative flexibility.
+Notes:
+    Relationship validation is intentionally permissive by default: it may log
+    informational warnings but does not block persistence. Revision decisions are
+    based on contradictions such as trait conflicts and plot stagnation.
 """
 
 from __future__ import annotations
@@ -30,11 +27,16 @@ logger = structlog.get_logger(__name__)
 
 
 def _normalize_trait(value: Any) -> str | None:
-    """
-    Normalize a trait string for stable comparisons.
+    """Normalize a trait value for stable comparisons.
 
-    We treat traits as *values* (typically emitted by extraction under `attributes["traits"]`)
-    and compare normalized forms to avoid false negatives due to casing/whitespace.
+    Traits are treated as values (typically emitted under `attributes["traits"]`).
+    Normalization reduces false negatives due to casing and whitespace differences.
+
+    Args:
+        value: Candidate trait value.
+
+    Returns:
+        Normalized trait string, or `None` when the value is not a non-empty string.
     """
     if not isinstance(value, str):
         return None
@@ -43,14 +45,16 @@ def _normalize_trait(value: Any) -> str | None:
 
 
 def _coerce_traits_list(raw: Any) -> list[str]:
-    """
-    Coerce an arbitrary value into a list of normalized trait strings.
+    """Coerce a value into a list of normalized trait strings.
 
-    Expected contract (from extraction): `attributes["traits"]` is a list[str].
-    Defensive behavior:
-      - If it's a string, treat it as a single trait.
-      - If it's a list/tuple/set, normalize each entry.
-      - Otherwise, return [].
+    The canonical contract from extraction is `attributes["traits"]` as `list[str]`,
+    but this function tolerates legacy shapes to keep validation stable.
+
+    Args:
+        raw: Raw trait value from state or persisted objects.
+
+    Returns:
+        A list of normalized, non-empty trait strings.
     """
     if raw is None:
         return []
@@ -58,7 +62,7 @@ def _coerce_traits_list(raw: Any) -> list[str]:
     values: list[Any]
     if isinstance(raw, str):
         values = [raw]
-    elif isinstance(raw, (list, tuple, set)):
+    elif isinstance(raw, list | tuple | set):
         values = list(raw)
     else:
         return []
@@ -72,18 +76,19 @@ def _coerce_traits_list(raw: Any) -> list[str]:
 
 
 def get_extracted_events_for_validation(extracted_entities: dict[str, Any] | None) -> list[Any]:
-    """
-    Single source of truth for how validation derives "events" from state.
+    """Derive event entities from extraction state.
 
     State-shape contract:
-      - Canonical: events are stored in `extracted_entities["world_items"]` as entities
-        with `type == "Event"` (case-insensitive).
-      - Legacy compatibility: if `extracted_entities["events"]` exists, we also include
-        those entries.
+    - Canonical: events live in `extracted_entities["world_items"]` with `type == "Event"`
+      (case-insensitive).
+    - Legacy compatibility: if `extracted_entities["events"]` exists, it is also included.
+
+    Args:
+        extracted_entities: Extracted entities bucket from state.
 
     Returns:
-      A deduplicated list of event-like objects (ExtractedEntity or dict) for downstream
-      timeline/plot checks.
+        A de-duplicated list of event-like objects (dicts or `ExtractedEntity` instances)
+        suitable for downstream plot/timeline checks.
     """
     if not extracted_entities:
         return []
@@ -132,11 +137,14 @@ def get_extracted_events_for_validation(extracted_entities: dict[str, Any] | Non
 
 
 def _get_character_trait_values_for_validation(char: Any) -> set[str]:
-    """
-    Extract normalized trait *values* for a character for validation.
+    """Extract normalized trait values for a character.
 
-    Expected contract: `char.attributes["traits"]` is a list[str].
-    Defensive behavior: missing/invalid shapes yield an empty set.
+    Args:
+        char: Character-like object (typically an `ExtractedEntity`).
+
+    Returns:
+        Normalized trait values derived from `char.attributes["traits"]`. Missing or
+        invalid shapes yield an empty set.
     """
     attrs = getattr(char, "attributes", None)
     if not isinstance(attrs, dict):
@@ -147,29 +155,29 @@ def _get_character_trait_values_for_validation(char: Any) -> set[str]:
 
 
 async def validate_consistency(state: NarrativeState) -> NarrativeState:
-    """
-    Check generated content for contradictions against knowledge graph.
+    """Validate the chapter against extracted facts and narrative rules.
 
-    This is the main LangGraph node function that orchestrates consistency
-    validation. It checks for:
-    1. Invalid relationships (semantic validation)
-    2. Character trait contradictions
-    3. Plot stagnation
-    4. World rule violations (future enhancement)
-    5. Event timeline violations (future enhancement)
+    This node computes `contradictions` and decides whether the workflow should
+    enter a revision loop via `needs_revision`.
 
-    NOTE: Relationship validation now operates in PERMISSIVE MODE by default.
-    The validator logs informational messages but does not block any relationships.
-    This allows the LLM maximum creative freedom in defining entity relationships.
-
-    The validation results determine whether the chapter needs revision based on
-    character trait consistency and plot stagnation, NOT relationship types.
+    Validation inputs:
+    - Extracted relationships (validated in permissive mode by default).
+    - Extracted character traits (checked for contradictions).
+    - Plot stagnation heuristics.
 
     Args:
-        state: Current narrative state with draft_text and extracted entities
+        state: Workflow state.
 
     Returns:
-        Updated state with contradictions list and needs_revision flag
+        Updated state containing:
+        - contradictions: List of detected contradictions.
+        - needs_revision: Whether to route to revision.
+        - current_node: `"validate_consistency"`.
+
+    Notes:
+        This node performs Neo4j reads and/or semantic checks as part of validation.
+        Relationship validation is permissive by default and does not block writes;
+        revision decisions are driven by contradiction severity and plot stagnation.
     """
     logger.info(
         "validate_consistency",
@@ -275,11 +283,11 @@ async def _validate_relationships(
     if not relationships:
         return []
 
-    contradictions = []
+    contradictions: list[Contradiction] = []
     validator = get_relationship_validator()  # Defaults to permissive mode
 
     # Build entity type lookup from extracted entities
-    entity_type_map = {}
+    entity_type_map: dict[str, str] = {}
     if extracted_entities:
         # Add characters
         for char in extracted_entities.get("characters", []):

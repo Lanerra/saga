@@ -1,4 +1,10 @@
 # core/langgraph/subgraphs/extraction.py
+"""Build the extraction subgraph for SAGA.
+
+Extraction is intentionally sequential to avoid cross-chapter accumulation from
+reducer-based merges.
+"""
+
 import structlog
 from langgraph.graph import END, StateGraph  # type: ignore
 
@@ -15,18 +21,18 @@ logger = structlog.get_logger(__name__)
 
 
 def create_extraction_subgraph() -> StateGraph:
-    """
-    Create the extraction subgraph with SEQUENTIAL extraction.
+    """Create and compile the extraction subgraph.
 
-    Extraction runs sequentially to avoid reducer-based accumulation issues:
-    1. extract_characters: Clears state, extracts characters
-    2. extract_locations: Appends locations to world_items
-    3. extract_events: Appends events to world_items
-    4. extract_relationships: Extracts relationships
-    5. consolidate: Logs completion
+    Order of operations:
+        1. `extract_characters` resets extraction buckets for the chapter.
+        2. `extract_locations` appends to `world_items`.
+        3. `extract_events` appends to `world_items`.
+        4. `extract_relationships` sets `extracted_relationships` and may add
+           entities mentioned only in relationships.
+        5. `consolidate_extraction` externalizes and logs extraction completion.
 
-    Sequential execution means no reducers needed, so state replacement
-    works correctly and prevents cross-chapter accumulation.
+    Returns:
+        A compiled `StateGraph` implementing the extraction phase.
     """
     workflow = StateGraph(NarrativeState)
 
@@ -36,7 +42,6 @@ def create_extraction_subgraph() -> StateGraph:
     workflow.add_node("extract_relationships", extract_relationships)
     workflow.add_node("consolidate", consolidate_extraction)
 
-    # Sequential execution (no parallel branches)
     workflow.set_entry_point("extract_characters")
     workflow.add_edge("extract_characters", "extract_locations")
     workflow.add_edge("extract_locations", "extract_events")

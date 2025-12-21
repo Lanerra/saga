@@ -1,16 +1,13 @@
 # core/http_client_service.py
-"""
-HTTP client service for LLM API interactions.
+"""Perform HTTP I/O for LLM provider integrations.
 
-This module provides the low-level HTTP client functionality for communicating
-with LLM APIs, extracted from the monolithic LLMService to improve separation
-of concerns and maintainability.
+This module provides a small HTTP layer used by higher-level LLM services. It
+centralizes concurrency limits, retry behavior, and response handling so call
+sites do not re-implement network concerns.
 
-REFACTORED: Extracted from core.llm_interface as part of Phase 3 architectural improvements.
-- Focuses solely on HTTP communication concerns
-- Proper error handling and retry logic
-- Streaming and non-streaming request support
-- Concurrent request management
+Notes:
+    - Requests are concurrency-limited via a semaphore.
+    - Retries are applied for transient failures and server/rate-limit responses.
 """
 
 import asyncio
@@ -25,23 +22,13 @@ logger = structlog.get_logger(__name__)
 
 
 class HTTPClientService:
-    """
-    Service for handling HTTP communications with LLM APIs.
-
-    This service encapsulates all HTTP-related concerns including:
-    - Connection management
-    - Retry logic
-    - Error handling
-    - Concurrency control
-    - Streaming support
-    """
+    """Perform concurrency-limited HTTP requests with retries."""
 
     def __init__(self, timeout: float = config.HTTPX_TIMEOUT):
-        """
-        Initialize the HTTP client service.
+        """Initialize the HTTP client.
 
         Args:
-            timeout: HTTP request timeout in seconds
+            timeout: Request timeout in seconds.
         """
         self._client = httpx.AsyncClient(timeout=timeout)
         self._semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_LLM_CALLS)
@@ -56,7 +43,7 @@ class HTTPClientService:
         logger.info(f"HTTPClientService initialized with timeout={timeout}s, " f"concurrency_limit={config.MAX_CONCURRENT_LLM_CALLS}")
 
     async def aclose(self) -> None:
-        """Close the underlying HTTP client and cleanup resources."""
+        """Close the underlying HTTP client and release resources."""
         await self._client.aclose()
         logger.debug("HTTPClientService closed")
 
@@ -67,21 +54,23 @@ class HTTPClientService:
         headers: dict[str, str] | None = None,
         max_retries: int | None = None,
     ) -> httpx.Response:
-        """
-        Make a POST request with JSON payload and retry logic.
+        """POST a JSON payload with retry behavior.
 
         Args:
-            url: Target URL for the request
-            payload: JSON payload to send
-            headers: Optional HTTP headers
-            max_retries: Maximum retry attempts (defaults to config value)
+            url: Target URL for the request.
+            payload: JSON payload to send.
+            headers: Optional HTTP headers.
+            max_retries: Maximum retry attempts. When omitted, defaults to the
+                configured value.
 
         Returns:
-            HTTP response object
+            The successful HTTP response.
 
         Raises:
-            httpx.HTTPError: For unrecoverable HTTP errors
-            Exception: For other unexpected errors
+            httpx.TimeoutException: When all attempts time out.
+            httpx.HTTPStatusError: When a non-retryable status occurs or retries are
+                exhausted.
+            httpx.RequestError: When the request fails and retries are exhausted.
         """
         async with self._semaphore:
             self._stats["total_requests"] += 1
@@ -149,7 +138,7 @@ class HTTPClientService:
     # Streaming support removed to simplify HTTP client and standardize on non-streaming calls.
 
     def get_statistics(self) -> dict[str, Any]:
-        """Get HTTP client statistics for monitoring and debugging."""
+        """Return HTTP request statistics for monitoring."""
         total = self._stats["total_requests"]
         return {
             **self._stats,
@@ -160,36 +149,29 @@ class HTTPClientService:
 
 
 class EmbeddingHTTPClient:
-    """
-    Specialized HTTP client for embedding API requests.
-
-    This client provides embedding-specific functionality built on top
-    of the base HTTPClientService.
-    """
+    """Call the embedding API using a shared HTTP client."""
 
     def __init__(self, http_client: HTTPClientService):
-        """
-        Initialize embedding client.
+        """Initialize the embedding client.
 
         Args:
-            http_client: Base HTTP client service to use
+            http_client: Shared HTTP client used for requests.
         """
         self._http_client = http_client
 
     async def get_embedding(self, text: str, model: str) -> dict[str, Any]:
-        """
-        Get embedding for text from Ollama API.
+        """Request an embedding for the provided text.
 
         Args:
-            text: Text to get embedding for
-            model: Embedding model to use
+            text: Text to embed.
+            model: Embedding model identifier.
 
         Returns:
-            API response dictionary
+            Parsed JSON response from the embedding provider.
 
         Raises:
-            ValueError: If text is empty or invalid
-            Exception: For HTTP or API errors
+            ValueError: If `text` is empty or whitespace.
+            httpx.HTTPError: If the HTTP request fails.
         """
         if not text or not isinstance(text, str) or not text.strip():
             raise ValueError("Text must be a non-empty string")
@@ -204,19 +186,13 @@ class EmbeddingHTTPClient:
 
 
 class CompletionHTTPClient:
-    """
-    Specialized HTTP client for completion API requests.
-
-    This client provides completion-specific functionality built on top
-    of the base HTTPClientService.
-    """
+    """Call the chat completion API using a shared HTTP client."""
 
     def __init__(self, http_client: HTTPClientService):
-        """
-        Initialize completion client.
+        """Initialize the completion client.
 
         Args:
-            http_client: Base HTTP client service to use
+            http_client: Shared HTTP client used for requests.
         """
         self._http_client = http_client
 
@@ -228,18 +204,20 @@ class CompletionHTTPClient:
         max_tokens: int,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """
-        Get completion from OpenAI-compatible API.
+        """Request a chat completion from an OpenAI-compatible API.
 
         Args:
-            model: Model to use for completion
-            messages: Conversation messages
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            **kwargs: Additional completion parameters
+            model: Model identifier.
+            messages: Chat messages payload.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
+            **kwargs: Additional provider-specific parameters merged into the request.
 
         Returns:
-            API response dictionary
+            Parsed JSON response from the completion provider.
+
+        Raises:
+            httpx.HTTPError: If the HTTP request fails.
         """
         payload = {
             "model": model,

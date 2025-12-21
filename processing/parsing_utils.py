@@ -20,16 +20,26 @@ _NORMALIZED_NODE_LABELS = {label.lower(): label for label in VALID_NODE_LABELS}
 
 
 def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | None]:
-    """
-    Parses 'EntityType:EntityName' or just 'EntityName' string.
-    If EntityType is missing, it's set to None.
+    """Parse an entity reference into an optional type and name.
 
-    Heuristics:
-    1. 'Type: Name' -> Type, Name
-    2. 'Type: ' -> Type, None
-    3. 'Type Name' (where Type is a known label) -> Type, Name
-    4. 'Type' (where Type is a known label) -> Type, None
-    5. 'Name' -> None, Name
+    This parser is designed for LLM-produced entity fields. It supports both explicit
+    `"Type: Name"` references and implicit references where the first token may be a known type.
+
+    Args:
+        entity_text: Raw entity field text.
+
+    Returns:
+        A mapping with keys `type` and `name`. If no type is detected, `type` is `None`. If the
+        input is blank or contains only a type marker, `name` is `None`.
+
+    Notes:
+        Heuristics (evaluated in order):
+        - `"Type: Name"` yields `type="Type"` and `name="Name"`.
+        - `"Type:"` yields `type="Type"` and `name=None`.
+        - `"Type Name"` yields `type="Type"` and `name="Name"` when `Type` matches a known node
+          label (case-insensitive).
+        - `"Type"` yields `type="Type"` and `name=None` when `Type` matches a known node label.
+        - Otherwise the entire input is treated as a name with no type.
     """
     text = entity_text.strip()
     if not text:
@@ -171,19 +181,20 @@ ENTITY_BLACKLIST_PATTERNS = [
 
 
 def _is_proper_noun(entity_name: str) -> bool:
-    """
-    Detect if an entity name is likely a proper noun.
-
-    Proper nouns are names that:
-    1. Have most words capitalized (excluding articles/prepositions)
-    2. Are not generic descriptors like "the rebellion" or "the artifact"
-    3. Represent specific named entities
+    """Detect whether an entity name looks like a proper noun.
 
     Args:
-        entity_name: The entity name to check
+        entity_name: Candidate entity name.
 
     Returns:
-        True if the name appears to be a proper noun
+        `True` when the name appears to be a specific named entity; otherwise `False`.
+
+    Notes:
+        Heuristics:
+        - Proper nouns are inferred from capitalization: at least 60% of "significant" words are
+          capitalized. Articles and common prepositions are excluded from the denominator.
+        - Pure numbers (e.g., `"1984"`) are treated as consistent with proper-noun formatting.
+        - Two-word generic determiners like `"The Room"` or `"A Man"` are treated as not proper.
     """
     if not entity_name or not entity_name.strip():
         return False
@@ -249,20 +260,32 @@ def _is_proper_noun(entity_name: str) -> bool:
 
 
 def _should_filter_entity(entity_name: str | None, entity_type: str | None = None, mention_count: int = 1) -> bool:
-    """
-    Filter out problematic entity names that create noise in the knowledge graph.
-
-    Uses a hybrid approach with proper noun preference:
-    - Proper nouns: Accepted with 1+ mentions
-    - Common nouns: Require 3+ mentions to be considered significant
+    """Filter out entity names that are likely to create noisy nodes.
 
     Args:
-        entity_name: The name of the entity to check
-        entity_type: Optional type for additional filtering
-        mention_count: Number of times entity is mentioned (default: 1)
+        entity_name: Candidate entity name.
+        entity_type: Optional entity type, reserved for additional filtering.
+        mention_count: Observed mention count used for thresholding.
 
     Returns:
-        True if entity should be filtered out (not created)
+        `True` if the entity should be suppressed; otherwise `False`.
+
+    Notes:
+        This filter is intentionally conservative about creating nodes. It suppresses:
+        - Empty names, very short names (length <= 2), and names that look like internal IDs
+          (prefix `"entity_"`).
+        - Generic determiners (e.g., `"a X"`/`"an X"` with <= 2 words) and negations (`"not X"`).
+        - Abstract phrase prefixes (e.g., `"sense of ..."`, `"memory of ..."`).
+        - A configurable blacklist of substrings associated with sensory/emotional/abstract filler.
+          Exact matches are always suppressed; substrings are allowed only when the name is inferred
+          to be a proper noun.
+        - A small set of single-word descriptive adjectives.
+
+        Mention-count thresholds:
+        - Proper nouns require at least `config.ENTITY_MENTION_THRESHOLD_PROPER_NOUN` mentions
+          (default `1` if config cannot be imported).
+        - Common nouns require at least `config.ENTITY_MENTION_THRESHOLD_COMMON_NOUN` mentions
+          (default `3` if config cannot be imported).
     """
     if not entity_name:
         return True
@@ -369,12 +392,45 @@ def _should_filter_entity(entity_name: str | None, entity_type: str | None = Non
 def parse_llm_triples(
     text_block: str,
 ) -> list[dict[str, Any]]:
-    """
-    Custom parser for LLM-generated plain text triples.
-    Expected format: 'SubjectEntityType:SubjectName | Predicate | ObjectEntityType:ObjectName'
-                 OR 'SubjectEntityType:SubjectName | Predicate | LiteralValue'
+    """Parse LLM-generated plain-text triples into structured payloads.
 
-    Includes filtering to prevent creation of problematic entities.
+    Args:
+        text_block: A newline-delimited block of triples. Each non-empty, non-comment line is
+            expected to contain at least three `|`-separated fields: subject, predicate, object.
+
+    Returns:
+        A list of triple payloads. Each payload contains:
+        - `subject`: Mapping with `type` and `name` fields.
+        - `predicate`: Normalized predicate string.
+        - `object_entity`: Mapping with `type` and `name` when the object is treated as an entity.
+        - `object_literal`: String when the object is treated as a literal.
+        - `is_literal_object`: Whether the object was treated as a literal.
+
+    Notes:
+        Input format:
+        - Subject and entity objects may be provided as `"Type:Name"` or `"Type Name"` where `Type`
+          matches a known node label (case-insensitive). Otherwise they are treated as untyped.
+        - Predicate is normalized by trimming, converting to uppercase, and replacing spaces with
+          underscores.
+        - Lines starting with `#` or `//` are treated as comments and skipped.
+        - If a line contains more than three `|`-separated fields, extra fields are ignored.
+
+        Entity vs literal objects:
+        - Objects are treated as entities only when a type is detected by
+          `_get_entity_type_and_name_from_text()`. Untyped objects default to literals to avoid
+          turning arbitrary strings into nodes.
+        - If an object looks typed but parses without a name, it is reverted to a literal.
+        - Literal objects equal to empty/whitespace or case-insensitive `none`/`null` are dropped.
+
+        Filtering:
+        - Subjects and entity objects are filtered through `_should_filter_entity()` to suppress
+          noisy node creation.
+
+        Determinism:
+        - The returned list preserves the order of accepted lines in `text_block`.
+        - The only conditional predicate rewrite is `STATUS_IS` → `HAS_STATUS` when
+          `config.ENABLE_STATUS_IS_ALIAS` is disabled; failures to read config fall back to the
+          default behavior.
     """
     logger_func = logger
     triples_list: list[dict[str, Any]] = []

@@ -1,20 +1,19 @@
 # core/langgraph/nodes/quality_assurance_node.py
-"""
-Quality Assurance Node for SAGA LangGraph Workflow.
+"""Run periodic quality checks against the knowledge graph.
 
-This node runs periodically to detect narrative consistency issues:
-1. Contradictory character traits
-2. Post-mortem character activity
-3. Duplicate relationship consolidation
-4. Relationship type normalization
+This module defines a QA node that runs on a configurable cadence to detect
+consistency issues and optionally apply low-risk cleanup actions (for example,
+deduplicating relationships).
 
-Unlike graph_healing_node which focuses on provisional node enrichment,
-this node focuses on consistency checking and error detection.
+Notes:
+    Unlike the healing node, which enriches provisional entities, this node focuses
+    on detecting narrative inconsistencies and surfacing metrics for monitoring.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import structlog
 
@@ -44,24 +43,26 @@ CONTRADICTORY_TRAIT_PAIRS = [
 
 
 async def check_quality(state: NarrativeState) -> NarrativeState:
-    """
-    Run quality assurance checks on the knowledge graph.
-
-    This node performs consistency checks that help identify
-    potential narrative errors or contradictions that may have
-    accumulated during generation.
-
-    Checks performed:
-    1. Contradictory traits (e.g., Brave + Cowardly)
-    2. Post-mortem activity (dead characters doing things)
-    3. Duplicate relationships
-    4. Relationship type normalization
+    """Run quality assurance checks on the knowledge graph.
 
     Args:
-        state: Current narrative state
+        state: Workflow state.
 
     Returns:
-        Updated state with QA results
+        Updated state containing:
+        - qa_results: Dict of detected issues and applied automatic fixes.
+        - qa_history: Append-only history entries with timestamps.
+        - last_qa_chapter: Chapter number when the node last executed checks.
+        - total_qa_issues / total_qa_fixes: Running totals.
+        - current_node: `"check_quality"`.
+
+        If QA is disabled or checks are not yet due (based on frequency), returns an
+        update with `current_node` set and does not perform any I/O.
+
+    Notes:
+        This node performs Neo4j reads (and may perform writes when relationship
+        deduplication/consolidation is enabled). Failures in individual checks are
+        logged and do not fail the workflow.
     """
     current_chapter = state.get("current_chapter", 1)
     qa_enabled = config.settings.ENABLE_QA_CHECKS
@@ -71,7 +72,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
         return {**state, "current_node": "check_quality"}
 
     qa_frequency = config.settings.QA_CHECK_FREQUENCY
-    last_qa_chapter = state.get("last_qa_chapter", 0)
+    last_qa_chapter = cast(int, state.get("last_qa_chapter", 0))
 
     if current_chapter - last_qa_chapter < qa_frequency:
         logger.debug(
@@ -84,19 +85,23 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
 
     logger.info("check_quality: Starting quality assurance checks", chapter=current_chapter)
 
-    qa_results = {
+    issues_found = 0
+    relationships_deduplicated = 0
+    relationships_consolidated = 0
+
+    qa_results: dict[str, Any] = {
         "contradictory_traits": [],
         "post_mortem_activities": [],
-        "relationships_deduplicated": 0,
-        "relationships_consolidated": 0,
-        "issues_found": 0,
+        "relationships_deduplicated": relationships_deduplicated,
+        "relationships_consolidated": relationships_consolidated,
+        "issues_found": issues_found,
     }
 
     if config.settings.QA_CHECK_CONTRADICTORY_TRAITS:
         try:
             contradictory_traits = await find_contradictory_trait_characters(CONTRADICTORY_TRAIT_PAIRS)
             qa_results["contradictory_traits"] = contradictory_traits
-            qa_results["issues_found"] += len(contradictory_traits)
+            issues_found += len(contradictory_traits)
 
             if contradictory_traits:
                 logger.warning(
@@ -116,7 +121,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
         try:
             post_mortem = await find_post_mortem_activity()
             qa_results["post_mortem_activities"] = post_mortem
-            qa_results["issues_found"] += len(post_mortem)
+            issues_found += len(post_mortem)
 
             if post_mortem:
                 logger.warning(
@@ -135,12 +140,12 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     if config.settings.QA_DEDUPLICATE_RELATIONSHIPS:
         try:
             dedupe_count = await deduplicate_relationships()
-            qa_results["relationships_deduplicated"] = dedupe_count
+            relationships_deduplicated = int(dedupe_count)
 
-            if dedupe_count > 0:
+            if relationships_deduplicated > 0:
                 logger.info(
                     "check_quality: Deduplicated relationships",
-                    count=dedupe_count,
+                    count=relationships_deduplicated,
                 )
 
         except Exception as e:
@@ -153,12 +158,12 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     if config.settings.QA_CONSOLIDATE_RELATIONSHIPS:
         try:
             consolidate_count = await consolidate_similar_relationships()
-            qa_results["relationships_consolidated"] = consolidate_count
+            relationships_consolidated = int(consolidate_count)
 
-            if consolidate_count > 0:
+            if relationships_consolidated > 0:
                 logger.info(
                     "check_quality: Consolidated relationships",
-                    count=consolidate_count,
+                    count=relationships_consolidated,
                 )
 
         except Exception as e:
@@ -168,7 +173,11 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 exc_info=True,
             )
 
-    qa_history = state.get("qa_history", [])
+    qa_results["issues_found"] = issues_found
+    qa_results["relationships_deduplicated"] = relationships_deduplicated
+    qa_results["relationships_consolidated"] = relationships_consolidated
+
+    qa_history = list(cast(list[dict[str, Any]], state.get("qa_history", [])))
     qa_history.append(
         {
             "chapter": current_chapter,
@@ -177,8 +186,8 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
         }
     )
 
-    total_issues = qa_results["issues_found"]
-    total_fixes = qa_results["relationships_deduplicated"] + qa_results["relationships_consolidated"]
+    total_issues = issues_found
+    total_fixes = relationships_deduplicated + relationships_consolidated
 
     logger.info(
         "check_quality: Quality assurance complete",
@@ -187,6 +196,9 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
         automatic_fixes=total_fixes,
     )
 
+    total_qa_issues = cast(int, state.get("total_qa_issues", 0))
+    total_qa_fixes = cast(int, state.get("total_qa_fixes", 0))
+
     return {
         **state,
         "current_node": "check_quality",
@@ -194,6 +206,6 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
         "last_qa_chapter": current_chapter,
         "qa_results": qa_results,
         "qa_history": qa_history,
-        "total_qa_issues": state.get("total_qa_issues", 0) + total_issues,
-        "total_qa_fixes": state.get("total_qa_fixes", 0) + total_fixes,
+        "total_qa_issues": total_qa_issues + total_issues,
+        "total_qa_fixes": total_qa_fixes + total_fixes,
     }

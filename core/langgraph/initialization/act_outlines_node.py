@@ -1,9 +1,9 @@
 # core/langgraph/initialization/act_outlines_node.py
-"""
-Act Outlines Generation Node for Initialization Phase.
+"""Generate act-level outlines from the global outline.
 
-This node generates detailed outlines for each act based on the global outline,
-providing more granular structure for the narrative.
+This module defines the initialization node that expands the global outline into
+structured act outlines. Act chapter ranges are derived from explicit ranges in the
+global outline when present, otherwise a balanced fallback allocation is used.
 """
 
 from __future__ import annotations
@@ -73,6 +73,14 @@ class ActOutlineSchema(BaseModel):
 
 
 def _synthesize_act_outline_raw_text(outline: ActOutlineSchema) -> str:
+    """Synthesize a human-readable act outline from structured sections.
+
+    Args:
+        outline: Parsed act outline schema.
+
+    Returns:
+        A formatted text representation suitable for display and file persistence.
+    """
     sections = outline.sections
 
     parts: list[str] = [
@@ -122,24 +130,24 @@ def _synthesize_act_outline_raw_text(outline: ActOutlineSchema) -> str:
 
 
 async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
-    """
-    Generate detailed outlines for each act in the story.
-
-    This node takes the global outline and expands it into detailed act-level
-    outlines that specify:
-    - Key events and plot points within each act
-    - Character development within the act
-    - Pacing and tension progression
-    - Act-specific goals and resolutions
-
-    Each act outline references the global outline and character sheets to
-    maintain coherence.
+    """Generate and externalize act outlines for initialization.
 
     Args:
-        state: Current narrative state with global outline
+        state: Workflow state. Requires a global outline (prefer externalized refs).
 
     Returns:
-        Updated state with act_outlines populated
+        Updated state containing:
+        - act_outlines_ref: Externalized act outlines artifact (when generation succeeds).
+        - current_node: `"act_outlines"`.
+        - initialization_step: Progress marker.
+
+        If the global outline is missing, returns an error update and does not set
+        `has_fatal_error`.
+
+    Notes:
+        This node performs LLM I/O and writes act outlines to disk via `ContentManager`.
+        JSON/schema contract violations for a single act are handled by skipping that
+        act outline rather than crashing the entire initialization run.
     """
     logger.info(
         "generate_act_outlines: starting act outline generation",
@@ -403,6 +411,7 @@ def _get_act_role(act_number: int, total_acts: int) -> str:
             return "Midpoint/Crisis"
         elif act_number == 4:
             return "Falling Action"
+        return "Development"
     else:
         return "Development"
 

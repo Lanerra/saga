@@ -1,16 +1,11 @@
 # core/langgraph/nodes/revision_node.py
-"""
-Revision node for LangGraph workflow.
+"""Revise a chapter draft based on validation feedback.
 
-This module contains the chapter revision logic for the LangGraph-based
-narrative generation workflow.
+This module defines the revision node used in the LangGraph workflow. It applies
+feedback (contradictions) to the current draft, generates a revised version, and
+externalizes the updated draft to keep workflow state small.
 
 Migration Reference: docs/phase2_migration_plan.md - Step 2.2
-
-Source Code Ported From:
-- agents/revision_agent.py:
-  - Various revision methods
-- prompts/revision_agent/full_chapter_rewrite.j2
 """
 
 from __future__ import annotations
@@ -36,28 +31,33 @@ logger = structlog.get_logger(__name__)
 
 
 async def revise_chapter(state: NarrativeState) -> NarrativeState:
-    """
-    Revise chapter based on validation feedback.
+    """Revise the current chapter draft using validation contradictions.
 
-    This is the main LangGraph node function for chapter revision.
-    It takes contradictions from validation, constructs a revision prompt,
-    calls the LLM to generate a revised version, and updates the state.
-
-    PORTED FROM: RevisionAgent methods
-
-    Process Flow:
-    1. Check iteration limits (prevent infinite loops)
-    2. Build revision prompt with contradictions and feedback
-    3. Call LLM with revision model (lower temperature for consistency)
-    4. Update state with revised text
-    5. Clear contradictions for re-validation
-    6. Increment iteration count
+    This node enforces a bounded revision loop, constructs a revision prompt, calls
+    the revision model, de-duplicates repetitive text, then externalizes the revised
+    draft and resets validation fields for the next iteration.
 
     Args:
-        state: Current narrative state containing draft_text and contradictions
+        state: Workflow state.
 
     Returns:
-        Updated state with revised draft_text and incremented iteration_count
+        Updated state containing:
+        - draft_ref: Externalized revised draft text.
+        - draft_word_count: Word count of the revised draft.
+        - iteration_count: Incremented revision iteration count.
+        - contradictions: Cleared for re-validation.
+        - needs_revision: Reset to `False` (will be re-computed by validation).
+        - is_from_flawed_draft: True when de-duplication removed content.
+        - current_node: `"revise"`.
+
+        On fatal precondition failures (iteration limit exceeded, missing draft text,
+        prompt construction failure, token budget exhaustion), returns a state with
+        `has_fatal_error` set and `last_error` populated.
+
+    Notes:
+        This node performs LLM I/O and writes externalized artifacts to disk via
+        [`ContentManager.save_text()`](core/langgraph/content_manager.py:1). It also
+        runs local de-duplication to reduce repeated segments before persistence.
     """
     logger.info(
         "revise_chapter: starting revision",

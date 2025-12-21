@@ -12,25 +12,22 @@ logger = structlog.get_logger(__name__)
 
 
 def compute_chapter_id(chapter_number: int, *, novel_id: str | None = None) -> str:
-    """
-    Compute the canonical, deterministic Chapter.id value.
-
-    Canonical identity contract:
-    - Chapter nodes MUST always have `id` set to satisfy schema constraints
-      (see Chapter.id unique constraint in [`core/db_manager.py`](core/db_manager.py:413)).
-    - Chapter.id must be stable/deterministic so different persistence paths (commit/summary/finalize)
-      converge on the same identity semantics.
-
-    Strategy:
-    - Use the main NovelInfo identifier as the novel namespace.
-    - Compose: "chapter_{novel_id}_{chapter_number}"
+    """Compute the canonical, deterministic `Chapter.id` value.
 
     Args:
-        chapter_number: 1-indexed chapter number
-        novel_id: Optional novel identity namespace; defaults to `config.MAIN_NOVEL_INFO_NODE_ID`
+        chapter_number: 1-indexed chapter number.
+        novel_id: Optional novel identity namespace. Defaults to
+            `config.MAIN_NOVEL_INFO_NODE_ID`.
 
     Returns:
-        Deterministic Chapter.id string
+        The deterministic `Chapter.id` string.
+
+    Notes:
+        Canonical identity contract:
+        - Chapter nodes must have an `id` to satisfy schema constraints (see the unique
+          constraint in [`core/db_manager.py`](core/db_manager.py:413)).
+        - The id must be stable so different persistence paths converge on the same identity
+          semantics.
     """
     novel_id_val = novel_id or config.MAIN_NOVEL_INFO_NODE_ID
     return f"chapter_{novel_id_val}_{int(chapter_number)}"
@@ -44,24 +41,25 @@ def build_chapter_upsert_statement(
     is_provisional: bool | None = None,
     novel_id: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """
-    Build the canonical Cypher + params for Chapter persistence.
-
-    This is the single source of truth for Chapter persistence semantics and MUST:
-    - MERGE Chapter by `number` (unique constraint exists),
-    - ALWAYS ensure `c.id` is populated (existing nodes get `coalesce`-filled; new nodes get it via the SET),
-    - Avoid clobbering fields when the caller does not provide a value (e.g., summary-only updates
-      must not clear embedding_vector).
+    """Build the canonical Chapter upsert Cypher statement and parameter map.
 
     Args:
-        chapter_number: Chapter number (unique)
-        summary: Optional summary to set; if None, summary is not modified
-        embedding_vector: Optional embedding vector to set; if None, embedding_vector is not modified
-        is_provisional: Optional provisional flag to set; if None, is_provisional is not modified
-        novel_id: Optional novel identity namespace (used for deterministic chapter id)
+        chapter_number: Chapter number (unique).
+        summary: Summary to set. When None, the summary field is not modified.
+        embedding_vector: Embedding vector to set. When None, the embedding field is not
+            modified.
+        is_provisional: Provisional flag to set. When None, the provisional field is not
+            modified.
+        novel_id: Optional novel identity namespace used for deterministic chapter id.
 
     Returns:
-        (cypher_query, parameters)
+        A `(cypher_query, parameters)` tuple.
+
+    Notes:
+        This is the single source of truth for Chapter persistence semantics and must:
+        - MERGE Chapter by `number`,
+        - always ensure `c.id` is populated (coalesce for existing nodes),
+        - avoid clobbering fields when the caller does not provide a value.
     """
     chapter_id = compute_chapter_id(chapter_number, novel_id=novel_id)
 
@@ -98,6 +96,15 @@ def build_chapter_upsert_statement(
 
 
 async def load_chapter_count_from_db() -> int:
+    """Return the number of `:Chapter` nodes in Neo4j.
+
+    Returns:
+        The chapter count. Returns 0 on errors.
+
+    Notes:
+        Error behavior:
+            This function logs exceptions and returns 0 rather than raising.
+    """
     query = "MATCH (c:Chapter) RETURN count(c) AS chapter_count"
     try:
         result = await neo4j_manager.execute_read_query(query)
@@ -115,16 +122,24 @@ async def save_chapter_data_to_db(
     embedding_array: np.ndarray | None,
     is_provisional: bool = False,
 ) -> None:
-    """
-    Persist Chapter metadata to Neo4j using the canonical Chapter persistence semantics.
+    """Persist Chapter metadata using canonical Chapter persistence semantics.
 
-    This function is intentionally used by multiple workflow nodes (finalize and potentially others);
-    it delegates to [`build_chapter_upsert_statement()`](data_access/chapter_queries.py:43) so all
-    Chapter writes consistently satisfy schema constraints (Chapter.id).
+    Args:
+        chapter_number: Chapter number to persist.
+        summary: Summary to set. When None, summary is not modified.
+        embedding_array: Embedding vector to set. When None, embedding is not modified.
+        is_provisional: Whether the chapter should be marked provisional.
 
-    Note:
-    - `summary=None` will NOT clear an existing summary; it simply will not update it.
-    - `embedding_array=None` will NOT clear an existing embedding; it simply will not update it.
+    Returns:
+        None.
+
+    Notes:
+        This function delegates to [`build_chapter_upsert_statement()`](data_access/chapter_queries.py:39)
+        so all Chapter writes consistently satisfy schema constraints (including `Chapter.id`).
+
+        Error behavior:
+            Invalid `chapter_number` returns early without raising. Neo4j write failures are
+            logged and not raised.
     """
     if chapter_number <= 0:
         logger.error(f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}.")
@@ -150,6 +165,22 @@ async def save_chapter_data_to_db(
 
 
 async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None:
+    """Return chapter summary metadata for a single chapter.
+
+    Args:
+        chapter_number: Chapter number to fetch.
+
+    Returns:
+        A dict with keys:
+        - `summary`
+        - `is_provisional`
+
+        Returns None when `chapter_number` is invalid or when no chapter exists.
+
+    Raises:
+        Exception: Standardized database exceptions via
+            [`handle_database_error()`](core/exceptions.py:1) on Neo4j failures.
+    """
     if chapter_number <= 0:
         return None
     query = """
@@ -178,10 +209,25 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
             "get_chapter_data_from_db",
             e,
             chapter_number=chapter_number,
-        )
+        ) from e
 
 
 async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
+    """Return the embedding vector for a chapter when present.
+
+    Args:
+        chapter_number: Chapter number to fetch.
+
+    Returns:
+        The embedding as a NumPy array when present. Returns None when:
+        - `chapter_number` is invalid,
+        - the chapter has no stored embedding vector, or
+        - the query fails.
+
+    Notes:
+        Error behavior:
+            This function logs exceptions and returns None rather than raising.
+    """
     if chapter_number <= 0:
         return None
     query = """
@@ -208,17 +254,32 @@ async def find_semantic_context_native(
     *,
     include_provisional: bool = False,
 ) -> list[dict[str, Any]]:
-    """
-    Native version of semantic context retrieval using single optimized query.
-    Eliminates multiple DB calls and reduces serialization overhead.
+    """Return semantic context chapters using a single optimized vector query.
 
     Args:
-        query_embedding: NumPy embedding for similarity search
-        current_chapter_number: Current chapter to exclude from results
-        limit: Maximum number of chapters to return
+        query_embedding: Query embedding used for similarity search.
+        current_chapter_number: Current chapter to exclude from results.
+        limit: Maximum number of chapters to return (defaults to `config.CONTEXT_CHAPTER_COUNT`).
+        include_provisional: Whether provisional chapters may be returned.
 
     Returns:
-        List of chapter context data including similar + immediate previous
+        A list of dictionaries with keys:
+        - `chapter_number`
+        - `summary`
+        - `is_provisional`
+        - `score`
+        - `context_type`
+
+        Returns an empty list on failures or when no context exists.
+
+    Notes:
+        Ordering and bounds:
+            This query enforces deterministic ordering by score descending and applies a
+            strict limit. It attempts to include the immediate previous chapter when
+            available by boosting its score.
+
+        Error behavior:
+            This function logs exceptions and returns an empty list rather than raising.
     """
     if query_embedding is None or query_embedding.size == 0:
         logger.warning("Native context search called with empty query embedding")
@@ -334,15 +395,21 @@ async def find_semantic_context_native(
 async def get_chapter_content_batch_native(
     chapter_numbers: list[int],
 ) -> dict[int, dict[str, Any]]:
-    """
-    Native batch retrieval of chapter content.
-    Optimized for minimal serialization with single query.
+    """Return chapter content for a list of chapter numbers in a single query.
 
     Args:
-        chapter_numbers: List of chapter numbers to retrieve
+        chapter_numbers: Chapter numbers to retrieve.
 
     Returns:
-        Dict mapping chapter numbers to their content data
+        A mapping from chapter number to a dict with keys:
+        - `summary`
+        - `is_provisional`
+
+        Returns an empty dict when no chapter numbers are provided or when the query fails.
+
+    Notes:
+        Error behavior:
+            This function logs exceptions and returns an empty dict rather than raising.
     """
     if not chapter_numbers:
         return {}

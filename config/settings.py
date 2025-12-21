@@ -1,7 +1,20 @@
 # config/settings.py
 """
-Configuration settings for the Saga Novel Generation system.
-Uses Pydantic BaseSettings for automatic environment variable loading.
+Define runtime configuration for SAGA.
+
+Settings are loaded at import time by constructing a [`SagaSettings`](config/settings.py:153)
+instance. Values come from the process environment and may be sourced from a `.env` file.
+
+Import-time side effects:
+- Read `.env` via `dotenv.load_dotenv()` (non-overriding) and via Pydantic's configured
+  `env_file=".env"`.
+- Create output directories under `BASE_OUTPUT_DIR`.
+- Configure structlog and attach a handler to the root logger.
+
+Notes:
+    Environment variables already present in the process take precedence over values loaded
+    from `.env` during import. Reloading via [`config.loader.reload_settings()`](config/loader.py:35)
+    uses `load_dotenv(override=True)` which can overwrite existing environment variables.
 """
 
 from __future__ import annotations
@@ -23,7 +36,25 @@ logger = structlog.get_logger()
 
 
 async def _load_list_from_json_async(file_path: str, default_if_missing: list[str] | None = None) -> list[str]:
-    """Load a list of strings from a JSON file asynchronously."""
+    """Load a list of strings from a JSON file asynchronously.
+
+    This helper is intentionally permissive: it logs and returns a fallback rather than
+    raising. It is suitable for optional configuration artifacts where missing or invalid
+    content is treated as user input error rather than a fatal internal error.
+
+    Args:
+        file_path: Path to a JSON file expected to contain a list of strings.
+        default_if_missing: Value to return when the file is missing, unreadable, or does
+            not contain a list of strings.
+
+    Returns:
+        A list of strings from the file, or `default_if_missing` when the file cannot be
+        used.
+
+    Notes:
+        This function performs synchronous file I/O despite being declared `async`.
+        Callers must still `await` it, but it will block the event loop while reading.
+    """
     if default_if_missing is None:
         default_if_missing = []
     try:
@@ -52,10 +83,13 @@ async def _load_list_from_json_async(file_path: str, default_if_missing: list[st
 
 
 class SchemaEnforcementSettings(BaseSettings):
-    """
-    Settings for node label schema enforcement.
+    """Configure node-label schema enforcement.
 
-    Controls strictness of entity type validation and normalization.
+    This settings group controls how strictly SAGA validates entity types and whether it
+    normalizes common label variants into canonical values.
+
+    Notes:
+        Environment variables use the `SAGA_SCHEMA_` prefix.
     """
 
     ENFORCE_SCHEMA_VALIDATION: bool = Field(default=True, description="Master toggle for schema validation")
@@ -77,11 +111,14 @@ class SchemaEnforcementSettings(BaseSettings):
 
 
 class RelationshipNormalizationSettings(BaseSettings):
-    """
-    Settings for relationship type normalization.
+    """Configure relationship type normalization.
 
-    Controls how SAGA maintains consistent relationship vocabulary while
-    allowing creative flexibility for genuinely novel relationships.
+    This settings group controls whether and how SAGA normalizes relationship type names
+    into a stable vocabulary. When enabled, normalization affects how relationships are
+    written to and queried from the knowledge graph.
+
+    Notes:
+        Environment variables use the `SAGA_REL_NORM_` prefix.
     """
 
     # Master toggle
@@ -151,7 +188,17 @@ class RelationshipNormalizationSettings(BaseSettings):
 
 
 class SagaSettings(BaseSettings):
-    """Full configuration for the Saga system."""
+    """Define the SAGA settings model.
+
+    Instantiating this model reads configuration from environment variables and `.env`
+    (per `model_config`). Pydantic performs type coercion and validation at construction
+    time; invalid values typically represent user configuration errors and raise
+    `pydantic.ValidationError`.
+
+    Notes:
+        This module constructs a singleton [`settings`](config/settings.py:356) instance at
+        import time. Any validation failure therefore fails fast during import.
+    """
 
     # API and Model Configuration
     EMBEDDING_API_BASE: str = "http://127.0.0.1:11434"
@@ -432,7 +479,19 @@ structlog.configure(
 
 # Filter internal structlog fields
 def filter_internal_keys(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
-    """Remove internal structlog fields from event dict."""
+    """Remove internal structlog fields from the event dictionary.
+
+    Args:
+        logger: Structlog logger instance (unused by this processor).
+        name: Logger name (unused by this processor).
+        event_dict: Mutable structlog event payload.
+
+    Returns:
+        The same mapping instance, with any keys starting with `_` removed.
+
+    Notes:
+        This function mutates `event_dict` in place.
+    """
     keys_to_remove = [k for k in event_dict.keys() if k.startswith("_")]
     for key in keys_to_remove:
         event_dict.pop(key, None)
@@ -441,7 +500,20 @@ def filter_internal_keys(logger: Any, name: str, event_dict: MutableMapping[str,
 
 # Simple human-readable formatter for structlog (with Rich markup for console)
 def simple_log_format_rich(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> str:
-    """Simple human-readable log formatter with Rich markup for console output."""
+    """Format a structlog event as a Rich-marked-up single line.
+
+    Args:
+        logger: Structlog logger instance (unused by this processor).
+        name: Logger name (unused by this processor).
+        event_dict: Mutable structlog event payload.
+
+    Returns:
+        A formatted log line string.
+
+    Notes:
+        This function mutates `event_dict` by popping structlog-internal keys and the
+        normalized fields it renders.
+    """
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
     event_dict.pop("_from_structlog", None)
@@ -495,7 +567,20 @@ def simple_log_format_rich(logger: Any, name: str, event_dict: MutableMapping[st
 
 # Simple human-readable formatter for structlog (plain text for files)
 def simple_log_format_plain(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> str:
-    """Simple human-readable log formatter without markup for file output."""
+    """Format a structlog event as a plain-text single line.
+
+    Args:
+        logger: Structlog logger instance (unused by this processor).
+        name: Logger name (unused by this processor).
+        event_dict: Mutable structlog event payload.
+
+    Returns:
+        A formatted log line string.
+
+    Notes:
+        This function mutates `event_dict` by popping structlog-internal keys and the
+        normalized fields it renders.
+    """
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
     event_dict.pop("_from_structlog", None)

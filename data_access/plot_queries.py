@@ -10,6 +10,38 @@ logger = structlog.get_logger(__name__)
 
 
 async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
+    """Synchronize the novel plot outline to Neo4j (destructive).
+
+    This function performs a synchronization, not an append-only update. When `plot_data`
+    includes a `plot_points` list, it deletes existing `:PlotPoint` nodes that are linked to
+    the active novel but are missing from the input set.
+
+    Args:
+        plot_data: Plot outline payload. Keys other than `id` and `plot_points` are stored on
+            the active `:NovelInfo` node.
+            - Primitive values are stored as properties.
+            - Lists/dicts are stored as JSON strings under `<key>_json`.
+
+    Returns:
+        True when the sync completed successfully, or when `plot_data` is empty (no-op).
+        False when a database read/write failure occurs.
+
+    Notes:
+        Destructive sync semantics:
+            - If `plot_data["plot_points"]` is missing, plot point sync is skipped entirely
+              (including deletes) to avoid destructive behavior from partial input.
+            - If `plot_data["plot_points"]` is present but not a list, plot point sync is
+              also skipped.
+
+        Identity semantics:
+            Plot point ids are deterministic and sequence-derived:
+            `pp_{novel_id}_{sequence}` where sequence is 1-indexed within the input list.
+
+        Security:
+            This function does not interpolate caller-provided strings into Cypher identifiers.
+            Dynamic property updates use `SET ni += $primitive_props` and JSON encoding via
+            `apoc.convert.toJson(...)`, avoiding unsafe property-key interpolation.
+    """
     # NOTE: Despite earlier messaging, this function performs a *synchronization* that may
     # delete PlotPoint nodes missing from the input list. This is destructive by design.
     logger.info("Synchronizing plot outline to Neo4j (destructive sync)...")
@@ -180,6 +212,21 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
 
 
 async def get_plot_outline_from_db() -> dict[str, Any]:
+    """Return the plot outline for the active novel.
+
+    Returns:
+        A dictionary of NovelInfo plot properties with an additional `plot_points` key whose
+        value is a list of PlotPoint dicts, ordered by sequence.
+
+        Returns an empty dict when no `:NovelInfo` node exists, when the NovelInfo payload
+        is not a map, or when required data is missing.
+
+    Notes:
+        JSON decoding contract:
+            Properties stored under `<key>_json` are decoded using APOC JSON helpers and
+            returned as structured list/dict values. The `_json` keys are removed from the
+            returned structure.
+    """
     logger.info("Loading decomposed plot outline from Neo4j...")
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     plot_data: dict[str, Any] = {}
@@ -242,13 +289,23 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
 
 
 async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
-    """Append a new PlotPoint node linked to NovelInfo and previous PlotPoint.
+    """Append a new plot point after the most recent plot point.
 
-    Concurrency safety:
-    - Sequence/id assignment is performed atomically inside a single write query by
-      incrementing a NovelInfo-scoped counter property (`ni.last_plot_point_seq`).
-    - Neo4j will take a write lock on the NovelInfo node for the duration of the
-      transaction, serializing concurrent increments and preventing duplicate IDs.
+    Args:
+        description: Plot point description text.
+        prev_plot_point_id: Plot point id to link from via `NEXT_PLOT_POINT`. When falsy,
+            no previous link is created.
+
+    Returns:
+        The newly created plot point id. Returns an empty string when the write query does
+        not return an id.
+
+    Notes:
+        Concurrency:
+            Sequence/id assignment is performed atomically inside a single write query by
+            incrementing a NovelInfo-scoped counter property (`ni.last_plot_point_seq`).
+            Neo4j takes a write lock on the NovelInfo node for the transaction, serializing
+            concurrent increments and preventing duplicate ids.
     """
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     prev_id = prev_plot_point_id or None
@@ -281,7 +338,14 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
 
 
 async def plot_point_exists(description: str) -> bool:
-    """Check if a plot point with the given description exists for the active novel."""
+    """Return whether a plot point with the given description exists.
+
+    Args:
+        description: Plot point description to match (case-insensitive).
+
+    Returns:
+        True when any plot point under the active novel matches the description.
+    """
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     query = """
     MATCH (ni:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint)
@@ -293,7 +357,11 @@ async def plot_point_exists(description: str) -> bool:
 
 
 async def get_last_plot_point_id() -> str | None:
-    """Return the ID of the most recent PlotPoint for the active novel."""
+    """Return the id of the most recent plot point for the active novel.
+
+    Returns:
+        The most recent plot point id by `sequence`, or None when no plot points exist.
+    """
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     query = """
     MATCH (ni:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint)

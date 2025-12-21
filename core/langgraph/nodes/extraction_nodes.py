@@ -1,9 +1,13 @@
 # core/langgraph/nodes/extraction_nodes.py
-"""
-Granular entity extraction nodes for LangGraph workflow.
+"""Extract structured entities from chapter drafts.
 
-This module contains specialized extraction nodes that run in parallel
-to extract characters, locations, events, and relationships.
+These nodes run during Phase 2 knowledge extraction. Character, location, event, and
+relationship extraction can be scheduled in parallel; each node returns a partial state
+update that is merged by LangGraph reducers.
+
+Notes:
+    These nodes call the LLM and treat invalid JSON or schema validation failures as
+    fatal, setting `has_fatal_error` to stop downstream nodes from doing more I/O.
 """
 
 from __future__ import annotations
@@ -139,10 +143,23 @@ def _safe_pydantic_error_summary(error: ValidationError) -> list[dict[str, Any]]
 
 
 async def extract_characters(state: NarrativeState) -> dict[str, Any]:
-    """
-    Extract character details from the chapter text.
+    """Extract character details from the current chapter draft.
 
-    FIRST node in sequential extraction - CLEARS previous extraction state.
+    This is the first extraction node and clears any previous extraction state for the
+    chapter before producing a new set of characters.
+
+    Args:
+        state: Workflow state.
+
+    Returns:
+        Partial state update containing `extracted_entities` and `extracted_relationships`.
+
+        If the draft is missing/empty, returns cleared extraction results.
+        If an upstream node has already set `has_fatal_error`, returns a no-op update.
+
+    Notes:
+        This node performs LLM I/O. Failures in JSON parsing or schema validation are
+        treated as fatal and set `has_fatal_error`.
     """
     if state.get("has_fatal_error", False):
         # Fail-fast / no-op: upstream error should stop the workflow; don't do more LLM calls.
@@ -256,10 +273,23 @@ async def extract_characters(state: NarrativeState) -> dict[str, Any]:
 
 
 async def extract_locations(state: NarrativeState) -> dict[str, Any]:
-    """
-    Extract location details from the chapter text.
+    """Extract location details from the current chapter draft.
 
-    APPENDS to world_items (sequential extraction).
+    This node appends `Location` items to `extracted_entities["world_items"]` while
+    preserving any previously extracted characters and world items.
+
+    Args:
+        state: Workflow state.
+
+    Returns:
+        Partial state update containing `extracted_entities` with appended locations.
+
+        If an upstream node has already set `has_fatal_error`, returns a no-op update.
+        If the draft is missing/empty, returns an empty update.
+
+    Notes:
+        This node performs LLM I/O. Invalid JSON or schema validation failures are
+        treated as fatal and set `has_fatal_error`.
     """
     if state.get("has_fatal_error", False):
         return {"current_node": "extract_locations"}
@@ -402,10 +432,23 @@ async def extract_locations(state: NarrativeState) -> dict[str, Any]:
 
 
 async def extract_events(state: NarrativeState) -> dict[str, Any]:
-    """
-    Extract significant events from the chapter text.
+    """Extract significant events from the current chapter draft.
 
-    APPENDS to world_items (sequential extraction).
+    This node appends `Event` items to `extracted_entities["world_items"]` while
+    preserving any previously extracted characters and world items.
+
+    Args:
+        state: Workflow state.
+
+    Returns:
+        Partial state update containing `extracted_entities` with appended events.
+
+        If an upstream node has already set `has_fatal_error`, returns a no-op update.
+        If the draft is missing/empty, returns an empty update.
+
+    Notes:
+        This node performs LLM I/O. Invalid JSON or schema validation failures are
+        treated as fatal and set `has_fatal_error`.
     """
     if state.get("has_fatal_error", False):
         return {"current_node": "extract_events"}
@@ -543,12 +586,27 @@ async def extract_events(state: NarrativeState) -> dict[str, Any]:
 
 
 async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
-    """
-    Extract relationships between entities.
+    """Extract relationships between entities mentioned in the current chapter draft.
 
-    Sets extracted_relationships (sequential extraction).
-    Also creates ExtractedEntity objects for entities found in relationships
-    that weren't already extracted, preserving their type information.
+    This node sets `extracted_relationships` and may also add new entities inferred
+    from relationship mentions when the relationship payload includes typed names
+    (for example, `"Location: The Citadel"`).
+
+    Args:
+        state: Workflow state.
+
+    Returns:
+        Partial state update containing `extracted_relationships` and (optionally)
+        `extracted_entities` with any newly inferred entities appended.
+
+        If the draft is missing/empty, returns an update with an empty
+        `extracted_relationships` list.
+        If an upstream node has already set `has_fatal_error`, returns a no-op update.
+
+    Notes:
+        This node performs LLM I/O. Invalid JSON is treated as fatal and sets
+        `has_fatal_error`, but some malformed payload shapes (for example
+        `kg_triples` not being a list) degrade gracefully by returning an empty result.
     """
     if state.get("has_fatal_error", False):
         return {"current_node": "extract_relationships"}
@@ -616,12 +674,18 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
 
         existing_entity_names: set[str] = set()
         for entity in existing_characters:
-            name = entity.name if hasattr(entity, "name") else entity.get("name", "")
-            if name:
+            if isinstance(entity, dict):
+                name = entity.get("name", "")
+            else:
+                name = getattr(entity, "name", "")
+            if isinstance(name, str) and name:
                 existing_entity_names.add(name)
         for entity in existing_world_items:
-            name = entity.name if hasattr(entity, "name") else entity.get("name", "")
-            if name:
+            if isinstance(entity, dict):
+                name = entity.get("name", "")
+            else:
+                name = getattr(entity, "name", "")
+            if isinstance(name, str) and name:
                 existing_entity_names.add(name)
 
         for triple in kg_triples_list:
@@ -746,15 +810,23 @@ async def extract_relationships(state: NarrativeState) -> dict[str, Any]:
 
 
 def consolidate_extraction(state: NarrativeState) -> NarrativeState:
-    """
-    Finalize extraction after parallel nodes complete.
+    """Externalize merged extraction results and mark extraction as complete.
 
-    With the reducer-based approach, parallel extraction results are automatically
-    merged by merge_extracted_entities and merge_extracted_relationships reducers.
-    This node marks the extraction phase as complete and externalizes the results.
+    LangGraph reducers merge parallel extraction outputs into the in-memory state.
+    This node persists the merged `extracted_entities` and `extracted_relationships`
+    to external files to reduce state size for downstream nodes.
 
-    Note: The actual merging happens automatically via LangGraph reducers on
-    the extracted_entities and extracted_relationships fields.
+    Args:
+        state: Workflow state.
+
+    Returns:
+        Partial state update containing:
+        - extracted_entities_ref: Content reference for persisted entities.
+        - extracted_relationships_ref: Content reference for persisted relationships.
+        - current_node: `"consolidate_extraction"`.
+
+    Notes:
+        This node performs filesystem I/O via [`ContentManager`](core/langgraph/content_manager.py:70).
     """
     logger.info(
         "consolidate_extraction: extraction complete",
@@ -772,13 +844,39 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
 
     # Serialize ExtractedEntity and ExtractedRelationship objects to dicts
     extracted_entities = state.get("extracted_entities", {})
-    entities_dict = {
-        "characters": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("characters", [])],
-        "world_items": [e.model_dump() if hasattr(e, "model_dump") else e for e in extracted_entities.get("world_items", [])],
+
+    characters_as_dicts: list[dict[str, Any]] = []
+    for entity in extracted_entities.get("characters", []):
+        if isinstance(entity, ExtractedEntity):
+            characters_as_dicts.append(entity.model_dump())
+        else:
+            if not isinstance(entity, dict):
+                raise TypeError("consolidate_extraction: expected extracted character entity to be dict-like")
+            characters_as_dicts.append(entity)
+
+    world_items_as_dicts: list[dict[str, Any]] = []
+    for entity in extracted_entities.get("world_items", []):
+        if isinstance(entity, ExtractedEntity):
+            world_items_as_dicts.append(entity.model_dump())
+        else:
+            if not isinstance(entity, dict):
+                raise TypeError("consolidate_extraction: expected extracted world item entity to be dict-like")
+            world_items_as_dicts.append(entity)
+
+    entities_dict: dict[str, list[dict[str, Any]]] = {
+        "characters": characters_as_dicts,
+        "world_items": world_items_as_dicts,
     }
 
     relationships = state.get("extracted_relationships", [])
-    relationships_list = [r.model_dump() if hasattr(r, "model_dump") else r for r in relationships]
+    relationships_list: list[dict[str, Any]] = []
+    for rel in relationships:
+        if isinstance(rel, ExtractedRelationship):
+            relationships_list.append(rel.model_dump())
+        else:
+            if not isinstance(rel, dict):
+                raise TypeError("consolidate_extraction: expected extracted relationship to be dict-like")
+            relationships_list.append(rel)
 
     # Save to external files
     from core.langgraph.content_manager import (
@@ -816,18 +914,23 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
 
 
 def _map_category_to_type(category: str) -> str:
-    """
-    Map a category string to a canonical node label.
+    """Map a free-form category string to a canonical node label.
 
     Canonical labeling contract:
-    - Node labels MUST be one of the 9 canonical labels in [`VALID_NODE_LABELS`](models/kg_constants.py:64).
-    - Subtypes like "Faction", "Settlement", "PlotPoint", "Artifact", etc. are represented
-      in properties (typically `category`), NOT as Neo4j labels.
+    - Node labels MUST be one of the canonical labels in [`VALID_NODE_LABELS`](models/kg_constants.py:64).
+    - Subtypes like "Faction", "Settlement", "PlotPoint", and "Artifact" are represented in
+      properties (typically `category`), not as Neo4j labels.
 
     Strategy:
     1) If the category already matches a canonical label (case-insensitive), return that label.
-    2) Otherwise, classify the category into a canonical label using [`classify_category_label()`](utils/text_processing.py:116),
-       which already maps legacy-ish categories like "artifact"/"relic"/"document" to "Item".
+    2) Otherwise, classify the category into a canonical label using
+       [`classify_category_label()`](utils/text_processing.py:116).
+
+    Args:
+        category: Category string produced by extraction or normalization.
+
+    Returns:
+        Canonical label suitable for persistence.
     """
     from models.kg_constants import VALID_NODE_LABELS
     from utils.text_processing import classify_category_label

@@ -1,9 +1,12 @@
 # models/validation_utils.py
-"""
-Validation utilities for ensuring consistency between bootstrapped content and runtime configuration.
+"""Validate bootstrap-generated content against runtime configuration.
 
-This module provides validation functions to ensure that the novel generation pipeline
-maintains consistency between bootstrap-generated content and runtime configuration values.
+This module compares values embedded in bootstrap artifacts (plot outline, character
+profiles, world building) against runtime configuration constants.
+
+Notes:
+    Validation is reported as a list of [`ConfigurationValidationError`](models/validation_utils.py:21)
+    instances. Callers can decide whether to fail fast, log, or auto-correct.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ logger = structlog.get_logger(__name__)
 
 
 class ConfigurationValidationError(Exception):
-    """Exception raised when configuration validation fails."""
+    """Represent a single configuration mismatch detected during validation."""
 
     def __init__(self, message: str, field: str, bootstrap_value: Any, runtime_value: Any):
         self.message = message
@@ -30,26 +33,32 @@ class ConfigurationValidationError(Exception):
 
 
 class BootstrapContentValidator:
-    """
-    Validates consistency between bootstrap-generated content and runtime configuration values.
+    """Validate consistency between bootstrap content and runtime configuration.
 
-    This class ensures that the novel generation pipeline maintains consistency between
-    the content generated during bootstrap and the configuration values used at runtime.
+    The validator compares values from bootstrap-generated structures against runtime
+    constants in the [`config`](config/__init__.py:1) module.
+
+    Notes:
+        Methods return a list of [`ConfigurationValidationError`](models/validation_utils.py:21)
+        values rather than raising immediately.
     """
 
     def __init__(self) -> None:
         self.logger = structlog.get_logger(__name__)
 
     def validate_plot_outline_consistency(self, plot_outline: dict[str, Any], bootstrap_source: str = "bootstrap") -> list[ConfigurationValidationError]:
-        """
-        Validate that plot outline content is consistent with runtime configuration.
+        """Validate that plot outline content matches runtime configuration.
 
         Args:
-            plot_outline: The plot outline dictionary to validate
-            bootstrap_source: Source identifier for bootstrap content
+            plot_outline: Plot outline content to validate.
+            bootstrap_source: Identifier for the bootstrap source.
 
         Returns:
-            List of validation errors found
+            A list of detected mismatches.
+
+        Notes:
+            `bootstrap_source` is currently unused by the implementation, but is kept to
+            support attribution/logging in call sites.
         """
         errors: list[ConfigurationValidationError] = []
 
@@ -108,15 +117,17 @@ class BootstrapContentValidator:
         character_profiles: dict[str, CharacterProfile],
         plot_outline: dict[str, Any],
     ) -> list[ConfigurationValidationError]:
-        """
-        Validate that character profiles are consistent with plot outline and configuration.
+        """Validate that character profiles match configuration-derived expectations.
+
+        This primarily checks for a protagonist profile keyed by
+        `config.DEFAULT_PROTAGONIST_NAME`.
 
         Args:
-            character_profiles: Dictionary of character profiles
-            plot_outline: The plot outline for context
+            character_profiles: Mapping of character name to character profile.
+            plot_outline: Plot outline context (currently unused by the implementation).
 
         Returns:
-            List of validation errors found
+            A list of detected mismatches.
         """
         errors: list[ConfigurationValidationError] = []
 
@@ -151,15 +162,17 @@ class BootstrapContentValidator:
         world_building: dict[str, dict[str, WorldItem]],
         plot_outline: dict[str, Any],
     ) -> list[ConfigurationValidationError]:
-        """
-        Validate that world building content is consistent with configuration.
+        """Validate that world building content matches runtime configuration.
+
+        This currently validates only the setting overview description stored at
+        `world_building["_overview_"]["_overview_"]`, when present.
 
         Args:
-            world_building: Dictionary of world building elements
-            plot_outline: The plot outline for context
+            world_building: Mapping of category to mapping of item name to world item.
+            plot_outline: Plot outline context (currently unused by the implementation).
 
         Returns:
-            List of validation errors found
+            A list of detected mismatches.
         """
         errors: list[ConfigurationValidationError] = []
 
@@ -187,17 +200,19 @@ class BootstrapContentValidator:
         world_building: dict[str, dict[str, WorldItem]],
         bootstrap_source: str = "bootstrap",
     ) -> tuple[bool, list[ConfigurationValidationError]]:
-        """
-        Validate all components for consistency.
+        """Validate all components for consistency.
 
         Args:
-            plot_outline: The plot outline dictionary
-            character_profiles: Dictionary of character profiles
-            world_building: Dictionary of world building elements
-            bootstrap_source: Source identifier for bootstrap content
+            plot_outline: Plot outline content to validate.
+            character_profiles: Mapping of character name to character profile.
+            world_building: Mapping of category to mapping of item name to world item.
+            bootstrap_source: Identifier for the bootstrap source.
 
         Returns:
-            Tuple of (is_valid, list_of_errors)
+            A tuple of `(is_valid, errors)` where `errors` contains all detected mismatches.
+
+        Notes:
+            This method logs a summary via structlog when validation passes or fails.
         """
         all_errors: list[ConfigurationValidationError] = []
 
@@ -227,14 +242,21 @@ class BootstrapContentValidator:
         return is_valid, all_errors
 
     def suggest_corrections(self, errors: list[ConfigurationValidationError]) -> dict[str, Any]:
-        """
-        Suggest corrections for validation errors.
+        """Suggest corrections for a set of validation errors.
 
         Args:
-            errors: List of validation errors
+            errors: Validation errors returned by a `validate_*` method.
 
         Returns:
-            Dictionary of suggested corrections
+            A dictionary with suggested values grouped by:
+            - `plot_outline`
+            - `character_profiles`
+            - `world_building`
+            - `config_updates`
+
+        Notes:
+            Suggestions are derived from runtime configuration constants and do not
+            mutate inputs.
         """
         corrections: dict[str, Any] = {
             "plot_outline": {},

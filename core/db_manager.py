@@ -1,4 +1,15 @@
 # core/db_manager.py
+"""Manage Neo4j connectivity and execute Cypher safely.
+
+This module provides the singleton Neo4j manager used throughout SAGA. It exposes
+an async API while internally using the synchronous Neo4j Python driver, running
+blocking operations in worker threads to avoid blocking the event loop.
+
+Notes:
+    - Connection attempts verify APOC availability and fail fast when APOC is required.
+    - Batched writes are executed in a single transaction for atomicity.
+"""
+
 import asyncio
 from typing import Any
 
@@ -19,6 +30,7 @@ logger = structlog.get_logger(__name__)
 
 
 class Neo4jManagerSingleton:
+    """Provide a process-wide async façade over the Neo4j driver."""
     _instance: "Neo4jManagerSingleton" = None  # type: ignore
     _initialized_flag: bool
 
@@ -52,7 +64,15 @@ class Neo4jManagerSingleton:
         self.logger.info("Neo4jManagerSingleton initialized. Call connect() to establish connection.")
 
     async def connect(self) -> None:
-        """Establish a synchronous Neo4j driver and verify connectivity."""
+        """Connect to Neo4j and verify required capabilities.
+
+        This creates the synchronous Neo4j driver, verifies connectivity, and probes
+        for required procedures (for example, APOC) before allowing queries.
+
+        Raises:
+            DatabaseConnectionError: If the database is unreachable or required
+                procedures are unavailable.
+        """
         # Close any existing driver first (mirrors previous async behavior)
         if self.driver:
             await self.close()
@@ -157,7 +177,7 @@ class Neo4jManagerSingleton:
             return dict(rec)
 
     async def close(self) -> None:
-        """Close the synchronous driver."""
+        """Close the Neo4j driver."""
         if self.driver:
             try:
                 await asyncio.to_thread(self.driver.close)
@@ -285,7 +305,11 @@ class Neo4jManagerSingleton:
                 ) from e
 
     def _ensure_connected_sync(self) -> None:
-        """Synchronous counterpart of _ensure_connected for thread helpers."""
+        """Ensure the synchronous driver is connected.
+
+        Raises:
+            DatabaseConnectionError: If called without an initialized driver.
+        """
         if self.driver is None:
             # This should only be called from within a thread where we
             # cannot await. Raise a clear error to surface the mis‑use.
@@ -317,37 +341,24 @@ class Neo4jManagerSingleton:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """
-        Execute a function within a Neo4j transaction with automatic rollback on errors.
-
-        This method provides transaction safety for complex multi-step operations.
-        If any operation fails, the entire transaction is rolled back to maintain
-        database consistency.
-
-        Usage:
-            async def my_transaction_operations(tx, param1, param2):
-                result1 = tx.run("CREATE (n:Node {id: $id})", id=param1)
-                result2 = tx.run("MATCH (n:Node {id: $id}) RETURN n", id=param1)
-                return result2.single()
-
-            result = await neo4j_manager.execute_in_transaction(
-                my_transaction_operations,
-                "node1",
-                "value2"
-            )
+        """Execute a function inside a Neo4j transaction.
 
         Args:
-            transaction_func: Synchronous function that takes (tx, *args, **kwargs)
-                            and performs Neo4j operations within the transaction
-            *args: Positional arguments to pass to transaction_func
-            **kwargs: Keyword arguments to pass to transaction_func
+            transaction_func: Synchronous callable invoked as `transaction_func(tx, *args, **kwargs)`.
+                It must use the provided transaction to run Cypher statements.
+            *args: Positional arguments forwarded to `transaction_func`.
+            **kwargs: Keyword arguments forwarded to `transaction_func`.
 
         Returns:
-            Result of transaction_func
+            The return value of `transaction_func`.
 
         Raises:
-            DatabaseTransactionError: If transaction fails and is rolled back
-            DatabaseConnectionError: If driver is not connected
+            DatabaseConnectionError: If the driver is not connected.
+            DatabaseTransactionError: If the transaction fails and is rolled back.
+
+        Notes:
+            This method runs the transaction in a worker thread because the Neo4j
+            driver is synchronous.
         """
         await self._ensure_connected()
 
@@ -473,10 +484,14 @@ class Neo4jManagerSingleton:
         return bool(self._property_keys_cache and key in self._property_keys_cache)
 
     async def create_db_schema(self) -> None:
-        """Create and verify Neo4j indexes and constraints in separate phases to avoid transaction conflicts.
+        """Create and verify Neo4j schema elements.
 
-        Phase 1: Schema-only operations (constraints, indexes)
-        Phase 2: Data operations (relationship and node type placeholders)
+        This runs in two phases to avoid mixing schema and data operations in a way
+        that can cause transaction conflicts.
+
+        Notes:
+            - Phase 1 creates constraints and indexes.
+            - Phase 2 performs data operations to warm up relationship and label usage.
         """
         self.logger.info("Creating/verifying Neo4j schema elements (phased execution)...")
         # Phase 1

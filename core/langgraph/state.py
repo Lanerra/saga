@@ -1,30 +1,13 @@
 # core/langgraph/state.py
 """
-LangGraph State Schema for SAGA Narrative Generation.
-
-This module defines the state schema for the LangGraph-based workflow,
-designed to minimize disruption to existing SAGA code while enabling
-the migration to LangGraph architecture.
+Define the LangGraph state schema for SAGA workflows.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.1.1
 
-State Field Organization:
-- Metadata: Immutable project configuration
-- Progress: Current position in the narrative
-- Content: Generated text and drafts (mostly externalized via ContentRef)
-- Extraction: Entities and relationships extracted from text
-- Validation: Quality scores and contradiction detection
-- Models: LLM model configuration
-- Workflow: Control flow and iteration tracking
-- Error Handling: Error state and recovery
-- Filesystem: Directory paths
-- Context: Dynamic context for generation
-- Planning: Chapter and scene planning
-- Revision: Revision state and feedback
-- World Building: World items and rules
-- Characters: Protagonist and character profiles
-- Initialization: Initialization workflow state
-- Graph Healing: Provisional node enrichment and merging
+This module defines:
+- Typed state used by LangGraph nodes (`NarrativeState`).
+- Pydantic payload models for extracted entities/relationships and contradictions.
+- A factory (`create_initial_state`) that initializes required fields with defaults.
 """
 
 from __future__ import annotations
@@ -52,11 +35,12 @@ from models.kg_models import CharacterProfile, WorldItem
 
 
 class ExtractedEntity(BaseModel):
-    """
-    Entity extracted from generated text (before Neo4j commit).
+    """Represent an entity extracted from draft text prior to graph commit.
 
-    This model represents entities identified during text generation
-    that will be validated, deduplicated, and committed to the knowledge graph.
+    Notes:
+        Entity `type` is normalized via [`schema_validator`](core/schema_validator.py:124).
+        When normalization occurs, the original type string may be preserved in
+        `attributes["original_type"]` for downstream use (e.g., category hints).
     """
 
     name: str
@@ -67,7 +51,7 @@ class ExtractedEntity(BaseModel):
 
     @model_validator(mode="after")
     def validate_entity_type(self) -> ExtractedEntity:
-        """Validate and normalize the entity type."""
+        """Normalize the extracted entity type using the schema validator."""
         current_type = self.type
         is_valid, normalized_type, _ = schema_validator.validate_entity_type(current_type)
 
@@ -82,19 +66,14 @@ class ExtractedEntity(BaseModel):
         return self
 
     class Config:
-        """Pydantic configuration."""
+        """Configure Pydantic validation behavior."""
 
         frozen = False
         validate_assignment = True
 
 
 class ExtractedRelationship(BaseModel):
-    """
-    Relationship extracted from generated text.
-
-    Represents connections between entities discovered during generation,
-    pending validation and commitment to the knowledge graph.
-    """
+    """Represent a relationship extracted from draft text prior to graph commit."""
 
     source_name: str
     target_name: str
@@ -106,19 +85,14 @@ class ExtractedRelationship(BaseModel):
     target_type: str | None = None
 
     class Config:
-        """Pydantic configuration."""
+        """Configure Pydantic validation behavior."""
 
         frozen = False
         validate_assignment = True
 
 
 class Contradiction(BaseModel):
-    """
-    Detected inconsistency in narrative or knowledge graph.
-
-    Used by validation nodes to flag potential issues that may
-    require revision or human review.
-    """
+    """Describe a detected inconsistency requiring revision or review."""
 
     type: str
     description: str
@@ -127,57 +101,23 @@ class Contradiction(BaseModel):
     suggested_fix: str | None = None
 
     class Config:
-        """Pydantic configuration."""
+        """Configure Pydantic validation behavior."""
 
         frozen = False
         validate_assignment = True
 
 
 class NarrativeState(TypedDict, total=False):
-    """
-    LangGraph state for SAGA narrative generation workflow.
+    """Represent LangGraph workflow state for narrative generation.
 
-    All fields are automatically persisted by LangGraph's checkpointer.
-    This schema is designed to align with existing SAGA data structures
-    to minimize migration disruption.
-
-    ## State Update Patterns
-
-    ### Sequential Extraction
-    Extraction runs sequentially without reducers:
-    1. `extract_characters`: CLEARS extraction state, extracts characters
-    2. `extract_locations`: APPENDS locations to world_items
-    3. `extract_events`: APPENDS events to world_items
-    4. `extract_relationships`: Sets relationships
-
-    This sequential approach prevents cross-chapter accumulation that occurred
-    with reducer-based parallel extraction.
-
-    ### Content Externalization
-    Large content fields are externalized via ContentRef to avoid bloating the
-    SQLite checkpoint database:
-    - `draft_ref`: Reference to externalized draft text
-    - `embedding_ref`: Reference to externalized embeddings
-    - `scene_drafts_ref`: Reference to externalized scene drafts
-    - And other `*_ref` fields
-
-    ### Field Categories
-    Fields are organized into logical categories (see module docstring):
-    - Metadata: Immutable project configuration (project_id, genre, etc.)
-    - Progress: Current position (current_chapter, current_act)
-    - Content: Generated text (externalized via ContentRef)
-    - Extraction: Entities and relationships from text
-    - Validation: Quality scores and contradiction detection
-    - Models: LLM model configuration
-    - Workflow: Control flow and iteration tracking
-    - Error Handling: Error state and recovery
-    - And more (see individual sections below)
-
-    ## Type Safety Notes
-    This TypedDict uses `total=False`, making all fields technically optional.
-    However, the `create_initial_state` factory function initializes all required
-    fields with sensible defaults. Some fields are truly optional (e.g., error fields),
-    while others should always be present after initialization.
+    Notes:
+        - This TypedDict uses `total=False`, but callers should treat the state as
+          fully initialized via [`create_initial_state()`](core/langgraph/state.py:383).
+        - Large payloads are typically externalized to disk via `*_ref` fields
+          (see [`ContentManager`](core/langgraph/content_manager.py:42)).
+        - Extraction is designed to be sequential per chapter:
+          `extract_characters` resets extraction buckets, and subsequent extraction
+          nodes append/replace within that same chapter cycle.
     """
 
     # =========================================================================
@@ -248,6 +188,19 @@ class NarrativeState(TypedDict, total=False):
     needs_revision: bool
     revision_feedback: str | None
     is_from_flawed_draft: bool  # True if deduplication removed text or other quality issues detected
+
+    # Used by finalize/persistence to store the latest summary string without re-loading.
+    current_summary: str | None
+
+    # Phase 2 deduplication metadata (produced during commit).
+    phase2_deduplication_merges: dict[str, int]
+
+    # Quality assurance (periodic KG checks).
+    last_qa_chapter: int
+    qa_results: dict[str, Any]
+    qa_history: list[dict[str, Any]]
+    total_qa_issues: int
+    total_qa_fixes: int
 
     # =========================================================================
     # Quality Metrics (LLM-evaluated quality scores)
@@ -375,6 +328,10 @@ class NarrativeState(TypedDict, total=False):
     nodes_enriched: int  # Count of nodes enriched in this session
     nodes_removed: int  # Count of nodes removed during healing
 
+    # Graph healing diagnostics (cached from the last run).
+    last_healing_warnings: list[str]
+    last_apoc_available: bool
+
 
 # Type alias for improved readability in node signatures
 State = NarrativeState
@@ -401,29 +358,29 @@ def create_initial_state(
     narrative_model: str = settings.NARRATIVE_MODEL,
     max_iterations: int = 3,
 ) -> NarrativeState:
-    """
-    Create initial state for a new narrative generation workflow.
-
-    This factory function provides sensible defaults for all required fields,
-    ensuring the state is properly initialized before entering the LangGraph workflow.
+    """Create an initial, ready-to-run LangGraph workflow state.
 
     Args:
-        project_id: Unique identifier for the project
-        title: Novel title
-        genre: Novel genre
-        theme: Central theme
-        setting: Primary setting description
-        target_word_count: Target word count for the complete novel
-        total_chapters: Total number of chapters planned
-        project_dir: Base directory for project files
-        protagonist_name: Name of the protagonist
-        generation_model: Model for text generation
-        extraction_model: Model for entity extraction
-        revision_model: Model for revision
-        max_iterations: Maximum revision iterations per chapter
+        project_id: Unique identifier for the project.
+        title: Novel title.
+        genre: Novel genre.
+        theme: Central theme.
+        setting: Primary setting description.
+        target_word_count: Target word count for the complete novel.
+        total_chapters: Total number of chapters planned.
+        project_dir: Base directory for project files.
+        protagonist_name: Protagonist name used for prompts and initialization.
+        generation_model: Default model for prose generation.
+        extraction_model: Default model for entity/relationship extraction.
+        revision_model: Default model for revision passes.
+        large_model: Large model tier identifier (used by some nodes/subgraphs).
+        medium_model: Medium model tier identifier (used by some nodes/subgraphs).
+        small_model: Small model tier identifier (used by some nodes/subgraphs).
+        narrative_model: Model identifier used by narrative generation nodes.
+        max_iterations: Maximum number of revision cycles per chapter.
 
     Returns:
-        Initialized NarrativeState ready for LangGraph workflow
+        A fully initialized state mapping suitable for `graph.invoke()` / `graph.ainvoke()`.
     """
     import os
 
@@ -470,6 +427,13 @@ def create_initial_state(
         "needs_revision": False,
         "revision_feedback": None,
         "is_from_flawed_draft": False,
+        "current_summary": None,
+        "phase2_deduplication_merges": {},
+        "last_qa_chapter": 0,
+        "qa_results": {},
+        "qa_history": [],
+        "total_qa_issues": 0,
+        "total_qa_fixes": 0,
         # Quality metrics
         "coherence_score": None,
         "prose_quality_score": None,
@@ -534,6 +498,9 @@ def create_initial_state(
         "nodes_graduated": 0,
         "nodes_merged": 0,
         "nodes_enriched": 0,
+        "nodes_removed": 0,
+        "last_healing_warnings": [],
+        "last_apoc_available": False,
     }
 
     return state

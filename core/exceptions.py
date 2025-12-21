@@ -1,9 +1,8 @@
 # core/exceptions.py
-"""
-Standardized exception types for the SAGA core system.
+"""Define standardized exception types for SAGA core.
 
-This module defines consistent exception hierarchies and error handling patterns
-for improved debugging and error recovery throughout the core modules.
+This module provides a small exception hierarchy and helpers used across `core/`
+to propagate actionable error details without losing the original exception.
 """
 
 from typing import Any
@@ -36,12 +35,12 @@ class DatabaseTransactionError(DatabaseError):
 
 
 class KnowledgeGraphPersistenceError(DatabaseError):
-    """
-    Errors related to knowledge graph persistence operations.
+    """Signal a failure to persist knowledge graph changes.
 
-    CORE-007: Core persistence services must not swallow exceptions or return ambiguous
-    sentinel values as the primary failure signal. This exception type allows
-    workflows to catch and handle persistence failures explicitly.
+    Notes:
+        CORE-007: Persistence boundaries should not swallow exceptions or rely on
+        ambiguous sentinel values. This exception exists so workflows can catch and
+        handle persistence failures explicitly.
     """
 
 
@@ -54,29 +53,27 @@ class LLMServiceError(SAGACoreError):
 
 
 def create_error_context(**kwargs: Any) -> dict[str, Any]:
-    """
-    Helper function to create standardized error context dictionaries.
+    """Build a context dictionary for structured errors.
 
     Args:
-        **kwargs: Key-value pairs to include in the error context
+        **kwargs: Key-value pairs to include.
 
     Returns:
-        Dictionary with error context information
+        A dictionary containing only keys whose values are not `None`.
     """
     return {k: v for k, v in kwargs.items() if v is not None}
 
 
 def handle_database_error(operation: str, original_error: Exception, **context: Any) -> DatabaseError:
-    """
-    Convert generic exceptions to standardized database errors.
+    """Convert an exception into a standardized database error.
 
     Args:
-        operation: Description of the database operation that failed
-        original_error: The original exception that was caught
-        **context: Additional context information
+        operation: Name/description of the database operation that failed.
+        original_error: The caught exception.
+        **context: Additional structured context to attach.
 
     Returns:
-        Appropriate DatabaseError subclass
+        A `DatabaseError` subclass chosen by heuristics over the original error text.
     """
     error_details = create_error_context(
         operation=operation,

@@ -1,54 +1,59 @@
 # core/langgraph/initialization/chapter_allocation.py
-"""
-Shared helpers for mapping chapters to acts and allocating chapter ranges.
+"""Allocate chapter ranges to acts for initialization workflows.
 
-This module centralizes the logic used by initialization nodes so that:
-- Explicit chapter ranges from the global outline (chapters_start/chapters_end)
-  are respected when present.
-- Fallback allocation covers all chapters exactly once, distributing remainder
-  chapters across early acts.
-- Edge cases like act_count > total_chapters (empty act ranges) do not crash.
+This module centralizes act/chapter allocation logic used by initialization nodes.
 
-These utilities intentionally operate on plain dicts because the graph state
-stores outlines as JSON-serializable dictionaries.
+Notes:
+    These utilities operate on plain dicts because the workflow state stores outlines
+    as JSON-serializable dictionaries.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypeGuard
 
 
 @dataclass(frozen=True)
 class ActRange:
+    """Represent an inclusive chapter range assigned to a single act."""
+
     act_number: int
     chapters_start: int
     chapters_end: int
 
     @property
     def chapters_in_act(self) -> int:
+        """Return the number of chapters covered by this range."""
         if self.chapters_end < self.chapters_start:
             return 0
         return self.chapters_end - self.chapters_start + 1
 
     def contains(self, chapter_number: int) -> bool:
+        """Return True when `chapter_number` lies within the inclusive range."""
         return self.chapters_start <= chapter_number <= self.chapters_end
 
 
-def _is_int(value: object) -> bool:
+def _is_int(value: object) -> TypeGuard[int]:
+    """Return True when `value` is an int (excluding bool)."""
     # bool is a subclass of int; explicitly exclude it.
     return isinstance(value, int) and not isinstance(value, bool)
 
 
 def extract_explicit_act_ranges(global_outline: dict) -> dict[int, ActRange]:
-    """
-    Extract explicit per-act chapter ranges from the global outline (if present).
+    """Extract per-act chapter ranges from a global outline dict.
 
-    Returns an empty dict if:
-    - global_outline has no "acts" list, or
-    - required fields are missing / not integers.
+    Args:
+        global_outline: Global outline dict that may contain an `acts` list with
+            `act_number`, `chapters_start`, and `chapters_end`.
 
-    Note: This does not attempt to validate coverage or ordering; the global
-    outline node already records validation issues in state for visibility.
+    Returns:
+        Mapping of act number to `ActRange`. Returns an empty dict when no usable
+        explicit ranges are present.
+
+    Notes:
+        This function does not validate coverage or ordering; it only extracts ranges
+        that are present and well-typed.
     """
     acts = global_outline.get("acts")
     if not isinstance(acts, list):
@@ -76,16 +81,20 @@ def extract_explicit_act_ranges(global_outline: dict) -> dict[int, ActRange]:
 
 
 def compute_balanced_act_ranges(total_chapters: int, act_count: int) -> dict[int, ActRange]:
-    """
-    Compute balanced act chapter ranges as a safe fallback.
+    """Compute balanced chapter ranges for `act_count` acts.
 
-    Properties:
-    - Covers chapters 1..total_chapters exactly once (if total_chapters >= 1)
-    - Distributes remainder chapters to early acts: sizes differ by at most 1
-    - If act_count > total_chapters, later acts receive empty ranges
-      (chapters_start = next chapter, chapters_end = chapters_start - 1)
+    Args:
+        total_chapters: Total number of chapters in the project.
+        act_count: Number of acts to allocate.
 
-    Returns empty dict when act_count <= 0.
+    Returns:
+        Mapping of act number to `ActRange`.
+
+        When `act_count > total_chapters`, later acts receive empty ranges
+        (`chapters_end < chapters_start`). When `act_count <= 0`, returns an empty dict.
+
+    Notes:
+        Remainder chapters are distributed to earlier acts so act sizes differ by at most 1.
     """
     if not _is_int(total_chapters) or total_chapters < 0:
         total_chapters = 0
@@ -116,15 +125,22 @@ def compute_balanced_act_ranges(total_chapters: int, act_count: int) -> dict[int
 
 
 def choose_act_ranges(global_outline: dict, total_chapters: int) -> dict[int, ActRange]:
-    """
-    Choose act ranges for downstream nodes.
+    """Choose act ranges for downstream initialization nodes.
 
-    Preference order:
-    1) Use explicit act ranges from the global outline when *all* acts 1..act_count
-       have chapters_start/chapters_end present.
-    2) Otherwise compute balanced ranges.
+    Args:
+        global_outline: Global outline dict that may contain explicit act ranges.
+        total_chapters: Total number of chapters in the project.
 
-    If act_count is missing/invalid, defaults to 3.
+    Returns:
+        Mapping of act number to `ActRange`.
+
+    Notes:
+        Preference order:
+        1) Use explicit act ranges when all acts 1..act_count provide `chapters_start` and
+           `chapters_end`.
+        2) Otherwise compute balanced ranges.
+
+        When `act_count` is missing or invalid, this defaults to 3.
     """
     act_count_raw = global_outline.get("act_count", 3)
     act_count = act_count_raw if _is_int(act_count_raw) else 3
@@ -143,10 +159,15 @@ def determine_act_for_chapter(
     total_chapters: int,
     chapter_number: int,
 ) -> int:
-    """
-    Determine which act a chapter belongs to, using explicit ranges when available.
+    """Return the act number for a given chapter number.
 
-    Returns an act number in the range [1, act_count] when possible.
+    Args:
+        global_outline: Global outline dict that may contain explicit act ranges.
+        total_chapters: Total number of chapters in the project.
+        chapter_number: 1-indexed chapter number.
+
+    Returns:
+        Act number, clamped into `[1, act_count]` when possible.
     """
     act_count_raw = global_outline.get("act_count", 3)
     act_count = act_count_raw if _is_int(act_count_raw) else 3

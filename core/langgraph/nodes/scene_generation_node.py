@@ -1,4 +1,11 @@
 # core/langgraph/nodes/scene_generation_node.py
+"""Draft individual scenes for a chapter.
+
+This module defines the scene drafting node used by the scene-based generation
+workflow. Each call drafts one scene, appends it to the chapter’s scene drafts,
+and advances the `current_scene_index` for the drafting loop.
+"""
+
 import structlog
 
 from core.langgraph.content_manager import (
@@ -15,8 +22,24 @@ logger = structlog.get_logger(__name__)
 
 
 async def draft_scene(state: NarrativeState) -> NarrativeState:
-    """
-    Draft a single scene.
+    """Draft the next scene and append it to the chapter’s scene drafts.
+
+    Args:
+        state: Workflow state. Requires a valid chapter plan and `current_scene_index`.
+            Reads `hybrid_context` (preferring `hybrid_context_ref`) to condition the
+            draft.
+
+    Returns:
+        Partial state update containing:
+        - scene_drafts_ref: Externalized list of drafted scene texts so far.
+        - current_scene_index: Incremented for the next drafting iteration.
+        - current_node: `"draft_scene"`.
+
+        If the scene index is invalid, returns the unchanged state.
+        On drafting errors, returns an update with `last_error` populated.
+
+    Notes:
+        This node performs LLM I/O and filesystem I/O (externalizing scene drafts).
     """
     logger.info("draft_scene: generating text")
 

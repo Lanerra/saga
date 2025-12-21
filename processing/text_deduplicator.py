@@ -1,5 +1,21 @@
 # processing/text_deduplicator.py
-"""Utilities for detecting and removing duplicate text segments."""
+"""Detect and remove duplicate text segments.
+
+This module performs two-stage deduplication:
+1) Exact-ish matching using a fingerprint of a normalized segment string.
+2) Optional semantic matching using embedding cosine similarity.
+
+Notes:
+    - Fingerprints are computed as `md5(normalized_segment_text)` where normalization is delegated
+      to `utils._normalize_text_for_matching()`.
+    - Semantic comparison is gated by `config.DEDUPLICATION_USE_SEMANTIC` and requires embedding
+      calls via the LLM embedding service. Those calls may be non-deterministic.
+    - `min_segment_length_chars` currently suppresses fingerprint-based deduplication for short
+      segments, but semantic comparison may still evaluate them.
+    - When duplicates are removed, the output text is reconstructed by splicing out the selected
+      spans and then collapsing runs of blank lines; this means the reported removed character count
+      includes whitespace normalization effects.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +35,7 @@ logger = structlog.get_logger(__name__)
 
 
 class TextDeduplicator:
-    """Detects duplicate text segments using hashing and embeddings."""
+    """Detect duplicate text segments using hashing and optional semantic similarity."""
 
     def __init__(
         self,
@@ -34,6 +50,37 @@ class TextDeduplicator:
         self.prefer_newer = prefer_newer
 
     async def deduplicate(self, original_text: str, segment_level: str = "paragraph") -> tuple[str, int]:
+        """Remove duplicate segments from text.
+
+        Args:
+            original_text: Input text to deduplicate.
+            segment_level: Segmentation strategy passed to `utils.get_text_segments()`.
+
+        Returns:
+            A tuple of `(deduplicated_text, removed_char_count)`.
+
+        Notes:
+            Deduplication logic:
+            - Fingerprint stage: segments are normalized and hashed. When two segments share the same
+              fingerprint, one is removed.
+            - Semantic stage (optional): embeddings are computed for remaining segments and cosine
+              similarity is compared against `self.similarity_threshold`. Similarity must be
+              strictly greater than the threshold to be treated as a duplicate.
+
+            Ordering and stability:
+            - `prefer_newer=False` keeps the first occurrence encountered in forward order.
+            - `prefer_newer=True` iterates from the end and tends to keep later occurrences by
+              removing earlier segments when duplicates are detected.
+            - The returned text preserves the relative order of all kept segments because it is
+              produced by splicing spans out of the original string.
+
+            Determinism and failure modes:
+            - When semantic comparison is enabled, results may vary with embedding provider output.
+            - Embedding failures for individual segments are ignored; those segments are treated as
+              non-duplicates for semantic comparison.
+            - If cosine similarity raises due to shape mismatch, similarity is treated as `0.0`
+              for that comparison.
+        """
         if not original_text.strip():
             return original_text, 0
 

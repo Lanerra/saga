@@ -239,7 +239,7 @@ class TestPhase2Workflow:
         graph = create_phase2_graph()
 
         # Execute workflow
-        result = await graph.ainvoke(sample_phase2_state)
+        await graph.ainvoke(sample_phase2_state)
 
         # Verify all nodes were called in correct order
         # Note: With subgraph, generate might be called differently or implicitly

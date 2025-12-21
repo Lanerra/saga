@@ -1,16 +1,26 @@
 # config/loader.py
-"""
-Configuration reload utilities for the SAGA system.
+"""Reload SAGA configuration at runtime.
 
-The main public function is ``reload_settings()`` which:
-1. Reloads environment variables from ``.env`` (via ``dotenv.load_dotenv``).
-2. Re‑creates the ``SagaSettings`` instance so that any changed values are applied.
-3. Updates the symbols exported by ``config.__init__`` (the module‑level globals
-   used for backward compatibility) to reflect the new values.
+The primary entry point is [`reload_settings()`](config/loader.py:35). It refreshes
+configuration by:
 
-Optionally you can hook ``reload_settings()`` to a ``SIGHUP`` signal so that an
-operator can trigger a live configuration reload without restarting the
-process.
+1. Re-reading `.env` into the process environment using `dotenv.load_dotenv()` with
+   override enabled.
+2. Reloading [`config.settings`](config/settings.py:1) to construct a fresh
+   [`settings`](config/settings.py:356) singleton.
+3. Replacing the `settings` object and module-level constants exported by
+   [`config`](config/__init__.py:1) for legacy callers.
+
+Configuration precedence:
+- This loader explicitly uses `load_dotenv(override=True)`. That means `.env` values can
+  overwrite environment variables that were already present in the process. This differs
+  from the default import-time behavior in [`config.settings`](config/settings.py:1).
+
+Side effects:
+- Mutates the process environment by loading `.env`.
+- Mutates module state in [`config`](config/__init__.py:1) by rebinding `settings` and
+  updating module globals.
+- When SIGHUP handling is enabled, importing this module registers a signal handler.
 """
 
 from __future__ import annotations
@@ -27,16 +37,34 @@ from dotenv import load_dotenv
 # singleton instance.  Import it lazily inside the function so that reloading
 # works correctly when the function is called multiple times.
 def _import_settings_module() -> Any:
+    """Import and return the `config.settings` module.
+
+    Returns:
+        The imported module object for [`config.settings`](config/settings.py:1).
+
+    Notes:
+        This indirection exists so [`reload_settings()`](config/loader.py:35) can reload
+        the settings module repeatedly without relying on module-level caching behavior.
+    """
     import config.settings as _settings_mod
 
     return _settings_mod
 
 
 def reload_settings() -> bool:
-    """
-    Reload configuration from the environment and refresh the ``config`` package.
+    """Reload configuration from `.env` and refresh the `config` package exports.
 
-    Returns ``True`` on success, ``False`` on failure.
+    This function is intentionally non-throwing: it returns a boolean status and
+    suppresses all exceptions. Failures are treated as internal errors (unexpected
+    runtime conditions during reload), not user configuration errors.
+
+    Returns:
+        `True` when reload completes and `config` globals have been refreshed, otherwise
+        `False`.
+
+    Notes:
+        This function uses `load_dotenv(override=True)`, which can overwrite existing
+        process environment variables.
     """
     try:
         # 1️⃣ Reload .env – ``override=True`` forces a refresh of existing keys.
@@ -74,7 +102,11 @@ def reload_settings() -> bool:
 
 
 def _handle_sighup(signum: int, frame: Any) -> None:  # pragma: no cover
-    """Signal handler that invokes ``reload_settings``."""
+    """Handle `SIGHUP` by reloading configuration.
+
+    Side effects:
+        Writes a success/failure message to stdout.
+    """
     success = reload_settings()
     if success:
         print("[config] Configuration reloaded via SIGHUP")

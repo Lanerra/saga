@@ -97,39 +97,6 @@ class TestGetCharacterInfoForSnippet:
         assert result["most_recent_development_note"] == "N/A"
 
 
-@pytest.mark.asyncio
-class TestGetCharacterInfoForSnippet:
-    """Tests for getting character info for snippet."""
-
-    async def test_get_character_info_empty(self, monkeypatch):
-        """Test getting character info when none exist."""
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
-
-        result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
-        assert result is None
-
-    async def test_get_character_info_found(self, monkeypatch):
-        """Test getting character info that exists."""
-        character_queries.CHAR_NAME_TO_CANONICAL.clear()
-        character_queries.CHAR_NAME_TO_CANONICAL["alice"] = "Alice"
-
-        mock_read = AsyncMock(
-            return_value=[
-                {
-                    "description": "A brave hero",
-                    "current_status": "Active",
-                    "most_current_dev_event": None,
-                    "is_provisional_overall": False,
-                }
-            ]
-        )
-        monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
-
-        result = await character_queries.get_character_info_for_snippet_from_db("Alice", 10)
-        assert result is not None
-        assert result["description"] == "A brave hero"
-        assert result["most_recent_development_note"] == "N/A"
 
     async def test_get_character_info_no_optional_data_still_returns(self, monkeypatch):
         """Regression: character row should not be dropped when optional matches find nothing."""

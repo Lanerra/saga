@@ -1,15 +1,16 @@
 # core/langgraph/initialization/chapter_outline_node.py
-"""
-Chapter Outline Generation Node (On-Demand).
+"""Generate chapter outlines on demand.
 
-This node generates a detailed outline for a specific chapter based on the
-global outline, act outlines, and character sheets. It can be called on-demand
-before generating each chapter.
+This module defines the on-demand chapter outline node. It produces a structured
+outline for a single chapter using the global outline, act outlines, character
+sheets, and recent chapter summaries, then externalizes the updated
+`chapter_outlines` mapping to keep workflow state small.
 """
 
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import structlog
 
@@ -35,25 +36,24 @@ logger = structlog.get_logger(__name__)
 
 
 async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
-    """
-    Generate a detailed outline for the current chapter.
-
-    This node is designed to be called on-demand before chapter generation,
-    creating a specific chapter-level outline that includes:
-    - Scene breakdown
-    - Key events and beats
-    - Character interactions
-    - Pacing notes
-    - Connection to previous and next chapters
-
-    The chapter outline uses all available context (character sheets, global
-    outline, act outlines) to maintain narrative coherence.
+    """Generate and externalize a detailed outline for the current chapter.
 
     Args:
-        state: Current narrative state with current_chapter set
+        state: Workflow state. Requires `current_chapter` and uses initialization
+            artifacts (global outline, act outlines, character sheets) when available.
 
     Returns:
-        Updated state with chapter outline added to chapter_outlines dict
+        Updated state containing:
+        - chapter_outlines_ref: Externalized outline mapping including the new chapter.
+        - current_node: `"chapter_outline"`.
+        - initialization_step: Chapter-specific progress marker.
+
+        If the outline already exists, returns a no-op update.
+        If generation fails, returns an error update without setting `has_fatal_error`.
+
+    Notes:
+        This node performs LLM I/O and writes the updated outline mapping to disk via
+        `ContentManager.save_json()`.
     """
     chapter_number = state.get("current_chapter", 1)
 
@@ -118,6 +118,9 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
     # Update chapter_outlines dict (canonical source of truth)
     updated_outlines = {**existing_outlines, chapter_number: chapter_outline}
 
+    # ContentManager.save_json expects JSON-serializable dicts (JSON object keys are strings).
+    outlines_for_storage: dict[str, Any] = {str(chapter): outline for chapter, outline in updated_outlines.items()}
+
     logger.info(
         "generate_chapter_outline: generation complete",
         chapter=chapter_number,
@@ -129,7 +132,7 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
 
     # Externalize chapter_outlines to reduce state bloat
     chapter_outlines_ref = content_manager.save_json(
-        updated_outlines,
+        outlines_for_storage,
         "chapter_outlines",
         "all",
         current_version,
@@ -155,17 +158,20 @@ async def _generate_single_chapter_outline(
     state: NarrativeState,
     chapter_number: int,
     act_number: int,
-) -> dict[str, any] | None:
-    """
-    Generate an outline for a single chapter.
+) -> dict[str, Any] | None:
+    """Generate an outline payload for a single chapter.
 
     Args:
-        state: Current narrative state
-        chapter_number: Chapter number to generate outline for
-        act_number: Act number this chapter belongs to
+        state: Workflow state.
+        chapter_number: Chapter number to outline.
+        act_number: Act number the chapter belongs to.
 
     Returns:
-        Dictionary containing chapter outline details or None on failure
+        Chapter outline payload dictionary, or `None` when generation fails.
+
+    Notes:
+        This helper performs LLM I/O and may return `None` for best-effort failure
+        handling in the parent node.
     """
     # Initialize content manager for reading externalized content
     content_manager = ContentManager(state.get("project_dir", ""))
@@ -315,7 +321,7 @@ def _parse_chapter_outline(
     response: str,
     chapter_number: int,
     act_number: int,
-) -> dict[str, any]:
+) -> dict[str, Any]:
     """
     Parse the LLM response into a structured chapter outline.
 

@@ -1,12 +1,14 @@
 # core/langgraph/initialization/global_outline_node.py
-"""
-Global Outline Generation Node for Initialization Phase.
+"""Generate the global story outline during initialization.
 
-This node generates a high-level story outline that defines the overall
-narrative arc, key plot points, and story structure.
+This module defines the initialization node responsible for creating the
+high-level narrative plan (acts, major turning points, and character arcs). The
+resulting outline is externalized to keep workflow state small.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field
@@ -55,24 +57,24 @@ class GlobalOutlineSchema(BaseModel):
 
 
 async def generate_global_outline(state: NarrativeState) -> NarrativeState:
-    """
-    Generate a global story outline covering the entire narrative arc.
-
-    This node creates a high-level outline that defines:
-    - Overall story structure (acts/parts)
-    - Major plot points and turning points
-    - Character arcs at a high level
-    - Thematic progression
-    - Beginning, middle, and end structure
-
-    The global outline uses character sheets and story metadata to ensure
-    coherence with established characters and themes.
+    """Generate and externalize a global story outline.
 
     Args:
-        state: Current narrative state with character sheets
+        state: Workflow state. Reads character sheets (preferring externalized refs)
+            and story metadata (title, genre, theme, setting, total chapters).
 
     Returns:
-        Updated state with global_outline populated
+        Updated state containing:
+        - global_outline_ref: Externalized outline artifact.
+        - initialization_step: `"global_outline_complete"` on success.
+        - current_node: `"global_outline"`.
+
+        If outline generation fails, returns an error update without setting
+        `has_fatal_error`.
+
+    Notes:
+        This node performs LLM I/O and writes the outline to disk via
+        `ContentManager.save_json()`.
     """
     logger.info(
         "generate_global_outline: starting outline generation",
@@ -176,14 +178,13 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
 
 
 def _build_character_context_from_sheets(character_sheets: dict) -> str:
-    """
-    Build a concise character context string for outline generation.
+    """Build a concise character context block for outline generation.
 
     Args:
-        character_sheets: Character sheets dictionary
+        character_sheets: Character sheets mapping.
 
     Returns:
-        Formatted string summarizing main characters
+        Short, human-readable context string summarizing each character.
     """
     if not character_sheets:
         return "No characters defined yet."
@@ -202,15 +203,14 @@ def _build_character_context_from_sheets(character_sheets: dict) -> str:
 
 
 def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: int) -> list[str]:
-    """
-    Validate that chapter allocations in acts are correct.
+    """Validate chapter range coverage and act numbering.
 
     Args:
-        outline: Parsed outline schema
-        total_chapters: Total number of chapters expected
+        outline: Parsed outline schema.
+        total_chapters: Total number of chapters expected.
 
     Returns:
-        List of validation errors (empty if valid)
+        Validation error messages. An empty list indicates the allocations are valid.
     """
     errors = []
 
@@ -245,18 +245,64 @@ def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: 
     return errors
 
 
-def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, any]:
-    """
-    Parse the LLM response into a structured global outline.
+def _extract_json_from_response(response: str) -> str:
+    """Extract a JSON payload from an LLM response.
 
-    Uses JSON parsing with Pydantic validation for reliable structured output.
+    This is a lightweight compatibility helper for tests that expect a raw JSON
+    string, optionally wrapped in markdown code fences or surrounded by other
+    text.
 
     Args:
-        response: LLM-generated outline JSON
-        state: Current narrative state
+        response: Raw LLM response text.
 
     Returns:
-        Dictionary containing structured outline data
+        JSON string content, without code fences and without surrounding text when
+        possible.
+
+    Raises:
+        ValueError: When no JSON object boundaries can be detected.
+    """
+    if "```" in response:
+        lines = response.strip().splitlines()
+        if not lines:
+            raise ValueError("Response is empty")
+
+        if lines[0].lstrip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].lstrip().startswith("```"):
+            lines = lines[:-1]
+
+        extracted = "\n".join(lines).strip()
+        if extracted:
+            return extracted
+
+    stripped = response.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        if response == stripped:
+            return response
+        return stripped
+
+    start_index = response.find("{")
+    end_index = response.rfind("}")
+    if start_index == -1 or end_index == -1 or end_index <= start_index:
+        raise ValueError("No JSON object found in response")
+
+    return response[start_index : end_index + 1].strip()
+
+
+def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, Any]:
+    """Parse and validate a global outline response.
+
+    Args:
+        response: LLM response expected to contain a JSON object.
+        state: Workflow state used for validation context (for example, total chapters).
+
+    Returns:
+        Parsed outline data as a JSON-serializable dictionary.
+
+    Notes:
+        This function validates structure via Pydantic and records any detected
+        validation issues in the returned outline payload.
     """
     total_chapters = state.get("total_chapters", 20)
 
@@ -318,7 +364,7 @@ def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, any
         return _fallback_parse_outline(response, state)
 
 
-def _fallback_parse_outline(response: str, state: NarrativeState) -> dict[str, any]:
+def _fallback_parse_outline(response: str, state: NarrativeState) -> dict[str, Any]:
     """
     Fallback parser for when JSON parsing fails.
 

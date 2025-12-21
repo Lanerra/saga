@@ -267,7 +267,7 @@ class TestMergeDuplicateEntities:
         with patch("processing.entity_deduplication.neo4j_manager") as mock_neo4j:
             mock_neo4j.execute_write_query = AsyncMock()
 
-            success = await merge_duplicate_entities("Alice", "Alice Chen", entity_type="character", keep_entity="Alice Chen")
+            await merge_duplicate_entities("Alice", "Alice Chen", entity_type="character", keep_entity="Alice Chen")
 
             # Should use specified entity
             call_args = mock_neo4j.execute_write_query.call_args

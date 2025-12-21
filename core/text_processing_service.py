@@ -1,15 +1,14 @@
 # core/text_processing_service.py
-"""
-Text processing service for LLM content manipulation.
+"""Process and normalize LLM-related text in SAGA.
 
-This module provides text processing functionality including tokenization,
-truncation, and response cleaning, extracted from the monolithic LLMService
-to improve separation of concerns and maintainability.
+This module provides utilities for:
+- Token counting and token-budget truncation.
+- Cleaning LLM responses to remove provider artifacts and wrapper phrases.
 
-REFACTORED: Extracted from core.llm_interface as part of Phase 3 architectural improvements.
-- Focuses solely on text processing concerns
-- Token counting and text truncation
-- Response cleaning and normalization
+Notes:
+    Tokenization uses `tiktoken` when available for the requested model; otherwise it
+    falls back to a character-based heuristic. The fallback is less accurate and should
+    be treated as an approximation.
 """
 
 import functools
@@ -25,12 +24,7 @@ logger = structlog.get_logger(__name__)
 
 
 class TokenizerService:
-    """
-    Service for handling tokenization operations.
-
-    Provides cached tokenizer access and token-related utilities
-    with proper fallback mechanisms.
-    """
+    """Count tokens and truncate text to token budgets."""
 
     def __init__(self) -> None:
         """Initialize the tokenizer service."""
@@ -44,14 +38,17 @@ class TokenizerService:
 
     @functools.lru_cache(maxsize=config.TOKENIZER_CACHE_SIZE)  # noqa: B019
     def get_tokenizer(self, model_name: str) -> tiktoken.Encoding | None:
-        """
-        Get a tiktoken encoder for the given model name, with caching.
+        """Return a cached `tiktoken` encoder for a model name.
 
         Args:
-            model_name: Name of the model to get tokenizer for
+            model_name: Provider model identifier.
 
         Returns:
-            Tokenizer encoding or None if unavailable
+            Encoder instance when available, otherwise None.
+
+        Notes:
+            When no model-specific encoding exists, this falls back to the configured
+            default encoding.
         """
         self._stats["tokenizer_requests"] += 1
 
@@ -85,15 +82,17 @@ class TokenizerService:
             return None
 
     def count_tokens(self, text: str, model_name: str) -> int:
-        """
-        Count the number of tokens in a string for a given model.
+        """Count tokens in a text input for a given model.
 
         Args:
-            text: Text to count tokens for
-            model_name: Model to use for tokenization
+            text: Input text.
+            model_name: Provider model identifier.
 
         Returns:
-            Number of tokens in the text
+            Token count.
+
+        Notes:
+            When `tiktoken` encoding is unavailable, this uses a character-based heuristic.
         """
         if not text:
             return 0
@@ -117,17 +116,20 @@ class TokenizerService:
         max_tokens: int,
         truncation_marker: str = "\n... (truncated)",
     ) -> str:
-        """
-        Truncate text to a maximum number of tokens for a given model.
+        """Truncate a text input to a token budget.
 
         Args:
-            text: Text to truncate
-            model_name: Model to use for tokenization
-            max_tokens: Maximum number of tokens to keep
-            truncation_marker: Marker to add when text is truncated
+            text: Input text.
+            model_name: Provider model identifier.
+            max_tokens: Maximum tokens to keep, including the truncation marker tokens.
+            truncation_marker: Marker appended when truncation occurs.
 
         Returns:
-            Truncated text with marker if applicable
+            Possibly truncated text.
+
+        Notes:
+            When `tiktoken` encoding is unavailable, this uses a character-based fallback
+            approximation.
         """
         if not text:
             return ""
@@ -195,12 +197,7 @@ class TokenizerService:
 
 
 class ResponseCleaningService:
-    """
-    Service for cleaning and normalizing LLM responses.
-
-    Handles removal of common artifacts, think tags, and other
-    unwanted content from LLM outputs.
-    """
+    """Remove common LLM response artifacts and wrapper phrases."""
 
     def __init__(self) -> None:
         """Initialize the response cleaning service."""
@@ -230,7 +227,7 @@ class ResponseCleaningService:
         self._compiled_patterns = self._compile_cleaning_patterns()
 
     def _compile_cleaning_patterns(self) -> dict[str, list[re.Pattern]]:
-        """Pre-compile regex patterns for better performance."""
+        """Compile regex patterns used for response cleaning."""
         patterns: dict[str, list[re.Pattern]] = {
             "think_blocks": [],
             "think_self_closing": [],
@@ -293,14 +290,19 @@ class ResponseCleaningService:
         return patterns
 
     def clean_response(self, text: str) -> str:
-        """
-        Clean common artifacts from LLM text responses.
+        """Clean common artifacts from an LLM text response.
 
         Args:
-            text: Raw LLM response text
+            text: Raw model response.
 
         Returns:
-            Cleaned and normalized text
+            Cleaned response text.
+
+        Notes:
+            This removes:
+            - Provider "think"/analysis style tags.
+            - Markdown code fences while preserving fenced content.
+            - Common lead-in and sign-off phrases.
         """
         if not isinstance(text, str):
             logger.warning(f"clean_response received non-string input: {type(text)}. Returning empty string.")
@@ -392,12 +394,7 @@ class ResponseCleaningService:
 
 
 class TextProcessingService:
-    """
-    Main text processing service that coordinates all text-related operations.
-
-    This service provides a unified interface for all text processing needs,
-    combining tokenization and cleaning functionality.
-    """
+    """Coordinate tokenization and response cleaning utilities."""
 
     def __init__(self) -> None:
         """Initialize the text processing service with all sub-services."""
@@ -407,7 +404,7 @@ class TextProcessingService:
         logger.info("TextProcessingService initialized with all sub-services")
 
     def get_combined_statistics(self) -> dict[str, Any]:
-        """Get combined statistics from all sub-services."""
+        """Return combined statistics for tokenization and response cleaning."""
         return {
             "tokenizer": self.tokenizer.get_statistics(),
             "response_cleaner": self.response_cleaner.get_statistics(),
@@ -419,7 +416,7 @@ _default_tokenizer = TokenizerService()
 
 
 def count_tokens(text: str, model_name: str) -> int:
-    """Convenience function for token counting using default service."""
+    """Count tokens using the module-default tokenizer service."""
     return _default_tokenizer.count_tokens(text, model_name)
 
 
@@ -429,5 +426,5 @@ def truncate_text_by_tokens(
     max_tokens: int,
     truncation_marker: str = "\n... (truncated)",
 ) -> str:
-    """Convenience function for text truncation using default service."""
+    """Truncate text to a token budget using the module-default tokenizer service."""
     return _default_tokenizer.truncate_text_by_tokens(text, model_name, max_tokens, truncation_marker)

@@ -1,3 +1,14 @@
+"""Persist per-entity embedding vectors for semantic operations.
+
+This module computes embedding inputs for knowledge-graph entities and builds
+Cypher statements that update embedding properties when the entity’s embedding
+text has changed.
+
+Notes:
+    This module performs Neo4j reads (to compare stored text hashes) and LLM I/O
+    (to generate embedding vectors) when embedding persistence is enabled.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -17,6 +28,16 @@ logger = structlog.get_logger(__name__)
 
 
 def compute_entity_embedding_text(*, name: str, description: str, category: str) -> str:
+    """Build the canonical input text for an entity embedding.
+
+    Args:
+        name: Entity name.
+        description: Entity description text.
+        category: Optional category/subtype descriptor (empty for characters).
+
+    Returns:
+        Concatenated text used as the embedding input.
+    """
     parts = []
     if isinstance(name, str) and name.strip():
         parts.append(name.strip())
@@ -28,6 +49,17 @@ def compute_entity_embedding_text(*, name: str, description: str, category: str)
 
 
 def compute_entity_embedding_text_hash(text: str) -> str:
+    """Hash embedding input text for change detection.
+
+    Args:
+        text: Embedding input text.
+
+    Returns:
+        Stable SHA1 hash used to detect whether an embedding needs recomputation.
+
+    Raises:
+        ValueError: If `text` is empty.
+    """
     if not isinstance(text, str) or not text:
         raise ValueError("entity embedding text must be a non-empty string")
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
@@ -38,6 +70,27 @@ async def build_entity_embedding_update_statements(
     characters: list[CharacterProfile],
     world_items: list[WorldItem],
 ) -> list[tuple[str, dict[str, Any]]]:
+    """Build Cypher statements that update entity embedding properties.
+
+    The returned statements are intended to be executed in the same batch
+    transaction as other entity upserts.
+
+    Args:
+        characters: Character profiles to consider for embedding updates.
+        world_items: World items (locations/items/events) to consider for embedding updates.
+
+    Returns:
+        List of `(cypher, params)` tuples to update embeddings for entities whose
+        stored text hash differs from the newly computed hash.
+
+    Raises:
+        ValueError: If embedding persistence is enabled but required config properties
+            are missing, or if the embedding batch returns a mismatched result length.
+
+    Notes:
+        This function performs Neo4j reads to fetch existing text hashes and LLM I/O
+        to generate embeddings for changed entities.
+    """
     if not config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE:
         return []
 
@@ -63,7 +116,18 @@ async def build_entity_embedding_update_statements(
         RETURN c.name AS key, c.`{text_hash_property}` AS existing_hash
         """
         results = await neo4j_manager.execute_read_query(query, {"names": character_names})
-        character_existing_hash = {r["key"]: r.get("existing_hash") for r in results if r and r.get("key")}
+
+        character_existing_hash = {}
+        for record in results or []:
+            if not isinstance(record, dict):
+                continue
+            key = record.get("key")
+            if not isinstance(key, str) or not key:
+                continue
+            existing_hash = record.get("existing_hash")
+            if not isinstance(existing_hash, str) or not existing_hash:
+                continue
+            character_existing_hash[key] = existing_hash
 
     if world_item_ids:
         query = f"""
@@ -73,7 +137,18 @@ async def build_entity_embedding_update_statements(
         RETURN w.id AS key, w.`{text_hash_property}` AS existing_hash
         """
         results = await neo4j_manager.execute_read_query(query, {"ids": world_item_ids})
-        world_existing_hash = {r["key"]: r.get("existing_hash") for r in results if r and r.get("key")}
+
+        world_existing_hash = {}
+        for record in results or []:
+            if not isinstance(record, dict):
+                continue
+            key = record.get("key")
+            if not isinstance(key, str) or not key:
+                continue
+            existing_hash = record.get("existing_hash")
+            if not isinstance(existing_hash, str) or not existing_hash:
+                continue
+            world_existing_hash[key] = existing_hash
 
     embedding_inputs: list[dict[str, Any]] = []
     embedding_texts: list[str] = []
@@ -128,13 +203,13 @@ async def build_entity_embedding_update_statements(
     if len(embeddings) != len(embedding_inputs):
         raise ValueError("embedding batch result length mismatch")
 
-    for index, item in enumerate(embedding_inputs):
+    for index, embedding_input in enumerate(embedding_inputs):
         embedding = embeddings[index]
         if embedding is None:
             logger.warning(
                 "entity embedding generation returned None",
-                entity_kind=item["entity_kind"],
-                node_key=item["node_key"],
+                entity_kind=embedding_input["entity_kind"],
+                node_key=embedding_input["node_key"],
             )
             continue
 
@@ -143,7 +218,7 @@ async def build_entity_embedding_update_statements(
         if not embedding_list:
             continue
 
-        if item["entity_kind"] == "character":
+        if embedding_input["entity_kind"] == "character":
             cypher = f"""
             MATCH (c:Character {{name: $name}})
             SET c.`{vector_property}` = $vector,
@@ -152,15 +227,15 @@ async def build_entity_embedding_update_statements(
                 c.last_updated = timestamp()
             """
             params = {
-                "name": item["node_key"],
+                "name": embedding_input["node_key"],
                 "vector": embedding_list,
-                "text_hash": item["embedding_hash"],
+                "text_hash": embedding_input["embedding_hash"],
                 "model": config.EMBEDDING_MODEL,
             }
             statements.append((cypher, params))
             continue
 
-        if item["entity_kind"] == "world_item":
+        if embedding_input["entity_kind"] == "world_item":
             cypher = f"""
             MATCH (w)
             WHERE (w:Location OR w:Item OR w:Event)
@@ -171,9 +246,9 @@ async def build_entity_embedding_update_statements(
                 w.last_updated = timestamp()
             """
             params = {
-                "id": item["node_key"],
+                "id": embedding_input["node_key"],
                 "vector": embedding_list,
-                "text_hash": item["embedding_hash"],
+                "text_hash": embedding_input["embedding_hash"],
                 "model": config.EMBEDDING_MODEL,
             }
             statements.append((cypher, params))

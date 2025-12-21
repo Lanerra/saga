@@ -35,14 +35,29 @@ WORLD_NAME_TO_ID: dict[str, str] = {}
 
 
 def clear_world_name_map() -> None:
-    """Clear the in-process world name→id map."""
+    """Clear the in-process world name-to-id map.
+
+    Notes:
+        This only clears in-memory state used by [`resolve_world_name()`](data_access/world_queries.py:53).
+        It does not modify Neo4j.
+    """
     WORLD_NAME_TO_ID.clear()
 
 
 def rebuild_world_name_map(world_items: list["WorldItem"]) -> None:
-    """Rebuild the world name→id map from a list of WorldItem models.
+    """Rebuild the world name-to-id map from a list of world items.
 
-    This clears existing entries to avoid stale accumulation across runs/tests.
+    Args:
+        world_items: World items to use as the authoritative mapping source.
+
+    Returns:
+        None.
+
+    Notes:
+        This clears existing entries to avoid stale accumulation across runs/tests. This is
+        an in-process cache and is populated as a side effect of:
+        - [`sync_world_items()`](data_access/world_queries.py:291) (write path), and
+        - [`get_world_building()`](data_access/world_queries.py:338) (read path).
     """
     WORLD_NAME_TO_ID.clear()
     for item in world_items:
@@ -51,14 +66,39 @@ def rebuild_world_name_map(world_items: list["WorldItem"]) -> None:
 
 
 def resolve_world_name(name: str) -> str | None:
-    """Return canonical world item ID for a display name if known."""
+    """Return a canonical world item id when a mapping is known.
+
+    Args:
+        name: A world item name variant.
+
+    Returns:
+        The canonical id when present in the in-memory mapping. Returns None when the name
+        is empty or unknown.
+
+    Notes:
+        This is best-effort and does not perform any database IO. Callers that require
+        authoritative resolution must query Neo4j.
+    """
     if not name:
         return None
     return WORLD_NAME_TO_ID.get(utils._normalize_for_id(name))
 
 
 def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: str) -> WorldItem | None:
-    """Retrieve a WorldItem from cached data using a fuzzy name lookup."""
+    """Return a world item from in-memory data using a best-effort name lookup.
+
+    Args:
+        world_data: A nested mapping of world items (commonly grouped by category).
+        name: A world item name variant.
+
+    Returns:
+        The matching `WorldItem` when the in-memory name-to-id mapping can resolve `name` to
+        an id and that id is present in `world_data`. Returns None otherwise.
+
+    Notes:
+        This function does not query Neo4j. The lookup depends on the mapping populated by
+        [`rebuild_world_name_map()`](data_access/world_queries.py:42).
+    """
     item_id = resolve_world_name(name)
     if not item_id:
         return None
@@ -73,16 +113,37 @@ def get_world_item_by_name(world_data: dict[str, dict[str, WorldItem]], name: st
 
 @alru_cache(maxsize=128)
 async def get_world_item_by_id(item_id: str, *, include_provisional: bool = False) -> WorldItem | None:
-    """Retrieve a single ``WorldItem`` from Neo4j by its ID or fall back to name.
+    """Return a world item by id, with best-effort name fallback.
 
-    Provisional contract (P0):
-    - Default excludes provisional world items (node-level) and provisional elaboration events
-      unless include_provisional=True.
+    Args:
+        item_id: World item id. This function also accepts a display name as a fallback
+            input; if a name-to-id mapping exists, it will re-query using the resolved id.
+        include_provisional: Whether provisional world items and provisional elaboration
+            events may be returned.
+
+    Returns:
+        A `WorldItem` when found and not deleted. Returns None when no matching item exists
+        or when core field validation fails.
 
     Notes:
-        This function may be called with either a canonical KG id (e.g. ``locations_castle``)
-        or a display name (e.g. ``Castle``). If name→id fallback succeeds, all subsequent
-        enrichment queries must use the resolved canonical id ("effective id") consistently.
+        Canonical label contract:
+            World items are restricted to canonical world labels
+            (`WORLD_ITEM_CANONICAL_LABELS`). This protects read predicates from silently
+            widening to arbitrary labels.
+
+        Provisional semantics:
+            When `include_provisional=False`, this read excludes:
+            - provisional world item nodes, and
+            - provisional elaboration events.
+
+        Cache semantics:
+            This function is cached (read-through). Callers should treat returned model
+            instances as immutable to avoid leaking mutations across cache hits. Write paths
+            should invalidate via [`clear_world_read_caches()`](data_access/cache_coordinator.py:42).
+
+        Identity semantics:
+            If a name fallback resolves to an id, the returned model uses that canonical id
+            as its identity (`item_detail["id"] = effective_id`).
     """
     logger.info(f"Loading world item '{item_id}' from Neo4j...")
 
@@ -203,6 +264,35 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
 
 
 async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: int, item_limit: int, *, include_provisional: bool = False) -> list[dict[str, Any]]:
+    """Return condensed world element info suitable for snippet context.
+
+    Args:
+        category: World item category to match (stored as a property).
+        chapter_limit: Upper bound on created chapter / elaboration chapter used to bound the
+            query.
+        item_limit: Maximum number of items to return.
+        include_provisional: Whether provisional items may be returned.
+
+    Returns:
+        A list of dictionaries with keys:
+        - `name`
+        - `description_snippet`
+        - `is_provisional`
+
+    Raises:
+        Exception: Standardized database exceptions via
+            [`handle_database_error()`](core/exceptions.py:1) on Neo4j failures.
+
+    Notes:
+        Provisional semantics:
+            Provisional status is computed as "overall provisional" if either the node is
+            provisional or it has any provisional elaboration events up to `chapter_limit`.
+            When `include_provisional=False`, overall-provisional items are excluded.
+
+        Label safety:
+            The query uses a label predicate built from `WORLD_ITEM_CANONICAL_LABELS` and
+            must not accept arbitrary labels from callers.
+    """
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
@@ -262,12 +352,25 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
             category=category,
             chapter_limit=chapter_limit,
             item_limit=item_limit,
-        )
+        ) from e
     return items
 
 
 async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
-    """Find typed world items that are considered 'thin' (e.g., missing description)."""
+    """Find thin world items suitable for enrichment.
+
+    Returns:
+        A list of dictionaries with keys:
+        - `id`
+        - `name`
+        - `category`
+
+        Returns an empty list on failures.
+
+    Notes:
+        This is a diagnostic discovery query intended to seed enrichment workflows. It is not
+        a strict completeness guarantee.
+    """
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
@@ -292,7 +395,23 @@ async def sync_world_items(
     world_items: list[WorldItem],
     chapter_number: int,
 ) -> bool:
-    """Persist world element data to Neo4j using native models."""
+    """Persist world items to Neo4j using the native Cypher builder.
+
+    Args:
+        world_items: World items to upsert.
+        chapter_number: Chapter number used for provenance and update tracking.
+
+    Returns:
+        True when the batch write completed successfully. False when a write error occurred.
+
+    Notes:
+        Cache semantics:
+            This is a write path. On success it invalidates world read caches via
+            [`clear_world_read_caches()`](data_access/cache_coordinator.py:42).
+
+        In-memory name resolution:
+            This call rebuilds the mapping used by [`resolve_world_name()`](data_access/world_queries.py:53).
+    """
 
     # Validate all world items before syncing
     for item in world_items:
@@ -336,12 +455,21 @@ async def sync_world_items(
 
 
 async def get_world_building(*, include_provisional: bool = False) -> list[WorldItem]:
-    """
-    Native model version of get_world_building_from_db.
-    Returns world items as model instances without dict conversion.
+    """Return world items as model instances.
+
+    Args:
+        include_provisional: Whether provisional world items may be returned.
 
     Returns:
-        List of WorldItem models
+        A list of `WorldItem` instances. Returns an empty list on query failures.
+
+    Notes:
+        In-memory name resolution:
+            This call rebuilds the mapping used by [`resolve_world_name()`](data_access/world_queries.py:53).
+
+        Provisional semantics:
+            When `include_provisional=False`, provisional world items are filtered out after
+            fetching.
     """
     try:
         cypher_builder = NativeCypherBuilder()
@@ -370,15 +498,19 @@ async def get_world_building(*, include_provisional: bool = False) -> list[World
 
 
 async def get_world_items_for_chapter_context_native(chapter_number: int, limit: int = 10, *, include_provisional: bool = False) -> list[WorldItem]:
-    """
-    Get world items relevant for chapter context using native models.
+    """Return world items relevant for chapter context.
 
     Args:
-        chapter_number: Current chapter being processed
-        limit: Maximum number of world items to return
+        chapter_number: Current chapter being processed. Only earlier chapters are considered.
+        limit: Maximum number of world items to return.
+        include_provisional: Whether provisional items may be returned.
 
     Returns:
-        List of WorldItem models relevant to the chapter
+        A list of `WorldItem` instances, ordered by most recent reference.
+
+    Notes:
+        Error behavior:
+            This function logs exceptions and returns an empty list rather than raising.
     """
     try:
         query = """
@@ -427,14 +559,21 @@ async def get_world_items_for_chapter_context_native(chapter_number: int, limit:
 
 # Phase 1.2: Bootstrap Element Injection - New functions for bootstrap element discovery
 async def get_bootstrap_world_elements() -> list[WorldItem]:
-    """
-    Get world elements created during bootstrap phase for early chapter injection.
-
-    Returns world elements that were created during the bootstrap/genesis phase
-    and should be injected into early chapter contexts to establish their narrative presence.
+    """Return bootstrap-created world elements suitable for early chapter injection.
 
     Returns:
-        List of WorldItem models from bootstrap phase, sorted by category then name
+        A list of `WorldItem` instances created during bootstrap/genesis, sorted by category
+        then name. Returns an empty list on failures.
+
+    Notes:
+        Selection contract:
+            The query is intended to return only elements with meaningful descriptions (not
+            empty and not containing the configured fill-in marker). This function is best
+            effort and is used to seed narrative presence, not to guarantee completeness.
+
+        Label safety:
+            The query restricts candidates to `WORLD_ITEM_CANONICAL_LABELS` and must not
+            accept arbitrary labels from callers.
     """
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"

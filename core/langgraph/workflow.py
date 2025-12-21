@@ -1,9 +1,9 @@
 # core/langgraph/workflow.py
 """
-LangGraph workflow for SAGA narrative generation.
+Build LangGraph workflows for SAGA narrative generation.
 
-This module wires together all nodes into complete workflow graphs
-with conditional edges, revision loops, and checkpointing.
+This module wires node callables and subgraphs into executable workflow graphs,
+including checkpointing and revision/error routing.
 """
 
 from typing import Any, Literal
@@ -31,20 +31,17 @@ logger = structlog.get_logger(__name__)
 def should_revise_or_continue(
     state: NarrativeState,
 ) -> Literal["revise", "summarize"]:
-    """
-    Conditional edge function: Determine if chapter needs revision (Phase 2).
-
-    Routes to:
-    - "revise": If needs_revision=True and iterations < max_iterations
-    - "summarize": If needs_revision=False or max iterations reached
-
-    Note: This is the Phase 2 version that routes to summarize instead of end.
+    """Route to revision or summarization for the Phase 2 graph.
 
     Args:
-        state: Current narrative state
+        state: Workflow state. Uses the following keys:
+            - needs_revision: Whether the validation phase requested revision.
+            - iteration_count: Number of revision cycles already attempted.
+            - max_iterations: Upper bound on revision cycles.
+            - force_continue: If true, skip revision regardless of validation.
 
     Returns:
-        Next node name ("revise" or "summarize")
+        "revise" or "summarize".
     """
     needs_revision = state.get("needs_revision", False)
     iteration_count = state.get("iteration_count", 0)
@@ -84,18 +81,14 @@ def should_revise_or_continue(
 
 
 def should_handle_error(state: NarrativeState) -> Literal["error", "continue"]:
-    """
-    Check if a fatal error occurred and needs handling.
-
-    Routes to:
-    - "error": If has_fatal_error=True (stop workflow gracefully)
-    - "continue": If no fatal error (proceed normally)
+    """Route to the error handler when the workflow is in a fatal error state.
 
     Args:
-        state: Current narrative state
+        state: Workflow state. Uses `has_fatal_error` plus optional diagnostics
+            (`last_error`, `error_node`).
 
     Returns:
-        "error" or "continue"
+        "error" when `has_fatal_error` is true, otherwise "continue".
     """
     if state.get("has_fatal_error", False):
         logger.error(
@@ -111,27 +104,16 @@ def should_handle_error(state: NarrativeState) -> Literal["error", "continue"]:
 def should_revise_or_handle_error(
     state: NarrativeState,
 ) -> Literal["error", "revise", "continue"]:
-    """
-    Combined check for fatal errors and revision needs.
-
-    This function is used after validation to determine the next step.
-    It prioritizes fatal errors over revision needs.
-
-    Routes to:
-    - "error": If has_fatal_error=True (stop workflow gracefully)
-    - "revise": If needs_revision=True and no fatal error
-    - "continue": If no errors and no revision needed (proceed to summarize)
-
-    Priority:
-    1. Fatal error → "error"
-    2. Needs revision → "revise"
-    3. Otherwise → "continue"
+    """Route after validation, prioritizing fatal errors over revision.
 
     Args:
-        state: Current narrative state
+        state: Workflow state. Uses `has_fatal_error`/`last_error`/`error_node`,
+            plus revision controls (`needs_revision`, `iteration_count`,
+            `max_iterations`, `force_continue`).
 
     Returns:
-        "error", "revise", or "continue"
+        "error" when `has_fatal_error` is true, otherwise "revise" when revision
+        is requested and allowed, otherwise "continue".
     """
     # Check for fatal errors first
     if state.get("has_fatal_error", False):
@@ -168,16 +150,14 @@ def should_revise_or_handle_error(
 
 
 def handle_fatal_error(state: NarrativeState) -> NarrativeState:
-    """
-    Handle fatal errors gracefully.
-
-    Logs detailed error information and prepares state for clean exit.
+    """Finalize state for a clean exit after a fatal workflow error.
 
     Args:
-        state: Current narrative state with error information
+        state: Workflow state with `has_fatal_error` set and optional diagnostics
+            (`last_error`, `error_node`).
 
     Returns:
-        Updated state with error_handler as current_node
+        Updated state with `current_node="error_handler"`.
     """
     logger.error(
         "handle_fatal_error: workflow terminated due to fatal error",
@@ -196,31 +176,19 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
 
 
 def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
-    """
-    Create Phase 2 LangGraph workflow (COMPLETE).
+    """Create the Phase 2 narrative workflow graph.
 
-    This is the full narrative generation workflow including:
-    - Generation: Create chapter from outline and context (SUBGRAPH)
-    - Extraction: Extract entities and relationships (SUBGRAPH)
-    - Normalization: Normalize relationship types against vocabulary
-    - Commitment: Deduplicate and commit to Neo4j
-    - Validation: Check for contradictions and quality issues (SUBGRAPH)
-    - Revision: Fix issues (conditional, with iteration limit)
-    - Summarization: Create concise chapter summary
-    - Finalization: Persist to filesystem and Neo4j
-
-    Workflow:
-        generate_subgraph → extract_subgraph → normalize_relationships → commit → validate_subgraph
-        → {revise? revise → extract : summarize} → finalize → heal_graph → check_quality → END
+    Phase 2 is the post-initialization chapter loop, including generation,
+    extraction, commit, validation, optional revision, and finalization.
 
     Migration Reference: docs/phase2_migration_plan.md - Step 2.5
 
     Args:
-        checkpointer: Optional checkpoint saver (SqliteSaver, PostgresSaver, etc.)
-                     If None, no checkpointing is enabled.
+        checkpointer: Optional LangGraph checkpointer instance. When provided, the
+            compiled graph persists state between steps.
 
     Returns:
-        Compiled LangGraph StateGraph ready for execution
+        A compiled `StateGraph` ready for execution.
     """
     logger.info("create_phase2_graph: building complete workflow graph")
 
@@ -358,19 +326,13 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
 
 
 def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSaver:
-    """
-    Create an async SQLite checkpoint saver for workflow persistence.
-
-    This enables:
-    - Resuming workflows after crashes
-    - Time-travel debugging
-    - Replay from any checkpoint
+    """Create an async SQLite checkpointer for LangGraph state persistence.
 
     Args:
-        db_path: Path to SQLite database file
+        db_path: Path to the SQLite checkpoint database.
 
     Returns:
-        AsyncSqliteSaver instance
+        An `AsyncSqliteSaver` instance.
     """
     import os
 
@@ -396,18 +358,14 @@ def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSa
 def should_generate_chapter_outline(
     state: NarrativeState,
 ) -> Literal["chapter_outline", "generate"]:
-    """
-    Conditional edge function: Determine if chapter outline generation is needed.
-
-    Routes to:
-    - "chapter_outline": If chapter outline doesn't exist for current chapter
-    - "generate": If chapter outline exists
+    """Route to outline generation when the current chapter outline is missing.
 
     Args:
-        state: Current narrative state
+        state: Workflow state. Uses `project_dir` and `current_chapter`, plus any
+            outline references used by [`get_chapter_outlines()`](core/langgraph/content_manager.py:1).
 
     Returns:
-        Next node name ("chapter_outline" or "generate")
+        "chapter_outline" when an outline is missing, otherwise "generate".
     """
     current_chapter = state.get("current_chapter", 1)
     content_manager = ContentManager(state.get("project_dir", ""))
@@ -428,18 +386,14 @@ def should_generate_chapter_outline(
 
 
 def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
-    """
-    Conditional routing: Check if initialization step succeeded.
-
-    Routes to:
-    - "continue": If initialization step succeeded
-    - "error": If initialization step failed
+    """Route within initialization based on whether the previous step failed.
 
     Args:
-        state: Current narrative state
+        state: Workflow state. Uses `last_error` plus the human-readable
+            `initialization_step` marker.
 
     Returns:
-        Next step ("continue" or "error")
+        "error" when a failure indicator is present, otherwise "continue".
     """
     last_error = state.get("last_error")
     init_step = state.get("initialization_step", "")
@@ -461,18 +415,13 @@ def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
 
 
 def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"]:
-    """
-    Conditional entry routing: Determine if initialization is needed.
-
-    Routes to:
-    - "initialize": If initialization_complete=False (run init workflow)
-    - "generate": If initialization_complete=True (skip to chapter generation)
+    """Route into initialization when `initialization_complete` is false.
 
     Args:
-        state: Current narrative state
+        state: Workflow state.
 
     Returns:
-        Next node name ("initialize" or "generate")
+        "initialize" when initialization is required, otherwise "generate".
     """
     initialization_complete = state.get("initialization_complete", False)
 
@@ -490,32 +439,10 @@ def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"
 
 
 def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
-    """
-    Create complete workflow with initialization and generation phases.
-
-    This is the full end-to-end workflow that:
-    1. Runs initialization (character sheets, outlines) if needed
-    2. For each chapter:
-       a. Generates chapter outline (on-demand)
-       b. Generates chapter text
-       c. Extracts entities
-       d. Normalizes relationship types
-       e. Commits to graph
-       f. Validates
-       g. Optionally revises
-       h. Summarizes and finalizes
-
-    Workflow:
-        START → {init?}
-                ├─ initialize → [character_sheets → global_outline → act_outlines] → chapter_loop
-                └─ chapter_loop → {outline?}
-                                  ├─ chapter_outline → generate
-                                  └─ generate → extract → normalize_relationships → commit → validate → {revise?}
-                                                                                                           ├─ revise → extract
-                                                                                                           └─ summarize → finalize → END
+    """Create the end-to-end workflow graph (initialization + chapter loop).
 
     Args:
-        checkpointer: Optional checkpoint saver (SqliteSaver, PostgresSaver, etc.)
+        checkpointer: Optional LangGraph checkpointer instance.
 
     Returns:
         Compiled LangGraph StateGraph ready for execution

@@ -363,7 +363,7 @@ class TestSyncQueryExecution:
 
         statements = [("INVALID QUERY", {})]
 
-        with pytest.raises(Exception):
+        with pytest.raises(DatabaseTransactionError):
             manager._sync_execute_cypher_batch(statements)
 
     def test_sync_execute_cypher_batch_transaction_error(self):

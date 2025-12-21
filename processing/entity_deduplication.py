@@ -1,7 +1,20 @@
 # processing/entity_deduplication.py
-"""
-Proactive entity duplicate prevention system.
-Prevents creation of duplicate or semantically similar entities during knowledge extraction.
+"""Prevent creation of duplicate entities during knowledge extraction.
+
+This module provides:
+- Pre-insert duplicate checks using name similarity and optional embedding similarity.
+- Post-extraction (phase 2) duplicate discovery using relationship-pattern overlap.
+- Merge utilities that transfer relationships from a duplicate node into a canonical node.
+
+Notes:
+    - Name similarity is computed in Neo4j using `apoc.text.levenshteinSimilarity()` and is
+      compared against `config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD` when searching for
+      candidates.
+    - Character matching has a special-case: if an existing character's first token matches the
+      provided name case-insensitively, the similarity is treated as `0.95`.
+    - Embedding similarity checks are gated by `config.ENABLE_ENTITY_EMBEDDING_DEDUPLICATION` and
+      require the configured Neo4j vector indexes to exist. Embedding calls depend on the LLM
+      embedding provider and may be non-deterministic.
 """
 
 import hashlib
@@ -17,15 +30,19 @@ logger = structlog.get_logger(__name__)
 
 
 def generate_entity_id(name: str, category: str, chapter: int) -> str:
-    """Generate deterministic entity IDs to prevent duplicates.
+    """Generate a deterministic entity ID.
 
     Args:
-        name: Entity name
-        category: Entity category (for world items) or "character" for characters
-        chapter: Current chapter number for context
+        name: Entity name.
+        category: Entity category (for world items) or `"character"` for characters.
+        chapter: Chapter number associated with the entity.
 
     Returns:
-        Deterministic entity ID
+        A stable identifier derived from a normalized form of `name` and `category`.
+
+    Notes:
+        `chapter` is currently not incorporated into the ID computation. Callers may still pass a
+        chapter value for API compatibility or future extensibility.
     """
     # Normalize name for consistent ID generation
     normalized_name = re.sub(r"[^\w\s]", "", name.lower().strip())
@@ -43,16 +60,31 @@ async def check_entity_similarity(
     category: str = "",
     description: str = "",
 ) -> dict[str, Any] | None:
-    """Check for existing entities with same semantic content.
+    """Check whether an entity already exists that should be treated as the same node.
+
+    The lookup uses a tiered strategy:
+    1) Characters: exact/case-insensitive match, first-name match, and Levenshtein similarity.
+    2) Optional: embedding similarity via Neo4j vector indexes (if enabled by config).
+    3) World elements: Levenshtein similarity with a category/label compatibility check.
 
     Args:
-        name: Name of the entity to check
-        entity_type: Either "character" or "world_element"
-        category: For world elements, the category
-        description: Optional description/context for semantic comparison
+        name: Proposed entity name.
+        entity_type: Entity domain; must be `"character"` or `"world_element"`.
+        category: World-element category used to select a target label/index.
+        description: Optional descriptive context used only for the embedding query text.
 
     Returns:
-        Dict with existing entity info if similar entity found, None otherwise
+        An entity match payload when a candidate exceeds the configured threshold; otherwise `None`.
+        The payload contains `existing_id`, `existing_name`, `existing_category`, `existing_labels`,
+        `existing_description`, `similarity`, and `similarity_source`.
+
+    Raises:
+        ValueError: If `entity_type` is not `"character"` or `"world_element"`.
+
+    Notes:
+        - Character first-name matches are returned with similarity `0.95`.
+        - Name-based thresholds are controlled by `config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD`.
+        - Embedding matches require `similarity >= config.ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD`.
     """
     try:
         import config
@@ -263,16 +295,23 @@ async def should_merge_entities(
     existing_entity: dict[str, Any],
     similarity_threshold: float = 0.4,
 ) -> bool:
-    """Determine if entities should be merged based on similarity.
+    """Decide whether a candidate entity should be merged into an existing entity.
 
     Args:
-        new_name: Name of new entity
-        new_description: Description of new entity
-        existing_entity: Dict with existing entity info
-        similarity_threshold: Minimum similarity to consider merging
+        new_name: Proposed entity name.
+        new_description: Proposed entity description.
+        existing_entity: Match payload returned by `check_entity_similarity()`.
+        similarity_threshold: Minimum similarity required to recommend a merge.
 
     Returns:
-        True if entities should be merged, False otherwise
+        `True` if a merge is recommended; otherwise `False`.
+
+    Notes:
+        - This decision uses `existing_entity["similarity"]` as the primary signal.
+        - If `similarity >= similarity_threshold`, a merge is always recommended.
+        - A secondary rule recommends a merge when `similarity >= 0.7` and both descriptions are
+          present, even if `similarity_threshold` is higher than the observed similarity.
+        - No description-to-description similarity is computed here.
     """
     similarity = existing_entity.get("similarity", 0.0)
 
@@ -292,15 +331,22 @@ async def should_merge_entities(
 
 
 async def prevent_character_duplication(name: str, description: str = "", similarity_threshold: float | None = None) -> str | None:
-    """Check for character duplicates and return existing name if found.
+    """Prevent duplicate character creation by reusing an existing canonical name.
 
     Args:
-        name: Character name to check
-        description: Character description (for additional context)
-        similarity_threshold: Similarity threshold for merging (defaults to config value)
+        name: Proposed character name.
+        description: Proposed character description (used only in the merge decision).
+        similarity_threshold: Minimum similarity required to reuse an existing character name. If
+            unset, uses `config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD`.
 
     Returns:
-        Existing character name if duplicate found, None otherwise
+        The existing character name to use when a duplicate is detected; otherwise `None`.
+
+    Notes:
+        - This function is gated by `config.ENABLE_DUPLICATE_PREVENTION` and
+          `config.DUPLICATE_PREVENTION_CHARACTER_ENABLED`.
+        - The similarity lookup itself is name-driven; `description` does not affect the initial
+          candidate search.
     """
     import config
 
@@ -327,16 +373,23 @@ async def prevent_world_item_duplication(
     description: str = "",
     similarity_threshold: float | None = None,
 ) -> str | None:
-    """Check for world item duplicates and return existing ID if found.
+    """Prevent duplicate world-element creation by reusing an existing node ID.
 
     Args:
-        name: World item name to check
-        category: World item category
-        description: World item description (for additional context)
-        similarity_threshold: Similarity threshold for merging (defaults to config value)
+        name: Proposed world-element name.
+        category: World-element category used for label/index selection and compatibility checks.
+        description: Proposed description (used only for embedding text and merge decision).
+        similarity_threshold: Minimum similarity required to reuse an existing node. If unset, uses
+            `config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD`.
 
     Returns:
-        Existing world item ID if duplicate found, None otherwise
+        The existing node ID to use when a duplicate is detected; otherwise `None`.
+
+    Notes:
+        - This function is gated by `config.ENABLE_DUPLICATE_PREVENTION` and
+          `config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED`.
+        - For non-character entities, name candidates are filtered for category/label compatibility
+          before returning a match.
     """
     import config
 
@@ -358,19 +411,23 @@ async def prevent_world_item_duplication(
 
 
 async def check_relationship_pattern_similarity(entity1_name: str, entity2_name: str, entity_type: str = "character") -> float:
-    """Check if two entities have similar relationship patterns.
+    """Compute relationship-pattern similarity between two entities.
 
-    This function compares the relationships of two entities to determine
-    if they likely represent the same real-world entity based on shared
-    relationship patterns.
+    The similarity is computed as a Jaccard similarity between sets of
+    `"RELATIONSHIP_TYPE:target_name"` patterns derived from each entity's outgoing relationships.
 
     Args:
-        entity1_name: Name of first entity
-        entity2_name: Name of second entity
-        entity_type: Type of entity ("character" or "world_element")
+        entity1_name: Name of the first entity.
+        entity2_name: Name of the second entity.
+        entity_type: Entity domain; `"character"` or `"world_element"`.
 
     Returns:
-        Similarity score (0.0-1.0) based on relationship pattern overlap
+        A score in `[0.0, 1.0]` representing relationship pattern overlap.
+
+    Notes:
+        - If either entity has no outgoing relationships, this returns `0.0`.
+        - The score is direction-sensitive: only outgoing relationships are considered.
+        - Target identity is based on `target.name`, so unnamed targets reduce signal.
     """
     try:
         # Query relationships for both entities
@@ -451,21 +508,26 @@ async def find_relationship_based_duplicates(
     name_similarity_threshold: float = 0.6,
     relationship_similarity_threshold: float = 0.7,
 ) -> list[tuple[str, str, float, float]]:
-    """Find potential duplicate entities based on relationship patterns.
+    """Find likely duplicates using name similarity plus relationship-pattern overlap.
 
-    This function identifies entities that:
-    1. Have moderately similar names (didn't merge in Phase 1)
-    2. Have highly similar relationship patterns
-
-    This is Phase 2 deduplication that runs AFTER relationships are extracted.
+    This is phase 2 deduplication intended to run after relationship extraction. It first finds
+    candidate pairs with moderately similar names, then retains only those with high relationship
+    similarity.
 
     Args:
-        entity_type: Type of entity to check ("character" or "world_element")
-        name_similarity_threshold: Minimum name similarity to consider (should be lower than Phase 1)
-        relationship_similarity_threshold: Minimum relationship pattern similarity
+        entity_type: Entity domain; `"character"` or `"world_element"`.
+        name_similarity_threshold: Minimum Levenshtein name similarity used to generate candidates.
+        relationship_similarity_threshold: Minimum relationship Jaccard similarity required to
+            return a pair.
 
     Returns:
-        List of (entity1_name, entity2_name, name_similarity, relationship_similarity) tuples
+        A list of `(entity1_name, entity2_name, name_similarity, relationship_similarity)` tuples.
+
+    Notes:
+        - Candidates are restricted to `name_similarity < 0.8` to exclude pairs that should have
+          been merged during phase 1.
+        - The initial candidate search is capped (currently `LIMIT 50`) to bound database work and
+          follow-on similarity computation.
     """
     try:
         import config
@@ -543,23 +605,29 @@ async def merge_duplicate_entities(
     entity_type: str = "character",
     keep_entity: str | None = None,
 ) -> bool:
-    """Merge two duplicate entities into one.
-
-    This function:
-    1. Determines which entity to keep (canonical)
-    2. Transfers all relationships from duplicate to canonical
-    3. Merges properties
-    4. Deletes the duplicate entity
+    """Merge two duplicate nodes by transferring relationships to a canonical node.
 
     Args:
-        entity1_name: Name of first entity
-        entity2_name: Name of second entity
-        entity_type: Type of entity ("character" or "world_element")
-        keep_entity: Which entity to keep (entity1_name or entity2_name).
-                     If None, keeps the one that appears earlier (lower created_chapter)
+        entity1_name: Name of the first entity.
+        entity2_name: Name of the second entity.
+        entity_type: Entity domain; `"character"` or `"world_element"`.
+        keep_entity: Name of the node to keep as canonical. If unset, the canonical node is chosen
+            by the lowest `created_chapter` value (missing values default to a large sentinel).
 
     Returns:
-        True if merge was successful, False otherwise
+        `True` if the merge completed without raising; otherwise `False`.
+
+    Notes:
+        - The merge is implemented in Cypher using APOC procedures and will `DETACH DELETE` the
+          duplicate node after relationship transfer.
+        - Relationship transfer attempts to avoid duplicating relationships by matching existing
+          relationships by relationship type and endpoint.
+        - If multiple relationships of the same type exist between the same endpoints, this merge
+          does not consolidate them into a single relationship; it only avoids creating an
+          additional relationship for the transferred edge.
+        - Only a small set of node properties is updated here (`deduplication_merged_from` and
+          `last_updated`). Other node properties (e.g., `description`) are not explicitly merged in
+          this function.
     """
     try:
         # Determine which entity to keep

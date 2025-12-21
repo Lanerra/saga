@@ -1,24 +1,12 @@
 # core/langgraph/initialization/workflow.py
-"""
-Initialization Workflow for LangGraph-based narrative generation.
+"""Define the LangGraph initialization workflow graph.
 
-This module defines the initialization phase workflow that runs before
-chapter generation, establishing character sheets, outlines, and other
-foundational elements.
+The initialization phase runs before chapter generation to establish foundational
+artifacts such as character sheets, the global outline, and act outlines, then
+persist them to Neo4j and to disk.
 
-Initialization Workflow Structure:
-    START
-      ↓
-    [generate_character_sheets]
-      ↓
-    [generate_global_outline]
-      ↓
-    [generate_act_outlines]
-      ↓
-    END (initialization complete)
-
-The chapter outline generation is done on-demand during the generation loop,
-not as part of the initialization workflow.
+Chapter outline generation is performed on-demand during the main generation loop,
+not during initialization.
 """
 
 import structlog
@@ -41,29 +29,21 @@ from core.langgraph.workflow import should_continue_init
 logger = structlog.get_logger(__name__)
 
 
-def create_initialization_graph(checkpointer=None) -> StateGraph:
-    """
-    Create the initialization workflow graph.
+def create_initialization_graph(checkpointer: object | None = None) -> StateGraph:
+    """Create the initialization workflow graph.
 
-    This graph runs the initialization phase that establishes:
-    1. Character sheets for main characters
-    2. Global story outline
-    3. Act-level outlines
-    4. Commits all initialization data to Neo4j knowledge graph
-    5. Persists human-readable files to disk (YAML/Markdown)
-
-    After initialization, the state is ready for the main generation loop.
-
-    Workflow:
-        START → character_sheets → global_outline → act_outlines →
-                commit_to_graph → persist_files → END
+    Workflow order:
+        character_sheets → global_outline → act_outlines → commit_to_graph → persist_files → complete
 
     Args:
-        checkpointer: Optional checkpoint saver (SqliteSaver, PostgresSaver, etc.)
-                     If None, no checkpointing is enabled.
+        checkpointer: Optional LangGraph checkpointer implementation.
 
     Returns:
-        Compiled LangGraph StateGraph ready for execution
+        Compiled LangGraph graph ready for execution.
+
+    Notes:
+        This phase performs LLM I/O (artifact generation), Neo4j writes (initial
+        persistence boundary), and filesystem I/O (human-readable artifacts).
     """
     logger.info("create_initialization_graph: building initialization workflow")
 
@@ -78,7 +58,7 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
     workflow.add_node("persist_files", persist_initialization_files)
 
     def handle_init_error(state: NarrativeState) -> NarrativeState:
-        """Handle initialization errors and terminate workflow gracefully."""
+        """Handle initialization errors and terminate the workflow."""
         error = state.get("last_error", "Unknown initialization error")
         step = state.get("initialization_step", "unknown")
         logger.error(
@@ -97,13 +77,13 @@ def create_initialization_graph(checkpointer=None) -> StateGraph:
 
     # Add finalization node to mark initialization complete
     def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
-        """Mark the initialization phase as complete.
+        """Mark initialization as complete.
 
         Args:
-            state: Current narrative state.
+            state: Workflow state.
 
         Returns:
-            Updated state with initialization_complete=True.
+            Updated state with `initialization_complete` set and status fields updated.
         """
         logger.info(
             "mark_initialization_complete: initialization phase finished",

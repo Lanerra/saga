@@ -1,4 +1,10 @@
 # core/langgraph/initialization/validation.py
+"""Validate presence of initialization artifacts on disk.
+
+This module provides a lightweight check that expected initialization files exist under
+a project directory. It does not parse or validate the file contents.
+"""
+
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -10,31 +16,14 @@ PathLike = str | Path
 
 
 def _require_file(root: Path, relative: str, missing: list[str]) -> None:
-    """Check that a specific file exists under root.
-
-    Append a human-readable message to `missing` if it does not.
-
-    Args:
-        root: Root directory path.
-        relative: Relative path to the file from root.
-        missing: List to append missing file messages to.
-    """
+    """Append a missing-file message when `root/relative` does not exist."""
     path = root / relative
     if not path.exists():
         missing.append(f"Missing {relative}")
 
 
 def _require_any(root: Path, pattern: str, description: str, missing: list[str]) -> None:
-    """Check that at least one file matching pattern exists under root.
-
-    Append description to missing if none found.
-
-    Args:
-        root: Root directory path.
-        pattern: Glob pattern to match files (e.g., "characters/*.yaml").
-        description: Human-readable description to append if no matches found.
-        missing: List to append missing file messages to.
-    """
+    """Append `description` when no file under `root` matches `pattern`."""
     matches: Iterable[Path] = root.glob(pattern)
     if not any(matches):
         missing.append(description)
@@ -43,26 +32,19 @@ def _require_any(root: Path, pattern: str, description: str, missing: list[str])
 def validate_initialization_artifacts(
     project_dir: PathLike,
 ) -> tuple[bool, list[str]]:
-    """
-    Validate presence of core initialization artifacts in `project_dir`.
+    """Validate that core initialization artifacts exist under `project_dir`.
 
-    This is a lightweight, non-breaking check intended for advisory use only.
-    It verifies that the expected files/directories produced by the
-    initialization workflow exist, without parsing or validating their content.
-
-    Expected:
-    - saga.yaml
-    - outline/structure.yaml
-    - outline/beats.yaml
-    - at least one characters/*.yaml file
-    - world/items.yaml
-    - world/rules.yaml
-    - world/history.yaml
+    Args:
+        project_dir: Project root directory to validate.
 
     Returns:
-        (ok, missing)
-        ok: True if all artifacts exist, False otherwise.
-        missing: List of human-readable descriptions for each missing artifact.
+        Tuple of `(ok, missing)` where:
+        - `ok` is True when all required artifacts exist.
+        - `missing` is a list of human-readable messages describing missing artifacts.
+
+    Notes:
+        This is a presence-only check intended for advisory use. It does not parse or
+        validate file contents.
     """
     root = Path(project_dir)
 

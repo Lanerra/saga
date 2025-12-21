@@ -1,10 +1,10 @@
 # core/langgraph/initialization/character_sheets_node.py
-"""
-Character Sheets Generation Node for Initialization Phase.
+"""Generate character sheets during initialization.
 
-This node generates detailed character sheets during the initialization phase,
-creating comprehensive profiles for main characters that will be used throughout
-the narrative generation process.
+This module defines the initialization node that generates structured character
+sheets for the protagonist and other main characters. The resulting sheets are
+externalized to keep workflow state small and to provide durable initialization
+artifacts for later steps.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from typing import Any
 
 import structlog
 
@@ -28,11 +29,14 @@ logger = structlog.get_logger(__name__)
 
 
 async def _get_existing_traits() -> list[str]:
-    """
-    Fetch existing trait names from the database to encourage reuse.
+    """Fetch existing trait names to encourage reuse.
 
     Returns:
-        List of existing trait names (normalized)
+        Trait names from Neo4j, in display form.
+
+    Notes:
+        This helper performs Neo4j I/O. Failures are treated as non-fatal and
+        return an empty list so initialization can proceed.
     """
     try:
         query = """
@@ -58,16 +62,20 @@ async def _get_existing_traits() -> list[str]:
         return []
 
 
-def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, any]:
-    """
-    Parse the structured character sheet response into CharacterProfile-compatible format.
+def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, Any]:
+    """Parse a character sheet JSON response into an internal sheet dictionary.
 
     Args:
-        response: Raw LLM response with structured character data (JSON)
-        character_name: Name of the character
+        response: Raw LLM response expected to contain a JSON object.
+        character_name: Character name used as a fallback when the response omits it.
 
     Returns:
-        Dictionary with CharacterProfile-compatible fields
+        Parsed character sheet dictionary. Traits are filtered to single-word values
+        via [`validate_and_filter_traits()`](utils/text_processing.py:1), and relationship
+        descriptions are normalized into the internal relationship structure.
+
+    Raises:
+        ValueError: When no valid JSON object can be parsed from the response.
     """
     # Defaults
     parsed = {
@@ -144,7 +152,11 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         parsed["name"] = character_name
 
     # Validate and filter traits to ensure single-word format
-    raw_traits = parsed.get("traits", [])
+    raw_traits_value = parsed.get("traits", [])
+    if not isinstance(raw_traits_value, list):
+        raw_traits: list[str] = []
+    else:
+        raw_traits = [t for t in raw_traits_value if isinstance(t, str)]
     parsed["traits"] = validate_and_filter_traits(raw_traits)
 
     if len(parsed["traits"]) != len(raw_traits):
@@ -157,9 +169,14 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         )
 
     # Transform relationships if needed to internal structure
-    structured_relationships = {}
-    if isinstance(parsed.get("relationships"), dict):
-        for target, desc in parsed["relationships"].items():
+    relationships_value = parsed.get("relationships")
+    structured_relationships: dict[str, dict[str, str]] = {}
+    if isinstance(relationships_value, dict):
+        for target, desc in relationships_value.items():
+            if not isinstance(target, str):
+                continue
+            if not isinstance(desc, str):
+                continue
             structured_relationships[target] = {
                 "type": "ASSOCIATE",
                 "description": desc,
@@ -174,23 +191,22 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
 
 
 async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
-    """
-    Generate detailed character sheets for main characters.
-
-    This node creates comprehensive character profiles based on the story's
-    genre, theme, setting, and protagonist. These sheets will inform character
-    behavior and development throughout the narrative.
-
-    Process Flow:
-    1. Generate character list based on story parameters
-    2. For each character, generate a detailed character sheet
-    3. Store character sheets in state for later use
+    """Generate and externalize character sheets for initialization.
 
     Args:
-        state: Current narrative state with story metadata
+        state: Workflow state. Requires core story metadata such as `title` and `genre`.
 
     Returns:
-        Updated state with character_sheets populated
+        Updated state containing character sheet artifacts (typically via an
+        externalized reference) and initialization progress fields.
+
+        If required metadata is missing, returns an error update without performing
+        LLM calls.
+
+    Notes:
+        This node performs Neo4j I/O (trait reuse hints) and LLM I/O (sheet generation).
+        JSON parsing failures in character sheet responses are treated as fatal for
+        that character and surface as initialization errors.
     """
     logger.info(
         "generate_character_sheets: starting character sheet generation",
@@ -441,7 +457,7 @@ async def _generate_character_sheet(
     character_name: str,
     other_characters: list[str],
     existing_traits: list[str] | None = None,
-) -> dict[str, any] | None:
+) -> dict[str, Any] | None:
     """
     Generate a detailed character sheet for a specific character.
 

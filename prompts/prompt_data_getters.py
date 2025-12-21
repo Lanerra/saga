@@ -1,8 +1,37 @@
 # prompts/prompt_data_getters.py
-"""
-Helper functions to prepare specific data snippets for LLM prompts in the SAGA system.
-These functions typically filter or format parts of the agent's state,
-increasingly by querying Neo4j directly for richer, graph-aware context.
+"""Prepare structured context snippets for prompt templates.
+
+This module formats state and knowledge-graph data into plain-text snippets that
+are intended to be interpolated into Jinja templates rendered via
+`prompts.prompt_renderer.render_prompt()`. The returned strings are
+human-readable context blocks (often with lightweight Markdown formatting) and
+are not guaranteed to be valid JSON/YAML unless a specific function explicitly
+states otherwise.
+
+Strictness and failure modes:
+
+- Many functions are best-effort: missing entities or failed read operations are
+  typically skipped and replaced with a short "no data available" message.
+- Some helpers may allow exceptions from underlying `data_access` queries to
+  propagate (notably when they do not wrap calls in `try/except`). Docstrings
+  below indicate when behavior is best-effort vs. exception-propagating.
+
+Caching:
+
+- This module maintains a small, module-level in-memory cache (`_context_cache`)
+  for expensive lookups.
+- Cache entries are scoped to a chapter number using
+  `_ensure_cache_is_scoped_to_chapter()`. The cache is cleared when the chapter
+  changes (or when explicitly cleared via `clear_context_cache()`).
+- This cache is process-local and not safe to share across processes. It is also
+  not designed for concurrent use across independent chapter generations.
+
+User-provided content and escaping:
+
+- Returned snippets may include user-supplied or model-supplied values stored in
+  the knowledge graph (names, descriptions, etc.).
+- No escaping or sanitization is performed. Callers/templates must handle any
+  necessary escaping conventions for the target model.
 """
 
 import asyncio
@@ -27,7 +56,16 @@ _current_cache_chapter: int | None = None
 
 
 def clear_context_cache() -> None:
-    """Clear the context cache. Should be called at the start of each chapter generation."""
+    """Clear module-level context cache for the current process.
+
+    This resets both `_context_cache` and the chapter scoping marker
+    (`_current_cache_chapter`). Callers typically invoke this at the start of a
+    new chapter generation to avoid reusing stale context.
+
+    Notes:
+        This is a process-local cache. Clearing it does not affect other
+        processes or machines.
+    """
     global _context_cache
     global _current_cache_chapter
     _context_cache.clear()
@@ -35,7 +73,18 @@ def clear_context_cache() -> None:
 
 
 def _ensure_cache_is_scoped_to_chapter(chapter_number: int | None) -> None:
-    """Ensure cache entries never bleed across chapter boundaries."""
+    """Scope module-level cache entries to a single chapter number.
+
+    Args:
+        chapter_number: Chapter number that the caller's request pertains to. If
+            `None`, cache scoping is not enforced.
+
+    Notes:
+        When `chapter_number` differs from the stored `_current_cache_chapter`,
+        this function clears the cache via `clear_context_cache()` before
+        updating the chapter marker. This prevents cached query results from
+        being reused across chapter boundaries.
+    """
     global _current_cache_chapter
     if chapter_number is None:
         return
@@ -60,7 +109,25 @@ def _deterministic_character_order(characters: set[str], protagonist_name: str |
 
 
 async def _cached_character_info(char_name: str, chapter_limit: int | None) -> dict[str, Any] | None:
-    """Cache character database queries to avoid redundant lookups."""
+    """Fetch and cache a character info payload for prompt snippets.
+
+    Args:
+        char_name: Character name to query.
+        chapter_limit: Chapter cutoff used to constrain returned facts. When
+            `None`, a large default is used.
+
+    Returns:
+        A dictionary payload from the underlying query, or `None` if the
+        character is not found.
+
+    Raises:
+        Exception: Propagates exceptions raised by the underlying
+            `data_access.character_queries` call.
+
+    Notes:
+        Results are cached in `_context_cache` using a key derived from
+        `char_name` and `chapter_limit`.
+    """
     cache_key = f"char_info_{char_name}_{chapter_limit}"
     if cache_key not in _context_cache:
         limit_val = chapter_limit if chapter_limit is not None else 1000
@@ -70,7 +137,21 @@ async def _cached_character_info(char_name: str, chapter_limit: int | None) -> d
 
 
 async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
-    """Cache individual world item lookups."""
+    """Fetch and cache a world item by id.
+
+    Args:
+        item_id: World item identifier.
+
+    Returns:
+        The corresponding `WorldItem` if found; otherwise `None`.
+
+    Raises:
+        Exception: Propagates exceptions raised by the underlying
+            `data_access.world_queries` call.
+
+    Notes:
+        Results are cached in `_context_cache` using a key derived from `item_id`.
+    """
     cache_key = f"world_item_{item_id}"
     if cache_key not in _context_cache:
         result = await world_queries.get_world_item_by_id(item_id)
@@ -81,6 +162,22 @@ async def _cached_world_item_by_id(item_id: str) -> WorldItem | None:
 
 
 def _format_dict_for_plain_text_prompt(data: dict[str, Any], indent_level: int = 0, name_override: str | None = None) -> list[str]:
+    """Format a nested mapping into a deterministic, plain-text outline.
+
+    Args:
+        data: Mapping to format. Nested dictionaries and lists are formatted with
+            indentation.
+        indent_level: Base indentation level (two spaces per level).
+        name_override: Optional heading label to emit before formatting `data`.
+
+    Returns:
+        A list of lines suitable for joining with newlines.
+
+    Notes:
+        Some internal bookkeeping keys are omitted (for example,
+        `source_quality_chapter_*` and `updated_in_chapter_*`) to keep snippets
+        concise for prompting.
+    """
     lines = []
     indent = "  " * indent_level
     if name_override:
@@ -150,6 +247,27 @@ def _add_provisional_notes_and_filter_developments(
     up_to_chapter_inclusive: int | None,
     is_character: bool = True,
 ) -> dict[str, Any]:
+    """Filter future chapter developments and add provisional-data notes.
+
+    Args:
+        item_data_original: Source dictionary, typically produced by
+            `CharacterProfile.to_dict()` or `WorldItem.to_dict()`.
+        up_to_chapter_inclusive: Chapter cutoff. Keys representing developments
+            beyond this cutoff are removed from the returned mapping. When
+            `None`, no chapter-based filtering is applied.
+        is_character: Whether `item_data_original` represents a character (affects
+            which key prefixes are considered "developments").
+
+    Returns:
+        A deep-copied mapping with:
+        - development/elaboration keys beyond the chapter cutoff removed, and
+        - optional `prompt_notes` and `is_provisional_hint` fields added when
+          the item includes provisional data relevant to the cutoff.
+
+    Notes:
+        This function is purely a formatter/filter. It does not fetch additional
+        data and does not mutate the original input mapping.
+    """
     item_data = copy.deepcopy(item_data_original)
     prompt_notes_list = []
     effective_filter_chapter = config.KG_PREPOPULATION_CHAPTER_NUM if up_to_chapter_inclusive == config.KG_PREPOPULATION_CHAPTER_NUM else up_to_chapter_inclusive
@@ -164,23 +282,25 @@ def _add_provisional_notes_and_filter_developments(
         if key.startswith((dev_elaboration_prefix, added_prefix)):
             try:
                 chap_num_of_key_str = key.split("_")[-1]
-                chap_num_of_key = int(re.match(r"\d+", chap_num_of_key_str).group(0)) if re.match(r"\d+", chap_num_of_key_str) else -1
+                chapter_match = re.match(r"\d+", chap_num_of_key_str)
+                chap_num_of_key = int(chapter_match.group(0)) if chapter_match else -1
                 if effective_filter_chapter is not None and chap_num_of_key > effective_filter_chapter:
                     keys_to_remove.append(key)
-            except (ValueError, IndexError, AttributeError) as e:
+            except (ValueError, IndexError) as e:
                 logger.warning(f"Could not parse chapter from key '{key}' during filtering: {e}")
 
         if key.startswith("source_quality_chapter_"):
             try:
                 chap_num_of_source_str = key.split("_")[-1]
-                chap_num_of_source = int(re.match(r"\d+", chap_num_of_source_str).group(0)) if re.match(r"\d+", chap_num_of_source_str) else -1
+                source_chapter_match = re.match(r"\d+", chap_num_of_source_str)
+                chap_num_of_source = int(source_chapter_match.group(0)) if source_chapter_match else -1
 
                 if (effective_filter_chapter is None or chap_num_of_source <= effective_filter_chapter) and item_data[key] == "provisional_from_unrevised_draft":
                     has_provisional_data_relevant_to_filter = True
                     note = f"Data from Chapter {chap_num_of_source} may be provisional (from unrevised draft)."
                     if note not in prompt_notes_list:
                         prompt_notes_list.append(note)
-            except (ValueError, IndexError, AttributeError) as e:
+            except (ValueError, IndexError) as e:
                 logger.warning(f"Could not parse chapter from source_quality key '{key}': {e}")
 
     for k_rem in keys_to_remove:
@@ -199,6 +319,20 @@ async def _get_character_profiles_dict_with_notes(
     character_names: list[str],
     up_to_chapter_inclusive: int | None,
 ) -> dict[str, Any]:
+    """Fetch character profiles and apply chapter filtering and prompt notes.
+
+    Args:
+        character_names: Character names to fetch.
+        up_to_chapter_inclusive: Chapter cutoff for filtering developments.
+
+    Returns:
+        Mapping of character name to a filtered dictionary representation of that
+        character. Characters that cannot be fetched are omitted.
+
+    Notes:
+        This function is best-effort: individual characters that fail to fetch
+        are skipped after logging.
+    """
     logger.debug(
         "Internal: Getting character profiles dict with notes up to chapter %s.",
         up_to_chapter_inclusive,
@@ -239,6 +373,23 @@ async def get_filtered_character_profiles_for_prompt_plain_text(
     character_names: list[str],
     up_to_chapter_inclusive: int | None = None,
 ) -> str:
+    """Build a plain-text "Key Character Profiles" block for prompt templates.
+
+    Args:
+        character_names: Character names to fetch from the knowledge graph.
+        up_to_chapter_inclusive: Chapter cutoff for filtering. When `0`, this is
+            mapped to `config.KG_PREPOPULATION_CHAPTER_NUM` to represent
+            initial/prepopulated state.
+
+    Returns:
+        A plain-text block headed by "Key Character Profiles:" followed by
+        per-character outlines. Returns a short "No character profiles available."
+        message when no profiles can be fetched.
+
+    Notes:
+        This function is best-effort: missing characters and per-character fetch
+        errors are skipped after logging.
+    """
     logger.info(f"Fetching and formatting filtered character profiles as PLAIN TEXT up to chapter {up_to_chapter_inclusive}.")
     filter_chapter_for_profiles = config.KG_PREPOPULATION_CHAPTER_NUM if up_to_chapter_inclusive == 0 else up_to_chapter_inclusive
 
@@ -268,6 +419,20 @@ async def _get_world_data_dict_with_notes(
     world_item_ids_by_category: dict[str, list[str]],
     up_to_chapter_inclusive: int | None,
 ) -> dict[str, Any]:
+    """Fetch world items and apply chapter filtering and prompt notes.
+
+    Args:
+        world_item_ids_by_category: Mapping of category name to world item ids.
+        up_to_chapter_inclusive: Chapter cutoff for filtering developments.
+
+    Returns:
+        Mapping of category name to a mapping of item name to filtered item data.
+        Missing items and failed reads are omitted.
+
+    Notes:
+        This function is best-effort: individual world items that fail to fetch
+        are skipped after logging.
+    """
     logger.debug(
         "Internal: Getting world data dict with notes up to chapter %s.",
         up_to_chapter_inclusive,
@@ -316,6 +481,23 @@ async def get_filtered_world_data_for_prompt_plain_text(
     world_item_ids_by_category: dict[str, list[str]],
     up_to_chapter_inclusive: int | None = None,
 ) -> str:
+    """Build a plain-text world-building block for prompt templates.
+
+    Args:
+        world_item_ids_by_category: Mapping of category name to world item ids.
+        up_to_chapter_inclusive: Chapter cutoff for filtering. When `0`, this is
+            mapped to `config.KG_PREPOPULATION_CHAPTER_NUM` to represent
+            initial/prepopulated state.
+
+    Returns:
+        A plain-text block containing an optional "World-Building Overview:"
+        section and then per-category item outlines. Returns a short "No ... data
+        available" message when the graph contains no relevant items.
+
+    Notes:
+        This function is best-effort: missing items and per-item fetch errors are
+        skipped after logging.
+    """
     logger.info(f"Fetching and formatting filtered world data as PLAIN TEXT up to chapter {up_to_chapter_inclusive}.")
     filter_chapter_for_world = config.KG_PREPOPULATION_CHAPTER_NUM if up_to_chapter_inclusive == 0 else up_to_chapter_inclusive
 
@@ -378,25 +560,40 @@ async def get_reliable_kg_facts_for_drafting_prompt(
     snapshot: Any | None = None,
     protagonist_name: str | None = None,
 ) -> str:
-    """
-    Gather reliable KG facts for drafting prompts by combining novel-level info
-    and character-specific data from the knowledge graph.
+    """Assemble a "reliable KG facts" block for drafting prompts.
 
-    This function orchestrates the collection of contextually relevant facts by:
-    1. Discovering characters of interest from chapter plans
-    2. Applying protagonist-proximity filtering to focus on connected characters
-    3. Gathering novel-level information (theme, central conflict)
-    4. Collecting character-specific facts (status, location, relationships)
-    5. Assembling the results into a formatted prompt snippet
+    This function combines a small set of novel-level facts (theme, central
+    conflict) with character-specific facts (status, location, key relationships)
+    from Neo4j. The output is intended to be embedded directly into prompt
+    templates as a context section.
 
     Args:
-        chapter_outlines: Chapter outlines dictionary (unused, kept for backward compatibility)
-        chapter_number: Current chapter number
-        chapter_plan: List of scene details for the chapter
-        max_facts_per_char: Maximum facts to gather per character
-        max_total_facts: Maximum total facts to include
-        snapshot: Optional context snapshot for caching
-        protagonist_name: Name of the protagonist (defaults to config value if not provided)
+        chapter_outlines: Unused; accepted for backward compatibility.
+        chapter_number: Chapter number being drafted. When `<= 0`, a short
+            "no facts applicable" message is returned.
+        chapter_plan: Optional scene plan used to discover characters of
+            interest.
+        max_facts_per_char: Maximum facts to include per character.
+        max_total_facts: Maximum facts to include overall.
+        snapshot: Optional snapshot object. If it exposes a non-empty
+            `kg_facts_block` attribute, that value is returned directly.
+        protagonist_name: Protagonist name used for prioritization and proximity
+            filtering. When omitted, falls back to
+            `config.DEFAULT_PROTAGONIST_NAME`.
+
+    Returns:
+        A plain-text block beginning with a header line:
+        `"**Key Reliable KG Facts (from Neo4j - up to previous chapter/initial state):**"`
+        followed by bullet-like fact lines (prefixed with `- `). If no facts can
+        be gathered, returns a short explanatory message.
+
+    Notes:
+        - This function is largely best-effort. Many Neo4j query failures are
+          logged and skipped so prompt generation can proceed with partial
+          context.
+        - It calls `_ensure_cache_is_scoped_to_chapter()` to prevent cache reuse
+          across chapters, even though most KG fact queries are not cached in
+          this module.
     """
     _ensure_cache_is_scoped_to_chapter(chapter_number)
 
@@ -455,14 +652,28 @@ async def get_character_state_snippet_for_prompt(
     protagonist_name: str | None = None,
     current_chapter_num_for_filtering: int | None = None,
 ) -> str:
-    """
-    Native version that works directly with list[CharacterProfile].
-    Creates a concise plain text string of key character states for prompts.
+    """Build a concise character-state snippet for prompt templates.
 
     Args:
-        character_profiles: List of character profiles to process
-        protagonist_name: Name of the protagonist (defaults to config value if not provided)
-        current_chapter_num_for_filtering: Optional chapter number for filtering
+        character_profiles: Character profiles to summarize.
+        protagonist_name: Protagonist name to prioritize in the output. When
+            omitted, falls back to `config.DEFAULT_PROTAGONIST_NAME`.
+        current_chapter_num_for_filtering: Chapter number used to scope
+            `_context_cache` and constrain Neo4j-backed details.
+
+    Returns:
+        A plain-text block with one section per included character, using
+        lightweight Markdown formatting (for example `**Name:**` headings and
+        `- ` bullet lines). Characters may include data sourced from Neo4j
+        (current state summary, relationships).
+
+    Raises:
+        Exception: Propagates exceptions raised by underlying Neo4j reads (for
+            example from `_cached_character_info()`).
+
+    Notes:
+        This function does not escape or sanitize values. Names/descriptions may
+        originate from user- or model-supplied data in the knowledge graph.
     """
     _ensure_cache_is_scoped_to_chapter(current_chapter_num_for_filtering)
     text_output_lines_list: list[str] = []
@@ -551,16 +762,21 @@ async def _discover_characters_of_interest(
     chapter_plan: list[SceneDetail] | None,
     chapter_number: int,
 ) -> set[str]:
-    """
-    Discover characters of interest from protagonist and chapter plan.
+    """Discover character names that are relevant to the current chapter plan.
 
     Args:
-        protagonist_name: Name of the protagonist
-        chapter_plan: List of scene details for the chapter
-        chapter_number: Current chapter number
+        protagonist_name: Protagonist name to include (if present and not a
+            fill-in placeholder).
+        chapter_plan: Optional scene plan. If present, character names are read
+            from each scene's `characters_involved` field.
+        chapter_number: Chapter number used for logging.
 
     Returns:
-        Set of character names of interest
+        A set of character names that may be used for follow-on KG lookups.
+
+    Notes:
+        This function performs lightweight extraction from the provided plan and
+        does not query Neo4j.
     """
     # Start with protagonist-centric filtering
     characters_of_interest: set[str] = {protagonist_name} if protagonist_name and not utils._is_fill_in(protagonist_name) else set()
@@ -581,7 +797,20 @@ async def _apply_protagonist_proximity_filtering(
     characters_of_interest: set[str],
     protagonist_name: str,
 ) -> set[str]:
-    """Filter characters by proximity to protagonist in the knowledge graph."""
+    """Filter characters by proximity to the protagonist in the knowledge graph.
+
+    Args:
+        characters_of_interest: Candidate character names.
+        protagonist_name: Protagonist name used as the reference node.
+
+    Returns:
+        A set containing the protagonist and any characters whose shortest-path
+        distance to the protagonist is within a small threshold.
+
+    Notes:
+        This function queries Neo4j for shortest-path distance. When run in the
+        parallel path, individual query failures are treated as non-matches.
+    """
     if not protagonist_name or not characters_of_interest:
         return characters_of_interest
 
@@ -598,8 +827,10 @@ async def _apply_protagonist_proximity_filtering(
     else:
         tasks = [kg_queries.get_shortest_path_length_between_entities(protagonist_name, c) for c in others]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        for c, path_len in zip(others, results, strict=False):
-            if not isinstance(path_len, Exception) and path_len is not None and path_len <= 3:
+        for c, result in zip(others, results, strict=False):
+            if isinstance(result, BaseException):
+                continue
+            if isinstance(result, int) and result <= 3:
                 pruned.add(c)
     pruned.add(protagonist_name)
 
@@ -611,7 +842,15 @@ async def _gather_novel_info_facts(
     facts_list: list[str],
     max_total_facts: int,
 ) -> None:
-    """Gather novel-level information facts (theme, central conflict) in parallel."""
+    """Gather novel-level facts (theme and central conflict) for prompting.
+
+    Args:
+        facts_list: Output list to append formatted fact lines to.
+        max_total_facts: Maximum total fact lines allowed in `facts_list`.
+
+    Notes:
+        This function is best-effort: query failures are logged and skipped.
+    """
     if len(facts_list) >= max_total_facts:
         return
 
@@ -651,7 +890,20 @@ async def _gather_character_facts(
     max_total_facts: int,
     protagonist_name: str | None,
 ) -> None:
-    """Gather character-specific facts (status, location, relationships) in parallel."""
+    """Gather character-specific facts (status, location, relationships).
+
+    Args:
+        characters_of_interest: Candidate character names.
+        kg_chapter_limit: Chapter cutoff used when querying the KG.
+        facts_list: Output list to append formatted fact lines to.
+        max_facts_per_char: Per-character cap on added facts.
+        max_total_facts: Overall cap on added facts.
+        protagonist_name: Protagonist name used to prioritize character ordering.
+
+    Notes:
+        This function is best-effort for the parallel query path: individual
+        failures are logged and skipped.
+    """
     character_names_list = _deterministic_character_order(characters_of_interest, protagonist_name)[:3]
     if not character_names_list:
         return
@@ -727,9 +979,22 @@ async def get_world_state_snippet_for_prompt(
     world_building: list[WorldItem],
     current_chapter_num_for_filtering: int | None = None,
 ) -> str:
-    """
-    Native version that works directly with list[WorldItem].
-    Creates a concise plain text string of key world states for prompts.
+    """Build a concise world-state snippet for prompt templates.
+
+    Args:
+        world_building: World items to summarize.
+        current_chapter_num_for_filtering: Chapter number used to scope
+            `_context_cache`.
+
+    Returns:
+        A plain-text block grouped by category and using lightweight Markdown
+        formatting (for example `**Category:**` headings and indented item
+        bullets).
+
+    Notes:
+        This function does not escape or sanitize values. Item names and
+        descriptions may originate from user- or model-supplied data in the
+        knowledge graph.
     """
     _ensure_cache_is_scoped_to_chapter(current_chapter_num_for_filtering)
     text_output_lines_list: list[str] = []

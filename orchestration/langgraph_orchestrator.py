@@ -1,19 +1,24 @@
 # orchestration/langgraph_orchestrator.py
-"""
-LangGraph-based orchestrator for SAGA narrative generation.
+"""Orchestrate LangGraph-based SAGA narrative generation.
 
-This orchestrator uses the LangGraph workflow system instead of the legacy
-NANA pipeline, running initialization and then generating chapters using
-the Phase 2 complete workflow.
+This module defines the orchestration boundary around the LangGraph workflow:
+Neo4j connectivity, workflow checkpoint lifecycle, and an explicit LLM HTTP-client
+lifecycle that is shared across workflow nodes.
 
-Migration Reference: docs/langgraph-architecture.md - Section 10.2
+Error/cleanup policy at this boundary is intentionally mixed:
+
+- Strict: Neo4j connection/setup failures and workflow construction/streaming
+  errors propagate to the caller.
+- Best-effort: restoring patched `llm_service` module attributes is attempted
+  during cleanup and must not mask the original workflow failure.
 """
 
 import importlib
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, cast
 
 import structlog
 
@@ -63,21 +68,27 @@ _LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
 
 @asynccontextmanager
 async def _managed_llm_lifecycle_for_workflow() -> Any:
-    """
-    Ensure LangGraph workflows run with an explicit, deterministic LLM HTTP client lifecycle.
+    """Manage an explicit LLM HTTP-client lifecycle for a workflow run.
 
-    Strategy:
-    - Create a fresh LLM service instance via [`async_llm_context()`](core/llm_interface_refactored.py:37),
-      which guarantees `HTTPClientService.aclose()` on exit.
-    - Temporarily patch each workflow-related module's `llm_service` reference to point at
-      the managed instance for the duration of the workflow run.
-    - Always restore previous module references on exit (success/failure).
+    This context manager creates a fresh `llm_service` instance via
+    [`async_llm_context()`](core/llm_interface_refactored.py:37) and temporarily
+    patches workflow-related modules that import `llm_service` into their module
+    namespace at import time.
 
-    This avoids requiring every node to manage resources and avoids deep rewiring of
-    node signatures/state.
+    The patching is scoped to the context manager and is intended to make the
+    orchestrator/workflow boundary responsible for client cleanup, rather than
+    individual nodes.
+
+    Yields:
+        The managed `llm_service` instance used by the workflow.
+
+    Notes:
+        - Missing or optional modules are ignored during patching.
+        - Restoring prior module attributes is best-effort and must not mask an
+          error raised by the workflow itself.
     """
     async with async_llm_context() as (managed_llm_service, _embedding_service):
-        patched: list[tuple[object, Any]] = []
+        patched: list[tuple[ModuleType, Any]] = []
 
         for module_name in _LLM_SERVICE_PATCH_MODULES:
             try:
@@ -86,9 +97,10 @@ async def _managed_llm_lifecycle_for_workflow() -> Any:
                 # Defensive: missing/optional modules should not break orchestration.
                 continue
 
-            if hasattr(module, "llm_service"):
-                patched.append((module, module.llm_service))
-                module.llm_service = managed_llm_service
+            module_any = cast(Any, module)
+            if hasattr(module_any, "llm_service"):
+                patched.append((module, module_any.llm_service))
+                module_any.llm_service = managed_llm_service
 
         try:
             yield managed_llm_service
@@ -96,7 +108,7 @@ async def _managed_llm_lifecycle_for_workflow() -> Any:
             # Restore in reverse order for sanity.
             for module, previous in reversed(patched):
                 try:
-                    module.llm_service = previous
+                    cast(Any, module).llm_service = previous
                 except Exception:
                     # Best-effort restore; failing to restore should not mask the
                     # original workflow error.
@@ -104,14 +116,22 @@ async def _managed_llm_lifecycle_for_workflow() -> Any:
 
 
 class LangGraphOrchestrator:
-    """
-    Orchestrator for LangGraph-based narrative generation.
+    """Orchestrate a LangGraph-based narrative generation run.
 
-    Handles:
-    - Initialization (if not already complete)
-    - Chapter generation loop (respecting CHAPTERS_PER_RUN)
-    - State persistence via checkpointer
-    - Resume capability
+    This class establishes the high-level lifecycle boundaries for a single run:
+
+    - Connect to Neo4j and ensure schema exists.
+    - Create a fresh [`NarrativeState`](core/langgraph/state.py:1) seed for the
+      workflow, including initialization detection based on on-disk artifacts.
+    - Run the LangGraph workflow under a checkpointer context and a managed LLM
+      client context.
+    - Stream workflow events to drive UI updates and structured logging.
+
+    Notes:
+        - Checkpoint persistence is owned by the workflow checkpointer context,
+          not by the state creation step.
+        - The per-chapter loop is best-effort: certain chapter-level failures
+          stop generation early without raising to the caller.
     """
 
     def __init__(self) -> None:
@@ -127,15 +147,31 @@ class LangGraphOrchestrator:
         logger.info("LangGraph Orchestrator initialized.")
 
     async def run_novel_generation_loop(self) -> None:
-        """
-        Main entry point for LangGraph-based generation.
+        """Run the end-to-end LangGraph novel generation loop.
 
-        Flow:
-        1. Connect to Neo4j
-        2. Load or create initial state
-        3. Create workflow with checkpointing
-        4. Generate CHAPTERS_PER_RUN chapters (initialization handled automatically)
-        5. Save state for resumption
+        This method owns the orchestration boundary and associated cleanup:
+
+        - Starts the Rich progress display (if enabled).
+        - Establishes a Neo4j connection and ensures the database schema exists.
+        - Creates a fresh workflow state seed for the run.
+        - Runs the workflow under:
+          - a managed LLM client lifecycle context, and
+          - a checkpointer context bound to a persistent SQLite file.
+
+        Error policy:
+            - Neo4j connection/setup failures and workflow construction/streaming
+              failures propagate to the caller.
+            - Chapter generation is best-effort: chapter-level failures inside
+              [`_run_chapter_generation_loop()`](orchestration/langgraph_orchestrator.py:273)
+              are logged and stop the loop without raising.
+
+        Cleanup:
+            The Rich display is stopped in a `finally` block. If display shutdown
+            raises, that exception propagates (and can mask a prior error).
+
+        Side Effects:
+            - Creates/updates a checkpoint database at `project_dir/.saga/checkpoints.db`.
+            - Executes workflow nodes that may write files and mutate Neo4j state.
         """
         logger.info("=" * 60)
         logger.info("SAGA: LangGraph-based Novel Generation Starting")
@@ -182,18 +218,43 @@ class LangGraphOrchestrator:
             await self.display.stop()
 
     async def _ensure_neo4j_connection(self) -> None:
-        """Ensure Neo4j connection is established."""
+        """Connect to Neo4j and ensure the required schema exists.
+
+        This is a strict boundary: connection failures or schema creation errors
+        propagate to the caller.
+
+        Side Effects:
+            - Opens a Neo4j connection via the global manager.
+            - Creates or updates the database schema (intended to be idempotent).
+        """
         logger.info("Connecting to Neo4j...")
         await neo4j_manager.connect()
         await neo4j_manager.create_db_schema()
         logger.info("✓ Neo4j connected")
 
     async def _load_or_create_state(self) -> NarrativeState:
-        """
-        Load existing state from checkpointer or create new initial state.
+        """Create a fresh workflow state seed for this run.
 
-        If a checkpoint exists with thread_id "saga_generation", resume from there.
-        Otherwise, create fresh initial state.
+        This method does not load state from the checkpointer. Instead, it derives
+        the starting chapter from persisted chapters in Neo4j and constructs a new
+        [`NarrativeState`](core/langgraph/state.py:1) via
+        [`create_initial_state()`](core/langgraph/state.py:1).
+
+        Initialization detection contract:
+            - For chapter 1, initialization is artifact-driven: initialization is
+              considered complete only if the expected on-disk initialization
+              artifacts are present.
+            - For continuation runs (when chapters already exist in Neo4j),
+              initialization is treated as complete.
+
+        Returns:
+            A state dictionary seeded with project metadata plus:
+            - `current_chapter` set to the next chapter number, and
+            - `initialization_complete` set based on the rules above.
+
+        Raises:
+            Any exception raised by the underlying database query or filesystem
+            validation helpers.
         """
         # Check if we have existing chapters to determine current chapter
         chapter_count = await chapter_queries.load_chapter_count_from_db()
@@ -271,13 +332,27 @@ class LangGraphOrchestrator:
         return state
 
     async def _run_chapter_generation_loop(self, graph: Any, state: NarrativeState) -> None:
-        """
-        Generate CHAPTERS_PER_RUN chapters through the LangGraph workflow.
+        """Stream workflow events to generate up to `CHAPTERS_PER_RUN` chapters.
 
-        For each chapter:
-        1. Update current_chapter in state
-        2. Run workflow (chapter_outline → generate → extract → commit → validate → revise? → summarize → finalize)
-        3. Update chapter count
+        For each chapter, this method updates `state["current_chapter"]`, runs the
+        workflow using `astream()` (updates mode), merges per-node state updates
+        into a single state dict, and determines completion based on the last
+        user-visible node executed.
+
+        Error policy:
+            This loop is best-effort. If a chapter fails to complete, the failure
+            is logged and the loop stops early without raising to the caller.
+
+        Side Effects:
+            - Executes workflow nodes, which may write files, update Neo4j, and
+              record checkpoints through the provided checkpointer.
+            - Mutates the provided `state` mapping in-place and also rebinds the
+              local `state` variable to merged copies.
+
+        Notes:
+            - The thread identifier is fixed to `"saga_generation"` for checkpoint
+              scoping, which means multiple concurrent orchestrator runs will
+              contend for the same checkpoint stream.
         """
         chapters_per_run = config.CHAPTERS_PER_RUN
         total_chapters = state.get("total_chapters", 20)
@@ -370,18 +445,21 @@ class LangGraphOrchestrator:
         )
 
     async def _handle_workflow_event(self, event: dict[str, Any], chapter_number: int) -> None:
-        """
-        Handle LangGraph workflow events for real-time progress tracking.
+        """Update UI and structured logs for a workflow event.
 
-        This method is called for each node execution in the workflow,
-        providing visibility into the generation process as outlined in
-        docs/langgraph-architecture.md section 4.2.
+        This method is called once per `astream()` event and is responsible for:
+        - translating node identifiers into a human-readable step label, and
+        - updating the Rich progress UI.
 
         Args:
-            event: Event dict from astream() in format {node_name: state_update}
-            chapter_number: Current chapter being generated
+            event: A single `astream()` event in updates-mode shape
+                `{node_name: state_update}`.
+            chapter_number: The chapter number currently being generated.
 
-        Migration Reference: docs/langgraph-architecture.md - Section 10.2.4
+        Notes:
+            - Internal LangGraph nodes (names starting with `"__"`) are ignored.
+            - Empty or malformed events are treated as non-fatal and are logged
+              as warnings.
         """
         # LangGraph's astream() yields events in "updates" mode format:
         # {node_name: state_update_dict}
@@ -479,15 +557,16 @@ class LangGraphOrchestrator:
             )
 
     def _get_step_description(self, node_name: str, initialization_step: str = "") -> str:
-        """
-        Convert node name to human-readable step description.
+        """Map workflow node identifiers to UI step descriptions.
 
         Args:
-            node_name: Internal node name from workflow
-            initialization_step: Optional initialization phase indicator
+            node_name: The workflow node identifier emitted by LangGraph.
+            initialization_step: Optional initialization phase indicator emitted
+                by initialization nodes.
 
         Returns:
-            Human-readable description of current step
+            A human-readable step description suitable for UI display. Unknown
+            nodes fall back to `"Processing: {node_name}"`.
         """
         # Initialization phase descriptions
         # Only use initialization_step if it's a recognized initialization phase

@@ -1,11 +1,16 @@
 # core/graph_healing_service.py
-"""
-Graph Healing Service for SAGA Knowledge Graph.
+"""Heal and maintain SAGA's Neo4j knowledge graph.
 
-This service provides functionality for:
-1. Healing provisional nodes by enriching them with accumulated evidence
-2. Merging semantically similar nodes
-3. Graduating nodes from provisional status when confidence is high enough
+This service focuses on post-ingestion maintenance:
+- Enriching provisional entities from accumulated narrative context.
+- Graduating provisional entities once confidence crosses a threshold.
+- Detecting and merging likely duplicate entities.
+- Cleaning up truly orphaned provisional entities.
+
+Notes:
+    This module uses Neo4j's internal `elementId()` for write operations. Any cross-module
+    calls (for example into `data_access.*`) should use the application-stable `n.id`
+    property instead.
 """
 
 from __future__ import annotations
@@ -27,7 +32,16 @@ logger = structlog.get_logger(__name__)
 
 
 class GraphHealingService:
-    """Service for healing and enriching the knowledge graph."""
+    """Heal, enrich, and deduplicate knowledge graph entities.
+
+    The primary entrypoint is [`core.graph_healing_service.GraphHealingService.heal_graph()`](core/graph_healing_service.py:690),
+    which performs enrichment, graduation, merge execution, and orphan cleanup for a
+    given chapter.
+
+    Notes:
+        Enrichment uses an LLM and is best-effort; failures generally produce no update
+        rather than raising, so the workflow can continue.
+    """
 
     CONFIDENCE_THRESHOLD = 0.6  # Lowered from 0.85 to make graduation achievable
     MERGE_SIMILARITY_THRESHOLD = 0.75
@@ -36,7 +50,7 @@ class GraphHealingService:
     ORPHAN_CLEANUP_CHAPTERS = 5  # Remove truly orphaned nodes after this many chapters
 
     async def identify_provisional_nodes(self) -> list[dict[str, Any]]:
-        """Find all provisional nodes in the graph."""
+        """List provisional nodes eligible for healing."""
         query = """
             MATCH (n)
             WHERE n.is_provisional = true
@@ -55,13 +69,21 @@ class GraphHealingService:
         return await neo4j_manager.execute_read_query(query)
 
     async def calculate_node_confidence(self, node: dict[str, Any], current_chapter: int = 0) -> float:
-        """
-        Calculate confidence score for a provisional node.
+        """Calculate a confidence score for a provisional node.
 
-        Evidence sources:
-        1. Relationship connectivity (40%) - lowered weight, needs only 3 relationships for max
-        2. Attribute completeness (40%)
-        3. Age bonus (20%) - nodes that survive multiple chapters get bonus
+        Args:
+            node: Node properties, including `element_id`, `type`, and optionally
+                `description`, `traits`, and `created_chapter`.
+            current_chapter: Current chapter number used for age-based scoring.
+
+        Returns:
+            Confidence score in `[0.0, 1.0]` (by construction of weighted components).
+
+        Notes:
+            The score is a weighted combination of:
+            - Relationship connectivity (proxy for mentions/importance).
+            - Attribute completeness (presence/quality of description and traits).
+            - Age bonus for entities that persist across multiple chapters.
         """
         element_id = node["element_id"]
 
@@ -127,10 +149,21 @@ class GraphHealingService:
         return total_confidence
 
     async def enrich_node_from_context(self, node: dict[str, Any], model: str) -> dict[str, Any]:
-        """
-        Use LLM to infer missing attributes from all mentions of this entity.
+        """Infer missing attributes for an entity from accumulated chapter context.
 
-        Returns enriched attributes that can be applied to the node.
+        Args:
+            node: Provisional node dict. If `node["id"]` is present it is used for
+                cross-module lookups; otherwise the entity name is used as a fallback.
+            model: Model name to use for enrichment.
+
+        Returns:
+            A dict of inferred attributes (for example, inferred description/traits/role)
+            and an overall confidence score. Returns an empty dict when no enrichment
+            is possible (no mentions found or enrichment fails).
+
+        Notes:
+            This function is best-effort and intentionally does not raise for JSON
+            parsing failures or LLM call failures.
         """
         # `element_id` is Neo4j-internal. Keep it internal-only.
         # For cross-module calls (data_access.*), use stable application id (`n.id`).
@@ -202,7 +235,7 @@ class GraphHealingService:
             return {}
 
     async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
-        """Apply enriched attributes to a node."""
+        """Apply validated enrichment fields to a Neo4j node."""
         if not enriched or enriched.get("confidence", 0) < 0.6:
             return False
 
@@ -237,11 +270,11 @@ class GraphHealingService:
         return True
 
     async def get_node_by_element_id(self, element_id: str) -> dict[str, Any] | None:
-        """
-        Load the latest node properties from Neo4j by internal elementId.
+        """Reload node properties from Neo4j using the internal element id.
 
-        This is intentionally an internal-only helper. It is used to avoid stale
-        in-memory node dicts after an enrichment write.
+        Notes:
+            This is an internal-only helper used to avoid stale in-memory node dicts
+            after enrichment writes.
         """
         query = """
             MATCH (n)
@@ -259,7 +292,7 @@ class GraphHealingService:
         return results[0] if results else None
 
     async def graduate_node(self, element_id: str, confidence: float) -> bool:
-        """Graduate a node from provisional status."""
+        """Mark a provisional node as graduated in Neo4j."""
         query = """
             MATCH (n)
             WHERE elementId(n) = $element_id
@@ -281,21 +314,22 @@ class GraphHealingService:
         return False
 
     async def find_merge_candidates(self, use_advanced_matching: bool = True) -> list[dict[str, Any]]:
-        """
-        Find pairs of entities that may be duplicates.
-
-        Uses multiple similarity measures:
-        1. Name similarity (fuzzy matching)
-        2. Description embedding similarity (if use_advanced_matching=False)
-        3. Advanced fuzzy matching with Levenshtein and token overlap (if use_advanced_matching=True)
+        """Find likely duplicate entity pairs.
 
         Args:
-            use_advanced_matching: If True, uses kg_queries.find_candidate_duplicate_entities
-                                   which has sophisticated fuzzy matching. If False, uses
-                                   embedding-based similarity (slower but considers semantics).
+            use_advanced_matching: If True, delegates candidate discovery to
+                `data_access.kg_queries.find_candidate_duplicate_entities` (name-based fuzzy
+                matching). If False, computes semantic similarity via embeddings over
+                entity descriptions.
 
         Returns:
-            List of merge candidate dictionaries
+            Candidate dicts containing the two entities (as Neo4j element ids), names, type,
+            and similarity scores.
+
+        Notes:
+            When advanced matching is enabled and entity embedding healing is enabled, this
+            method may compute an additional embedding similarity score using stored entity
+            embeddings and combine it with name similarity.
         """
         if use_advanced_matching:
             # Use the advanced fuzzy matching from kg_queries
@@ -452,7 +486,7 @@ class GraphHealingService:
         return candidates
 
     def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        """Calculate cosine similarity between two vectors."""
+        """Compute cosine similarity for two embedding vectors."""
         dot_product = np.dot(a, b)
         norm_a = np.linalg.norm(a)
         norm_b = np.linalg.norm(b)
@@ -463,7 +497,7 @@ class GraphHealingService:
         return float(dot_product / (norm_a * norm_b))
 
     def _is_likely_alias(self, name1: str, name2: str) -> bool:
-        """Check if two names are likely aliases of the same entity."""
+        """Heuristically detect whether two surface forms are likely aliases."""
         words1 = name1.split()
         words2 = name2.split()
 
@@ -492,11 +526,21 @@ class GraphHealingService:
         return False
 
     async def validate_merge(self, primary_id: str, duplicate_id: str) -> dict[str, Any]:
-        """
-        Validate a merge by checking for co-occurrence.
+        """Validate that a candidate merge is unlikely to collapse distinct entities.
 
-        Entities that appear together in the same chapter are less likely
-        to be duplicates.
+        Args:
+            primary_id: Neo4j element id of the entity to keep.
+            duplicate_id: Neo4j element id of the entity to merge into `primary_id`.
+
+        Returns:
+            A dict containing:
+            - `cooccurrences`: Number of shared chapter/event neighbors.
+            - `relationship_similarity`: Overlap ratio of outgoing relationship types.
+            - `is_valid`: Whether the merge is considered safe enough to execute.
+
+        Notes:
+            This is a heuristic check. Co-occurrence through shared chapter/event context is
+            treated as evidence that the two entities may be distinct.
         """
         # Check for co-occurrence via shared relationships to the same event/chapter
         # Using a more generic path since APPEARS_IN might not exist
@@ -537,21 +581,21 @@ class GraphHealingService:
         }
 
     async def execute_merge(self, primary_id: str, duplicate_id: str, merge_info: dict[str, Any]) -> bool:
-        """
-        Execute a merge of two entities using the robust merge implementation from kg_queries.
-
-        This delegates to the merge_entities function which provides:
-        - Atomic operations with retry logic
-        - Proper error handling
-        - Relationship preservation
+        """Merge two entities by delegating to the canonical `kg_queries.merge_entities` flow.
 
         Args:
-            primary_id: Element ID of the entity to keep
-            duplicate_id: Element ID of the entity to merge into primary
-            merge_info: Metadata about the merge (similarity scores, etc.)
+            primary_id: Neo4j element id of the entity to keep.
+            duplicate_id: Neo4j element id of the entity to merge into `primary_id`.
+            merge_info: Candidate metadata (for example similarity scores) used to build a
+                human-readable merge reason.
 
         Returns:
-            True if merge succeeded, False otherwise
+            True if the merge succeeds.
+
+        Notes:
+            The merge implementation lives in `data_access.kg_queries.merge_entities` and
+            operates on application-stable `n.id` values. This method resolves element ids
+            to stable ids before crossing that module boundary.
         """
         from data_access.kg_queries import get_entity_context_for_resolution, merge_entities
 
@@ -629,11 +673,17 @@ class GraphHealingService:
             return False
 
     async def cleanup_orphaned_nodes(self, current_chapter: int) -> dict[str, Any]:
-        """
-        Remove truly orphaned provisional nodes that have no relationships
-        and have been around for too long.
+        """Delete provisional nodes that are both orphaned and stale.
 
-        Returns summary of cleanup actions.
+        Args:
+            current_chapter: Current chapter number used to compute the orphan cutoff window.
+
+        Returns:
+            Summary dict including counts for `nodes_checked` and `nodes_removed`.
+
+        Notes:
+            This cleanup intentionally targets only provisional nodes with no relationships
+            to avoid removing entities that have participated in the graph.
         """
         results = {
             "nodes_removed": 0,
@@ -688,15 +738,21 @@ class GraphHealingService:
         return results
 
     async def heal_graph(self, current_chapter: int, model: str) -> dict[str, Any]:
-        """
-        Main entry point for graph healing.
+        """Run one full healing pass for the given chapter.
 
-        Performs:
-        1. Identify and enrich provisional nodes
-        2. Graduate high-confidence nodes
-        3. Find and execute merges
+        Args:
+            current_chapter: Chapter number used for age-based scoring and retention windows.
+            model: Model name used for enrichment.
 
-        Returns summary of healing actions.
+        Returns:
+            Summary dict describing actions taken (enrichments, graduations, merges, cleanup)
+            and any warnings collected.
+
+        Notes:
+            - Enrichment is best-effort and failures are recorded via logs rather than
+              crashing the workflow.
+            - Automatic merges are executed only above a high similarity threshold and
+              after a heuristic safety validation step.
         """
         results: dict[str, Any] = {
             "chapter": current_chapter,

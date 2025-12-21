@@ -1,21 +1,13 @@
-"""
-Relationship validation system for SAGA LangGraph workflow.
+"""Validate relationship semantics for the SAGA workflow.
 
-This module provides *semantic* validation for relationships extracted from narrative text.
+This module provides semantic validation helpers for relationships extracted from narrative
+text. It is intentionally not the schema contract authority.
 
-CORE-011 contract alignment:
-- Relationship validation is *not* the schema contract authority.
-- The authoritative schema contract is enforced at persistence boundaries (commit/write paths):
-  node labels MUST be canonical (one of `VALID_NODE_LABELS`), and relationship types must be
-  safe for Cypher interpolation.
-- Therefore this validator must NOT imply that arbitrary novel node labels or relationship
-  types will be "added to the knowledge graph".
-
-This validator may still be used for:
-- Soft, informational semantic warnings (default "flexible" behavior)
-- Optional strict semantic checks when explicitly enabled (enable_strict_mode=True)
-
-If persistence rejects or canonicalizes values, that behavior is handled in the commit/persist layer.
+Notes:
+    CORE-011 contract alignment:
+    - Canonical node labels are enforced at persistence boundaries (commit/write paths).
+    - Relationship types must be safe for Cypher interpolation at persistence boundaries.
+    - This validator must not imply that unknown labels/types will be added to the graph.
 """
 
 from __future__ import annotations
@@ -105,14 +97,10 @@ QUALITY_TYPES = {
 
 
 class RelationshipValidationRule:
-    """
-    Defines a validation rule for relationship types.
+    """Define a semantic constraint for one or more relationship types.
 
-    Each rule specifies:
-    - Which relationship types it applies to
-    - Valid source entity type categories
-    - Valid target entity type categories
-    - Optional rationale for the constraint
+    A rule describes which relationship types it applies to and which source/target entity
+    labels are considered semantically typical for those types.
     """
 
     def __init__(
@@ -123,15 +111,14 @@ class RelationshipValidationRule:
         rule_name: str,
         rationale: str = "",
     ):
-        """
-        Initialize a relationship validation rule.
+        """Initialize the rule.
 
         Args:
-            relationship_types: Set of relationship types this rule applies to
-            valid_source_types: Set of valid source entity types, or "ANY"
-            valid_target_types: Set of valid target entity types, or "ANY"
-            rule_name: Name of the rule for logging
-            rationale: Explanation of why this constraint exists
+            relationship_types: Relationship types this rule applies to.
+            valid_source_types: Allowed source node labels, or `"ANY"`.
+            valid_target_types: Allowed target node labels, or `"ANY"`.
+            rule_name: Short identifier used for logging.
+            rationale: Human-readable explanation for informational diagnostics.
         """
         self.relationship_types = relationship_types
         self.valid_source_types = valid_source_types
@@ -140,17 +127,15 @@ class RelationshipValidationRule:
         self.rationale = rationale
 
     def validate(self, relationship_type: str, source_type: str, target_type: str) -> tuple[bool, str | None]:
-        """
-        Validate a relationship against this rule.
+        """Validate a relationship triple against this rule.
 
         Args:
-            relationship_type: The type of relationship
-            source_type: The type of the source entity
-            target_type: The type of the target entity
+            relationship_type: Relationship type.
+            source_type: Source node label.
+            target_type: Target node label.
 
         Returns:
-            Tuple of (is_valid, error_message)
-            If valid, error_message is None
+            Tuple of `(is_valid, message)`. When valid, message is None.
         """
         # Check if this rule applies to this relationship type
         if relationship_type not in self.relationship_types:
@@ -256,26 +241,22 @@ VALIDATION_RULES = [
 
 
 class RelationshipValidator:
-    """
-    Validates relationships for semantic correctness.
+    """Validate relationships for semantic plausibility.
 
-    **PERMISSIVE MODE** (Default):
-    This validator operates in permissive mode by default, allowing all relationships
-    and only logging informational messages. It trusts the LLM to create semantically
-    appropriate relationships for the narrative context.
+    By default, the validator runs in permissive mode: it never blocks relationships
+    and only emits informational diagnostics.
 
-    The validator can optionally flag unusual combinations for review, but never
-    blocks or rejects relationships. Unknown relationship types and entity types
-    are allowed and encouraged, supporting creative and emergent narrative patterns.
+    Notes:
+        Unknown relationship types and non-canonical entity labels may appear in extracted
+        data. Canonicalization and safety checks are enforced at persistence boundaries.
     """
 
     def __init__(self, enable_strict_mode: bool = False) -> None:
-        """
-        Initialize the relationship validator.
+        """Initialize the validator.
 
         Args:
-            enable_strict_mode: If True, enforces validation rules strictly.
-                               If False (default), operates in permissive mode.
+            enable_strict_mode: If True, enforce rules as hard failures. If False, treat
+                rule violations as informational diagnostics.
         """
         self.rules = VALIDATION_RULES
         self.known_relationship_types = RELATIONSHIP_TYPES
@@ -283,22 +264,22 @@ class RelationshipValidator:
         self.enable_strict_mode = enable_strict_mode
 
     def validate_relationship_type(self, relationship_type: str) -> tuple[bool, str | None]:
-        """
-        Check if a relationship type is recognized by the application's reference vocabulary.
-
-        Contract notes (CORE-011):
-        - Unknown relationship types are NOT automatically "added" by this validator.
-        - Persistence may still accept novel relationship types *as long as they are safe*
-          for Cypher interpolation (uppercase + `^[A-Z0-9_]+$`). That enforcement happens
-          at commit/persist boundaries, not here.
+        """Validate a relationship type against the reference vocabulary.
 
         Args:
-            relationship_type: The relationship type to validate
+            relationship_type: Relationship type to check.
 
         Returns:
-            Tuple of (is_valid, message)
-            - In flexible mode (enable_strict_mode=False), unknown types return (True, info_msg)
-            - In strict mode, unknown types return (False, error_msg)
+            Tuple of `(is_valid, message)`.
+
+            In permissive mode, unknown types return `(True, info_message)`.
+
+            In strict mode, unknown types return `(False, error_message)`.
+
+        Notes:
+            CORE-011: This validator does not expand the schema. Persistence may still
+            accept novel relationship types if they are safe for Cypher interpolation;
+            that safety enforcement happens at commit/persist boundaries, not here.
         """
         if relationship_type not in self.known_relationship_types:
             msg = (
@@ -315,22 +296,24 @@ class RelationshipValidator:
         return True, None
 
     def validate_entity_types(self, source_type: str, target_type: str) -> tuple[bool, list[str]]:
-        """
-        Check if entity types are recognized by the canonical label set.
-
-        Contract notes (CORE-011):
-        - Unknown entity types are NOT "added" as labels.
-        - Persistence enforces canonical node labels; intake may include subtypes (e.g., "Guild")
-          but those must be canonicalized (e.g., -> "Organization") before writing.
+        """Validate entity labels against the canonical label set.
 
         Args:
-            source_type: The source entity type
-            target_type: The target entity type
+            source_type: Source entity label.
+            target_type: Target entity label.
 
         Returns:
-            Tuple of (all_valid, messages)
-            - In flexible mode: always (True, messages) (informational warnings only)
-            - In strict mode: (False, messages) if either type is not in VALID_NODE_LABELS
+            Tuple of `(all_valid, messages)`.
+
+            In permissive mode, this returns `(True, messages)` (informational only).
+
+            In strict mode, this returns `(False, messages)` when any label is not in the
+            canonical set.
+
+        Notes:
+            CORE-011: Unknown entity labels are not added as new labels. Persistence
+            enforces canonical node labels; extracted subtypes must be mapped to a
+            canonical label before writing.
         """
         messages: list[str] = []
 
@@ -351,20 +334,19 @@ class RelationshipValidator:
         return len(messages) == 0, messages
 
     def validate_semantic_compatibility(self, relationship_type: str, source_type: str, target_type: str) -> tuple[bool, list[str]]:
-        """
-        Validate that the relationship makes semantic sense for the entity types.
-
-        In permissive mode (default), this always returns True and may log
-        informational messages about unusual combinations.
+        """Validate semantic compatibility of a relationship triple.
 
         Args:
-            relationship_type: The type of relationship
-            source_type: The type of the source entity
-            target_type: The type of the target entity
+            relationship_type: Relationship type.
+            source_type: Source node label.
+            target_type: Target node label.
 
         Returns:
-            Tuple of (is_valid, list of error/info messages)
-            In permissive mode, is_valid is always True.
+            Tuple of `(is_valid, messages)`.
+
+            In permissive mode, `is_valid` is always True and messages are informational.
+
+            In strict mode, `is_valid` is False when any rule rejects the combination.
         """
         info_messages = []
 
@@ -398,24 +380,20 @@ class RelationshipValidator:
         target_type: str,
         severity_mode: Literal["strict", "flexible"] = "flexible",
     ) -> tuple[bool, list[str], list[str]]:
-        """
-        Perform complete validation of a relationship.
-
-        In permissive mode (default), this always returns valid=True and only
-        logs informational messages.
+        """Validate a relationship and return diagnostics.
 
         Args:
-            relationship_type: The type of relationship
-            source_name: Name of the source entity
-            source_type: Type of the source entity
-            target_name: Name of the target entity
-            target_type: Type of the target entity
-            severity_mode: "strict" fails on warnings, "flexible" allows them
-                          (Note: permissive mode overrides this)
+            relationship_type: Relationship type.
+            source_name: Source entity name (for diagnostic messages only).
+            source_type: Source node label.
+            target_name: Target entity name (for diagnostic messages only).
+            target_type: Target node label.
+            severity_mode: Controls whether strict-mode warnings are treated as errors.
 
         Returns:
-            Tuple of (is_valid, list of errors, list of warnings/info)
-            In permissive mode, is_valid is always True and errors is always empty.
+            Tuple of `(is_valid, errors, warnings)`.
+
+            In permissive mode, `is_valid` is always True and `errors` is always empty.
         """
         errors = []
         info_warnings = []
@@ -470,7 +448,7 @@ _validator = None
 
 
 def get_relationship_validator() -> RelationshipValidator:
-    """Get or create the global relationship validator instance."""
+    """Return the process-global relationship validator instance."""
     global _validator
     if _validator is None:
         _validator = RelationshipValidator()

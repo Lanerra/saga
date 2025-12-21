@@ -1,15 +1,15 @@
 # core/langgraph/nodes/summary_node.py
-"""
-Summarization node for LangGraph workflow.
+"""Summarize a chapter for use as future drafting context.
 
-This module contains the chapter summarization logic for the LangGraph-based
-narrative generation workflow.
+This module defines the summarization node that produces a short chapter summary,
+persists it to Neo4j, and externalizes the rolling summary window to keep workflow
+state small.
 
 Migration Reference: docs/phase2_migration_plan.md - Step 2.3
 
-New Functionality:
-- Not in SAGA 1.0, but needed for long context management
-- Generates concise summaries for use in future chapter context
+Notes:
+    This node performs LLM I/O and Neo4j writes. Summarization is treated as
+    best-effort and should not block the pipeline on failures.
 """
 
 from __future__ import annotations
@@ -36,27 +36,27 @@ logger = structlog.get_logger(__name__)
 
 
 async def summarize_chapter(state: NarrativeState) -> NarrativeState:
-    """
-    Generate chapter summary for context in future chapters.
+    """Generate and persist a concise summary of the current chapter.
 
-    This is the main LangGraph node function for chapter summarization.
-    It takes the final chapter text, generates a concise 2-3 sentence summary,
-    persists it to Neo4j, and updates the state's summary history.
-
-    NEW FUNCTIONALITY (not in SAGA 1.0)
-
-    Process Flow:
-    1. Validate draft text exists
-    2. Generate summary using fast extraction model
-    3. Parse summary from LLM response
-    4. Persist summary to Neo4j Chapter node
-    5. Update state with summary added to rolling window
+    The summary is used as compact context in later chapters. The rolling window of
+    summaries is externalized via `ContentManager.save_list_of_texts()` to avoid
+    bloating workflow state.
 
     Args:
-        state: Current narrative state containing final draft_text
+        state: Workflow state.
 
     Returns:
-        Updated state with summary added to previous_chapter_summaries
+        Updated state containing:
+        - summaries_ref: Content reference for the rolling summary window.
+        - current_summary: Summary text for the current chapter.
+        - current_node: `"summarize"`.
+
+        If the draft is missing/empty, returns a no-op update.
+        If summarization fails, returns a best-effort no-op update and does not set
+        `has_fatal_error`.
+
+    Notes:
+        This node performs LLM I/O and Neo4j writes. Failures are non-fatal by design.
     """
     logger.info(
         "summarize_chapter: starting summarization",
@@ -202,11 +202,16 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
 
 
 def _parse_summary_response(response_text: str) -> str | None:
-    """
-    Parse summary from LLM JSON response.
+    """Parse a summary from an LLM response.
 
-    The template expects a JSON object with a "summary" key.
-    Falls back to treating the entire response as the summary.
+    The canonical template returns a JSON object with a `"summary"` key, but this
+    parser falls back to using the raw response when JSON parsing fails.
+
+    Args:
+        response_text: Raw LLM response.
+
+    Returns:
+        Parsed summary text, or `None` when no plausible summary can be derived.
     """
     parsed, _candidates, _parse_errors = try_load_json_from_response(
         response_text,
@@ -232,15 +237,14 @@ async def _save_summary_to_neo4j(
     chapter_number: int,
     summary: str,
 ) -> None:
-    """
-    Save chapter summary to Neo4j.
-
-    Updates the Chapter node with the summary text.
-    Creates the Chapter node if it doesn't exist.
+    """Persist the chapter summary to Neo4j.
 
     Args:
-        chapter_number: Chapter number to update
-        summary: Summary text to save
+        chapter_number: Chapter number to update.
+        summary: Summary text to save.
+
+    Notes:
+        Errors are logged and swallowed because summarization is a non-critical step.
     """
     # Canonical Chapter persistence: ensure Chapter.id is always present and stable.
     query, parameters = chapter_queries.build_chapter_upsert_statement(
@@ -273,25 +277,20 @@ def _write_chapter_summary_file(
     summary_text: str,
     project_dir: str | None,
 ) -> None:
-    """
-    Write per-chapter summary file to the summaries/ directory.
+    """Write a per-chapter Markdown summary file.
 
     Format:
         summaries/chapter_{chapter_number:03d}.md
 
-    Content:
-        ---                       # YAML front matter
-        chapter: N
-        generated_at: ISO-8601
-        ---
+    Args:
+        chapter_number: Chapter number used in the filename. If missing/invalid, this
+            is a no-op.
+        summary_text: Summary body text.
+        project_dir: Base project directory containing the `summaries/` folder.
 
-        {summary_text}
-
-    Behavior:
-    - Uses project_dir from state; if missing/invalid, this is a no-op.
-    - Creates summaries/ directory if it does not exist.
-    - Overwrites existing file for idempotence.
-    - Normalizes any literal "\\n" sequences into real newlines in the body.
+    Notes:
+        - Overwrites existing files for idempotence.
+        - Normalizes literal `"\\n"` sequences into real newlines in the body.
     """
     if not chapter_number or chapter_number <= 0:
         # Graceful no-op: invalid or missing chapter number

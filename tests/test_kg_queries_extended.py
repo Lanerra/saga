@@ -199,7 +199,6 @@ class TestMergeEntitiesExtended:
         """Test merge retry logic on failure."""
         # Fail twice, succeed on third
         # Error must contain "deadlock", "locked", "transaction", or "entitynotfound" to trigger retry
-        mock_execute_atomic = AsyncMock(side_effect=[Exception("Deadlock detected"), Exception("Database is locked"), True])
 
         # We need to patch _execute_atomic_merge directly if we want to test the retry wrapper logic specifically,
         # OR patch neo4j_manager to fail then succeed.

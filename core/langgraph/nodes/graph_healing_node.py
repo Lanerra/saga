@@ -1,9 +1,13 @@
 # core/langgraph/nodes/graph_healing_node.py
-"""
-Graph Healing Node for SAGA LangGraph Workflow.
+"""Heal the knowledge graph after chapter persistence.
 
-This node runs after chapter finalization to heal provisional nodes
-and merge semantically similar entities in the knowledge graph.
+This module defines the graph healing node that runs after chapter finalization.
+It enriches provisional nodes, graduates them when confidence is sufficient, and
+merges semantically similar entities.
+
+Notes:
+    Healing is best-effort: failures do not block the workflow. Warnings returned
+    by the healing service are propagated into state for observability.
 """
 
 from __future__ import annotations
@@ -17,21 +21,28 @@ logger = structlog.get_logger(__name__)
 
 
 async def heal_graph(state: NarrativeState) -> NarrativeState:
-    """
-    Heal the knowledge graph by enriching provisional nodes and merging duplicates.
-
-    This node runs after each chapter finalization to:
-    1. Identify provisional nodes that need enrichment
-    2. Calculate confidence scores based on accumulated evidence
-    3. Enrich nodes with missing attributes using LLM inference
-    4. Graduate nodes from provisional status when confidence is high
-    5. Find and merge semantically similar entities
+    """Heal the knowledge graph by enriching provisional nodes and merging duplicates.
 
     Args:
-        state: Current narrative state
+        state: Workflow state.
 
     Returns:
-        Updated state with healing results
+        Updated state containing:
+        - current_node: `"heal_graph"`.
+        - last_healing_chapter: Chapter number used for the healing run.
+        - nodes_graduated / nodes_enriched / nodes_merged / nodes_removed: Running totals.
+        - provisional_count: Best-effort estimate of remaining provisional nodes.
+        - merge_candidates / pending_merges / auto_approved_merges: Merge metadata extracted
+          from service actions.
+        - last_healing_warnings / last_apoc_available: Observability snapshot.
+
+        On exceptions from the healing service, returns a non-fatal update with
+        `last_error` set to a warning message and continues the workflow.
+
+    Notes:
+        This node performs Neo4j I/O (and may perform LLM I/O indirectly via
+        [`graph_healing_service`](core/graph_healing_service.py:1)). It is designed to
+        degrade gracefully and never set `has_fatal_error`.
     """
     current_chapter = state.get("current_chapter", 1)
     model = state.get("extraction_model", "qwen3-a3b")
@@ -118,7 +129,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             "healing_history": healing_history,
             # Snapshot for callers/tests so warnings are not "silent degradation".
             "last_healing_warnings": healing_warnings,
-            "last_apoc_available": results.get("apoc_available"),
+            "last_apoc_available": None if results.get("apoc_available") is None else bool(results.get("apoc_available")),
         }
 
     except Exception as e:

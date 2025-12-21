@@ -1232,8 +1232,8 @@ class TestGetReliableKGFactsForDraftingPrompt:
         with patch.object(config, "DEFAULT_PROTAGONIST_NAME", "DefaultHero"):
             with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
                 with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
-                    with patch("prompts.prompt_data_getters._gather_novel_info_facts") as mock_novel:
-                        with patch("prompts.prompt_data_getters._gather_character_facts") as mock_char:
+                    with patch("prompts.prompt_data_getters._gather_novel_info_facts"):
+                        with patch("prompts.prompt_data_getters._gather_character_facts"):
                             mock_discover.return_value = set()
                             mock_filter.return_value = set()
 
@@ -1246,8 +1246,8 @@ class TestGetReliableKGFactsForDraftingPrompt:
     async def test_returns_no_facts_message_when_empty(self):
         with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
             with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
-                with patch("prompts.prompt_data_getters._gather_novel_info_facts") as mock_novel:
-                    with patch("prompts.prompt_data_getters._gather_character_facts") as mock_char:
+                with patch("prompts.prompt_data_getters._gather_novel_info_facts"):
+                    with patch("prompts.prompt_data_getters._gather_character_facts"):
                         mock_discover.return_value = set()
                         mock_filter.return_value = set()
 

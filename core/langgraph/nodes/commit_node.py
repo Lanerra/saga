@@ -1,65 +1,24 @@
 # core/langgraph/nodes/commit_node.py
 """
-Knowledge graph commit node with two-phase deduplication for LangGraph workflow.
+Commit extracted entities and relationships to Neo4j.
 
-This module contains the deduplication and Neo4j commit logic ported from
-processing/entity_deduplication.py and various data_access modules for use
-in the LangGraph-based narrative generation workflow.
-
-## Two-Phase Deduplication Architecture
-
-This module implements a two-phase deduplication strategy to prevent duplicate
-entities in the knowledge graph:
-
-### Phase 1: Name-Based Deduplication (BEFORE Relationships)
-- Runs during entity extraction
-- Uses Levenshtein similarity on entity names and descriptions
-- Catches obvious duplicates with high name similarity (threshold: 0.8+)
-- Fast and efficient for clear matches
-
-### Phase 2: Relationship-Based Deduplication (AFTER Relationships)
-- Runs AFTER relationships are committed to Neo4j
-- Uses relationship pattern similarity to identify duplicates
-- Catches borderline cases that Phase 1 missed
-- Example: "Alice" vs "Alice Chen" might not merge in Phase 1, but if both
-  have identical relationships with "Bob" and "Central Lab", they're clearly
-  the same person
-
-### Why Two Phases?
-
-The critical issue is that deduplication needs relationship context, but
-relationships can't be extracted until entities exist. The two-phase approach
-solves this by:
-1. Quick deduplication before relationships (Phase 1)
-2. Relationship-aware deduplication after relationships (Phase 2)
-
-This prevents knowledge graph bloat from false negatives (duplicates not merged)
-in long-form narratives where entity references may vary across chapters.
+This module implements the Phase 2 persistence boundary for the LangGraph
+workflow:
+- Deduplicate extracted entities (name-based pre-commit).
+- Build Cypher statements for entity upserts + relationship creation + chapter node.
+- Execute all statements in a single transaction for atomicity.
+- Optionally run post-commit, relationship-aware deduplication.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.2.1
 
-Source Code Ported From:
-- processing/entity_deduplication.py:
-  - check_entity_similarity() (lines 39-116)
-  - should_merge_entities() (lines 119-160)
-  - prevent_character_duplication() (lines 163-200)
-  - prevent_world_item_duplication() (lines 203-244)
-  - generate_entity_id() (lines 18-36)
-  - [NEW] check_relationship_pattern_similarity()
-  - [NEW] find_relationship_based_duplicates()
-  - [NEW] merge_duplicate_entities()
-- data_access/kg_queries.py:
-  - add_kg_triples_batch_to_db() (lines 1144+)
-- data_access/chapter_queries.py:
-  - save_chapter_data_to_db() (lines 25-67)
-- core/knowledge_graph_service.py:
-  - persist_entities() (lines 24-74)
+Notes:
+    This node performs Neo4j I/O and cache invalidation for `data_access` reads.
 """
 
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import structlog
@@ -67,6 +26,7 @@ import structlog
 import config
 from core.langgraph.content_manager import (
     ContentManager,
+    ContentRef,
     get_draft_text,
     get_extracted_entities,
     get_extracted_relationships,
@@ -94,48 +54,30 @@ logger = structlog.get_logger(__name__)
 
 
 async def commit_to_graph(state: NarrativeState) -> NarrativeState:
-    """
-    Deduplicate entities and commit to Neo4j knowledge graph using two-phase deduplication.
+    """Deduplicate extracted entities and commit the chapter to Neo4j.
 
-    This is the main LangGraph node function that orchestrates the commit process.
-    It handles character deduplication, world item deduplication, entity persistence,
-    relationship creation, chapter node creation, and relationship-based deduplication.
-
-    PORTED FROM: Multiple sources
-    - processing/entity_deduplication.py (deduplication logic)
-    - core/knowledge_graph_service.py (persistence)
-    - data_access/kg_queries.py (relationship creation)
-    - data_access/chapter_queries.py (chapter node creation)
-
-    Process Flow:
-    1. Phase 1 Deduplication: Deduplicate extracted characters (name matching, similarity)
-    2. Phase 1 Deduplication: Deduplicate extracted world items (category + name matching)
-    3. Convert ExtractedEntity models to CharacterProfile/WorldItem models
-    4. Persist entities to Neo4j using existing query layer
-    5. Create relationships between entities (with validation)
-    6. Create chapter node with metadata
-    7. Phase 2 Deduplication: Find and merge duplicates based on relationship patterns
-    8. Update state with merge statistics
-
-    ## Two-Phase Deduplication
-
-    Phase 1 (Steps 1-2): Name-based deduplication before relationships
-    - Fast, catches obvious duplicates
-    - Uses Levenshtein similarity on names
-
-    Phase 2 (Step 7): Relationship-based deduplication after relationships
-    - Catches borderline cases that Phase 1 missed
-    - Uses relationship pattern similarity (Jaccard similarity)
-    - Example: "Alice" and "Alice Chen" with identical relationships to
-      "Bob" and "Central Lab" are clearly the same person
+    This node treats Neo4j writes as an atomic batch: entity upserts,
+    relationships, and the chapter node are executed in one transaction.
 
     Args:
-        state: Current narrative state with extracted_entities and extracted_relationships
+        state: Workflow state. Reads extracted entities/relationships (preferring
+            externalized refs via
+            [`get_extracted_entities()`](core/langgraph/content_manager.py:914) and
+            [`get_extracted_relationships()`](core/langgraph/content_manager.py:939)).
 
     Returns:
         Updated state with:
-        - current_node set to "commit_to_graph"
-        - phase2_deduplication_merges dict with merge counts
+        - current_node: "commit_to_graph"
+        - phase2_deduplication_merges: Relationship-aware merge statistics
+
+        On errors, returns a state with `has_fatal_error` set and `last_error`
+        populated.
+
+    Notes:
+        - This node performs Neo4j I/O via
+          [`neo4j_manager.execute_cypher_batch()`](core/db_manager.py:310).
+        - After successful writes it clears `data_access` read caches to prevent
+          stale reads within the same process.
     """
     # Initialize content manager to read externalized content
     content_manager = ContentManager(state.get("project_dir", ""))
@@ -234,9 +176,11 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
         # Get embedding from ref if available
         embedding = None
-        if state.get("embedding_ref"):
+        embedding_ref_obj = state.get("embedding_ref")
+        if embedding_ref_obj is not None:
             try:
-                embedding = load_embedding(content_manager, state.get("embedding_ref", None))
+                embedding_ref = cast(ContentRef, embedding_ref_obj)
+                embedding = load_embedding(content_manager, embedding_ref)
             except Exception as e:
                 logger.warning("commit_to_graph: failed to load embedding", error=str(e))
         elif state.get("generated_embedding"):
@@ -322,17 +266,13 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
 
 def _deduplicate_entity_list(entities: list[ExtractedEntity]) -> list[ExtractedEntity]:
-    """
-    Remove duplicate entities from a list based on name.
-
-    When multiple entities have the same name, keeps only the first occurrence.
-    This prevents within-batch duplicates from creating constraint violations.
+    """Remove within-batch duplicate entities by name.
 
     Args:
-        entities: List of ExtractedEntity instances
+        entities: Extracted entities for a single commit batch.
 
     Returns:
-        List with duplicate names removed (keeps first occurrence)
+        A list with duplicate names removed (keeping the first occurrence).
     """
     seen_names: set[str] = set()
     unique_entities: list[ExtractedEntity] = []
@@ -360,21 +300,21 @@ def _deduplicate_entity_list(entities: list[ExtractedEntity]) -> list[ExtractedE
 
 
 async def _deduplicate_character(name: str, description: str, chapter: int) -> str:
-    """
-    Check for duplicate characters and return the name to use.
-
-    PORTED FROM: processing/entity_deduplication.py
-    - prevent_character_duplication() (lines 163-200)
-    - check_entity_similarity() (lines 39-116)
-    - should_merge_entities() (lines 119-160)
+    """Resolve a character name to an existing character when a likely duplicate exists.
 
     Args:
-        name: Character name from extraction
-        description: Character description
-        chapter: Current chapter number
+        name: Extracted character name.
+        description: Extracted character description used for similarity checks.
+        chapter: Chapter number used for logging/provenance.
 
     Returns:
-        Name to use (either existing character name or original name)
+        The name to use for persistence. This may be an existing character name when
+        deduplication decides a merge is appropriate, otherwise the original `name`.
+
+    Notes:
+        This helper performs similarity checks (which may involve I/O) when duplicate
+        prevention is enabled. If duplicate prevention is disabled, it returns `name`
+        unchanged.
     """
     # Check if duplicate prevention is enabled in config
     if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
@@ -411,23 +351,22 @@ async def _deduplicate_character(name: str, description: str, chapter: int) -> s
 
 
 async def _deduplicate_world_item(name: str, category: str, description: str, chapter: int) -> str:
-    """
-    Check for duplicate world items and return the ID to use.
-
-    PORTED FROM: processing/entity_deduplication.py
-    - prevent_world_item_duplication() (lines 203-244)
-    - check_entity_similarity() (lines 39-116)
-    - should_merge_entities() (lines 119-160)
-    - generate_entity_id() (lines 18-36)
+    """Resolve a world item to a stable identifier suitable for persistence.
 
     Args:
-        name: World item name from extraction
-        category: World item category
-        description: World item description
-        chapter: Current chapter number
+        name: Extracted world item name.
+        category: Extracted world item category (used in deterministic ID generation).
+        description: Extracted world item description used for similarity checks.
+        chapter: Chapter number used for deterministic IDs and provenance.
 
     Returns:
-        ID to use (either existing world item ID or new deterministic ID)
+        Stable world-item identifier to use for persistence. When duplicate prevention
+        is disabled, this is a deterministic ID derived from `name`, `category`, and
+        `chapter`. When enabled, this may instead be an existing item ID.
+
+    Notes:
+        This helper may perform I/O for similarity checks when duplicate prevention
+        is enabled.
     """
     # Check if duplicate prevention is enabled in config
     if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
@@ -460,7 +399,8 @@ async def _deduplicate_world_item(name: str, category: str, description: str, ch
                 category=category,
                 similarity=similar_entity.get("similarity", 0.0),
             )
-            return existing_id
+            if isinstance(existing_id, str) and existing_id:
+                return existing_id
 
     # No merge - generate new deterministic ID
     return generate_entity_id(name, category, chapter)
@@ -710,18 +650,18 @@ async def _create_chapter_node(
     summary: str | None,
     embedding: list[float] | None = None,
 ) -> None:
-    """
-    Create chapter node in Neo4j with metadata.
-
-    PORTED FROM: data_access/chapter_queries.py
-    - save_chapter_data_to_db() (lines 25-67)
+    """Create or update the Chapter node with metadata.
 
     Args:
-        chapter_number: Chapter number
-        text: Chapter text content
-        word_count: Word count for metadata
-        summary: Optional chapter summary
-        embedding: Optional embedding vector
+        chapter_number: Chapter number to persist.
+        text: Chapter text content (used for provenance; may not be persisted directly).
+        word_count: Word count metadata.
+        summary: Optional chapter summary.
+        embedding: Optional embedding vector.
+
+    Notes:
+        Failures are logged and swallowed; chapter node creation is treated as
+        best-effort within the commit flow.
     """
     try:
         # Convert embedding to numpy array if present
@@ -754,19 +694,15 @@ async def _build_entity_persistence_statements(
     world_items: list[WorldItem],
     chapter_number: int,
 ) -> list[tuple[str, dict]]:
-    """
-    Build Cypher statements for entity persistence without executing them.
-
-    This extracts the statement-building logic from knowledge_graph_service
-    so statements can be batched into a single transaction.
+    """Build Cypher statements to persist entities.
 
     Args:
-        characters: List of CharacterProfile models
-        world_items: List of WorldItem models
-        chapter_number: Current chapter for tracking
+        characters: Character profiles to upsert.
+        world_items: World items to upsert.
+        chapter_number: Chapter number used for provenance.
 
     Returns:
-        List of (cypher_query, parameters) tuples
+        List of `(cypher_query, parameters)` tuples suitable for batched execution.
     """
     statements: list[tuple[str, dict]] = []
 
@@ -816,23 +752,20 @@ async def _build_relationship_statements(
     chapter: int,
     is_from_flawed_draft: bool,
 ) -> list[tuple[str, dict]]:
-    """
-    Build Cypher statements for relationships without executing them.
-
-    This builds the same triples as _create_relationships but returns
-    Cypher statements instead of executing them.
+    """Build Cypher statements to persist extracted relationships.
 
     Args:
-        relationships: List of ExtractedRelationship instances
-        char_entities: List of character ExtractedEntity instances
-        world_entities: List of world item ExtractedEntity instances
-        char_mappings: Character name mappings (old -> deduplicated)
-        world_mappings: World item name to ID mappings
-        chapter: Current chapter number
-        is_from_flawed_draft: Whether relationships are from unrevised draft
+        relationships: Extracted relationships to persist.
+        char_entities: Extracted character entities used for type resolution.
+        world_entities: Extracted world entities used for type resolution.
+        char_mappings: Name deduplication mappings for characters.
+        world_mappings: Name/identifier mappings for world items used by persistence.
+        chapter: Chapter number used for provenance.
+        is_from_flawed_draft: Whether relationships originate from a draft that had
+            de-duplication applied.
 
     Returns:
-        List of (cypher_query, parameters) tuples
+        List of `(cypher_query, parameters)` tuples suitable for batched execution.
     """
     if not relationships:
         return []
@@ -863,13 +796,21 @@ async def _build_relationship_statements(
         explicit_type: str | None = None,
         stable_id: str | None = None,
     ) -> dict[str, Any]:
-        """
-        Create entity dict with canonical `type` label for Cypher label interpolation.
+        """Build an entity dictionary for relationship persistence.
 
         Contract:
         - `name` remains human-readable.
-        - `stable_id` (when present) is used for identity matching (MERGE by id).
-        - If type is missing, fall back to canonical "Item".
+        - `stable_id` (when present) is used for identity matching.
+        - Missing or empty types are canonicalized to `"Item"`.
+
+        Args:
+            name: Persisted entity name.
+            original_name: Original extracted name used for type/category lookup.
+            explicit_type: Explicit entity type override.
+            stable_id: Stable identifier used for matching.
+
+        Returns:
+            Entity dictionary used by relationship persistence.
         """
         entity_type = explicit_type if explicit_type is not None else entity_type_map.get(original_name, None)
         entity_category = entity_category_map.get(original_name, "")
@@ -888,8 +829,6 @@ async def _build_relationship_statements(
 
     # Convert to triple format
     structured_triples: list[dict[str, Any]] = []
-
-    logged_world_item_ids: set[str] = set()
 
     for rel in relationships:
         # `world_mappings` is a name canonicalization/dedup mapping (not an id mapping).

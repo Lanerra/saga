@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -389,7 +390,7 @@ def test_parse_character_extraction_response_empty():
     """Empty output is invalid JSON."""
     response = ""
 
-    with pytest.raises(Exception):
+    with pytest.raises(json.JSONDecodeError):
         _parse_character_extraction_response(response)
 
 
@@ -466,7 +467,7 @@ def test_parse_world_items_extraction_empty():
     """Empty output is invalid JSON."""
     response = ""
 
-    with pytest.raises(Exception):
+    with pytest.raises(json.JSONDecodeError):
         _parse_world_items_extraction(response)
 
 

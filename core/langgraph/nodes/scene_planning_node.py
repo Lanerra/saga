@@ -1,7 +1,15 @@
 # core/langgraph/nodes/scene_planning_node.py
+"""Plan scenes for chapter drafting.
+
+This module defines the scene planning node used by the scene-based generation
+workflow. It requests a structured scene plan from the LLM, validates the plan’s
+shape, externalizes it, and ensures any newly introduced characters exist in
+Neo4j (as provisional stubs) so downstream context retrieval can resolve them.
+"""
+
 import json
 from json import JSONDecodeError
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -13,6 +21,7 @@ from core.langgraph.content_manager import (
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.character_queries import get_all_character_names, sync_characters
+from models.agent_models import SceneDetail
 from models.kg_models import CharacterProfile
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import extract_json_candidates_from_response
@@ -35,6 +44,14 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
 
 
 def _validate_scene_plan_structure(scenes: Any) -> list[str]:
+    """Validate the structure of a scene plan candidate.
+
+    Args:
+        scenes: Parsed JSON candidate.
+
+    Returns:
+        A list of validation error messages. An empty list means the structure is valid.
+    """
     errors: list[str] = []
 
     if not isinstance(scenes, list):
@@ -59,10 +76,17 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
 
 
 def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, Any]]:
-    """
-    Parse the LLM response into a validated list of scene plan dicts.
+    """Parse a validated scene plan list from an LLM response.
 
-    Raises ValueError with actionable messages on failure.
+    Args:
+        response: Raw LLM response text.
+
+    Returns:
+        A validated list of scene dictionaries.
+
+    Raises:
+        ValueError: When no JSON candidate contains a valid list of scenes with the
+            required keys.
     """
     candidates = extract_json_candidates_from_response(response)
     if not candidates:
@@ -101,15 +125,19 @@ async def _ensure_scene_characters_exist(
     chapter_plan: list[dict],
     chapter_number: int,
 ) -> None:
-    """
-    Ensure all characters referenced in scene plans exist in Neo4j.
+    """Ensure all characters referenced by the plan exist in Neo4j.
 
-    Creates stub profiles (is_provisional=True) for any new characters
-    that the LLM introduced in scene plans but don't exist in the knowledge graph.
+    When the LLM introduces a new character in the scene plan, downstream context
+    retrieval expects that character to exist in the knowledge graph. This helper
+    creates provisional stub profiles for any missing names.
 
     Args:
-        chapter_plan: List of scene dictionaries with characters_involved
-        chapter_number: Current chapter number for tracking
+        chapter_plan: Scene plan list produced by the planner.
+        chapter_number: Chapter number used for provenance and linkage.
+
+    Notes:
+        This function performs Neo4j I/O and is best-effort. Failures are logged and
+        do not raise, because the workflow can still proceed without stubs.
     """
     # Extract all unique character names from scene plans
     scene_characters = set()
@@ -215,8 +243,24 @@ async def _ensure_scene_characters_exist(
 
 
 async def plan_scenes(state: NarrativeState) -> NarrativeState:
-    """
-    Break the chapter into scenes based on the outline.
+    """Break the chapter outline into a structured list of scenes.
+
+    Args:
+        state: Workflow state. Reads chapter outline data (preferring externalized
+            refs) and persists the resulting plan via `save_chapter_plan()`.
+
+    Returns:
+        Updated state containing:
+        - chapter_plan_ref: Content reference for the externalized plan.
+        - current_scene_index: Reset for drafting loop.
+        - current_node: `"plan_scenes"`.
+
+        If the outline is missing, returns an error update and does not set
+        `has_fatal_error`.
+
+    Notes:
+        This node performs LLM I/O and may create provisional character stubs in
+        Neo4j for any newly introduced names in the plan.
     """
     logger.info(
         "plan_scenes: planning scenes for chapter",
@@ -263,13 +307,14 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
             system_prompt=get_system_prompt("narrative_agent"),
         )
 
-        scenes = _parse_scene_plan_json_from_llm_response(response)
+        scenes_untyped = _parse_scene_plan_json_from_llm_response(response)
+        scenes = cast(list[SceneDetail], scenes_untyped)
 
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
 
         # Ensure all characters in the scene plans exist in Neo4j
         # This creates stub profiles for any new characters the LLM introduced
-        await _ensure_scene_characters_exist(scenes, chapter_number)
+        await _ensure_scene_characters_exist(scenes_untyped, chapter_number)
 
         # Externalize chapter_plan to reduce state bloat
         content_manager = ContentManager(state.get("project_dir", ""))
@@ -280,7 +325,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         # Save chapter plan to external file
         chapter_plan_ref = save_chapter_plan(
             content_manager,
-            scenes,
+            scenes_untyped,
             chapter_number,
             current_version,
         )
