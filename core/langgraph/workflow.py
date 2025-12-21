@@ -192,7 +192,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
     """
     logger.info("create_phase2_graph: building complete workflow graph")
 
-    from core.langgraph.subgraphs.extraction import create_extraction_subgraph
+    from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
     from core.langgraph.subgraphs.generation import create_generation_subgraph
     from core.langgraph.subgraphs.validation import create_validation_subgraph
 
@@ -201,7 +201,7 @@ def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
 
     # Add nodes (using subgraphs where applicable)
     workflow.add_node("generate", create_generation_subgraph())
-    workflow.add_node("extract", create_extraction_subgraph())
+    workflow.add_node("extract", create_scene_extraction_subgraph())
     workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
@@ -514,14 +514,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     # Add chapter outline generation (on-demand)
     workflow.add_node("chapter_outline", generate_chapter_outline)
 
-    from core.langgraph.subgraphs.extraction import create_extraction_subgraph
+    from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
     from core.langgraph.subgraphs.generation import create_generation_subgraph
     from core.langgraph.subgraphs.validation import create_validation_subgraph
 
     # Add all generation nodes (using subgraphs where applicable)
     workflow.add_node("generate", create_generation_subgraph())
     workflow.add_node("gen_embedding", generate_embedding)
-    workflow.add_node("extract", create_extraction_subgraph())
+    workflow.add_node("extract", create_scene_extraction_subgraph())
     workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())

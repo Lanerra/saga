@@ -660,7 +660,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     if not scene_drafts:
         logger.warning("extract_from_scenes: no scene drafts found, returning empty extraction")
         return {
-            "extracted_entities": [],
+            "extracted_entities": {"characters": [], "world_items": []},
             "extracted_relationships": [],
             "current_node": "extract_from_scenes",
         }
@@ -698,9 +698,9 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
 
     consolidated = consolidate_scene_extractions(scene_results)
 
-    extracted_entities: list[ExtractedEntity] = []
+    characters: list[ExtractedEntity] = []
     for character_dict in consolidated.get("characters", []):
-        extracted_entities.append(
+        characters.append(
             ExtractedEntity(
                 name=character_dict["name"],
                 type=character_dict["type"],
@@ -710,8 +710,9 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
             )
         )
 
+    world_items: list[ExtractedEntity] = []
     for world_item_dict in consolidated.get("world_items", []):
-        extracted_entities.append(
+        world_items.append(
             ExtractedEntity(
                 name=world_item_dict["name"],
                 type=world_item_dict["type"],
@@ -737,12 +738,13 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     logger.info(
         "extract_from_scenes: extraction complete",
         chapter=chapter_number,
-        entities_count=len(extracted_entities),
+        characters_count=len(characters),
+        world_items_count=len(world_items),
         relationships_count=len(extracted_relationships),
     )
 
     return {
-        "extracted_entities": extracted_entities,
+        "extracted_entities": {"characters": characters, "world_items": world_items},
         "extracted_relationships": extracted_relationships,
         "current_node": "extract_from_scenes",
     }
