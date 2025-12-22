@@ -43,10 +43,10 @@ class GraphHealingService:
         rather than raising, so the workflow can continue.
     """
 
-    CONFIDENCE_THRESHOLD = 0.6  # Lowered from 0.85 to make graduation achievable
-    MIN_CONFIDENCE_FOR_ENRICHMENT = 0.4
+    CONFIDENCE_THRESHOLD = 0.75  # Lowered from 0.85 to make graduation achievable
+    MIN_CONFIDENCE_FOR_ENRICHMENT = 0.55
     MERGE_SIMILARITY_THRESHOLD = 0.75
-    AUTO_MERGE_THRESHOLD = 0.95
+    AUTO_MERGE_THRESHOLD = 0.85
     AGE_GRADUATION_CHAPTERS = 5  # Graduate nodes that survive this many chapters
     ORPHAN_CLEANUP_CHAPTERS = 5  # Remove truly orphaned nodes after this many chapters
 
@@ -846,7 +846,8 @@ class GraphHealingService:
             # Calculate confidence with current chapter for age-based scoring
             confidence = await self.calculate_node_confidence(node, current_chapter)
 
-            if confidence >= self.CONFIDENCE_THRESHOLD:
+            age = current_chapter - (node.get("created_chapter") or current_chapter)
+            if confidence >= self.CONFIDENCE_THRESHOLD and age >= 1:
                 # Graduate the node
                 if await self.graduate_node(node["element_id"], confidence):
                     results["nodes_graduated"] += 1
@@ -935,8 +936,9 @@ class GraphHealingService:
                     # proceed with the original node dict.
                     updated_node = node
 
+                age = current_chapter - (updated_node.get("created_chapter") or current_chapter)
                 new_confidence = await self.calculate_node_confidence(updated_node, current_chapter)
-                if new_confidence >= self.CONFIDENCE_THRESHOLD:
+                if new_confidence >= self.CONFIDENCE_THRESHOLD and age >= 1:
                     if await self.graduate_node(node["element_id"], new_confidence):
                         results["nodes_graduated"] += 1
                         results["actions"].append(

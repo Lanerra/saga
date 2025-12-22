@@ -1026,7 +1026,8 @@ class TestBuildRelationshipStatements:
 
             assert len(statements) == 1
             query, params = statements[0]
-            assert params["object_name"] == "sword_001"
+            assert params["object_name"] == "Magic Sword"
+            assert params["object_id"] == "sword_001"
 
     async def test_validates_entity_types(self):
         """Test that entity types are validated."""
