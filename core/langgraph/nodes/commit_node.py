@@ -800,8 +800,14 @@ async def _build_relationship_statements(
 
         Contract:
         - `name` remains human-readable.
-        - `stable_id` (when present) is used for identity matching.
+        - `id` is a stable identifier used for identity matching when available.
         - Missing or empty types are canonicalized to `"Item"`.
+
+        Notes:
+            Relationship persistence may need to create provisional nodes for entities that were
+            not part of the extracted entity lists. For non-Character nodes, we generate a
+            deterministic id to avoid casing-based duplicates (for example "Crew" vs "crew")
+            and to prevent leaking deterministic ids into the `name` field.
 
         Args:
             name: Persisted entity name.
@@ -820,9 +826,21 @@ async def _build_relationship_statements(
         else:
             neo4j_type = canonicalize_entity_type_for_persistence(entity_type)
 
+        resolved_stable_id = stable_id
+        if resolved_stable_id is None and neo4j_type != "Character":
+            mapped_id = world_mappings.get(original_name)
+            if isinstance(mapped_id, str) and mapped_id:
+                resolved_stable_id = mapped_id
+            else:
+                resolved_stable_id = generate_entity_id(
+                    name=name,
+                    category=entity_category or neo4j_type.lower(),
+                    chapter=chapter,
+                )
+
         return {
             "name": name,
-            "id": stable_id,
+            "id": resolved_stable_id,
             "type": neo4j_type,
             "category": entity_category,
         }
@@ -831,13 +849,9 @@ async def _build_relationship_statements(
     structured_triples: list[dict[str, Any]] = []
 
     for rel in relationships:
-        # `world_mappings` is a name canonicalization/dedup mapping (not an id mapping).
-        # It is applied symmetrically with `char_mappings`.
+        # `char_mappings` canonicalizes character names for consistent relationship endpoints.
         source_name = char_mappings.get(rel.source_name, rel.source_name)
         target_name = char_mappings.get(rel.target_name, rel.target_name)
-
-        source_name = world_mappings.get(source_name, source_name)
-        target_name = world_mappings.get(target_name, target_name)
 
         # Use explicit types from relationship if available (from parsing "Type:Name" format)
         # Otherwise _make_entity_dict will fall back to entity_type_map
