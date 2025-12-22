@@ -382,8 +382,7 @@ def _parse_chapter_outline(
 
         # Fallback: use full response as scene description
         if not scene_description:
-            scene_description = response[:500]
-
+            scene_description = response
     chapter_outline = {
         "chapter_number": chapter_number,
         "act_number": act_number,

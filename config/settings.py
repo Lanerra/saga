@@ -240,12 +240,12 @@ class SagaSettings(BaseSettings):
     # embedding-service dependencies into unrelated workflows. Enable explicitly
     # when you want entity-level semantic deduplication and merge scoring.
     ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = False
-    ENABLE_ENTITY_EMBEDDING_DEDUPLICATION: bool = False
-    ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING: bool = False
+    ENABLE_ENTITY_EMBEDDING_DEDUPLICATION: bool = True
+    ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING: bool = True
 
     # Entity embedding similarity configuration
     ENTITY_EMBEDDING_DEDUPLICATION_TOP_K: int = 15
-    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.88
+    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.65
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"
@@ -270,19 +270,17 @@ class SagaSettings(BaseSettings):
     LLM_RETRY_ATTEMPTS: int = 3
     LLM_RETRY_DELAY_SECONDS: float = 3.0
     HTTPX_TIMEOUT: float = 600.0
-    ENABLE_LLM_NO_THINK_DIRECTIVE: bool = True
+    ENABLE_LLM_NO_THINK_DIRECTIVE: bool = False
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
     # Concurrency and Rate Limiting
-    MAX_CONCURRENT_LLM_CALLS: int = 2
+    MAX_CONCURRENT_LLM_CALLS: int = 1
     LLM_TOP_P: float = 0.8
 
     # LLM Frequency and Presence Penalties
     FREQUENCY_PENALTY_DRAFTING: float = 0.3
     PRESENCE_PENALTY_DRAFTING: float = 0.5
-    FREQUENCY_PENALTY_KG_EXTRACTION: float = 0.0
-    PRESENCE_PENALTY_KG_EXTRACTION: float = 0.5
 
     # Output and File Paths
     BASE_OUTPUT_DIR: str = "output"
@@ -295,7 +293,7 @@ class SagaSettings(BaseSettings):
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
     # Generation Parameters
-    # Token budgets (defaults are generous; override via FAST_PROFILE for laptops)
+    # Token budgets (defaults are generous)
     MAX_CONTEXT_TOKENS: int = 40960
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
@@ -337,7 +335,7 @@ class SagaSettings(BaseSettings):
 
     # De-duplication Configuration
     DEDUPLICATION_USE_SEMANTIC: bool = False
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
+    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.65
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # Duplicate Prevention Settings

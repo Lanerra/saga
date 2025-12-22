@@ -698,18 +698,42 @@ class RefactoredLLMService:
                 last_decode_error = decode_error
 
                 response_sha1 = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+                prompt_sha1 = hashlib.sha1(prompt.encode("utf-8")).hexdigest()[:12]
+                finish_reason = usage.get("finish_reason") if isinstance(usage, dict) else None
+                completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+                prompt_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+                total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
+
                 logger.warning(
                     "LLM returned invalid JSON (object expected)",
                     attempt=attempt,
                     max_attempts=max_attempts,
+                    model=model_name,
+                    requested_max_tokens=max_tokens,
+                    temperature=temperature,
+                    auto_clean_response=auto_clean_response,
+                    finish_reason=finish_reason,
+                    prompt_sha1=prompt_sha1,
+                    prompt_len=len(prompt),
                     response_sha1=response_sha1,
                     response_len=len(text),
+                    completion_tokens=completion_tokens,
+                    prompt_tokens=prompt_tokens,
+                    total_tokens=total_tokens,
                     line=decode_error.lineno,
                     column=decode_error.colno,
                 )
                 continue
 
             if not isinstance(data, dict):
+                response_sha1 = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+                logger.warning(
+                    "LLM returned JSON but root value was not an object",
+                    model=model_name,
+                    response_sha1=response_sha1,
+                    response_len=len(text),
+                    root_type=type(data).__name__,
+                )
                 raise ValueError("LLM returned JSON but root value was not an object")
 
             return data, usage

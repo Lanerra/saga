@@ -9,14 +9,30 @@ Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
 Output shape:
 - Return valid JSON only; no markdown; no code fences; no commentary.
-- Top-level object MUST be: {"character_updates": {...}}
-- Under "character_updates":
-  - keys are character names (strings)
-  - values are objects with EXACTLY these keys (no more, no less):
-    - "description" (string)
-    - "traits" (array of single-word strings: letters/numbers/hyphen only)
-    - "status" (string)
-    - "relationships" (object mapping other character names to short strings)
+- Return a single JSON object only (no extra wrapper keys).
+- Top-level object MUST be exactly: {"character_updates": { ... }}
+- "character_updates" MUST be a JSON object that maps character_name -> character_details_object.
+- If no characters are present, return: {"character_updates": {}}
+
+Example skeleton (illustrative; replace with real extracted names and details):
+{
+  "character_updates": {
+    "Elara": {
+      "description": "One sentence summary grounded in the chapter text.",
+      "traits": ["brave", "curious"],
+      "status": "Active protagonist",
+      "relationships": {"Marcus": "friend", "The Queen": "enemy"}
+    }
+  }
+}
+
+Per-character entry (inside character_updates):
+- key = character name (string)
+- value = object with EXACTLY these keys (no more, no less):
+  - "description" (string)
+  - "traits" (array of single-word strings: letters/numbers/hyphen only)
+  - "status" (string)
+  - "relationships" (object mapping other character names to short strings)
 - Do NOT add fields like "type" or "category".
 
 Extraction rules:

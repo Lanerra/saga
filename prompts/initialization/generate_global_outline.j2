@@ -12,23 +12,43 @@ Main characters:
 
 ## Task
 
-Return a single JSON object with EXACTLY these keys (no more, no less):
-- "act_count" (number)
-- "acts" (array)
-- "inciting_incident" (string)
-- "midpoint" (string)
-- "climax" (string)
-- "resolution" (string)
-- "character_arcs" (array)
-- "thematic_progression" (string)
-- "pacing_notes" (string)
+Return a single JSON object matching this EXACT structure:
 
-Act constraints:
+```json
+{
+  "act_count": 3,
+  "acts": [
+    {
+      "act_number": 1,
+      "title": "Act Title",
+      "summary": "Brief summary of the act.",
+      "key_events": ["Event 1", "Event 2"],
+      "chapters_start": 1,
+      "chapters_end": 7
+    }
+  ],
+  "inciting_incident": "The event that starts the story.",
+  "midpoint": "Major midpoint event or revelation.",
+  "climax": "The story's climax.",
+  "resolution": "How the story resolves.",
+  "character_arcs": [
+    {
+      "character_name": "Character Name",
+      "starting_state": "Character's state at story start.",
+      "ending_state": "Character's state at story end.",
+      "key_moments": ["Moment 1", "Moment 2"]
+    }
+  ],
+  "thematic_progression": "How the theme develops throughout the story.",
+  "pacing_notes": "Notes on pacing and structure."
+}
+```
+
+Constraints:
 - act_count must be 3 or 5.
-- Allocate chapters 1..{{ total_chapters }} with no gaps/overlaps.
-- Each act object MUST include: act_number, title, summary, key_events, chapters_start, chapters_end.
+- Allocate chapters 1..{{ total_chapters }} with no gaps/overlaps across all acts.
+- Each act object MUST include all six fields shown: act_number, title, summary, key_events, chapters_start, chapters_end.
+- Include character_arcs for all main characters: {{ character_names | join(", ") }}
+- Each character_arc MUST include: character_name, starting_state, ending_state, key_moments.
 
-Character arcs:
-- Include arcs for all main characters: {{ character_names | join(", ") }}
-
-Return the JSON object.
+Return ONLY the JSON object, no additional text.

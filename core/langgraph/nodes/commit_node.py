@@ -937,6 +937,7 @@ async def _build_relationship_statements(
                     END
             )
 
+            WITH subj
             CALL apoc.merge.node(
                 [$object_label],
                 CASE
