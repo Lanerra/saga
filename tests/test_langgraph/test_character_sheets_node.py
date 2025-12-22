@@ -502,22 +502,3 @@ async def test_generate_character_sheet_uses_existing_traits(base_state, mock_ll
         assert call_args is not None
         prompt = call_args.kwargs.get("prompt", "")
         assert "brave" in prompt or "Existing traits" in prompt or len(prompt) > 0
-
-
-@pytest.mark.asyncio
-async def test_generate_character_sheet_uses_grammar(base_state, mock_llm_service, mock_schema_validator):
-    """Verify character sheet generation uses GBNF grammar."""
-    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
-        mock_validate.return_value = []
-
-        await _generate_character_sheet(
-            state=base_state,
-            character_name="Hero",
-            other_characters=[],
-        )
-
-        call_args = mock_llm_service.async_call_llm.call_args
-        assert call_args is not None
-        kwargs = call_args.kwargs
-        assert "grammar" in kwargs
-        assert "root ::= character-sheet" in kwargs["grammar"]

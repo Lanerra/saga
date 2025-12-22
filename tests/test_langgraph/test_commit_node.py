@@ -235,11 +235,14 @@ class TestCommitToGraph:
                             statements = args[0]
 
                             # Find relationship statements and assert predicate type is normalized.
-                            rel_queries = [q for (q, _p) in statements if isinstance(q, str) and "-[r:`" in q]
+                            rel_statements = [(q, p) for (q, p) in statements if isinstance(q, str) and "CALL apoc.merge.relationship" in q]
 
-                            assert any("`WORKS_WITH`" in q for q in rel_queries)
-                            assert all("`COLLABORATES_WITH`" not in q for q in rel_queries)
-                            assert all("`SHOULD_NOT_SEE`" not in q for q in rel_queries)
+                            assert rel_statements, "Expected at least one relationship statement"
+
+                            # Contract: relationship type is passed as a parameter (not interpolated into the query string).
+                            assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
+                            assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
+                            assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
 
     async def test_commit_handles_errors_gracefully(
         self,
@@ -916,8 +919,10 @@ class TestBuildRelationshipStatements:
 
             assert len(statements) == 1
             query, params = statements[0]
-            assert "MERGE" in query
-            assert "KNOWS" in query
+
+            assert "CALL apoc.merge.relationship" in query
+            assert params["predicate_clean"] == "KNOWS"
+
             assert params["subject_name"] == "Alice"
             assert params["object_name"] == "Bob"
 
@@ -1073,10 +1078,10 @@ class TestBuildRelationshipStatements:
 
     async def test_canonicalizes_subtype_labels_for_persistence(self):
         """
-        CORE-011: Subtype labels (e.g., "Guild") must be canonicalized at persistence boundary.
+        CORE-011: Subtype labels (e.g., "Guild") must not cross persistence boundaries.
 
-        This test verifies the commit-node relationship statement builder canonicalizes
-        the object node label to a canonical schema label (Guild -> Organization).
+        With the current canonical label set, "Guild" is not a valid node label and must be
+        rejected at the persistence boundary.
         """
         relationships = [
             ExtractedRelationship(
@@ -1102,26 +1107,23 @@ class TestBuildRelationshipStatements:
         world_entities = [
             ExtractedEntity(
                 name="The Guild",
-                type="Guild",  # subtype/alias, must canonicalize
+                type="Guild",
                 description="A guild",
                 first_appearance_chapter=1,
                 attributes={"category": "Guild"},
             )
         ]
 
-        statements = await _build_relationship_statements(
-            relationships,
-            char_entities,
-            world_entities,
-            {"Alice": "Alice"},
-            {"The Guild": "The Guild"},
-            1,
-            False,
-        )
-
-        assert len(statements) == 1
-        query, _params = statements[0]
-        assert "(obj:Organization" in query  # canonical label, not ":Guild"
+        with pytest.raises(ValueError, match=r"Invalid entity type 'Guild' at persistence boundary"):
+            await _build_relationship_statements(
+                relationships,
+                char_entities,
+                world_entities,
+                {"Alice": "Alice"},
+                {"The Guild": "The Guild"},
+                1,
+                False,
+            )
 
     async def test_commit_rejects_unknown_entity_label_at_persistence_boundary(self, tmp_path):
         """

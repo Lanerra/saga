@@ -1,13 +1,19 @@
-"""
-Relationship normalization service for SAGA.
+"""Normalize extracted relationship types against an evolving vocabulary.
 
-This service maintains a self-organizing vocabulary of relationship types,
-normalizing semantically similar relationships while allowing genuinely
-novel relationships to emerge.
+This module maintains a vocabulary of relationship types and provides helpers to:
+- Canonicalize case/punctuation variants.
+- Normalize semantically similar relationship types when similarity is high.
+- Optionally use an LLM to disambiguate borderline similarity matches.
+- Record usage statistics and prune rarely-used types.
+
+Notes:
+    Normalization is best-effort. When embeddings or LLM calls fail, the implementation
+    prefers returning the input relationship type unchanged rather than raising.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any
 
@@ -23,10 +29,13 @@ logger = structlog.get_logger(__name__)
 
 
 class RelationshipNormalizationService:
-    """Service for normalizing relationship types against accumulated vocabulary."""
+    """Normalize relationship types against an accumulated vocabulary.
 
-    def __init__(self):
-        """Initialize the normalization service."""
+    The primary entrypoint is [`core.relationship_normalization_service.RelationshipNormalizationService.normalize_relationship_type()`](core/relationship_normalization_service.py:33).
+    """
+
+    def __init__(self) -> None:
+        """Initialize the service and in-memory embedding cache."""
         self.embedding_cache: dict[str, np.ndarray] = {}
 
     async def normalize_relationship_type(
@@ -36,17 +45,28 @@ class RelationshipNormalizationService:
         vocabulary: dict[str, Any],
         current_chapter: int,
     ) -> tuple[str, bool, float]:
-        """
-        Normalize a relationship type against existing vocabulary.
+        """Normalize a relationship type against an existing vocabulary.
 
         Args:
-            rel_type: The extracted relationship type
-            rel_description: Context description of the relationship
-            vocabulary: Current relationship vocabulary (canonical_type -> RelationshipUsage dict)
-            current_chapter: Current chapter number
+            rel_type: Extracted relationship type.
+            rel_description: Brief natural-language description for diagnostics and optional
+                LLM disambiguation.
+            vocabulary: Relationship vocabulary keyed by canonical type. Values are usage
+                dicts with counters and example descriptions.
+            current_chapter: Chapter number used for usage tracking and pruning windows.
 
         Returns:
-            Tuple of (normalized_type, was_normalized, similarity_score)
+            Tuple of `(normalized_type, was_normalized, similarity_score)`.
+
+            `similarity_score` is the best-match cosine similarity when embeddings are
+            available, or 0.0 when no comparison could be performed.
+
+        Notes:
+            - If normalization is disabled, this returns `(rel_type, False, 0.0)`.
+            - Case/punctuation variants can be normalized even when semantic similarity is
+              not computed.
+            - If the best similarity falls in an ambiguous range and LLM disambiguation is
+              enabled, an LLM decision can override the threshold outcome.
         """
         # Early exit if normalization disabled
         if not config.ENABLE_RELATIONSHIP_NORMALIZATION:
@@ -110,6 +130,7 @@ class RelationshipNormalizationService:
                 rel_description,
                 best_match,
                 vocabulary[best_match],
+                use_json_mode=config.REL_NORM_LLM_DISAMBIGUATION_JSON_MODE,
             )
 
             if should_normalize:
@@ -132,10 +153,13 @@ class RelationshipNormalizationService:
         return canonical_form, False, best_similarity
 
     def _canonicalize(self, rel_type: str) -> str:
-        """
-        Canonicalize relationship type for comparison.
+        """Canonicalize a relationship type for comparison.
 
-        Handles case normalization and punctuation normalization based on config.
+        Notes:
+            Canonicalization is controlled by configuration flags and may:
+            - Uppercase the type.
+            - Replace hyphens/spaces with underscores.
+            - Strip other punctuation.
         """
         canonical = rel_type
 
@@ -153,11 +177,16 @@ class RelationshipNormalizationService:
         return canonical
 
     async def _find_most_similar(self, rel_type: str, vocabulary_types: list[str]) -> tuple[str, float]:
-        """
-        Find most semantically similar relationship type in vocabulary.
+        """Find the most semantically similar vocabulary type for an input type.
+
+        Args:
+            rel_type: Canonicalized relationship type to compare.
+            vocabulary_types: Candidate vocabulary keys to compare against.
 
         Returns:
-            Tuple of (most_similar_type, similarity_score)
+            Tuple of `(most_similar_type, similarity_score)`.
+
+            If embeddings cannot be computed, returns `("", 0.0)`.
         """
         # Get embedding for new type
         if rel_type not in self.embedding_cache:
@@ -201,7 +230,11 @@ class RelationshipNormalizationService:
         return best_match or "", best_similarity
 
     async def _get_embedding(self, text: str) -> np.ndarray | None:
-        """Get embedding for text using embedding service."""
+        """Fetch an embedding for a relationship type string.
+
+        Notes:
+            This is best-effort. Failures return None and are logged.
+        """
         try:
             embedding = await llm_service.async_get_embedding(text)
             return embedding
@@ -219,18 +252,24 @@ class RelationshipNormalizationService:
         new_description: str,
         existing_type: str,
         existing_usage: dict[str, Any],
+        *,
+        use_json_mode: bool = False,
     ) -> bool:
-        """
-        Use LLM to determine if relationships are semantically equivalent.
+        """Disambiguate borderline similarity matches using an LLM.
 
         Args:
-            new_type: New relationship type
-            new_description: Description of new relationship
-            existing_type: Existing vocabulary type
-            existing_usage: Usage data for existing type
+            new_type: Extracted relationship type.
+            new_description: Description for the extracted relationship instance.
+            existing_type: Candidate canonical vocabulary type.
+            existing_usage: Usage dict for `existing_type`, including example descriptions.
+            use_json_mode: If True, require a strict JSON object decision payload.
 
         Returns:
-            True if should normalize to existing type
+            True when the LLM indicates the new type should normalize to `existing_type`.
+
+        Raises:
+            ValueError: When `use_json_mode=True` and the LLM returns a structurally invalid
+                decision payload.
         """
         # Get examples of existing usage
         examples = existing_usage.get("example_descriptions", [])[:3]
@@ -248,22 +287,54 @@ class RelationshipNormalizationService:
             },
         )
 
+        if use_json_mode:
+            data, _ = await llm_service.async_call_llm_json_object(
+                model_name=config.SMALL_MODEL,
+                prompt=prompt,
+                max_tokens=16384,
+            )
+
+            allowed_keys = {"decision"}
+            actual_keys = set(data.keys())
+            if actual_keys != allowed_keys:
+                raise ValueError("LLM JSON decision must have exactly one key: 'decision'. " f"actual_keys={sorted(actual_keys)}")
+
+            decision_value = data["decision"]
+            if not isinstance(decision_value, str):
+                raise ValueError("LLM JSON decision value must be a string")
+
+            if decision_value == "NORMALIZE":
+                decision_should_normalize = True
+            elif decision_value == "DISTINCT":
+                decision_should_normalize = False
+            else:
+                raise ValueError('LLM JSON decision must be "NORMALIZE" or "DISTINCT"')
+
+            logger.info(
+                "LLM disambiguation JSON decision",
+                new_type=new_type,
+                existing_type=existing_type,
+                decision=decision_value,
+            )
+            return decision_should_normalize
+
         try:
             response, _ = await llm_service.async_call_llm(
                 model_name=config.SMALL_MODEL,
                 prompt=prompt,
-                max_tokens=10,
+                max_tokens=16384,
+            )
+
+            response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
+            logger.info(
+                "LLM disambiguation legacy response",
+                new_type=new_type,
+                existing_type=existing_type,
+                response_sha1=response_sha1,
+                response_len=len(response),
             )
 
             decision = response.strip().upper()
-
-            logger.info(
-                "LLM disambiguation result",
-                new_type=new_type,
-                existing_type=existing_type,
-                decision=decision,
-            )
-
             return "NORMALIZE" in decision
 
         except Exception as e:
@@ -272,7 +343,6 @@ class RelationshipNormalizationService:
                 error=str(e),
                 exc_info=True,
             )
-            # Conservative fallback - treat as distinct
             return False
 
     def update_vocabulary_usage(
@@ -284,19 +354,18 @@ class RelationshipNormalizationService:
         was_normalized: bool,
         original_type: str | None = None,
     ) -> dict[str, Any]:
-        """
-        Update vocabulary with usage statistics.
+        """Update vocabulary usage counters and examples for a relationship type.
 
         Args:
-            vocabulary: Current vocabulary dict
-            rel_type: The (possibly normalized) relationship type
-            rel_description: Description of the relationship
-            current_chapter: Current chapter number
-            was_normalized: Whether this was normalized from another type
-            original_type: Original type if normalized
+            vocabulary: Vocabulary dict to update.
+            rel_type: Canonical (possibly normalized) relationship type.
+            rel_description: Example description to store for this type.
+            current_chapter: Chapter number used for `first_used_chapter` and `last_used_chapter`.
+            was_normalized: Whether this instance was normalized from another type.
+            original_type: Original type string when `was_normalized=True`.
 
         Returns:
-            Updated vocabulary dict
+            Updated vocabulary dict (the same object, mutated in place).
         """
         max_examples = config.REL_NORM_MAX_EXAMPLES_PER_RELATIONSHIP
 
@@ -331,10 +400,18 @@ class RelationshipNormalizationService:
         return vocabulary
 
     def prune_vocabulary(self, vocabulary: dict[str, Any], current_chapter: int) -> dict[str, Any]:
-        """
-        Prune rarely-used relationships from vocabulary.
+        """Prune rarely-used relationships from the vocabulary.
 
-        Removes single-use relationships that haven't been used recently.
+        Args:
+            vocabulary: Vocabulary dict to prune.
+            current_chapter: Current chapter number used for staleness calculations.
+
+        Returns:
+            Pruned vocabulary dict.
+
+        Notes:
+            This removes single-use relationships that have not been used recently and
+            enforces an overall max vocabulary size by keeping the most-used entries.
         """
         prune_after = config.REL_NORM_PRUNE_SINGLE_USE_AFTER_CHAPTERS
         max_size = config.REL_NORM_MAX_VOCABULARY_SIZE

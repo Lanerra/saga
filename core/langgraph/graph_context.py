@@ -1,24 +1,16 @@
 # core/langgraph/graph_context.py
 """
-Neo4j context construction for LangGraph workflow.
-
-This module wraps existing data_access queries for use in LangGraph nodes.
-NO major refactoring needed - queries are already well-structured.
+Build Neo4j-derived prompt context for LangGraph nodes.
 
 Migration Reference: docs/langgraph_migration_plan.md - Step 1.3.1
 
-Source Code Referenced:
-- data_access/character_queries.py:
-  - get_characters_for_chapter_context_native() (lines 710-750)
-  - get_character_profile_by_name() (lines 376+)
-- data_access/world_queries.py:
-  - get_world_items_for_chapter_context_native() (lines 752-792)
-- data_access/chapter_queries.py:
-  - get_chapter_content_batch_native() (lines 304-353)
-- data_access/kg_queries.py:
-  - Various relationship queries
-- data_access/plot_queries.py:
-  - get_plot_outline_from_db() (lines 233+)
+This module is a thin adapter over existing `data_access` query functions. It
+returns a compact context payload used to construct drafting prompts.
+
+Notes:
+- On query failures, context construction degrades gracefully by returning an
+  empty/default context rather than raising. This keeps the workflow runnable
+  when context is unavailable.
 """
 
 from __future__ import annotations
@@ -42,32 +34,28 @@ async def build_context_from_graph(
     max_characters: int = 10,
     max_world_items: int = 10,
 ) -> dict[str, Any]:
-    """
-    Query Neo4j for narrative context to inform chapter generation.
-
-    This function wraps existing data_access queries to build a comprehensive
-    context object for prompt construction. It reuses well-tested query logic
-    without modification.
-
-    USES EXISTING QUERIES FROM: data_access/
+    """Build prompt context for a chapter by querying Neo4j.
 
     Args:
-        current_chapter: Chapter number currently being processed
-        active_character_names: Optional list of specific character names to include
-        location_id: Optional ID of the current location
-        lookback_chapters: Number of previous chapters to include (default: 5)
-        max_characters: Maximum number of characters to retrieve (default: 10)
-        max_world_items: Maximum number of world items to retrieve (default: 10)
+        current_chapter: Chapter number being generated.
+        active_character_names: Optional allowlist of character names to include.
+            When omitted, the query layer selects contextually relevant characters.
+        location_id: Optional location node id to enrich context with location details.
+        lookback_chapters: Number of prior chapters whose summaries may be included.
+        max_characters: Maximum number of character profiles to include.
+        max_world_items: Maximum number of world items to include.
 
     Returns:
-        Dictionary containing structured context:
-        {
-            "characters": List[CharacterProfile],
-            "world_items": List[WorldItem],
-            "relationships": List[Dict],
-            "recent_summaries": List[Dict],
-            "location": Optional[Dict],
-        }
+        A context mapping with stable keys:
+        - characters: Character profiles used for drafting context.
+        - world_items: World items used for drafting context.
+        - relationships: Relationship rows between characters (best-effort).
+        - recent_summaries: Summary rows for recent chapters (best-effort).
+        - location: Location details when `location_id` is provided (best-effort).
+
+    Notes:
+        This function degrades gracefully. On any query error it logs and returns
+        an empty/default context rather than raising.
     """
     logger.info(
         "build_context_from_graph",
@@ -151,16 +139,14 @@ async def build_context_from_graph(
 async def _get_characters_by_names(
     character_names: list[str],
 ) -> list[CharacterProfile]:
-    """
-    Get specific characters by their names.
-
-    REUSES: character_queries.get_character_profile_by_name()
+    """Load character profiles by name (best-effort).
 
     Args:
-        character_names: List of character names to retrieve
+        character_names: Names to retrieve.
 
     Returns:
-        List of CharacterProfile models
+        Character profiles that were successfully loaded. Missing names are
+        skipped (errors are logged).
     """
     characters = []
 
@@ -182,20 +168,14 @@ async def _get_characters_by_names(
 async def _get_character_relationships(
     character_names: list[str],
 ) -> list[dict[str, Any]]:
-    """
-    Get relationships between characters.
-
-    USES: Custom query based on kg_queries.py patterns
+    """Query relationships involving the provided character names.
 
     Args:
-        character_names: List of character names to find relationships for
+        character_names: Character names to match as relationship endpoints.
 
     Returns:
-        List of relationship dictionaries with keys:
-        - source: Source character name
-        - target: Target character name
-        - rel_type: Relationship type
-        - description: Relationship description
+        Relationship rows with stable keys: `source`, `target`, `rel_type`,
+        `description`, `confidence`.
     """
     if not character_names:
         return []
@@ -248,19 +228,14 @@ async def _get_recent_summaries(
     current_chapter: int,
     lookback_chapters: int,
 ) -> list[dict[str, Any]]:
-    """
-    Get summaries of recent chapters for context.
-
-    REUSES: chapter_queries.get_chapter_content_batch_native()
+    """Load recent chapter summaries for prompt context.
 
     Args:
-        current_chapter: Current chapter being processed
-        lookback_chapters: Number of previous chapters to retrieve
+        current_chapter: Chapter being generated.
+        lookback_chapters: Number of previous chapters to include.
 
     Returns:
-        List of summary dictionaries with keys:
-        - chapter: Chapter number
-        - summary: Chapter summary text
+        Summary rows with keys `chapter` and `summary`.
     """
     # Calculate chapter range
     start_chapter = max(1, current_chapter - lookback_chapters)
@@ -304,17 +279,7 @@ async def _get_recent_summaries(
 
 
 async def _get_location_details(location_id: str) -> dict[str, Any] | None:
-    """
-    Get details about a specific location.
-
-    USES: Custom query based on world_queries patterns
-
-    Args:
-        location_id: ID of the location to retrieve
-
-    Returns:
-        Dictionary with location details or None if not found
-    """
+    """Load location details by node id (best-effort)."""
     query = """
     MATCH (l)
     WHERE l.id = $loc_id
@@ -369,24 +334,19 @@ async def get_key_events(
     lookback_chapters: int = 10,
     max_events: int = 20,
 ) -> list[dict[str, Any]]:
-    """
-    Get key events from recent chapters for context.
-
-    USES: Custom query based on plot_queries patterns
-
-    This function can be used by generation nodes to include important
-    plot events in the prompt context.
+    """Load key events from recent chapters for prompt context.
 
     Args:
-        current_chapter: Current chapter being processed
-        lookback_chapters: Number of chapters to look back (default: 10)
-        max_events: Maximum number of events to retrieve (default: 20)
+        current_chapter: Chapter being generated.
+        lookback_chapters: Number of prior chapters to search.
+        max_events: Maximum number of events to return.
 
     Returns:
-        List of event dictionaries with keys:
-        - description: Event description
-        - chapter: Chapter where event occurred
-        - importance: Importance score (if available)
+        Event rows with stable keys `description`, `chapter`, `importance`.
+
+    Notes:
+        This function degrades gracefully. On query failures it logs and returns
+        an empty list rather than raising.
     """
     # For the first chapter, there are no previous events
     if current_chapter <= 1:

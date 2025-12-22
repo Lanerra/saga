@@ -119,10 +119,6 @@ class TestFinalizeChapter:
         mock_save_chapter_data.assert_called_once()
         call_args = mock_save_chapter_data.call_args
 
-        # Helper to get draft text
-        cm = ContentManager(sample_finalize_state["project_dir"])
-        expected_text = get_draft_text(sample_finalize_state, cm)
-
         assert call_args.kwargs["chapter_number"] == 1
         # P2.10: save_chapter_data_to_db no longer accepts `text` / `raw_llm_output`;
         # finalization persists summary/embedding/provisional only (text is saved to filesystem + used for embedding).
@@ -180,7 +176,7 @@ class TestFinalizeChapter:
         # generated_at can be str or datetime depending on yaml loader
         import datetime
 
-        assert isinstance(meta["generated_at"], (str, datetime.datetime))
+        assert isinstance(meta["generated_at"], str | datetime.datetime)
         assert meta["generated_at"]
         assert meta["version"] == 1
 

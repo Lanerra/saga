@@ -1,18 +1,12 @@
 # core/langgraph/nodes/generation_node.py
 """
-Generation node for LangGraph workflow.
-
-This module contains the chapter generation logic for the LangGraph-based
-narrative generation workflow.
+Generate chapter prose for the LangGraph workflow.
 
 Migration Reference: docs/phase2_migration_plan.md - Step 2.1
 
-Source Code Ported From:
-- agents/narrative_agent.py:
-  - draft_chapter() (lines 486-564)
-  - _draft_chapter() (lines 361-483)
-- prompts/prompt_data_getters.py:
-  - get_reliable_kg_facts_for_drafting_prompt()
+This module contains the legacy single-shot generation node. The canonical
+generation implementation is the scene-based generation subgraph (planning +
+per-scene drafting + assembly).
 """
 
 from __future__ import annotations
@@ -36,23 +30,30 @@ logger = structlog.get_logger(__name__)
 
 
 async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
-    """
-    Generate chapter prose from outline and Neo4j context (single-shot).
+    """Generate chapter prose from outline and graph-derived context (single-shot).
 
-    IMPORTANT:
-    - This is the legacy / single-shot implementation kept for backcompat and
-      isolated unit tests.
-    - The canonical public generation entrypoint is the scene-based generation
-      subgraph (plan scenes → retrieve context → draft scenes → assemble chapter).
+    This node exists for backwards compatibility and isolated unit tests. The
+    canonical public generation implementation is the scene-based generation
+    subgraph (plan scenes → retrieve context → draft scenes → assemble chapter).
 
     See:
-    - [`create_generation_subgraph()`](core/langgraph/subgraphs/generation.py:35)
+        - [`create_generation_subgraph()`](core/langgraph/subgraphs/generation.py:1)
 
     Args:
-        state: Current narrative state containing outline, chapter number, etc.
+        state: Workflow state. Reads outline/context fields and writes:
+            - draft_ref: Externalized chapter draft text.
+            - draft_word_count: Word count of the externalized draft.
+            - hybrid_context_ref / kg_facts_ref: Externalized prompt context inputs.
+            - is_from_flawed_draft: True when post-generation deduplication removed text.
 
     Returns:
-        Updated state with draft_ref and draft_word_count populated
+        Updated workflow state. On fatal precondition failures (e.g., missing
+        outlines), returns a state with `has_fatal_error` set and `last_error`
+        populated.
+
+    Notes:
+        This node performs LLM I/O and writes externalized artifacts to disk via
+        [`ContentManager.save_text()`](core/langgraph/content_manager.py:109).
     """
     logger.info(
         "generate_chapter_single_shot: starting generation",
@@ -333,25 +334,22 @@ async def _construct_generation_prompt(
     novel_theme: str,
     protagonist_name: str,
 ) -> str:
-    """
-    Construct the generation prompt for chapter drafting.
-
-    This uses the existing Jinja2 template system to build a comprehensive
-    prompt with all necessary context.
-
-    REUSES: prompts/narrative_agent/draft_chapter_from_plot_point.j2
+    """Render the single-shot chapter drafting prompt.
 
     Args:
-        chapter_number: Chapter number being generated
-        plot_point_focus: Main plot point or focus for this chapter
-        hybrid_context: Combined context from KG and previous chapters
-        novel_title: Title of the novel
-        novel_genre: Genre of the novel
-        novel_theme: Central theme
-        protagonist_name: Name of the protagonist
+        chapter_number: Chapter number being generated.
+        plot_point_focus: Main narrative focus for the chapter.
+        hybrid_context: Context block combining KG facts and summaries.
+        novel_title: Novel title.
+        novel_genre: Novel genre.
+        novel_theme: Novel theme.
+        protagonist_name: Protagonist name.
 
     Returns:
-        Rendered prompt string ready for LLM
+        Rendered prompt string.
+
+    Notes:
+        This uses the Jinja template `narrative_agent/draft_chapter_from_plot_point.j2`.
     """
     # Get minimum chapter length from config
     min_length = getattr(config.settings, "MIN_CHAPTER_LENGTH_CHARS", 12000)

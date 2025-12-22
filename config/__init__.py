@@ -1,15 +1,41 @@
-"""Config package – central configuration for SAGA."""
+"""Expose SAGA configuration as stable module-level constants.
+
+This package provides a backwards-compatible facade over the underlying Pydantic settings
+model defined in [`config.settings`](config/settings.py:1). The primary API is the
+[`settings`](config/settings.py:356) singleton plus a set of module-level constants
+mirroring its fields.
+
+Configuration precedence and lifecycle:
+- On initial import, configuration is loaded by importing [`config.settings`](config/settings.py:1),
+  which constructs the `settings` singleton.
+- Values come from the process environment and may be sourced from a `.env` file (see
+  [`config.settings`](config/settings.py:1) for import-time side effects).
+- [`reload()`](config/__init__.py:170) triggers a refresh that re-reads `.env` with override enabled,
+  then replaces this module's exported values (see [`config.loader.reload_settings()`](config/loader.py:35)).
+
+Notes:
+    This module intentionally duplicates values into module globals for legacy callers
+    (e.g., `config.OPENAI_API_KEY`). New code should prefer the `settings` object.
+"""
 
 # Explicit exports for MyPy compatibility
 from typing import Any
 
 from . import settings as settings_mod
 from .settings import (
-    Models,
-    Temperatures,
-    rich_formatter,
-    settings,
-    simple_formatter,
+    Models as Models,
+)
+from .settings import (
+    Temperatures as Temperatures,
+)
+from .settings import (
+    rich_formatter as rich_formatter,
+)
+from .settings import (
+    settings as settings,
+)
+from .settings import (
+    simple_formatter as simple_formatter,
 )
 
 BASE_OUTPUT_DIR = settings.BASE_OUTPUT_DIR
@@ -44,7 +70,6 @@ EXPECTED_EMBEDDING_DIM = settings.EXPECTED_EMBEDDING_DIM
 FALLBACK_CHARS_PER_TOKEN = settings.FALLBACK_CHARS_PER_TOKEN
 FILL_IN = settings.FILL_IN
 FREQUENCY_PENALTY_DRAFTING = settings.FREQUENCY_PENALTY_DRAFTING
-FREQUENCY_PENALTY_KG_EXTRACTION = settings.FREQUENCY_PENALTY_KG_EXTRACTION
 HTTPX_TIMEOUT = settings.HTTPX_TIMEOUT
 KG_PREPOPULATION_CHAPTER_NUM = settings.KG_PREPOPULATION_CHAPTER_NUM
 KG_TRIPLE_EXTRACTION_CACHE_SIZE = settings.KG_TRIPLE_EXTRACTION_CACHE_SIZE
@@ -82,8 +107,26 @@ OPENAI_API_KEY = settings.OPENAI_API_KEY
 PHASE2_NAME_SIMILARITY_THRESHOLD = settings.PHASE2_NAME_SIMILARITY_THRESHOLD
 PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD = settings.PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD
 PLOT_OUTLINE_FILE = settings_mod.PLOT_OUTLINE_FILE
+
+# Entity embedding configuration (Neo4j)
+ENTITY_EMBEDDING_VECTOR_PROPERTY = settings.ENTITY_EMBEDDING_VECTOR_PROPERTY
+ENTITY_EMBEDDING_TEXT_HASH_PROPERTY = settings.ENTITY_EMBEDDING_TEXT_HASH_PROPERTY
+ENTITY_EMBEDDING_MODEL_PROPERTY = settings.ENTITY_EMBEDDING_MODEL_PROPERTY
+
+NEO4J_CHARACTER_ENTITY_VECTOR_INDEX_NAME = settings.NEO4J_CHARACTER_ENTITY_VECTOR_INDEX_NAME
+NEO4J_LOCATION_ENTITY_VECTOR_INDEX_NAME = settings.NEO4J_LOCATION_ENTITY_VECTOR_INDEX_NAME
+NEO4J_ITEM_ENTITY_VECTOR_INDEX_NAME = settings.NEO4J_ITEM_ENTITY_VECTOR_INDEX_NAME
+NEO4J_EVENT_ENTITY_VECTOR_INDEX_NAME = settings.NEO4J_EVENT_ENTITY_VECTOR_INDEX_NAME
+
+# Entity embedding feature flags
+ENABLE_ENTITY_EMBEDDING_PERSISTENCE = settings.ENABLE_ENTITY_EMBEDDING_PERSISTENCE
+ENABLE_ENTITY_EMBEDDING_DEDUPLICATION = settings.ENABLE_ENTITY_EMBEDDING_DEDUPLICATION
+ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING = settings.ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING
+
+# Entity embedding similarity configuration
+ENTITY_EMBEDDING_DEDUPLICATION_TOP_K = settings.ENTITY_EMBEDDING_DEDUPLICATION_TOP_K
+ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD = settings.ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD
 PRESENCE_PENALTY_DRAFTING = settings.PRESENCE_PENALTY_DRAFTING
-PRESENCE_PENALTY_KG_EXTRACTION = settings.PRESENCE_PENALTY_KG_EXTRACTION
 SIMPLE_LOGGING_MODE = settings.SIMPLE_LOGGING_MODE
 SMALL_MODEL = settings.SMALL_MODEL
 SPACY_MODEL = settings.SPACY_MODEL
@@ -126,6 +169,7 @@ REL_NORM_PRUNE_SINGLE_USE_AFTER_CHAPTERS = settings.relationship_normalization.P
 REL_NORM_MAX_VOCABULARY_SIZE = settings.relationship_normalization.MAX_VOCABULARY_SIZE
 REL_NORM_MAX_EXAMPLES_PER_RELATIONSHIP = settings.relationship_normalization.MAX_EXAMPLES_PER_RELATIONSHIP
 REL_NORM_USE_LLM_DISAMBIGUATION = settings.relationship_normalization.USE_LLM_DISAMBIGUATION
+REL_NORM_LLM_DISAMBIGUATION_JSON_MODE = settings.relationship_normalization.LLM_DISAMBIGUATION_JSON_MODE
 REL_NORM_NORMALIZE_CASE_VARIANTS = settings.relationship_normalization.NORMALIZE_CASE_VARIANTS
 REL_NORM_NORMALIZE_PUNCTUATION_VARIANTS = settings.relationship_normalization.NORMALIZE_PUNCTUATION_VARIANTS
 
@@ -138,17 +182,46 @@ LOG_SCHEMA_VIOLATIONS = settings.schema_enforcement.LOG_SCHEMA_VIOLATIONS
 
 # Legacy compatibility functions
 def get(key: str) -> Any:
-    """Return the value of a configuration key."""
+    """Return the value of a configuration attribute from `settings`.
+
+    Args:
+        key: Attribute name on the `settings` singleton.
+
+    Returns:
+        The current value of the named attribute.
+
+    Raises:
+        AttributeError: If `key` is not a valid attribute on `settings`.
+    """
     return getattr(settings, key)
 
 
 def set(key: str, value: Any) -> None:
-    """Set a configuration key at runtime."""
+    """Set a configuration attribute on `settings` at runtime.
+
+    This mutates the in-memory settings instance and does not persist to `.env`.
+
+    Args:
+        key: Attribute name on the `settings` singleton.
+        value: Value to assign.
+
+    Raises:
+        AttributeError: If `key` is not a valid attribute on `settings`.
+    """
     setattr(settings, key, value)
 
 
 def reload() -> None:
-    """Reload the configuration from the environment and .env file."""
+    """Reload configuration and refresh this package's exported constants.
+
+    This delegates to [`config.loader.reload_settings()`](config/loader.py:35), which may
+    overwrite process environment variables by re-reading `.env` with override enabled.
+
+    Raises:
+        Exception: Any exception raised by the loader propagates if the loader's internal
+            error handling changes. Currently, the loader returns a boolean status and
+            suppresses exceptions.
+    """
     from .loader import reload_settings
 
     reload_settings()

@@ -1,23 +1,22 @@
 # core/langgraph/subgraphs/validation.py
 """
-Validation subgraph for LangGraph workflow.
-
-This module contains the validation nodes for checking generated content
-quality, consistency, and narrative coherence.
+Build the validation subgraph for SAGA's LangGraph workflow.
 
 Migration Reference: docs/langgraph-architecture.md - Section 3.4
 
-Implemented functionality:
-- Consistency validation against knowledge graph
-- Prose quality evaluation using LLM
-- Narrative contradiction detection
-- Timeline validation
-- World rules validation
+This subgraph runs a sequence of checks over a chapter draft and extracted
+signals:
+- Consistency validation (graph- and heuristic-based).
+- LLM-based prose quality evaluation.
+- Additional contradiction detection (timeline/world rules/relationship evolution).
+
+Notes:
+    These nodes are async and may perform I/O (Neo4j queries, LLM calls, and
+    filesystem reads via externalized content refs).
 """
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -41,47 +40,46 @@ from core.langgraph.nodes.validation_node import (
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import render_prompt
+from utils.common import try_load_json_from_response
 
 logger = structlog.get_logger(__name__)
 
 
 async def validate_consistency(state: NarrativeState) -> NarrativeState:
-    """
-    Check against graph constraints.
+    """Validate chapter consistency against graph-derived constraints.
 
-    This is a wrapper around the original validation node that checks for:
-    - Character trait consistency
-    - Plot stagnation
-    - Relationship validation (disabled)
+    This is a thin wrapper around
+    [`validate_consistency()`](core/langgraph/nodes/validation_node.py:149) to
+    keep the validation subgraph as the canonical composition point.
 
     Args:
-        state: Current narrative state
+        state: Workflow state.
 
     Returns:
-        Updated state with contradictions list
+        Updated state containing any detected contradictions and the derived
+        `needs_revision` flag.
     """
     logger.info("validate_consistency: checking graph constraints")
     return await original_validate_consistency(state)
 
 
 async def evaluate_quality(state: NarrativeState) -> NarrativeState:
-    """
-    Analyze prose quality, pacing, tone, and coherence using LLM evaluation.
-
-    This function uses an LLM to evaluate multiple quality dimensions:
-    - Prose quality: Writing craft, dialogue, descriptions
-    - Pacing: Narrative flow and tension management
-    - Tone consistency: Alignment with genre and previous chapters
-    - Coherence: Logical flow and continuity
-    - Plot advancement: Story progression
-
-    The scores are stored in the state and used to determine if revision is needed.
+    """Evaluate chapter prose quality using an LLM and record scores in state.
 
     Args:
-        state: Current narrative state with draft_text
+        state: Workflow state. Reads `draft_ref` via
+            [`get_draft_text()`](core/langgraph/content_manager.py:637) and uses
+            metadata such as `genre`/`theme`/`current_chapter`.
 
     Returns:
-        Updated state with quality scores and feedback
+        Updated state with quality score fields and `quality_feedback`. When the
+        average quality is below threshold, a `quality_issue` contradiction is
+        appended.
+
+    Notes:
+        This function performs LLM I/O and may be slow relative to purely local
+        validation. Failures degrade gracefully by returning `None` scores and a
+        descriptive `quality_feedback` message.
     """
     logger.info(
         "evaluate_quality: analyzing prose quality",
@@ -122,7 +120,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
             model_name=model_name,
             prompt=evaluation_prompt,
             temperature=0.1,  # Low temperature for consistent evaluation
-            max_tokens=2048,
+            max_tokens=16384,
             auto_clean_response=True,
         )
 
@@ -199,19 +197,18 @@ def _build_quality_evaluation_prompt(
     previous_summaries: list[str],
     chapter_outline: dict[str, Any],
 ) -> str:
-    """
-    Build the prompt for LLM-based quality evaluation.
+    """Build the prompt for LLM-based quality evaluation.
 
     Args:
-        draft_text: The chapter text to evaluate
-        chapter_number: Current chapter number
-        genre: Novel genre
-        theme: Novel theme
-        previous_summaries: Summaries of previous chapters
-        chapter_outline: Outline for current chapter
+        draft_text: Chapter text to evaluate (may be truncated for context limits).
+        chapter_number: Chapter number being evaluated.
+        genre: Novel genre.
+        theme: Novel theme.
+        previous_summaries: Summaries used as continuity context.
+        chapter_outline: Outline for the chapter being evaluated.
 
     Returns:
-        Formatted prompt string
+        Rendered evaluation prompt.
     """
     # Truncate draft if too long (keep first and last parts)
     max_text_length = 8000
@@ -248,46 +245,37 @@ Plot Point: {chapter_outline.get('plot_point', 'N/A')}
 
 
 def _parse_quality_scores(response: str) -> dict[str, Any]:
-    """
-    Parse the LLM's quality evaluation response.
+    """Parse an evaluation payload from an LLM response.
 
     Args:
-        response: Raw LLM response text
+        response: Raw LLM response text.
 
     Returns:
-        Dictionary with parsed scores and feedback
+        A dict containing normalized score fields in the range [0.0, 1.0] plus
+        a `feedback` string. When parsing fails, returns conservative defaults.
     """
-    # Try to extract JSON from the response
-    try:
-        # Look for JSON block in the response
-        json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
-        if json_match:
-            json_str = json_match.group()
-            scores = json.loads(json_str)
+    parsed, _candidates, _parse_errors = try_load_json_from_response(
+        response,
+        expected_root=dict,
+    )
+    if isinstance(parsed, dict):
+        # Validate and normalize scores
+        normalized: dict[str, Any] = {}
+        for key in [
+            "coherence_score",
+            "prose_quality_score",
+            "plot_advancement_score",
+            "pacing_score",
+            "tone_consistency_score",
+        ]:
+            value = parsed.get(key)
+            if isinstance(value, int | float):
+                normalized[key] = max(0.0, min(1.0, float(value)))
+            else:
+                normalized[key] = 0.7  # Default fallback
 
-            # Validate and normalize scores
-            normalized = {}
-            for key in [
-                "coherence_score",
-                "prose_quality_score",
-                "plot_advancement_score",
-                "pacing_score",
-                "tone_consistency_score",
-            ]:
-                value = scores.get(key)
-                if isinstance(value, (int, float)):
-                    normalized[key] = max(0.0, min(1.0, float(value)))
-                else:
-                    normalized[key] = 0.7  # Default fallback
-
-            normalized["feedback"] = scores.get("feedback", "No feedback provided")
-            return normalized
-
-    except (json.JSONDecodeError, AttributeError) as e:
-        logger.warning(
-            "_parse_quality_scores: failed to parse JSON response",
-            error=str(e),
-        )
+        normalized["feedback"] = parsed.get("feedback", "No feedback provided")
+        return normalized
 
     # Fallback: try to extract scores from text
     fallback_scores = {
@@ -326,21 +314,18 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
 
 
 async def detect_contradictions(state: NarrativeState) -> NarrativeState:
-    """
-    Detect narrative contradictions including timeline violations and world rule violations.
+    """Detect additional narrative contradictions and update revision decision.
 
-    This function performs additional contradiction detection beyond what
-    validate_consistency checks:
-    - Timeline violations (events out of order)
-    - World rule violations (breaking established rules)
-    - Character location inconsistencies
-    - Relationship contradictions with established graph data
+    This step augments the contradictions produced by
+    [`validate_consistency()`](core/langgraph/subgraphs/validation.py:49) with
+    additional checks (timeline/world rules/relationship evolution).
 
     Args:
-        state: Current narrative state
+        state: Workflow state.
 
     Returns:
-        Updated state with additional contradictions
+        Updated state with an extended `contradictions` list and a recalculated
+        `needs_revision` flag.
     """
     logger.info(
         "detect_contradictions: checking for narrative contradictions",
@@ -411,20 +396,15 @@ async def _check_timeline(
     extracted_events: list[Any],
     current_chapter: int,
 ) -> list[Contradiction]:
-    """
-    Check for timeline violations in extracted events.
-
-    Validates that:
-    - Events reference valid time periods
-    - Event sequences are logically consistent
-    - No impossible temporal relationships
+    """Check for timeline violations using extracted events and Neo4j history.
 
     Args:
-        extracted_events: List of ExtractedEntity events
-        current_chapter: Current chapter number
+        extracted_events: Event-like objects derived from extraction.
+        current_chapter: Chapter number being validated.
 
     Returns:
-        List of timeline contradiction objects
+        Timeline-related contradictions. Returns an empty list on query errors
+        (best-effort behavior).
     """
     if not extracted_events:
         return []
@@ -474,7 +454,7 @@ async def _check_timeline(
                         existing_chapter = existing_data.get("chapter")
 
                         # Check for "before" references to things that happened "after"
-                        if _is_temporal_violation(event_time, existing_time):
+                        if isinstance(event_time, str) and isinstance(existing_time, str) and _is_temporal_violation(event_time, existing_time):
                             contradictions.append(
                                 Contradiction(
                                     type="event_sequence",
@@ -507,11 +487,7 @@ async def _check_timeline(
 
 
 def _events_are_related(event1: str, event2: str) -> bool:
-    """
-    Check if two events are related (share key terms).
-
-    Simple heuristic: events are related if they share significant words.
-    """
+    """Return whether two event descriptions appear related by keyword overlap."""
     # Extract significant words (> 4 chars, not common words)
     common_words = {
         "that",
@@ -533,11 +509,7 @@ def _events_are_related(event1: str, event2: str) -> bool:
 
 
 def _is_temporal_violation(new_time: str, existing_time: str) -> bool:
-    """
-    Check if two timestamps represent a temporal violation.
-
-    This is a simplified check - in production, would use proper datetime parsing.
-    """
+    """Return whether two time expressions contain an obvious ordering conflict."""
     # Simple keyword-based temporal ordering
     before_keywords = ["before", "earlier", "prior", "yesterday", "last"]
     after_keywords = ["after", "later", "following", "tomorrow", "next"]
@@ -561,21 +533,21 @@ async def _check_world_rules(
     world_rules: list[str],
     current_chapter: int,
 ) -> list[Contradiction]:
-    """
-    Check if draft text violates established world rules.
+    """Check draft text against established world rules (best-effort).
 
-    World rules are constraints like:
-    - "Magic requires spoken words"
-    - "Technology doesn't work in the Dead Zone"
-    - "Vampires cannot enter without invitation"
+    This function may consult Neo4j for additional `WorldRule` nodes and then
+    uses an LLM to identify likely violations.
 
     Args:
-        draft_text: Generated chapter text
-        world_rules: List of established world rules
-        current_chapter: Current chapter number
+        draft_text: Chapter text to analyze.
+        world_rules: Pre-configured rule strings.
+        current_chapter: Chapter number being validated.
 
     Returns:
-        List of world rule violation contradictions
+        World rule violations as contradictions. Returns an empty list on errors.
+
+    Notes:
+        This function performs LLM I/O.
     """
     if not world_rules or not draft_text:
         return []
@@ -612,7 +584,7 @@ async def _check_world_rules(
             model_name=model_name,
             prompt=rule_check_prompt,
             temperature=0.1,
-            max_tokens=1024,
+            max_tokens=16384,
             auto_clean_response=True,
         )
 
@@ -647,7 +619,7 @@ async def _check_world_rules(
 
 
 def _build_rule_check_prompt(draft_text: str, rules: list[str]) -> str:
-    """Build prompt for checking world rule violations."""
+    """Build the world-rule violation evaluation prompt."""
     # Truncate text if too long
     max_length = 6000
     if len(draft_text) > max_length:
@@ -687,24 +659,13 @@ Return only the JSON array:"""
 
 
 def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
-    """Parse rule violations from LLM response."""
-    try:
-        # Find JSON array in response
-        json_match = re.search(r"\[.*\]", response, re.DOTALL)
-        if json_match:
-            violations = json.loads(json_match.group())
-            if isinstance(violations, list):
-                return violations
-    except json.JSONDecodeError as e:
-        logger.warning(
-            "Failed to parse rule violations JSON from LLM response",
-            error=str(e),
-        )
-    except AttributeError as e:
-        logger.warning(
-            "Failed to extract rule violations from LLM response (regex failure)",
-            error=str(e),
-        )
+    """Parse a list of rule violations from an LLM response."""
+    parsed, _candidates, _parse_errors = try_load_json_from_response(
+        response,
+        expected_root=list,
+    )
+    if isinstance(parsed, list):
+        return parsed
 
     return []
 
@@ -714,25 +675,11 @@ async def _check_character_locations(
     current_location: dict[str, Any] | None,
     current_chapter: int,
 ) -> list[Contradiction]:
-    """
-    Check for character location inconsistencies.
-
-    Validates that characters are not in impossible locations based on
-    the narrative (e.g., character in two places at once, or in a location
-    they couldn't reach).
-
-    Args:
-        extracted_characters: Characters mentioned in current chapter
-        current_location: The scene's current location
-        current_chapter: Current chapter number
-
-    Returns:
-        List of location-based contradictions
-    """
+    """Check for location-related continuity issues (currently best-effort)."""
     if not extracted_characters:
         return []
 
-    contradictions = []
+    contradictions: list[Contradiction] = []
 
     try:
         # Query recent character locations from Neo4j
@@ -791,18 +738,15 @@ async def _check_relationship_evolution(
     extracted_relationships: list[Any],
     current_chapter: int,
 ) -> list[Contradiction]:
-    """
-    Check for problematic relationship changes.
-
-    While relationship evolution is normal in narratives, sudden unexplained
-    changes (e.g., enemies becoming lovers without development) can be flagged.
+    """Flag abrupt relationship shifts that may require narrative development.
 
     Args:
-        extracted_relationships: Relationships extracted from current chapter
-        current_chapter: Current chapter number
+        extracted_relationships: Relationships extracted from the current chapter.
+        current_chapter: Chapter number being validated.
 
     Returns:
-        List of relationship evolution issues
+        Informational contradictions (typically `minor`) for abrupt transitions.
+        Returns an empty list on query errors (best-effort behavior).
     """
     if not extracted_relationships:
         return []
@@ -877,16 +821,15 @@ async def _check_relationship_evolution(
 
 
 def create_validation_subgraph() -> StateGraph:
-    """
-    Create the validation subgraph.
+    """Create and compile the validation subgraph.
 
-    The validation subgraph performs three sequential checks:
-    1. Consistency validation - Check against knowledge graph
-    2. Quality evaluation - LLM-based prose quality analysis
-    3. Contradiction detection - Narrative contradictions, timeline, world rules
+    Order of operations:
+        1. `validate_consistency`
+        2. `evaluate_quality`
+        3. `detect_contradictions`
 
     Returns:
-        Compiled StateGraph for validation
+        A compiled `StateGraph` implementing the validation phase.
     """
     workflow = StateGraph(NarrativeState)
 

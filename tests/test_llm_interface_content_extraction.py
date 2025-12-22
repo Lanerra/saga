@@ -14,20 +14,20 @@ class _DummyCompletionClient:
 
     async def get_completion(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         self.called = True
-        # Simulate provider that returns reasoning_content instead of content
         return {
             "id": "chatcmpl-test",
             "object": "chat.completion",
             "created": 0,
-            "model": "qwen3-4b",
+            "model": "provider-with-content-parts",
             "choices": [
                 {
                     "index": 0,
                     "message": {
                         "role": "assistant",
-                        "reasoning_content": "Reasoned output JSON",
+                        "content": [{"type": "text", "text": "Hello "}, {"type": "text", "text": "world"}],
+                        "reasoning_content": "this should be ignored",
                     },
-                    "finish_reason": "length",
+                    "finish_reason": "stop",
                 }
             ],
             "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
@@ -51,10 +51,10 @@ class _DummyTextProcessor:
 
 
 @pytest.mark.asyncio
-async def test_extracts_reasoning_content_when_missing_content() -> None:
+async def test_extracts_text_from_list_of_parts_content_and_ignores_reasoning_content() -> None:
     svc = CompletionService(_DummyCompletionClient(), _DummyTextProcessor())  # type: ignore
     text, usage = await svc.get_completion("model", "prompt")
-    assert text == "Reasoned output JSON"
+    assert text == "Hello world"
     assert usage and usage.get("total_tokens") == 3
 
 
@@ -90,6 +90,34 @@ async def test_get_completion_non_strict_returns_legacy_sentinel_on_error() -> N
 
     assert text == ""
     assert usage is None
+
+
+@pytest.mark.asyncio
+async def test_reasoning_content_is_not_used_when_content_is_missing() -> None:
+    class _ReasoningOnlyClient:
+        async def get_completion(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {
+                "id": "chatcmpl-test",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "qwen3-4b",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "reasoning_content": "Reasoned output JSON",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+            }
+
+    svc = CompletionService(_ReasoningOnlyClient(), _DummyTextProcessor())  # type: ignore
+    text, usage = await svc.get_completion("model", "prompt")
+    assert text == ""
+    assert usage and usage.get("total_tokens") == 3
 
 
 def test_streaming_api_surface_removed() -> None:

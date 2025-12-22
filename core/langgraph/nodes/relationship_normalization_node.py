@@ -1,9 +1,14 @@
 # core/langgraph/nodes/relationship_normalization_node.py
-"""
-Relationship normalization node for LangGraph workflow.
+"""Normalize extracted relationship types to a stable vocabulary.
 
-This node normalizes extracted relationships against accumulated vocabulary,
-reducing type explosion while maintaining creative flexibility.
+This module defines the relationship normalization node used by the LangGraph
+workflow. It maps noisy, free-form relationship types produced by extraction to
+a canonicalized set of types, reducing type explosion while preserving novel
+relationships when appropriate.
+
+Notes:
+    This node updates `extracted_relationships_ref` so downstream nodes that prefer
+    externalized relationships (for example, commit) observe normalized results.
 """
 
 from __future__ import annotations
@@ -25,20 +30,26 @@ logger = structlog.get_logger(__name__)
 
 
 async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
-    """
-    Normalize extracted relationship types against accumulated vocabulary.
-
-    This node:
-    1. Compares each extracted relationship against existing vocabulary
-    2. Normalizes semantically similar relationships to canonical forms
-    3. Adds genuinely novel relationships to vocabulary
-    4. Updates usage statistics for monitoring
+    """Normalize extracted relationship types against accumulated vocabulary.
 
     Args:
-        state: Current narrative state with extracted relationships
+        state: Workflow state. Reads extracted relationships (preferring externalized
+            refs) and the current `relationship_vocabulary`.
 
     Returns:
-        Updated state with normalized relationships and updated vocabulary
+        Partial state update containing:
+        - extracted_relationships: Normalized relationships (in-memory mirror).
+        - extracted_relationships_ref: Content reference for normalized relationships.
+        - relationship_vocabulary: Updated vocabulary (including usage stats).
+        - relationships_normalized_this_chapter / relationships_novel_this_chapter: Metrics.
+        - current_node: `"normalize_relationships"`.
+
+        If normalization is disabled or there are no relationships to process,
+        returns a minimal no-op update.
+
+    Notes:
+        This node performs model-assisted normalization via
+        `normalization_service.normalize_relationship_type()`.
     """
     # Early exit if normalization disabled
     if not config.ENABLE_RELATIONSHIP_NORMALIZATION:
@@ -177,11 +188,14 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
 
 def _get_top_relationships(vocabulary: dict, limit: int = 5) -> list[tuple[str, int]]:
-    """
-    Get top N most-used relationships for logging.
+    """Select the most frequently used relationship types for logging.
+
+    Args:
+        vocabulary: Relationship vocabulary mapping types to metadata.
+        limit: Maximum number of relationship types to return.
 
     Returns:
-        List of (relationship_type, usage_count) tuples
+        List of `(relationship_type, usage_count)` tuples ordered by usage descending.
     """
     if not vocabulary:
         return []

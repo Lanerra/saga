@@ -1,5 +1,13 @@
 # models/agent_models.py
-"""TypedDict structures used for inter-agent communication."""
+"""Define inter-agent payload shapes.
+
+These `TypedDict` definitions describe the structured messages exchanged between
+SAGA agents (planner/evaluator/patcher).
+
+Notes:
+    All payloads use `total=False`, so keys are optional and may be omitted when not
+    applicable or unknown.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +15,18 @@ from typing import TypedDict
 
 
 class SceneDetail(TypedDict, total=False):
-    """A detailed plan for a single scene."""
+    """Describe a detailed plan for a single scene."""
 
+    # Canonical scene-planning output keys (used by scene planning + prompt rendering).
+    title: str
+    pov_character: str
+    setting: str
+    characters: list[str]
+    plot_point: str
+    conflict: str
+    outcome: str
+
+    # Optional enriched/normalized fields used by downstream prompt composition.
     scene_number: int
     summary: str
     characters_involved: list[str]
@@ -23,7 +41,11 @@ class SceneDetail(TypedDict, total=False):
 
 
 class ProblemDetail(TypedDict, total=False):
-    """Information about a problem found during evaluation."""
+    """Describe a single issue found during evaluation.
+
+    Notes:
+        Character offsets refer to positions in the evaluated text, when available.
+    """
 
     issue_category: str
     problem_description: str
@@ -36,7 +58,7 @@ class ProblemDetail(TypedDict, total=False):
 
 
 class EvaluationResult(TypedDict, total=False):
-    """Structured result from the evaluator agent."""
+    """Represent the evaluator agent's structured result."""
 
     needs_revision: bool
     reasons: list[str]
@@ -44,7 +66,12 @@ class EvaluationResult(TypedDict, total=False):
 
 
 class PatchInstruction(TypedDict, total=False):
-    """Instruction for applying a single patch to chapter text."""
+    """Describe a single patch to apply to chapter text.
+
+    Notes:
+        When present, `target_char_start` and `target_char_end` define the character-span
+        in the original text to be replaced by `replace_with`.
+    """
 
     original_problem_quote_text: str
     target_char_start: int | None

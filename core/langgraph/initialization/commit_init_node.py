@@ -1,16 +1,14 @@
 # core/langgraph/initialization/commit_init_node.py
-"""
-Commit Initialization Data to Knowledge Graph Node.
+"""Commit initialization artifacts to Neo4j.
 
-This node bridges the initialization phase to the generation loop by converting
-initialization data (character sheets, outlines) into Neo4j-compatible models
-and committing them to the knowledge graph.
+This module defines the initialization persistence boundary. It converts
+initialization artifacts (character sheets and global outline) into Neo4j models
+and writes them in a single batched transaction, then clears relevant read caches.
 """
 
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 import structlog
@@ -26,33 +24,33 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile, WorldItem
-from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import ensure_exact_keys, try_load_json_from_response
 from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
 
 
 async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeState:
-    """
-    Convert initialization data to Neo4j models and commit to knowledge graph.
-
-    This node acts as a bridge between the initialization phase (which generates
-    rich text descriptions) and the generation loop (which needs structured
-    CharacterProfile and WorldItem models in Neo4j).
-
-    Process Flow:
-    1. Parse character sheets to extract structured traits
-    2. Convert to CharacterProfile models
-    3. Extract world elements from outlines
-    4. Convert to WorldItem models
-    5. Commit all to Neo4j using existing persistence layer
+    """Convert initialization artifacts to Neo4j models and persist them.
 
     Args:
-        state: Current narrative state with character_sheets and outlines
+        state: Workflow state. Reads character sheets and global outline (preferring
+            externalized refs).
 
     Returns:
-        Updated state with initialization data committed to graph
+        Updated state containing:
+        - active_characters: A small in-memory slice of committed character profiles.
+        - world_items: World items extracted from the outline.
+        - initialization_step: `"committed_to_graph"` on success.
+        - current_node: `"commit_initialization"`.
+        - last_error: Cleared on success.
+
+        On errors, returns a state with `has_fatal_error` set and `last_error` populated.
+
+    Notes:
+        This node performs Neo4j writes and invalidates `data_access` read caches after
+        successful persistence.
     """
     # Initialize content manager for reading externalized content
     content_manager = ContentManager(state.get("project_dir", ""))
@@ -90,7 +88,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
 
         # Step 3: Commit to Neo4j using direct batch approach
         if character_profiles or world_items:
-            statements = _build_entity_persistence_statements(
+            statements = await _build_entity_persistence_statements(
                 character_profiles,
                 world_items,
                 chapter_number=0,  # Initialization entities exist before any chapters
@@ -126,7 +124,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
 
         # Step 4: Update active_characters with committed profiles
         # This makes characters immediately available to the generation loop
-        updated_state = {
+        updated_state: NarrativeState = {
             **state,
             "active_characters": character_profiles[:5],  # Top 5 for initial context
             "world_items": world_items,
@@ -158,18 +156,18 @@ async def _parse_character_sheets_to_profiles(
     character_sheets: dict[str, dict],
     model_name: str | None = None,
 ) -> list[CharacterProfile]:
-    """
-    Convert pre-parsed character sheets to CharacterProfile models.
-
-    The character sheets are now pre-parsed during generation, containing
-    structured data (traits, motivations, relationships, etc.) that can be
-    directly used to create CharacterProfile models without additional LLM calls.
+    """Convert character sheet dictionaries into `CharacterProfile` models.
 
     Args:
-        character_sheets: Dict of character_name -> character_sheet (pre-parsed)
+        character_sheets: Mapping of character name to sheet data (ideally pre-parsed).
+        model_name: Optional model name used when falling back to LLM extraction.
 
     Returns:
-        List of CharacterProfile models ready for Neo4j persistence
+        Character profiles ready for persistence.
+
+    Notes:
+        When a sheet lacks structured traits, this helper falls back to
+        [`_extract_structured_character_data()`](core/langgraph/initialization/commit_init_node.py:239).
     """
     profiles = []
 
@@ -238,22 +236,24 @@ async def _parse_character_sheets_to_profiles(
 
 
 async def _extract_structured_character_data(name: str, description: str, model_name: str | None = None) -> dict[str, Any]:
-    """
-    Use LLM to extract structured data from character sheet description.
+    """Extract structured character fields from a prose description.
 
-    This is a grammar-enforced, JSON-only contract.
-    Contract violations are fatal to initialization.
+    This function enforces a strict JSON contract. Contract violations are treated
+    as fatal to initialization because the results are persisted as canonical facts.
 
     Args:
-        name: Character name
-        description: Free-form character description
-        model_name: Name of the LLM to use
+        name: Character name.
+        description: Free-form character description.
+        model_name: LLM model name override.
 
     Returns:
-        Dictionary with extracted structured data (traits, status, motivations, etc.)
+        Structured character fields.
 
     Raises:
-        ValueError: If the LLM output violates the JSON/schema contract.
+        ValueError: When the response violates the JSON/schema contract.
+
+    Notes:
+        This function performs LLM I/O.
     """
     prompt = render_prompt(
         "knowledge_agent/extract_character_structured_lines.j2",
@@ -265,47 +265,111 @@ async def _extract_structured_character_data(name: str, description: str, model_
 
     model = model_name or config.NARRATIVE_MODEL
 
-    grammar_content = load_grammar("initialization")
-    grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-    grammar = f"root ::= structured-character-extraction\n{grammar}"
+    for attempt in range(1, 3):
+        response, _ = await llm_service.async_call_llm(
+            model_name=model,
+            prompt=prompt,
+            temperature=0.3,
+            max_tokens=16384,
+            allow_fallback=True,
+            auto_clean_response=True,
+            system_prompt=get_system_prompt("knowledge_agent"),
+        )
 
-    response, _ = await llm_service.async_call_llm(
-        model_name=model,
-        prompt=prompt,
-        temperature=0.3,  # Low temp for extraction
-        max_tokens=1024,
-        allow_fallback=True,
-        auto_clean_response=True,
-        system_prompt=get_system_prompt("knowledge_agent"),
-        grammar=grammar,
+        try:
+            return _parse_character_extraction_response(response)
+        except json.JSONDecodeError:
+            if attempt == 2:
+                raise
+
+    raise RuntimeError("Structured character extraction exceeded max attempts")
+
+
+def _log_json_decode_error(
+    *,
+    context: str,
+    raw_text: str,
+    error: json.JSONDecodeError,
+) -> None:
+    start = max(error.pos - 160, 0)
+    end = min(error.pos + 160, len(raw_text))
+    snippet = raw_text[start:end]
+
+    logger.error(
+        "initialization JSON decode failed",
+        context=context,
+        error=str(error),
+        line=error.lineno,
+        column=error.colno,
+        position=error.pos,
+        raw_text_length=len(raw_text),
+        contains_code_fence="```" in raw_text,
+        snippet_range={"start": start, "end": end},
+        snippet=repr(snippet),
     )
 
-    return _parse_character_extraction_response(response)
+
+def _load_json_with_contract_then_salvage(
+    *,
+    context: str,
+    raw_text: str,
+    expected_root: type,
+) -> Any:
+    try:
+        return json.loads(raw_text)
+    except json.JSONDecodeError as error:
+        _log_json_decode_error(
+            context=context,
+            raw_text=raw_text,
+            error=error,
+        )
+
+        salvaged, _candidates, _parse_errors = try_load_json_from_response(
+            raw_text,
+            expected_root=expected_root,
+        )
+        if salvaged is None:
+            raise
+
+        logger.warning(
+            "initialization JSON contract violated; salvaged embedded JSON",
+            context=context,
+            raw_text_length=len(raw_text),
+            contains_code_fence="```" in raw_text,
+        )
+        return salvaged
 
 
 def _parse_character_extraction_response(response: str) -> dict[str, Any]:
-    """
-    Parse the LLM's structured character extraction response (strict JSON contract).
+    """Parse a structured character extraction response.
 
     Args:
-        response: LLM response (JSON object)
+        response: LLM response expected to contain a JSON object.
 
     Returns:
-        Dictionary with parsed structured data
+        Parsed structured character fields.
 
     Raises:
-        ValueError: If the output violates the JSON/schema contract.
+        ValueError: When required keys are missing or values violate invariants
+            (for example, traits not being single-word values).
     """
     raw_text = response.strip()
-    data = json.loads(raw_text)
+
+    data = _load_json_with_contract_then_salvage(
+        context="structured_character_extraction",
+        raw_text=raw_text,
+        expected_root=dict,
+    )
 
     if not isinstance(data, dict):
         raise ValueError("Structured character extraction must be a JSON object")
 
     required_keys = {"traits", "status", "motivations", "background"}
-    data_keys = set(data.keys())
-    if data_keys != required_keys:
-        raise ValueError("Structured character extraction must contain exactly keys " f"{sorted(required_keys)} (got {sorted(data_keys)})")
+    ensure_exact_keys(
+        value=data,
+        required_keys=required_keys,
+        context="Structured character extraction",
+    )
 
     traits = data["traits"]
     if not isinstance(traits, list) or any(not isinstance(t, str) for t in traits):
@@ -338,19 +402,18 @@ def _parse_character_extraction_response(response: str) -> dict[str, Any]:
 
 
 async def _extract_world_items_from_outline(global_outline: dict, setting: str, model_name: str | None = None) -> list[WorldItem]:
-    """
-    Extract world-building elements from the global outline.
-
-    Uses LLM to identify key locations, objects, and world elements mentioned
-    in the outline that should be added to the knowledge graph.
+    """Extract world items from the global outline for persistence.
 
     Args:
-        global_outline: Global outline with story structure
-        setting: Story setting description
-        model_name: Name of the LLM to use
+        global_outline: Parsed global outline data.
+        setting: Story setting description used for prompt context.
+        model_name: LLM model name override.
 
     Returns:
-        List of WorldItem models ready for Neo4j persistence
+        World items to persist as initialization facts.
+
+    Notes:
+        This function performs LLM I/O when outline text is present.
     """
     outline_text = global_outline.get("raw_text", "")
     if not outline_text:
@@ -366,22 +429,24 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
 
     model = model_name or config.NARRATIVE_MODEL
 
-    grammar_content = load_grammar("initialization")
-    grammar = re.sub(r"^root ::= .*$", "", grammar_content, flags=re.MULTILINE)
-    grammar = f"root ::= world-items-extraction\n{grammar}"
+    for attempt in range(1, 3):
+        response, _ = await llm_service.async_call_llm(
+            model_name=model,
+            prompt=prompt,
+            temperature=0.5,
+            max_tokens=16384,
+            allow_fallback=True,
+            auto_clean_response=True,
+            system_prompt=get_system_prompt("knowledge_agent"),
+        )
 
-    response, _ = await llm_service.async_call_llm(
-        model_name=model,
-        prompt=prompt,
-        temperature=0.5,
-        max_tokens=2000,
-        allow_fallback=True,
-        auto_clean_response=True,
-        system_prompt=get_system_prompt("knowledge_agent"),
-        grammar=grammar,
-    )
+        try:
+            return _parse_world_items_extraction(response)
+        except json.JSONDecodeError:
+            if attempt == 2:
+                raise
 
-    return _parse_world_items_extraction(response)
+    raise RuntimeError("World item extraction exceeded max attempts")
 
 
 def _parse_world_items_extraction(response: str) -> list[WorldItem]:
@@ -398,7 +463,12 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
         ValueError: If the output violates the JSON/schema contract.
     """
     raw_text = response.strip()
-    data = json.loads(raw_text)
+
+    data = _load_json_with_contract_then_salvage(
+        context="world_items_extraction",
+        raw_text=raw_text,
+        expected_root=list,
+    )
 
     if not isinstance(data, list):
         raise ValueError("World items extraction must be a JSON array")
@@ -414,9 +484,11 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
             raise ValueError(f"World item at index {index} must be a JSON object")
 
         required_keys = {"name", "category", "description"}
-        item_keys = set(item.keys())
-        if item_keys != required_keys:
-            raise ValueError(f"World item at index {index} must contain exactly keys {sorted(required_keys)} " f"(got {sorted(item_keys)})")
+        ensure_exact_keys(
+            value=item,
+            required_keys=required_keys,
+            context=f"World item at index {index}",
+        )
 
         name = item["name"]
         category = item["category"]
@@ -448,7 +520,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     return items
 
 
-def _build_entity_persistence_statements(
+async def _build_entity_persistence_statements(
     characters: list[CharacterProfile],
     world_items: list[WorldItem],
     chapter_number: int,
@@ -479,10 +551,22 @@ def _build_entity_persistence_statements(
         cypher, params = cypher_builder.world_item_upsert_cypher(item, chapter_number)
         statements.append((cypher, params))
 
+    embedding_statements_count = 0
+    if config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE:
+        from core.entity_embedding_service import build_entity_embedding_update_statements
+
+        embedding_statements = await build_entity_embedding_update_statements(
+            characters=characters,
+            world_items=world_items,
+        )
+        embedding_statements_count = len(embedding_statements)
+        statements.extend(embedding_statements)
+
     logger.info(
         "_build_entity_persistence_statements: built statements",
         characters=len(characters),
         world_items=len(world_items),
+        embedding_statements=embedding_statements_count,
         total_statements=len(statements),
     )
 

@@ -1,4 +1,16 @@
 # core/logging_config.py
+"""Configure SAGA logging sinks and formatting.
+
+This module configures:
+- Standard library logging handlers (console and optional rotating file).
+- Optional Rich console integration when available.
+- Baseline log level overrides for noisy third-party libraries.
+
+Notes:
+    This module intentionally performs side-effectful logger configuration and should be
+    called once at process startup via [`core.logging_config.setup_saga_logging()`](core/logging_config.py:36).
+"""
+
 import logging as stdlib_logging
 import logging.handlers
 import os
@@ -23,11 +35,16 @@ except Exception:
 
 
 def setup_saga_logging() -> None:
-    """
-    Setup SAGA logging infrastructure with Rich console output and file rotation.
+    """Set up SAGA logging handlers and formatting.
 
-    Extracted from NANA orchestrator, now available for all orchestrators.
-    Supports simple logging mode, file rotation, and Rich console output.
+    This configures:
+    - Console logging in simple mode.
+    - Rotating file logging when a log file is configured.
+    - Rich console output when Rich is available and enabled.
+
+    Notes:
+        This function mutates the root logger handler list and is intended to be called
+        once during application startup.
     """
     stdlib_logging.basicConfig(
         level=config.LOG_LEVEL_STR,

@@ -1,5 +1,10 @@
 # models/user_input_models.py
-"""User-facing models for providing story input data."""
+"""Define user-facing models for providing story input data.
+
+These models represent the structure of `user_story_elements.yaml` and other
+user-provided inputs. They are intentionally permissive in some areas to support
+incremental authoring and partial inputs.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,7 @@ from .kg_models import CharacterProfile, WorldItem
 
 
 class NovelConceptModel(BaseModel):
-    """High level concept for the novel."""
+    """Describe the high-level concept for a novel."""
 
     title: str = Field(..., min_length=1)
     genre: str | None = None
@@ -20,7 +25,7 @@ class NovelConceptModel(BaseModel):
 
 
 class RelationshipModel(BaseModel):
-    """Relationship details for a character."""
+    """Describe a relationship between characters."""
 
     name: str | None = None
     status: str | None = None
@@ -28,7 +33,7 @@ class RelationshipModel(BaseModel):
 
 
 class ProtagonistModel(BaseModel):
-    """Primary character information."""
+    """Describe a main character provided by the user."""
 
     name: str
     description: str | None = None
@@ -39,7 +44,7 @@ class ProtagonistModel(BaseModel):
 
 
 class CharacterGroupModel(BaseModel):
-    """Container for characters provided in the YAML."""
+    """Group characters as they appear in user-provided YAML."""
 
     protagonist: ProtagonistModel | None = None
     antagonist: ProtagonistModel | None = None
@@ -47,7 +52,7 @@ class CharacterGroupModel(BaseModel):
 
 
 class KeyLocationModel(BaseModel):
-    """A single location within the setting."""
+    """Describe a named location within the setting."""
 
     name: str
     description: str | None = None
@@ -55,14 +60,14 @@ class KeyLocationModel(BaseModel):
 
 
 class SettingModel(BaseModel):
-    """Setting information for the story world."""
+    """Describe setting information for the story world."""
 
     primary_setting_overview: str | None = None
     key_locations: list[KeyLocationModel] = Field(default_factory=list)
 
 
 class PlotElementsModel(BaseModel):
-    """Major plot elements provided by the user."""
+    """Describe major plot elements provided by the user."""
 
     inciting_incident: str | None = None
     plot_points: list[str] = Field(default_factory=list)
@@ -71,7 +76,12 @@ class PlotElementsModel(BaseModel):
 
 
 class UserStoryInputModel(BaseModel):
-    """Top level structure for ``user_story_elements.yaml``."""
+    """Represent the top-level structure for `user_story_elements.yaml`.
+
+    Notes:
+        This model allows unknown keys (`extra="allow"`) so callers may include
+        additional sections without breaking parsing.
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -89,7 +99,27 @@ class UserStoryInputModel(BaseModel):
 def user_story_to_objects(
     model: UserStoryInputModel,
 ) -> tuple[dict[str, Any], dict[str, CharacterProfile], dict[str, dict[str, WorldItem]]]:
-    """Convert ``UserStoryInputModel`` to internal dataclass objects."""
+    """Convert a user story input model into internal objects.
+
+    The returned dictionaries are used as inputs to downstream prompt building and
+    knowledge-graph bootstrap steps.
+
+    Args:
+        model: Parsed user story input.
+
+    Returns:
+        A tuple of `(plot_outline, characters, world_items)` where:
+        - `plot_outline` is a free-form dictionary describing the narrative setup.
+        - `characters` maps character name to a [`CharacterProfile`](models/kg_models.py:19).
+        - `world_items` maps category name to an item-map of world item name to a
+          [`WorldItem`](models/kg_models.py:123). If no world items are produced, this
+          value is an empty dictionary.
+
+    Notes:
+        - Character names act as the identifiers in the `characters` mapping.
+        - World items are grouped by category; a special `_overview_` category and
+          `_overview_` item name may be used for a setting overview.
+    """
 
     plot_outline: dict[str, Any] = {}
     characters: dict[str, CharacterProfile] = {}

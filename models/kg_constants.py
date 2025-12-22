@@ -1,27 +1,19 @@
 # models/kg_constants.py
-"""
-Constants used for property names and the canonical schema in the knowledge graph.
+"""Define constants for the knowledge-graph canonical schema.
 
-**Schema enforcement policy (contract):**
+This module centralizes:
+- canonical node labels and label normalization rules,
+- relationship type sets used for analytics/normalization, and
+- property-key allowlists used for Cypher interpolation hardening.
 
-- **Node labels (STRICT for Cypher label interpolation / writes):**
-  The application enforces a canonical set of node labels for entities when building
-  Cypher queries that interpolate labels (e.g., via [`_get_cypher_labels()`](data_access/kg_queries.py:262)).
-  Unknown or unsupported labels are rejected with a `ValueError` rather than silently
-  creating new labels in the graph.
+Notes:
+    Node labels are treated as a strict schema surface for writes that interpolate
+    labels into Cypher. Unknown/unsupported labels are rejected to avoid schema drift
+    and index/constraint mismatch.
 
-  Rationale: labels participate in Neo4j constraints/indexes and are commonly relied
-  upon by query patterns; allowing arbitrary labels risks schema drift and unexpected
-  query behavior.
-
-- **Relationship types (PERMISSIVE membership, STRICT safety):**
-  Relationship types are allowed to be novel (not present in [`RELATIONSHIP_TYPES`](models/kg_constants.py:211)),
-  but any relationship type that is *directly interpolated into Cypher* must pass
-  strict safety validation (uppercase and matching `^[A-Z0-9_]+$`) via
-  [`validate_relationship_type_for_cypher_interpolation()`](data_access/kg_queries.py:135).
-
-In other words: labels are a strict schema surface; relationship-type *names* may be
-emergent, but must be safe for Cypher interpolation when used in queries.
+    Relationship *type names* may be emergent, but any relationship type that is
+    interpolated into Cypher must be validated for safety by the query layer.
+    See [`validate_relationship_type_for_cypher_interpolation()`](data_access/kg_queries.py:135).
 """
 
 # Relationship and node property names

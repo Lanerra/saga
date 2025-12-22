@@ -18,4 +18,12 @@ Rules:
 - Consider context from the descriptions
 
 Output contract:
-- Answer with EXACTLY one word: NORMALIZE or DISTINCT
+- Output MUST be valid JSON only.
+- No markdown.
+- No code fences.
+- No commentary.
+- The root MUST be a JSON object with EXACTLY one key: "decision".
+- "decision" MUST be EXACTLY one of: "NORMALIZE" or "DISTINCT".
+- Return EXACTLY one of the following (and nothing else):
+  {"decision":"NORMALIZE"}
+  {"decision":"DISTINCT"}

@@ -1,4 +1,15 @@
 # core/db_manager.py
+"""Manage Neo4j connectivity and execute Cypher safely.
+
+This module provides the singleton Neo4j manager used throughout SAGA. It exposes
+an async API while internally using the synchronous Neo4j Python driver, running
+blocking operations in worker threads to avoid blocking the event loop.
+
+Notes:
+    - Connection attempts verify APOC availability and fail fast when APOC is required.
+    - Batched writes are executed in a single transaction for atomicity.
+"""
+
 import asyncio
 from typing import Any
 
@@ -19,6 +30,7 @@ logger = structlog.get_logger(__name__)
 
 
 class Neo4jManagerSingleton:
+    """Provide a process-wide async façade over the Neo4j driver."""
     _instance: "Neo4jManagerSingleton" = None  # type: ignore
     _initialized_flag: bool
 
@@ -52,7 +64,15 @@ class Neo4jManagerSingleton:
         self.logger.info("Neo4jManagerSingleton initialized. Call connect() to establish connection.")
 
     async def connect(self) -> None:
-        """Establish a synchronous Neo4j driver and verify connectivity."""
+        """Connect to Neo4j and verify required capabilities.
+
+        This creates the synchronous Neo4j driver, verifies connectivity, and probes
+        for required procedures (for example, APOC) before allowing queries.
+
+        Raises:
+            DatabaseConnectionError: If the database is unreachable or required
+                procedures are unavailable.
+        """
         # Close any existing driver first (mirrors previous async behavior)
         if self.driver:
             await self.close()
@@ -86,6 +106,25 @@ class Neo4jManagerSingleton:
                     error=str(info_exc),
                 )
 
+            try:
+                apoc_version = await asyncio.to_thread(self._sync_probe_apoc_version)
+                self._apoc_available_cache = True
+                self.logger.info(
+                    "APOC procedures available",
+                    apoc_version=apoc_version,
+                )
+            except Exception as apoc_exc:
+                self._apoc_available_cache = False
+                await self.close()
+                raise DatabaseConnectionError(
+                    "APOC procedures are required but unavailable",
+                    details={
+                        "uri": config.NEO4J_URI,
+                        "original_error": str(apoc_exc),
+                        "suggestion": "Install/enable APOC and allowlist procedures (e.g. NEO4J_dbms_security_procedures_allowlist=apoc.*)",
+                    },
+                ) from apoc_exc
+
         except ServiceUnavailable as e:
             self.logger.critical("Neo4j service unavailable", uri=config.NEO4J_URI, error=str(e))
             self.driver = None
@@ -97,6 +136,8 @@ class Neo4jManagerSingleton:
                     "suggestion": "Ensure the Neo4j database is running and accessible",
                 },
             ) from e
+        except DatabaseConnectionError:
+            raise
         except Exception as e:
             self.logger.critical(
                 "Unexpected error during Neo4j connection",
@@ -106,6 +147,18 @@ class Neo4jManagerSingleton:
             )
             self.driver = None
             raise handle_database_error("connection", e, uri=config.NEO4J_URI) from e
+
+    def _sync_probe_apoc_version(self) -> str:
+        self._ensure_connected_sync()
+        assert self.driver is not None
+        with self.driver.session(database=config.NEO4J_DATABASE) as session:
+            rec = session.run("RETURN apoc.version() AS version").single()
+            if not rec:
+                raise RuntimeError("APOC probe returned no rows")
+            version = rec.get("version")
+            if not isinstance(version, str) or not version.strip():
+                raise RuntimeError("APOC probe returned empty version")
+            return version
 
     def _sync_fetch_neo4j_server_info(self) -> dict[str, Any] | None:
         """Fetch Neo4j server info via dbms.components (best-effort).
@@ -124,7 +177,7 @@ class Neo4jManagerSingleton:
             return dict(rec)
 
     async def close(self) -> None:
-        """Close the synchronous driver."""
+        """Close the Neo4j driver."""
         if self.driver:
             try:
                 await asyncio.to_thread(self.driver.close)
@@ -252,7 +305,11 @@ class Neo4jManagerSingleton:
                 ) from e
 
     def _ensure_connected_sync(self) -> None:
-        """Synchronous counterpart of _ensure_connected for thread helpers."""
+        """Ensure the synchronous driver is connected.
+
+        Raises:
+            DatabaseConnectionError: If called without an initialized driver.
+        """
         if self.driver is None:
             # This should only be called from within a thread where we
             # cannot await. Raise a clear error to surface the mis‑use.
@@ -284,37 +341,24 @@ class Neo4jManagerSingleton:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """
-        Execute a function within a Neo4j transaction with automatic rollback on errors.
-
-        This method provides transaction safety for complex multi-step operations.
-        If any operation fails, the entire transaction is rolled back to maintain
-        database consistency.
-
-        Usage:
-            async def my_transaction_operations(tx, param1, param2):
-                result1 = tx.run("CREATE (n:Node {id: $id})", id=param1)
-                result2 = tx.run("MATCH (n:Node {id: $id}) RETURN n", id=param1)
-                return result2.single()
-
-            result = await neo4j_manager.execute_in_transaction(
-                my_transaction_operations,
-                "node1",
-                "value2"
-            )
+        """Execute a function inside a Neo4j transaction.
 
         Args:
-            transaction_func: Synchronous function that takes (tx, *args, **kwargs)
-                            and performs Neo4j operations within the transaction
-            *args: Positional arguments to pass to transaction_func
-            **kwargs: Keyword arguments to pass to transaction_func
+            transaction_func: Synchronous callable invoked as `transaction_func(tx, *args, **kwargs)`.
+                It must use the provided transaction to run Cypher statements.
+            *args: Positional arguments forwarded to `transaction_func`.
+            **kwargs: Keyword arguments forwarded to `transaction_func`.
 
         Returns:
-            Result of transaction_func
+            The return value of `transaction_func`.
 
         Raises:
-            DatabaseTransactionError: If transaction fails and is rolled back
-            DatabaseConnectionError: If driver is not connected
+            DatabaseConnectionError: If the driver is not connected.
+            DatabaseTransactionError: If the transaction fails and is rolled back.
+
+        Notes:
+            This method runs the transaction in a worker thread because the Neo4j
+            driver is synchronous.
         """
         await self._ensure_connected()
 
@@ -440,10 +484,14 @@ class Neo4jManagerSingleton:
         return bool(self._property_keys_cache and key in self._property_keys_cache)
 
     async def create_db_schema(self) -> None:
-        """Create and verify Neo4j indexes and constraints in separate phases to avoid transaction conflicts.
+        """Create and verify Neo4j schema elements.
 
-        Phase 1: Schema-only operations (constraints, indexes)
-        Phase 2: Data operations (relationship and node type placeholders)
+        This runs in two phases to avoid mixing schema and data operations in a way
+        that can cause transaction conflicts.
+
+        Notes:
+            - Phase 1 creates constraints and indexes.
+            - Phase 2 performs data operations to warm up relationship and label usage.
         """
         self.logger.info("Creating/verifying Neo4j schema elements (phased execution)...")
         # Phase 1
@@ -521,20 +569,59 @@ class Neo4jManagerSingleton:
             )
             await self._execute_schema_individually(schema_only_queries)
 
-        # Then, create the vector index separately with defensive handling.
-        vector_index_query = (
-            f"CREATE VECTOR INDEX {config.NEO4J_VECTOR_INDEX_NAME} IF NOT EXISTS "
-            f"FOR (c:Chapter) ON (c.embedding_vector) "
-            f"OPTIONS {{indexConfig: {{"
-            f"`vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS}, "
-            f"`vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'"
-            f"}}}}"
-        )
-        try:
-            await self.execute_write_query(vector_index_query)
-            self.logger.info("Vector index created successfully.")
-        except Exception as e:
-            self.logger.warning("Vector index creation failed (may be unsupported by current Neo4j version). " f"Error: {e}")
+        # Then, create vector indexes separately with defensive handling.
+        #
+        # Rationale:
+        # - Neo4j vector index creation can be unsupported depending on version/config.
+        # - Treat index creation as best-effort: log failures and continue so SAGA remains usable.
+        vector_index_specs: list[tuple[str, str, str]] = [
+            (config.NEO4J_VECTOR_INDEX_NAME, "Chapter", "embedding_vector"),
+            (
+                config.NEO4J_CHARACTER_ENTITY_VECTOR_INDEX_NAME,
+                "Character",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+            (
+                config.NEO4J_LOCATION_ENTITY_VECTOR_INDEX_NAME,
+                "Location",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+            (
+                config.NEO4J_ITEM_ENTITY_VECTOR_INDEX_NAME,
+                "Item",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+            (
+                config.NEO4J_EVENT_ENTITY_VECTOR_INDEX_NAME,
+                "Event",
+                config.ENTITY_EMBEDDING_VECTOR_PROPERTY,
+            ),
+        ]
+        for index_name, node_label, vector_property in vector_index_specs:
+            vector_index_query = (
+                f"CREATE VECTOR INDEX {index_name} IF NOT EXISTS "
+                f"FOR (n:{node_label}) ON (n.{vector_property}) "
+                f"OPTIONS {{indexConfig: {{"
+                f"`vector.dimensions`: {config.NEO4J_VECTOR_DIMENSIONS}, "
+                f"`vector.similarity_function`: '{config.NEO4J_VECTOR_SIMILARITY_FUNCTION}'"
+                f"}}}}"
+            )
+            try:
+                await self.execute_write_query(vector_index_query)
+                self.logger.info(
+                    "Vector index created successfully.",
+                    index_name=index_name,
+                    node_label=node_label,
+                    vector_property=vector_property,
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "Vector index creation failed (may be unsupported by current Neo4j version).",
+                    index_name=index_name,
+                    node_label=node_label,
+                    vector_property=vector_property,
+                    error=str(e),
+                )
 
     async def _create_type_placeholders(self) -> None:
         """Create relationship type and node label placeholders in separate data transactions."""
@@ -582,7 +669,7 @@ class Neo4jManagerSingleton:
             for query_text in data_operations:
                 try:
                     await self.execute_write_query(query_text)
-                    self.logger.debug("Phase 2 fallback: Successfully created type placeholder.")
+                    self.logger.debug("Phase 2 fallback: Successfully created type placeholder")
                 except Exception as individual_e:
                     self.logger.warning(f"Phase 2 fallback: Failed to create type placeholder: {individual_e}")
 

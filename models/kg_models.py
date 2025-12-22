@@ -1,5 +1,18 @@
 # models/kg_models.py
-"""Core data models for characters and world elements."""
+"""Define core knowledge-graph data models used across SAGA.
+
+This module provides the in-memory representations used when moving data between:
+- user-facing inputs,
+- Neo4j record/node shapes, and
+- Cypher parameter dictionaries.
+
+Notes:
+- These models intentionally preserve a flexible "overflow" area for unknown fields:
+  [`CharacterProfile`](models/kg_models.py:19) uses `updates`, and
+  [`WorldItem`](models/kg_models.py:123) uses `additional_properties`.
+- `relationships` fields represent relationship *payloads* (type/description) keyed by a
+  target entity identifier (typically the target entity's name as returned by queries).
+"""
 
 from __future__ import annotations
 
@@ -17,7 +30,15 @@ if TYPE_CHECKING:
 
 
 class CharacterProfile(BaseModel):
-    """Structured information about a character."""
+    """Represent a character node and its narrative-relevant attributes.
+
+    Notes:
+        - `name` is treated as the stable identifier for character lookups in most
+          in-memory maps and query outputs.
+        - Unknown/extra fields from upstream sources are stored in `updates` by
+          [`from_dict()`](models/kg_models.py:32) and flattened by [`to_dict()`](models/kg_models.py:44).
+        - `relationships` stores relationship payloads keyed by target character name.
+    """
 
     name: str
     type: str = "Character"
@@ -31,7 +52,18 @@ class CharacterProfile(BaseModel):
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> CharacterProfile:
-        """Create a ``CharacterProfile`` from a raw dictionary."""
+        """Create a profile from a raw dictionary.
+
+        Fields matching model fields are applied directly. Remaining keys are merged into
+        `updates` (including any nested `updates` keys already present in `data`).
+
+        Args:
+            name: Character name to use as the profile identifier.
+            data: Source mapping with known fields and optional extra keys.
+
+        Returns:
+            A populated character profile.
+        """
 
         known_fields = cls.model_fields.keys()
         profile_data = {k: v for k, v in data.items() if k in known_fields}
@@ -42,7 +74,13 @@ class CharacterProfile(BaseModel):
         return cls(name=name, **profile_data)
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert the profile to a flat dictionary."""
+        """Convert the profile to a flat dictionary.
+
+        This merges `updates` into the top-level dictionary and excludes `name`.
+
+        Returns:
+            A flat dictionary suitable for JSON serialization or prompt injection.
+        """
 
         data = self.model_dump(exclude={"name"})
         updates_data = data.pop("updates", {})
@@ -51,7 +89,17 @@ class CharacterProfile(BaseModel):
 
     @classmethod
     def from_dict_record(cls, record: Mapping[str, Any]) -> CharacterProfile:
-        """Construct directly from dictionary record."""
+        """Construct a profile from a dictionary-shaped query result.
+
+        This expects the character node to be available under the `c` alias and may
+        optionally include a `relationships` collection and a `traits` collection.
+
+        Args:
+            record: Dictionary-like query result mapping.
+
+        Returns:
+            A populated character profile.
+        """
         node = record["c"]  # Assuming 'c' is the character node alias
 
         # Extract relationships if available
@@ -89,12 +137,29 @@ class CharacterProfile(BaseModel):
 
     @classmethod
     def from_db_record(cls, record: neo4j.Record) -> CharacterProfile:
-        """Construct directly from Neo4j record - no dict conversion. (Legacy/Direct driver)"""
+        """Construct a profile from a Neo4j record.
+
+        This delegates to [`from_dict_record()`](models/kg_models.py:52) and relies on
+        compatible field access on the record object.
+
+        Args:
+            record: Neo4j record returned by the driver.
+
+        Returns:
+            A populated character profile.
+        """
         return cls.from_dict_record(record)
 
     @classmethod
     def from_db_node(cls, node: Any) -> CharacterProfile:
-        """Construct directly from Neo4j node/dict - no dict conversion."""
+        """Construct a profile from a Neo4j node or node-like dict.
+
+        Args:
+            node: Neo4j node instance or a dictionary with character properties.
+
+        Returns:
+            A populated character profile.
+        """
         node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             name=node_dict.get("name", ""),
@@ -108,7 +173,14 @@ class CharacterProfile(BaseModel):
         )
 
     def to_cypher_params(self) -> dict[str, Any]:
-        """Direct conversion to Cypher parameters without dict serialization."""
+        """Build a parameter dictionary for Cypher writes.
+
+        This excludes `relationships` and `updates`, which are handled via separate
+        write paths.
+
+        Returns:
+            A dictionary suitable for use as a Cypher parameter map.
+        """
         return {
             "name": self.name,
             "description": self.description,
@@ -121,7 +193,15 @@ class CharacterProfile(BaseModel):
 
 
 class WorldItem(BaseModel):
-    """Structured information about a world element."""
+    """Represent a non-character entity in the knowledge graph.
+
+    Notes:
+        - `id` is the stable identifier used for read-by-id operations and upserts.
+        - `category` is a free-form subtype classifier (e.g., "City", "Weapon") and is
+          intentionally not modeled as a Neo4j label.
+        - Unknown/extra fields from upstream sources are stored in `additional_properties`
+          by [`from_dict()`](models/kg_models.py:141) and flattened by [`to_dict()`](models/kg_models.py:208).
+    """
 
     id: str
     category: str
@@ -146,7 +226,21 @@ class WorldItem(BaseModel):
         data: dict[str, Any],
         allow_empty_name: bool = False,
     ) -> WorldItem:
-        """Create a ``WorldItem`` from a raw dictionary."""
+        """Create an item from a raw dictionary.
+
+        Core fields are normalized/validated via
+        [`validate_world_item_fields()`](models/kg_models.py:13). Remaining keys are
+        preserved in `additional_properties`.
+
+        Args:
+            category: Category/subtype for the item (not a Neo4j label).
+            name: Human-readable name for the item.
+            data: Source mapping containing structured fields and optional extra keys.
+            allow_empty_name: Whether validation may accept an empty `name`.
+
+        Returns:
+            A populated world item.
+        """
 
         # Get ID from data if present, otherwise generate one
         item_id = data.get("id", "")
@@ -206,7 +300,14 @@ class WorldItem(BaseModel):
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert the item to a flat dictionary."""
+        """Convert the item to a flat dictionary.
+
+        This merges `additional_properties` into the top-level dictionary and excludes
+        `id`, `category`, and `name`.
+
+        Returns:
+            A flat dictionary suitable for JSON serialization or prompt injection.
+        """
 
         data = self.model_dump(exclude={"id", "category", "name"})
         additional_properties = data.pop("additional_properties", {})
@@ -215,7 +316,20 @@ class WorldItem(BaseModel):
 
     @classmethod
     def from_dict_record(cls, record: Mapping[str, Any]) -> WorldItem:
-        """Construct directly from dictionary record."""
+        """Construct an item from a dictionary-shaped query result.
+
+        The world-element node is expected under the `w` or `we` alias. The record may
+        optionally include a `relationships` collection and a `traits` collection.
+
+        Args:
+            record: Dictionary-like query result mapping.
+
+        Returns:
+            A populated world item.
+
+        Raises:
+            ValueError: If the record does not contain a world-element node under `w` or `we`.
+        """
         # Try both 'w' and 'we' node aliases for compatibility
         node = record.get("w") or record.get("we")
         if not node:
@@ -278,12 +392,29 @@ class WorldItem(BaseModel):
 
     @classmethod
     def from_db_record(cls, record: neo4j.Record) -> WorldItem:
-        """Construct directly from Neo4j record - no dict conversion."""
+        """Construct an item from a Neo4j record.
+
+        This delegates to [`from_dict_record()`](models/kg_models.py:216) and relies on
+        compatible field access on the record object.
+
+        Args:
+            record: Neo4j record returned by the driver.
+
+        Returns:
+            A populated world item.
+        """
         return cls.from_dict_record(record)
 
     @classmethod
     def from_db_node(cls, node: Any) -> WorldItem:
-        """Construct directly from Neo4j node/dict - no dict conversion."""
+        """Construct an item from a Neo4j node or node-like dict.
+
+        Args:
+            node: Neo4j node instance or a dictionary with world-item properties.
+
+        Returns:
+            A populated world item.
+        """
 
         # Define core fields that shouldn't go into additional_properties
         core_fields = {
@@ -321,7 +452,13 @@ class WorldItem(BaseModel):
         )
 
     def to_cypher_params(self) -> dict[str, Any]:
-        """Direct conversion to Cypher parameters without dict serialization."""
+        """Build a parameter dictionary for Cypher writes.
+
+        This excludes `relationships`, which are handled via separate write paths.
+
+        Returns:
+            A dictionary suitable for use as a Cypher parameter map.
+        """
         return {
             "id": self.id,
             "name": self.name,
@@ -343,11 +480,15 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RelationshipUsage:
-    """
-    Tracks usage of a relationship type in the narrative.
+    """Track narrative usage statistics for a relationship type.
 
-    Used by relationship normalization to maintain consistent vocabulary
-    while allowing creative flexibility for genuinely novel relationships.
+    This is used by relationship normalization to keep vocabulary consistent while
+    still allowing novel relationship types to appear over time.
+
+    Notes:
+        - `canonical_type` is the normalized relationship type name (for example, "WORKS_WITH").
+        - `synonyms` captures observed variants that should normalize to `canonical_type`.
+        - `embedding` may be populated to support similarity comparisons; it is optional.
     """
 
     canonical_type: str  # The normalized form (e.g., "WORKS_WITH")
@@ -359,13 +500,17 @@ class RelationshipUsage:
     last_used_chapter: int = 0  # Most recent usage
 
     class Config:
-        """Pydantic configuration."""
+        """Configure dataclass validation behavior."""
 
         frozen = False
         validate_assignment = True
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+        """Convert usage tracking to a JSON-serializable dictionary.
+
+        Returns:
+            A dictionary with the tracked counters and metadata.
+        """
         return {
             "canonical_type": self.canonical_type,
             "first_used_chapter": self.first_used_chapter,
@@ -378,7 +523,14 @@ class RelationshipUsage:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RelationshipUsage:
-        """Create from dictionary (for deserialization)."""
+        """Create usage tracking from a dictionary.
+
+        Args:
+            data: Serialized representation produced by [`to_dict()`](models/kg_models.py:367).
+
+        Returns:
+            A relationship usage instance.
+        """
         return cls(
             canonical_type=data["canonical_type"],
             first_used_chapter=data["first_used_chapter"],

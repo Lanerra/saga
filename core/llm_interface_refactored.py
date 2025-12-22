@@ -1,15 +1,20 @@
 # core/llm_interface_refactored.py
-"""
-Refactored LLM interface with separated concerns.
+"""Provide the primary LLM client interface for SAGA.
 
-This module provides the new LLM service architecture using direct instantiation
-and separated concerns for HTTP communication and text processing.
+This module centralizes:
+- Completion calls (OpenAI-compatible chat completion APIs).
+- Embedding calls (Ollama-compatible embedding APIs).
+- Coordinated caching for embeddings.
+- Consistent error contracts for strict vs best-effort call sites.
 
-Licensed under the Apache License, Version 2.0
+Notes:
+    This module avoids logging raw prompt contents on completion failures. It logs only
+    prompt hashes and lengths to support debugging without leaking user content.
 """
 
 import asyncio
 import hashlib
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -39,23 +44,23 @@ async def async_llm_context(
     batch_size: int | None = None,
     clear_cache_on_exit: bool = False,
 ) -> AsyncGenerator[tuple["RefactoredLLMService", "EmbeddingService"], None]:
-    """
-    Unified async context manager for LLM operations with guaranteed cleanup.
-
-    This single context manager replaces the previous nested context managers:
-    - async_llm_service
-    - async_batch_embedding_session
-    - async_managed_cache_session
+    """Create LLM services with guaranteed HTTP client cleanup.
 
     Args:
-        batch_size: Size of batches to process (for embedding operations)
-        clear_cache_on_exit: Whether to clear cache when exiting context
+        batch_size: Default batch size for embedding batch calls when the caller does not
+            provide one.
+        clear_cache_on_exit: Whether to clear the embedding cache namespace on exit.
 
-    Usage:
-        async with async_llm_context(batch_size=8, clear_cache_on_exit=True) as (llm_service, embedding_service):
-            # Use both services
-            result = await llm_service.async_call_llm(model_name, prompt)
-            embeddings = await embedding_service.get_embeddings_batch(texts, batch_size)
+    Yields:
+        Tuple of (`RefactoredLLMService`, `EmbeddingService`) instances.
+
+    Notes:
+        This context manager owns the underlying HTTP client lifecycle. It should be used
+        for workflows that create many embeddings/completions and want deterministic
+        cleanup.
+
+        If `clear_cache_on_exit=True`, the `llm_embedding` cache namespace is cleared when
+        the context exits.
     """
     # Direct instantiation instead of service locator
     http_client = HTTPClientService()
@@ -102,19 +107,13 @@ async def async_llm_context(
 
 
 class EmbeddingService:
-    """
-    Service for generating embeddings using the Ollama API.
-
-    REFACTORED: Simplified to focus only on embedding logic,
-    delegating HTTP concerns to HTTPClientService.
-    """
+    """Generate and cache embedding vectors for text."""
 
     def __init__(self, embedding_client: EmbeddingHTTPClient):
-        """
-        Initialize embedding service.
+        """Initialize the embedding service.
 
         Args:
-            embedding_client: HTTP client for embedding requests
+            embedding_client: HTTP client used to perform embedding requests.
         """
         self._embedding_client = embedding_client
         self._service_name = "llm_embedding"
@@ -130,18 +129,22 @@ class EmbeddingService:
         }
 
     def _compute_text_hash(self, text: str) -> str:
-        """Compute a hash of the text for caching purposes."""
+        """Compute a stable cache key for an embedding input string."""
         return hashlib.md5(text.encode("utf-8")).hexdigest()
 
     async def get_embedding(self, text: str) -> np.ndarray | None:
-        """
-        Get embedding vector for text with coordinated caching.
+        """Get an embedding vector for a text input.
 
         Args:
-            text: Text to get embedding for
+            text: Input text to embed. Must be a non-empty string after stripping.
 
         Returns:
-            Embedding vector as numpy array or None if failed
+            Embedding vector, or None when the input is invalid, the request fails, or the
+            provider returns an invalid embedding payload.
+
+        Notes:
+            Successful embeddings are cached in the `llm_embedding` namespace keyed by a
+            hash of the stripped input text.
         """
         self._stats["embeddings_requested"] += 1
 
@@ -180,15 +183,15 @@ class EmbeddingService:
             return None
 
     async def get_embeddings_batch(self, texts: list[str], batch_size: int | None = None) -> list[np.ndarray | None]:
-        """
-        Get embeddings for multiple texts in batches for better performance.
+        """Get embeddings for many inputs with bounded concurrency.
 
         Args:
-            texts: List of texts to get embeddings for
-            batch_size: Size of batches to process (defaults to MAX_CONCURRENT_LLM_CALLS)
+            texts: Inputs to embed. Empty inputs are allowed but may yield None results,
+                depending on per-item validation.
+            batch_size: Maximum number of concurrent embedding requests in one batch.
 
         Returns:
-            List of embedding vectors (same order as input texts)
+            List of embeddings aligned to the input order.
         """
         if not texts:
             return []
@@ -209,7 +212,7 @@ class EmbeddingService:
         return results
 
     def _extract_and_validate_embedding(self, response_data: dict[str, Any]) -> np.ndarray | None:
-        """Extract and validate embedding from API response."""
+        """Extract an embedding vector from a provider response and validate its shape."""
         # Try primary key first
         primary_key = "embedding"
         if primary_key in response_data and isinstance(response_data[primary_key], list):
@@ -220,7 +223,7 @@ class EmbeddingService:
         # Try fallback keys
         logger.warning(f"Primary embedding key '{primary_key}' not found, trying fallbacks")
         for key, value in response_data.items():
-            if isinstance(value, list) and all(isinstance(item, (float, int)) for item in value):
+            if isinstance(value, list) and all(isinstance(item, float | int) for item in value):
                 embedding = self._validate_embedding_list(value)
                 if embedding is not None:
                     logger.info(f"Found embedding using fallback key '{key}'")
@@ -268,24 +271,18 @@ class EmbeddingService:
 
 
 class CompletionService:
-    """
-    Service for generating text completions using OpenAI-compatible APIs.
-
-    REFACTORED: Simplified to focus only on completion logic,
-    delegating HTTP and text processing concerns to specialized services.
-    """
+    """Generate text completions via OpenAI-compatible APIs."""
 
     def __init__(
         self,
         completion_client: CompletionHTTPClient,
         text_processor: TextProcessingService,
     ):
-        """
-        Initialize completion service.
+        """Initialize the completion service.
 
         Args:
-            completion_client: HTTP client for completion requests
-            text_processor: Service for text processing operations
+            completion_client: HTTP client used to perform completion requests.
+            text_processor: Service used for response cleanup and token operations.
         """
         self._completion_client = completion_client
         self._text_processor = text_processor
@@ -304,26 +301,34 @@ class CompletionService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
-        grammar: str | None = None,
         *,
         system_prompt: str | None = None,
         strict: bool = True,
         **kwargs: Any,
     ) -> tuple[str, dict[str, int] | None]:
-        """
-        Get completion from LLM.
+        """Request a completion for a prompt.
 
         Args:
-            model_name: Model to use for completion
-            prompt: Input prompt
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            allow_fallback: Whether to allow fallback model
-            auto_clean_response: Whether to clean the response
-            **kwargs: Additional completion parameters
+            model_name: Provider model identifier.
+            prompt: User prompt content.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
+            allow_fallback: Whether to attempt a fallback model after a primary failure.
+            auto_clean_response: Whether to apply response cleanup.
+            system_prompt: Optional system prompt injected as a system message.
+            strict: Whether to raise a typed exception on failure.
+            **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
 
         Returns:
-            Tuple of (response_text, usage_data)
+            Tuple of `(response_text, usage_data)`.
+
+        Raises:
+            LLMServiceError: When `strict=True` and the request fails or required inputs
+                are missing.
+
+        Notes:
+            This method avoids logging raw prompt contents on failures. It logs only a
+            hash and length.
         """
         self._stats["completions_requested"] += 1
 
@@ -352,7 +357,6 @@ class CompletionService:
                 messages,
                 effective_temperature,
                 effective_max_tokens,
-                grammar=grammar,
                 **kwargs,
             )
 
@@ -414,7 +418,6 @@ class CompletionService:
                         messages,
                         effective_temperature,
                         effective_max_tokens,
-                        grammar=grammar,
                         **kwargs,
                     )
 
@@ -475,36 +478,75 @@ class CompletionService:
     # Streaming completion path removed to simplify the API.
 
     def _extract_completion_content(self, response_data: dict[str, Any]) -> str:
-        """Extract completion content from API response."""
+        """Extract completion text from a provider response.
+
+        Returns:
+            Extracted text, or an empty string when no usable content is present.
+
+        Notes:
+            Providers sometimes return structured content as a list of parts. This method
+            accepts common variants used by OpenAI-compatible APIs.
+        """
+
+        def _extract_text_from_content(content_value: Any) -> str | None:
+            if isinstance(content_value, str):
+                return content_value if content_value.strip() else None
+
+            if isinstance(content_value, list):
+                text_parts: list[str] = []
+                for item in content_value:
+                    if isinstance(item, str):
+                        if item:
+                            text_parts.append(item)
+                        continue
+
+                    if not isinstance(item, dict):
+                        continue
+
+                    item_type = item.get("type")
+                    if isinstance(item_type, str) and item_type != "text":
+                        continue
+
+                    text_field = item.get("text")
+                    if isinstance(text_field, str):
+                        if text_field:
+                            text_parts.append(text_field)
+                        continue
+
+                    if isinstance(text_field, dict):
+                        nested_value = text_field.get("value")
+                        if isinstance(nested_value, str) and nested_value:
+                            text_parts.append(nested_value)
+                        continue
+
+                combined_text = "".join(text_parts)
+                return combined_text if combined_text.strip() else None
+
+            return None
+
         # Prefer the standard OpenAI schema first
         try:
             if response_data.get("choices") and len(response_data["choices"]) > 0:
                 choice0 = response_data["choices"][0]
                 message = choice0.get("message") or {}
 
-                # 1) Standard content
-                content = message.get("content")
-                if isinstance(content, str) and content.strip():
-                    return content
+                # 1) Standard content (string or list-of-parts)
+                content_text = _extract_text_from_content(message.get("content"))
+                if content_text is not None:
+                    return content_text
 
-                # 2) Some providers (e.g., Qwen reasoning models) expose 'reasoning_content'
-                reasoning_content = message.get("reasoning_content")
-                if isinstance(reasoning_content, str) and reasoning_content.strip():
-                    logger.warning("LLM response missing 'content'; using 'reasoning_content' fallback")
-                    return reasoning_content
-
-                # 3) Occasionally providers place content directly under the choice
-                direct_choice_content = choice0.get("content")
-                if isinstance(direct_choice_content, str) and direct_choice_content.strip():
+                # 2) Occasionally providers place content directly under the choice
+                direct_choice_content_text = _extract_text_from_content(choice0.get("content"))
+                if direct_choice_content_text is not None:
                     logger.warning("LLM response missing message.content; using choice['content'] fallback")
-                    return direct_choice_content
+                    return direct_choice_content_text
 
-                # 4) Last resorts: top-level convenience fields sometimes appear
+                # 3) Last resorts: top-level convenience fields sometimes appear
                 for key in ("output_text", "text", "response", "content"):
-                    top = response_data.get(key)
-                    if isinstance(top, str) and top.strip():
+                    top_text = _extract_text_from_content(response_data.get(key))
+                    if top_text is not None:
                         logger.warning(f"LLM response using top-level '{key}' fallback for content")
-                        return top
+                        return top_text
 
         except Exception as e:
             logger.error(f"Completion content extraction failed: {e}", exc_info=True)
@@ -524,15 +566,7 @@ class CompletionService:
 
 
 class RefactoredLLMService:
-    """
-    Main LLM service with separated concerns architecture.
-
-    REFACTORED: Complete rewrite using direct instantiation and separated services.
-    - HTTP communication handled by HTTPClientService
-    - Text processing handled by TextProcessingService
-    - Clear separation of concerns
-    - Better testability and maintainability
-    """
+    """Expose completions, embeddings, and token utilities behind a single interface."""
 
     def __init__(
         self,
@@ -540,13 +574,12 @@ class RefactoredLLMService:
         embedding_service: EmbeddingService,
         text_processor: TextProcessingService,
     ):
-        """
-        Initialize the refactored LLM service.
+        """Initialize the service with explicit dependencies.
 
         Args:
-            completion_service: Service for text completions
-            embedding_service: Service for embeddings
-            text_processor: Service for text processing
+            completion_service: Completion provider wrapper.
+            embedding_service: Embedding provider wrapper.
+            text_processor: Text cleanup and tokenization utilities.
         """
         self._completion_service = completion_service
         self._embedding_service = embedding_service
@@ -562,20 +595,36 @@ class RefactoredLLMService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
-        grammar: str | None = None,
         *,
         system_prompt: str | None = None,
         strict: bool = True,
         **kwargs: Any,
     ) -> tuple[str, dict[str, int] | None]:
-        """
-        Call LLM with comprehensive options.
+        """Call the LLM completion API.
 
-        CORE-007 error contract:
-        - By default (`strict=True`), errors raise a typed exception (LLMServiceError)
-          rather than returning ambiguous sentinels like ("", None).
-        - For compatibility with legacy "best-effort" flows, callers may set
-          `strict=False` to preserve the sentinel return behavior.
+        Args:
+            model_name: Provider model identifier.
+            prompt: User prompt content.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
+            allow_fallback: Whether to attempt a fallback model after a primary failure.
+            auto_clean_response: Whether to apply response cleanup.
+            system_prompt: Optional system prompt injected as a system message.
+            strict: Whether to raise a typed exception on failure.
+            **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
+
+        Returns:
+            Tuple of `(response_text, usage_data)`.
+
+        Raises:
+            LLMServiceError: When `strict=True` and the completion call fails.
+
+        Notes:
+            CORE-007 error contract:
+            - When `strict=True`, failures raise a typed exception instead of returning
+              ambiguous sentinels like `("", None)`.
+            - When `strict=False`, failures return `("", None)` for compatibility with
+              best-effort call sites.
         """
         return await self._completion_service.get_completion(
             model_name,
@@ -584,34 +633,207 @@ class RefactoredLLMService:
             max_tokens,
             allow_fallback,
             auto_clean_response,
-            grammar=grammar,
             system_prompt=system_prompt,
             strict=strict,
             **kwargs,
         )
 
-    async def async_get_embedding(self, text: str) -> np.ndarray | None:
-        """
-        Get embedding for text.
+    async def async_call_llm_json_object(
+        self,
+        model_name: str,
+        prompt: str,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        allow_fallback: bool = False,
+        auto_clean_response: bool = True,
+        *,
+        system_prompt: str | None = None,
+        strict: bool = True,
+        max_attempts: int = 2,
+        **kwargs: Any,
+    ) -> tuple[dict[str, Any], dict[str, int] | None]:
+        """Call the LLM and parse the response as a JSON object.
 
-        REFACTORED: Simple delegation to embedding service.
+        Args:
+            model_name: Provider model identifier.
+            prompt: User prompt content.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
+            allow_fallback: Whether to attempt a fallback model after a primary failure.
+            auto_clean_response: Whether to apply response cleanup before parsing JSON.
+            system_prompt: Optional system prompt injected as a system message.
+            strict: Whether to raise a typed exception on completion failure.
+            max_attempts: Maximum number of attempts to obtain valid JSON.
+            **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
+
+        Returns:
+            Tuple of `(data, usage_data)` where `data` is a JSON object.
+
+        Raises:
+            ValueError: If `max_attempts < 1`, or if the model does not return a valid JSON
+                object after all attempts.
+            LLMServiceError: When `strict=True` and the underlying completion call fails.
         """
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+
+        last_decode_error: json.JSONDecodeError | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            text, usage = await self.async_call_llm(
+                model_name=model_name,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                allow_fallback=allow_fallback,
+                auto_clean_response=auto_clean_response,
+                system_prompt=system_prompt,
+                strict=strict,
+                **kwargs,
+            )
+
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as decode_error:
+                last_decode_error = decode_error
+
+                response_sha1 = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+                prompt_sha1 = hashlib.sha1(prompt.encode("utf-8")).hexdigest()[:12]
+                finish_reason = usage.get("finish_reason") if isinstance(usage, dict) else None
+                completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+                prompt_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+                total_tokens = usage.get("total_tokens") if isinstance(usage, dict) else None
+
+                logger.warning(
+                    "LLM returned invalid JSON (object expected)",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    model=model_name,
+                    requested_max_tokens=max_tokens,
+                    temperature=temperature,
+                    auto_clean_response=auto_clean_response,
+                    finish_reason=finish_reason,
+                    prompt_sha1=prompt_sha1,
+                    prompt_len=len(prompt),
+                    response_sha1=response_sha1,
+                    response_len=len(text),
+                    completion_tokens=completion_tokens,
+                    prompt_tokens=prompt_tokens,
+                    total_tokens=total_tokens,
+                    line=decode_error.lineno,
+                    column=decode_error.colno,
+                )
+                continue
+
+            if not isinstance(data, dict):
+                response_sha1 = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+                logger.warning(
+                    "LLM returned JSON but root value was not an object",
+                    model=model_name,
+                    response_sha1=response_sha1,
+                    response_len=len(text),
+                    root_type=type(data).__name__,
+                )
+                raise ValueError("LLM returned JSON but root value was not an object")
+
+            return data, usage
+
+        if last_decode_error is not None:
+            raise ValueError("LLM returned invalid JSON") from last_decode_error
+
+        raise ValueError("LLM returned invalid JSON")
+
+    async def async_call_llm_json_array(
+        self,
+        model_name: str,
+        prompt: str,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        allow_fallback: bool = False,
+        auto_clean_response: bool = True,
+        *,
+        system_prompt: str | None = None,
+        strict: bool = True,
+        max_attempts: int = 2,
+        **kwargs: Any,
+    ) -> tuple[list[Any], dict[str, int] | None]:
+        """Call the LLM and parse the response as a JSON array.
+
+        Args:
+            model_name: Provider model identifier.
+            prompt: User prompt content.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens to generate.
+            allow_fallback: Whether to attempt a fallback model after a primary failure.
+            auto_clean_response: Whether to apply response cleanup before parsing JSON.
+            system_prompt: Optional system prompt injected as a system message.
+            strict: Whether to raise a typed exception on completion failure.
+            max_attempts: Maximum number of attempts to obtain valid JSON.
+            **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
+
+        Returns:
+            Tuple of `(data, usage_data)` where `data` is a JSON array.
+
+        Raises:
+            ValueError: If `max_attempts < 1`, or if the model does not return a valid JSON
+                array after all attempts.
+            LLMServiceError: When `strict=True` and the underlying completion call fails.
+        """
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+
+        last_decode_error: json.JSONDecodeError | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            text, usage = await self.async_call_llm(
+                model_name=model_name,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                allow_fallback=allow_fallback,
+                auto_clean_response=auto_clean_response,
+                system_prompt=system_prompt,
+                strict=strict,
+                **kwargs,
+            )
+
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as decode_error:
+                last_decode_error = decode_error
+
+                response_sha1 = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+                logger.warning(
+                    "LLM returned invalid JSON (array expected)",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    response_sha1=response_sha1,
+                    response_len=len(text),
+                    line=decode_error.lineno,
+                    column=decode_error.colno,
+                )
+                continue
+
+            if not isinstance(data, list):
+                raise ValueError("LLM returned JSON but root value was not an array")
+
+            return data, usage
+
+        if last_decode_error is not None:
+            raise ValueError("LLM returned invalid JSON") from last_decode_error
+
+        raise ValueError("LLM returned invalid JSON")
+
+    async def async_get_embedding(self, text: str) -> np.ndarray | None:
+        """Get an embedding for a single text input."""
         return await self._embedding_service.get_embedding(text)
 
     async def async_get_embeddings_batch(self, texts: list[str], batch_size: int | None = None) -> list[np.ndarray | None]:
-        """
-        Get embeddings for multiple texts in batches.
-
-        REFACTORED: Simple delegation to embedding service.
-        """
+        """Get embeddings for many inputs with bounded concurrency."""
         return await self._embedding_service.get_embeddings_batch(texts, batch_size)
 
     def count_tokens(self, text: str, model_name: str) -> int:
-        """
-        Count tokens in text.
-
-        REFACTORED: Simple delegation to text processing service.
-        """
+        """Count model tokens for a text input."""
         return self._text_processor.tokenizer.count_tokens(text, model_name)
 
     def truncate_text_by_tokens(
@@ -621,11 +843,7 @@ class RefactoredLLMService:
         max_tokens: int,
         truncation_marker: str = "\n... (truncated)",
     ) -> str:
-        """
-        Truncate text by tokens.
-
-        REFACTORED: Simple delegation to text processing service.
-        """
+        """Truncate a text input to a token budget."""
         return self._text_processor.tokenizer.truncate_text_by_tokens(text, model_name, max_tokens, truncation_marker)
 
     def get_combined_statistics(self) -> dict[str, Any]:
@@ -639,11 +857,7 @@ class RefactoredLLMService:
 
 # Direct instantiation functions for simplified API
 def create_llm_service() -> RefactoredLLMService:
-    """
-    Create and return a new LLM service instance with direct instantiation.
-
-    This replaces the service locator pattern with direct dependency injection.
-    """
+    """Construct a new LLM service instance with direct dependency injection."""
     http_client = HTTPClientService()
     embedding_client = EmbeddingHTTPClient(http_client)
     completion_client = CompletionHTTPClient(http_client)

@@ -1,10 +1,10 @@
 # core/langgraph/initialization/character_sheets_node.py
-"""
-Character Sheets Generation Node for Initialization Phase.
+"""Generate character sheets during initialization.
 
-This node generates detailed character sheets during the initialization phase,
-creating comprehensive profiles for main characters that will be used throughout
-the narrative generation process.
+This module defines the initialization node that generates structured character
+sheets for the protagonist and other main characters. The resulting sheets are
+externalized to keep workflow state small and to provide durable initialization
+artifacts for later steps.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from typing import Any
 
 import structlog
 
@@ -20,19 +21,22 @@ from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from core.schema_validator import schema_validator
-from prompts.grammar_loader import load_grammar
 from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import try_load_json_from_response
 from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
 
 
 async def _get_existing_traits() -> list[str]:
-    """
-    Fetch existing trait names from the database to encourage reuse.
+    """Fetch existing trait names to encourage reuse.
 
     Returns:
-        List of existing trait names (normalized)
+        Trait names from Neo4j, in display form.
+
+    Notes:
+        This helper performs Neo4j I/O. Failures are treated as non-fatal and
+        return an empty list so initialization can proceed.
     """
     try:
         query = """
@@ -58,20 +62,21 @@ async def _get_existing_traits() -> list[str]:
         return []
 
 
-def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, any]:
-    """
-    Parse the structured character sheet response into CharacterProfile-compatible format.
-    Refactored to handle JSON response enforced by GBNF grammar.
+def _parse_character_sheet_response(response: str, character_name: str) -> dict[str, Any]:
+    """Parse a character sheet JSON response into an internal sheet dictionary.
 
     Args:
-        response: Raw LLM response with structured character data (JSON)
-        character_name: Name of the character
+        response: Raw LLM response expected to contain a JSON object.
+        character_name: Character name used as a fallback when the response omits it.
 
     Returns:
-        Dictionary with CharacterProfile-compatible fields
-    """
-    import json
+        Parsed character sheet dictionary. Traits are filtered to single-word values
+        via [`validate_and_filter_traits()`](utils/text_processing.py:1), and relationship
+        descriptions are normalized into the internal relationship structure.
 
+    Raises:
+        ValueError: When no valid JSON object can be parsed from the response.
+    """
     # Defaults
     parsed = {
         "name": character_name,
@@ -86,112 +91,122 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         "internal_conflict": "",
     }
 
-    try:
-        # Clean potential markdown
-        cleaned_response = response.strip()
-        if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response[7:]
-        if cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[:-3]
+    cleaned_response = response.strip()
+    parsed_json, candidates, parse_errors = try_load_json_from_response(
+        response,
+        expected_root=dict,
+    )
 
-        data = json.loads(cleaned_response)
+    if parsed_json is None:
+        try:
+            json.loads(cleaned_response)
+        except json.JSONDecodeError as e:
+            try:
+                response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
+                response_len = len(response)
+                cleaned_sha1 = hashlib.sha1(cleaned_response.encode("utf-8")).hexdigest()[:12]
+                cleaned_len = len(cleaned_response)
+                response_last_codepoint = ord(response[-1]) if response else None
+                cleaned_last_codepoint = ord(cleaned_response[-1]) if cleaned_response else None
+            except Exception:  # pragma: no cover
+                response_sha1 = None
+                response_len = None
+                cleaned_sha1 = None
+                cleaned_len = None
+                response_last_codepoint = None
+                cleaned_last_codepoint = None
 
-        # Merge data into defaults
-        parsed.update(data)
-
-        # Ensure name matches requested character if not provided or empty
-        if not parsed.get("name"):
-            parsed["name"] = character_name
-
-        # Validate and filter traits to ensure single-word format
-        raw_traits = parsed.get("traits", [])
-        parsed["traits"] = validate_and_filter_traits(raw_traits)
-
-        if len(parsed["traits"]) != len(raw_traits):
             logger.warning(
-                "_parse_character_sheet_response: filtered invalid traits",
+                "_parse_character_sheet_response: JSON parsing failed",
                 character=character_name,
-                original_count=len(raw_traits),
-                filtered_count=len(parsed["traits"]),
-                removed=set(raw_traits) - set(parsed["traits"]),
+                error=str(e),
+                error_pos=getattr(e, "pos", None),
+                error_lineno=getattr(e, "lineno", None),
+                error_colno=getattr(e, "colno", None),
+                response_sha1=response_sha1,
+                response_len=response_len,
+                cleaned_sha1=cleaned_sha1,
+                cleaned_len=cleaned_len,
+                has_json_fence=("```json" in response),
+                has_fence=("```" in response),
+                cleaned_startswith=cleaned_response[:1] if cleaned_response else None,
+                cleaned_endswith=cleaned_response[-1:] if cleaned_response else None,
+                response_last_codepoint=response_last_codepoint,
+                cleaned_last_codepoint=cleaned_last_codepoint,
+                tried_sources=[source for source, _candidate in candidates[:5]],
+                parse_errors=parse_errors[:5],
             )
 
-        # Transform relationships if needed to internal structure
-        structured_relationships = {}
-        if isinstance(parsed.get("relationships"), dict):
-            for target, desc in parsed["relationships"].items():
-                # Try to extract type from description if possible, or default
-                structured_relationships[target] = {
-                    "type": "ASSOCIATE",  # Default
-                    "description": desc,
-                }
-            parsed["relationships"] = structured_relationships
+            raise ValueError(
+                "Character sheet JSON parsing failed "
+                f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})"
+            ) from e
 
-        # Double check that we are using a valid type (should be 'Character')
-        is_valid, normalized, err = schema_validator.validate_entity_type("Character")
-        parsed["type"] = normalized if is_valid else "Character"
+        raise ValueError(f"Character sheet JSON parsing failed (character={character_name})")
 
-    except json.JSONDecodeError as e:
-        try:
-            response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]
-            response_len = len(response)
-            cleaned_sha1 = hashlib.sha1(cleaned_response.encode("utf-8")).hexdigest()[:12]
-            cleaned_len = len(cleaned_response)
-            response_last_codepoint = ord(response[-1]) if response else None
-            cleaned_last_codepoint = ord(cleaned_response[-1]) if cleaned_response else None
-        except Exception:  # pragma: no cover
-            response_sha1 = None
-            response_len = None
-            cleaned_sha1 = None
-            cleaned_len = None
-            response_last_codepoint = None
-            cleaned_last_codepoint = None
+    # Merge data into defaults
+    parsed.update(parsed_json)
 
+    # Ensure name matches requested character if not provided or empty
+    if not parsed.get("name"):
+        parsed["name"] = character_name
+
+    # Validate and filter traits to ensure single-word format
+    raw_traits_value = parsed.get("traits", [])
+    if not isinstance(raw_traits_value, list):
+        raw_traits: list[str] = []
+    else:
+        raw_traits = [t for t in raw_traits_value if isinstance(t, str)]
+    parsed["traits"] = validate_and_filter_traits(raw_traits)
+
+    if len(parsed["traits"]) != len(raw_traits):
         logger.warning(
-            "_parse_character_sheet_response: JSON parsing failed",
+            "_parse_character_sheet_response: filtered invalid traits",
             character=character_name,
-            error=str(e),
-            error_pos=getattr(e, "pos", None),
-            error_lineno=getattr(e, "lineno", None),
-            error_colno=getattr(e, "colno", None),
-            response_sha1=response_sha1,
-            response_len=response_len,
-            cleaned_sha1=cleaned_sha1,
-            cleaned_len=cleaned_len,
-            has_json_fence=("```json" in response),
-            has_fence=("```" in response),
-            cleaned_startswith=cleaned_response[:1] if cleaned_response else None,
-            cleaned_endswith=cleaned_response[-1:] if cleaned_response else None,
-            response_last_codepoint=response_last_codepoint,
-            cleaned_last_codepoint=cleaned_last_codepoint,
+            original_count=len(raw_traits),
+            filtered_count=len(parsed["traits"]),
+            removed=set(raw_traits) - set(parsed["traits"]),
         )
 
-        raise ValueError(
-            "Character sheet JSON parsing failed "
-            f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})"
-        ) from e
+    # Transform relationships if needed to internal structure
+    relationships_value = parsed.get("relationships")
+    structured_relationships: dict[str, dict[str, str]] = {}
+    if isinstance(relationships_value, dict):
+        for target, desc in relationships_value.items():
+            if not isinstance(target, str):
+                continue
+            if not isinstance(desc, str):
+                continue
+            structured_relationships[target] = {
+                "type": "ASSOCIATE",
+                "description": desc,
+            }
+        parsed["relationships"] = structured_relationships
+
+    # Double check that we are using a valid type (should be 'Character')
+    is_valid, normalized, err = schema_validator.validate_entity_type("Character")
+    parsed["type"] = normalized if is_valid else "Character"
 
     return parsed
 
 
 async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
-    """
-    Generate detailed character sheets for main characters.
-
-    This node creates comprehensive character profiles based on the story's
-    genre, theme, setting, and protagonist. These sheets will inform character
-    behavior and development throughout the narrative.
-
-    Process Flow:
-    1. Generate character list based on story parameters
-    2. For each character, generate a detailed character sheet
-    3. Store character sheets in state for later use
+    """Generate and externalize character sheets for initialization.
 
     Args:
-        state: Current narrative state with story metadata
+        state: Workflow state. Requires core story metadata such as `title` and `genre`.
 
     Returns:
-        Updated state with character_sheets populated
+        Updated state containing character sheet artifacts (typically via an
+        externalized reference) and initialization progress fields.
+
+        If required metadata is missing, returns an error update without performing
+        LLM calls.
+
+    Notes:
+        This node performs Neo4j I/O (trait reuse hints) and LLM I/O (sheet generation).
+        JSON parsing failures in character sheet responses are treated as fatal for
+        that character and surface as initialization errors.
     """
     logger.info(
         "generate_character_sheets: starting character sheet generation",
@@ -323,10 +338,6 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
         genre=state.get("genre", ""),
     )
 
-    grammar = load_grammar("initialization")
-    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
-    grammar = f"root ::= character-list\n{grammar}"
-
     temperatures = [0.7, 0.3, 0.1]
     last_exception = None
 
@@ -336,11 +347,10 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
                 model_name=state.get("large_model", ""),
                 prompt=prompt,
                 temperature=temperature,
-                max_tokens=8192,
+                max_tokens=16384,
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),
-                grammar=grammar,
             )
 
             if not response:
@@ -407,11 +417,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
             if protagonist_name and protagonist_name not in validated_names:
                 raise ValueError("Character list must include the protagonist name exactly")
 
-            placeholder_names = [
-                name
-                for name in validated_names
-                if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)
-            ]
+            placeholder_names = [name for name in validated_names if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)]
             if placeholder_names:
                 logger.error(
                     "_generate_character_list: placeholder names detected",
@@ -451,7 +457,7 @@ async def _generate_character_sheet(
     character_name: str,
     other_characters: list[str],
     existing_traits: list[str] | None = None,
-) -> dict[str, any] | None:
+) -> dict[str, Any] | None:
     """
     Generate a detailed character sheet for a specific character.
 
@@ -486,13 +492,6 @@ async def _generate_character_sheet(
         },
     )
 
-    # Load and configure grammar
-    grammar = load_grammar("initialization")
-    # Enforce character_sheet as root by replacing the default root
-    grammar = re.sub(r"^root ::= .*$", "", grammar, flags=re.MULTILINE)
-    # Be sure to include the replaced root at the top
-    grammar = f"root ::= character-sheet\n{grammar}"
-
     temperatures = [0.7, 0.3, 0.1]
     last_exception = None
 
@@ -502,11 +501,10 @@ async def _generate_character_sheet(
                 model_name=state.get("large_model", ""),
                 prompt=prompt,
                 temperature=temperature,
-                max_tokens=8192,
+                max_tokens=16384,
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),
-                grammar=grammar,
             )
 
             if not response:

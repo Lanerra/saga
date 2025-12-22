@@ -1,24 +1,28 @@
 # config/validator.py
-"""
-Configuration validation utilities for the SAGA system.
+"""Validate the active SAGA configuration.
 
-This module provides a single public function `validate_all()` that:
-1. Instantiates a fresh `SagaSettings` object (leveraging Pydantic validation).
-2. Performs cross‑field sanity checks that cannot be expressed purely with
-   Pydantic field validators (e.g., related numeric ranges).
-3. Returns a structured health report dictionary that mimics the format used
-   elsewhere in the codebase (e.g., `core/schema_initialization.get_schema_health_check`).
+This module performs cross-field validation on the already-constructed
+[`settings`](config/settings.py:356) singleton from [`config.settings`](config/settings.py:1).
+It does not reload `.env` or instantiate a new settings object.
 
-The report layout:
+Validation strictness:
+- This module does not raise for validation failures found here. Instead it returns a
+  structured report.
+- Any type/field validation errors are expected to surface when
+  [`settings`](config/settings.py:356) is constructed (import-time) and would raise via
+  Pydantic there.
 
-{
-    "overall_health": "healthy" | "warning" | "error",
-    "issues": {
-        "errors":   [{ "field": "<field>", "message": "<msg>" }, ...],
-        "warnings": [{ "field": "<field>", "message": "<msg>" }, ...],
-        "info":     [{ "field": "<field>", "message": "<msg>" }, ...],
+Returns:
+    A health report with an `overall_health` level and categorized issue lists:
+
+    {
+        "overall_health": "healthy" | "warning" | "error",
+        "issues": {
+            "errors":   [{ "field": "<field>", "message": "<msg>" }, ...],
+            "warnings": [{ "field": "<field>", "message": "<msg>" }, ...],
+            "info":     [{ "field": "<field>", "message": "<msg>" }, ...],
+        },
     }
-}
 """
 
 from __future__ import annotations
@@ -32,15 +36,32 @@ def _add_issue(
     field: str,
     message: str,
 ) -> None:
-    """Utility to append an issue entry to the report."""
+    """Append a validation issue entry to a report.
+
+    Args:
+        issues: Mapping of severity buckets to issue lists.
+        severity: One of `errors`, `warnings`, or `info`.
+        field: Name of the configuration field associated with the issue.
+        message: Human-readable description of the issue.
+
+    Notes:
+        This function mutates `issues` in place.
+    """
     issues.setdefault(severity, []).append({"field": field, "message": message})
 
 
 def validate_all() -> dict:
-    """
-    Validate the current configuration state.
+    """Validate the current configuration state and return a health report.
 
-    Returns a health‑report dict with overall status and detailed issue lists.
+    This function evaluates cross-field invariants that are not enforced by Pydantic
+    field definitions. It treats violations as configuration problems and records them
+    in the returned report rather than raising.
+
+    Returns:
+        A health report dictionary. `overall_health` is:
+        - `error` when any error-level issues exist,
+        - `warning` when no errors exist but warning-level issues do,
+        - `healthy` otherwise.
     """
     issues: dict[str, list[dict[str, str]]] = {"errors": [], "warnings": [], "info": []}
 

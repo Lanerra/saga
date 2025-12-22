@@ -1,4 +1,11 @@
 # core/langgraph/nodes/assemble_chapter_node.py
+"""Assemble drafted scenes into a chapter draft.
+
+This module defines the assembly node used by the scene-based generation workflow.
+It concatenates drafted scenes into a single chapter draft, then externalizes both
+the full draft and the list of scene drafts to keep workflow state small.
+"""
+
 import structlog
 
 from core.langgraph.content_manager import ContentManager, get_scene_drafts
@@ -8,8 +15,24 @@ logger = structlog.get_logger(__name__)
 
 
 def assemble_chapter(state: NarrativeState) -> NarrativeState:
-    """
-    Assemble scenes into a full chapter.
+    """Assemble the current chapter’s drafted scenes into a single draft.
+
+    Args:
+        state: Workflow state. Reads scene drafts (preferring externalized refs).
+
+    Returns:
+        Partial state update containing:
+        - draft_ref: Externalized chapter draft text.
+        - scene_drafts_ref: Externalized list of scene drafts.
+        - draft_word_count: Word count for the assembled chapter.
+        - current_node: `"assemble_chapter"`.
+
+        If no scene drafts are present, returns an update with `draft_ref` set to
+        `None` and `draft_word_count` set to `0`.
+
+    Notes:
+        This node performs filesystem I/O (externalizing text artifacts) via
+        `ContentManager`.
     """
     logger.info("assemble_chapter: finalizing chapter draft")
 

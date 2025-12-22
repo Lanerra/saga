@@ -1,25 +1,13 @@
 # core/langgraph/visualization.py
-"""
-LangGraph Workflow Visualization Utilities.
+"""Render LangGraph workflows for debugging and inspection.
 
-This module provides tools to visualize LangGraph workflows for debugging
-and documentation purposes. Supports multiple output formats:
-- Mermaid diagrams (.md, .mmd)
-- PNG images (requires graphviz)
-- ASCII text diagrams
+This module can export a compiled workflow graph to:
+- Mermaid diagrams (`.md` / `.mmd`).
+- PNG images (requires Graphviz integration).
+- Plain-text ASCII summaries.
 
-Usage:
-    from core.langgraph.visualization import visualize_workflow
-    from core.langgraph.workflow import create_full_workflow_graph
-
-    # Create graph
-    graph = create_full_workflow_graph()
-
-    # Visualize to Mermaid
-    visualize_workflow(graph, "workflow.md", format="mermaid")
-
-    # Visualize to PNG
-    visualize_workflow(graph, "workflow.png", format="png")
+Notes:
+    PNG export depends on optional Graphviz tooling via LangChain/LangGraph.
 """
 
 from __future__ import annotations
@@ -38,26 +26,20 @@ def visualize_workflow(
     format: Literal["mermaid", "png", "ascii"] = "mermaid",
     title: str | None = None,
 ) -> Path:
-    """Visualize a LangGraph workflow and save to file.
-
-    Generates a visual representation of the workflow graph showing:
-    - All nodes (states/steps)
-    - Edges (transitions)
-    - Conditional routing
-    - Entry and exit points
+    """Write a visualization of a compiled LangGraph workflow.
 
     Args:
-        graph: Compiled LangGraph StateGraph instance.
-        output_path: Path to save visualization file.
-        format: Output format - "mermaid", "png", or "ascii".
-        title: Optional title for the diagram.
+        graph: Compiled workflow graph.
+        output_path: Destination file path.
+        format: Export format.
+        title: Optional diagram title.
 
     Returns:
-        Path to the created visualization file.
+        Path to the written file.
 
     Raises:
-        ImportError: If required dependencies are missing (e.g., graphviz for PNG).
-        ValueError: If format is not supported.
+        ImportError: When `format="png"` and PNG export dependencies are unavailable.
+        ValueError: When `format` is not supported.
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,13 +69,7 @@ def visualize_workflow(
 
 
 def _export_mermaid(graph: Any, output_path: Path, title: str | None) -> None:
-    """Export workflow as Mermaid diagram.
-
-    Args:
-        graph: Compiled LangGraph StateGraph instance.
-        output_path: Path to save Mermaid file.
-        title: Optional diagram title.
-    """
+    """Export the workflow as Mermaid source."""
     try:
         # LangGraph's built-in Mermaid export
         mermaid_code = graph.get_graph().draw_mermaid()
@@ -122,17 +98,10 @@ def _export_mermaid(graph: Any, output_path: Path, title: str | None) -> None:
 
 
 def _export_png(graph: Any, output_path: Path, title: str | None) -> None:
-    """Export workflow as PNG image.
-
-    Requires graphviz to be installed.
-
-    Args:
-        graph: Compiled LangGraph StateGraph instance.
-        output_path: Path to save PNG file.
-        title: Optional diagram title.
+    """Export the workflow as a PNG image.
 
     Raises:
-        ImportError: If graphviz is not available.
+        ImportError: When Graphviz integration is unavailable.
     """
     try:
         # Try to use LangGraph's built-in PNG export via graphviz
@@ -166,15 +135,7 @@ def _export_png(graph: Any, output_path: Path, title: str | None) -> None:
 
 
 def _export_ascii(graph: Any, output_path: Path, title: str | None) -> None:
-    """Export workflow as ASCII text diagram.
-
-    Creates a simple text representation of the workflow.
-
-    Args:
-        graph: Compiled LangGraph StateGraph instance.
-        output_path: Path to save ASCII file.
-        title: Optional diagram title.
-    """
+    """Export the workflow as a plain-text summary."""
     try:
         # Get graph structure
         graph_obj = graph.get_graph()
@@ -227,14 +188,7 @@ def _export_ascii(graph: Any, output_path: Path, title: str | None) -> None:
 
 
 def print_workflow_summary(graph: Any, title: str | None = None) -> None:
-    """Print a summary of the workflow to console.
-
-    Useful for quick debugging without creating files.
-
-    Args:
-        graph: Compiled LangGraph StateGraph instance.
-        title: Optional title to display.
-    """
+    """Print a workflow summary to stdout."""
     try:
         graph_obj = graph.get_graph()
 

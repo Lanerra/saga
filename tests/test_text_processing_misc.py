@@ -2,6 +2,7 @@
 import pytest
 
 import config as _config
+from core.text_processing_service import ResponseCleaningService
 from utils import text_processing
 from utils.common import _is_fill_in as _fill_in
 
@@ -44,3 +45,21 @@ def test_get_text_segments_sentence_without_spacy(
     text = "First. Second?"
     segments = text_processing.get_text_segments(text, "sentence")
     assert [s[0] for s in segments] == ["First.", "Second?"]
+
+
+def test_response_cleaning_think_boundary_only_closing_tag() -> None:
+    cleaner = ResponseCleaningService()
+    text = 'internal reasoning...\n</think>\n\n{"ok": true}\n'
+    assert cleaner.clean_response(text) == '{"ok": true}'
+
+
+def test_response_cleaning_think_boundary_with_think_block() -> None:
+    cleaner = ResponseCleaningService()
+    text = "<think>private chain of thought</think>\nAssistant response."
+    assert cleaner.clean_response(text) == "Assistant response."
+
+
+def test_response_cleaning_without_think_tags_unchanged() -> None:
+    cleaner = ResponseCleaningService()
+    text = "Assistant response.\n\nSecond paragraph."
+    assert cleaner.clean_response(text) == text

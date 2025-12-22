@@ -42,7 +42,7 @@ async def test_relationships_are_unique_per_chapter(monkeypatch):
     def extract_rel_ids(batch):
         ids = []
         for query, params in batch:
-            if "MERGE (s)-[r:`LOCATED_IN` {id: $rel_id_param}]->(o)" in query:
+            if "CALL apoc.merge.relationship" in query and params.get("predicate_clean_param") == "LOCATED_IN":
                 ids.append(params.get("rel_id_param"))
         return ids
 

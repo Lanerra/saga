@@ -1,5 +1,4 @@
 # data_access/plot_queries.py
-import json
 from typing import Any
 
 import structlog
@@ -11,6 +10,38 @@ logger = structlog.get_logger(__name__)
 
 
 async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
+    """Synchronize the novel plot outline to Neo4j (destructive).
+
+    This function performs a synchronization, not an append-only update. When `plot_data`
+    includes a `plot_points` list, it deletes existing `:PlotPoint` nodes that are linked to
+    the active novel but are missing from the input set.
+
+    Args:
+        plot_data: Plot outline payload. Keys other than `id` and `plot_points` are stored on
+            the active `:NovelInfo` node.
+            - Primitive values are stored as properties.
+            - Lists/dicts are stored as JSON strings under `<key>_json`.
+
+    Returns:
+        True when the sync completed successfully, or when `plot_data` is empty (no-op).
+        False when a database read/write failure occurs.
+
+    Notes:
+        Destructive sync semantics:
+            - If `plot_data["plot_points"]` is missing, plot point sync is skipped entirely
+              (including deletes) to avoid destructive behavior from partial input.
+            - If `plot_data["plot_points"]` is present but not a list, plot point sync is
+              also skipped.
+
+        Identity semantics:
+            Plot point ids are deterministic and sequence-derived:
+            `pp_{novel_id}_{sequence}` where sequence is 1-indexed within the input list.
+
+        Security:
+            This function does not interpolate caller-provided strings into Cypher identifiers.
+            Dynamic property updates use `SET ni += $primitive_props` and JSON encoding via
+            `apoc.convert.toJson(...)`, avoiding unsafe property-key interpolation.
+    """
     # NOTE: Despite earlier messaging, this function performs a *synchronization* that may
     # delete PlotPoint nodes missing from the input list. This is destructive by design.
     logger.info("Synchronizing plot outline to Neo4j (destructive sync)...")
@@ -21,33 +52,36 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     statements: list[tuple[str, dict[str, Any]]] = []
 
-    # Persist primitive NovelInfo properties as-is, and persist any structured/list/dict
-    # properties as JSON under a deterministic *_json key so we can round-trip them.
-    #
-    # This avoids silently ignoring input schema (acts/chapters/etc) while staying within
-    # Neo4j property type constraints.
-    novel_props_for_set: dict[str, Any] = {}
-    for k, v in plot_data.items():
-        if v is None or k == "id" or k == "plot_points":
+    primitive_props: dict[str, Any] = {}
+    structured_props: dict[str, Any] = {}
+
+    for key, value in plot_data.items():
+        if value is None or key == "id" or key == "plot_points":
             continue
 
-        if isinstance(v, list | dict):
-            # Neo4j properties can't store nested maps/lists-of-maps directly.
-            novel_props_for_set[f"{k}_json"] = json.dumps(v)
+        if isinstance(value, list | dict):
+            structured_props[key] = value
         else:
-            novel_props_for_set[k] = v
-
-    novel_props_for_set["id"] = novel_id
+            primitive_props[key] = value
 
     statements.append(
         (
             """
         MERGE (ni:NovelInfo {id: $id_val})
         ON CREATE SET ni.created_ts = timestamp()
-        SET ni += $props
         SET ni.updated_ts = timestamp()
+
+        SET ni += $primitive_props
+
+        WITH ni, $structured_props AS structured
+        WITH
+            ni,
+            apoc.map.fromPairs(
+                [k IN keys(structured) | [k + "_json", apoc.convert.toJson(structured[k])]]
+            ) AS json_props
+        SET ni += json_props
         """,
-            {"id_val": novel_id, "props": novel_props_for_set},
+            {"id_val": novel_id, "primitive_props": primitive_props, "structured_props": structured_props},
         )
     )
 
@@ -178,41 +212,55 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
 
 
 async def get_plot_outline_from_db() -> dict[str, Any]:
+    """Return the plot outline for the active novel.
+
+    Returns:
+        A dictionary of NovelInfo plot properties with an additional `plot_points` key whose
+        value is a list of PlotPoint dicts, ordered by sequence.
+
+        Returns an empty dict when no `:NovelInfo` node exists, when the NovelInfo payload
+        is not a map, or when required data is missing.
+
+    Notes:
+        JSON decoding contract:
+            Properties stored under `<key>_json` are decoded using APOC JSON helpers and
+            returned as structured list/dict values. The `_json` keys are removed from the
+            returned structure.
+    """
     logger.info("Loading decomposed plot outline from Neo4j...")
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     plot_data: dict[str, Any] = {}
 
-    # Fetch NovelInfo node properties
-    novel_info_query = "MATCH (ni:NovelInfo {id: $novel_id_param}) RETURN ni"
+    novel_info_query = """
+    MATCH (ni:NovelInfo {id: $novel_id_param})
+    WITH apoc.map.removeKeys(properties(ni), ["id", "created_ts", "updated_ts"]) AS base
+    WITH base, [k IN keys(base) WHERE k ENDS WITH "_json"] AS json_keys
+    WITH
+        apoc.map.removeKeys(base, json_keys) AS primitives,
+        apoc.map.fromPairs(
+            [
+                k IN json_keys |
+                [
+                    substring(k, 0, size(k) - 5),
+                    CASE
+                        WHEN base[k] STARTS WITH "[" THEN apoc.convert.fromJsonList(base[k])
+                        ELSE apoc.convert.fromJsonMap(base[k])
+                    END
+                ]
+            ]
+        ) AS decoded
+    RETURN apoc.map.merge(primitives, decoded) AS plot_data
+    """
     result_list = await neo4j_manager.execute_read_query(novel_info_query, {"novel_id_param": novel_id})
 
-    if not result_list or not result_list[0] or not result_list[0].get("ni"):
+    if not result_list or not result_list[0] or not result_list[0].get("plot_data"):
         logger.warning(f"No NovelInfo node found with id '{novel_id}'. Returning empty plot outline.")
         return {}
 
-    novel_node = result_list[0]["ni"]
-    plot_data.update(dict(novel_node))
-
-    # Remove internal DB IDs/timestamps from returned dict
-    plot_data.pop("id", None)
-    plot_data.pop("created_ts", None)
-    plot_data.pop("updated_ts", None)
-
-    # Round-trip any *_json NovelInfo properties back into their structured form.
-    # (e.g., acts_json -> acts)
-    json_keys = [k for k in list(plot_data.keys()) if k.endswith("_json")]
-    for json_key in json_keys:
-        raw = plot_data.get(json_key)
-        if not isinstance(raw, str):
-            continue
-        try:
-            decoded = json.loads(raw)
-        except Exception:
-            # Leave the raw string untouched if decode fails.
-            continue
-
-        plot_data[json_key[: -len("_json")]] = decoded
-        plot_data.pop(json_key, None)
+    plot_data = result_list[0]["plot_data"]
+    if not isinstance(plot_data, dict):
+        logger.warning(f"NovelInfo query returned non-map plot_data for id '{novel_id}'. Returning empty plot outline.")
+        return {}
 
     # Fetch PlotPoints linked to this NovelInfo, ordered by sequence
     plot_points_query = """
@@ -241,13 +289,23 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
 
 
 async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
-    """Append a new PlotPoint node linked to NovelInfo and previous PlotPoint.
+    """Append a new plot point after the most recent plot point.
 
-    Concurrency safety:
-    - Sequence/id assignment is performed atomically inside a single write query by
-      incrementing a NovelInfo-scoped counter property (`ni.last_plot_point_seq`).
-    - Neo4j will take a write lock on the NovelInfo node for the duration of the
-      transaction, serializing concurrent increments and preventing duplicate IDs.
+    Args:
+        description: Plot point description text.
+        prev_plot_point_id: Plot point id to link from via `NEXT_PLOT_POINT`. When falsy,
+            no previous link is created.
+
+    Returns:
+        The newly created plot point id. Returns an empty string when the write query does
+        not return an id.
+
+    Notes:
+        Concurrency:
+            Sequence/id assignment is performed atomically inside a single write query by
+            incrementing a NovelInfo-scoped counter property (`ni.last_plot_point_seq`).
+            Neo4j takes a write lock on the NovelInfo node for the transaction, serializing
+            concurrent increments and preventing duplicate ids.
     """
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     prev_id = prev_plot_point_id or None
@@ -280,7 +338,14 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
 
 
 async def plot_point_exists(description: str) -> bool:
-    """Check if a plot point with the given description exists for the active novel."""
+    """Return whether a plot point with the given description exists.
+
+    Args:
+        description: Plot point description to match (case-insensitive).
+
+    Returns:
+        True when any plot point under the active novel matches the description.
+    """
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     query = """
     MATCH (ni:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint)
@@ -292,7 +357,11 @@ async def plot_point_exists(description: str) -> bool:
 
 
 async def get_last_plot_point_id() -> str | None:
-    """Return the ID of the most recent PlotPoint for the active novel."""
+    """Return the id of the most recent plot point for the active novel.
+
+    Returns:
+        The most recent plot point id by `sequence`, or None when no plot points exist.
+    """
     novel_id = config.MAIN_NOVEL_INFO_NODE_ID
     query = """
     MATCH (ni:NovelInfo {id: $novel_id})-[:HAS_PLOT_POINT]->(pp:PlotPoint)

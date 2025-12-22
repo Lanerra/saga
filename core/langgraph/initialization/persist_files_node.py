@@ -1,27 +1,20 @@
 # core/langgraph/initialization/persist_files_node.py
-"""
-File Persistence Node for Initialization Data.
+"""Persist initialization artifacts to the project filesystem.
 
-This node writes initialization data (character sheets, outlines) to human-readable
-YAML/Markdown files following the SAGA 2.0 file system structure.
+This node writes initialization outputs (outlines, character sheets, world items) into
+human-readable YAML files under the project directory. These files are intended to be
+the canonical on-disk inputs for subsequent phases and for user inspection.
 
-File System Structure (from docs/langgraph-architecture.md):
-    /my-novel/
-    ├── outline/
-    │   ├── structure.yaml         # Act/scene structure
-    │   └── beats.yaml             # Key plot beats
-    ├── characters/
-    │   ├── protagonist.yaml
-    │   └── {character}.yaml
-    └── world/
-        ├── setting.yaml
-        └── items.yaml
+Notes:
+    After writing, this node validates that required artifacts exist via
+    [`validate_initialization_artifacts()`](core/langgraph/initialization/validation.py:43).
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import structlog
 import yaml
@@ -41,22 +34,11 @@ logger = structlog.get_logger(__name__)
 
 # Custom YAML string class for literal block scalar (|) formatting
 class _LiteralString(str):
-    """String subclass that renders as literal block scalar in YAML."""
+    """Render a string as a YAML literal block scalar when multiline."""
 
 
-def _literal_string_representer(dumper, data: _LiteralString):
-    """YAML representer for _LiteralString to use literal block scalar.
-
-    Uses literal block style for multiline values to keep prose readable.
-    Falls back to plain style for single-line values.
-
-    Args:
-        dumper: PyYAML dumper instance.
-        data: String data to represent.
-
-    Returns:
-        YAML scalar node with appropriate style (literal block or plain).
-    """
+def _literal_string_representer(dumper: Any, data: _LiteralString) -> Any:
+    """Represent a string as YAML with literal block style for multiline values."""
     text = str(data)
     if "\n" in text:
         return dumper.represent_scalar("tag:yaml.org,2002:str", text, style="|")
@@ -68,19 +50,19 @@ yaml.add_representer(_LiteralString, _literal_string_representer)
 
 
 def _normalize_prose(value: str | None) -> _LiteralString | str:
-    """Normalize long-form/prose text for YAML emission.
-
-    - Treats ``None`` as empty string (no structural change downstream).
-    - Ensures any embedded ``\\n`` sequences become real newlines.
-    - Returns ``_LiteralString`` for multiline prose so PyYAML emits ``|`` blocks.
-    - Safe to call repeatedly (idempotent on already-normalized input).
-    - Only intended for clearly prose-oriented fields at call sites.
+    """Normalize prose fields for readable YAML output.
 
     Args:
-        value: Input text to normalize, may be None.
+        value: Prose text value to normalize.
 
     Returns:
-        _LiteralString if multiline, plain str if single-line, empty str if None.
+        `_LiteralString` when the normalized text is multiline so YAML emits a literal
+        block scalar (`|`). Returns a plain string for single-line values.
+
+    Notes:
+        - Treats None as an empty string.
+        - Converts literal `\\n` sequences into real newlines.
+        - Intended only for prose-oriented fields.
     """
     if value is None:
         return ""
@@ -103,21 +85,23 @@ def _normalize_prose(value: str | None) -> _LiteralString | str:
 
 
 async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
-    """
-    Write initialization data to human-readable files on disk.
-
-    Following the file system structure from langgraph-architecture.md section 6,
-    this node creates:
-    - characters/{name}.yaml for each character
-    - outline/structure.yaml with global and act outlines
-    - outline/beats.yaml with key plot beats
-    - world/items.yaml with world items
+    """Write initialization artifacts to disk under the project directory.
 
     Args:
-        state: Current narrative state with initialization data
+        state: Workflow state containing initialization outputs and `project_dir`.
 
     Returns:
-        Updated state with file persistence complete
+        Updated state. On a successful write + validation pass, `initialization_step` is
+        set to `"files_persisted"`. On validation failure, `has_fatal_error` is set to
+        True and `initialization_step` is set to `"validation_failed"`.
+
+    Notes:
+        This node reads large initialization payloads from externalized refs via
+        [`ContentManager`](core/langgraph/content_manager.py:42) and then writes a stable
+        on-disk representation for later steps and user inspection.
+
+        The filesystem write is best-effort; unexpected exceptions are captured into the
+        returned state via `last_error` without raising.
     """
     logger.info(
         "persist_initialization_files: writing initialization data to disk",
@@ -157,7 +141,6 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         _write_world_rules_file(project_dir, state)
         _write_world_history_file(project_dir, state)
 
-        # Write placeholder summaries README
         _write_summaries_readme(project_dir)
 
         logger.info(
@@ -217,11 +200,7 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
 
 
 def _create_directory_structure(project_dir: Path) -> None:
-    """Create the SAGA 2.0 directory structure.
-
-    Args:
-        project_dir: Root project directory path.
-    """
+    """Create the project directory layout required by SAGA."""
     directories = [
         project_dir / ".saga",
         project_dir / "outline",
@@ -242,22 +221,14 @@ def _create_directory_structure(project_dir: Path) -> None:
 
 
 def _parse_character_sheet_text(text: str) -> dict:
-    """Parse character sheet text into structured fields.
-
-    Looks for common section headers like:
-    - Physical Description
-    - Personality
-    - Background
-    - Motivations
-    - Skills/Abilities
-    - Relationships
-    - Character Arc
+    """Extract structured sections from a character sheet markdown blob.
 
     Args:
-        text: Raw character sheet text to parse.
+        text: Raw character sheet text.
 
     Returns:
-        Dictionary with parsed fields, or {"description": text} if parsing fails.
+        Dict of parsed section fields. When no sections are recognized, returns a dict
+        containing `{"description": text}`.
     """
     import re
 
@@ -290,17 +261,7 @@ def _parse_character_sheet_text(text: str) -> dict:
 
 
 def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
-    """Write individual YAML files for each character.
-
-    Format:
-        characters/{character_name}.yaml
-
-    Parses the character sheet text into structured fields for readability.
-
-    Args:
-        project_dir: Root project directory path.
-        character_sheets: Dictionary mapping character names to sheet data.
-    """
+    """Write one YAML file per character under `characters/`."""
     characters_dir = project_dir / "characters"
 
     for name, sheet in character_sheets.items():
@@ -344,22 +305,11 @@ def _write_outline_files(
     act_outlines: dict,
     state: NarrativeState,
 ) -> None:
-    """Write outline structure and beats to YAML files.
-
-    Creates:
-    - outline/structure.yaml: Act/scene structure
-    - outline/beats.yaml: Key plot beats
-
-    Args:
-        project_dir: Root project directory path.
-        global_outline: Global story outline data (may be None).
-        act_outlines: Dictionary mapping act numbers to act outline data.
-        state: Current narrative state with metadata.
-    """
+    """Write global/act outline artifacts under `outline/`."""
     outline_dir = project_dir / "outline"
 
     # Write structure.yaml
-    structure_data = {
+    structure_data: dict[str, Any] = {
         "title": state.get("title", ""),
         "genre": state.get("genre", ""),
         "theme": state.get("theme", ""),
@@ -379,10 +329,11 @@ def _write_outline_files(
         }
 
     if act_outlines:
-        structure_data["acts"] = {}
+        acts_data: dict[str, Any] = {}
+        structure_data["acts"] = acts_data
         for act_num, act_data in sorted(act_outlines.items()):
             raw = act_data.get("raw_text", "") + "..."
-            structure_data["acts"][f"act_{act_num}"] = {
+            acts_data[f"act_{act_num}"] = {
                 "act_number": act_num,
                 "role": act_data.get("act_role", ""),
                 "chapters": act_data.get("chapters_in_act", 0),
@@ -400,7 +351,7 @@ def _write_outline_files(
 
     # Write beats.yaml with full outline text
     # Use literal block scalar for better markdown readability
-    beats_data = {
+    beats_data: dict[str, Any] = {
         "generated_at": datetime.now().isoformat(),
         "source": "initialization",
     }
@@ -411,10 +362,11 @@ def _write_outline_files(
         beats_data["global_outline"] = _normalize_prose(raw_text)
 
     if act_outlines:
-        beats_data["act_outlines"] = {}
+        beats_act_outlines: dict[str, Any] = {}
+        beats_data["act_outlines"] = beats_act_outlines
         for act_num, act_data in sorted(act_outlines.items()):
             raw_text = act_data.get("raw_text", "")
-            beats_data["act_outlines"][f"act_{act_num}"] = {
+            beats_act_outlines[f"act_{act_num}"] = {
                 "act_number": act_num,
                 "role": act_data.get("act_role", ""),
                 # Outline is long-form prose; normalize into literal block.
@@ -430,33 +382,25 @@ def _write_outline_files(
     )
 
 
-def _write_world_items_file(project_dir: Path, world_items: list, setting: str) -> None:
-    """Write world items to YAML file.
-
-    Creates:
-    - world/items.yaml: Locations, objects, concepts
-
-    Args:
-        project_dir: Root project directory path.
-        world_items: List of WorldItem objects to write.
-        setting: Story setting description.
-    """
+def _write_world_items_file(project_dir: Path, world_items: list[Any], setting: str) -> None:
+    """Write world items under `world/items.yaml`."""
     world_dir = project_dir / "world"
 
-    world_data = {
+    items: list[dict[str, Any]] = []
+    world_data: dict[str, Any] = {
         "setting": setting,
         "generated_at": datetime.now().isoformat(),
         "source": "initialization",
-        "items": [],
+        "items": items,
     }
 
     for item in world_items:
         description = getattr(item, "description", "")
-        world_data["items"].append(
+        items.append(
             {
-                "id": item.id,
-                "name": item.name,
-                "category": item.category,
+                "id": getattr(item, "id", ""),
+                "name": getattr(item, "name", ""),
+                "category": getattr(item, "category", ""),
                 # Description is prose; normalize into multiline-safe form.
                 "description": _normalize_prose(description),
             }
@@ -473,15 +417,7 @@ def _write_world_items_file(project_dir: Path, world_items: list, setting: str) 
 
 
 def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
-    """Write saga.yaml at the project root with basic metadata and directory paths.
-
-    This file acts as a lightweight entrypoint/manifest for the SAGA workspace.
-    It must be robust to partial state: only emit fields that are present.
-
-    Args:
-        project_dir: Root project directory path.
-        state: Current narrative state with metadata.
-    """
+    """Write `saga.yaml` manifest with metadata and directory pointers."""
     saga_data: dict = {}
 
     # Conservative metadata extraction - tolerate missing keys.
@@ -517,20 +453,7 @@ def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
 
 
 def _write_world_rules_file(project_dir: Path, state: NarrativeState) -> None:
-    """Write world/rules.yaml capturing world rules/constraints if available.
-
-    Structure:
-        rules:
-          - name: ...
-            description: ...
-        note: "..."
-
-    Falls back to an empty stub that guides the user when no data is present.
-
-    Args:
-        project_dir: Root project directory path.
-        state: Current narrative state with world rules data.
-    """
+    """Write `world/rules.yaml` capturing world rules and constraints."""
     world_dir = project_dir / "world"
     rules_path = world_dir / "rules.yaml"
 
@@ -577,21 +500,7 @@ def _write_world_rules_file(project_dir: Path, state: NarrativeState) -> None:
 
 
 def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
-    """Write world/history.yaml capturing historical events/timeline if available.
-
-    Structure:
-        events:
-          - id: ...
-            description: ...
-            era: ...
-        note: "..."
-
-    Falls back to an empty stub when no history data is present.
-
-    Args:
-        project_dir: Root project directory path.
-        state: Current narrative state with historical events data.
-    """
+    """Write `world/history.yaml` capturing timeline/historical events."""
     world_dir = project_dir / "world"
     history_path = world_dir / "history.yaml"
 
@@ -648,8 +557,7 @@ def _write_summaries_readme(project_dir: Path) -> None:
     """Write README file in summaries/ directory.
 
     The summaries directory is populated during chapter generation,
-    not initialization. This creates a placeholder README to explain that.
-
+    not initialization. This creates a placeholder README to explain that
     Args:
         project_dir: Root project directory path.
     """

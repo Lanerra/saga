@@ -1,17 +1,11 @@
 # core/langgraph/initialization/__init__.py
 """
-Initialization nodes for LangGraph-based narrative generation.
+Provide LangGraph initialization node entrypoints.
 
-This package contains nodes for the initialization phase of the narrative
-generation workflow, which generates character sheets, outlines, and other
-foundational elements before beginning chapter generation.
+This package contains nodes used to generate and persist initialization artifacts
+(e.g., character sheets and outlines) before chapter generation begins.
 
-Initialization Workflow:
-    [Initialize State] → [Generate Character Sheets]
-       ↓                          ↓
-    [Global Outline] → [Act Outlines] → [Chapter Outlines (on-demand)]
-       ↓
-    [Generation Loop]
+Migration Reference: docs/langgraph_migration_plan.md
 """
 
 from core.langgraph.initialization.act_outlines_node import generate_act_outlines

@@ -1,18 +1,15 @@
 # core/langgraph/content_manager.py
 """
-Content Externalization Manager for SAGA LangGraph Workflow.
+Manage externalized workflow content stored on disk.
 
-This module addresses state bloat by externalizing large content fields to files,
-storing only file references in the LangGraph state. This reduces SQLite checkpoint
-sizes and enables efficient content versioning and diffing.
+This module reduces LangGraph checkpoint bloat by storing large artifacts (drafts,
+outlines, embeddings, summaries) under `<project_dir>/.saga/content` and keeping
+only lightweight references in workflow state.
 
-Design Goals:
-1. Reduce state bloat (megabytes -> kilobytes per checkpoint)
-2. Enable easy diffing of revisions
-3. Maintain backward compatibility
-4. Provide atomic write operations
-
-Reference: docs/complexity-hotspots.md - "Externalize content from state"
+Notes:
+- Writes are atomic (write to a temp file, then rename).
+- "Binary" persistence refuses unsafe formats (e.g., pickle) to avoid arbitrary
+  code execution on load.
 """
 
 from __future__ import annotations
@@ -29,7 +26,11 @@ logger = structlog.get_logger(__name__)
 
 # Type definitions for file references
 class ContentRef(TypedDict, total=False):
-    """Reference to externalized content."""
+    """Describe a reference to externalized workflow content.
+
+    The reference resolves relative to the project root directory managed by
+    [`ContentManager`](core/langgraph/content_manager.py:41).
+    """
 
     path: str  # Relative path from project root
     content_type: str  # Type of content (draft, outline, summary, etc.)
@@ -39,40 +40,30 @@ class ContentRef(TypedDict, total=False):
 
 
 class ContentManager:
-    """
-    Manages externalized content storage and retrieval.
+    """Store and load externalized workflow artifacts for a project.
 
-    All content is stored relative to the project root in a .saga/content directory.
-    This enables:
-    - Tiny state checkpoints (only file paths)
-    - Easy content diffing (compare file versions)
-    - Atomic writes with versioning
-    - Fast state serialization/deserialization
+    Content is stored under `<project_dir>/.saga/content/<content_type>/` and
+    versioned by filename to support revision tracking without inflating state.
     """
 
     def __init__(self, project_dir: str):
-        """
-        Initialize content manager.
+        """Initialize a content manager rooted at `project_dir`.
 
         Args:
-            project_dir: Project root directory
+            project_dir: Project root directory. The manager creates
+                `<project_dir>/.saga/content` if it does not exist.
         """
         self.project_dir = Path(project_dir)
         self.content_dir = self.project_dir / ".saga" / "content"
         self.content_dir.mkdir(parents=True, exist_ok=True)
 
     def clear_cache(self) -> None:
-        """
-        Best-effort cache invalidation hook.
+        """Invalidate any in-process caches.
 
-        Why this exists:
-        - Some workflow nodes write files that are later read in the same process.
-        - If `ContentManager` grows in-process caching later (mtimes, directory listings,
-          memoized reads, etc.), callers need a stable invalidation API.
-        - Today, `ContentManager` performs direct filesystem reads and does not cache,
-          so this is intentionally a no-op.
-
-        This method is safe to call unconditionally after file writes.
+        Notes:
+            The current implementation does not cache reads, so this is a no-op.
+            The method exists to keep a stable invalidation surface if caching is
+            introduced later.
         """
         return None
 
@@ -83,17 +74,16 @@ class ContentManager:
         version: int = 1,
         extension: str = "txt",
     ) -> Path:
-        """
-        Generate a consistent file path for content.
+        """Build an absolute on-disk path for a content artifact.
 
         Args:
-            content_type: Type of content (e.g., 'draft', 'outline', 'summary')
-            identifier: Unique identifier (e.g., chapter number, character name)
-            version: Version number for revision tracking
-            extension: File extension
+            content_type: Logical bucket name (used as a subdirectory).
+            identifier: Identifier used in the filename (sanitized for filesystem use).
+            version: Revision counter embedded in the filename.
+            extension: File extension to use.
 
         Returns:
-            Absolute path to content file
+            Absolute path to the content file on disk.
         """
         # Sanitize identifier for filesystem
         safe_id = str(identifier).replace("/", "_").replace("\\", "_")
@@ -107,11 +97,11 @@ class ContentManager:
         return type_dir / filename
 
     def _get_relative_path(self, absolute_path: Path) -> str:
-        """Convert absolute path to relative path from project root."""
+        """Convert an absolute path to a project-relative path string."""
         return str(absolute_path.relative_to(self.project_dir))
 
     def _compute_checksum(self, data: bytes) -> str:
-        """Compute SHA256 checksum for data integrity."""
+        """Compute a SHA-256 checksum for the provided bytes."""
         import hashlib
 
         return hashlib.sha256(data).hexdigest()
@@ -123,21 +113,19 @@ class ContentManager:
         identifier: str | int,
         version: int = 1,
     ) -> ContentRef:
-        """
-        Save text content to file and return reference.
+        """Persist UTF-8 text content and return a state reference.
 
         Args:
-            content: Text content to save
-            content_type: Type of content (e.g., 'draft', 'summary')
-            identifier: Unique identifier
-            version: Version number
+            content: Text to write.
+            content_type: Logical bucket name (subdirectory).
+            identifier: Artifact identifier used in the filename.
+            version: Revision counter embedded in the filename.
 
         Returns:
-            ContentRef with file path and metadata
+            A content reference containing the relative path and integrity metadata.
         """
         path = self._get_content_path(content_type, identifier, version, "txt")
 
-        # Write content atomically (write to temp, then rename)
         temp_path = path.with_suffix(".tmp")
         temp_path.write_text(content, encoding="utf-8")
         temp_path.replace(path)
@@ -159,17 +147,18 @@ class ContentManager:
         identifier: str | int,
         version: int = 1,
     ) -> ContentRef:
-        """
-        Save JSON data to file and return reference.
+        """Persist JSON content and return a state reference.
+
+        The checksum is computed over the exact bytes written to disk.
 
         Args:
-            data: JSON-serializable data
-            content_type: Type of content
-            identifier: Unique identifier
-            version: Version number
+            data: JSON-serializable object.
+            content_type: Logical bucket name (subdirectory).
+            identifier: Artifact identifier used in the filename.
+            version: Revision counter embedded in the filename.
 
         Returns:
-            ContentRef with file path and metadata
+            A content reference containing the relative path and integrity metadata.
         """
         path = self._get_content_path(content_type, identifier, version, "json")
 
@@ -192,11 +181,11 @@ class ContentManager:
         )
 
     def _write_bytes_atomically(self, path: Path, data_bytes: bytes) -> None:
-        """
-        Write bytes atomically (write to temp file, then rename).
+        """Write bytes atomically (write to temp file, then rename).
 
-        This is the lowest-level writer used by safe "binary" and JSON serialization
-        to ensure checksums are computed from the exact bytes written on disk.
+        Args:
+            path: Destination path.
+            data_bytes: Bytes to write.
         """
         temp_path = path.with_suffix(".tmp")
         with temp_path.open("wb") as f:
@@ -210,27 +199,24 @@ class ContentManager:
         identifier: str | int,
         version: int = 1,
     ) -> ContentRef:
-        """
-        Save "binary" data in a safe format.
+        """Persist bytes or JSON-serializable "binary" content safely.
 
-        Security note:
-        - This method intentionally does NOT use pickle.
-        - Only bytes-like payloads or JSON-serializable payloads are supported.
-
-        Supported payloads:
-        - `bytes` / `bytearray` / `memoryview` -> stored as `.bin`
-        - JSON-serializable objects (e.g., `list[float]` embeddings) -> stored as compact `.json`
+        Security-sensitive behavior:
+            This method refuses to serialize arbitrary Python objects (no pickle).
 
         Args:
-            data: Bytes-like payload or JSON-serializable object
-            content_type: Type of content (e.g., "embedding")
-            identifier: Unique identifier
-            version: Version number
+            data: Bytes-like payload or JSON-serializable object.
+            content_type: Logical bucket name (subdirectory).
+            identifier: Artifact identifier used in the filename.
+            version: Revision counter embedded in the filename.
 
         Returns:
-            ContentRef with file path and metadata (checksum matches on-disk bytes)
+            A content reference containing the relative path and integrity metadata.
+
+        Raises:
+            TypeError: If `data` is not bytes-like and is not JSON-serializable.
         """
-        if isinstance(data, (bytes, bytearray, memoryview)):
+        if isinstance(data, bytes | bytearray | memoryview):
             data_bytes = bytes(data)
             extension = "bin"
         else:
@@ -261,16 +247,21 @@ class ContentManager:
         )
 
     def _resolve_ref_path(self, ref: ContentRef | str | Path, *, caller: str) -> str:
-        """
-        Resolve a `ContentRef | str | Path` into a relative-ish path string.
+        """Resolve a content reference into a path string.
 
-        Contract:
-        - If `ref` is a dict-like `ContentRef`, it must contain a non-empty string at key `"path"`.
-        - If `ref` is a `str` or `Path`, it is treated as a (typically relative) path under `project_dir`.
+        Args:
+            ref: A content reference dict (requires a non-empty `"path"` key) or a
+                path-like value.
+            caller: Caller label used to produce actionable error messages.
+
+        Returns:
+            A path string (typically project-relative) suitable for joining under
+            `project_dir`.
 
         Raises:
-            ValueError: if a dict ref is missing `"path"` (or `"path"` is not a non-empty str)
-            TypeError: if an unsupported ref type is provided
+            ValueError: If a `ContentRef` dict is missing `"path"` or `"path"` is
+                not a non-empty string.
+            TypeError: If `ref` is not a supported reference type.
         """
         if isinstance(ref, Path):
             return str(ref)
@@ -290,14 +281,18 @@ class ContentManager:
         raise TypeError(f"{caller} expected ContentRef | str | Path; got {type(ref)}")
 
     def load_text(self, ref: ContentRef | str | Path) -> str:
-        """
-        Load text content from file reference.
+        """Load UTF-8 text from a content reference.
 
         Args:
-            ref: ContentRef, direct path string, or Path
+            ref: A content reference dict or a path-like value.
 
         Returns:
-            Text content
+            The file contents as a string.
+
+        Raises:
+            FileNotFoundError: If the referenced file does not exist.
+            TypeError: If `ref` is not a supported reference type.
+            ValueError: If `ref` is a dict without a valid `"path"`.
         """
         path_str = self._resolve_ref_path(ref, caller="ContentManager.load_text")
         full_path = self.project_dir / path_str
@@ -308,14 +303,19 @@ class ContentManager:
         return full_path.read_text(encoding="utf-8")
 
     def load_json(self, ref: ContentRef | str | Path) -> dict[str, Any] | list[Any]:
-        """
-        Load JSON data from file reference.
+        """Load JSON from a content reference.
 
         Args:
-            ref: ContentRef, direct path string, or Path
+            ref: A content reference dict or a path-like value.
 
         Returns:
-            Deserialized JSON data
+            The parsed JSON value.
+
+        Raises:
+            FileNotFoundError: If the referenced file does not exist.
+            json.JSONDecodeError: If the file is not valid JSON.
+            TypeError: If `ref` is not a supported reference type.
+            ValueError: If `ref` is a dict without a valid `"path"`.
         """
         path_str = self._resolve_ref_path(ref, caller="ContentManager.load_json")
         full_path = self.project_dir / path_str
@@ -327,20 +327,25 @@ class ContentManager:
             return json.load(f)
 
     def load_binary(self, ref: ContentRef | str | Path) -> Any:
-        """
-        Load "binary" data from file reference using safe parsers only.
+        """Load "binary" content using safe parsers only.
 
-        Security note:
-        - This method intentionally refuses to load `.pkl` artifacts.
-        - If you have legacy pickle artifacts, re-generate them in the new safe format.
+        Security-sensitive behavior:
+            This method refuses to load `.pkl` artifacts to avoid unsafe
+            deserialization.
 
         Args:
-            ref: ContentRef, direct path string, or Path
+            ref: A content reference dict or a path-like value.
 
         Returns:
-            - For `.json`: deserialized JSON object
-            - For `.npy`: Python list (from a 1D numpy array) with `allow_pickle=False`
-            - For other extensions (e.g., `.bin`): raw bytes
+            The parsed payload:
+            - `.json` returns the decoded JSON value.
+            - `.npy` returns `list` (loaded with `allow_pickle=False`).
+            - Other extensions return raw bytes.
+
+        Raises:
+            FileNotFoundError: If the referenced file does not exist.
+            ValueError: If the referenced file is a `.pkl` artifact.
+            TypeError: If `ref` is not a supported reference type.
         """
         path_str = self._resolve_ref_path(ref, caller="ContentManager.load_binary")
         full_path = self.project_dir / path_str
@@ -378,29 +383,14 @@ class ContentManager:
         identifier: str | int,
         version: int = 1,
     ) -> ContentRef:
-        """
-        Save a list of texts (e.g., scene_drafts, summaries) as JSON array.
-
-        Args:
-            texts: List of text strings
-            content_type: Type of content
-            identifier: Unique identifier
-            version: Version number
-
-        Returns:
-            ContentRef with file path and metadata
-        """
+        """Persist a list of strings as JSON and return a state reference."""
         return self.save_json(texts, content_type, identifier, version)
 
     def load_list_of_texts(self, ref: ContentRef | str) -> list[str]:
-        """
-        Load a list of texts from file reference.
+        """Load a list of strings from a JSON content reference.
 
-        Args:
-            ref: ContentRef or direct path string
-
-        Returns:
-            List of text strings
+        Raises:
+            ValueError: If the referenced JSON payload is not a list.
         """
         data = self.load_json(ref)
         if not isinstance(data, list):
@@ -408,26 +398,13 @@ class ContentManager:
         return data
 
     def exists(self, ref: ContentRef | str) -> bool:
-        """
-        Check if content file exists.
-
-        Args:
-            ref: ContentRef or direct path string
-
-        Returns:
-            True if file exists
-        """
+        """Return whether the referenced content file exists on disk."""
         path_str = ref["path"] if isinstance(ref, dict) else ref
         full_path = self.project_dir / path_str
         return full_path.exists()
 
     def delete(self, ref: ContentRef | str) -> None:
-        """
-        Delete content file.
-
-        Args:
-            ref: ContentRef or direct path string
-        """
+        """Delete the referenced content file if it exists."""
         path_str = ref["path"] if isinstance(ref, dict) else ref
         full_path = self.project_dir / path_str
 
@@ -439,15 +416,14 @@ class ContentManager:
         content_type: str,
         identifier: str | int,
     ) -> int:
-        """
-        Get the latest version number for a piece of content.
+        """Return the highest discovered version number for an artifact.
 
         Args:
-            content_type: Type of content
-            identifier: Unique identifier
+            content_type: Logical bucket name (subdirectory).
+            identifier: Artifact identifier used in filenames.
 
         Returns:
-            Latest version number (0 if no versions exist)
+            The latest version number, or 0 when no versions exist.
         """
         type_dir = self.content_dir / content_type
         if not type_dir.exists():
@@ -561,12 +537,12 @@ def save_embedding(
     chapter: int,
     version: int = 1,
 ) -> ContentRef:
-    """Save chapter embedding (safe format; never pickle)."""
+    """Save a chapter embedding in a safe, non-pickle format."""
     return manager.save_binary(embedding, "embedding", f"chapter_{chapter}", version)
 
 
 def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float]:
-    """Load chapter embedding (safe formats only)."""
+    """Load a chapter embedding (safe formats only)."""
     data = manager.load_binary(ref)
 
     # `load_binary` returns list for `.npy` and JSON-decoded value for `.json`.
@@ -574,7 +550,7 @@ def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float
         # JSON may contain ints; normalize to floats.
         normalized: list[float] = []
         for v in data:
-            if isinstance(v, (int, float)):
+            if isinstance(v, int | float):
                 normalized.append(float(v))
             else:
                 raise ValueError(f"Embedding vector must be numeric; got element {type(v)}")
@@ -655,24 +631,21 @@ def load_chapter_plan(manager: ContentManager, ref: ContentRef | str) -> list[di
     return data
 
 
-# Helper functions for content loading from external files (Phase 3: No fallback)
+# Helper functions for loading content from externalized files.
 
 
 def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str | None:
-    """
-    Get draft text from externalized content.
-
-    Phase 3: No fallback to in-state content. External files are required.
+    """Load the current chapter draft text from `draft_ref`.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `draft_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        Draft text or None if not available
+        The draft text, or `None` when `draft_ref` is missing.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `draft_ref` is present but the referenced file is missing.
     """
     import structlog
 
@@ -686,20 +659,18 @@ def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str | N
 
 
 def get_scene_drafts(state: Mapping[str, Any], manager: ContentManager) -> list[str]:
-    """
-    Get scene drafts from externalized content.
-
-    Phase 3: No fallback to in-state content. External files are required.
+    """Load scene drafts from `scene_drafts_ref`.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `scene_drafts_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        List of scene draft texts (empty list if not available)
+        Scene draft texts, or an empty list when `scene_drafts_ref` is missing.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `scene_drafts_ref` is present but the referenced file is missing.
+        ValueError: If the referenced JSON payload is not a list.
     """
     scene_drafts_ref = state.get("scene_drafts_ref")
     if not scene_drafts_ref:
@@ -709,20 +680,18 @@ def get_scene_drafts(state: Mapping[str, Any], manager: ContentManager) -> list[
 
 
 def get_previous_summaries(state: Mapping[str, Any], manager: ContentManager) -> list[str]:
-    """
-    Get previous chapter summaries from externalized content.
-
-    Phase 3: No fallback to in-state content. External files are required.
+    """Load prior chapter summaries from `summaries_ref`.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `summaries_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        List of summary texts (empty list if not available)
+        Summary texts, or an empty list when `summaries_ref` is missing.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `summaries_ref` is present but the referenced file is missing.
+        ValueError: If the referenced JSON payload is not a list.
     """
     summaries_ref = state.get("summaries_ref")
     if not summaries_ref:
@@ -732,20 +701,17 @@ def get_previous_summaries(state: Mapping[str, Any], manager: ContentManager) ->
 
 
 def get_hybrid_context(state: Mapping[str, Any], manager: ContentManager) -> str | None:
-    """
-    Get hybrid context from externalized content.
-
-    Phase 3: No fallback to in-state content. External files are required.
+    """Load the hybrid context block from `hybrid_context_ref`.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `hybrid_context_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        Hybrid context text or None if not available
+        Hybrid context text, or `None` when `hybrid_context_ref` is missing.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `hybrid_context_ref` is present but the referenced file is missing.
     """
     hybrid_context_ref = state.get("hybrid_context_ref")
     if not hybrid_context_ref:
@@ -755,20 +721,18 @@ def get_hybrid_context(state: Mapping[str, Any], manager: ContentManager) -> str
 
 
 def get_character_sheets(state: Mapping[str, Any], manager: ContentManager) -> dict[str, dict]:
-    """
-    Get character sheets from externalized content.
-
-    Phase 3: No fallback to in-state content. External files are required.
+    """Load character sheets from `character_sheets_ref`.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `character_sheets_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        Character sheets dict (empty dict if not available)
+        Character sheets keyed by character name, or an empty dict when
+        `character_sheets_ref` is missing or the referenced payload is not a dict.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `character_sheets_ref` is present but the referenced file is missing.
     """
     character_sheets_ref = state.get("character_sheets_ref")
     if not character_sheets_ref:
@@ -781,20 +745,21 @@ def get_character_sheets(state: Mapping[str, Any], manager: ContentManager) -> d
 
 
 def get_chapter_outlines(state: Mapping[str, Any], manager: ContentManager) -> dict[int, dict]:
-    """
-    Get chapter outlines from externalized content.
+    """Load chapter outlines from `chapter_outlines_ref`.
 
-    Phase 3: No fallback to in-state content. External files are required.
+    The externalized JSON may use string keys; this function converts keys that
+    parse as integers into `int` keys and ignores non-integer keys.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `chapter_outlines_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        Chapter outlines dict (empty dict if not available)
+        Outlines keyed by chapter number, or an empty dict when `chapter_outlines_ref`
+        is missing or the referenced payload is not a dict.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `chapter_outlines_ref` is present but the referenced file is missing.
     """
     chapter_outlines_ref = state.get("chapter_outlines_ref")
     if not chapter_outlines_ref:
@@ -814,20 +779,18 @@ def get_chapter_outlines(state: Mapping[str, Any], manager: ContentManager) -> d
 
 
 def get_global_outline(state: Mapping[str, Any], manager: ContentManager) -> dict | None:
-    """
-    Get global outline from externalized content.
-
-    Phase 3: No fallback to in-state content. External files are required.
+    """Load the global outline from `global_outline_ref`.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `global_outline_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        Global outline dict or None if not available
+        Global outline dict, or `None` when `global_outline_ref` is missing or the
+        referenced payload is not a dict.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `global_outline_ref` is present but the referenced file is missing.
     """
     global_outline_ref = state.get("global_outline_ref")
     if not global_outline_ref:
@@ -840,50 +803,117 @@ def get_global_outline(state: Mapping[str, Any], manager: ContentManager) -> dic
 
 
 def get_act_outlines(state: Mapping[str, Any], manager: ContentManager) -> dict[int, dict]:
-    """
-    Get act outlines from externalized content.
+    """Load act outlines from `act_outlines_ref` (supports multiple formats).
 
-    Phase 3: No fallback to in-state content. External files are required.
+    Accepted externalized shapes:
+        - v1 mapping: `{<act_number>: <outline_dict>}` where act_number is an `int`
+          or a string that parses to an int.
+        - v2 list: `[{"act_number": 1, ...}, {"act_number": 2, ...}]`
+        - v2 container: `{"format_version": 2, "acts": [ ... ]}`
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping. This function reads `act_outlines_ref`.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        Act outlines dict (empty dict if not available)
+        A dict keyed by act number, or an empty dict when `act_outlines_ref` is missing.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `act_outlines_ref` is present but the referenced file is missing.
+        ValueError: If the externalized data is malformed or uses an unsupported format version.
     """
+
+    def _normalize_v1_mapping(raw: dict[object, object]) -> dict[int, dict]:
+        result_by_act_number: dict[int, dict] = {}
+        for key, value in raw.items():
+            if isinstance(key, bool):
+                raise ValueError("Act outlines v1 key must be an integer act number; got bool")
+
+            if isinstance(key, int):
+                act_number = key
+            elif isinstance(key, str):
+                try:
+                    act_number = int(key)
+                except ValueError as error:
+                    raise ValueError(f"Act outlines v1 key must be an integer act number; got {key!r}") from error
+            else:
+                raise ValueError(f"Act outlines v1 key must be an integer act number; got {type(key)}")
+
+            if isinstance(act_number, bool) or act_number <= 0:
+                raise ValueError(f"Act outlines v1 key must be a positive integer; got {act_number!r}")
+
+            if not isinstance(value, dict):
+                raise ValueError(f"Act outlines v1 value must be a dict for act_number={act_number}; got {type(value)}")
+
+            if act_number in result_by_act_number:
+                raise ValueError(f"Duplicate act_number in act outlines v1 mapping: {act_number}")
+
+            result_by_act_number[act_number] = value
+
+        return {act_number: result_by_act_number[act_number] for act_number in sorted(result_by_act_number.keys())}
+
+    def _normalize_v2_list(raw: list[object]) -> dict[int, dict]:
+        result_by_act_number: dict[int, dict] = {}
+        for index, item in enumerate(raw):
+            if not isinstance(item, dict):
+                raise ValueError(f"Act outlines v2 list items must be dict; index={index}, got {type(item)}")
+
+            act_number = item.get("act_number")
+            if not isinstance(act_number, int) or isinstance(act_number, bool) or act_number <= 0:
+                raise ValueError(f"Act outlines v2 items must include act_number as positive int; index={index}, got {act_number!r}")
+
+            if act_number in result_by_act_number:
+                raise ValueError(f"Duplicate act_number in act outlines v2 list: {act_number}")
+
+            result_by_act_number[act_number] = item
+
+        return {act_number: result_by_act_number[act_number] for act_number in sorted(result_by_act_number.keys())}
+
     act_outlines_ref = state.get("act_outlines_ref")
     if not act_outlines_ref:
         return {}
 
     data = manager.load_json(act_outlines_ref)
-    # Convert string keys to int keys if needed
-    result = {}
-    if isinstance(data, dict):
-        for k, v in data.items():
-            try:
-                result[int(k)] = v
-            except (ValueError, TypeError):
-                pass
-    return result
+
+    if isinstance(data, list):
+        return _normalize_v2_list(cast(list[object], data))
+
+    if not isinstance(data, dict):
+        raise ValueError(f"Act outlines externalized content must be dict or list; got {type(data)}")
+
+    format_version = data.get("format_version")
+    if format_version is not None:
+        if not isinstance(format_version, int) or isinstance(format_version, bool):
+            raise ValueError(f"Act outlines container format_version must be int; got {type(format_version)}")
+
+        if format_version != 2:
+            raise ValueError(f"Unsupported act outlines container format_version: {format_version}")
+
+        acts = data.get("acts")
+        if not isinstance(acts, list):
+            raise ValueError(f"Act outlines v2 container must contain 'acts' list; got {type(acts)}")
+
+        return _normalize_v2_list(cast(list[object], acts))
+
+    return _normalize_v1_mapping(cast(dict[object, object], data))
 
 
 def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) -> dict[str, list[dict[str, Any]]]:
-    """
-    Get extracted entities from externalized content.
+    """Load extracted entities for the current chapter.
+
+    This function prefers externalized content via `extracted_entities_ref` and
+    falls back to in-state `extracted_entities` for back-compat.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        Extracted entities dict (empty dict if not available)
+        A mapping with extraction buckets (e.g., `"characters"`, `"world_items"`).
+        Returns an empty dict when neither externalized nor in-state content is present.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `extracted_entities_ref` is present but the referenced file is missing.
     """
     entities_ref = state.get("extracted_entities_ref")
     if not entities_ref:
@@ -897,18 +927,21 @@ def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) ->
 
 
 def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
-    """
-    Get extracted relationships from externalized content.
+    """Load extracted relationships for the current chapter.
+
+    This function prefers externalized content via `extracted_relationships_ref`
+    and falls back to in-state `extracted_relationships` for back-compat.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        List of extracted relationships (empty list if not available)
+        Extracted relationships as a list of dicts, or an empty list when neither
+        externalized nor in-state content is present.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `extracted_relationships_ref` is present but the referenced file is missing.
     """
     relationships_ref = state.get("extracted_relationships_ref")
     if not relationships_ref:
@@ -928,25 +961,25 @@ def set_extracted_relationships(
     *,
     version: int | None = None,
 ) -> ContentRef:
-    """
-    Save extracted relationships to externalized content and return the new reference.
+    """Persist extracted relationships and return the new reference.
 
-    This is used by the relationship normalization node to persist normalized
-    relationships back to externalized storage.
+    This is used by normalization nodes to write an updated relationship list.
 
     Versioning contract:
-    - If `version` is provided, that exact version is used.
-    - If `version` is None, we write the next available version for this chapter
-      using [`ContentManager.get_latest_version()`](core/langgraph/content_manager.py:334) + 1.
+        - If `version` is provided, that exact version is used.
+        - If `version` is `None`, this writes the next available version for the
+          current chapter.
 
     Args:
-        manager: ContentManager instance
-        relationships: List of relationships to save (ExtractedRelationship objects or dicts)
-        state: Current state (for accessing current_chapter)
-        version: Optional explicit version to write
+        manager: Content manager rooted at the project directory.
+        relationships: Relationship objects or dicts. Objects must expose
+            `source_name`, `target_name`, `relationship_type`, `description`,
+            `chapter`, `confidence`.
+        state: Workflow state mapping. This function reads `current_chapter`.
+        version: Optional explicit version to write.
 
     Returns:
-        ContentRef pointing at the saved relationships JSON file.
+        A `ContentRef` pointing at the saved relationships JSON file.
     """
     chapter = state.get("current_chapter", 1)
 
@@ -989,18 +1022,20 @@ def set_extracted_relationships(
 
 
 def get_active_characters(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
-    """
-    Get active characters from externalized content.
+    """Load active characters for prompt construction.
+
+    This function prefers externalized content via `active_characters_ref` and
+    falls back to in-state `active_characters` for back-compat.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        List of active character profiles (empty list if not available)
+        A list of active character profile dicts, or an empty list when unavailable.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `active_characters_ref` is present but the referenced file is missing.
     """
     characters_ref = state.get("active_characters_ref")
     if not characters_ref:
@@ -1014,18 +1049,20 @@ def get_active_characters(state: Mapping[str, Any], manager: ContentManager) -> 
 
 
 def get_chapter_plan(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
-    """
-    Get chapter plan from externalized content.
+    """Load the chapter plan (scene details) for the current chapter.
+
+    This function prefers externalized content via `chapter_plan_ref` and falls
+    back to in-state `chapter_plan` for back-compat.
 
     Args:
-        state: NarrativeState dict
-        manager: ContentManager instance
+        state: Workflow state mapping.
+        manager: Content manager rooted at the project directory.
 
     Returns:
-        List of scene details (empty list if not available)
+        A list of scene detail dicts, or an empty list when unavailable.
 
     Raises:
-        FileNotFoundError: If external file reference exists but file is missing
+        FileNotFoundError: If `chapter_plan_ref` is present but the referenced file is missing.
     """
     plan_ref = state.get("chapter_plan_ref")
     if not plan_ref:
@@ -1061,7 +1098,7 @@ __all__ = [
     "load_active_characters",
     "save_chapter_plan",
     "load_chapter_plan",
-    # Phase 2: Safe content getters with fallback
+    # Content getters (some include fallback for back-compat)
     "get_draft_text",
     "get_scene_drafts",
     "get_previous_summaries",

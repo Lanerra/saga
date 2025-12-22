@@ -1,16 +1,16 @@
 # data_access/__init__.py
-"""
-`data_access` package public API.
+"""Expose the `data_access` public API via lazy exports.
 
-P2.12: Avoid eager imports of heavy dependencies at import time by lazily resolving
-exports on first access via `__getattr__`.
+Notes:
+    Import-time behavior:
+        This package avoids eager imports of heavy dependencies by lazily resolving exports
+        on first access via [`__getattr__()`](data_access/__init__.py:76). This preserves the
+        existing import surface (for example, `from data_access import get_world_item_by_id`)
+        while reducing import-time fan-out (NumPy/Neo4j/etc.).
 
-This preserves the existing import surface:
-
-    from data_access import get_world_item_by_id
-    from data_access import chapter_queries
-
-while reducing import-time fan-out (NumPy/Neo4j/etc.).
+    Contract:
+        - Only names listed in `_EXPORTS` and `_SUBMODULES` are exposed via lazy resolution.
+        - Missing attributes raise `AttributeError` as normal module attribute access would.
 """
 
 from __future__ import annotations
@@ -74,6 +74,22 @@ _SUBMODULES: dict[str, str] = {
 
 
 def __getattr__(name: str) -> Any:
+    """Resolve public exports and submodules lazily on first attribute access.
+
+    Args:
+        name: Attribute name being accessed on the `data_access` package.
+
+    Returns:
+        The resolved attribute (a function export or an imported submodule).
+
+    Raises:
+        AttributeError: If `name` is not a declared export or submodule.
+
+    Notes:
+        This is the mechanism that keeps package import-time dependency fan-out low.
+        Callers should not rely on side effects at `import data_access` time; submodules
+        are imported only when accessed.
+    """
     if name in _EXPORTS:
         module_path, attr_name = _EXPORTS[name]
         module = import_module(module_path)
@@ -86,6 +102,11 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
+    """Return module attributes for IDEs and introspection.
+
+    Returns:
+        A sorted list containing actual module globals plus lazy export/submodule names.
+    """
     return sorted(set(list(globals().keys()) + list(_EXPORTS.keys()) + list(_SUBMODULES.keys())))
 
 

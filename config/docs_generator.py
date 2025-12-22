@@ -1,30 +1,18 @@
 # config/docs_generator.py
-"""
-Automatic configuration documentation generator for SAGA.
+"""Generate configuration reference documentation from the settings model.
 
-The ``generate_docs()`` function inspects the ``SagaSettings`` model and
-produces a Markdown file that lists every configuration option, its type,
-default value, and any description supplied via Pydantic ``Field`` metadata.
+This module renders a Markdown table from [`SagaSettings`](config/settings.py:153),
+including each field's declared type, the active settings value (from the current
+[`settings`](config/settings.py:356) singleton), and the optional Pydantic `Field`
+description.
 
-Running the module as a script (``python -m config.docs_generator``) will
-overwrite ``docs/generated_configuration_schema.md`` with up‑to‑date
-documentation.  Projects can add this script to their CI pipeline to
-prevent drift between code and documentation.
+Side effects:
+- Writing the generated Markdown file to disk.
 
-Example usage from the command line::
-
-    python -m config.docs_generator
-
-The generated file has the following structure:
-
-```
-# Generated Configuration Schema
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| EMBEDDING_API_BASE | str | "http://127.0.0.1:11434" | Base URL for the embedding API service |
-| ... |
-```
+Notes:
+    Importing this module imports [`config.settings`](config/settings.py:1), which has
+    import-time side effects (directory creation and logging configuration). Use this
+    generator in environments where those side effects are acceptable.
 """
 
 from __future__ import annotations
@@ -38,7 +26,14 @@ from .settings import settings as current_settings
 
 
 def _format_default(value: Any) -> str:
-    """Represent a default value as a readable string for markdown."""
+    """Format a settings value for display in Markdown.
+
+    Args:
+        value: Value from the active settings instance.
+
+    Returns:
+        A compact string representation suitable for a Markdown table cell.
+    """
     if isinstance(value, str):
         return f'"{value}"'
     if isinstance(value, int | float | bool):
@@ -52,14 +47,14 @@ def _format_default(value: Any) -> str:
 def generate_docs(
     output_path: str | os.PathLike = "docs/generated_configuration_schema.md",
 ) -> None:
-    """
-    Generate a Markdown file documenting all configuration fields.
+    """Generate a Markdown file documenting all configuration fields.
 
-    Parameters
-    ----------
-    output_path: str | Path
-        Destination file for the generated documentation.  Parent directories
-        are created automatically.
+    Args:
+        output_path: Destination path for the generated documentation. Parent
+            directories are created automatically.
+
+    Raises:
+        OSError: If the destination cannot be created or written.
     """
     # Ensure the output directory exists
     out_file = Path(output_path)

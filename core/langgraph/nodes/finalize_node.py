@@ -1,12 +1,12 @@
 # core/langgraph/nodes/finalize_node.py
-"""
-Finalization node for LangGraph workflow.
+"""Persist the finalized chapter as durable artifacts.
 
-This module contains the chapter finalization logic for the LangGraph-based
-narrative generation workflow.
+This module defines the finalization node that persists the generated chapter to
+the filesystem and to Neo4j, then clears large transient state fields.
 
-Phase 3: Legacy orchestrator removed. This is now the canonical implementation
-for chapter persistence and finalization.
+Notes:
+    This node performs filesystem I/O and Neo4j writes. Filesystem writes are
+    best-effort; Neo4j persistence is treated as the source of truth.
 """
 
 from __future__ import annotations
@@ -32,31 +32,31 @@ logger = structlog.get_logger(__name__)
 
 
 async def finalize_chapter(state: NarrativeState) -> NarrativeState:
-    """
-    Finalize chapter by persisting to filesystem and Neo4j.
+    """Finalize the chapter and persist it to durable storage.
 
-    This is the main LangGraph node function for chapter finalization.
-    It performs the final steps after generation, revision, and extraction:
-    1. Save chapter text to filesystem
-    2. Generate embedding for the chapter
-    3. Persist everything to Neo4j
-    4. Clean up temporary state fields
-
-    PORTED FROM: Orchestrator chapter persistence logic
-
-    Process Flow:
-    1. Validate draft text exists
-    2. Save chapter text to filesystem (project_dir/chapters/)
-    3. Generate embedding vector for the chapter
-    4. Save all data to Neo4j (text, summary, embedding)
-    5. Clean up temporary extraction fields
-    6. Mark chapter as complete
+    This node writes a canonical chapter file, resolves an embedding (prefer an
+    upstream `embedding_ref`, otherwise compute a fallback), and persists chapter
+    metadata to Neo4j.
 
     Args:
-        state: Current narrative state containing finalized draft_text
+        state: Workflow state.
 
     Returns:
-        Updated state with chapter marked as complete and cleanup done
+        Updated state with:
+        - extracted_entities / extracted_relationships cleared (already persisted)
+        - contradictions cleared
+        - needs_revision reset to `False`
+        - current_node set to `"finalize"`
+
+        On fatal errors (missing draft text, or Neo4j persistence failure), returns
+        a state with `has_fatal_error` set and `last_error` populated.
+
+    Notes:
+        - Filesystem writes are best-effort: failures are logged and do not block
+          Neo4j persistence.
+        - Neo4j persistence is treated as the source of truth; failures are fatal.
+        - This node performs I/O (filesystem + Neo4j) and may compute an embedding
+          if no upstream embedding is available.
     """
     logger.info(
         "finalize_chapter: starting finalization",
@@ -203,23 +203,21 @@ async def _save_chapter_to_filesystem(
     text: str,
     project_dir: str,
 ) -> None:
-    """
-    Save finalized chapter to filesystem.
+    """Write the finalized chapter to the project filesystem.
 
-    Writes the canonical Markdown artifact with YAML front matter and a
-    legacy .txt mirror for backward compatibility.
+    The canonical artifact is a Markdown file with YAML front matter. A plain-text
+    mirror is also written for legacy consumers.
 
     Canonical artifact:
         chapters/chapter_{chapter_number:03d}.md
 
-    Legacy compatibility:
+    Legacy mirror:
         chapters/chapter_{chapter_number:03d}.txt
-        (plain text only, no front matter; maintained temporarily)
 
     Args:
-        chapter_number: Chapter number (used for filename and metadata)
-        text: Finalized chapter prose
-        project_dir: Base project directory (e.g., "output/my-novel")
+        chapter_number: Chapter number used for filenames and metadata.
+        text: Finalized chapter prose.
+        project_dir: Base project directory containing the `chapters/` folder.
     """
     from datetime import datetime
 

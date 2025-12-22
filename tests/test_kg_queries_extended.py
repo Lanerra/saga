@@ -70,9 +70,10 @@ class TestKGBatchOperationsExtended:
         statements = args[0]
         query, params = statements[0]
 
-        # Verify constraint-safe MERGE logic used
-        assert "MERGE (s:Character" in query or "MERGE (s:Entity" in query
-        assert "MERGE (o:Location" in query or "MERGE (o:Entity" in query
+        # Contract: constraint-safe node merges via APOC (labels passed as parameters).
+        assert "CALL apoc.merge.node" in query
+        assert params["subject_label"] == "Character"
+        assert params["object_label"] == "Location"
         assert params["object_name_param"] == "Wonderland"
 
 
@@ -183,21 +184,10 @@ class TestMergeEntitiesExtended:
 
     async def test_merge_entities_success(self, monkeypatch):
         """Test successful atomic merge."""
-        # Mock successful write queries for all steps
-        # Step 1: Copy Props (returns props_copied)
-        # Step 2: Move Outgoing (returns outgoing_moved)
-        # Step 3: Move Incoming (returns incoming_moved)
-        # Step 4: Delete Source (returns deleted)
 
         async def mock_write(query, params):
-            if "SET target.description" in query:
-                return [{"props_copied": 1}]
-            if "MATCH (source)-[r]->(other)" in query:
-                return [{"outgoing_moved": 2}]
-            if "MATCH (other)-[r]->(source)" in query:
-                return [{"incoming_moved": 1}]
-            if "DETACH DELETE source" in query:
-                return [{"deleted": 1}]
+            if "apoc.refactor.mergeNodes" in query:
+                return [{"id": params["target_id"]}]
             return []
 
         monkeypatch.setattr(kg_queries.neo4j_manager, "execute_write_query", mock_write)
@@ -209,7 +199,6 @@ class TestMergeEntitiesExtended:
         """Test merge retry logic on failure."""
         # Fail twice, succeed on third
         # Error must contain "deadlock", "locked", "transaction", or "entitynotfound" to trigger retry
-        mock_execute_atomic = AsyncMock(side_effect=[Exception("Deadlock detected"), Exception("Database is locked"), True])
 
         # We need to patch _execute_atomic_merge directly if we want to test the retry wrapper logic specifically,
         # OR patch neo4j_manager to fail then succeed.

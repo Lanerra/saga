@@ -1,9 +1,8 @@
 # core/langgraph/nodes/embedding_node.py
-"""
-Embedding generation node for LangGraph workflow.
+"""Generate and externalize embeddings for chapter drafts.
 
-This module creates embeddings for generated chapter text to enable
-semantic search and context retrieval.
+This module defines the embedding node used by the LangGraph workflow. Embeddings
+enable semantic retrieval and similarity comparisons in downstream steps.
 """
 
 import numpy as np
@@ -17,17 +16,28 @@ logger = structlog.get_logger(__name__)
 
 
 async def generate_embedding(state: NarrativeState) -> NarrativeState:
-    """
-    Generate embedding for the current chapter draft text.
+    """Generate an embedding for the current chapter draft.
 
-    This node should run after generation and before/parallel to extraction.
-    It updates the state with the vector representation of the chapter text.
+    This node reads the current draft (preferring the externalized `draft_ref`),
+    requests an embedding from the LLM provider, and externalizes the embedding to
+    reduce state size.
 
     Args:
-        state: Current narrative state containing draft_text
+        state: Workflow state.
 
     Returns:
-        Updated state with generated_embedding
+        Updated state containing:
+        - embedding_ref: Content reference for the persisted embedding vector.
+        - current_node: `"generate_embedding"`.
+
+        If the draft is missing/empty, returns an update with `generated_embedding`
+        set to `None` and does not fail the workflow.
+        If embedding generation fails, returns an update with `last_error` populated
+        but does not set `has_fatal_error`.
+
+    Notes:
+        This node performs network I/O to generate embeddings and filesystem I/O to
+        persist the result via `ContentManager.save_binary()`.
     """
     content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager)

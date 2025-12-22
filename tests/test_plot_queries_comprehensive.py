@@ -1,6 +1,5 @@
 """Comprehensive tests for data_access/plot_queries.py"""
 
-import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -45,11 +44,20 @@ class TestSavePlotOutline:
         # First statement is NovelInfo upsert with props
         cypher, params = executed[0]
         assert "MERGE (ni:NovelInfo" in cypher
-        props = params.get("props", {})
-        assert props.get("title") == "Test Novel"
-        assert props.get("genre") == "Fantasy"
-        assert "acts_json" in props
-        assert json.loads(props["acts_json"]) == [{"act_number": 1, "description": "Act 1"}]
+
+        # Contract: primitive keys are persisted directly, structured keys are persisted via *_json.
+        assert "SET ni += $primitive_props" in cypher
+        assert "structured_props" in params
+        assert "primitive_props" in params
+
+        primitive_props = params["primitive_props"]
+        structured_props = params["structured_props"]
+
+        assert primitive_props.get("title") == "Test Novel"
+        assert primitive_props.get("genre") == "Fantasy"
+
+        assert "acts" in structured_props
+        assert structured_props["acts"] == [{"act_number": 1, "description": "Act 1"}]
 
     async def test_save_plot_outline_does_not_replace_novelinfo_map(self, monkeypatch):
         """
@@ -79,9 +87,18 @@ class TestSavePlotOutline:
         assert result is True
         assert executed, "Expected at least the NovelInfo upsert statement to be executed"
 
-        cypher = executed[0][0]
-        assert "SET ni += $props" in cypher
-        assert "SET ni = $props" not in cypher
+        cypher, params = executed[0]
+
+        # Contract: additive merge for primitives (no destructive `SET ni = ...`).
+        assert "SET ni += $primitive_props" in cypher
+        assert "SET ni = $primitive_props" not in cypher
+
+        # Contract: structured data is persisted via a derived map of *_json keys.
+        assert "apoc.map.fromPairs" in cypher
+        assert "SET ni += json_props" in cypher
+
+        assert params["primitive_props"]["title"] == "Test Novel"
+        assert params["primitive_props"]["genre"] == "Fantasy"
 
     async def test_save_plot_outline_invalid_plot_points_still_saves_novelinfo(self, monkeypatch):
         """
@@ -110,7 +127,7 @@ class TestSavePlotOutline:
         assert executed, "Expected NovelInfo upsert to run even when plot_points is invalid"
 
         cypher = executed[0][0]
-        assert "SET ni += $props" in cypher
+        assert "SET ni += $primitive_props" in cypher
 
     async def test_save_plot_outline_empty(self, monkeypatch):
         """Test saving empty plot outline."""
@@ -156,9 +173,11 @@ class TestSavePlotOutline:
 
         cypher, params = executed[0]
         assert "MERGE (ni:NovelInfo" in cypher
-        props = params.get("props", {})
-        assert "acts_json" in props
-        decoded = json.loads(props["acts_json"])
+
+        structured_props = params["structured_props"]
+        assert "acts" in structured_props
+
+        decoded = structured_props["acts"]
         assert decoded[0]["chapters"][0]["chapter_number"] == 1
 
 
@@ -174,13 +193,14 @@ class TestGetPlotOutline:
         """
 
         async def fake_read(query, params=None):
-            if "RETURN ni" in query:
+            # NovelInfo query returns `plot_data` (merged primitives + decoded *_json fields).
+            if "RETURN apoc.map.merge(primitives, decoded) AS plot_data" in query:
                 return [
                     {
-                        "ni": {
+                        "plot_data": {
                             "title": "Test Novel",
                             "genre": "Fantasy",
-                            "acts_json": json.dumps([{"act_number": 1, "description": "Act 1"}]),
+                            "acts": [{"act_number": 1, "description": "Act 1"}],
                         }
                     }
                 ]

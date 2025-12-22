@@ -129,8 +129,10 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     alice_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("subject_name_param") == "Alice":
-            # Accept either name-based merge or id-based merge (stable ids for Characters)
-            assert "MERGE (s:Character {name: $subject_name_param})" in query or "MERGE (s:Character {id: $subject_id_param})" in query
+            # Contract: we use constraint-safe APOC merges, with label passed separately.
+            assert "CALL apoc.merge.node" in query
+            assert params.get("subject_label") == "Character"
+            assert params.get("subject_name_param") == "Alice"
             alice_statement_found = True
             break
     assert alice_statement_found, "Cypher statement for Alice as Character not found or incorrect."
@@ -139,9 +141,10 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     bob_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("subject_name_param") == "Bob":
-            # Normalization updates the type parameter, so we check for the normalized label
-            # The MERGE will be on :Character (from normalized type)
-            assert "MERGE (s:Character {name: $subject_name_param})" in query or "MERGE (s:Character {id: $subject_id_param})" in query
+            # Contract: type normalization updates subject_label to canonical "Character".
+            assert "CALL apoc.merge.node" in query
+            assert params.get("subject_label") == "Character"
+            assert params.get("subject_name_param") == "Bob"
             bob_statement_found = True
             break
     assert bob_statement_found, "Cypher statement for Bob as Person->Character not found or incorrect."
@@ -150,8 +153,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     castle_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("subject_name_param") == "Castle":
-            # Accept a generic MERGE with label applied via SET
-            assert "$subject_name_param" in query
+            assert "CALL apoc.merge.node" in query
+            assert params.get("subject_label") == "Location"
+            assert params.get("subject_name_param") == "Castle"
             castle_statement_found = True
             break
     assert castle_statement_found, "Cypher statement for Castle as Location not found or incorrect."
@@ -160,8 +164,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     charles_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("object_name_param") == "Charles":
-            # Accept either name-based merge with Character label or id-based merge for stable IDs
-            assert "MERGE (o:Character {name: $object_name_param})" in query or "MERGE (o:Character {id: $object_id_param})" in query
+            assert "CALL apoc.merge.node" in query
+            assert params.get("object_label") == "Character"
+            assert params.get("object_name_param") == "Charles"
             charles_statement_found = True
             break
     assert charles_statement_found, "Cypher statement for Charles as Character (object) not found or incorrect."
@@ -170,9 +175,9 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     diana_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("object_name_param") == "Diana":
-            # Normalization updates the type parameter, so we check for the normalized label
-            # The MERGE will be on :Character (from normalized type)
-            assert ("MERGE (o:Character" in query and "$object_name_param" in query) or ("MERGE (o:Character {id: $object_id_param})" in query)
+            assert "CALL apoc.merge.node" in query
+            assert params.get("object_label") == "Character"
+            assert params.get("object_name_param") == "Diana"
             diana_statement_found = True
             break
     assert diana_statement_found, "Cypher statement for Diana as Person->Character (object) not found or incorrect."

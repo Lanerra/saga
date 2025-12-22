@@ -8,6 +8,7 @@ into a single import surface to reduce file count and simplify imports.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import structlog
@@ -16,6 +17,11 @@ import yaml
 import config
 
 logger = structlog.get_logger(__name__)
+
+_JSON_FENCE_PATTERN = re.compile(
+    r"```(?:json)?\s*\n?(.*?)\n?```",
+    flags=re.DOTALL | re.IGNORECASE,
+)
 
 
 # --- helpers.py ---
@@ -55,6 +61,160 @@ def extract_json_from_text(text: str) -> str | None:
     return None
 
 
+def _extract_balanced_json_substring(text: str) -> str | None:
+    if not isinstance(text, str) or not text:
+        return None
+
+    start_chars = ["{", "["]
+    end_chars = {"{": "}", "[": "]"}
+    start_pos = min([i for i in (text.find("{"), text.find("[")) if i != -1] or [len(text)])
+    if start_pos == len(text):
+        return None
+
+    stack: list[str] = []
+    end_pos: int | None = None
+    for idx, ch in enumerate(text[start_pos:], start=start_pos):
+        if ch in start_chars:
+            stack.append(ch)
+            continue
+
+        if ch in ("}", "]"):
+            if not stack:
+                return None
+            opening = stack.pop()
+            if end_chars[opening] != ch:
+                return None
+            if not stack:
+                end_pos = idx
+                break
+
+    if end_pos is None:
+        return None
+
+    candidate = text[start_pos : end_pos + 1]
+    return candidate if candidate.strip() else None
+
+
+def extract_json_candidates_from_response(response: str) -> list[tuple[str, str]]:
+    """
+    Extract candidate JSON strings from a possibly-chatty LLM response.
+
+    Supports:
+    - Pure JSON (object or list)
+    - JSON in markdown fences ```json ... ```
+    - Embedded valid JSON preceded/followed by commentary (via JSONDecoder.raw_decode)
+    - Balanced-bracket substring salvage (conservative)
+
+    Returns a list of (source, json_string) candidates, ordered from most likely
+    to least likely, de-duplicated while preserving order.
+    """
+    text = (response or "").strip()
+    if not text:
+        return []
+
+    candidates: list[tuple[str, str]] = [("raw", text)]
+
+    for i, match in enumerate(_JSON_FENCE_PATTERN.finditer(response or ""), start=1):
+        block = (match.group(1) or "").strip()
+        if block:
+            candidates.append((f"fence[{i}]", block))
+
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"[\{\[]", response or ""):
+        index = match.start()
+        try:
+            _obj, end = decoder.raw_decode(response or "", index)
+        except Exception:
+            continue
+        snippet = (response or "")[index:end].strip()
+        if snippet:
+            candidates.append((f"raw_decode@{index}", snippet))
+
+    balanced = _extract_balanced_json_substring(response or "")
+    if balanced:
+        candidates.append(("balanced_substring", balanced))
+
+    seen: set[str] = set()
+    unique: list[tuple[str, str]] = []
+    for source, candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        unique.append((source, candidate))
+
+    return unique
+
+
+def try_load_json_from_response(
+    response: str,
+    *,
+    expected_root: type | tuple[type, ...] | None = None,
+    wrapper_keys: tuple[str, ...] = (),
+) -> tuple[Any | None, list[tuple[str, str]], list[str]]:
+    """
+    Try to parse JSON from an LLM response using multiple extraction strategies.
+
+    Returns:
+        (parsed_or_none, candidates_tried, parse_errors)
+
+    Notes:
+        - If wrapper_keys is provided and the parsed value is an object containing exactly
+          one of those keys, the value at that key is unwrapped.
+        - If expected_root is provided, parsed values that don't match are rejected.
+    """
+    candidates = extract_json_candidates_from_response(response)
+    if not candidates:
+        return None, [], ["empty response"]
+
+    parse_errors: list[str] = []
+    for source, candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as error:
+            parse_errors.append(f"{source}: JSONDecodeError at pos {error.pos}: {error.msg}")
+            continue
+
+        if wrapper_keys and isinstance(parsed, dict):
+            for wrapper_key in wrapper_keys:
+                if wrapper_key in parsed:
+                    parsed = parsed[wrapper_key]
+                    break
+
+        if expected_root is not None and not isinstance(parsed, expected_root):
+            parse_errors.append(
+                f"{source}: wrong root type {type(parsed).__name__} (expected {expected_root})"
+            )
+            continue
+
+        return parsed, candidates, parse_errors
+
+    return None, candidates, parse_errors
+
+
+def load_json_with_contract_then_salvage(*, raw_text: str, expected_root: type) -> Any:
+    """
+    Strict JSON-only contract loader with salvage behavior.
+
+    Behavior:
+    - First attempts json.loads(raw_text).
+    - On JSONDecodeError, tries to salvage embedded JSON using
+      [`extract_json_candidates_from_response()`](utils/common.py:1) parsing.
+    - If salvage fails, re-raises the original JSONDecodeError.
+
+    This matches the contract behavior used by initialization parsing code.
+    """
+    try:
+        return json.loads(raw_text)
+    except json.JSONDecodeError as original_error:
+        salvaged, _candidates, _errors = try_load_json_from_response(
+            raw_text,
+            expected_root=expected_root,
+        )
+        if salvaged is None:
+            raise original_error
+        return salvaged
+
+
 def safe_json_loads(
     text: str,
     *,
@@ -67,28 +227,10 @@ def safe_json_loads(
 
     candidate = text
     if strict_extract:
-        start_chars = ["{", "["]
-        end_chars = {"{": "}", "[": "]"}
-        start_pos = min([i for i in (text.find("{"), text.find("[")) if i != -1] or [len(text)])
-        if start_pos == len(text):
+        extracted_strict = _extract_balanced_json_substring(text)
+        if extracted_strict is None:
             return None
-        stack: list[str] = []
-        end_pos = None
-        for idx, ch in enumerate(text[start_pos:], start=start_pos):
-            if ch in start_chars:
-                stack.append(ch)
-            elif ch in ("}", "]"):
-                if not stack:
-                    return None
-                opening = stack.pop()
-                if end_chars[opening] != ch:
-                    return None
-                if not stack:
-                    end_pos = idx
-                    break
-        if end_pos is None:
-            return None
-        candidate = text[start_pos : end_pos + 1]
+        candidate = extracted_strict
     else:
         extracted = extract_json_from_text(text)
         if extracted:
@@ -102,6 +244,27 @@ def safe_json_loads(
     if expected is not None and not isinstance(obj, expected):
         return None
     return obj
+
+
+def ensure_exact_keys(*, value: Any, required_keys: set[str], context: str) -> None:
+    if not isinstance(value, dict):
+        raise ValueError(f"{context} must be a JSON object, got {type(value).__name__}")
+
+    value_keys = {str(key) for key in value.keys()}
+    if value_keys != required_keys:
+        raise ValueError(
+            f"{context} must contain exactly keys {sorted(required_keys)} (got {sorted(value_keys)})"
+        )
+
+
+def ensure_required_keys(*, value: Any, required_keys: set[str], context: str) -> None:
+    if not isinstance(value, dict):
+        raise ValueError(f"{context} must be a JSON object, got {type(value).__name__}")
+
+    value_keys = {str(key) for key in value.keys()}
+    missing = sorted(required_keys - value_keys)
+    if missing:
+        raise ValueError(f"{context} is missing required keys {missing}")
 
 
 def truncate_for_log(s: str, limit: int = 300) -> str:
@@ -182,7 +345,12 @@ __all__ = [
     "flatten_dict",
     "_is_fill_in",
     "extract_json_from_text",
+    "extract_json_candidates_from_response",
+    "try_load_json_from_response",
+    "load_json_with_contract_then_salvage",
     "safe_json_loads",
+    "ensure_exact_keys",
+    "ensure_required_keys",
     "truncate_for_log",
     "normalize_keys_recursive",
     "load_yaml_file",

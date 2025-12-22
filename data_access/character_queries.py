@@ -25,14 +25,30 @@ CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
 
 
 def clear_character_name_map() -> None:
-    """Clear the in-process character name canonicalization map."""
+    """Clear the in-process character name canonicalization map.
+
+    Notes:
+        This only clears in-memory state used by [`resolve_character_name()`](data_access/character_queries.py:43).
+        It does not modify Neo4j.
+    """
     CHAR_NAME_TO_CANONICAL.clear()
 
 
 def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
     """Rebuild the character name canonicalization map from a list of profiles.
 
-    This clears existing entries to avoid stale accumulation across runs/tests.
+    Args:
+        characters: Character profiles to use as the authoritative source of canonical
+            display names.
+
+    Returns:
+        None.
+
+    Notes:
+        This clears existing entries to avoid stale accumulation across runs/tests. This is
+        an in-process cache and is populated as a side effect of:
+        - [`sync_characters()`](data_access/character_queries.py:484) (write path), and
+        - [`get_character_profiles()`](data_access/character_queries.py:543) (read path).
     """
     CHAR_NAME_TO_CANONICAL.clear()
     for char in characters:
@@ -41,7 +57,19 @@ def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
 
 
 def resolve_character_name(name: str) -> str:
-    """Return canonical character name for a display variant."""
+    """Return a canonical character display name when a mapping is known.
+
+    Args:
+        name: A character name variant.
+
+    Returns:
+        The canonical display name when the in-memory mapping has an entry. Otherwise
+        returns `name` unchanged.
+
+    Notes:
+        This is best-effort and does not perform any database IO. Callers that require
+        authoritative resolution must query Neo4j.
+    """
     if not name:
         return name
     return CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id(name), name)
@@ -52,12 +80,41 @@ logger = structlog.get_logger(__name__)
 
 @alru_cache(maxsize=128)
 async def get_character_profile_by_name(name: str, *, include_provisional: bool = False) -> CharacterProfile | None:
-    """
-    Retrieve a single CharacterProfile from Neo4j by character name.
+    """Return a character profile by name.
 
-    Provisional contract (P0):
-    - Default excludes provisional relationship + event data unless include_provisional=True.
-    - Node-level provisional status is preserved on the returned profile (callers can decide).
+    Args:
+        name: Character display name. This is passed through
+            [`resolve_character_name()`](data_access/character_queries.py:43) before querying.
+        include_provisional: Whether to include provisional relationship and event data in the
+            returned profile.
+
+    Returns:
+        A `CharacterProfile` when a matching character exists and is not deleted. Returns
+        None when the character does not exist.
+
+        The returned profile includes:
+        - `traits`: sorted list of trait names
+        - `relationships`: mapping keyed by `target_name`
+            - if there is exactly one relationship to a target, the value is a dict with at
+              least `type` and optional `description` / `chapter_added`
+            - if there are multiple relationships to a target, the value is a list of those
+              dicts (stable-sorted)
+
+    Notes:
+        Provisional semantics:
+            - By default, provisional relationships and development events are excluded unless
+              `include_provisional=True`.
+            - Node-level provisional status on the character is preserved on the returned
+              profile so callers can make data-quality decisions.
+
+        Cache semantics:
+            This function is cached (read-through). Callers should treat returned model
+            instances as immutable to avoid leaking mutations across cache hits. Write paths
+            should invalidate via [`clear_character_read_caches()`](data_access/cache_coordinator.py:31).
+
+        Query contract:
+            This read path filters to relationships with `source_profile_managed=true` to
+            avoid surfacing unmanaged edges.
     """
     canonical_name = resolve_character_name(name)
     logger.info(f"Loading character profile '{canonical_name}' from Neo4j...")
@@ -211,12 +268,37 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
 @alru_cache(maxsize=128)
 async def get_character_profile_by_id(character_id: str, *, include_provisional: bool = False) -> CharacterProfile | None:
-    """
-    Retrieve a single CharacterProfile from Neo4j by character ID.
+    """Return a character profile by id.
 
-    Provisional contract (P0):
-    - Default excludes provisional relationship + event data unless include_provisional=True.
-    - Node-level provisional status is preserved on the returned profile (callers can decide).
+    Args:
+        character_id: Canonical character id stored on the `:Character` node.
+        include_provisional: Whether to include provisional relationship and event data in the
+            returned profile.
+
+    Returns:
+        A `CharacterProfile` when a matching character exists and is not deleted. Returns
+        None when the character does not exist.
+
+        The returned profile includes:
+        - `traits`: sorted list of trait names
+        - `relationships`: mapping keyed by `target_name` whose values are dicts containing at
+          least `type` and optional `description` / `chapter_added`.
+
+    Notes:
+        Provisional semantics:
+            - By default, provisional relationships and development events are excluded unless
+              `include_provisional=True`.
+            - Node-level provisional status on the character is preserved on the returned
+              profile so callers can make data-quality decisions.
+
+        Relationship shape caveat:
+            The relationships mapping does not preserve multiple relationship types to the
+            same target; later projections can overwrite earlier ones.
+
+        Cache semantics:
+            This function is cached (read-through). Callers should treat returned model
+            instances as immutable. Write paths should invalidate via
+            [`clear_character_read_caches()`](data_access/cache_coordinator.py:31).
     """
     logger.info(f"Loading character profile with ID '{character_id}' from Neo4j...")
 
@@ -326,19 +408,40 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
 
 async def get_all_character_names() -> list[str]:
-    """Return a list of all character names from Neo4j."""
+    """Return all character names.
+
+    Returns:
+        A list of character names, ordered alphabetically.
+
+    Notes:
+        This function does not currently filter provisional characters.
+    """
     query = "MATCH (c:Character) " "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE " "RETURN c.name AS name ORDER BY c.name"
     results = await neo4j_manager.execute_read_query(query)
     return [record["name"] for record in results if record.get("name")]
 
 
 def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool) -> dict[str, Any]:
-    """Process snippet query result into standardized format.
+    """Normalize a snippet query record into a stable response shape.
 
-    Provisional contract (P0):
-    - Default behavior (include_provisional=False) should NOT surface provisional development
-      notes as the "most recent" signal.
-    - Still compute and return `is_provisional_overall` so callers can understand data quality.
+    Args:
+        record: A single Neo4j record dict produced by
+            [`get_character_info_for_snippet_from_db()`](data_access/character_queries.py:376).
+        include_provisional: Whether provisional development events may be selected as the
+            "most recent" development note.
+
+    Returns:
+        A dictionary with keys:
+        - `description`
+        - `current_status`
+        - `most_recent_development_note`
+        - `is_provisional_overall`
+
+    Notes:
+        Provisional semantics:
+            When `include_provisional=False`, provisional development events are not allowed
+            to become the "most recent" note, but `is_provisional_overall` still reflects
+            whether any underlying data (node/relationships/events) is provisional.
     """
     dev_events = record.get("dev_events", [])
 
@@ -351,6 +454,7 @@ def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool
     most_recent_prov = max(provisional, key=lambda e: e["chapter"]) if provisional else None
 
     if include_provisional:
+        most_current: dict[str, Any] | None
         if most_recent_prov and (not most_recent_non_prov or most_recent_prov["chapter"] >= most_recent_non_prov["chapter"]):
             most_current = most_recent_prov
         else:
@@ -374,11 +478,35 @@ def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool
 
 
 async def get_character_info_for_snippet_from_db(char_name: str, chapter_limit: int, *, include_provisional: bool = False) -> dict[str, Any] | None:
-    """Get character info for snippet with chapter limit.
+    """Return condensed character info suitable for snippet context.
 
-    Provisional contract (P0):
-    - Default excludes provisional development notes from the returned "most recent" view.
-    - Still computes and returns `is_provisional_overall` based on underlying graph data.
+    Args:
+        char_name: Character name. This is passed through
+            [`resolve_character_name()`](data_access/character_queries.py:43) before querying.
+        chapter_limit: Upper bound on `chapter_updated` / `chapter_added` used to constrain the
+            "most recent" view.
+        include_provisional: Whether provisional development events may be selected as the
+            "most recent" development note.
+
+    Returns:
+        A dictionary with keys:
+        - `description`
+        - `current_status`
+        - `most_recent_development_note`
+        - `is_provisional_overall`
+
+        Returns None when the character is not found or when the database query fails.
+
+    Notes:
+        Provisional semantics:
+            When `include_provisional=False`, provisional development notes are excluded from
+            the "most recent" selection, but `is_provisional_overall` still reflects whether
+            the character node, any relationships up to `chapter_limit`, or any development
+            events are provisional.
+
+        Error behavior:
+            This function retries once on `neo4j.exceptions.ServiceUnavailable` by reconnecting
+            and reissuing the query. Other failures return None.
     """
     canonical_name = resolve_character_name(char_name)
 
@@ -463,7 +591,15 @@ async def get_character_info_for_snippet_from_db(char_name: str, chapter_limit: 
 
 
 async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
-    """Finds character nodes that are considered 'thin' (e.g., auto-created stubs)."""
+    """Find thin character nodes suitable for enrichment.
+
+    Returns:
+        A list of dictionaries with at least `name` for up to 20 characters considered thin.
+
+    Notes:
+        This is a diagnostic discovery query intended to seed enrichment workflows. It is not
+        a strict completeness guarantee.
+    """
     query = """
     MATCH (c:Character)
     WHERE c.description STARTS WITH 'Auto-created via relationship'
@@ -485,16 +621,23 @@ async def sync_characters(
     characters: list[CharacterProfile],
     chapter_number: int,
 ) -> bool:
-    """
-    Native model version of sync_characters.
-    Persist character data directly from models without dict conversion.
+    """Persist character profiles to Neo4j using the native Cypher builder.
 
     Args:
-        characters: List of CharacterProfile models
-        chapter_number: Current chapter for tracking updates
+        characters: Character profiles to upsert.
+        chapter_number: Chapter number used for provenance and update tracking.
 
     Returns:
-        True if successful, False otherwise
+        True when the batch write completed successfully. False when a write error occurred.
+
+    Notes:
+        Cache semantics:
+            This is a write path. On success it invalidates character read caches via
+            [`clear_character_read_caches()`](data_access/cache_coordinator.py:31).
+
+        In-memory name resolution:
+            On success it rebuilds the canonical display-name mapping used by
+            [`resolve_character_name()`](data_access/character_queries.py:43).
     """
     if not characters:
         logger.info("No characters to sync")
@@ -541,12 +684,18 @@ async def sync_characters(
 
 
 async def get_character_profiles() -> list[CharacterProfile]:
-    """
-    Native model version of get_character_profiles_from_db.
-    Returns characters as model instances without dict conversion.
+    """Return all character profiles.
 
     Returns:
-        List of CharacterProfile models
+        A list of `CharacterProfile` instances. Returns an empty list on query failures.
+
+    Notes:
+        In-memory name resolution:
+            This call rebuilds the canonical display-name mapping used by
+            [`resolve_character_name()`](data_access/character_queries.py:43).
+
+        Error behavior:
+            This function logs exceptions and returns an empty list rather than raising.
     """
     try:
         cypher_builder = NativeCypherBuilder()
@@ -572,15 +721,18 @@ async def get_character_profiles() -> list[CharacterProfile]:
 
 
 async def get_characters_for_chapter_context_native(chapter_number: int, limit: int = 10) -> list[CharacterProfile]:
-    """
-    Get characters relevant for chapter context using native models.
+    """Return characters relevant for chapter context.
 
     Args:
-        chapter_number: Current chapter being processed
-        limit: Maximum number of characters to return
+        chapter_number: Current chapter being processed. Only earlier chapters are considered.
+        limit: Maximum number of characters to return.
 
     Returns:
-        List of CharacterProfile models relevant to the chapter
+        A list of `CharacterProfile` instances, ordered by most recent appearance.
+
+    Notes:
+        Error behavior:
+            This function logs exceptions and returns an empty list rather than raising.
     """
     try:
         query = """

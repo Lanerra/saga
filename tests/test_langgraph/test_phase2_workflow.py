@@ -106,7 +106,7 @@ def mock_all_nodes() -> Any:
             return_value=mock_gen_node,
         ) as mock_create_gen,
         patch(
-            "core.langgraph.subgraphs.extraction.create_extraction_subgraph",
+            "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract_node,
         ) as mock_create_extract,
         patch(
@@ -239,7 +239,7 @@ class TestPhase2Workflow:
         graph = create_phase2_graph()
 
         # Execute workflow
-        result = await graph.ainvoke(sample_phase2_state)
+        await graph.ainvoke(sample_phase2_state)
 
         # Verify all nodes were called in correct order
         # Note: With subgraph, generate might be called differently or implicitly

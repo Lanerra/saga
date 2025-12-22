@@ -1,4 +1,6 @@
 # core/langgraph/export.py
+"""Export project chapter files into consolidated artifacts."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -8,12 +10,11 @@ from utils.file_io import write_text_file
 
 
 def _iter_chapter_files(chapters_dir: Path) -> Iterable[Path]:
-    """
-    Discover canonical chapter .md files and yield them sorted by chapter number.
+    """Yield canonical chapter Markdown files sorted by chapter number.
 
-    Assumptions:
-    - Filenames follow the pattern: chapter_<NNN>.md (zero-padded integer).
-    - Only .md files are considered canonical for export (no .txt mirrors).
+    Notes:
+        Canonical chapters are files matching `chapter_<NNN>.md` in `chapters_dir`. Only
+        `.md` files are considered canonical for export (no `.txt` mirrors).
     """
     if not chapters_dir.is_dir():
         return []
@@ -36,33 +37,23 @@ def _iter_chapter_files(chapters_dir: Path) -> Iterable[Path]:
 
 
 def _strip_bom(text: str) -> str:
-    """Remove UTF-8 BOM if present.
-
-    Args:
-        text: Input text that may contain a UTF-8 BOM.
-
-    Returns:
-        Text with BOM removed if it was present, otherwise unchanged.
-    """
+    """Remove a UTF-8 BOM if present."""
     if text.startswith("\ufeff"):
         return text.lstrip("\ufeff")
     return text
 
 
 def _extract_body(content: str) -> str:
-    """
-    Extract the prose body from a chapter file, stripping YAML front matter if present.
+    """Extract chapter prose, removing optional YAML front matter.
 
-    Rules (aligned with core/langgraph/nodes/finalize_node.py output format):
-    - If the content begins with a line that is exactly '---', treat it as YAML front matter.
-      Consume lines up to and including the next '---' line.
-      Everything after that delimiter (and one following newline, if present)
-      is treated as the chapter body.
-    - If no such front matter header exists, treat the entire file as body.
-    - Normalize:
-      - Ensure we operate on real newlines (no literal '\\n' sequences).
-      - Trim only unnecessary leading newlines at the very start of the body.
-        Internal structure is preserved.
+    Notes:
+        This strips YAML front matter only when the file begins with a line that is
+        exactly `---` and a matching closing `---` delimiter appears later.
+        If the front matter is malformed (missing a closing delimiter), the function
+        treats the full file as the body.
+
+        The body is normalized to real newlines and only leading newlines at the very
+        start are removed to preserve internal formatting.
     """
     content = _strip_bom(content)
 
@@ -101,28 +92,20 @@ def _extract_body(content: str) -> str:
 
 
 def generate_full_export(project_dir: str | Path) -> Path:
-    """
-    Generate the full novel export by concatenating canonical chapter .md files.
+    """Generate a full novel export by concatenating chapter Markdown files.
 
-    Behavior:
-    - Looks for chapter files under <project_dir>/chapters matching chapter_*.md.
-    - Sorts chapters by the numeric component of the filename (ascending).
-    - For each chapter:
-        - Reads UTF-8 content.
-        - Strips optional UTF-8 BOM.
-        - Removes YAML front matter if present.
-        - Normalizes to real newlines and trims only leading newlines at start.
-    - Concatenates chapter bodies with exactly one blank line between chapters.
-      (i.e., each body is rstrip()'d, then `+ "\\n\\n"` except after last one,
-      where a trailing newline is still acceptable.)
-    - Ensures <project_dir>/exports exists.
-    - Writes result to <project_dir>/exports/novel_full.md (UTF-8).
+    Args:
+        project_dir: Project root directory containing `chapters/` and `exports/`.
 
-    Edge cases:
-    - If no chapter .md files are found, this function is a no-op:
-        - It does not create exports/novel_full.md.
-        - Returns the intended output path regardless.
-      This keeps behavior simple and safe; callers can check .exists() if needed.
+    Returns:
+        Path to the intended export file (`exports/novel_full.md`). If no canonical
+        chapter files exist, the function returns this path without creating it.
+
+    Notes:
+        - Chapters are discovered from `chapters/chapter_<NNN>.md` files and sorted by
+          the numeric component.
+        - YAML front matter is removed when present and well-formed.
+        - Chapter bodies are separated by exactly one blank line in the final output.
     """
     project_path = Path(project_dir)
     chapters_dir = project_path / "chapters"
@@ -142,7 +125,7 @@ def generate_full_export(project_dir: str | Path) -> Path:
         raw = chapter_path.read_text(encoding="utf-8", errors="replace")
         body = _extract_body(raw)
         # Skip if body is empty after normalization; we still include a placeholder
-        # empty segment via rstrip/joining rules, which is acceptable.
+        # empty segment via rstrip/joining rules, which is acceptable
         bodies.append(body)
 
     # Prepare final payload:

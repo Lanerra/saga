@@ -1,5 +1,9 @@
 # models/__init__.py
-"""Central package for SAGA data models."""
+"""Export commonly used SAGA model types.
+
+This package exposes a stable import surface for Pydantic models and `TypedDict`
+payload shapes used across the pipeline.
+"""
 
 from .agent_models import (
     EvaluationResult,

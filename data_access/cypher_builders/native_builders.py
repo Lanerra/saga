@@ -1,7 +1,16 @@
 # data_access/cypher_builders/native_builders.py
-"""
-Native Cypher builders that generate Cypher directly from Pydantic models.
-Eliminates the intermediate dict serialization layer for performance optimization.
+"""Build Cypher statements directly from Pydantic models.
+
+Notes:
+    Security and Cypher identifier selection:
+        - Neo4j labels are not parameterized. This module interpolates a small, allowlisted
+          set of labels (for example, the primary world-item label) into query strings.
+          Do not widen label selection without reviewing Cypher injection risk.
+        - Relationship types for writes are supplied to APOC procedures (for example,
+          `apoc.merge.relationship`). Although this is not string interpolation into raw
+          Cypher, it still allows callers to create arbitrary relationship type names.
+          Callers must treat relationship type inputs as untrusted and enforce a strict
+          allowlist/pattern (for example, `[A-Z0-9_]+`) upstream to prevent schema drift.
 """
 
 from typing import TYPE_CHECKING, Any
@@ -16,19 +25,32 @@ if TYPE_CHECKING:
 
 
 class NativeCypherBuilder:
-    """Generate Cypher directly from Pydantic models without dict conversion"""
+    """Generate Cypher directly from Pydantic models without dict conversion."""
 
     @staticmethod
     def character_upsert_cypher(char: "CharacterProfile", chapter_number: int) -> tuple[str, dict[str, Any]]:
-        """
-        Generate Cypher for character upsert directly from CharacterProfile model.
+        """Build a character upsert statement.
 
         Args:
-            char: CharacterProfile model instance
-            chapter_number: Current chapter for tracking updates
+            char: Character profile model.
+            chapter_number: Chapter number used for provenance and update tracking.
 
         Returns:
-            Tuple of (cypher_query, parameters)
+            A `(cypher_query, parameters)` tuple.
+
+        Notes:
+            Relationship typing:
+                Relationships are written via `apoc.merge.relationship` using a dynamic
+                relationship type (`rel_data.rel_type`). This is not parameterizable in
+                plain Cypher and enables creation of arbitrary relationship types.
+
+                Upstream callers must ensure relationship types are constrained (for example,
+                already-uppercase and matching `[A-Z0-9_]+`) and come from an application
+                allowlist, not from raw user text.
+
+            Provisional node creation:
+                Relationship targets are merged as `:Character` by name. When the target does
+                not exist, a provisional stub node is created with `is_provisional=true`.
         """
         cypher = """
         MERGE (c:Character {name: $name})
@@ -165,15 +187,26 @@ class NativeCypherBuilder:
 
     @staticmethod
     def world_item_upsert_cypher(item: "WorldItem", chapter_number: int) -> tuple[str, dict[str, Any]]:
-        """
-        Generate Cypher for world item upsert directly from WorldItem model.
+        """Build a world item upsert statement.
 
         Args:
-            item: WorldItem model instance
-            chapter_number: Current chapter for tracking updates
+            item: World item model.
+            chapter_number: Chapter number used for provenance and update tracking.
 
         Returns:
-            Tuple of (cypher_query, parameters)
+            A `(cypher_query, parameters)` tuple.
+
+        Notes:
+            Label selection:
+                The primary node label is interpolated into the query string (labels are not
+                parameterized by Neo4j). This builder constrains the label to
+                `WORLD_ITEM_CANONICAL_LABELS` and falls back to `Item`.
+
+                Do not pass untrusted label values into this builder.
+
+            Relationship targets:
+                Relationship target labels are selected inside Cypher via an allowlist
+                (`world_item_target_label_allowlist`), defaulting to `Item` when invalid.
         """
         # Flatten nested dictionaries in additional_properties to ensure
         # all values are primitive types that Neo4j can store
@@ -360,15 +393,21 @@ class NativeCypherBuilder:
     def character_fetch_cypher(
         filters: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        """
-        Generate optimized Cypher for fetching characters with relationships.
+        """Build a character fetch query with optional filters.
 
         Args:
-            filters: Optional filters for the query
+            filters: Optional filter mapping. Supported keys:
+                - `chapter_range`: `(min_chapter, max_chapter)` applied to `chapter_last_updated`
+                - `is_provisional`: boolean applied to `c.is_provisional`
 
         Returns:
-            Tuple of (cypher_query, parameters)
-        """
+            A `(cypher_query, parameters)` tuple.
+
+        Notes:
+            Query safety:
+                Filter values are passed as parameters. This builder does not accept dynamic
+                labels or relationship types from `filters`.
+    """
         where_clauses = ["(c.is_deleted IS NULL OR c.is_deleted = FALSE)"]
         params = {}
 
@@ -414,14 +453,21 @@ class NativeCypherBuilder:
     def world_item_fetch_cypher(
         filters: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        """
-        Generate optimized Cypher for fetching world items.
+        """Build a world item fetch query with optional filters.
 
         Args:
-            filters: Optional filters for the query
+            filters: Optional filter mapping. Supported keys:
+                - `category`: world item category (property filter)
+                - `chapter_range`: `(min_chapter, max_chapter)` applied to `chapter_last_updated`
 
         Returns:
-            Tuple of (cypher_query, parameters)
+            A `(cypher_query, parameters)` tuple.
+
+        Notes:
+            Label safety:
+                The query restricts candidate nodes to `WORLD_ITEM_CANONICAL_LABELS` via a
+                label predicate derived from an application constant. It must not accept
+                arbitrary labels from callers.
         """
         where_clauses = ["(w.is_deleted IS NULL OR w.is_deleted = FALSE)"]
         params = {}
@@ -464,15 +510,14 @@ class NativeCypherBuilder:
 
     @staticmethod
     def batch_character_upsert_cypher(characters: list["CharacterProfile"], chapter_number: int) -> list[tuple[str, dict[str, Any]]]:
-        """
-        Generate batch Cypher statements for multiple characters.
+        """Build batch character upsert statements.
 
         Args:
-            characters: List of CharacterProfile models
-            chapter_number: Current chapter for tracking
+            characters: Character profiles to upsert.
+            chapter_number: Chapter number used for provenance and update tracking.
 
         Returns:
-            List of (cypher_query, parameters) tuples
+            A list of `(cypher_query, parameters)` tuples.
         """
         statements = []
         for char in characters:
@@ -482,15 +527,14 @@ class NativeCypherBuilder:
 
     @staticmethod
     def batch_world_item_upsert_cypher(world_items: list["WorldItem"], chapter_number: int) -> list[tuple[str, dict[str, Any]]]:
-        """
-        Generate batch Cypher statements for multiple world items.
+        """Build batch world item upsert statements.
 
         Args:
-            world_items: List of WorldItem models
-            chapter_number: Current chapter for tracking
+            world_items: World items to upsert.
+            chapter_number: Chapter number used for provenance and update tracking.
 
         Returns:
-            List of (cypher_query, parameters) tuples
+            A list of `(cypher_query, parameters)` tuples.
         """
         statements = []
         for item in world_items:

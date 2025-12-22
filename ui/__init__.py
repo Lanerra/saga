@@ -1,1 +1,1 @@
-"""UI package initialization."""
+"""Initialize UI package."""

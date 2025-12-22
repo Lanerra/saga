@@ -1,7 +1,20 @@
 # config/settings.py
 """
-Configuration settings for the Saga Novel Generation system.
-Uses Pydantic BaseSettings for automatic environment variable loading.
+Define runtime configuration for SAGA.
+
+Settings are loaded at import time by constructing a [`SagaSettings`](config/settings.py:153)
+instance. Values come from the process environment and may be sourced from a `.env` file.
+
+Import-time side effects:
+- Read `.env` via `dotenv.load_dotenv()` (non-overriding) and via Pydantic's configured
+  `env_file=".env"`.
+- Create output directories under `BASE_OUTPUT_DIR`.
+- Configure structlog and attach a handler to the root logger.
+
+Notes:
+    Environment variables already present in the process take precedence over values loaded
+    from `.env` during import. Reloading via [`config.loader.reload_settings()`](config/loader.py:35)
+    uses `load_dotenv(override=True)` which can overwrite existing environment variables.
 """
 
 from __future__ import annotations
@@ -23,7 +36,25 @@ logger = structlog.get_logger()
 
 
 async def _load_list_from_json_async(file_path: str, default_if_missing: list[str] | None = None) -> list[str]:
-    """Load a list of strings from a JSON file asynchronously."""
+    """Load a list of strings from a JSON file asynchronously.
+
+    This helper is intentionally permissive: it logs and returns a fallback rather than
+    raising. It is suitable for optional configuration artifacts where missing or invalid
+    content is treated as user input error rather than a fatal internal error.
+
+    Args:
+        file_path: Path to a JSON file expected to contain a list of strings.
+        default_if_missing: Value to return when the file is missing, unreadable, or does
+            not contain a list of strings.
+
+    Returns:
+        A list of strings from the file, or `default_if_missing` when the file cannot be
+        used.
+
+    Notes:
+        This function performs synchronous file I/O despite being declared `async`.
+        Callers must still `await` it, but it will block the event loop while reading.
+    """
     if default_if_missing is None:
         default_if_missing = []
     try:
@@ -52,10 +83,13 @@ async def _load_list_from_json_async(file_path: str, default_if_missing: list[st
 
 
 class SchemaEnforcementSettings(BaseSettings):
-    """
-    Settings for node label schema enforcement.
+    """Configure node-label schema enforcement.
 
-    Controls strictness of entity type validation and normalization.
+    This settings group controls how strictly SAGA validates entity types and whether it
+    normalizes common label variants into canonical values.
+
+    Notes:
+        Environment variables use the `SAGA_SCHEMA_` prefix.
     """
 
     ENFORCE_SCHEMA_VALIDATION: bool = Field(default=True, description="Master toggle for schema validation")
@@ -77,11 +111,14 @@ class SchemaEnforcementSettings(BaseSettings):
 
 
 class RelationshipNormalizationSettings(BaseSettings):
-    """
-    Settings for relationship type normalization.
+    """Configure relationship type normalization.
 
-    Controls how SAGA maintains consistent relationship vocabulary while
-    allowing creative flexibility for genuinely novel relationships.
+    This settings group controls whether and how SAGA normalizes relationship type names
+    into a stable vocabulary. When enabled, normalization affects how relationships are
+    written to and queried from the knowledge graph.
+
+    Notes:
+        Environment variables use the `SAGA_REL_NORM_` prefix.
     """
 
     # Master toggle
@@ -131,6 +168,11 @@ class RelationshipNormalizationSettings(BaseSettings):
     # Advanced features
     USE_LLM_DISAMBIGUATION: bool = Field(default=False, description="Use LLM to disambiguate ambiguous similarity cases")
 
+    LLM_DISAMBIGUATION_JSON_MODE: bool = Field(
+        default=False,
+        description="If True, require strict JSON output for relationship normalization disambiguation",
+    )
+
     NORMALIZE_CASE_VARIANTS: bool = Field(
         default=True,
         description="Treat case variations as identical (WORKS_WITH == works_with)",
@@ -146,7 +188,17 @@ class RelationshipNormalizationSettings(BaseSettings):
 
 
 class SagaSettings(BaseSettings):
-    """Full configuration for the Saga system."""
+    """Define the SAGA settings model.
+
+    Instantiating this model reads configuration from environment variables and `.env`
+    (per `model_config`). Pydantic performs type coercion and validation at construction
+    time; invalid values typically represent user configuration errors and raise
+    `pydantic.ValidationError`.
+
+    Notes:
+        This module constructs a singleton [`settings`](config/settings.py:356) instance at
+        import time. Any validation failure therefore fails fast during import.
+    """
 
     # API and Model Configuration
     EMBEDDING_API_BASE: str = "http://127.0.0.1:11434"
@@ -164,10 +216,36 @@ class SagaSettings(BaseSettings):
     NEO4J_PASSWORD: str = "saga_password"
     NEO4J_DATABASE: str | None = "neo4j"
 
-    # Neo4j Vector Index Configuration
+    # Neo4j Vector Index Configuration (Chapters)
     NEO4J_VECTOR_INDEX_NAME: str = "chapterEmbeddings"
     NEO4J_VECTOR_DIMENSIONS: int = 1024
     NEO4J_VECTOR_SIMILARITY_FUNCTION: str = "cosine"
+
+    # Neo4j Vector Index Configuration (Entities)
+    #
+    # Entity embeddings are stored on domain entities (Character/Location/Item/Event)
+    # under a separate property to avoid confusion with Chapter embeddings.
+    ENTITY_EMBEDDING_VECTOR_PROPERTY: str = "entity_embedding_vector"
+    ENTITY_EMBEDDING_TEXT_HASH_PROPERTY: str = "entity_embedding_text_hash"
+    ENTITY_EMBEDDING_MODEL_PROPERTY: str = "entity_embedding_model"
+
+    NEO4J_CHARACTER_ENTITY_VECTOR_INDEX_NAME: str = "characterEntityEmbeddings"
+    NEO4J_LOCATION_ENTITY_VECTOR_INDEX_NAME: str = "locationEntityEmbeddings"
+    NEO4J_ITEM_ENTITY_VECTOR_INDEX_NAME: str = "itemEntityEmbeddings"
+    NEO4J_EVENT_ENTITY_VECTOR_INDEX_NAME: str = "eventEntityEmbeddings"
+
+    # Entity embeddings feature flags
+    #
+    # Default off to keep unit tests deterministic and to avoid introducing new
+    # embedding-service dependencies into unrelated workflows. Enable explicitly
+    # when you want entity-level semantic deduplication and merge scoring.
+    ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = False
+    ENABLE_ENTITY_EMBEDDING_DEDUPLICATION: bool = True
+    ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING: bool = True
+
+    # Entity embedding similarity configuration
+    ENTITY_EMBEDDING_DEDUPLICATION_TOP_K: int = 15
+    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.65
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"
@@ -186,26 +264,23 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_SUMMARY: float = 0.3
     TEMPERATURE_PATCH: float = 0.7
 
-    # Placeholder fill-in
     FILL_IN: str = ""
 
     # LLM Call Settings & Fallbacks
     LLM_RETRY_ATTEMPTS: int = 3
     LLM_RETRY_DELAY_SECONDS: float = 3.0
     HTTPX_TIMEOUT: float = 600.0
-    ENABLE_LLM_NO_THINK_DIRECTIVE: bool = True
+    ENABLE_LLM_NO_THINK_DIRECTIVE: bool = False
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
     # Concurrency and Rate Limiting
-    MAX_CONCURRENT_LLM_CALLS: int = 2
+    MAX_CONCURRENT_LLM_CALLS: int = 1
     LLM_TOP_P: float = 0.8
 
     # LLM Frequency and Presence Penalties
     FREQUENCY_PENALTY_DRAFTING: float = 0.3
     PRESENCE_PENALTY_DRAFTING: float = 0.5
-    FREQUENCY_PENALTY_KG_EXTRACTION: float = 0.0
-    PRESENCE_PENALTY_KG_EXTRACTION: float = 0.5
 
     # Output and File Paths
     BASE_OUTPUT_DIR: str = "output"
@@ -218,7 +293,7 @@ class SagaSettings(BaseSettings):
     USER_STORY_ELEMENTS_FILE_PATH: str = "user_story_elements.yaml"
 
     # Generation Parameters
-    # Token budgets (defaults are generous; override via FAST_PROFILE for laptops)
+    # Token budgets (defaults are generous)
     MAX_CONTEXT_TOKENS: int = 40960
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
@@ -239,7 +314,7 @@ class SagaSettings(BaseSettings):
 
     # Revision and Validation
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 0
-    MAX_SUMMARY_TOKENS: int = 8192
+    MAX_SUMMARY_TOKENS: int = 16384
     MAX_KG_TRIPLE_TOKENS: int = 16384
     MAX_PREPOP_KG_TOKENS: int = 16384
 
@@ -260,7 +335,7 @@ class SagaSettings(BaseSettings):
 
     # De-duplication Configuration
     DEDUPLICATION_USE_SEMANTIC: bool = False
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.45
+    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.65
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # Duplicate Prevention Settings
@@ -402,7 +477,19 @@ structlog.configure(
 
 # Filter internal structlog fields
 def filter_internal_keys(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
-    """Remove internal structlog fields from event dict."""
+    """Remove internal structlog fields from the event dictionary.
+
+    Args:
+        logger: Structlog logger instance (unused by this processor).
+        name: Logger name (unused by this processor).
+        event_dict: Mutable structlog event payload.
+
+    Returns:
+        The same mapping instance, with any keys starting with `_` removed.
+
+    Notes:
+        This function mutates `event_dict` in place.
+    """
     keys_to_remove = [k for k in event_dict.keys() if k.startswith("_")]
     for key in keys_to_remove:
         event_dict.pop(key, None)
@@ -411,7 +498,20 @@ def filter_internal_keys(logger: Any, name: str, event_dict: MutableMapping[str,
 
 # Simple human-readable formatter for structlog (with Rich markup for console)
 def simple_log_format_rich(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> str:
-    """Simple human-readable log formatter with Rich markup for console output."""
+    """Format a structlog event as a Rich-marked-up single line.
+
+    Args:
+        logger: Structlog logger instance (unused by this processor).
+        name: Logger name (unused by this processor).
+        event_dict: Mutable structlog event payload.
+
+    Returns:
+        A formatted log line string.
+
+    Notes:
+        This function mutates `event_dict` by popping structlog-internal keys and the
+        normalized fields it renders.
+    """
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
     event_dict.pop("_from_structlog", None)
@@ -465,7 +565,20 @@ def simple_log_format_rich(logger: Any, name: str, event_dict: MutableMapping[st
 
 # Simple human-readable formatter for structlog (plain text for files)
 def simple_log_format_plain(logger: Any, name: str, event_dict: MutableMapping[str, Any]) -> str:
-    """Simple human-readable log formatter without markup for file output."""
+    """Format a structlog event as a plain-text single line.
+
+    Args:
+        logger: Structlog logger instance (unused by this processor).
+        name: Logger name (unused by this processor).
+        event_dict: Mutable structlog event payload.
+
+    Returns:
+        A formatted log line string.
+
+    Notes:
+        This function mutates `event_dict` by popping structlog-internal keys and the
+        normalized fields it renders.
+    """
     # Remove internal structlog metadata
     event_dict.pop("_record", None)
     event_dict.pop("_from_structlog", None)

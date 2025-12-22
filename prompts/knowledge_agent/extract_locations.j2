@@ -8,9 +8,28 @@ Chapter: {{ chapter_number }}
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
 Output shape:
-- {"world_updates": {"Location": { ... }}}
+- Return valid JSON only; no markdown; no code fences; no commentary.
+- Return a single JSON object only (no extra wrapper keys).
+- Top-level object MUST be exactly: {"world_updates": {"Location": { ... }}}
+- "world_updates.Location" MUST be a JSON object that maps location_name -> location_details_object.
+- If no locations are present, return: {"world_updates": {"Location": {}}}
 
-Per-location entry:
+Example skeleton (illustrative; replace with real extracted names and details):
+{
+  "world_updates": {
+    "Location": {
+      "Example Place": {
+        "description": "One sentence summary grounded in the chapter text.",
+        "category": "Settlement",
+        "goals": [],
+        "rules": [],
+        "key_elements": ["One key element", "Another key element"]
+      }
+    }
+  }
+}
+
+Per-location entry (inside world_updates.Location):
 - key = location name (string; no parentheticals)
 - value = object with EXACTLY these keys:
   - "description" (string)

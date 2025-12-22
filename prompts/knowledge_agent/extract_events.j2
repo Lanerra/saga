@@ -8,9 +8,28 @@ Chapter: {{ chapter_number }}
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
 Output shape:
-- {"world_updates": {"Event": { ... }}}
+- Return valid JSON only; no markdown; no code fences; no commentary.
+- Return a single JSON object only (no extra wrapper keys).
+- Top-level object MUST be exactly: {"world_updates": {"Event": { ... }}}
+- "world_updates.Event" MUST be a JSON object that maps event_name -> event_details_object.
+- If no significant events are present, return: {"world_updates": {"Event": {}}}
 
-Per-event entry:
+Example skeleton (illustrative; replace with real extracted names and details):
+{
+  "world_updates": {
+    "Event": {
+      "The Battle at Dawn": {
+        "description": "One sentence summary grounded in the chapter text.",
+        "category": "Battle",
+        "goals": [],
+        "rules": [],
+        "key_elements": ["One key element", "Another key element"]
+      }
+    }
+  }
+}
+
+Per-event entry (inside world_updates.Event):
 - key = event name (string; descriptive)
 - value = object with EXACTLY these keys:
   - "description" (string)

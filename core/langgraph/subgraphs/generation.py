@@ -1,4 +1,10 @@
 # core/langgraph/subgraphs/generation.py
+"""Build the scene-based generation subgraph for SAGA.
+
+This subgraph is the canonical chapter generation implementation:
+plan scenes → retrieve context → draft scenes → assemble chapter.
+"""
+
 from typing import Literal
 
 import structlog
@@ -14,14 +20,20 @@ logger = structlog.get_logger(__name__)
 
 
 def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end"]:
-    """
-    Determine if there are more scenes to generate.
+    """Route within the generation subgraph based on scene progress.
+
+    Args:
+        state: Workflow state. This function reads:
+            - current_scene_index: Index of the next scene to draft.
+            - chapter_plan: Scene plan used to bound generation.
+
+    Returns:
+        "continue" to draft another scene, or "end" to assemble the chapter.
     """
     current_index = state.get("current_scene_index", 0)
     chapter_plan = state.get("chapter_plan", [])
 
     if not chapter_plan:
-        # If no plan, we can't continue. This shouldn't happen if plan_scenes works.
         return "end"
 
     if current_index < len(chapter_plan):
@@ -31,11 +43,10 @@ def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end"]:
 
 
 def create_generation_subgraph() -> StateGraph:
-    """
-    Create the scene-based generation subgraph.
+    """Create and compile the scene-based generation subgraph.
 
-    This is the canonical generation implementation for the workflow:
-    plan scenes → retrieve context → draft scenes → assemble chapter.
+    Returns:
+        A compiled `StateGraph` implementing the scene-based generation phase.
     """
     workflow = StateGraph(NarrativeState)
 
@@ -61,11 +72,7 @@ def create_generation_subgraph() -> StateGraph:
 
 
 def generate_chapter() -> StateGraph:
-    """
-    Canonical public generation API.
-
-    Returns the compiled, scene-based generation subgraph used by workflows.
-    """
+    """Return the compiled generation subgraph used by workflows."""
     return create_generation_subgraph()
 
 

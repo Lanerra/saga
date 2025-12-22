@@ -1,11 +1,15 @@
 # core/schema_validator.py
-"""
-Schema validation utilities for the knowledge graph.
+"""Validate and canonicalize knowledge-graph labels and categories.
 
-Implements enforcement of the Node Label Schema, including:
-- Type validation against allowed labels
-- Label normalization (mapping variants to canonical types)
-- Category suggestions and validation
+This module enforces SAGA’s canonical node-label contract at key boundaries:
+- Extracted or legacy labels may be normalized to canonical labels.
+- Persistence boundaries require canonical labels to prevent unsafe Cypher label
+  interpolation.
+
+Notes:
+    This module avoids duplicating type-hint information in docstrings. When a
+    value is rejected, the error message is intended to be actionable for prompt
+    authors and pipeline maintainers.
 """
 
 from typing import Any
@@ -28,28 +32,27 @@ logger = structlog.get_logger(__name__)
 
 
 class SchemaValidationService:
-    """
-    Service for validating and normalizing entity types and categories
-    against the defined Node Label Schema.
-    """
+    """Validate and normalize entity labels and categories."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.enabled = ENFORCE_SCHEMA_VALIDATION
         self.normalize_variants = NORMALIZE_COMMON_VARIANTS
         self.log_violations = LOG_SCHEMA_VIOLATIONS
 
     def validate_entity_type(self, type_name: str) -> tuple[bool, str, str | None]:
-        """
-        Validate and optionally normalize an entity type.
+        """Validate and (optionally) normalize an entity type label.
 
         Args:
-            type_name: The entity type label to validate.
+            type_name: Entity type label to validate.
 
         Returns:
-            Tuple containing:
-            - is_valid (bool): Whether the type is valid (after normalization if enabled).
-            - normalized_name (str): The normalized type name (or original if no change).
-            - error_msg (Optional[str]): Error message if invalid, else None.
+            A tuple of `(is_valid, normalized_name, error_message)`.
+
+        Notes:
+            - Normalization behavior depends on configuration flags.
+            - Callers that interpolate labels into Cypher should use
+              [`canonicalize_entity_type_for_persistence()`](core/schema_validator.py:127)
+              instead of relying on configurable validation.
         """
         if not self.enabled:
             return True, type_name, None
@@ -95,18 +98,17 @@ class SchemaValidationService:
         return False, raw, error_msg
 
     def validate_category(self, type_name: str, category: str) -> tuple[bool, str | None]:
-        """
-        Validate if a category is appropriate for the given entity type.
-        This is a soft validation (warning only) as categories are open-ended.
+        """Validate a category value for a given canonical type.
+
+        Category validation is intentionally soft because categories are open-ended.
+        This helper returns suggestions when the category is not in the known list.
 
         Args:
-            type_name: The entity type (should be normalized first).
-            category: The category to check.
+            type_name: Entity type label (ideally canonicalized first).
+            category: Category value to check.
 
         Returns:
-            Tuple containing:
-            - is_known (bool): True if category is in the suggested list.
-            - suggestion_msg (Optional[str]): Message suggesting valid categories if unknown.
+            A tuple of `(is_known, suggestion_message)`.
         """
         if not category or type_name not in SUGGESTED_CATEGORIES:
             return True, None
@@ -125,25 +127,23 @@ schema_validator = SchemaValidationService()
 
 
 def canonicalize_entity_type_for_persistence(type_name: str) -> str:
-    """
-    Canonicalize an entity type into a strict canonical node label for persistence.
+    """Canonicalize a type label for persistence boundaries.
 
-    CORE-011 contract (canonical-label-first at persistence boundaries):
+    CORE-011 contract:
     - By the time we build Cypher that interpolates labels, the label MUST be one of
       [`VALID_NODE_LABELS`](models/kg_constants.py:66).
-    - Subtypes / legacy labels (e.g., "Structure", "Guild", "DevelopmentEvent") are
-      permitted as *inputs* but are canonicalized via [`LABEL_NORMALIZATION_MAP`](models/kg_constants.py:83).
-    - Unknown/unmappable labels are rejected with a clear, actionable error.
+    - Subtypes and legacy labels may be accepted as inputs but must map through
+      [`LABEL_NORMALIZATION_MAP`](models/kg_constants.py:83).
+    - Unknown or unmappable labels are rejected.
 
-    Notes:
-    - This function intentionally does NOT consult config flags like ENFORCE_SCHEMA_VALIDATION.
-      Persistence boundaries must be deterministic and safe regardless of "early validation" toggles.
-
-    Raises:
-        ValueError: If the type cannot be normalized to a canonical label.
+    Args:
+        type_name: Candidate type label.
 
     Returns:
-        Canonical label string (one of VALID_NODE_LABELS).
+        Canonical label string.
+
+    Raises:
+        ValueError: If the label cannot be normalized to a canonical label.
     """
     raw = str(type_name).strip() if type_name is not None else ""
     if not raw:
@@ -168,10 +168,13 @@ def canonicalize_entity_type_for_persistence(type_name: str) -> str:
 
 
 def validate_kg_object(obj: Any) -> list[str]:
-    """
-    Validate a knowledge graph object (CharacterProfile or WorldItem).
+    """Validate a knowledge-graph model object.
 
-    Returns a list of validation errors. Empty list means valid.
+    Args:
+        obj: Object to validate (typically `CharacterProfile` or `WorldItem`).
+
+    Returns:
+        Validation error strings. An empty list means the object is valid.
     """
     errors = []
 
@@ -255,10 +258,13 @@ def validate_kg_object(obj: Any) -> list[str]:
 
 
 def validate_node_labels(labels: list[str]) -> list[str]:
-    """
-    Validate node labels for the knowledge graph.
+    """Validate a list of node labels.
 
-    Returns a list of validation errors. Empty list means valid.
+    Args:
+        labels: Node labels to validate.
+
+    Returns:
+        Validation error strings. An empty list means the labels are valid.
     """
     errors = []
 
@@ -284,10 +290,13 @@ def validate_node_labels(labels: list[str]) -> list[str]:
 
 
 def validate_world_item(item: WorldItem) -> list[str]:
-    """
-    Validate a WorldItem object.
+    """Validate a `WorldItem` instance.
 
-    Returns a list of validation errors. Empty list means valid.
+    Args:
+        item: World item to validate.
+
+    Returns:
+        Validation error strings. An empty list means the item is valid.
     """
     # Use centralized validation logic to eliminate code duplication
     return validate_kg_object(item)

@@ -42,15 +42,6 @@ def test_initialization_graph_has_all_nodes():
     """Verify all expected nodes are present in the graph."""
     graph = create_initialization_graph()
 
-    expected_nodes = [
-        "character_sheets",
-        "global_outline",
-        "act_outlines",
-        "commit_to_graph",
-        "persist_files",
-        "complete",
-    ]
-
     assert graph is not None
 
 
@@ -63,10 +54,6 @@ def test_initialization_graph_entry_point():
 
 def test_mark_initialization_complete(base_state):
     """Verify mark_initialization_complete function behavior."""
-    from core.langgraph.initialization.workflow import create_initialization_graph
-
-    graph = create_initialization_graph()
-
     state_with_refs = {
         **base_state,
         "character_sheets_ref": {"path": "test"},
