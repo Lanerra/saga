@@ -293,10 +293,15 @@ class NativeCypherBuilder:
 
             CALL apoc.merge.node(
                 [target_label],
-                merge_key_props,
+                // Use ID as primary key if available, otherwise use name
+                CASE
+                    WHEN rel_data.target_id IS NOT NULL AND rel_data.target_id <> ''
+                    THEN {{id: rel_data.target_id}}
+                    ELSE {{name: rel_data.target_name}}
+                END,
                 {{
-                    name: rel_data.target_name,
                     id: coalesce(rel_data.target_id, randomUUID()),
+                    name: rel_data.target_name,
                     is_provisional: true,
                     created_chapter: $chapter_number,
                     description: 'Entity created from world item relationship. Details to be developed.'

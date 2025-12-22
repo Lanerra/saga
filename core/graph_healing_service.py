@@ -47,8 +47,8 @@ class GraphHealingService:
     MIN_CONFIDENCE_FOR_ENRICHMENT = 0.55
     MERGE_SIMILARITY_THRESHOLD = 0.75
     AUTO_MERGE_THRESHOLD = 0.85
-    AGE_GRADUATION_CHAPTERS = 5  # Graduate nodes that survive this many chapters
-    ORPHAN_CLEANUP_CHAPTERS = 5  # Remove truly orphaned nodes after this many chapters
+    AGE_GRADUATION_CHAPTERS = 4  # Graduate nodes that survive this many chapters
+    ORPHAN_CLEANUP_CHAPTERS = 3  # Remove truly orphaned nodes after this many chapters
 
     async def identify_provisional_nodes(self) -> list[dict[str, Any]]:
         """List provisional nodes eligible for healing."""
