@@ -318,7 +318,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
 
     This step augments the contradictions produced by
     [`validate_consistency()`](core/langgraph/subgraphs/validation.py:49) with
-    additional checks (timeline/world rules/relationship evolution).
+    additional checks (timeline violations, world rule violations, relationship evolution).
 
     Args:
         state: Workflow state.
@@ -356,15 +356,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     )
     contradictions.extend(world_rule_contradictions)
 
-    # Check 3: Character location consistency
-    location_contradictions = await _check_character_locations(
-        state.get("extracted_entities", {}).get("characters", []),
-        state.get("current_location"),
-        current_chapter,
-    )
-    contradictions.extend(location_contradictions)
-
-    # Check 4: Relationship evolution (non-contradictory but noteworthy changes)
+    # Check 3: Relationship evolution (non-contradictory but noteworthy changes)
     relationship_issues = await _check_relationship_evolution(
         state.get("extracted_relationships", []),
         current_chapter,
@@ -668,70 +660,6 @@ def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
         return parsed
 
     return []
-
-
-async def _check_character_locations(
-    extracted_characters: list[Any],
-    current_location: dict[str, Any] | None,
-    current_chapter: int,
-) -> list[Contradiction]:
-    """Check for location-related continuity issues (currently best-effort)."""
-    if not extracted_characters:
-        return []
-
-    contradictions: list[Contradiction] = []
-
-    try:
-        # Query recent character locations from Neo4j
-        query = """
-            MATCH (c:Character)-[v:LOCATED_IN]->(l:Location)
-            WHERE v.chapter_added = $prev_chapter
-            RETURN c.name AS character, l.name AS location
-        """
-
-        prev_chapter = current_chapter - 1
-        if prev_chapter < 1:
-            return []
-
-        prev_locations = await neo4j_manager.execute_read_query(query, {"prev_chapter": prev_chapter})
-
-        if not prev_locations:
-            return []
-
-        # Build location map
-        char_locations = {loc["character"]: loc["location"] for loc in prev_locations}
-
-        # Get current location name
-        current_loc_name = None
-        if current_location:
-            current_loc_name = current_location.get("name") or current_location.get("neo4j_id")
-
-        # Check for impossible location changes
-        for char in extracted_characters:
-            char_name = getattr(char, "name", str(char))
-
-            if char_name in char_locations:
-                prev_loc = char_locations[char_name]
-
-                # Check if location changed without explanation
-                if current_loc_name and prev_loc != current_loc_name:
-                    # This could be flagged for review but isn't necessarily an error
-                    # Only flag if it seems impossible
-                    pass  # Removed as this is typically acceptable in narrative
-
-        logger.debug(
-            "_check_character_locations: location check complete",
-            characters_checked=len(extracted_characters),
-        )
-
-    except Exception as e:
-        logger.error(
-            "_check_character_locations: error during location check",
-            error=str(e),
-            exc_info=True,
-        )
-
-    return contradictions
 
 
 async def _check_relationship_evolution(

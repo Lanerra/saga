@@ -25,6 +25,39 @@ from core.langgraph.state import Contradiction, ExtractedEntity, NarrativeState
 
 logger = structlog.get_logger(__name__)
 
+CONTRADICTORY_TRAIT_PAIRS: list[tuple[str, str]] = [
+    ("introverted", "extroverted"),
+    ("brave", "cowardly"),
+    ("honest", "deceitful"),
+    ("kind", "cruel"),
+    ("optimistic", "pessimistic"),
+    ("calm", "anxious"),
+    ("trusting", "suspicious"),
+    ("generous", "selfish"),
+    ("patient", "impatient"),
+    ("humble", "arrogant"),
+    ("selfish", "altruistic"),
+    ("lazy", "industrious"),
+    ("timid", "bold"),
+    ("cynical", "idealistic"),
+    ("merciful", "merciless"),
+    ("loyal", "treacherous"),
+    ("gentle", "aggressive"),
+    ("forgiving", "vengeful"),
+    ("cheerful", "gloomy"),
+    ("confident", "insecure"),
+    ("stoic", "emotional"),
+    ("rational", "impulsive"),
+    ("cautious", "reckless"),
+    ("modest", "vain"),
+    ("compassionate", "callous"),
+    ("honest", "deceptive"),
+    ("reliable", "unreliable"),
+    ("disciplined", "undisciplined"),
+    ("empathetic", "apathetic"),
+    ("trusting", "paranoid"),
+]
+
 
 def _normalize_trait(value: Any) -> str | None:
     """Normalize a trait value for stable comparisons.
@@ -365,20 +398,6 @@ async def _check_character_traits(
 
     contradictions = []
 
-    # Define contradictory trait pairs
-    contradictory_pairs = [
-        ("introverted", "extroverted"),
-        ("brave", "cowardly"),
-        ("honest", "deceitful"),
-        ("kind", "cruel"),
-        ("optimistic", "pessimistic"),
-        ("calm", "anxious"),
-        ("trusting", "suspicious"),
-        ("generous", "selfish"),
-        ("patient", "impatient"),
-        ("humble", "arrogant"),
-    ]
-
     try:
         for char in extracted_chars:
             # Get established traits from Neo4j (from HAS_TRAIT relationships)
@@ -404,7 +423,7 @@ async def _check_character_traits(
                 new_trait_candidates = _get_character_trait_values_for_validation(char)
 
                 # Check for contradictions (pair values are already lowercase in our list)
-                for trait_a, trait_b in contradictory_pairs:
+                for trait_a, trait_b in CONTRADICTORY_TRAIT_PAIRS:
                     # Check if established trait conflicts with new trait
                     if trait_a in established_traits and trait_b in new_trait_candidates:
                         contradictions.append(
@@ -519,4 +538,4 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
     return False
 
 
-__all__ = ["validate_consistency"]
+__all__ = ["validate_consistency", "CONTRADICTORY_TRAIT_PAIRS"]
