@@ -138,7 +138,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         )
 
         # Check if quality is too low and needs revision
-        min_quality_threshold = 0.5
+        min_quality_threshold = 0.7
         quality_scores = [
             scores.get("coherence_score", 1.0),
             scores.get("prose_quality_score", 1.0),
@@ -272,18 +272,18 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
             if isinstance(value, int | float):
                 normalized[key] = max(0.0, min(1.0, float(value)))
             else:
-                normalized[key] = 0.7  # Default fallback
+                normalized[key] = 0.3
 
         normalized["feedback"] = parsed.get("feedback", "No feedback provided")
         return normalized
 
     # Fallback: try to extract scores from text
     fallback_scores = {
-        "coherence_score": 0.7,
-        "prose_quality_score": 0.7,
-        "plot_advancement_score": 0.7,
-        "pacing_score": 0.7,
-        "tone_consistency_score": 0.7,
+        "coherence_score": 0.3,
+        "prose_quality_score": 0.3,
+        "plot_advancement_score": 0.3,
+        "pacing_score": 0.3,
+        "tone_consistency_score": 0.3,
         "feedback": "Unable to parse detailed feedback from evaluation response.",
     }
 
@@ -382,7 +382,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     critical_issues = [c for c in contradictions if c.severity == "critical"]
     major_issues = [c for c in contradictions if c.severity == "major"]
 
-    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 2) and not state.get("force_continue", False)
+    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 0) and not state.get("force_continue", False)
 
     return {
         **state,

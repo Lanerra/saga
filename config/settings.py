@@ -313,7 +313,7 @@ class SagaSettings(BaseSettings):
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
-    MAX_REVISION_CYCLES_PER_CHAPTER: int = 0
+    MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
     MAX_SUMMARY_TOKENS: int = 16384
     MAX_KG_TRIPLE_TOKENS: int = 16384
     MAX_PREPOP_KG_TOKENS: int = 16384

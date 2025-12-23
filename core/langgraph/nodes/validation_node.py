@@ -228,9 +228,9 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 
     # Needs revision if:
     # - Any critical issues found, OR
-    # - More than 2 major issues found
+    # - Any major issues found
     # Unless force_continue is set
-    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 2) and not state.get("force_continue", False)
+    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 0) and not state.get("force_continue", False)
 
     logger.info(
         "validate_consistency: validation complete",
