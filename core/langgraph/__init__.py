@@ -32,7 +32,7 @@ from core.langgraph.visualization import (
 )
 from core.langgraph.workflow import (
     create_checkpointer,
-    create_phase2_graph,
+    create_full_workflow_graph,
     should_revise_or_continue,
 )
 
@@ -58,8 +58,8 @@ __all__ = [
     "build_context_from_graph",
     "get_key_events",
     # Workflow
-    "create_phase2_graph",
     "create_checkpointer",
+    "create_full_workflow_graph",
     "should_revise_or_continue",
     # Visualization
     "visualize_workflow",

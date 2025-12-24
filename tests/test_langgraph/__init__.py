@@ -9,7 +9,7 @@ Test Modules:
     - test_commit_node: Tests for commit node
     - test_graph_context: Tests for graph context
     - test_validation_node: Tests for validation node
-    - test_phase2_workflow: Tests for Phase 2 workflow
+    - test_phase2_workflow: Tests for the chapter-generation workflow path
     - test_workflow: Tests for workflow orchestration
 
 Run tests with:
