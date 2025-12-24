@@ -1,14 +1,13 @@
 # tests/test_langgraph/test_public_generation_api.py
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
 
-from core.langgraph import generate_chapter, generate_chapter_single_shot
+from core.langgraph import generate_chapter
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.embedding_node import generate_embedding
 from core.langgraph.nodes.finalize_node import finalize_chapter
@@ -17,11 +16,8 @@ from core.langgraph.nodes.finalize_node import finalize_chapter
 def test_generate_chapter_export_is_scene_based_subgraph() -> None:
     """
     Ensure the public export `core.langgraph.generate_chapter` is the canonical
-    scene-based generation API surface (not the legacy single-shot async node).
+    scene-based generation API surface.
     """
-    assert not inspect.iscoroutinefunction(generate_chapter), "generate_chapter should be a subgraph factory, not an async node function"
-    assert inspect.iscoroutinefunction(generate_chapter_single_shot), "generate_chapter_single_shot should remain an async node function for backcompat"
-
     graph = generate_chapter()
 
     # We don't assert exact LangGraph internal types here; just contract that it's

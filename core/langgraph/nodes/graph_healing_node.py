@@ -61,11 +61,11 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         healing_warnings = results.get("warnings", []) or []
         if healing_warnings:
             logger.warning(
-                "heal_graph: Healing completed with warnings",
+                f"Graph healing warnings: {healing_warnings}",
                 chapter=current_chapter,
-                warnings=healing_warnings,
                 apoc_available=results.get("apoc_available"),
             )
+            state["last_healing_warnings"] = healing_warnings
 
         # Update healing history
         healing_history = state.get("healing_history", [])

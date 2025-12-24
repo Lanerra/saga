@@ -20,7 +20,6 @@ Example:
 
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.finalize_node import finalize_chapter
-from core.langgraph.nodes.generation_node import generate_chapter_single_shot
 from core.langgraph.nodes.graph_healing_node import heal_graph
 from core.langgraph.nodes.relationship_normalization_node import (
     normalize_relationships,
@@ -32,7 +31,6 @@ from core.langgraph.nodes.validation_node import validate_consistency
 __all__ = [
     "commit_to_graph",
     "validate_consistency",
-    "generate_chapter_single_shot",
     "revise_chapter",
     "summarize_chapter",
     "finalize_chapter",

@@ -25,6 +25,7 @@ import os
 from collections.abc import MutableMapping
 from typing import Any
 
+import aiofiles
 import structlog
 from dotenv import load_dotenv
 from pydantic import Field
@@ -51,23 +52,21 @@ async def _load_list_from_json_async(file_path: str, default_if_missing: list[st
         A list of strings from the file, or `default_if_missing` when the file cannot be
         used.
 
-    Notes:
-        This function performs synchronous file I/O despite being declared `async`.
-        Callers must still `await` it, but it will block the event loop while reading.
     """
     if default_if_missing is None:
         default_if_missing = []
     try:
         if os.path.exists(file_path):
-            with open(file_path, encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list) and all(isinstance(item, str) for item in data):
-                    return data
-                logger.warning(
-                    "Content of file is not a list of strings. Using default.",
-                    file_path=file_path,
-                )
-                return default_if_missing
+            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
+                raw_content = await f.read()
+            data = json.loads(raw_content)
+            if isinstance(data, list) and all(isinstance(item, str) for item in data):
+                return data
+            logger.warning(
+                "Content of file is not a list of strings. Using default.",
+                file_path=file_path,
+            )
+            return default_if_missing
         logger.warning("Configuration file not found. Using default.", file_path=file_path)
         return default_if_missing
     except json.JSONDecodeError:
@@ -294,8 +293,8 @@ class SagaSettings(BaseSettings):
 
     # Generation Parameters
     # Token budgets (defaults are generous)
-    MAX_CONTEXT_TOKENS: int = 40960
-    MAX_GENERATION_TOKENS: int = 16384
+    MAX_CONTEXT_TOKENS: int = 32768
+    MAX_GENERATION_TOKENS: int = 4096
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 3
     TOTAL_CHAPTERS: int = 12
@@ -309,15 +308,15 @@ class SagaSettings(BaseSettings):
     TOKENIZER_CACHE_SIZE: int = 10
 
     # Agentic Planning & Prompt Context Snippets
-    MAX_PLANNING_TOKENS: int = 16384
+    MAX_PLANNING_TOKENS: int = 2048
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
-    MAX_SUMMARY_TOKENS: int = 16384
-    MAX_KG_TRIPLE_TOKENS: int = 16384
-    MAX_PREPOP_KG_TOKENS: int = 16384
+    MAX_SUMMARY_TOKENS: int = 2048
+    MAX_KG_TRIPLE_TOKENS: int = 2048
+    MAX_PREPOP_KG_TOKENS: int = 2048
 
     # Quality Assurance Configuration
     ENABLE_QA_CHECKS: bool = True

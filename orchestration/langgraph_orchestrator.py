@@ -44,7 +44,6 @@ _LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
     # Root singleton module (defensive; some tests patch this directly)
     "core.llm_interface_refactored",
     # LangGraph generation + extraction + embedding + revision + summary
-    "core.langgraph.nodes.generation_node",
     "core.langgraph.nodes.embedding_node",
     "core.langgraph.nodes.extraction_nodes",
     "core.langgraph.nodes.revision_node",
@@ -546,6 +545,18 @@ class LangGraphOrchestrator:
                 word_count=word_count,
                 chapter=chapter_number,
             )
+
+        elif node_name == "heal_graph":
+            warnings = state_update.get("last_healing_warnings", [])
+            apoc_available = state_update.get("last_apoc_available")
+            if warnings:
+                warning_message = f"⚠️  Healing warnings: {warnings}"
+                logger.warning(warning_message)
+                if self.display.live:
+                    console = self.display.get_shared_console()
+                    console.print(warning_message)
+            if apoc_available is False:
+                logger.warning("APOC unavailable during graph healing")
 
         elif node_name == "init_complete":
             character_count = len(state_update.get("character_sheets", {}))
