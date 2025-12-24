@@ -57,37 +57,6 @@ SAGA (Semantic And Graph-enhanced Authoring) is a local-first Python CLI applica
 
 ## Essential Commands
 
-### Development Setup
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env  # Edit Neo4j and LLM endpoint configuration
-
-# Start Neo4j (if using Docker)
-docker-compose up -d
-```
-
-### Running SAGA
-```bash
-python main.py
-```
-
-### Testing
-```bash
-pytest                                              # Run all tests
-pytest --cov=. --cov-report=term-missing           # Run with coverage
-pytest tests/test_langgraph/test_extraction_node.py # Single test file
-pytest -m langgraph                                 # LangGraph tests only
-pytest -m unit                                      # Fast unit tests only
-```
-
-### Code Quality
-```bash
-ruff check .   # Lint
-ruff format .  # Format
-mypy .         # Type checking
-```
-
 ### Searching the Codebase
 ```bash
 # Use ripgrep (rg) for all code searches - required for 50K+ line codebase
@@ -96,13 +65,6 @@ rg "pattern" -t py                    # Search Python files only
 rg "pattern" -g "*.py"                # Glob pattern filter
 rg "class MyClass" -A 5               # Show 5 lines after match
 rg "def method" --files-with-matches  # List files only
-```
-
-### Useful Utilities
-```bash
-python reset_neo4j.py                    # Reset Neo4j database (destructive)
-python visualize_workflow.py             # Visualize LangGraph workflow
-python backfill_entity_embeddings.py     # Backfill entity embeddings
 ```
 
 ## Architecture Overview
@@ -313,40 +275,6 @@ validate_consistency → evaluate_quality → detect_contradictions
 
 Primary config file: `config/settings.py` (uses Pydantic BaseSettings)
 
-### Key Environment Variables (`.env`)
-
-**API & Model Configuration:**
-- `OPENAI_API_BASE`: Local LLM endpoint (default: `http://127.0.0.1:8080/v1`)
-- `EMBEDDING_API_BASE`: Local embedding service (default: `http://127.0.0.1:11434`)
-- `LARGE_MODEL`, `MEDIUM_MODEL`, `SMALL_MODEL`, `NARRATIVE_MODEL`: Model names
-
-**Neo4j Connection:**
-- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`: Neo4j connection
-
-**Generation Behavior:**
-- `CHAPTERS_PER_RUN`: Chapters per execution (default: 2)
-- `MAX_REVISION_CYCLES_PER_CHAPTER`: Revision loop limit (default: 2)
-- `TARGET_SCENES_MIN`, `TARGET_SCENES_MAX`: Scene count range (4-6)
-- `MIN_CHAPTER_LENGTH_CHARS`: Minimum chapter length (12,000 chars)
-
-**Temperature Settings (task-specific):**
-- `TEMPERATURE_INITIAL_SETUP`: 0.7 (character/outline generation)
-- `TEMPERATURE_DRAFTING`: 0.7 (chapter drafting)
-- `TEMPERATURE_REVISION`: 0.65 (revision refinement)
-- `TEMPERATURE_PLANNING`: 0.6 (scene planning)
-- `TEMPERATURE_EVALUATION`: 0.3 (quality checks)
-- `TEMPERATURE_KG_EXTRACTION`: 0.1 (entity extraction)
-- `TEMPERATURE_SUMMARY`: 0.3 (chapter summaries)
-
-**Quality Assurance:**
-- `ENABLE_QA_CHECKS`: True
-- `QA_CHECK_FREQUENCY`: Every 3 chapters
-
-**Schema & Relationship Normalization:**
-- `ENFORCE_SCHEMA_VALIDATION`: True
-- `ENABLE_RELATIONSHIP_NORMALIZATION`: True
-- `SIMILARITY_THRESHOLD`: 0.85 (high-confidence merging)
-
 ## LangGraph State & Workflow
 
 **State Object** (`core/langgraph/state.py`)
@@ -469,73 +397,6 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 4. **KG Operations**: For Neo4j queries/schema changes, work in `data_access/` or `core/knowledge_graph_service.py`
 5. **Workflow Changes**: For graph structure/routing, edit `core/langgraph/workflow.py`
 6. **Prompts**: Add/edit Jinja2 templates in `prompts/` (organized by phase)
-
-### When Debugging
-
-- Check `output/chapter_logs/` for per-chapter logs
-- Inspect `output/debug_outputs/` for saved prompts/validations
-- Review externalized content in `output/.saga/content/`
-- Use `python visualize_workflow.py` to see LangGraph state transitions
-- Query Neo4j directly: `MATCH (n) RETURN n LIMIT 25`
-- Enable structlog debug logging in code
-
-### Common Patterns
-
-**Neo4j Sessions**: Always use context manager
-```python
-async with neo4j_manager.get_session() as session:
-    result = await session.run(query, params)
-```
-
-**LLM Calls**: Use `core/llm_interface_refactored.py`
-```python
-async with async_llm_context() as (llm_service, embedding_service):
-    response, usage = await llm_service.async_call_llm(
-        model_name=settings.NARRATIVE_MODEL,
-        prompt=prompt,
-        temperature=settings.TEMPERATURE_DRAFTING
-    )
-```
-
-**State Updates in LangGraph**: Return partial state dict
-```python
-def my_node(state: NarrativeState) -> dict:
-    return {"new_field": value, "current_node": "my_node"}
-```
-
-**Content Externalization**: Use ContentManager for large content
-```python
-from core.langgraph.content_manager import ContentManager
-manager = ContentManager(project_dir)
-ref = manager.save_text(content, "draft", chapter_num)
-return {"draft_ref": ref}
-```
-
-## Important Implementation Details
-
-### Entity Deduplication
-- Exact name match (case-insensitive)
-- Fuzzy matching (Levenshtein distance, SequenceMatcher)
-- Optional embedding similarity for semantic matching
-- Phase 2 deduplication: relationship-aware merging
-
-### Graph Healing
-- Provisional nodes: `is_provisional = true` until graduated
-- Confidence scoring: relationships (40%), attributes (20-30%), age (20%)
-- Graduation threshold: 0.75 confidence, age ≥ 1 chapter
-- Merge detection: name similarity + optional embedding similarity
-- Orphan cleanup: nodes with no relationships after 3 chapters
-
-### Validation & Revision
-- Max iterations configurable (`MAX_REVISION_CYCLES_PER_CHAPTER`, default: 2)
-- Validation identifies contradictions (character traits, relationships, timeline)
-- Full chapter regeneration with validation feedback (not patch-based)
-- Quality scores below 0.7 threshold trigger revision
-
-### Content Externalization
-- Large content stored in `.saga/content/`
-- State contains only `ContentRef` objects with file paths
-- Reduces SQLite checkpoint size from megabytes to kilobytes
 
 ## Documentation
 
