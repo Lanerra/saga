@@ -149,9 +149,11 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
         normalized_rels.append(normalized_rel)
 
-    # Prune vocabulary if needed (every 5 chapters)
-    if current_chapter % 5 == 0:
+    # Prune vocabulary if needed (every 5 chapters) and not already done for this chapter
+    last_pruned_chapter = state.get("last_pruned_chapter", 0)
+    if current_chapter % 5 == 0 and current_chapter > last_pruned_chapter:
         vocabulary = normalization_service.prune_vocabulary(vocabulary, current_chapter)
+        last_pruned_chapter = current_chapter
 
     # Log statistics
     logger.info(
@@ -183,6 +185,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
         "relationship_vocabulary_size": len(vocabulary),
         "relationships_normalized_this_chapter": normalized_count,
         "relationships_novel_this_chapter": novel_count,
+        "last_pruned_chapter": last_pruned_chapter,
         "current_node": "normalize_relationships",
     }
 

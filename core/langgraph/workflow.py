@@ -433,7 +433,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     # Revision loop
     workflow.add_edge("revise", "gen_embedding")
-    workflow.add_edge("revise", "extract")
 
     # Finalization, graph healing, and quality assurance
     workflow.add_edge("summarize", "finalize")

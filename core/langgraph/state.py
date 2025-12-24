@@ -313,6 +313,7 @@ class NarrativeState(TypedDict, total=False):
     relationship_vocabulary_size: int  # Track vocabulary growth
     relationships_normalized_this_chapter: int  # Monitoring metric
     relationships_novel_this_chapter: int  # Monitoring metric
+    last_pruned_chapter: int  # Track last chapter where vocabulary pruning ran
 
     # =========================================================================
     # Graph Healing State (for provisional node enrichment and merging)
@@ -488,6 +489,7 @@ def create_initial_state(
         "relationship_vocabulary_size": 0,
         "relationships_normalized_this_chapter": 0,
         "relationships_novel_this_chapter": 0,
+        "last_pruned_chapter": 0,
         # Graph healing
         "provisional_count": 0,
         "last_healing_chapter": 0,
