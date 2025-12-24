@@ -297,7 +297,7 @@ class LangGraphOrchestrator:
             theme=config.CONFIGURED_THEME or "",
             setting=config.CONFIGURED_SETTING_DESCRIPTION or "",
             target_word_count=80000,  # Default, could be loaded from user configuration
-            total_chapters=20,  # Default, could be loaded from user configuration
+            total_chapters=config.TOTAL_CHAPTERS or 12,  # Default, could be loaded from user configuration
             project_dir=str(self.project_dir),
             protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
             # Model Mapping

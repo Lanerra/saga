@@ -28,7 +28,7 @@ def mock_config():
         mock_cfg.MEDIUM_MODEL = "medium-model"
         mock_cfg.LARGE_MODEL = "large-model"
         mock_cfg.SMALL_MODEL = "small-model"
-        mock_cfg.CHAPTERS_PER_RUN = 2
+        mock_cfg.CHAPTERS_PER_RUN = 3
         yield mock_cfg
 
 
