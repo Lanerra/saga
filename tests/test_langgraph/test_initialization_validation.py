@@ -99,6 +99,12 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
         _fake_get_character_profiles,
     )
 
+    # Force artifact validation to report missing artifacts regardless of filesystem
+    monkeypatch.setattr(
+        "orchestration.langgraph_orchestrator.validate_initialization_artifacts",
+        lambda _project_dir: (False, ["Missing saga.yaml"]),
+    )
+
     orchestrator = LangGraphOrchestrator()
 
     caplog.set_level("WARNING")

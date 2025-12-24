@@ -69,7 +69,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
 
     if not qa_enabled:
         logger.info("check_quality: QA checks disabled")
-        return {**state, "current_node": "check_quality"}
+        return {"current_node": "check_quality"}
 
     qa_frequency = config.settings.QA_CHECK_FREQUENCY
     last_qa_chapter = cast(int, state.get("last_qa_chapter", 0))
@@ -81,7 +81,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
             frequency=qa_frequency,
             last_check=last_qa_chapter,
         )
-        return {**state, "current_node": "check_quality"}
+        return {"current_node": "check_quality"}
 
     logger.info("check_quality: Starting quality assurance checks", chapter=current_chapter)
 
@@ -200,7 +200,6 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     total_qa_fixes = cast(int, state.get("total_qa_fixes", 0))
 
     return {
-        **state,
         "current_node": "check_quality",
         "last_error": None,
         "last_qa_chapter": current_chapter,

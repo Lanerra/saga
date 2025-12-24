@@ -62,7 +62,8 @@ async def test_embeddings_computed_once_embedding_node_then_finalize_reuses_ref(
         "core.llm_interface_refactored.llm_service.async_get_embedding",
         new=AsyncMock(return_value=fake_embedding),
     ) as mock_get_embedding:
-        state_with_embedding = await generate_embedding(state)  # type: ignore[arg-type]
+        generated = await generate_embedding(state)  # type: ignore[arg-type]
+        state_with_embedding = {**state, **generated}
         assert state_with_embedding.get("embedding_ref"), "embedding node must set embedding_ref"
 
         with patch(

@@ -77,7 +77,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
 
     if not chapter_plan or scene_index >= len(chapter_plan):
         logger.error("retrieve_context: invalid scene index", index=scene_index)
-        return state
+        return {"current_node": "retrieve_context"}
 
     current_scene = chapter_plan[scene_index]
     model_name = state.get("narrative_model", config.NARRATIVE_MODEL)
@@ -107,10 +107,10 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "has_fatal_error": True,
             "last_error": f"Failed to retrieve character profiles: {str(e)}",
             "error_node": "retrieve_context",
+            "current_node": "retrieve_context",
         }
 
     # =========================================================================
@@ -133,10 +133,10 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "has_fatal_error": True,
             "last_error": f"Failed to retrieve KG facts: {str(e)}",
             "error_node": "retrieve_context",
+            "current_node": "retrieve_context",
         }
 
     # =========================================================================

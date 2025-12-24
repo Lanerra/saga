@@ -384,19 +384,20 @@ class TestGenerationIntegration:
         """Test complete generation workflow."""
         # Generate chapter
         result = await generate_chapter(sample_generation_state)
+        merged = {**sample_generation_state, **result}
 
         # Verify all expected fields are updated
-        assert result["draft_ref"] is not None
-        assert result["draft_word_count"] > 0
-        assert result["current_node"] == "generate"
-        assert result["last_error"] is None
-        assert result["hybrid_context_ref"] is not None
-        assert result["kg_facts_ref"] is not None
+        assert merged["draft_ref"] is not None
+        assert merged["draft_word_count"] > 0
+        assert merged["current_node"] == "generate"
+        assert merged["last_error"] is None
+        assert merged["hybrid_context_ref"] is not None
+        assert merged["kg_facts_ref"] is not None
 
         # Verify state carries forward from input
-        assert result["current_chapter"] == sample_generation_state["current_chapter"]
-        assert result["title"] == sample_generation_state["title"]
-        assert result["genre"] == sample_generation_state["genre"]
+        assert merged["current_chapter"] == sample_generation_state["current_chapter"]
+        assert merged["title"] == sample_generation_state["title"]
+        assert merged["genre"] == sample_generation_state["genre"]
 
     async def test_generation_with_minimal_state(self, mock_llm_generation, mock_context_builder, tmp_path):
         """Test generation with minimal required state."""

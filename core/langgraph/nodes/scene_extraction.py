@@ -650,7 +650,6 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         error_msg = f"Failed to load scene drafts: {e}"
         logger.error("extract_from_scenes: fatal error", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "extract_from_scenes",

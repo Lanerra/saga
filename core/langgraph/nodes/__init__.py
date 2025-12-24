@@ -6,6 +6,16 @@ Migration Reference: docs/langgraph_migration_plan.md
 
 This package re-exports node callables used by graph builders. Node functions
 generally accept and return the workflow state (a `NarrativeState` mapping).
+
+Node Return Convention:
+Nodes return only the fields they modify and `current_node`. LangGraph merges
+partial updates into the existing state to preserve immutability.
+
+Example:
+    return {
+        "extracted_entities": entities,
+        "current_node": "extract",
+    }
 """
 
 from core.langgraph.nodes.commit_node import commit_to_graph

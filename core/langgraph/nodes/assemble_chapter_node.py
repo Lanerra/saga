@@ -44,7 +44,6 @@ def assemble_chapter(state: NarrativeState) -> NarrativeState:
     if not scene_drafts:
         logger.warning("assemble_chapter: no scene drafts found")
         return {
-            **state,
             "draft_ref": None,
             "draft_word_count": 0,
             "current_node": "assemble_chapter",

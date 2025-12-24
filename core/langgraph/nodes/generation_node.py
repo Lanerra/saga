@@ -72,7 +72,6 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
         error_msg = "No chapter outlines available for generation"
         logger.error("generate_chapter_single_shot: fatal error", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "generate",
@@ -91,7 +90,6 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
             available_chapters=list(chapter_outlines.keys()),
         )
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "generate",
@@ -180,7 +178,6 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
         error_msg = f"Insufficient token space for generation. " f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
         logger.error("generate_chapter_single_shot: token budget exceeded", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "generate",
         }
@@ -213,7 +210,6 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
                 chapter=chapter_number,
             )
             return {
-                **state,
                 "last_error": "LLM generation returned empty text",
                 "current_node": "generate",
             }
@@ -300,7 +296,6 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "draft_ref": draft_ref,
             "draft_word_count": final_word_count,
             "is_from_flawed_draft": is_from_flawed_draft,
@@ -319,7 +314,6 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "generate",
         }

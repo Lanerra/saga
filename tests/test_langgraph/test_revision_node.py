@@ -481,20 +481,21 @@ class TestRevisionIntegration:
         """Test complete revision workflow."""
         # Revise chapter
         result = await revise_chapter(sample_revision_state)
+        merged = {**sample_revision_state, **result}
 
         # Verify all expected fields are updated
-        assert result["draft_ref"] is not None
-        assert result["draft_word_count"] > 0
-        assert result["iteration_count"] == 1
-        assert result["contradictions"] == []
-        assert result["needs_revision"] is False
-        assert result["current_node"] == "revise"
-        assert result["last_error"] is None
+        assert merged["draft_ref"] is not None
+        assert merged["draft_word_count"] > 0
+        assert merged["iteration_count"] == 1
+        assert merged["contradictions"] == []
+        assert merged["needs_revision"] is False
+        assert merged["current_node"] == "revise"
+        assert merged["last_error"] is None
 
         # Verify state carries forward from input
-        assert result["current_chapter"] == sample_revision_state["current_chapter"]
-        assert result["title"] == sample_revision_state["title"]
-        assert result["genre"] == sample_revision_state["genre"]
+        assert merged["current_chapter"] == sample_revision_state["current_chapter"]
+        assert merged["title"] == sample_revision_state["title"]
+        assert merged["genre"] == sample_revision_state["genre"]
 
     async def test_multiple_revision_iterations(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test multiple revision iterations."""
@@ -502,10 +503,11 @@ class TestRevisionIntegration:
 
         # First revision
         result1 = await revise_chapter(state)
-        assert result1["iteration_count"] == 1
+        merged1 = {**state, **result1}
+        assert merged1["iteration_count"] == 1
 
         # Second revision (simulate validation finding more issues)
-        state2 = {**result1}
+        state2 = {**merged1}
         state2["contradictions"] = [
             Contradiction(
                 type="new_issue",
@@ -517,10 +519,11 @@ class TestRevisionIntegration:
         state2["needs_revision"] = True
 
         result2 = await revise_chapter(state2)
-        assert result2["iteration_count"] == 2
+        merged2 = {**state2, **result2}
+        assert merged2["iteration_count"] == 2
 
         # Third revision
-        state3 = {**result2}
+        state3 = {**merged2}
         state3["contradictions"] = [
             Contradiction(
                 type="another_issue",
@@ -532,10 +535,11 @@ class TestRevisionIntegration:
         state3["needs_revision"] = True
 
         result3 = await revise_chapter(state3)
-        assert result3["iteration_count"] == 3
+        merged3 = {**state3, **result3}
+        assert merged3["iteration_count"] == 3
 
         # Fourth attempt should hit max_iterations (default 3)
-        state4 = {**result3}
+        state4 = {**merged3}
         state4["contradictions"] = [
             Contradiction(
                 type="yet_another",
@@ -547,8 +551,9 @@ class TestRevisionIntegration:
         state4["needs_revision"] = True
 
         result4 = await revise_chapter(state4)
-        assert result4["current_node"] == "revise_failed"
-        assert "Max revision attempts" in result4["last_error"]
+        merged4 = {**state4, **result4}
+        assert merged4["current_node"] == "revise_failed"
+        assert "Max revision attempts" in merged4["last_error"]
 
     async def test_revision_with_minimal_contradictions(self, sample_revision_state, mock_llm_revision, mock_prompt_data_getters):
         """Test revision with minimal contradiction information."""
@@ -556,10 +561,11 @@ class TestRevisionIntegration:
         state["contradictions"] = []  # No specific contradictions
 
         result = await revise_chapter(state)
+        merged = {**state, **result}
 
         # Should still succeed with general quality improvement
-        assert result["draft_ref"] is not None
-        assert result["last_error"] is None
+        assert merged["draft_ref"] is not None
+        assert merged["last_error"] is None
 
 
 @pytest.mark.asyncio

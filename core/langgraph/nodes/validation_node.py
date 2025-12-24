@@ -275,7 +275,6 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "contradictions": contradictions,
         "needs_revision": needs_revision,
         "current_node": "validate_consistency",

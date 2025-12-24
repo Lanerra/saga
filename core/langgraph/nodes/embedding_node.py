@@ -51,7 +51,6 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
             chapter=chapter_num,
         )
         return {
-            **state,
             "generated_embedding": None,
             "current_node": "generate_embedding",
         }
@@ -66,7 +65,6 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
                 chapter=chapter_num,
             )
             return {
-                **state,
                 "generated_embedding": None,
                 "current_node": "generate_embedding",
             }
@@ -100,7 +98,6 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "embedding_ref": embedding_ref,
             "current_node": "generate_embedding",
         }
@@ -115,7 +112,6 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
         # We don't want to fail the whole workflow for a missing embedding,
         # but we should log it as a non-fatal error
         return {
-            **state,
             "generated_embedding": None,
             "current_node": "generate_embedding",
             "last_error": f"Embedding generation failed: {e}",

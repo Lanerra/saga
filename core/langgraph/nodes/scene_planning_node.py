@@ -276,7 +276,6 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     if not outline:
         logger.error("plan_scenes: no outline found for chapter", chapter=chapter_number)
         return {
-            **state,
             "last_error": f"No outline found for chapter {chapter_number}",
             "current_node": "plan_scenes",
         }
@@ -347,7 +346,6 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     except Exception as e:
         logger.error("plan_scenes: error planning scenes", error=str(e))
         return {
-            **state,
             "last_error": ("Error planning scenes: " + str(e) + " | Expected: JSON list of scene objects with keys: " + ", ".join(_SCENE_REQUIRED_KEYS)),
             "current_node": "plan_scenes",
         }

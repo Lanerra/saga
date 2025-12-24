@@ -75,7 +75,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             max_iterations=state.get("max_iterations", 3),
         )
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "revise",
@@ -94,7 +93,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         error_msg = "No draft text available for revision"
         logger.error("revise_chapter: fatal error", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "revise",
@@ -127,7 +125,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "revise",
@@ -149,7 +146,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         error_msg = f"Insufficient token space for revision. " f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
         logger.error("revise_chapter: fatal error - token budget exceeded", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "revise",
@@ -184,7 +180,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
                 chapter=state.get("current_chapter", 1),
             )
             return {
-                **state,
                 "last_error": "Revision LLM returned empty text",
                 "current_node": "revise",
             }
@@ -239,7 +234,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "draft_ref": draft_ref,
             "draft_word_count": final_word_count,
             "is_from_flawed_draft": is_from_flawed_draft,
@@ -259,7 +253,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "revise",

@@ -36,7 +36,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         - current_scene_index: Incremented for the next drafting iteration.
         - current_node: `"draft_scene"`.
 
-        If the scene index is invalid, returns the unchanged state.
+        If the scene index is invalid, returns only `current_node`.
         On drafting errors, returns an update with `last_error` populated.
 
     Notes:
@@ -55,7 +55,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     if not chapter_plan or scene_index >= len(chapter_plan):
         logger.error("draft_scene: invalid scene index", index=scene_index)
-        return state
+        return {"current_node": "draft_scene"}
 
     current_scene = chapter_plan[scene_index]
 
@@ -123,7 +123,6 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     except Exception as e:
         logger.error("draft_scene: error generating scene", error=str(e))
         return {
-            **state,
             "last_error": f"Error generating scene: {str(e)}",
             "current_node": "draft_scene",
         }

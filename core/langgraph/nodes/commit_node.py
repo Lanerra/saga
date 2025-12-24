@@ -242,7 +242,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         phase2_merges = await _run_phase2_deduplication(state.get("current_chapter", 1))
 
         return {
-            **state,
             "current_node": "commit_to_graph",
             "last_error": None,
             "has_fatal_error": False,
@@ -257,7 +256,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "current_node": "commit_to_graph",
             "last_error": f"Commit to graph failed: {e}",
             "has_fatal_error": True,

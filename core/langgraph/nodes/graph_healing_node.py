@@ -114,7 +114,6 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "current_node": "heal_graph",
             "last_error": None,
             "last_healing_chapter": current_chapter,
@@ -144,7 +143,6 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
 
         # Don't fail the workflow for healing errors
         return {
-            **state,
             "current_node": "heal_graph",
             "last_error": f"Graph healing warning: {str(e)}",
             "last_healing_chapter": current_chapter,

@@ -74,7 +74,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     if not draft_text:
         logger.warning("summarize_chapter: no draft text to summarize")
         return {
-            **state,
             "current_node": "summarize",
         }
 
@@ -112,7 +111,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             )
             # Continue without summary rather than fail
             return {
-                **state,
                 "current_node": "summarize",
             }
 
@@ -181,7 +179,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "summaries_ref": summaries_ref,
             "current_summary": summary,
             "current_node": "summarize",
@@ -197,7 +194,6 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         # Continue workflow even if summarization fails
         # This is non-critical, so we don't block the pipeline
         return {
-            **state,
             "current_node": "summarize",
         }
 

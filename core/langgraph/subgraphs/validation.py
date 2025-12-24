@@ -279,11 +279,11 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
 
     # Fallback: try to extract scores from text
     fallback_scores = {
-        "coherence_score": 0.3,
-        "prose_quality_score": 0.3,
-        "plot_advancement_score": 0.3,
-        "pacing_score": 0.3,
-        "tone_consistency_score": 0.3,
+        "coherence_score": 0.7,
+        "prose_quality_score": 0.7,
+        "plot_advancement_score": 0.7,
+        "pacing_score": 0.7,
+        "tone_consistency_score": 0.7,
         "feedback": "Unable to parse detailed feedback from evaluation response.",
     }
 

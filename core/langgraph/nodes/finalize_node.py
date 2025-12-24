@@ -74,7 +74,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         error_msg = "No draft text available for finalization"
         logger.error("finalize_chapter: fatal error", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "finalize",
@@ -165,37 +164,31 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         )
         # This is critical - return error state
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "finalize",
             "current_node": "finalize",
         }
 
-    # Step 4: Clean up temporary state
-    # Remove large temporary data that's no longer needed
-    cleaned_state = {
-        **state,
-        # Clear extraction results (now committed to Neo4j)
-        "extracted_entities": {},
-        "extracted_relationships": [],
-        # Clear contradictions (chapter is finalized)
-        "contradictions": [],
-        # Clear iteration tracking
-        "iteration_count": 0,
-        "needs_revision": False,
-        # Update status
-        "current_node": "finalize",
-        "last_error": None,
-    }
-
+    # Step 4: Clean up temporary state (clear extraction artifacts and counters)
     logger.info(
         "finalize_chapter: finalization complete",
         chapter=chapter_number,
         word_count=state.get("draft_word_count", 0),
     )
 
-    return cast(NarrativeState, cleaned_state)
+    return cast(
+        NarrativeState,
+        {
+            "extracted_entities": {},
+            "extracted_relationships": [],
+            "contradictions": [],
+            "iteration_count": 0,
+            "needs_revision": False,
+            "current_node": "finalize",
+            "last_error": None,
+        },
+    )
 
 
 async def _save_chapter_to_filesystem(
