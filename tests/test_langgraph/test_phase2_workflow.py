@@ -288,9 +288,7 @@ class TestShouldReviseOrContinue:
 class TestPhase2Workflow:
     """Tests for complete Phase 2 workflow."""
 
-    async def test_workflow_successful_path_no_revision(
-        self, sample_generation_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_successful_path_no_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test successful workflow without any revisions."""
         # Create workflow
         graph = create_full_workflow_graph()
@@ -321,15 +319,11 @@ class TestPhase2Workflow:
         pass
 
     @pytest.mark.skip(reason="Refactoring to use subgraphs changes how revision is triggered")
-    async def test_workflow_max_iterations_enforcement(
-        self, sample_phase2_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_max_iterations_enforcement(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that max iterations are enforced."""
         pass
 
-    async def test_workflow_force_continue_skips_revision(
-        self, sample_generation_state: NarrativeState, mock_all_nodes: Any
-    ) -> None:
+    async def test_workflow_force_continue_skips_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that force_continue skips revision."""
         # Set force_continue
         state = {**sample_generation_state}
@@ -374,9 +368,7 @@ class TestPhase2Workflow:
         "Checkpointing functionality is verified in Phase 1 tests. "
         "This test needs refactoring to use async context manager properly."
     )
-    async def test_workflow_with_checkpointing(
-        self, sample_generation_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any
-    ) -> None:
+    async def test_workflow_with_checkpointing(self, sample_generation_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
         """Test workflow with checkpointing enabled."""
         from core.langgraph.workflow import create_checkpointer
 

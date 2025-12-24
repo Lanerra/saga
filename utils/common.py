@@ -181,9 +181,7 @@ def try_load_json_from_response(
                     break
 
         if expected_root is not None and not isinstance(parsed, expected_root):
-            parse_errors.append(
-                f"{source}: wrong root type {type(parsed).__name__} (expected {expected_root})"
-            )
+            parse_errors.append(f"{source}: wrong root type {type(parsed).__name__} (expected {expected_root})")
             continue
 
         return parsed, candidates, parse_errors
@@ -252,9 +250,7 @@ def ensure_exact_keys(*, value: Any, required_keys: set[str], context: str) -> N
 
     value_keys = {str(key) for key in value.keys()}
     if value_keys != required_keys:
-        raise ValueError(
-            f"{context} must contain exactly keys {sorted(required_keys)} (got {sorted(value_keys)})"
-        )
+        raise ValueError(f"{context} must contain exactly keys {sorted(required_keys)} (got {sorted(value_keys)})")
 
 
 def ensure_required_keys(*, value: Any, required_keys: set[str], context: str) -> None:

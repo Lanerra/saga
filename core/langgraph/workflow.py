@@ -12,7 +12,6 @@ import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
 from langgraph.graph import END, StateGraph  # type: ignore
 
-from core.langgraph.content_manager import ContentManager, get_chapter_outlines
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.embedding_node import generate_embedding
 from core.langgraph.nodes.finalize_node import finalize_chapter
@@ -205,36 +204,6 @@ def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSa
     return checkpointer
 
 
-def should_generate_chapter_outline(
-    state: NarrativeState,
-) -> Literal["chapter_outline", "generate"]:
-    """Route to outline generation when the current chapter outline is missing.
-
-    Args:
-        state: Workflow state. Uses `project_dir` and `current_chapter`, plus any
-            outline references used by [`get_chapter_outlines()`](core/langgraph/content_manager.py:1).
-
-    Returns:
-        "chapter_outline" when an outline is missing, otherwise "generate".
-    """
-    current_chapter = state.get("current_chapter", 1)
-    content_manager = ContentManager(state.get("project_dir", ""))
-    chapter_outlines = get_chapter_outlines(state, content_manager)
-
-    if current_chapter not in chapter_outlines:
-        logger.info(
-            "should_generate_chapter_outline: outline needed",
-            chapter=current_chapter,
-        )
-        return "chapter_outline"
-    else:
-        logger.info(
-            "should_generate_chapter_outline: outline exists",
-            chapter=current_chapter,
-        )
-        return "generate"
-
-
 def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
     """Route within initialization based on whether the previous step failed.
 
@@ -361,11 +330,11 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     workflow.add_node("init_complete", mark_initialization_complete)
 
-    # Add chapter outline generation (on-demand)
+    # Add chapter outline generation (always run before drafting)
     workflow.add_node("chapter_outline", generate_chapter_outline)
 
-    from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
     from core.langgraph.subgraphs.generation import create_generation_subgraph
+    from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
     from core.langgraph.subgraphs.validation import create_validation_subgraph
 
     # Add all generation nodes (using subgraphs where applicable)
@@ -463,6 +432,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     )
 
     # Revision loop
+    workflow.add_edge("revise", "gen_embedding")
     workflow.add_edge("revise", "extract")
 
     # Finalization, graph healing, and quality assurance
@@ -496,7 +466,6 @@ __all__ = [
     "create_full_workflow_graph",
     "should_revise_or_continue",
     "should_initialize",
-    "should_generate_chapter_outline",
     "should_handle_error",
     "should_revise_or_handle_error",
     "handle_fatal_error",

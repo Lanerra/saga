@@ -8,6 +8,7 @@ and advances the `current_scene_index` for the drafting loop.
 
 import structlog
 
+import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_plan,
@@ -83,7 +84,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     try:
         draft_text, _ = await llm_service.async_call_llm(
-            model_name=state.get("narrative_model", ""),
+            model_name=state.get("narrative_model", config.NARRATIVE_MODEL),
             prompt=prompt,
             temperature=0.7,
             max_tokens=6000,

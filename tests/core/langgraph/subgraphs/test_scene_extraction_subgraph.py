@@ -29,9 +29,7 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
 
     content_manager = ContentManager(project_dir)
     scenes = ["Elara enters the library.", "She finds the map."]
-    state["scene_drafts_ref"] = content_manager.save_list_of_texts(
-        scenes, "scenes", "chapter_1", 1
-    )
+    state["scene_drafts_ref"] = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
     state["current_chapter"] = 1
 
     async def mock_llm(*args, **kwargs):

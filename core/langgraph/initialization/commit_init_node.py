@@ -74,7 +74,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         if character_sheets:
             character_profiles = await _parse_character_sheets_to_profiles(
                 character_sheets,
-                model_name=state.get("medium_model", ""),
+                model_name=state.get("medium_model", config.MEDIUM_MODEL),
             )
 
         # Step 2: Extract world items from outlines
@@ -83,7 +83,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             world_items = await _extract_world_items_from_outline(
                 global_outline,
                 state.get("setting", ""),
-                model_name=state.get("medium_model", ""),
+                model_name=state.get("medium_model", config.MEDIUM_MODEL),
             )
 
         # Step 3: Commit to Neo4j using direct batch approach

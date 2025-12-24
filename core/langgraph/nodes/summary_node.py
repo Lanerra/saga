@@ -19,6 +19,7 @@ from pathlib import Path
 
 import structlog
 
+import config
 from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
@@ -90,12 +91,12 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     logger.info(
         "summarize_chapter: calling LLM for summary",
         chapter=state.get("current_chapter", 1),
-        model=state.get("extraction_model", ""),
+        model=state.get("extraction_model", config.SMALL_MODEL),
     )
 
     try:
         summary_text, usage = await llm_service.async_call_llm(
-            model_name=state.get("small_model", ""),  # Use fast model
+            model_name=state.get("small_model", config.SMALL_MODEL),  # Use fast model
             prompt=prompt,
             temperature=0.3,  # Low temperature for consistency
             max_tokens=16384,

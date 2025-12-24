@@ -27,9 +27,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Don't add comments that emphasize different versions of the code, like "this code now handles"
 - Do not use end-of-line comments
   - Place comments above the code they describe
-- Prefer editing an existing file to creating a new one.
-- Never create documentation files (`*.md` or README).
-  - Only create documentation files if explicitly requested by the user.
+- Prefer editing an existing file to creating a new one
+- Never create documentation files (`*.md` or README)
+  - Only create documentation files if explicitly requested by the user
 
 
 ## 🧪 Tests
@@ -49,7 +49,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - In other cases use the words "fake" or "example"
 
 
-
 ## Project Overview
 
 SAGA (Semantic And Graph-enhanced Authoring) is a local-first Python CLI application for AI-driven long-form fiction generation using Neo4j knowledge graphs and LangGraph workflow orchestration.
@@ -60,7 +59,6 @@ SAGA (Semantic And Graph-enhanced Authoring) is a local-first Python CLI applica
 
 ### Development Setup
 ```bash
-# Setup environment
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env  # Edit Neo4j and LLM endpoint configuration
@@ -71,75 +69,68 @@ docker-compose up -d
 
 ### Running SAGA
 ```bash
-# Run generation loop
 python main.py
 ```
 
 ### Testing
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=. --cov-report=term-missing
-
-# Run single test file
-pytest tests/test_langgraph/test_extraction_node.py
-
-# Run LangGraph tests only
-pytest -m langgraph
+pytest                                              # Run all tests
+pytest --cov=. --cov-report=term-missing           # Run with coverage
+pytest tests/test_langgraph/test_extraction_node.py # Single test file
+pytest -m langgraph                                 # LangGraph tests only
+pytest -m unit                                      # Fast unit tests only
 ```
 
 ### Code Quality
 ```bash
-# Lint
-ruff check .
+ruff check .   # Lint
+ruff format .  # Format
+mypy .         # Type checking
+```
 
-# Format
-ruff format .
-
-# Type checking
-mypy .
+### Searching the Codebase
+```bash
+# Use ripgrep (rg) for all code searches - required for 50K+ line codebase
+rg "pattern"                          # Search all files
+rg "pattern" -t py                    # Search Python files only
+rg "pattern" -g "*.py"                # Glob pattern filter
+rg "class MyClass" -A 5               # Show 5 lines after match
+rg "def method" --files-with-matches  # List files only
 ```
 
 ### Useful Utilities
 ```bash
-# Reset Neo4j database (destructive)
-python reset_neo4j.py
-
-# Visualize LangGraph workflow
-python visualize_workflow.py
+python reset_neo4j.py                    # Reset Neo4j database (destructive)
+python visualize_workflow.py             # Visualize LangGraph workflow
+python backfill_entity_embeddings.py     # Backfill entity embeddings
 ```
 
 ## Architecture Overview
 
 ### Orchestration
 
-**LangGraph Workflow System** (`orchestration/langgraph_orchestrator.py`)
-- Graph-based workflow with declarative nodes
-- Built-in checkpointing to SQLite (`.saga/checkpoints.db`)
+**LangGraph Orchestrator** (`orchestration/langgraph_orchestrator.py`)
+- Manages workflow execution, LLM lifecycle, and checkpointing
+- Built-in checkpointing to SQLite (`output/.saga/checkpoints.db`)
 - Automatic resume from interruption
 - Workflow definition in `core/langgraph/workflow.py`
-- **Legacy NANA orchestrator has been completely removed**
 
 ### Core LangGraph Components
 
 **Main Workflow** (`core/langgraph/workflow.py`)
 - Entry point: `create_full_workflow_graph()`
-- Conditional routing between initialization and generation phases
-- Manages chapter generation loop with revision cycles
+- 20 nodes total with conditional routing
+- Two phases: initialization and chapter generation
 - Integrates all subgraphs and nodes
 
 **State Management** (`core/langgraph/state.py`)
 - `NarrativeState` TypedDict: Central state container
-- Automatic persistence after each node
 - Content externalization via `ContentRef` to reduce checkpoint bloat
-- Includes metadata, progress tracking, extraction results, validation feedback
+- Includes: metadata, progress tracking, extraction results, validation feedback, quality scores, error handling
 
 **Content Manager** (`core/langgraph/content_manager.py`)
-- Externalizes large content (drafts, outlines, scene text) to files
+- Externalizes large content (drafts, outlines, scene text) to files in `.saga/content/`
 - Stores only file references in state to prevent SQLite bloat
-- Enables content versioning and efficient diffing
 - Reduces checkpoint size from megabytes to kilobytes
 
 **Graph Context** (`core/langgraph/graph_context.py`)
@@ -150,32 +141,32 @@ python visualize_workflow.py
 **Workflow Visualization** (`core/langgraph/visualization.py`)
 - Generates visual graph representations (PNG, SVG)
 - Debug state transitions and routing logic
-- Command: `python visualize_workflow.py`
 
 **Export System** (`core/langgraph/export.py`)
 - Exports complete novel to markdown
 - Combines all finalized chapters
-- Handles state inspection and debugging
 
 ### LangGraph Nodes (`core/langgraph/nodes/`)
 
 **Generation Nodes:**
-- `generation_node.py`: Chapter drafting from outline and KG context
-- `scene_planning_node.py`: Breaks chapter into discrete scenes
-- `scene_generation_node.py`: Generates individual scene text
+- `scene_planning_node.py`: Breaks chapter into 4-6 discrete scenes
+- `scene_generation_node.py`: Generates individual scene text (loops per scene)
 - `assemble_chapter_node.py`: Combines scene drafts into chapter
+- `context_retrieval_node.py`: Retrieves relevant KG context for scenes
+- `generation_node.py`: Legacy single-shot chapter drafting (deprecated)
 
 **Extraction Nodes:**
-- `extraction_node.py`: Orchestrates parallel entity extraction
-- `extraction_nodes.py`: Specialized extractors (characters, locations, events, relationships)
+- `extraction_nodes.py`: Consolidates and externalizes extraction results
+- Scene-level extraction handled by `subgraphs/scene_extraction.py`
 
 **Graph Management:**
-- `commit_node.py`: Deduplication and persistence to Neo4j
-- `graph_healing_node.py`: Provisional node enrichment and entity merging
-- `context_retrieval_node.py`: Retrieves relevant KG context for scenes
+- `commit_node.py`: Pre-commit deduplication and atomic Neo4j writes
+- `relationship_normalization_node.py`: Normalizes relationship types to canonical vocabulary
+- `graph_healing_node.py`: Provisional node enrichment, graduation, merging, cleanup
 
 **Quality Assurance:**
 - `validation_node.py`: Consistency checking and contradiction detection
+- `quality_assurance_node.py`: Periodic QA checks (every N chapters)
 - `revision_node.py`: Full chapter regeneration with validation feedback
 - `summary_node.py`: Chapter summary generation for future context
 - `finalize_node.py`: Persistence to disk and database
@@ -186,55 +177,63 @@ python visualize_workflow.py
 ### LangGraph Initialization (`core/langgraph/initialization/`)
 
 **Initialization Nodes:**
-- `character_sheets_node.py`: Generates 3-5 protagonist profiles
+- `character_sheets_node.py`: Generates 3-5 protagonist/antagonist/supporting profiles
 - `global_outline_node.py`: Creates 3 or 5-act story structure
 - `act_outlines_node.py`: Expands acts into chapter-level beats
 - `chapter_outline_node.py`: On-demand detailed chapter scene plans
 - `commit_init_node.py`: Persists initialization data to Neo4j
 - `persist_files_node.py`: Writes YAML artifacts to disk
 
-**Initialization Workflow** (`core/langgraph/initialization/workflow.py`)
-- Entry point: `create_initialization_workflow()`
-- Sequential initialization node execution
-- Sets `initialization_complete` flag on success
-
-**Validation** (`core/langgraph/initialization/validation.py`)
-- Validates character sheets, outlines, and world items
-- Ensures initialization artifacts are well-formed
+**Supporting Modules:**
+- `workflow.py`: Initialization workflow orchestration
+- `validation.py`: Validates character sheets, outlines, and world items
+- `chapter_allocation.py`: Chapter allocation utilities
 
 ### LangGraph Subgraphs (`core/langgraph/subgraphs/`)
 
 **Generation Subgraph** (`generation.py`)
-- Scene planning → context retrieval → scene generation → assembly
-- Handles chapter-to-scene decomposition and reassembly
+```
+plan_scenes → retrieve_context → draft_scene (loop) → assemble_chapter
+```
+- Scene-by-scene generation with context retrieval per scene
 
-**Extraction Subgraph** (`extraction.py`)
-- Parallel execution of specialized extractors
-- Consolidates results into unified entity/relationship lists
+**Scene Extraction Subgraph** (`scene_extraction.py`)
+```
+extract_from_scenes → consolidate
+```
+- Processes each scene individually for entity extraction
+- Consolidates and externalizes results
 
 **Validation Subgraph** (`validation.py`)
-- Consistency validation against KG constraints
-- Quality scoring and contradiction detection
-- Decides if revision is needed
+```
+validate_consistency → evaluate_quality → detect_contradictions
+```
+- LLM-based quality evaluation with 5 quality scores
+- Contradiction detection: timeline violations, world rule violations, relationship evolution
 
 ### Core Systems (`core/`)
 
 **Database & Knowledge Graph:**
 - `db_manager.py`: Neo4j connection management, schema creation
 - `knowledge_graph_service.py`: Entity/relationship CRUD operations
-- `graph_healing_service.py`: Entity enrichment, merging, and maintenance
+- `graph_healing_service.py`: Entity enrichment, merging, graduation, and cleanup
+
+**Relationship Management:**
+- `relationship_normalization_service.py`: Normalizes relationship types to canonical vocabulary
+- `relationship_validation.py`: Relationship constraint enforcement
 
 **LLM Interface:**
 - `llm_interface_refactored.py`: OpenAI-compatible API client for local LLMs
-- Supports multiple model tiers (narrative, reasoning, extraction)
-**Type Inference & Validation:**
-- `simple_type_inference.py`: Lightweight entity type inference (replaced `intelligent_type_inference.py`)
-- `relationship_validation.py`: Relationship constraint enforcement
+  - Three-layer service: Completion, Embedding, combined RefactoredLLMService
+  - Supports JSON object/array parsing with retries
+  - Fallback model support on primary failure
+
+**Entity & Embedding Services:**
+- `entity_embedding_service.py`: Entity embedding generation and persistence
 - `schema_validator.py`: Schema validation utilities
 
 **Text Processing:**
-- `text_processing_service.py`: Chunking, deduplication, text utilities
-- `triple_processor.py`: RDF triple parsing and processing
+- `text_processing_service.py`: Token counting, text cleaning, chunking
 
 **Logging:**
 - `logging_config.py`: Structured logging with Rich console and file rotation
@@ -247,7 +246,7 @@ python visualize_workflow.py
 ### Data Access Layer (`data_access/`)
 
 **Query Builders:**
-- `cypher_builders/`: Native Cypher query construction
+- `cypher_builders/native_builders.py`: Native Cypher query construction
 - `kg_queries.py`: Knowledge graph query operations
 
 **Repository Pattern:**
@@ -255,14 +254,16 @@ python visualize_workflow.py
 - `chapter_queries.py`: Chapter metadata and retrieval
 - `plot_queries.py`: Plot point and narrative arc queries
 - `world_queries.py`: World-building element queries
+- `cache_coordinator.py`: Query result caching
 
 ### Prompts (`prompts/`)
 
 **Jinja2 Templates:** Organized by workflow phase
-- `initialization/`: Character sheets, outlines, story structure
-- `knowledge_agent/`: Entity extraction (characters, locations, events, relationships)
-- `narrative_agent/`: Scene planning and drafting
+- `initialization/`: Character sheets, outlines, story structure (5 templates)
+- `knowledge_agent/`: Entity extraction, enrichment, summarization, disambiguation (9 templates)
+- `narrative_agent/`: Scene planning and drafting (4 templates)
 - `revision_agent/`: Full chapter rewrite prompts
+- `validation_agent/`: Quality evaluation template
 
 **Prompt Utilities:**
 - `prompt_data_getters.py`: Context assembly for prompt templates
@@ -270,11 +271,8 @@ python visualize_workflow.py
 
 ### Processing (`processing/`)
 
-**Entity Processing:**
 - `entity_deduplication.py`: Fuzzy matching and entity merging
 - `text_deduplicator.py`: Content deduplication
-
-**Text Processing:**
 - `parsing_utils.py`: YAML parsing, entity extraction helpers
 
 ### Models (`models/`)
@@ -285,20 +283,20 @@ python visualize_workflow.py
 - `user_input_models.py`: User story and input validation
 - `validation_utils.py`: Validation helper functions
 - `kg_constants.py`: Ontology constants and type definitions
+- `db_extraction_utils.py`: Database extraction utilities
 
 ### UI (`ui/`)
 
-**Rich CLI Display:**
-- `rich_display.py`: Progress panels, live displays, event streaming
+- `rich_display.py`: Rich CLI display, progress panels, event streaming
 
 ### Neo4j Knowledge Graph
 
 **Node Types:**
-- `Character`: name, description, traits, motivations, first_appearance
+- `Character`: name, description, traits, motivations, first_appearance, is_provisional, confidence
 - `Location`: name, description, rules
 - `Event`: description, importance, chapter
 - `Chapter`: number, word_count, summary, embedding_vector
-- `PlotPoint`, `WorldFact`, `Object`
+- `PlotPoint`, `WorldFact`, `Object`, `Item`
 
 **Key Relationships:**
 - Character relationships: LOVES, HATES, TRUSTS, WORKS_FOR, ALLIES_WITH, ENEMIES_WITH, KNOWS
@@ -307,48 +305,93 @@ python visualize_workflow.py
 - Event-Chapter: OCCURRED_IN, MENTIONED_IN
 - Chapter-Chapter: FOLLOWS
 
-**Vector Index:** `chapterEmbeddings` on Chapter nodes for semantic search
+**Vector Indexes:**
+- `chapterEmbeddings` on Chapter nodes
+- Entity embedding indexes for Character, Location, Item, Event nodes
 
 ## Configuration
 
 Primary config file: `config/settings.py` (uses Pydantic BaseSettings)
 
-Key environment variables (`.env`):
-- `OPENAI_API_BASE`: Local LLM endpoint (e.g., `http://127.0.0.1:8080/v1`)
-- `EMBEDDING_API_BASE`: Local embedding service (e.g., `http://127.0.0.1:11434`)
-- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`: Neo4j connection
+### Key Environment Variables (`.env`)
+
+**API & Model Configuration:**
+- `OPENAI_API_BASE`: Local LLM endpoint (default: `http://127.0.0.1:8080/v1`)
+- `EMBEDDING_API_BASE`: Local embedding service (default: `http://127.0.0.1:11434`)
 - `LARGE_MODEL`, `MEDIUM_MODEL`, `SMALL_MODEL`, `NARRATIVE_MODEL`: Model names
-- `CHAPTERS_PER_RUN`, `TARGET_CHAPTERS`: Generation behavior
-- `MAX_REVISION_CYCLES_PER_CHAPTER`: Revision loop limit (currently defaults to 0, disabled)
+
+**Neo4j Connection:**
+- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`: Neo4j connection
+
+**Generation Behavior:**
+- `CHAPTERS_PER_RUN`: Chapters per execution (default: 2)
+- `MAX_REVISION_CYCLES_PER_CHAPTER`: Revision loop limit (default: 2)
+- `TARGET_SCENES_MIN`, `TARGET_SCENES_MAX`: Scene count range (4-6)
+- `MIN_CHAPTER_LENGTH_CHARS`: Minimum chapter length (12,000 chars)
+
+**Temperature Settings (task-specific):**
+- `TEMPERATURE_INITIAL_SETUP`: 0.7 (character/outline generation)
+- `TEMPERATURE_DRAFTING`: 0.7 (chapter drafting)
+- `TEMPERATURE_REVISION`: 0.65 (revision refinement)
+- `TEMPERATURE_PLANNING`: 0.6 (scene planning)
+- `TEMPERATURE_EVALUATION`: 0.3 (quality checks)
+- `TEMPERATURE_KG_EXTRACTION`: 0.1 (entity extraction)
+- `TEMPERATURE_SUMMARY`: 0.3 (chapter summaries)
+
+**Quality Assurance:**
+- `ENABLE_QA_CHECKS`: True
+- `QA_CHECK_FREQUENCY`: Every 3 chapters
+
+**Schema & Relationship Normalization:**
+- `ENFORCE_SCHEMA_VALIDATION`: True
+- `ENABLE_RELATIONSHIP_NORMALIZATION`: True
+- `SIMILARITY_THRESHOLD`: 0.85 (high-confidence merging)
 
 ## LangGraph State & Workflow
 
 **State Object** (`core/langgraph/state.py`)
 - All workflow state persists automatically via LangGraph checkpointer
-- State includes: character profiles, outlines, draft references, validation results
 - Checkpoint location: `output/.saga/checkpoints.db`
 - Content externalization via `ContentRef` reduces checkpoint bloat
+
+**Key State Categories:**
+- Project metadata: `project_id`, `title`, `genre`, `theme`, `setting`
+- Position tracking: `current_chapter`, `total_chapters`, `current_act`
+- Generated content: `draft_ref`, `embedding_ref`, `draft_word_count`
+- Extraction results: `extracted_entities`, `extracted_relationships` (with `*_ref` alternatives)
+- Quality scores: `coherence_score`, `prose_quality_score`, `plot_advancement_score`, `pacing_score`, `tone_consistency_score`
+- Validation: `contradictions`, `needs_revision`, `revision_feedback`
+- Workflow control: `iteration_count`, `max_iterations`, `force_continue`
+- Error handling: `last_error`, `has_fatal_error`, `workflow_failed`, `error_node`
+- Graph healing: `nodes_graduated`, `nodes_merged`, `nodes_enriched`, `nodes_removed`
 
 **Workflow Structure:**
 ```
 Initialization (First Run):
 START → route → character_sheets → global_outline → act_outlines →
-commit_to_graph → persist_files → initialization_complete
+commit_to_graph → persist_files → init_complete → chapter_outline
 
 Chapter Generation (Main Loop):
-route → chapter_outline → [Generation Subgraph] → generate_embedding →
-[Extraction Subgraph] → commit → [Validation Subgraph] →
-(revise → extract)* → summarize → finalize → heal_graph → [next chapter or END]
+chapter_outline → [Generation Subgraph] → gen_embedding → [Scene Extraction Subgraph] →
+normalize_relationships → commit → [Validation Subgraph] →
+(revise → extract)* → summarize → finalize → heal_graph → check_quality → [next chapter or END]
 
 Generation Subgraph:
 plan_scenes → retrieve_context → draft_scene (loop per scene) → assemble_chapter
 
-Extraction Subgraph:
-extract_characters | extract_locations | extract_events | extract_relationships (parallel) → consolidate
+Scene Extraction Subgraph:
+extract_from_scenes → consolidate
 
 Validation Subgraph:
 validate_consistency → evaluate_quality → detect_contradictions → routing decision
 ```
+
+**Routing Functions:**
+- `should_initialize()`: Checks `initialization_complete` flag
+- `should_continue_init()`: Error handling between init nodes
+- `should_revise_or_continue()`: Checks `needs_revision`, `iteration_count`, `max_iterations`
+- `should_generate_chapter_outline()`: On-demand outline generation
+- `should_continue_scenes()`: Loop control for scene generation
 
 ## Output Structure
 
@@ -380,9 +423,9 @@ output/
 ## Testing Strategy
 
 **Test Organization** (`tests/`)
-- Unit tests: Individual functions, entity extraction, validation logic
-- Integration tests: LangGraph node workflows, Neo4j operations, LLM interactions
-- LangGraph-specific tests: `tests/test_langgraph/` (5,764 lines of tests)
+- 77 test files across unit, integration, and LangGraph-specific tests
+- `tests/test_langgraph/`: 40+ files for LangGraph node and workflow tests
+- `tests/core/`: Core module tests
 
 **Test Markers** (defined in `pyproject.toml`):
 - `unit`: Fast, isolated unit tests
@@ -395,14 +438,6 @@ output/
 - `conftest.py` and `tests/test_langgraph/conftest.py`: Shared fixtures
 - `--asyncio-mode=auto`: Tests use async/await extensively
 
-**Key Test Files:**
-- `tests/test_langgraph/test_workflow.py`: End-to-end workflow tests
-- `tests/test_langgraph/test_extraction_node.py`: Extraction logic tests
-- `tests/test_langgraph/test_generation_node.py`: Generation node tests
-- `tests/test_langgraph/test_commit_node.py`: Commit and deduplication tests
-- `tests/test_langgraph/test_validation_node.py`: Validation logic tests
-- `tests/test_langgraph/test_revision_node.py`: Revision flow tests
-- `tests/test_langgraph/test_state.py`: State management tests
 ## Project Constraints (CRITICAL)
 
 From `docs/PROJECT_CONSTRAINTS.md`:
@@ -423,11 +458,6 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 **Neo4j Usage:**
 - Local embedded instance only
 - Think "personal knowledge base" not "web-scale backend"
-
-**LangGraph Node Architecture:**
-- Sequential processing pipeline orchestrated by LangGraph state machine
-- Nodes are async functions that transform state, not separate processes
-- Declarative graph definition with conditional routing
 
 ## Development Workflow
 
@@ -459,19 +489,18 @@ async with neo4j_manager.get_session() as session:
 
 **LLM Calls**: Use `core/llm_interface_refactored.py`
 ```python
-from core.llm_interface_refactored import call_llm_async
-response = await call_llm_async(
-    prompt=prompt,
-    model=settings.NARRATIVE_MODEL,
-    temperature=settings.TEMPERATURE_DRAFTING
-)
+async with async_llm_context() as (llm_service, embedding_service):
+    response, usage = await llm_service.async_call_llm(
+        model_name=settings.NARRATIVE_MODEL,
+        prompt=prompt,
+        temperature=settings.TEMPERATURE_DRAFTING
+    )
 ```
 
-**State Updates in LangGraph**: Return modified state dict
+**State Updates in LangGraph**: Return partial state dict
 ```python
-def my_node(state: NarrativeState) -> NarrativeState:
-    # Process...
-    return {**state, "new_field": value}
+def my_node(state: NarrativeState) -> dict:
+    return {"new_field": value, "current_node": "my_node"}
 ```
 
 **Content Externalization**: Use ContentManager for large content
@@ -479,8 +508,7 @@ def my_node(state: NarrativeState) -> NarrativeState:
 from core.langgraph.content_manager import ContentManager
 manager = ContentManager(project_dir)
 ref = manager.save_text(content, "draft", chapter_num)
-# Store ref in state instead of content itself
-return {**state, "draft_ref": ref}
+return {"draft_ref": ref}
 ```
 
 ## Important Implementation Details
@@ -488,40 +516,26 @@ return {**state, "draft_ref": ref}
 ### Entity Deduplication
 - Exact name match (case-insensitive)
 - Fuzzy matching (Levenshtein distance, SequenceMatcher)
-- Embedding similarity for semantic matching
-- Always conservative: create new entity if ambiguous
+- Optional embedding similarity for semantic matching
+- Phase 2 deduplication: relationship-aware merging
 
-### Context Assembly
-- Query Neo4j for active characters, relationships, recent events
-- Retrieve last N chapter summaries (default: 5)
-- Pull world/location rules if applicable
-- Assemble into structured prompt context via `graph_context.py`
+### Graph Healing
+- Provisional nodes: `is_provisional = true` until graduated
+- Confidence scoring: relationships (40%), attributes (20-30%), age (20%)
+- Graduation threshold: 0.75 confidence, age ≥ 1 chapter
+- Merge detection: name similarity + optional embedding similarity
+- Orphan cleanup: nodes with no relationships after 3 chapters
 
-### Revision Loop
-- Max iterations configurable (`MAX_REVISION_CYCLES_PER_CHAPTER`, currently defaults to 0)
+### Validation & Revision
+- Max iterations configurable (`MAX_REVISION_CYCLES_PER_CHAPTER`, default: 2)
 - Validation identifies contradictions (character traits, relationships, timeline)
 - Full chapter regeneration with validation feedback (not patch-based)
-- Revision prompt includes specific issues + suggested fixes
-- Re-extract and re-validate after revision
-
-### Checkpoint Resume
-- LangGraph checkpointer tracks all state in SQLite
-- On restart, loads latest checkpoint and continues from last node
-- No manual state reconstruction needed
-- Content externalization prevents checkpoint bloat
+- Quality scores below 0.7 threshold trigger revision
 
 ### Content Externalization
-- Large content (drafts, outlines, scene text) stored in `.saga/content/`
+- Large content stored in `.saga/content/`
 - State contains only `ContentRef` objects with file paths
 - Reduces SQLite checkpoint size from megabytes to kilobytes
-- Enables efficient versioning and diffing
-
-## Known Issues & Current State
-
-Current state:
-- `MAX_REVISION_CYCLES_PER_CHAPTER` defaults to 0 (disabled, being refactored)
-- Legacy NANA orchestrator completely removed
-- LangGraph is the only orchestration system
 
 ## Documentation
 
@@ -530,23 +544,20 @@ Key docs in `docs/`:
 - `WORKFLOW_WALKTHROUGH.md`: Complete data flow walkthrough
 - `WORKFLOW_VISUALIZATION.md`: Visual representation of workflow graphs
 - `PROJECT_CONSTRAINTS.md`: Hard constraints and architectural decisions
-- `schema-map.md`: Neo4j schema documentation
-- `ontology.md`: Entity type ontology and relationship types
-- `content-externalization-implementation.md`: Content externalization design
-- `proper-noun-preference.md`: Entity name handling guidelines
-- `complexity-hotspots.md`: Performance and complexity analysis
-- `critcodeanalysis.md`: Critical code analysis and technical debt
+- `critical-audit.md`: Critical code analysis and technical debt
 
 ## When Working on This Codebase
 
-1. **Respect the local-first constraint**: No web frameworks, no auth, no scaling
-2. **Use existing patterns**: Follow LangGraph node structure, Neo4j session management, LLM interface
-3. **Test with pytest**: Write tests for new logic, especially KG operations and LangGraph nodes
-4. **Check Neo4j schema**: Don't introduce new node/relationship types without constraint updates
-5. **Use type hints**: Codebase uses mypy strict mode (`disallow_untyped_defs = true`)
-6. **Log with structlog**: Use structured logging, not print statements
-7. **Configuration over hardcoding**: Use `config/settings.py` for tunable parameters
-8. **Async/await**: Most operations are async; use `asyncio.run()` for entry points
-9. **State immutability**: LangGraph nodes should return new state dicts, not mutate existing state
-10. **Content externalization**: For large content, use ContentManager instead of storing in state
-11. **Scene-level generation**: New chapters use scene-by-scene generation, not monolithic drafting
+1. **Use ripgrep (`rg`) for searching**: Never use `grep` - codebase is 50K+ lines and ripgrep is required for efficient searching
+2. **Respect the local-first constraint**: No web frameworks, no auth, no scaling
+3. **Use existing patterns**: Follow LangGraph node structure, Neo4j session management, LLM interface
+4. **Test with pytest**: Write tests for new logic, especially KG operations and LangGraph nodes
+5. **Check Neo4j schema**: Don't introduce new node/relationship types without constraint updates
+6. **Use type hints**: Codebase uses mypy strict mode (`disallow_untyped_defs = true`)
+7. **Log with structlog**: Use structured logging, not print statements
+8. **Configuration over hardcoding**: Use `config/settings.py` for tunable parameters
+9. **Async/await**: Most operations are async; use `asyncio.run()` for entry points
+10. **State immutability**: LangGraph nodes should return partial state dicts, not mutate existing state
+11. **Content externalization**: For large content, use ContentManager instead of storing in state
+12. **Scene-level generation**: Chapters use scene-by-scene generation, not monolithic drafting
+13. **Graceful degradation**: Non-critical operations (healing, embeddings) should fail gracefully

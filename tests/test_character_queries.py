@@ -96,8 +96,6 @@ class TestGetCharacterInfoForSnippet:
         assert result["description"] == "A brave hero"
         assert result["most_recent_development_note"] == "N/A"
 
-
-
     async def test_get_character_info_no_optional_data_still_returns(self, monkeypatch):
         """Regression: character row should not be dropped when optional matches find nothing."""
         character_queries.CHAR_NAME_TO_CANONICAL.clear()

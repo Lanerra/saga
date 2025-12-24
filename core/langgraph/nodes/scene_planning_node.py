@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import structlog
 
+import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
@@ -39,8 +40,6 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
     "conflict",
     "outcome",
 )
-
-
 
 
 def _validate_scene_plan_structure(scenes: Any) -> list[str]:
@@ -300,7 +299,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
 
     try:
         response, _ = await llm_service.async_call_llm(
-            model_name=state.get("large_model", ""),
+            model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,
             max_tokens=16384,

@@ -16,6 +16,7 @@ from typing import Any
 
 import structlog
 
+import config
 from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.state import NarrativeState
@@ -137,10 +138,7 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
                 parse_errors=parse_errors[:5],
             )
 
-            raise ValueError(
-                "Character sheet JSON parsing failed "
-                f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})"
-            ) from e
+            raise ValueError("Character sheet JSON parsing failed " f"(character={character_name}, response_sha1={response_sha1}, response_len={response_len})") from e
 
         raise ValueError(f"Character sheet JSON parsing failed (character={character_name})")
 
@@ -344,7 +342,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
     for attempt_index, temperature in enumerate(temperatures, start=1):
         try:
             response, _ = await llm_service.async_call_llm(
-                model_name=state.get("large_model", ""),
+                model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,
                 max_tokens=16384,
@@ -498,7 +496,7 @@ async def _generate_character_sheet(
     for attempt_index, temperature in enumerate(temperatures, start=1):
         try:
             response, usage = await llm_service.async_call_llm(
-                model_name=state.get("large_model", ""),
+                model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,
                 max_tokens=16384,

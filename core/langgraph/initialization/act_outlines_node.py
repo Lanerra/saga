@@ -11,6 +11,7 @@ from __future__ import annotations
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_character_sheets,
@@ -334,7 +335,7 @@ async def _generate_single_act_outline(
 
     try:
         data, usage = await llm_service.async_call_llm_json_object(
-            model_name=state.get("large_model", ""),
+            model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,
             max_tokens=16384,

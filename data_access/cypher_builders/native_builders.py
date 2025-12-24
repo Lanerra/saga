@@ -412,7 +412,7 @@ class NativeCypherBuilder:
             Query safety:
                 Filter values are passed as parameters. This builder does not accept dynamic
                 labels or relationship types from `filters`.
-    """
+        """
         where_clauses = ["(c.is_deleted IS NULL OR c.is_deleted = FALSE)"]
         params = {}
 

@@ -132,9 +132,7 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
         "Scene 1: Elara enters the library.",
         "Scene 2: She meets Marcus at the tower.",
     ]
-    state["scene_drafts_ref"] = content_manager.save_list_of_texts(
-        scenes, "scenes", "chapter_1", 1
-    )
+    state["scene_drafts_ref"] = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
     state["current_chapter"] = 1
 
     async def mock_llm(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], None]:

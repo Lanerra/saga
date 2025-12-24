@@ -55,10 +55,11 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
         This node performs LLM I/O and writes externalized artifacts to disk via
         [`ContentManager.save_text()`](core/langgraph/content_manager.py:109).
     """
+    generation_model = state.get("generation_model", config.NARRATIVE_MODEL)
     logger.info(
         "generate_chapter_single_shot: starting generation",
         chapter=state.get("current_chapter", 1),
-        model=state.get("generation_model", ""),
+        model=generation_model,
     )
 
     # Initialize content manager for reading externalized content
@@ -164,7 +165,7 @@ async def generate_chapter_single_shot(state: NarrativeState) -> NarrativeState:
     )
 
     # Step 4: Calculate token budget
-    model_name = state.get("narrative_model", "")
+    model_name = state.get("narrative_model", config.NARRATIVE_MODEL)
     prompt_tokens = llm_service.count_tokens(prompt, model_name)
 
     # Calculate max tokens for generation
