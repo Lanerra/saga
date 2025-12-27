@@ -21,6 +21,10 @@ show_error_codes = true
 plugins = ["pydantic.mypy"]
 # Specifies the path for mypy to check
 
+[[tool.mypy.overrides]]
+module = ["aiofiles"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 addopts = [
     "-v",

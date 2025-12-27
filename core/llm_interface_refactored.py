@@ -34,7 +34,7 @@ from core.lightweight_cache import (
     register_cache_service,
     set_cached_value,
 )
-from core.text_processing_service import TextProcessingService
+from core.text_processing_service import TextProcessingService, truncate_text_by_tokens
 
 logger = structlog.get_logger(__name__)
 
@@ -163,13 +163,10 @@ class EmbeddingService:
 
         self._stats["cache_misses"] += 1
 
-        # Truncate text to fit within model's context window
-        # The embedding model (embeddinggemma:latest) has a 2000 token limit
-        text_processor = TextProcessingService()
-        truncated_text = text_processor.tokenizer.truncate_text_by_tokens(
-            text,
-            config.EMBEDDING_MODEL,
-            2000
+        truncated_text = truncate_text_by_tokens(
+            text=text,
+            model_name=config.EMBEDDING_MODEL,
+            max_tokens=config.EMBEDDING_MAX_INPUT_TOKENS,
         )
 
         try:

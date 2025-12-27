@@ -225,11 +225,45 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     extracted_entities = get_extracted_entities(state, content_manager)
     extracted_relationships = get_extracted_relationships(state, content_manager)
 
+    def _summarize_bucket(bucket_name: str, value: Any) -> dict[str, Any]:
+        if not isinstance(value, list) or not value:
+            return {"bucket": bucket_name, "count": len(value) if isinstance(value, list) else 0, "sample_type": None}
+
+        sample = value[0]
+        if isinstance(sample, dict):
+            keys = sorted([str(k) for k in sample.keys()])
+            return {"bucket": bucket_name, "count": len(value), "sample_type": "dict", "sample_keys": keys[:12]}
+
+        return {"bucket": bucket_name, "count": len(value), "sample_type": type(sample).__name__}
+
+    buckets = [
+        _summarize_bucket("characters", extracted_entities.get("characters", [])),
+        _summarize_bucket("world_items", extracted_entities.get("world_items", [])),
+        _summarize_bucket("events", extracted_entities.get("events", [])),
+    ]
+    logger.info("validate_consistency: extracted_entities_shape", buckets=buckets)
+
+    rel_sample_type = None
+    rel_sample_keys = None
+    if extracted_relationships:
+        sample_rel = extracted_relationships[0]
+        if isinstance(sample_rel, dict):
+            rel_sample_type = "dict"
+            rel_sample_keys = sorted([str(k) for k in sample_rel.keys()])[:12]
+        else:
+            rel_sample_type = type(sample_rel).__name__
+
     logger.info(
         "validate_consistency",
         chapter=state.get("current_chapter", 1),
         relationships=len(extracted_relationships),
         characters=len(extracted_entities.get("characters", [])),
+    )
+    logger.info(
+        "validate_consistency: extracted_relationships_shape",
+        count=len(extracted_relationships),
+        sample_type=rel_sample_type,
+        sample_keys=rel_sample_keys,
     )
 
     contradictions: list[Contradiction] = []
@@ -336,28 +370,71 @@ async def _validate_relationships(
     if extracted_entities:
         # Add characters
         for char in extracted_entities.get("characters", []):
-            entity_type_map[char.name] = char.type
+            if isinstance(char, dict):
+                name = char.get("name")
+                entity_type = char.get("type")
+            else:
+                name = getattr(char, "name", None)
+                entity_type = getattr(char, "type", None)
+
+            if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
+                entity_type_map[name] = entity_type
 
         # Add world items (locations, objects, events, etc.)
         for item in extracted_entities.get("world_items", []):
-            entity_type_map[item.name] = item.type
+            if isinstance(item, dict):
+                name = item.get("name")
+                entity_type = item.get("type")
+            else:
+                name = getattr(item, "name", None)
+                entity_type = getattr(item, "type", None)
+
+            if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
+                entity_type_map[name] = entity_type
 
         # Add events if they're tracked separately
         for event in extracted_entities.get("events", []):
-            entity_type_map[event.name] = event.type
+            if isinstance(event, dict):
+                name = event.get("name")
+                entity_type = event.get("type")
+            else:
+                name = getattr(event, "name", None)
+                entity_type = getattr(event, "type", None)
+
+            if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
+                entity_type_map[name] = entity_type
 
     # Validate each relationship
     for rel in relationships:
+        if isinstance(rel, dict):
+            relationship_type = rel.get("relationship_type")
+            source_name = rel.get("source_name")
+            target_name = rel.get("target_name")
+        else:
+            relationship_type = getattr(rel, "relationship_type", None)
+            source_name = getattr(rel, "source_name", None)
+            target_name = getattr(rel, "target_name", None)
+
+        if not (isinstance(relationship_type, str) and relationship_type):
+            logger.warning("relationship_validation_missing_relationship_type", relationship=type(rel).__name__)
+            continue
+        if not (isinstance(source_name, str) and source_name):
+            logger.warning("relationship_validation_missing_source_name", relationship_type=relationship_type)
+            continue
+        if not (isinstance(target_name, str) and target_name):
+            logger.warning("relationship_validation_missing_target_name", relationship_type=relationship_type)
+            continue
+
         # Get entity types
-        source_type = entity_type_map.get(rel.source_name, "Character")  # Default to Character
-        target_type = entity_type_map.get(rel.target_name, "Character")  # Default to Character
+        source_type = entity_type_map.get(source_name, "Character")
+        target_type = entity_type_map.get(target_name, "Character")
 
         # Validate the relationship (permissive mode - always valid)
         is_valid, errors, info_warnings = validator.validate(
-            relationship_type=rel.relationship_type,
-            source_name=rel.source_name,
+            relationship_type=relationship_type,
+            source_name=source_name,
             source_type=source_type,
-            target_name=rel.target_name,
+            target_name=target_name,
             target_type=target_type,
             severity_mode="flexible",
         )

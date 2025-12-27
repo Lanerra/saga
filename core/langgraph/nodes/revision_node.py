@@ -135,9 +135,9 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
     model_name = state.get("revision_model", config.MEDIUM_MODEL)
     prompt_tokens = llm_service.count_tokens(prompt, model_name)
 
-    max_context = getattr(config, "MAX_CONTEXT_TOKENS", 128000)
-    token_buffer = getattr(config.settings, "NARRATIVE_TOKEN_BUFFER", 2000)
-    max_generation = getattr(config, "MAX_GENERATION_TOKENS", 8000)
+    max_context = getattr(config, "MAX_CONTEXT_TOKENS", 32768)
+    token_buffer = getattr(config.settings, "NARRATIVE_TOKEN_BUFFER", 8192)
+    max_generation = getattr(config, "MAX_GENERATION_TOKENS", 8192)
 
     available_tokens = max_context - prompt_tokens - token_buffer
     max_gen_tokens = min(max_generation, available_tokens)
