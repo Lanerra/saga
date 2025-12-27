@@ -337,7 +337,8 @@ class TestPhase2Workflow:
         mock_all_nodes["gen_scene_embeddings"].assert_called_once()
         mock_all_nodes["assemble_chapter"].assert_called_once()
         mock_all_nodes["normalize_relationships"].assert_called_once()
-        mock_all_nodes["commit"].assert_called()
+        mock_all_nodes["validate"].assert_called_once()
+        mock_all_nodes["commit"].assert_called_once()
         mock_all_nodes["summarize"].assert_called_once()
         mock_all_nodes["finalize"].assert_called_once()
         mock_all_nodes["heal_graph"].assert_called_once()
@@ -348,16 +349,24 @@ class TestPhase2Workflow:
 
     async def test_workflow_with_single_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow with one revision cycle."""
-        # Configure validate to request revision on first call
-        call_count = 0
+        call_sequence: list[str] = []
+        validate_call_count = 0
 
         def mock_validate(s):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
+            nonlocal validate_call_count
+            call_sequence.append("validate")
+            validate_call_count += 1
+            if validate_call_count == 1:
                 return {
                     **s,
-                    "contradictions": [Contradiction(type="test", description="Issue", conflicting_chapters=[1], severity="minor")],
+                    "contradictions": [
+                        Contradiction(
+                            type="test",
+                            description="Issue",
+                            conflicting_chapters=[1],
+                            severity="minor",
+                        )
+                    ],
                     "needs_revision": True,
                     "current_node": "validate",
                 }
@@ -368,7 +377,15 @@ class TestPhase2Workflow:
                 "current_node": "validate",
             }
 
+        def mock_commit(s):
+            call_sequence.append("commit")
+            return {
+                **s,
+                "current_node": "commit",
+            }
+
         mock_all_nodes["validate"].side_effect = mock_validate
+        mock_all_nodes["commit"].side_effect = mock_commit
 
         # Create workflow
         graph = create_full_workflow_graph()
@@ -378,8 +395,13 @@ class TestPhase2Workflow:
 
         # Revision should be called once
         mock_all_nodes["revise"].assert_called_once()
-        # Validation should be called twice
-        assert call_count == 2
+
+        # Validation should be called twice (revise then accept)
+        assert validate_call_count == 2
+
+        # Commit should happen only after validation accepts (continue branch)
+        assert mock_all_nodes["commit"].call_count == 1
+        assert call_sequence == ["validate", "validate", "commit"]
 
     async def test_workflow_max_iterations_enforcement(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that max iterations are enforced."""
@@ -444,7 +466,7 @@ class TestPhase2Workflow:
         await graph.ainvoke(sample_generation_state)
 
         # Check call order of some key nodes
-        # Chapter outline -> Generate -> Extract -> Scene Embeddings -> Assemble -> Normalize -> Commit -> Validate -> Summarize -> Finalize -> Heal -> Quality
+        # Chapter outline -> Generate -> Extract -> Scene Embeddings -> Assemble -> Normalize -> Validate -> Commit -> Summarize -> Finalize -> Heal -> Quality
 
         mock_all_nodes["chapter_outline"].assert_called_once()
         mock_all_nodes["generate"].assert_called_once()
@@ -618,6 +640,17 @@ class TestPhase2Integration:
         ]
         for node in expected_nodes:
             assert node in nodes
+
+    def test_workflow_graph_persistence_wiring_is_after_validation(self) -> None:
+        """Persistence boundary must be after validation acceptance."""
+        graph = create_full_workflow_graph()
+        graph_obj = graph.get_graph()
+
+        edges = {(edge.source, edge.target) for edge in graph_obj.edges}
+
+        assert ("normalize_relationships", "validate") in edges
+        assert ("validate", "commit") in edges
+        assert ("commit", "summarize") in edges
 
     def test_workflow_revision_loop_routes_to_generate(self) -> None:
         """Revision loop should route validate → revise → generate (scene regeneration)."""
