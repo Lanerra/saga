@@ -29,6 +29,8 @@ from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
     get_draft_text,
+    get_extracted_entities,
+    get_extracted_relationships,
     get_previous_summaries,
 )
 from core.langgraph.nodes.validation_node import (
@@ -335,10 +337,14 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     contradictions = list(state.get("contradictions", []))
     current_chapter = state.get("current_chapter", 1)
 
+    # Initialize content manager to read externalized content
+    content_manager = ContentManager(state.get("project_dir", ""))
+
     # Check 1: Timeline violations
     # Delegate state-shape assumptions to the validation node's helper so the subgraph
     # doesn't diverge (canonical events live in `world_items` with type == "Event").
-    extracted_events = get_extracted_events_for_validation(state.get("extracted_entities", {}))
+    extracted_entities = get_extracted_entities(state, content_manager)
+    extracted_events = get_extracted_events_for_validation(extracted_entities)
     timeline_contradictions = await _check_timeline(
         extracted_events,
         current_chapter,
@@ -346,7 +352,6 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     contradictions.extend(timeline_contradictions)
 
     # Check 2: World rule violations
-    content_manager = ContentManager(state.get("project_dir", ""))
     draft_text = get_draft_text(state, content_manager) or ""
 
     world_rule_contradictions = await _check_world_rules(
@@ -357,8 +362,9 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     contradictions.extend(world_rule_contradictions)
 
     # Check 3: Relationship evolution (non-contradictory but noteworthy changes)
+    extracted_relationships = get_extracted_relationships(state, content_manager)
     relationship_issues = await _check_relationship_evolution(
-        state.get("extracted_relationships", []),
+        extracted_relationships,
         current_chapter,
     )
     contradictions.extend(relationship_issues)
@@ -691,9 +697,15 @@ async def _check_relationship_evolution(
 
     try:
         for rel in extracted_relationships:
-            source = getattr(rel, "source_name", "")
-            target = getattr(rel, "target_name", "")
-            rel_type = getattr(rel, "relationship_type", "")
+            # Handle both dict and object types
+            if isinstance(rel, dict):
+                source = rel.get("source_name", "")
+                target = rel.get("target_name", "")
+                rel_type = rel.get("relationship_type", "")
+            else:
+                source = getattr(rel, "source_name", "")
+                target = getattr(rel, "target_name", "")
+                rel_type = getattr(rel, "relationship_type", "")
 
             # Check for previous relationship between these characters
             query = """

@@ -200,12 +200,14 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
         components=len(hybrid_context_parts),
     )
 
-    # Save hybrid context to content manager
+    identifier = f"chapter_{chapter_number}_scene_{scene_index}"
+    version = content_manager.get_latest_version("hybrid_context", identifier) + 1
+
     hybrid_context_ref = content_manager.save_text(
         hybrid_context,
         "hybrid_context",
-        f"chapter_{chapter_number}_scene_{scene_index}",
-        version=1,
+        identifier,
+        version=version,
     )
 
     return {

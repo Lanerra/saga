@@ -181,7 +181,10 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             )
             return {
                 "last_error": "Revision LLM returned empty text",
+                "has_fatal_error": True,
+                "error_node": "revise",
                 "current_node": "revise",
+                "iteration_count": state.get("iteration_count", 0) + 1,
             }
 
         # Step 5: Update state

@@ -158,16 +158,19 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             all_statements.extend(entity_statements)
 
         # Step 4b: Collect relationship statements
-        if relationships:
-            relationship_statements = await _build_relationship_statements(
-                relationships,
-                char_entities,
-                world_entities,
-                char_mappings,
-                world_mappings,
-                state.get("current_chapter", 1),
-                is_from_flawed_draft=state.get("is_from_flawed_draft", False),
-            )
+        #
+        # Contract: relationship writes are chapter-idempotent.
+        # Every commit replaces the chapter's relationship set (including "no relationships").
+        relationship_statements = await _build_relationship_statements(
+            relationships,
+            char_entities,
+            world_entities,
+            char_mappings,
+            world_mappings,
+            state.get("current_chapter", 1),
+            is_from_flawed_draft=state.get("is_from_flawed_draft", False),
+        )
+        if relationship_statements:
             all_statements.extend(relationship_statements)
 
         # Step 4c: Collect chapter node statement
@@ -765,8 +768,23 @@ async def _build_relationship_statements(
     Returns:
         List of `(cypher_query, parameters)` tuples suitable for batched execution.
     """
+    statements: list[tuple[str, dict]] = []
+
+    # Idempotency: Delete any existing relationships for this chapter before writing the new set.
+    # This ensures that revisions or re-runs do not accumulate stale edges.
+    delete_query = """
+    MATCH ()-[r]->()
+    WHERE coalesce(r.chapter_added, -1) = $chapter
+    DELETE r
+    """
+    statements.append((delete_query, {"chapter": chapter}))
+
     if not relationships:
-        return []
+        logger.info(
+            "_build_relationship_statements: no extracted relationships; clearing chapter relationship set",
+            chapter=chapter,
+        )
+        return statements
 
     # Build entity lookup maps for type resolution (same as _create_relationships)
     entity_type_map = {}
@@ -881,8 +899,6 @@ async def _build_relationship_statements(
     # Build Cypher statements from triples
     # This creates basic relationship statements without full constraint validation
     # (Full validation logic from kg_queries is too complex to inline here)
-    statements: list[tuple[str, dict]] = []
-
     for triple in structured_triples:
         try:
             subject = triple["subject"]

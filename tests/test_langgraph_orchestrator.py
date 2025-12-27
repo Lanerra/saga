@@ -238,6 +238,65 @@ class TestRunChapterGenerationLoop:
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
+    async def test_run_chapter_generation_loop_multi_chapter(self, orchestrator):
+        """Chapter generation loop handles multiple chapters in a single stream."""
+        mock_graph = MagicMock()
+
+        async def mock_stream_func(*args, **kwargs):
+            events = [
+                {"generate": {"current_chapter": 1, "current_node": "generate"}},
+                {"finalize": {"current_chapter": 1, "current_node": "finalize", "draft_word_count": 1000}},
+                {"advance_chapter": {"current_chapter": 2, "current_node": "advance_chapter"}},
+                {"generate": {"current_chapter": 2, "current_node": "generate"}},
+                {"finalize": {"current_chapter": 2, "current_node": "finalize", "draft_word_count": 1200}},
+            ]
+            for event in events:
+                yield event
+
+        mock_graph.astream = mock_stream_func
+
+        state = {
+            "project_id": "test_proj",
+            "current_chapter": 1,
+            "total_chapters": 5,
+        }
+
+        with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock) as mock_handle:
+            await orchestrator._run_chapter_generation_loop(mock_graph, state)
+
+            # Check that _handle_workflow_event was called with correct chapter numbers
+            assert mock_handle.call_count == 5
+            # First 2 calls should be chapter 1
+            assert mock_handle.call_args_list[0][0][1] == 1
+            assert mock_handle.call_args_list[1][0][1] == 1
+            # 3rd call (advance_chapter) should be chapter 2
+            assert mock_handle.call_args_list[2][0][1] == 2
+            # Remaining calls should be chapter 2
+            assert mock_handle.call_args_list[3][0][1] == 2
+            assert mock_handle.call_args_list[4][0][1] == 2
+
+    async def test_run_chapter_generation_loop_thread_id(self, orchestrator):
+        """Orchestrator uses project-specific thread ID."""
+        mock_graph = MagicMock()
+
+        async def empty_stream(*args, **kwargs):
+            if False:
+                yield
+
+        mock_graph.astream = MagicMock(side_effect=empty_stream)
+
+        state = {"project_id": "custom_project"}
+        await orchestrator._run_chapter_generation_loop(mock_graph, state)
+
+        # Check astream call arguments
+        # Need to find the call
+        found = False
+        for call in mock_graph.astream.call_args_list:
+            if call.kwargs.get("config", {}).get("configurable", {}).get("thread_id") == "saga_custom_project":
+                found = True
+                break
+        assert found, "Thread ID 'saga_custom_project' not found in astream calls"
+
     async def test_run_chapter_generation_loop_respects_total_chapters(self, orchestrator):
         """Loop stops at total chapter count."""
         mock_graph = MagicMock()

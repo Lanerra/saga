@@ -22,7 +22,6 @@ from core.langgraph.initialization.global_outline_node import generate_global_ou
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
-from core.langgraph.initialization.workflow import create_initialization_graph
 
 __all__ = [
     "generate_character_sheets",
@@ -31,5 +30,4 @@ __all__ = [
     "generate_chapter_outline",
     "commit_initialization_to_graph",
     "persist_initialization_files",
-    "create_initialization_graph",
 ]

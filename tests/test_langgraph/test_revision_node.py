@@ -257,24 +257,24 @@ class TestConstructRevisionPrompt:
         # Should fetch KG facts
         mock_prompt_data_getters["get_kg_facts"].assert_called_once()
 
-    @pytest.mark.skip(reason="Length requirements removed from revision prompt")
-    async def test_construct_prompt_with_length_issue(self, mock_prompt_data_getters):
-        """Test prompt includes length warning for short drafts."""
+    async def test_construct_prompt_does_not_include_length_requirements(self, mock_prompt_data_getters):
+        """Prompt construction does not enforce removed length requirements."""
         short_text = "Too short"
 
         prompt = await _construct_revision_prompt(
             draft_text=short_text,
             contradictions=[],
             chapter_number=1,
-            plot_outline={},
+            chapter_outlines={},
             hybrid_context="Context",
             novel_title="Test",
             novel_genre="Fantasy",
             protagonist_name="Hero",
         )
 
-        assert "LENGTH REQUIREMENT" in prompt
-        assert "too short" in prompt
+        assert isinstance(prompt, str)
+        assert short_text in prompt
+        assert "LENGTH REQUIREMENT" not in prompt
 
     async def test_construct_prompt_with_plot_point(self, mock_prompt_data_getters):
         """Test prompt includes plot point focus."""
@@ -370,9 +370,11 @@ class TestReviseChapter:
 
             result = await revise_chapter(sample_revision_state)
 
-            # Should return error
+            # Should return error and increment iteration
             assert result["last_error"] is not None
             assert "empty" in result["last_error"].lower()
+            assert result["has_fatal_error"] is True
+            assert result["iteration_count"] == 1
 
     async def test_revise_chapter_llm_exception(self, sample_revision_state, mock_prompt_data_getters):
         """Test handling of LLM exceptions."""
@@ -656,5 +658,6 @@ class TestRevisionErrorHandling:
 
             assert result["last_error"] is not None
             assert "empty" in result["last_error"].lower()
-            assert result.get("has_fatal_error", False) is False
+            assert result["has_fatal_error"] is True
             assert result["current_node"] == "revise"
+            assert result["iteration_count"] == 1

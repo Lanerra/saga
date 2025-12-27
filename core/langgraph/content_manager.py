@@ -24,12 +24,61 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
+class FrozenContentRef(dict[str, Any]):
+    """An immutable, JSON-serializable mapping used for workflow `ContentRef`s.
+
+    Rationale:
+        LangGraph checkpoints persist state. If a `ContentRef` dict is mutated after
+        being placed in state, it can invalidate checkpoint assumptions and create
+        confusing "time travel" behavior (old checkpoints referencing new paths).
+
+        This type is a `dict` subclass so:
+        - the standard library JSON encoder treats it as an object (serializable)
+        - existing call sites using `isinstance(ref, dict)` keep working
+
+        Mutation methods are blocked to ensure immutability.
+    """
+
+    def _raise_immutable(self) -> None:
+        raise TypeError("ContentRef is immutable")
+
+    def __setitem__(self, key: str, value: Any) -> None:  # type: ignore[override]
+        self._raise_immutable()
+
+    def __delitem__(self, key: str) -> None:  # type: ignore[override]
+        self._raise_immutable()
+
+    def clear(self) -> None:  # type: ignore[override]
+        self._raise_immutable()
+
+    def pop(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+        self._raise_immutable()
+
+    def popitem(self) -> tuple[str, Any]:  # type: ignore[override]
+        self._raise_immutable()
+
+    def setdefault(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+        self._raise_immutable()
+
+    def update(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[override]
+        self._raise_immutable()
+
+
+def _freeze_content_ref(ref: dict[str, Any]) -> FrozenContentRef:
+    return FrozenContentRef(ref)
+
+
 # Type definitions for file references
 class ContentRef(TypedDict, total=False):
     """Describe a reference to externalized workflow content.
 
     The reference resolves relative to the project root directory managed by
     [`ContentManager`](core/langgraph/content_manager.py:41).
+
+    Notes:
+        Instances returned from `ContentManager.save_*` are immutable `dict` objects
+        (see `FrozenContentRef`) to prevent accidental state mutation after
+        checkpointing.
     """
 
     path: str  # Relative path from project root
@@ -106,6 +155,41 @@ class ContentManager:
 
         return hashlib.sha256(data).hexdigest()
 
+    def _validate_checksum_if_present(
+        self,
+        *,
+        ref: ContentRef | str | Path,
+        full_path: Path,
+        data_bytes: bytes,
+        caller: str,
+    ) -> None:
+        if not isinstance(ref, dict):
+            return None
+
+        if "checksum" not in ref:
+            logger.warning(
+                "ContentRef missing checksum; skipping integrity validation",
+                caller=caller,
+                path=str(full_path),
+            )
+            return None
+
+        expected_checksum = ref.get("checksum")
+        if not isinstance(expected_checksum, str) or not expected_checksum:
+            raise ValueError(
+                f"{caller} expected ContentRef.checksum to be a non-empty str when present; "
+                f"got {expected_checksum!r} for path={full_path}"
+            )
+
+        actual_checksum = self._compute_checksum(data_bytes)
+        if actual_checksum != expected_checksum:
+            raise ValueError(
+                f"{caller} detected checksum mismatch for content file: {full_path}. "
+                f"expected={expected_checksum}, actual={actual_checksum}"
+            )
+
+        return None
+
     def save_text(
         self,
         content: str,
@@ -114,6 +198,8 @@ class ContentManager:
         version: int = 1,
     ) -> ContentRef:
         """Persist UTF-8 text content and return a state reference.
+
+        The checksum is computed over the exact bytes written to disk.
 
         Args:
             content: Text to write.
@@ -126,18 +212,22 @@ class ContentManager:
         """
         path = self._get_content_path(content_type, identifier, version, "txt")
 
-        temp_path = path.with_suffix(".tmp")
-        temp_path.write_text(content, encoding="utf-8")
-        temp_path.replace(path)
-
-        # Create reference
         data_bytes = content.encode("utf-8")
-        return ContentRef(
-            path=self._get_relative_path(path),
-            content_type=content_type,
-            version=version,
-            size_bytes=len(data_bytes),
-            checksum=self._compute_checksum(data_bytes),
+
+        # Write content atomically (bytes) to preserve checksum correctness.
+        self._write_bytes_atomically(path, data_bytes)
+
+        return cast(
+            ContentRef,
+            _freeze_content_ref(
+                {
+                    "path": self._get_relative_path(path),
+                    "content_type": content_type,
+                    "version": version,
+                    "size_bytes": len(data_bytes),
+                    "checksum": self._compute_checksum(data_bytes),
+                }
+            ),
         )
 
     def save_json(
@@ -172,12 +262,17 @@ class ContentManager:
         self._write_bytes_atomically(path, data_bytes)
 
         # Create reference (checksum computed over exact bytes written)
-        return ContentRef(
-            path=self._get_relative_path(path),
-            content_type=content_type,
-            version=version,
-            size_bytes=len(data_bytes),
-            checksum=self._compute_checksum(data_bytes),
+        return cast(
+            ContentRef,
+            _freeze_content_ref(
+                {
+                    "path": self._get_relative_path(path),
+                    "content_type": content_type,
+                    "version": version,
+                    "size_bytes": len(data_bytes),
+                    "checksum": self._compute_checksum(data_bytes),
+                }
+            ),
         )
 
     def _write_bytes_atomically(self, path: Path, data_bytes: bytes) -> None:
@@ -237,13 +332,17 @@ class ContentManager:
         # Write content atomically
         self._write_bytes_atomically(path, data_bytes)
 
-        # Create reference (checksum computed over exact bytes written)
-        return ContentRef(
-            path=self._get_relative_path(path),
-            content_type=content_type,
-            version=version,
-            size_bytes=len(data_bytes),
-            checksum=self._compute_checksum(data_bytes),
+        return cast(
+            ContentRef,
+            _freeze_content_ref(
+                {
+                    "path": self._get_relative_path(path),
+                    "content_type": content_type,
+                    "version": version,
+                    "size_bytes": len(data_bytes),
+                    "checksum": self._compute_checksum(data_bytes),
+                }
+            ),
         )
 
     def _resolve_ref_path(self, ref: ContentRef | str | Path, *, caller: str) -> str:
@@ -292,15 +391,20 @@ class ContentManager:
         Raises:
             FileNotFoundError: If the referenced file does not exist.
             TypeError: If `ref` is not a supported reference type.
-            ValueError: If `ref` is a dict without a valid `"path"`.
+            ValueError: If `ref` is a dict without a valid `"path"`, or if checksum
+                validation fails.
         """
-        path_str = self._resolve_ref_path(ref, caller="ContentManager.load_text")
+        caller = "ContentManager.load_text"
+        path_str = self._resolve_ref_path(ref, caller=caller)
         full_path = self.project_dir / path_str
 
         if not full_path.exists():
             raise FileNotFoundError(f"Content file not found: {full_path}")
 
-        return full_path.read_text(encoding="utf-8")
+        data_bytes = full_path.read_bytes()
+        self._validate_checksum_if_present(ref=ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
+
+        return data_bytes.decode("utf-8")
 
     def load_json(self, ref: ContentRef | str | Path) -> dict[str, Any] | list[Any]:
         """Load JSON from a content reference.
@@ -315,16 +419,20 @@ class ContentManager:
             FileNotFoundError: If the referenced file does not exist.
             json.JSONDecodeError: If the file is not valid JSON.
             TypeError: If `ref` is not a supported reference type.
-            ValueError: If `ref` is a dict without a valid `"path"`.
+            ValueError: If `ref` is a dict without a valid `"path"`, or if checksum
+                validation fails.
         """
-        path_str = self._resolve_ref_path(ref, caller="ContentManager.load_json")
+        caller = "ContentManager.load_json"
+        path_str = self._resolve_ref_path(ref, caller=caller)
         full_path = self.project_dir / path_str
 
         if not full_path.exists():
             raise FileNotFoundError(f"Content file not found: {full_path}")
 
-        with full_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+        data_bytes = full_path.read_bytes()
+        self._validate_checksum_if_present(ref=ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
+
+        return json.loads(data_bytes.decode("utf-8"))
 
     def load_binary(self, ref: ContentRef | str | Path) -> Any:
         """Load "binary" content using safe parsers only.
@@ -344,10 +452,12 @@ class ContentManager:
 
         Raises:
             FileNotFoundError: If the referenced file does not exist.
-            ValueError: If the referenced file is a `.pkl` artifact.
+            ValueError: If the referenced file is a `.pkl` artifact, or if checksum
+                validation fails.
             TypeError: If `ref` is not a supported reference type.
         """
-        path_str = self._resolve_ref_path(ref, caller="ContentManager.load_binary")
+        caller = "ContentManager.load_binary"
+        path_str = self._resolve_ref_path(ref, caller=caller)
         full_path = self.project_dir / path_str
 
         if not full_path.exists():
@@ -362,19 +472,21 @@ class ContentManager:
                 f"or remove the file: {full_path}"
             )
 
+        data_bytes = full_path.read_bytes()
+        self._validate_checksum_if_present(ref=ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
+
         if suffix == ".json":
-            with full_path.open("r", encoding="utf-8") as f:
-                return json.load(f)
+            return json.loads(data_bytes.decode("utf-8"))
 
         if suffix == ".npy":
-            # `.npy` is safe iff `allow_pickle=False`.
+            import io
+
             import numpy as np
 
-            arr = np.load(full_path, allow_pickle=False)
+            arr = np.load(io.BytesIO(data_bytes), allow_pickle=False)
             return arr.tolist()
 
-        # Default: treat as raw bytes
-        return full_path.read_bytes()
+        return data_bytes
 
     def save_list_of_texts(
         self,

@@ -261,7 +261,6 @@ class TestFinalizeChapter:
         }
 
         result = await finalize_chapter(state)
-        merged = {**state, **result}
 
         # Should be cleared
         assert result["extracted_entities"] == {}

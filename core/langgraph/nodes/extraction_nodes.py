@@ -37,6 +37,8 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
 
     Returns:
         Partial state update containing:
+        - extracted_entities: {} (cleared to prevent checkpoint bloat).
+        - extracted_relationships: [] (cleared to prevent checkpoint bloat).
         - extracted_entities_ref: Content reference for persisted entities.
         - extracted_relationships_ref: Content reference for persisted relationships.
         - current_node: `"consolidate_extraction"`.
@@ -119,6 +121,8 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     )
 
     return {
+        "extracted_entities": {},
+        "extracted_relationships": [],
         "extracted_entities_ref": entities_ref,
         "extracted_relationships_ref": relationships_ref,
         "current_node": "consolidate_extraction",

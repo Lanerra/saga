@@ -331,117 +331,99 @@ class LangGraphOrchestrator:
         return state
 
     async def _run_chapter_generation_loop(self, graph: Any, state: NarrativeState) -> None:
-        """Stream workflow events to generate up to `CHAPTERS_PER_RUN` chapters.
+        """Stream workflow events for end-to-end chapter generation.
 
-        For each chapter, this method updates `state["current_chapter"]`, runs the
-        workflow using `astream()` (updates mode), merges per-node state updates
-        into a single state dict, and determines completion based on the last
-        user-visible node executed.
+        This method runs the full LangGraph workflow, which handles initialization
+        and multiple chapters internally. It tracks progress via `astream()` and
+        updates the UI based on state changes across multiple chapters.
 
         Error policy:
-            This loop is best-effort. If a chapter fails to complete, the failure
-            is logged and the loop stops early without raising to the caller.
+            Workflow failures during streaming are logged and stop the run without
+            raising to the caller, allowing for graceful UI shutdown.
 
         Side Effects:
             - Executes workflow nodes, which may write files, update Neo4j, and
-              record checkpoints through the provided checkpointer.
-            - Mutates the provided `state` mapping in-place and also rebinds the
-              local `state` variable to merged copies.
-
-        Notes:
-            - The thread identifier is fixed to `"saga_generation"` for checkpoint
-              scoping, which means multiple concurrent orchestrator runs will
-              contend for the same checkpoint stream.
+              record checkpoints.
+            - Updates the provided `state` mapping as it receives updates from the
+              workflow stream.
         """
-        chapters_per_run = config.CHAPTERS_PER_RUN
-        total_chapters = state.get("total_chapters", 20)
-        current_chapter = state.get("current_chapter", 1)
+        project_id = state.get("project_id", "novel")
+        thread_id = f"saga_{project_id}"
 
         logger.info(
-            "Starting chapter generation loop",
-            chapters_per_run=chapters_per_run,
-            starting_chapter=current_chapter,
-            total_chapters=total_chapters,
+            "Starting multi-chapter generation stream",
+            project_id=project_id,
+            thread_id=thread_id,
+            starting_chapter=state.get("current_chapter", 1),
+            total_chapters=state.get("total_chapters"),
         )
 
-        config_dict = {"configurable": {"thread_id": "saga_generation"}}
+        config_dict = {"configurable": {"thread_id": thread_id}}
+        last_node = None
 
-        chapters_generated = 0
-        while chapters_generated < chapters_per_run and current_chapter <= total_chapters:
-            logger.info("=" * 60 + f"\nGenerating Chapter {current_chapter} of {total_chapters}" + "\n" + "=" * 60)
+        try:
+            # Use astream() for event-based progress tracking across all chapters.
+            # The workflow now handles the loop internally.
+            async for event in graph.astream(state, config=config_dict):
+                if not isinstance(event, dict) or not event:
+                    continue
 
-            # Update state for this chapter
-            state["current_chapter"] = current_chapter
+                node_name = list(event.keys())[0]
+                if node_name.startswith("__"):
+                    continue
 
-            try:
-                # Run workflow for this chapter using event streaming
-                # The workflow will:
-                # 1. Generate chapter outline (on-demand)
-                # 2. Generate chapter text
-                # 3. Extract entities
-                # 4. Commit to graph
-                # 5. Validate
-                # 6. (Optional) Revise
-                # 7. Summarize
-                # 8. Finalize
+                state_update = event[node_name]
+                if not isinstance(state_update, dict):
+                    continue
 
-                # Use astream() for event-based progress tracking
-                # LangGraph's astream() yields events in format: {node_name: state_update}
-                # We need to merge all updates to get the final state
-                last_node = None
-                async for event in graph.astream(state, config=config_dict):
-                    # Handle workflow event for progress tracking
-                    await self._handle_workflow_event(event, current_chapter)
+                # Merge updates into local state tracking
+                state = {**state, **state_update}
+                last_node = node_name
 
-                    # Merge state updates from event
-                    # Event format: {node_name: state_update_dict}
-                    if isinstance(event, dict) and len(event) > 0:
-                        node_name = list(event.keys())[0]
-                        if not node_name.startswith("__"):  # Skip internal nodes
-                            state_update = event[node_name]
-                            if isinstance(state_update, dict):
-                                # Merge update into state
-                                state = {**state, **state_update}
-                                last_node = node_name
+                # Track chapter transitions and completion
+                current_chapter = state.get("current_chapter", 1)
 
-                # Check if chapter was successfully generated
-                # After finalization, last executed node should be "finalize", "heal_graph", or "check_quality"
-                if last_node in ["finalize", "heal_graph", "check_quality"]:
-                    chapters_generated += 1
-                    logger.info(
-                        f"✓ Chapter {current_chapter} complete",
-                        word_count=state.get("draft_word_count", 0),
-                        node=last_node,
-                    )
+                # Handle workflow event for progress tracking
+                await self._handle_workflow_event(event, current_chapter)
 
-                    # Increment chapter for next iteration
-                    current_chapter = state.get("current_chapter", current_chapter) + 1
-                elif last_node:
-                    # Generation ran but didn't complete successfully
-                    error = state.get("last_error", "Unknown error")
-                    logger.error(
-                        f"Chapter {current_chapter} generation incomplete",
-                        final_node=last_node,
-                        error=error,
-                    )
-                    break
-                else:
-                    logger.error(f"Chapter {current_chapter} generation failed - no events received")
-                    break
+                # Log chapter completion
+                if node_name in ["finalize", "heal_graph", "check_quality"]:
+                    # Check if we just completed a chapter
+                    # In an internal loop, we might get multiple nodes for the same chapter.
+                    # We rely on finalize/heal_graph/check_quality being the 'completion' markers.
+                    if state.get("current_node") == node_name:
+                        logger.info(
+                            f"✓ Chapter {current_chapter} node reached: {node_name}",
+                            word_count=state.get("draft_word_count", 0),
+                        )
 
-            except Exception as e:
-                logger.error(
-                    f"Error generating chapter {current_chapter}",
-                    error=str(e),
-                    exc_info=True,
+            # Final summary of the run
+            if last_node in ["finalize", "heal_graph", "check_quality", "init_complete"]:
+                logger.info(
+                    "Workflow stream finished successfully",
+                    final_chapter=state.get("current_chapter"),
+                    final_node=last_node,
                 )
-                break
+            elif state.get("has_fatal_error"):
+                logger.error(
+                    "Workflow stream terminated with fatal error",
+                    error=state.get("last_error"),
+                    node=state.get("error_node"),
+                )
+            else:
+                logger.warning(
+                    "Workflow stream finished at unexpected node",
+                    final_node=last_node,
+                )
 
-        logger.info(
-            "Chapter generation loop complete",
-            chapters_generated=chapters_generated,
-            final_chapter=current_chapter - 1,
-        )
+        except Exception as e:
+            logger.error(
+                "Error during chapter generation stream",
+                error=str(e),
+                exc_info=True,
+            )
+
+        logger.info("Multi-chapter generation stream complete.")
 
     async def _handle_workflow_event(self, event: dict[str, Any], chapter_number: int) -> None:
         """Update UI and structured logs for a workflow event.

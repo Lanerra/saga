@@ -212,11 +212,24 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         Relationship validation is permissive by default and does not block writes;
         revision decisions are driven by contradiction severity and plot stagnation.
     """
+    # Initialize content manager to read externalized content
+    from core.langgraph.content_manager import (
+        ContentManager,
+        get_extracted_entities,
+        get_extracted_relationships,
+    )
+
+    content_manager = ContentManager(state.get("project_dir", ""))
+
+    # Get extraction results (prefers externalized content)
+    extracted_entities = get_extracted_entities(state, content_manager)
+    extracted_relationships = get_extracted_relationships(state, content_manager)
+
     logger.info(
         "validate_consistency",
         chapter=state.get("current_chapter", 1),
-        relationships=len(state.get("extracted_relationships", [])),
-        characters=len(state.get("extracted_entities", {}).get("characters", [])),
+        relationships=len(extracted_relationships),
+        characters=len(extracted_entities.get("characters", [])),
     )
 
     contradictions: list[Contradiction] = []
@@ -225,9 +238,9 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # In permissive mode, this only logs info messages and never blocks.
     # Relationship validation is now informational only to support creative freedom.
     relationship_contradictions = await _validate_relationships(
-        state.get("extracted_relationships", []),
+        extracted_relationships,
         state.get("current_chapter", 1),
-        state.get("extracted_entities"),
+        extracted_entities,
     )
     # Note: In permissive mode, relationship_contradictions will be empty
     # since the validator always returns valid=True
@@ -236,14 +249,14 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # Check 2: Character trait consistency
     # NEW FUNCTIONALITY: Checks for contradictory character traits
     trait_contradictions = await _check_character_traits(
-        state.get("extracted_entities", {}).get("characters", []),
+        extracted_entities.get("characters", []),
         state.get("current_chapter", 1),
     )
     contradictions.extend(trait_contradictions)
 
     # Check 3: Plot stagnation detection
     # NEW FUNCTIONALITY: Ensures chapter advances the plot
-    if _is_plot_stagnant(state):
+    if _is_plot_stagnant(state, extracted_entities, extracted_relationships):
         contradictions.append(
             Contradiction(
                 type="plot_stagnation",
@@ -428,7 +441,7 @@ async def _check_character_traits(
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_a}' " f"in chapter {existing.get('first_chapter', '?')}, " f"but is now described as '{trait_b}'",
+                                description=f"{char.name} was established as '{trait_a}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_b}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,
@@ -442,7 +455,7 @@ async def _check_character_traits(
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_b}' " f"in chapter {existing.get('first_chapter', '?')}, " f"but is now described as '{trait_a}'",
+                                description=f"{char.name} was established as '{trait_b}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_a}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,
@@ -470,7 +483,11 @@ async def _check_character_traits(
         return []
 
 
-def _is_plot_stagnant(state: NarrativeState) -> bool:
+def _is_plot_stagnant(
+    state: NarrativeState,
+    entities: dict[str, Any] | None = None,
+    relationships: list[Any] | None = None,
+) -> bool:
     """
     Detect if plot is not advancing sufficiently.
 
@@ -484,6 +501,8 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
 
     Args:
         state: Current narrative state
+        entities: Extracted entities for the current chapter
+        relationships: Extracted relationships for the current chapter
 
     Returns:
         True if plot appears stagnant, False otherwise
@@ -498,11 +517,15 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
         )
         return True
 
+    if entities is None:
+        entities = state.get("extracted_entities", {}) or {}
+
+    if relationships is None:
+        relationships = state.get("extracted_relationships", [])
+
     # Check 2: Get all extracted elements
-    entities = state.get("extracted_entities", {}) or {}
     characters = entities.get("characters", [])
     world_items = entities.get("world_items", [])
-    relationships = state.get("extracted_relationships", [])
 
     # Canonical state-shape: events are stored in world_items with type == "Event".
     # We also accept legacy `extracted_entities["events"]` if present.

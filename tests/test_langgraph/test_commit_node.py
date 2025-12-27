@@ -169,11 +169,12 @@ class TestCommitToGraph:
             ],
         }
 
-        # Step 1: Consolidate extraction -> writes externalized refs.
+        # Step 1: Consolidate extraction -> writes externalized refs and clears in-memory mirrors.
         extraction_update = consolidate_extraction(state)
         state = {**state, **extraction_update}
 
         assert state.get("extracted_relationships_ref"), "consolidate_extraction must set extracted_relationships_ref"
+        assert state["extracted_relationships"] == []
 
         # Poison the in-memory list to prove commit reads via the ref and not the in-state field.
         state["extracted_relationships"] = [
@@ -187,7 +188,8 @@ class TestCommitToGraph:
             )
         ]
 
-        # Step 2: Normalize relationships -> must update extracted_relationships_ref to the normalized file.
+        # Step 2: Normalize relationships -> must update extracted_relationships_ref to the normalized file
+        # and clear the in-memory mirror.
         with patch("core.langgraph.nodes.relationship_normalization_node.config.ENABLE_RELATIONSHIP_NORMALIZATION", True):
             with patch(
                 "core.langgraph.nodes.relationship_normalization_node.normalization_service.normalize_relationship_type",
@@ -198,6 +200,19 @@ class TestCommitToGraph:
         state = {**state, **normalization_update}
 
         assert state["extracted_relationships_ref"]["version"] >= 2
+        assert state["extracted_relationships"] == []
+
+        # Re-poison after normalization: commit should still ignore in-memory and read via ref.
+        state["extracted_relationships"] = [
+            ExtractedRelationship(
+                source_name="Alice",
+                target_name="Bob",
+                relationship_type="SHOULD_NOT_SEE",
+                description="poison-after-normalization",
+                chapter=1,
+                confidence=0.9,
+            )
+        ]
 
         # Step 3: Commit reads from extracted_relationships_ref (single source of truth) and uses WORKS_WITH.
         with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
@@ -243,6 +258,96 @@ class TestCommitToGraph:
                             assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
                             assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
                             assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
+
+    async def test_consolidate_extraction_clears_in_memory_mirrors(self, tmp_path):
+        """
+        Unit test for [`consolidate_extraction()`](core/langgraph/nodes/extraction_nodes.py:28).
+
+        Verifies that once extraction outputs are externalized to disk, the in-memory
+        mirrors (`extracted_entities`, `extracted_relationships`) are cleared to prevent
+        SQLite checkpoint bloat.
+        """
+        from pathlib import Path
+
+        from core.langgraph.content_manager import ContentManager
+        from core.langgraph.nodes.extraction_nodes import consolidate_extraction
+        from core.langgraph.state import ExtractedEntity, ExtractedRelationship
+
+        project_dir = str(tmp_path)
+
+        state = {
+            "project_dir": project_dir,
+            "current_chapter": 1,
+            "extracted_entities": {
+                "characters": [
+                    ExtractedEntity(
+                        name="Alice",
+                        type="Character",
+                        description="Alice",
+                        first_appearance_chapter=1,
+                        attributes={},
+                    )
+                ],
+                "world_items": [],
+            },
+            "extracted_relationships": [
+                ExtractedRelationship(
+                    source_name="Alice",
+                    target_name="Bob",
+                    relationship_type="KNOWS",
+                    description="They know each other",
+                    chapter=1,
+                    confidence=0.9,
+                )
+            ],
+        }
+
+        update = consolidate_extraction(state)
+        merged = {**state, **update}
+
+        assert merged["extracted_entities"] == {}
+        assert merged["extracted_relationships"] == []
+
+        entities_ref = merged["extracted_entities_ref"]
+        relationships_ref = merged["extracted_relationships_ref"]
+
+        assert isinstance(entities_ref, dict)
+        assert isinstance(relationships_ref, dict)
+        assert isinstance(entities_ref.get("path"), str)
+        assert isinstance(relationships_ref.get("path"), str)
+
+        assert (Path(project_dir) / entities_ref["path"]).exists()
+        assert (Path(project_dir) / relationships_ref["path"]).exists()
+
+        content_manager = ContentManager(project_dir)
+        entities_payload = content_manager.load_json(entities_ref)
+        relationships_payload = content_manager.load_json(relationships_ref)
+
+        assert isinstance(entities_payload, dict)
+        assert entities_payload["characters"][0]["name"] == "Alice"
+        assert entities_payload["world_items"] == []
+
+        assert isinstance(relationships_payload, list)
+        assert relationships_payload[0]["relationship_type"] == "KNOWS"
+
+    async def test_consolidate_extraction_rejects_invalid_entity_shape(self, tmp_path):
+        """
+        Negative case for [`consolidate_extraction()`](core/langgraph/nodes/extraction_nodes.py:28):
+
+        The node must fail fast when `extracted_entities` contains a non-dict, non-model
+        item, to avoid silently persisting corrupt extraction payloads.
+        """
+        from core.langgraph.nodes.extraction_nodes import consolidate_extraction
+
+        state = {
+            "project_dir": str(tmp_path),
+            "current_chapter": 1,
+            "extracted_entities": {"characters": [42], "world_items": []},
+            "extracted_relationships": [],
+        }
+
+        with pytest.raises(TypeError, match=r"expected extracted character entity to be dict-like"):
+            consolidate_extraction(state)
 
     async def test_commit_handles_errors_gracefully(
         self,
@@ -917,8 +1022,9 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
-            query, params = statements[0]
+            # Should have the DELETE and the MERGE
+            assert len(statements) == 2
+            query, params = statements[1]
 
             assert "CALL apoc.merge.relationship" in query
             assert params["predicate_clean"] == "KNOWS"
@@ -927,9 +1033,10 @@ class TestBuildRelationshipStatements:
             assert params["object_name"] == "Bob"
 
     async def test_empty_relationships(self):
-        """Test with empty relationships list."""
+        """Test with empty relationships list. Must still include the DELETE for the chapter."""
         statements = await _build_relationship_statements([], [], [], {}, {}, 1, False)
-        assert statements == []
+        assert len(statements) == 1
+        assert "DELETE r" in statements[0][0]
 
     async def test_applies_character_mappings(self):
         """Test that deduplication mappings are applied."""
@@ -974,8 +1081,8 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
-            query, params = statements[0]
+            assert len(statements) == 2
+            query, params = statements[1]
             assert params["subject_name"] == "ExistingAlice"
 
     async def test_applies_world_item_mappings(self):
@@ -1024,8 +1131,8 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
-            query, params = statements[0]
+            assert len(statements) == 2
+            query, params = statements[1]
             assert params["object_name"] == "Magic Sword"
             assert params["object_id"] == "sword_001"
 
@@ -1075,7 +1182,7 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
+            assert len(statements) == 2
 
     async def test_canonicalizes_subtype_labels_for_persistence(self):
         """

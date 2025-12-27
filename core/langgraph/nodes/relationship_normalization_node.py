@@ -38,7 +38,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
     Returns:
         Partial state update containing:
-        - extracted_relationships: Normalized relationships (in-memory mirror).
+        - extracted_relationships: [] (cleared to prevent checkpoint bloat).
         - extracted_relationships_ref: Content reference for normalized relationships.
         - relationship_vocabulary: Updated vocabulary (including usage stats).
         - relationships_normalized_this_chapter / relationships_novel_this_chapter: Metrics.
@@ -177,9 +177,9 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
     #
     # Source-of-truth contract:
     # - `extracted_relationships_ref` is authoritative for downstream nodes (including commit).
-    # - `extracted_relationships` is kept in sync for backward-compat with any in-memory consumers.
+    # - `extracted_relationships` is cleared to prevent checkpoint bloat.
     return {
-        "extracted_relationships": normalized_rels,
+        "extracted_relationships": [],
         "extracted_relationships_ref": normalized_ref,
         "relationship_vocabulary": vocabulary,
         "relationship_vocabulary_size": len(vocabulary),
