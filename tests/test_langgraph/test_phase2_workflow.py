@@ -70,7 +70,7 @@ def sample_generation_state(tmp_path: Any) -> NarrativeState:
         2: {
             "plot_point": "The hero meets a mentor",
             "chapter_summary": "Meeting the mentor",
-        }
+        },
     }
     chapter_outlines_ref = content_manager.save_json(chapter_outlines, "chapter_outlines", "all", 1)
     state["chapter_outlines_ref"] = chapter_outlines_ref
@@ -92,13 +92,12 @@ def sample_phase2_state(sample_generation_state: NarrativeState) -> NarrativeSta
 @pytest.fixture
 def mock_all_nodes() -> Any:
     """Mock all node functions for testing workflow routing."""
-    
-    # Create actual mocks for the nodes themselves
+
     mock_gen_node = MagicMock()
     mock_gen_node.side_effect = lambda state: {
         **state,
-        "draft_ref": {"path": "mock"},
-        "draft_word_count": 3,
+        "scene_drafts_ref": {"path": "mock_scene_drafts.json"},
+        "current_scene_index": 2,
         "current_node": "generate",
     }
 
@@ -108,6 +107,21 @@ def mock_all_nodes() -> Any:
         "extracted_entities": {"characters": []},
         "extracted_relationships": [],
         "current_node": "extract",
+    }
+
+    mock_scene_embeddings_node = MagicMock()
+    mock_scene_embeddings_node.side_effect = lambda state: {
+        **state,
+        "scene_embeddings_ref": {"path": "mock_scene_embeddings.json"},
+        "current_node": "gen_scene_embeddings",
+    }
+
+    mock_assemble_chapter_node = MagicMock()
+    mock_assemble_chapter_node.side_effect = lambda state: {
+        **state,
+        "draft_ref": {"path": "mock_draft"},
+        "draft_word_count": 3,
+        "current_node": "assemble_chapter",
     }
 
     mock_validate_node = MagicMock()
@@ -198,6 +212,14 @@ def mock_all_nodes() -> Any:
             return_value=mock_validate_node,
         ),
         patch(
+            "core.langgraph.workflow.generate_scene_embeddings",
+            side_effect=mock_scene_embeddings_node,
+        ),
+        patch(
+            "core.langgraph.workflow.assemble_chapter",
+            side_effect=mock_assemble_chapter_node,
+        ),
+        patch(
             "core.langgraph.workflow.generate_embedding",
             side_effect=mock_embed_node,
         ),
@@ -218,6 +240,8 @@ def mock_all_nodes() -> Any:
             "generate": mock_gen_node,
             "gen_embedding": mock_embed_node,
             "extract": mock_extract_node,
+            "gen_scene_embeddings": mock_scene_embeddings_node,
+            "assemble_chapter": mock_assemble_chapter_node,
             "normalize_relationships": mock_normalize_node,
             "commit": mock_commit_node,
             "validate": mock_validate_node,
@@ -309,7 +333,9 @@ class TestPhase2Workflow:
 
         # Verify all nodes were called in correct order
         mock_all_nodes["chapter_outline"].assert_called_once()
-        mock_all_nodes["gen_embedding"].assert_called_once()
+        mock_all_nodes["gen_embedding"].assert_not_called()
+        mock_all_nodes["gen_scene_embeddings"].assert_called_once()
+        mock_all_nodes["assemble_chapter"].assert_called_once()
         mock_all_nodes["normalize_relationships"].assert_called_once()
         mock_all_nodes["commit"].assert_called()
         mock_all_nodes["summarize"].assert_called_once()
@@ -370,7 +396,7 @@ class TestPhase2Workflow:
 
         # Execute workflow
         state = {**sample_generation_state, "max_iterations": 2}
-        await graph.ainvoke(state)
+        await graph.ainvoke(state, config={"recursion_limit": 200})
 
         # Revision should be called twice (max_iterations)
         assert mock_all_nodes["revise"].call_count == 2
@@ -418,12 +444,14 @@ class TestPhase2Workflow:
         await graph.ainvoke(sample_generation_state)
 
         # Check call order of some key nodes
-        # Chapter outline -> Generate -> Embedding -> Extract -> Normalize -> Commit -> Validate -> Summarize -> Finalize -> Heal -> Quality
-        
+        # Chapter outline -> Generate -> Extract -> Scene Embeddings -> Assemble -> Normalize -> Commit -> Validate -> Summarize -> Finalize -> Heal -> Quality
+
         mock_all_nodes["chapter_outline"].assert_called_once()
         mock_all_nodes["generate"].assert_called_once()
-        mock_all_nodes["gen_embedding"].assert_called_once()
+        mock_all_nodes["gen_embedding"].assert_not_called()
         mock_all_nodes["extract"].assert_called_once()
+        mock_all_nodes["gen_scene_embeddings"].assert_called_once()
+        mock_all_nodes["assemble_chapter"].assert_called_once()
         mock_all_nodes["normalize_relationships"].assert_called_once()
         mock_all_nodes["commit"].assert_called()
         mock_all_nodes["validate"].assert_called_once()
@@ -496,7 +524,7 @@ class TestPhase2Workflow:
         graph = create_full_workflow_graph()
 
         # Execute workflow
-        await graph.ainvoke(sample_generation_state)
+        await graph.ainvoke(sample_generation_state, config={"recursion_limit": 200})
 
         # Revision should be called twice
         assert mock_all_nodes["revise"].call_count == 2
@@ -569,15 +597,37 @@ class TestPhase2Integration:
         graph_obj = graph.get_graph()
 
         nodes = set(graph_obj.nodes)
-        
+
         # Verify presence of expected nodes
         expected_nodes = [
-            "chapter_outline", "generate", "gen_embedding", "extract", 
-            "normalize_relationships", "commit", "validate", "revise", 
-            "summarize", "finalize", "heal_graph", "check_quality", "advance_chapter"
+            "chapter_outline",
+            "generate",
+            "gen_embedding",
+            "extract",
+            "gen_scene_embeddings",
+            "assemble_chapter",
+            "normalize_relationships",
+            "commit",
+            "validate",
+            "revise",
+            "summarize",
+            "finalize",
+            "heal_graph",
+            "check_quality",
+            "advance_chapter",
         ]
         for node in expected_nodes:
             assert node in nodes
+
+    def test_workflow_revision_loop_routes_to_generate(self) -> None:
+        """Revision loop should route validate → revise → generate (scene regeneration)."""
+        graph = create_full_workflow_graph()
+        graph_obj = graph.get_graph()
+
+        edges = [(edge.source, edge.target) for edge in graph_obj.edges]
+
+        assert ("validate", "revise") in edges
+        assert ("revise", "generate") in edges
 
 
 class TestErrorRoutingFunctions:
@@ -717,7 +767,7 @@ class TestWorkflowErrorHandling:
             "needs_revision": True,
             "current_node": "validate",
         }
-        
+
         # Then make revise fail
         mock_all_nodes["revise"].side_effect = lambda s: {
             **s,
@@ -741,19 +791,19 @@ class TestWorkflowErrorHandling:
 
     async def test_workflow_stops_at_first_fatal_error(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow stops execution at first fatal error encountered."""
-        mock_all_nodes["gen_embedding"].side_effect = lambda s: {
+        mock_all_nodes["gen_scene_embeddings"].side_effect = lambda s: {
             **s,
             "has_fatal_error": True,
-            "last_error": "Embedding failed",
-            "error_node": "gen_embedding",
+            "last_error": "Scene embeddings failed",
+            "error_node": "gen_scene_embeddings",
         }
 
         graph = create_full_workflow_graph()
         result = await graph.ainvoke(sample_generation_state)
 
         assert result["current_node"] == "error_handler"
-        # Extract should not be called
-        mock_all_nodes["extract"].assert_not_called()
+        mock_all_nodes["assemble_chapter"].assert_not_called()
+        mock_all_nodes["normalize_relationships"].assert_not_called()
 
     async def test_workflow_multi_chapter_loop(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that workflow loops back for multiple chapters."""
@@ -766,11 +816,11 @@ class TestWorkflowErrorHandling:
         graph = create_full_workflow_graph()
 
         # Execute workflow
-        result = await graph.ainvoke(state)
+        result = await graph.ainvoke(state, config={"recursion_limit": 300})
 
         # Verify that chapter_outline, generate, etc. were called twice
         assert mock_all_nodes["chapter_outline"].call_count == 2
         assert mock_all_nodes["generate"].call_count == 2
         assert mock_all_nodes["check_quality"].call_count == 2
-        
+
         assert result["current_chapter"] == 2

@@ -47,9 +47,7 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
     """Verify that a fatal error in 'generate' routes to 'error_handler' and halts execution."""
 
     # Mock all Phase 2 nodes
-    mock_chapter_outline = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "chapter_outline"}
-    )
+    mock_chapter_outline = MagicMock(side_effect=lambda s: {**s, "current_node": "chapter_outline"})
 
     # This node will fail fatally
     mock_generate = MagicMock(
@@ -63,10 +61,10 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
     )
 
     # These nodes should NOT be called
-    mock_gen_embedding = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "gen_embedding"}
-    )
+    mock_gen_embedding = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_embedding"})
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
+    mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
+    mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
 
     with (
         patch(
@@ -82,11 +80,11 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
             "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract,
         ),
+        patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
+        patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),
         patch("core.langgraph.workflow.normalize_relationships", MagicMock()),
         patch("core.langgraph.workflow.commit_to_graph", MagicMock()),
-        patch(
-            "core.langgraph.subgraphs.validation.create_validation_subgraph", MagicMock()
-        ),
+        patch("core.langgraph.subgraphs.validation.create_validation_subgraph", MagicMock()),
         patch("core.langgraph.workflow.revise_chapter", MagicMock()),
         patch("core.langgraph.workflow.summarize_chapter", MagicMock()),
         patch("core.langgraph.workflow.finalize_chapter", MagicMock()),
@@ -120,17 +118,13 @@ async def test_workflow_routes_to_error_handler_on_validation_fatal_error(
     """Verify that a fatal error in 'validate' routes to 'error_handler' via should_revise_or_handle_error."""
 
     # Mock nodes up to validate
-    mock_chapter_outline = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "chapter_outline"}
-    )
+    mock_chapter_outline = MagicMock(side_effect=lambda s: {**s, "current_node": "chapter_outline"})
     mock_generate = MagicMock(side_effect=lambda s: {**s, "current_node": "generate"})
-    mock_gen_embedding = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "gen_embedding"}
-    )
+    mock_gen_embedding = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_embedding"})
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
-    mock_normalize = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "normalize_relationships"}
-    )
+    mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
+    mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
+    mock_normalize = MagicMock(side_effect=lambda s: {**s, "current_node": "normalize_relationships"})
     mock_commit = MagicMock(side_effect=lambda s: {**s, "current_node": "commit"})
 
     # Validation node fails fatally
@@ -162,6 +156,8 @@ async def test_workflow_routes_to_error_handler_on_validation_fatal_error(
             "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract,
         ),
+        patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
+        patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),
         patch("core.langgraph.workflow.normalize_relationships", mock_normalize),
         patch("core.langgraph.workflow.commit_to_graph", mock_commit),
         patch(
@@ -197,27 +193,19 @@ async def test_workflow_continues_when_no_fatal_error(
     """Verify that workflow proceeds normally when no fatal error is set."""
 
     # Mock all Phase 2 nodes with successful returns
-    mock_chapter_outline = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "chapter_outline"}
-    )
+    mock_chapter_outline = MagicMock(side_effect=lambda s: {**s, "current_node": "chapter_outline"})
     mock_generate = MagicMock(side_effect=lambda s: {**s, "current_node": "generate"})
-    mock_gen_embedding = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "gen_embedding"}
-    )
+    mock_gen_embedding = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_embedding"})
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
-    mock_normalize = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "normalize_relationships"}
-    )
+    mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
+    mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
+    mock_normalize = MagicMock(side_effect=lambda s: {**s, "current_node": "normalize_relationships"})
     mock_commit = MagicMock(side_effect=lambda s: {**s, "current_node": "commit"})
-    mock_validate = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "validate", "needs_revision": False}
-    )
+    mock_validate = MagicMock(side_effect=lambda s: {**s, "current_node": "validate", "needs_revision": False})
     mock_summarize = MagicMock(side_effect=lambda s: {**s, "current_node": "summarize"})
     mock_finalize = MagicMock(side_effect=lambda s: {**s, "current_node": "finalize"})
     mock_heal = MagicMock(side_effect=lambda s: {**s, "current_node": "heal_graph"})
-    mock_quality = MagicMock(
-        side_effect=lambda s: {**s, "current_node": "check_quality"}
-    )
+    mock_quality = MagicMock(side_effect=lambda s: {**s, "current_node": "check_quality"})
 
     with (
         patch(
@@ -233,6 +221,8 @@ async def test_workflow_continues_when_no_fatal_error(
             "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract,
         ),
+        patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
+        patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),
         patch("core.langgraph.workflow.normalize_relationships", mock_normalize),
         patch("core.langgraph.workflow.commit_to_graph", mock_commit),
         patch(
@@ -257,8 +247,10 @@ async def test_workflow_continues_when_no_fatal_error(
         # Verify all nodes called
         mock_chapter_outline.assert_called_once()
         mock_generate.assert_called_once()
-        mock_gen_embedding.assert_called_once()
+        mock_gen_embedding.assert_not_called()
         mock_extract.assert_called_once()
+        mock_gen_scene_embeddings.assert_called_once()
+        mock_assemble_chapter.assert_called_once()
         mock_normalize.assert_called_once()
         mock_commit.assert_called_once()
         mock_validate.assert_called_once()

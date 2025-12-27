@@ -21,7 +21,7 @@ from typing import Any
 import structlog
 
 from core.db_manager import neo4j_manager
-from core.langgraph.state import Contradiction, ExtractedEntity, NarrativeState
+from core.langgraph.state import Contradiction, NarrativeState
 
 logger = structlog.get_logger(__name__)
 
@@ -173,13 +173,13 @@ def _get_character_trait_values_for_validation(char: Any) -> set[str]:
     """Extract normalized trait values for a character.
 
     Args:
-        char: Character-like object (typically an `ExtractedEntity`).
+        char: Character-like object (typically an `ExtractedEntity` or dict).
 
     Returns:
-        Normalized trait values derived from `char.attributes["traits"]`. Missing or
+        Normalized trait values derived from `attributes["traits"]`. Missing or
         invalid shapes yield an empty set.
     """
-    attrs = getattr(char, "attributes", None)
+    attrs = char.get("attributes") if isinstance(char, dict) else getattr(char, "attributes", None)
     if not isinstance(attrs, dict):
         return set()
 
@@ -332,7 +332,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 async def _validate_relationships(
     relationships: list[Any],
     chapter: int,
-    extracted_entities: dict[str, list[ExtractedEntity]] | None = None,
+    extracted_entities: dict[str, Any] | None = None,
 ) -> list[Contradiction]:
     """
     Validate extracted relationships for semantic correctness.
@@ -463,7 +463,7 @@ async def _validate_relationships(
 
 
 async def _check_character_traits(
-    extracted_chars: list[ExtractedEntity],
+    extracted_chars: list[Any],
     current_chapter: int,
 ) -> list[Contradiction]:
     """
@@ -489,6 +489,10 @@ async def _check_character_traits(
 
     try:
         for char in extracted_chars:
+            character_name = char.get("name") if isinstance(char, dict) else getattr(char, "name", None)
+            if not isinstance(character_name, str) or not character_name:
+                continue
+
             # Get established traits from Neo4j (from HAS_TRAIT relationships)
             query = """
                 MATCH (c:Character {name: $name})
@@ -499,7 +503,7 @@ async def _check_character_traits(
                 LIMIT 1
             """
 
-            result = await neo4j_manager.execute_read_query(query, {"name": char.name})
+            result = await neo4j_manager.execute_read_query(query, {"name": character_name})
 
             if result and len(result) > 0:
                 existing = result[0]
@@ -518,7 +522,7 @@ async def _check_character_traits(
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_a}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_b}'",
+                                description=f"{character_name} was established as '{trait_a}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_b}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,
@@ -532,7 +536,7 @@ async def _check_character_traits(
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_b}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_a}'",
+                                description=f"{character_name} was established as '{trait_b}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_a}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,

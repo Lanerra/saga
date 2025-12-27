@@ -21,7 +21,7 @@ import re
 from typing import Any
 
 import structlog
-from langgraph.graph import END, StateGraph  # type: ignore
+from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
 import config
 from core.db_manager import neo4j_manager

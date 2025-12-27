@@ -10,10 +10,11 @@ from typing import Any, Literal
 
 import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
-from langgraph.graph import END, StateGraph  # type: ignore
+from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
+from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.commit_node import commit_to_graph
-from core.langgraph.nodes.embedding_node import generate_embedding
+from core.langgraph.nodes.embedding_node import generate_embedding, generate_scene_embeddings
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
 from core.langgraph.nodes.quality_assurance_node import check_quality
@@ -287,12 +288,14 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
         "current_scene_index": 0,
         "contradictions": [],
         "revision_feedback": None,
+        "revision_guidance_ref": None,
         "evaluation_result": None,
         "patch_instructions": None,
         "is_from_flawed_draft": False,
         # Clear chapter-specific content references to avoid leaks or confusion
         "draft_ref": None,
         "embedding_ref": None,
+        "scene_embeddings_ref": None,
         "draft_text": None,
         "generated_embedding": None,
         "chapter_plan": None,
@@ -414,6 +417,8 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("generate", create_generation_subgraph())
     workflow.add_node("gen_embedding", generate_embedding)
     workflow.add_node("extract", create_scene_extraction_subgraph())
+    workflow.add_node("gen_scene_embeddings", generate_scene_embeddings)
+    workflow.add_node("assemble_chapter", assemble_chapter)
     workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
@@ -498,13 +503,15 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     )
 
     # Generation flow
-    # Run embedding generation and extraction after text generation
-    # All Phase 2 transitions now respect fatal errors via should_handle_error.
+    # Mainline Phase 2 ordering:
+    # generate → extract → gen_scene_embeddings → assemble_chapter → normalize_relationships → commit → validate …
+    #
+    # The chapter-level embedding node remains available for non-mainline paths.
     workflow.add_conditional_edges(
         "generate",
         should_handle_error,
         {
-            "continue": "gen_embedding",
+            "continue": "extract",
             "error": "error_handler",
         },
     )
@@ -516,8 +523,33 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
             "error": "error_handler",
         },
     )
+
+    def should_continue_after_extract(
+        state: NarrativeState,
+    ) -> Literal["scene_embeddings", "error"]:
+        if state.get("has_fatal_error", False):
+            return "error"
+
+        return "scene_embeddings"
+
     workflow.add_conditional_edges(
         "extract",
+        should_continue_after_extract,
+        {
+            "scene_embeddings": "gen_scene_embeddings",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "gen_scene_embeddings",
+        should_handle_error,
+        {
+            "continue": "assemble_chapter",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "assemble_chapter",
         should_handle_error,
         {
             "continue": "normalize_relationships",
@@ -558,7 +590,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         "revise",
         should_handle_error,
         {
-            "continue": "gen_embedding",
+            "continue": "generate",
             "error": "error_handler",
         },
     )
@@ -605,7 +637,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=22,  # route + init_error + 6 init + 13 generation/QA nodes + error_handler
+        total_nodes=24,  # route + init_error + 6 init + 15 generation/QA nodes + error_handler
         entry_point="route",
     )
 

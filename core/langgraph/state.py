@@ -161,6 +161,7 @@ class NarrativeState(TypedDict, total=False):
     # Externalized content references
     draft_ref: ContentRef | None  # Reference to externalized draft text
     embedding_ref: ContentRef | None  # Reference to externalized embedding
+    scene_embeddings_ref: ContentRef | None  # Reference to externalized scene embeddings (per chapter)
     draft_text: str | None  # Inline draft text (for non-externalized usage or tests)
     generated_embedding: list[float] | None  # Inline embedding (before externalization)
 
@@ -187,6 +188,7 @@ class NarrativeState(TypedDict, total=False):
     contradictions: list[Contradiction]
     needs_revision: bool
     revision_feedback: str | None
+    revision_guidance_ref: ContentRef | None
     is_from_flawed_draft: bool  # True if deduplication removed text or other quality issues detected
 
     # Used by finalize/persistence to store the latest summary string without re-loading.
@@ -331,7 +333,7 @@ class NarrativeState(TypedDict, total=False):
 
     # Graph healing diagnostics (cached from the last run).
     last_healing_warnings: list[str]
-    last_apoc_available: bool
+    last_apoc_available: bool | None
 
 
 # Type alias for improved readability in node signatures
@@ -408,6 +410,7 @@ def create_initial_state(
         # Externalized content references
         "draft_ref": None,
         "embedding_ref": None,
+        "scene_embeddings_ref": None,
         "summaries_ref": None,
         "scene_drafts_ref": None,
         "hybrid_context_ref": None,
@@ -420,6 +423,7 @@ def create_initial_state(
         "extracted_relationships_ref": None,
         "active_characters_ref": None,
         "chapter_plan_ref": None,
+        "revision_guidance_ref": None,
         # Entity extraction
         "extracted_entities": {},
         "extracted_relationships": [],
@@ -502,7 +506,7 @@ def create_initial_state(
         "nodes_enriched": 0,
         "nodes_removed": 0,
         "last_healing_warnings": [],
-        "last_apoc_available": False,
+        "last_apoc_available": None,
     }
 
     return state

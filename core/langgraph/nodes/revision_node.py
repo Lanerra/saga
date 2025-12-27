@@ -10,63 +10,42 @@ Migration Reference: docs/phase2_migration_plan.md - Step 2.2
 
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
 
 import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
-    get_draft_text,
+    get_chapter_plan,
     get_hybrid_context,
 )
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
-from processing.text_deduplicator import TextDeduplicator
-from prompts.prompt_data_getters import get_reliable_kg_facts_for_drafting_prompt
-from prompts.prompt_renderer import get_system_prompt, render_prompt
+from prompts.prompt_renderer import get_system_prompt
 
 logger = structlog.get_logger(__name__)
 
 
 async def revise_chapter(state: NarrativeState) -> NarrativeState:
-    """Revise the current chapter draft using validation contradictions.
+    """Produce revision guidance and reset chapter artifacts for scene-level regeneration.
 
-    This node enforces a bounded revision loop, constructs a revision prompt, calls
-    the revision model, de-duplicates repetitive text, then externalizes the revised
-    draft and resets validation fields for the next iteration.
-
-    Args:
-        state: Workflow state.
-
-    Returns:
-        Updated state containing:
-        - draft_ref: Externalized revised draft text.
-        - draft_word_count: Word count of the revised draft.
-        - iteration_count: Incremented revision iteration count.
-        - contradictions: Cleared for re-validation.
-        - needs_revision: Reset to `False` (will be re-computed by validation).
-        - is_from_flawed_draft: True when de-duplication removed content.
-        - current_node: `"revise"`.
-
-        On fatal precondition failures (iteration limit exceeded, missing draft text,
-        prompt construction failure, token budget exhaustion), returns a state with
-        `has_fatal_error` set and `last_error` populated.
-
-    Notes:
-        This node performs LLM I/O and writes externalized artifacts to disk via
-        [`ContentManager.save_text()`](core/langgraph/content_manager.py:1). It also
-        runs local de-duplication to reduce repeated segments before persistence.
+    Revision semantics (scene-first pipeline):
+        - This node does NOT rewrite the chapter draft.
+        - It produces externalized `revision_guidance_ref` that downstream scene drafting
+          can incorporate.
+        - It clears stale artifacts (`scene_drafts_ref`, `scene_embeddings_ref`, `draft_ref`,
+          `embedding_ref`, extraction refs) so the regenerated pipeline cannot reuse them.
+        - It resets `current_scene_index` to 0 so the generation subgraph drafts scenes again.
     """
+    chapter_number = state.get("current_chapter", 1)
+
     logger.info(
-        "revise_chapter: starting revision",
-        chapter=state.get("current_chapter", 1),
+        "revise_chapter: generating revision guidance",
+        chapter=chapter_number,
         iteration=state.get("iteration_count", 0),
         contradictions=len(state.get("contradictions", [])),
     )
 
-    # Step 1: Check iteration limit
     if state.get("iteration_count", 0) >= state.get("max_iterations", 3):
         error_msg = f"Max revision attempts ({state.get('max_iterations', 3)}) reached"
         logger.error(
@@ -82,43 +61,78 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "revise_failed",
         }
 
-    # Initialize content manager for reading externalized content
     content_manager = ContentManager(state.get("project_dir", ""))
 
-    # Get draft text (prefers externalized content, falls back to in-state)
-    draft_text = get_draft_text(state, content_manager)
-
-    # Validate we have text to revise
-    if not draft_text:
-        error_msg = "No draft text available for revision"
-        logger.error("revise_chapter: fatal error", error=error_msg)
-        return {
-            "last_error": error_msg,
-            "has_fatal_error": True,
-            "error_node": "revise",
-            "current_node": "revise",
-        }
-
-    # Step 2: Build revision prompt
     try:
-        # Get hybrid context from content manager
         hybrid_context = get_hybrid_context(state, content_manager)
-
-        # Get chapter outlines from content manager
         chapter_outlines = get_chapter_outlines(state, content_manager)
+        chapter_plan = get_chapter_plan(state, content_manager)
+        protagonist_name = state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME)
 
-        prompt = await _construct_revision_prompt(
-            draft_text=draft_text,
-            contradictions=state.get("contradictions", []),
-            chapter_number=state.get("current_chapter", 1),
-            chapter_outlines=chapter_outlines,
-            hybrid_context=hybrid_context,
-            novel_title=state.get("title", ""),
-            novel_genre=state.get("genre", ""),
-            protagonist_name=state.get("protagonist_name", config.DEFAULT_PROTAGONIST_NAME),
+        if not chapter_plan:
+            raise ValueError("No chapter plan available for revision guidance")
+
+        scene_lines: list[str] = []
+        for scene_index, scene in enumerate(chapter_plan, 1):
+            title = scene.get("title", "")
+            pov_character = scene.get("pov_character", "")
+            setting = scene.get("setting", "")
+            plot_point = scene.get("plot_point", "")
+            conflict = scene.get("conflict", "")
+            outcome = scene.get("outcome", "")
+
+            scene_lines.append(
+                "\n".join(
+                    [
+                        f"{scene_index}. {title}".strip(),
+                        f"   POV: {pov_character}".strip(),
+                        f"   Setting: {setting}".strip(),
+                        f"   Plot point: {plot_point}".strip(),
+                        f"   Conflict: {conflict}".strip(),
+                        f"   Outcome: {outcome}".strip(),
+                    ]
+                )
+            )
+
+        plot_point_focus = ""
+        chapter_outline = chapter_outlines.get(chapter_number, {})
+        if isinstance(chapter_outline, dict):
+            plot_point_focus = str(chapter_outline.get("plot_point", "") or "")
+
+        revision_reason = _format_contradictions_for_prompt(state.get("contradictions", []))
+
+        prompt = "\n\n".join(
+            [
+                "You are the revision coordinator for a scene-first drafting pipeline.",
+                "Your job is to produce concrete revision guidance for regenerating scenes.",
+                "",
+                "Hard rules:",
+                "- Do NOT rewrite any prose.",
+                "- Output ONLY revision guidance (bullet points). No headings. No code fences.",
+                "- Each bullet must be actionable and specific.",
+                "- When possible, reference scene numbers and scene titles from the plan.",
+                "",
+                f"Novel title: {state.get('title', '')}",
+                f"Genre: {state.get('genre', '')}",
+                f"Protagonist: {protagonist_name}",
+                f"Chapter: {chapter_number}",
+                f"Chapter focus (if any): {plot_point_focus}",
+                "",
+                "Canon context (story so far):",
+                hybrid_context or "",
+                "",
+                "Planned scenes:",
+                "\n".join(scene_lines),
+                "",
+                "Problems to fix (from validation):",
+                revision_reason,
+                "",
+                "Produce revision guidance now.",
+            ]
         )
-    except Exception as e:
-        error_msg = f"Revision prompt construction failed: {str(e)}"
+
+    except Exception as exc:
+        error_msg = f"Revision guidance prompt construction failed: {str(exc)}"
         logger.error(
             "revise_chapter: fatal error",
             error=error_msg,
@@ -131,7 +145,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "revise",
         }
 
-    # Step 3: Calculate token budget
     model_name = state.get("revision_model", config.MEDIUM_MODEL)
     prompt_tokens = llm_service.count_tokens(prompt, model_name)
 
@@ -142,8 +155,8 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
     available_tokens = max_context - prompt_tokens - token_buffer
     max_gen_tokens = min(max_generation, available_tokens)
 
-    if max_gen_tokens < 500:
-        error_msg = f"Insufficient token space for revision. " f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
+    if max_gen_tokens < 200:
+        error_msg = "Insufficient token space for revision guidance. " f"Prompt tokens: {prompt_tokens}, available: {available_tokens}"
         logger.error("revise_chapter: fatal error - token budget exceeded", error=error_msg)
         return {
             "last_error": error_msg,
@@ -152,17 +165,8 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "revise",
         }
 
-    # Step 4: Call revision model (lower temperature for consistency)
-    logger.info(
-        "revise_chapter: calling LLM for revision",
-        chapter=state.get("current_chapter", 1),
-        model=model_name,
-        iteration=state.get("iteration_count", 0) + 1,
-        max_tokens=max_gen_tokens,
-    )
-
     try:
-        revised_text, usage = await llm_service.async_call_llm(
+        revision_guidance, _ = await llm_service.async_call_llm(
             model_name=model_name,
             prompt=prompt,
             temperature=getattr(config.Temperatures, "REVISION", 0.5),
@@ -173,192 +177,59 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             auto_clean_response=True,
             system_prompt=get_system_prompt("revision_agent"),
         )
-
-        if not revised_text or not revised_text.strip():
-            logger.error(
-                "revise_chapter: LLM returned empty text",
-                chapter=state.get("current_chapter", 1),
-            )
-            return {
-                "last_error": "Revision LLM returned empty text",
-                "has_fatal_error": True,
-                "error_node": "revise",
-                "current_node": "revise",
-                "iteration_count": state.get("iteration_count", 0) + 1,
-            }
-
-        # Step 5: Update state
-        word_count = len(revised_text.split())
-
-        logger.info(
-            "revise_chapter: revision complete",
-            chapter=state.get("current_chapter", 1),
-            iteration=state.get("iteration_count", 0) + 1,
-            word_count=word_count,
-            tokens_used=usage.get("total_tokens", 0) if usage else 0,
-        )
-
-        # Step 6: Deduplicate text to remove repetitive segments
-        deduplicator = TextDeduplicator()
-        deduplicated_text, removed_chars = await deduplicator.deduplicate(revised_text, segment_level="paragraph")
-
-        # Track if deduplication modified text (signals potentially flawed extraction)
-        # Preserve existing flag if already set, or set based on this revision
-        is_from_flawed_draft = state.get("is_from_flawed_draft", False) or (removed_chars > 0)
-
-        if removed_chars > 0:
-            final_word_count = len(deduplicated_text.split())
-            logger.info(
-                "revise_chapter: deduplication applied",
-                chapter=state.get("current_chapter", 1),
-                iteration=state.get("iteration_count", 0) + 1,
-                chars_removed=removed_chars,
-                original_words=word_count,
-                final_words=final_word_count,
-                is_from_flawed_draft=True,
-            )
-        else:
-            deduplicated_text = revised_text
-            final_word_count = word_count
-            logger.info(
-                "revise_chapter: no duplicates detected",
-                chapter=state.get("current_chapter", 1),
-                iteration=state.get("iteration_count", 0) + 1,
-                is_from_flawed_draft=is_from_flawed_draft,
-            )
-
-        # Save revised draft to content manager
-        current_version = content_manager.get_latest_version("draft", f"chapter_{state.get('current_chapter', 1)}") + 1
-        draft_ref = content_manager.save_text(
-            deduplicated_text,
-            "draft",
-            f"chapter_{state.get('current_chapter', 1)}",
-            version=current_version,
-        )
-
-        return {
-            "draft_ref": draft_ref,
-            "draft_word_count": final_word_count,
-            "is_from_flawed_draft": is_from_flawed_draft,
-            "iteration_count": state.get("iteration_count", 0) + 1,
-            "contradictions": [],  # Will be re-validated
-            "needs_revision": False,  # Reset flag, will be set again by validation if needed
-            "current_node": "revise",
-            "last_error": None,
-        }
-
-    except Exception as e:
-        error_msg = f"Revision failed: {str(e)}"
+    except Exception:
         logger.error(
-            "revise_chapter: fatal error",
-            error=error_msg,
-            chapter=state.get("current_chapter", 1),
+            "revise_chapter: revision guidance generation failed",
+            chapter=chapter_number,
             exc_info=True,
         )
         return {
-            "last_error": error_msg,
+            "last_error": "Revision guidance generation failed",
             "has_fatal_error": True,
             "error_node": "revise",
             "current_node": "revise",
         }
 
+    if not revision_guidance or not revision_guidance.strip():
+        return {
+            "last_error": "Revision guidance generation failed",
+            "has_fatal_error": True,
+            "error_node": "revise",
+            "current_node": "revise",
+        }
 
-async def _construct_revision_prompt(
-    *,
-    draft_text: str,
-    contradictions: list[Contradiction],
-    chapter_number: int,
-    chapter_outlines: dict[int, dict[str, Any]],
-    hybrid_context: str | None,
-    novel_title: str,
-    novel_genre: str,
-    protagonist_name: str,
-) -> str:
-    """
-    Construct the revision prompt for chapter rewriting.
-
-    This uses the existing Jinja2 template system to build a comprehensive
-    revision prompt with all contradictions and context.
-
-    REUSES: prompts/revision_agent/full_chapter_rewrite.j2
-
-    Args:
-        draft_text: Current chapter text to revise
-        contradictions: List of Contradiction objects from validation
-        chapter_number: Chapter number being revised
-        chapter_outlines: Chapter outlines dictionary from content manager
-        hybrid_context: Combined context from KG and previous chapters
-        novel_title: Title of the novel
-        novel_genre: Genre of the novel
-        protagonist_name: Name of the protagonist
-
-    Returns:
-        Rendered prompt string ready for LLM
-    """
-    # Build revision reason from contradictions
-    revision_reason = _format_contradictions_for_prompt(contradictions)
-
-    # Get chapter focus/plot point if available
-    chapter_outline = chapter_outlines.get(chapter_number, {})
-    if isinstance(chapter_outline, dict):
-        plot_point_focus = chapter_outline.get("plot_point", "")
-    else:
-        plot_point_focus = ""
-
-    # Build plan focus section if we have a plot point
-    plan_focus_section = ""
-    if plot_point_focus:
-        plan_focus_section = f"""**Original Chapter Focus:**
-Plot Point: {plot_point_focus}
-
-Please ensure your revision stays true to this plot point while addressing all issues."""
-
-    # Get KG facts for context (if not already in hybrid_context)
-    if not hybrid_context:
-        try:
-            kg_facts = await get_reliable_kg_facts_for_drafting_prompt(
-                chapter_outlines=chapter_outlines,
-                chapter_number=chapter_number,
-                chapter_plan=None,
-                protagonist_name=protagonist_name,
-            )
-            hybrid_context = kg_facts if kg_facts else "No previous context available."
-        except Exception as e:
-            logger.warning(
-                "revise_chapter: failed to fetch KG facts",
-                error=str(e),
-            )
-            hybrid_context = "Context unavailable."
-
-    # Build detailed problem descriptions
-    all_problem_descriptions = ""
-    if contradictions:
-        all_problem_descriptions = """**Detailed Issues to Address:**
-"""
-        for i, contradiction in enumerate(contradictions, 1):
-            severity_label = contradiction.severity.upper()
-            all_problem_descriptions += f"{i}. [{severity_label}] {contradiction.description}\n"
-            if contradiction.suggested_fix:
-                all_problem_descriptions += f"   Suggested fix: {contradiction.suggested_fix}\n"
-
-    # Render using the full chapter rewrite template
-    prompt = render_prompt(
-        "revision_agent/full_chapter_rewrite.j2",
-        {
-            "chapter_number": chapter_number,
-            "protagonist_name": protagonist_name,
-            "revision_reason": revision_reason,
-            "all_problem_descriptions": all_problem_descriptions,
-            "deduplication_note": "",  # Not applicable in this context
-            "length_issue_explicit_instruction": "",  # Length check removed, kept for template compatibility
-            "plan_focus_section": plan_focus_section,
-            "hybrid_context_for_revision": hybrid_context,
-            "original_snippet": draft_text,  # Full text, not just snippet
-            "genre": novel_genre,
-        },
+    current_version = (
+        content_manager.get_latest_version(
+            "revision_guidance",
+            f"chapter_{chapter_number}",
+        )
+        + 1
+    )
+    revision_guidance_ref = content_manager.save_text(
+        revision_guidance.strip(),
+        "revision_guidance",
+        f"chapter_{chapter_number}",
+        version=current_version,
     )
 
-    return prompt
+    return {
+        "revision_guidance_ref": revision_guidance_ref,
+        "iteration_count": state.get("iteration_count", 0) + 1,
+        "contradictions": [],
+        "needs_revision": False,
+        "current_scene_index": 0,
+        "scene_drafts_ref": None,
+        "scene_embeddings_ref": None,
+        "draft_ref": None,
+        "embedding_ref": None,
+        "generated_embedding": None,
+        "extracted_entities_ref": None,
+        "extracted_relationships_ref": None,
+        "has_fatal_error": False,
+        "error_node": None,
+        "last_error": None,
+        "current_node": "revise",
+    }
 
 
 def _format_contradictions_for_prompt(contradictions: list[Contradiction]) -> str:

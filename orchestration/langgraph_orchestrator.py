@@ -48,6 +48,11 @@ _LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
     "core.langgraph.nodes.extraction_nodes",
     "core.langgraph.nodes.revision_node",
     "core.langgraph.nodes.summary_node",
+    # LangGraph scene-level generation/extraction
+    "core.langgraph.nodes.scene_generation_node",
+    "core.langgraph.nodes.scene_extraction",
+    # Finalization
+    "core.langgraph.nodes.finalize_node",
     # LangGraph initialization nodes
     "core.langgraph.initialization.character_sheets_node",
     "core.langgraph.initialization.global_outline_node",
@@ -57,8 +62,13 @@ _LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
     # Validation subgraph (LLM-based quality eval + world rule checks)
     "core.langgraph.subgraphs.validation",
     # Services invoked by workflow nodes that also import `llm_service`
+    "core.entity_embedding_service",
     "core.graph_healing_service",
     "core.relationship_normalization_service",
+    # UI telemetry
+    "ui.rich_display",
+    # Processing utilities that call LLM embeddings
+    "processing.text_deduplicator",
     # Defensive: other nodes occasionally used in graphs
     "core.langgraph.nodes.context_retrieval_node",
     "core.langgraph.nodes.scene_planning_node",
@@ -358,8 +368,9 @@ class LangGraphOrchestrator:
             total_chapters=state.get("total_chapters"),
         )
 
-        config_dict = {"configurable": {"thread_id": thread_id}}
+        config_dict = {"configurable": {"thread_id": thread_id}, "recursion_limit": 500}
         last_node = None
+        event_index = 0
 
         try:
             # Use astream() for event-based progress tracking across all chapters.
@@ -371,6 +382,8 @@ class LangGraphOrchestrator:
                 node_name = list(event.keys())[0]
                 if node_name.startswith("__"):
                     continue
+
+                event_index += 1
 
                 state_update = event[node_name]
                 if not isinstance(state_update, dict):
@@ -384,7 +397,7 @@ class LangGraphOrchestrator:
                 current_chapter = state.get("current_chapter", 1)
 
                 # Handle workflow event for progress tracking
-                await self._handle_workflow_event(event, current_chapter)
+                await self._handle_workflow_event(event, current_chapter, event_index)
 
                 # Log chapter completion
                 if node_name in ["finalize", "heal_graph", "check_quality"]:
@@ -425,7 +438,12 @@ class LangGraphOrchestrator:
 
         logger.info("Multi-chapter generation stream complete.")
 
-    async def _handle_workflow_event(self, event: dict[str, Any], chapter_number: int) -> None:
+    async def _handle_workflow_event(
+        self,
+        event: dict[str, Any],
+        chapter_number: int,
+        event_index: int = 0,
+    ) -> None:
         """Update UI and structured logs for a workflow event.
 
         This method is called once per `astream()` event and is responsible for:
@@ -485,6 +503,7 @@ class LangGraphOrchestrator:
             f"[Chapter {chapter_number}] {step_description}",
             node=node_name,
             chapter=chapter_number,
+            event_index=event_index,
             init_step=initialization_step if initialization_step else None,
         )
 

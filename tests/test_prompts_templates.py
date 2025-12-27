@@ -82,10 +82,7 @@ def test_draft_scene_outputs_text_only(monkeypatch: pytest.MonkeyPatch) -> None:
     env = Environment(
         loader=DictLoader(
             {
-                "narrative_agent/draft_scene.j2": (
-                    "4. Output ONLY the scene text.\n"
-                    "{{ scene_text }}\n"
-                ),
+                "narrative_agent/draft_scene.j2": ("4. Output ONLY the scene text.\n" "{{ scene_text }}\n"),
             }
         ),
         undefined=StrictUndefined,

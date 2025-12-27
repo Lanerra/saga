@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, NoReturn, TypedDict, cast
 
 import structlog
 
@@ -39,7 +39,7 @@ class FrozenContentRef(dict[str, Any]):
         Mutation methods are blocked to ensure immutability.
     """
 
-    def _raise_immutable(self) -> None:
+    def _raise_immutable(self) -> NoReturn:
         raise TypeError("ContentRef is immutable")
 
     def __setitem__(self, key: str, value: Any) -> None:  # type: ignore[override]
@@ -51,13 +51,13 @@ class FrozenContentRef(dict[str, Any]):
     def clear(self) -> None:  # type: ignore[override]
         self._raise_immutable()
 
-    def pop(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+    def pop(self, key: str, default: Any = None) -> NoReturn:  # type: ignore[override]
         self._raise_immutable()
 
-    def popitem(self) -> tuple[str, Any]:  # type: ignore[override]
+    def popitem(self) -> NoReturn:  # type: ignore[override]
         self._raise_immutable()
 
-    def setdefault(self, key: str, default: Any = None) -> Any:  # type: ignore[override]
+    def setdefault(self, key: str, default: Any = None) -> NoReturn:  # type: ignore[override]
         self._raise_immutable()
 
     def update(self, *args: Any, **kwargs: Any) -> None:  # type: ignore[override]
@@ -176,17 +176,11 @@ class ContentManager:
 
         expected_checksum = ref.get("checksum")
         if not isinstance(expected_checksum, str) or not expected_checksum:
-            raise ValueError(
-                f"{caller} expected ContentRef.checksum to be a non-empty str when present; "
-                f"got {expected_checksum!r} for path={full_path}"
-            )
+            raise ValueError(f"{caller} expected ContentRef.checksum to be a non-empty str when present; " f"got {expected_checksum!r} for path={full_path}")
 
         actual_checksum = self._compute_checksum(data_bytes)
         if actual_checksum != expected_checksum:
-            raise ValueError(
-                f"{caller} detected checksum mismatch for content file: {full_path}. "
-                f"expected={expected_checksum}, actual={actual_checksum}"
-            )
+            raise ValueError(f"{caller} detected checksum mismatch for content file: {full_path}. " f"expected={expected_checksum}, actual={actual_checksum}")
 
         return None
 
@@ -669,6 +663,51 @@ def load_embedding(manager: ContentManager, ref: ContentRef | str) -> list[float
         return normalized
 
     raise ValueError(f"Unexpected embedding payload type: {type(data)}")
+
+
+def save_scene_embeddings(
+    manager: ContentManager,
+    embeddings: list[list[float]],
+    chapter: int,
+    version: int = 1,
+) -> ContentRef:
+    """Save scene-level embeddings for a chapter as a single JSON artifact."""
+    if not isinstance(embeddings, list):
+        raise TypeError(f"scene embeddings must be a list; got {type(embeddings)}")
+
+    for embedding_index, embedding in enumerate(embeddings):
+        if not isinstance(embedding, list):
+            raise TypeError("each scene embedding must be a list of floats; " f"index={embedding_index}, got {type(embedding)}")
+        for value_index, value in enumerate(embedding):
+            if isinstance(value, bool):
+                raise TypeError("scene embedding values must be float (bool is not allowed); " f"scene_index={embedding_index}, value_index={value_index}")
+            if not isinstance(value, float):
+                raise TypeError("scene embedding values must be float; " f"scene_index={embedding_index}, value_index={value_index}, got {type(value)}")
+
+    return manager.save_binary(embeddings, "scene_embeddings", f"chapter_{chapter}", version)
+
+
+def load_scene_embeddings(manager: ContentManager, ref: ContentRef | str) -> list[list[float]]:
+    """Load scene-level embeddings for a chapter (safe formats only)."""
+    data = manager.load_binary(ref)
+
+    if not isinstance(data, list):
+        raise ValueError(f"scene embeddings payload must be a list; got {type(data)}")
+
+    embeddings: list[list[float]] = []
+    for embedding_index, embedding in enumerate(data):
+        if not isinstance(embedding, list):
+            raise ValueError("each scene embedding must be a list of floats; " f"index={embedding_index}, got {type(embedding)}")
+
+        vector: list[float] = []
+        for value_index, value in enumerate(embedding):
+            if not isinstance(value, float):
+                raise ValueError("scene embedding values must be float; " f"scene_index={embedding_index}, value_index={value_index}, got {type(value)}")
+            vector.append(value)
+
+        embeddings.append(vector)
+
+    return embeddings
 
 
 def save_extracted_entities(
@@ -1202,6 +1241,8 @@ __all__ = [
     "load_summaries",
     "save_embedding",
     "load_embedding",
+    "save_scene_embeddings",
+    "load_scene_embeddings",
     "save_extracted_entities",
     "load_extracted_entities",
     "save_extracted_relationships",

@@ -128,7 +128,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             "healing_history": healing_history,
             # Snapshot for callers/tests so warnings are not "silent degradation".
             "last_healing_warnings": healing_warnings,
-            "last_apoc_available": None if results.get("apoc_available") is None else bool(results.get("apoc_available")),
+            "last_apoc_available": (None if results.get("apoc_available") is None else bool(results.get("apoc_available"))),
         }
 
     except Exception as e:

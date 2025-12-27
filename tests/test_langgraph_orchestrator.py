@@ -5,13 +5,17 @@ Tests for LangGraph orchestrator.
 Covers orchestration/langgraph_orchestrator.py.
 """
 
+import ast
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from core.langgraph.state import Contradiction
-from orchestration.langgraph_orchestrator import LangGraphOrchestrator
+from orchestration.langgraph_orchestrator import (
+    LangGraphOrchestrator,
+    _LLM_SERVICE_PATCH_MODULES,
+)
 
 
 @pytest.fixture
@@ -42,6 +46,81 @@ def orchestrator(mock_config, tmp_path):
         with patch("orchestration.langgraph_orchestrator.RichDisplayManager"):
             orch = LangGraphOrchestrator()
             return orch
+
+
+def _repo_root_from_test_file(test_file: Path) -> Path:
+    return test_file.resolve().parents[1]
+
+
+def _path_to_module_name(repo_root: Path, file_path: Path) -> str:
+    relative_no_suffix = file_path.relative_to(repo_root).with_suffix("")
+    parts = list(relative_no_suffix.parts)
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+class _ModuleLevelLLMServiceImportFinder(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self._nesting_depth = 0
+        self.found = False
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+        self._nesting_depth += 1
+        self.generic_visit(node)
+        self._nesting_depth -= 1
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+        self._nesting_depth += 1
+        self.generic_visit(node)
+        self._nesting_depth -= 1
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+        self._nesting_depth += 1
+        self.generic_visit(node)
+        self._nesting_depth -= 1
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
+        if self._nesting_depth != 0:
+            return
+
+        if node.module != "core.llm_interface_refactored":
+            return
+
+        for alias in node.names:
+            if alias.name == "llm_service":
+                self.found = True
+                return
+
+
+def _module_level_llm_service_importers(repo_root: Path) -> set[str]:
+    search_roots = (
+        "core",
+        "processing",
+        "ui",
+        "orchestration",
+        "data_access",
+        "models",
+        "prompts",
+        "utils",
+        "config",
+    )
+
+    modules: set[str] = set()
+    for root_name in search_roots:
+        root_path = repo_root / root_name
+        if not root_path.exists():
+            continue
+
+        for file_path in root_path.rglob("*.py"):
+            source = file_path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(file_path))
+            finder = _ModuleLevelLLMServiceImportFinder()
+            finder.visit(tree)
+            if finder.found:
+                modules.add(_path_to_module_name(repo_root, file_path))
+
+    return modules
 
 
 class TestLangGraphOrchestratorInit:
@@ -658,3 +737,28 @@ class TestRunNovelGenerationLoop:
                 pass
 
             orchestrator.display.stop.assert_called_once()
+
+
+def test_llm_service_patch_list_covers_all_module_level_importers() -> None:
+    repo_root = _repo_root_from_test_file(Path(__file__))
+    expected_modules = _module_level_llm_service_importers(repo_root)
+
+    patch_modules = set(_LLM_SERVICE_PATCH_MODULES)
+    missing = sorted(expected_modules - patch_modules)
+    assert missing == [], f"Missing llm_service patch modules: {missing}"
+
+    # Edge case contract: function-local imports of llm_service should not require patching because
+    # they resolve `core.llm_interface_refactored.llm_service` at call time.
+    assert "utils.similarity" not in expected_modules
+
+
+def test_llm_service_import_finder_ignores_non_import_references() -> None:
+    source = """
+text = "llm_service"
+def f():
+    value = "llm_service"
+"""
+    tree = ast.parse(source)
+    finder = _ModuleLevelLLMServiceImportFinder()
+    finder.visit(tree)
+    assert finder.found is False

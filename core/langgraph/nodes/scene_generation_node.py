@@ -69,6 +69,11 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     # Get hybrid context from content manager
     hybrid_context = get_hybrid_context(state, content_manager) or ""
 
+    revision_guidance_text = ""
+    revision_guidance_ref = state.get("revision_guidance_ref")
+    if revision_guidance_ref:
+        revision_guidance_text = content_manager.load_text(revision_guidance_ref)
+
     prompt = render_prompt(
         "narrative_agent/draft_scene.j2",
         {
@@ -78,6 +83,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             "novel_theme": state.get("theme", ""),
             "scene": current_scene,
             "hybrid_context": hybrid_context,
+            "revision_guidance": revision_guidance_text,
             "target_word_count": scene_target,
         },
     )
