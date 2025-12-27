@@ -129,7 +129,7 @@ class TestFinalizeChapter:
         assert call_args.kwargs["is_provisional"] is False
 
     async def test_finalize_chapter_no_draft_text(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
-        """Test finalization fails gracefully without draft text."""
+        """Test finalization fails gracefully without draft_ref."""
         state = {**sample_finalize_state}
         state["draft_ref"] = None
 
@@ -137,8 +137,9 @@ class TestFinalizeChapter:
         merged = {**state, **result}
 
         # Should return error state
-        assert merged["last_error"] is not None
-        assert "No draft text" in merged["last_error"]
+        assert merged["last_error"] == "Missing required state key: draft_ref"
+        assert merged["has_fatal_error"] is True
+        assert merged["error_node"] == "finalize"
         assert merged["current_node"] == "finalize"
 
         # Embedding generation should not be called
@@ -402,14 +403,13 @@ class TestFinalizeErrorHandling:
     """Tests for error handling in finalize node (P1.1 & P1.3)."""
 
     async def test_finalize_chapter_missing_draft_text_fatal_error(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
-        """Test finalization with missing draft_text triggers fatal error."""
+        """Test finalization with missing draft_ref triggers fatal error."""
         state = {**sample_finalize_state}
         state["draft_ref"] = None
 
         result = await finalize_chapter(state)
 
-        assert result["last_error"] is not None
-        assert "No draft text available" in result["last_error"]
+        assert result["last_error"] == "Missing required state key: draft_ref"
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "finalize"
         assert result["current_node"] == "finalize"

@@ -66,8 +66,19 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     # Initialize content manager for reading externalized content
     content_manager = ContentManager(state.get("project_dir", ""))
 
-    # Get draft text (prefers externalized content, falls back to in-state)
-    draft_text = get_draft_text(state, content_manager)
+    from core.exceptions import MissingDraftReferenceError
+
+    try:
+        draft_text = get_draft_text(state, content_manager)
+    except MissingDraftReferenceError as error:
+        error_msg = str(error)
+        logger.error("finalize_chapter: fatal error", error=error_msg)
+        return {
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "finalize",
+            "current_node": "finalize",
+        }
 
     # Validate we have text to finalize
     if not draft_text:

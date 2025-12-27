@@ -3,6 +3,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from core.exceptions import MissingDraftReferenceError
 from core.langgraph.content_manager import ContentManager, get_draft_text, get_scene_drafts
 from core.langgraph.state import create_initial_state
 from core.langgraph.subgraphs.generation import create_generation_subgraph
@@ -66,8 +67,9 @@ class TestGenerationSubgraph(unittest.TestCase):
                 result = await graph.ainvoke(state)
 
                 # Verify results
-                draft_text = get_draft_text(result, content_manager)
-                self.assertIsNone(draft_text)
+                with self.assertRaises(MissingDraftReferenceError) as exc:
+                    get_draft_text(result, content_manager)
+                self.assertEqual(str(exc.exception), "Missing required state key: draft_ref")
 
                 self.assertIsNotNone(result["scene_drafts_ref"])
                 self.assertEqual(result["current_scene_index"], 2)

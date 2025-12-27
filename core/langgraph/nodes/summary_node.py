@@ -67,8 +67,18 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     # Initialize content manager for reading externalized content
     content_manager = ContentManager(state.get("project_dir", ""))
 
-    # Get draft text (prefers externalized content, falls back to in-state)
-    draft_text = get_draft_text(state, content_manager)
+    from core.exceptions import MissingDraftReferenceError
+
+    try:
+        draft_text = get_draft_text(state, content_manager)
+    except MissingDraftReferenceError:
+        logger.info(
+            "summarize_chapter: missing draft_ref; skipping summarization",
+            chapter=state.get("current_chapter", 1),
+        )
+        return {
+            "current_node": "summarize",
+        }
 
     # Validate we have text to summarize
     if not draft_text:

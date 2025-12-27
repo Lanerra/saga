@@ -17,8 +17,8 @@ from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, at
 from core.exceptions import CheckpointResumeConflictError
 from core.langgraph.state import Contradiction
 from orchestration.langgraph_orchestrator import (
-    LangGraphOrchestrator,
     _LLM_SERVICE_PATCH_MODULES,
+    LangGraphOrchestrator,
 )
 
 

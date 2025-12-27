@@ -47,8 +47,21 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
         persist the result via `ContentManager.save_binary()`.
     """
     content_manager = ContentManager(state.get("project_dir", ""))
-    draft_text = get_draft_text(state, content_manager)
     chapter_num = state.get("current_chapter")
+
+    from core.exceptions import MissingDraftReferenceError
+
+    try:
+        draft_text = get_draft_text(state, content_manager)
+    except MissingDraftReferenceError:
+        logger.info(
+            "generate_embedding: missing draft_ref; skipping embedding generation",
+            chapter=chapter_num,
+        )
+        return {
+            "generated_embedding": None,
+            "current_node": "generate_embedding",
+        }
 
     logger.info("generate_embedding: starting embedding generation", chapter=chapter_num)
 

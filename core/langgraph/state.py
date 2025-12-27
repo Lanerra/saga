@@ -162,7 +162,6 @@ class NarrativeState(TypedDict, total=False):
     draft_ref: ContentRef | None  # Reference to externalized draft text
     embedding_ref: ContentRef | None  # Reference to externalized embedding
     scene_embeddings_ref: ContentRef | None  # Reference to externalized scene embeddings (per chapter)
-    draft_text: str | None  # Inline draft text (for non-externalized usage or tests)
     generated_embedding: list[float] | None  # Inline embedding (before externalization)
 
     # =========================================================================

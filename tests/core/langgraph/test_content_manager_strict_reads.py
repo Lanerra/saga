@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from core.exceptions import ContentIntegrityError
-from core.langgraph.content_manager import ContentManager
+from core.exceptions import ContentIntegrityError, MissingDraftReferenceError
+from core.langgraph.content_manager import ContentManager, get_draft_text
 
 
 def test_load_text_strict_succeeds_when_checksum_and_size_match(tmp_path: Path) -> None:
@@ -76,3 +76,33 @@ def test_load_json_strict_raises_when_file_is_modified_after_ref_creation(tmp_pa
         manager.load_json_strict(ref)
 
     assert "strict read detected size mismatch" in str(exc.value)
+
+
+def test_get_draft_text_returns_text_when_draft_ref_present(tmp_path: Path) -> None:
+    manager = ContentManager(str(tmp_path))
+    draft_ref = manager.save_text("hello draft", content_type="draft", identifier="chapter_1", version=1)
+
+    state = {"draft_ref": draft_ref}
+
+    loaded = get_draft_text(state, manager)
+    assert loaded == "hello draft"
+
+
+def test_get_draft_text_raises_when_draft_ref_missing(tmp_path: Path) -> None:
+    manager = ContentManager(str(tmp_path))
+    state = {}
+
+    with pytest.raises(MissingDraftReferenceError) as exc:
+        get_draft_text(state, manager)
+
+    assert str(exc.value) == "Missing required state key: draft_ref"
+
+
+def test_get_draft_text_allows_empty_content_when_draft_ref_present(tmp_path: Path) -> None:
+    manager = ContentManager(str(tmp_path))
+    draft_ref = manager.save_text("", content_type="draft", identifier="chapter_1", version=1)
+
+    state = {"draft_ref": draft_ref}
+
+    loaded = get_draft_text(state, manager)
+    assert loaded == ""

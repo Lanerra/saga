@@ -52,6 +52,10 @@ class ContentIntegrityError(ValidationError):
     """Raised when externalized `ContentRef` artifacts fail strict integrity validation."""
 
 
+class MissingDraftReferenceError(ValidationError):
+    """Raised when workflow code requires `draft_ref` but it is missing from state."""
+
+
 class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
 

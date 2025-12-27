@@ -296,7 +296,6 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
         "draft_ref": None,
         "embedding_ref": None,
         "scene_embeddings_ref": None,
-        "draft_text": None,
         "generated_embedding": None,
         "chapter_plan": None,
         "chapter_plan_ref": None,

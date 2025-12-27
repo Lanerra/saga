@@ -857,26 +857,33 @@ def load_chapter_plan(manager: ContentManager, ref: ContentRef | str) -> list[di
 # Helper functions for loading content from externalized files.
 
 
-def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str | None:
+def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str:
     """Load the current chapter draft text from `draft_ref`.
+
+    Contract:
+        Drafts are refs-only. Inline `draft_text` is not part of the state contract.
 
     Args:
         state: Workflow state mapping. This function reads `draft_ref`.
         manager: Content manager rooted at the project directory.
 
     Returns:
-        The draft text, or `None` when `draft_ref` is missing.
+        The draft text.
 
     Raises:
+        MissingDraftReferenceError: If `draft_ref` is missing or falsy.
         FileNotFoundError: If `draft_ref` is present but the referenced file is missing.
+        ContentIntegrityError: If `draft_ref` is a `ContentRef` and strict integrity validation fails.
     """
     import structlog
+
+    from core.exceptions import MissingDraftReferenceError
 
     structlog.get_logger(__name__)
 
     draft_ref = state.get("draft_ref")
     if not draft_ref:
-        return None
+        raise MissingDraftReferenceError("Missing required state key: draft_ref")
 
     if isinstance(draft_ref, dict):
         return manager.load_text_strict(cast(ContentRef, draft_ref))
@@ -990,11 +997,7 @@ def get_chapter_outlines(state: Mapping[str, Any], manager: ContentManager) -> d
     if not chapter_outlines_ref:
         return {}
 
-    data = (
-        manager.load_json_strict(cast(ContentRef, chapter_outlines_ref))
-        if isinstance(chapter_outlines_ref, dict)
-        else manager.load_json(chapter_outlines_ref)
-    )
+    data = manager.load_json_strict(cast(ContentRef, chapter_outlines_ref)) if isinstance(chapter_outlines_ref, dict) else manager.load_json(chapter_outlines_ref)
     # Convert string keys to int keys if needed, skipping non-int keys
     result = {}
     if isinstance(data, dict):
@@ -1025,11 +1028,7 @@ def get_global_outline(state: Mapping[str, Any], manager: ContentManager) -> dic
     if not global_outline_ref:
         return None
 
-    data = (
-        manager.load_json_strict(cast(ContentRef, global_outline_ref))
-        if isinstance(global_outline_ref, dict)
-        else manager.load_json(global_outline_ref)
-    )
+    data = manager.load_json_strict(cast(ContentRef, global_outline_ref)) if isinstance(global_outline_ref, dict) else manager.load_json(global_outline_ref)
     if not isinstance(data, dict):
         return None
     return data
@@ -1156,11 +1155,7 @@ def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) ->
         # Fallback to in-state content if ref not available
         return state.get("extracted_entities", {})
 
-    data = (
-        manager.load_json_strict(cast(ContentRef, entities_ref))
-        if isinstance(entities_ref, dict)
-        else manager.load_json(entities_ref)
-    )
+    data = manager.load_json_strict(cast(ContentRef, entities_ref)) if isinstance(entities_ref, dict) else manager.load_json(entities_ref)
     if not isinstance(data, dict):
         return {}
     return cast(dict[str, list[dict[str, Any]]], data)
@@ -1188,11 +1183,7 @@ def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManage
         # Fallback to in-state content if ref not available
         return state.get("extracted_relationships", [])
 
-    data = (
-        manager.load_json_strict(cast(ContentRef, relationships_ref))
-        if isinstance(relationships_ref, dict)
-        else manager.load_json(relationships_ref)
-    )
+    data = manager.load_json_strict(cast(ContentRef, relationships_ref)) if isinstance(relationships_ref, dict) else manager.load_json(relationships_ref)
     if not isinstance(data, list):
         return []
     return data
@@ -1313,11 +1304,7 @@ def get_chapter_plan(state: Mapping[str, Any], manager: ContentManager) -> list[
         # Fallback to in-state content if ref not available
         return state.get("chapter_plan") or []
 
-    data = (
-        manager.load_json_strict(cast(ContentRef, plan_ref))
-        if isinstance(plan_ref, dict)
-        else manager.load_json(plan_ref)
-    )
+    data = manager.load_json_strict(cast(ContentRef, plan_ref)) if isinstance(plan_ref, dict) else manager.load_json(plan_ref)
     if not isinstance(data, list):
         return []
     return data

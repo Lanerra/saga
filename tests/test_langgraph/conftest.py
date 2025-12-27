@@ -115,8 +115,9 @@ def sample_initial_state() -> NarrativeState:
 
 
 @pytest.fixture
-def sample_state_with_extraction() -> NarrativeState:
+def sample_state_with_extraction(tmp_path) -> NarrativeState:
     """Sample state with extracted entities and relationships."""
+    project_dir = str(tmp_path / "test-project")
     state = create_initial_state(
         project_id="test-project",
         title="Test Novel",
@@ -125,7 +126,7 @@ def sample_state_with_extraction() -> NarrativeState:
         setting="Medieval world",
         target_word_count=80000,
         total_chapters=20,
-        project_dir="/tmp/test-project",
+        project_dir=project_dir,
         protagonist_name="Hero",
     )
 
@@ -170,8 +171,13 @@ def sample_state_with_extraction() -> NarrativeState:
         ),
     ]
 
-    # Add draft text
-    state["draft_text"] = "Alice and Bob traveled through the forest..."
+    from core.langgraph.content_manager import ContentManager
+
+    content_manager = ContentManager(project_dir)
+    draft_text = "Alice and Bob traveled through the forest..."
+    draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
+
+    state["draft_ref"] = draft_ref
     state["draft_word_count"] = 2000
 
     return state

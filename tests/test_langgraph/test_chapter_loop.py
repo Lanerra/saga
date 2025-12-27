@@ -38,7 +38,7 @@ def test_advance_chapter_increments_and_resets(sample_state: NarrativeState) -> 
     sample_state["current_chapter"] = 1
     sample_state["iteration_count"] = 2
     sample_state["needs_revision"] = True
-    sample_state["draft_text"] = "Some draft text"
+    sample_state["draft_ref"] = {"path": "mock_draft_ref"}
     sample_state["has_fatal_error"] = True
 
     updated_state = advance_chapter(sample_state)
@@ -46,7 +46,7 @@ def test_advance_chapter_increments_and_resets(sample_state: NarrativeState) -> 
     assert updated_state["current_chapter"] == 2
     assert updated_state["iteration_count"] == 0
     assert updated_state["needs_revision"] is False
-    assert updated_state["draft_text"] is None
+    assert updated_state["draft_ref"] is None
     assert updated_state["has_fatal_error"] is False
 
 

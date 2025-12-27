@@ -175,7 +175,18 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
         # Step 4c: Collect chapter node statement
         content_manager = ContentManager(state.get("project_dir", ""))
-        draft_text = get_draft_text(state, content_manager) or ""
+
+        from core.exceptions import MissingDraftReferenceError
+
+        try:
+            draft_text = get_draft_text(state, content_manager)
+        except MissingDraftReferenceError as error:
+            return {
+                "current_node": "commit_to_graph",
+                "last_error": str(error),
+                "has_fatal_error": True,
+                "error_node": "commit",
+            }
 
         # Get embedding from ref if available
         embedding = None

@@ -90,7 +90,13 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
     )
 
     content_manager = ContentManager(state.get("project_dir", ""))
-    draft_text = get_draft_text(state, content_manager)
+
+    from core.exceptions import MissingDraftReferenceError
+
+    try:
+        draft_text = get_draft_text(state, content_manager)
+    except MissingDraftReferenceError:
+        draft_text = ""
 
     if not draft_text:
         logger.warning("evaluate_quality: no draft text to evaluate")
@@ -352,7 +358,12 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     contradictions.extend(timeline_contradictions)
 
     # Check 2: World rule violations
-    draft_text = get_draft_text(state, content_manager) or ""
+    from core.exceptions import MissingDraftReferenceError
+
+    try:
+        draft_text = get_draft_text(state, content_manager)
+    except MissingDraftReferenceError:
+        draft_text = ""
 
     world_rule_contradictions = await _check_world_rules(
         draft_text,

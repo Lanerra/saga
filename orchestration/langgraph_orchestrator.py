@@ -645,7 +645,6 @@ class LangGraphOrchestrator:
 
         return node_descriptions.get(node_name, f"Processing: {node_name}")
 
-
     def _checkpoint_thread_id(self, project_id: str) -> str:
         safe_project_id = project_id.replace("/", "_").replace("\\", "_").strip()
         return f"saga_{safe_project_id}"
@@ -714,9 +713,7 @@ class LangGraphOrchestrator:
     ) -> None:
         checkpoint_project_id = checkpoint_state.get("project_id")
         if checkpoint_project_id != requested_project_id:
-            raise CheckpointResumeConflictError(
-                f"Resume conflict: checkpoint project_id '{checkpoint_project_id}' does not match requested project_id '{requested_project_id}'"
-            )
+            raise CheckpointResumeConflictError(f"Resume conflict: checkpoint project_id '{checkpoint_project_id}' does not match requested project_id '{requested_project_id}'")
 
         current_chapter = checkpoint_state.get("current_chapter")
         if not isinstance(current_chapter, int) or isinstance(current_chapter, bool) or current_chapter <= 0:
@@ -747,9 +744,7 @@ class LangGraphOrchestrator:
         current_chapter = cast(int, checkpoint_state.get("current_chapter"))
         neo4j_chapter_count = await chapter_queries.load_chapter_count_from_db()
         if neo4j_chapter_count >= current_chapter:
-            raise CheckpointResumeConflictError(
-                f"Resume conflict: Neo4j reports chapter_count={neo4j_chapter_count} which is ahead of checkpoint current_chapter={current_chapter}"
-            )
+            raise CheckpointResumeConflictError(f"Resume conflict: Neo4j reports chapter_count={neo4j_chapter_count} which is ahead of checkpoint current_chapter={current_chapter}")
 
         # Conflict: checkpoint references missing artifact files.
         for key, value in checkpoint_state.items():
@@ -758,19 +753,13 @@ class LangGraphOrchestrator:
             if value is None:
                 continue
             if not isinstance(value, dict):
-                raise CheckpointResumeConflictError(
-                    f"Resume conflict: checkpoint field '{key}' must be a ContentRef dict"
-                )
+                raise CheckpointResumeConflictError(f"Resume conflict: checkpoint field '{key}' must be a ContentRef dict")
             ref_path = value.get("path")
             if not isinstance(ref_path, str) or not ref_path:
-                raise CheckpointResumeConflictError(
-                    f"Resume conflict: checkpoint field '{key}' must include ContentRef.path as non-empty str"
-                )
+                raise CheckpointResumeConflictError(f"Resume conflict: checkpoint field '{key}' must include ContentRef.path as non-empty str")
             full_path = self.project_dir / ref_path
             if not full_path.exists():
-                raise CheckpointResumeConflictError(
-                    f"Resume conflict: checkpoint references missing artifact for field '{key}': path='{ref_path}'"
-                )
+                raise CheckpointResumeConflictError(f"Resume conflict: checkpoint references missing artifact for field '{key}': path='{ref_path}'")
 
         return None
 

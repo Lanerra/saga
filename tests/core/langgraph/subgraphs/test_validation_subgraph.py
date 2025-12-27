@@ -32,24 +32,20 @@ def sample_validation_state(tmp_path):
     """Create a sample state for validation testing."""
     project_dir = tmp_path / "test_project"
     project_dir.mkdir()
-    content_dir = project_dir / ".saga" / "content"
-    content_dir.mkdir(parents=True)
 
-    draft_file = content_dir / "chapter_1_draft.txt"
-    draft_file.write_text("This is a test chapter with some narrative content.")
+    from core.langgraph.content_manager import ContentManager
+
+    content_manager = ContentManager(str(project_dir))
+    draft_text = "This is a test chapter with some narrative content."
+    draft_ref = content_manager.save_text(draft_text, "draft", "chapter_1", 1)
 
     return {
         "project_dir": str(project_dir),
         "current_chapter": 1,
         "genre": "fantasy",
         "theme": "courage",
-        "draft_text": "This is a test chapter with some narrative content.",
         "draft_word_count": 10,
-        "draft_ref": {
-            "content_type": "draft",
-            "chapter": 1,
-            "path": str(draft_file),
-        },
+        "draft_ref": draft_ref,
         "contradictions": [],
         "extracted_entities": {
             "characters": [],
@@ -97,7 +93,6 @@ class TestEvaluateQuality:
     async def test_evaluate_quality_no_draft_text(self, sample_validation_state):
         """When no draft text, returns None scores."""
         state = sample_validation_state.copy()
-        state["draft_text"] = ""
         state["draft_ref"] = None
 
         result = await evaluate_quality(state)

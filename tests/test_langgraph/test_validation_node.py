@@ -61,7 +61,13 @@ class TestValidateConsistency:
     async def test_validate_plot_stagnation_detected(self, sample_initial_state, mock_neo4j_manager):
         """Test that plot stagnation is detected."""
         state = sample_initial_state
-        state["draft_text"] = "Short text"
+
+        from core.langgraph.content_manager import ContentManager
+
+        content_manager = ContentManager(state["project_dir"])
+        draft_ref = content_manager.save_text("Short text", "draft", "chapter_1", 1)
+
+        state["draft_ref"] = draft_ref
         state["draft_word_count"] = 500  # Below threshold
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []

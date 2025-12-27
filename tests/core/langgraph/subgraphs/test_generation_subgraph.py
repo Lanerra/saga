@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from core.exceptions import MissingDraftReferenceError
 from core.langgraph.content_manager import ContentManager, get_draft_text, get_scene_drafts
 from core.langgraph.state import create_initial_state
 from core.langgraph.subgraphs.generation import create_generation_subgraph
@@ -52,8 +53,9 @@ async def test_generation_subgraph_flow():
 
         content_manager = ContentManager(state["project_dir"])
 
-        draft_text = get_draft_text(result, content_manager)
-        assert draft_text is None
+        with pytest.raises(MissingDraftReferenceError) as exc:
+            get_draft_text(result, content_manager)
+        assert str(exc.value) == "Missing required state key: draft_ref"
 
         assert result["scene_drafts_ref"] is not None
         assert result["current_scene_index"] == 2

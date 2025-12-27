@@ -1,15 +1,10 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
-import pytest
-
-
-_STATUS_PATTERN = re.compile(
-    r"^\*\*Status:\*\* (✅ Completed|🟡 Incomplete|🔴 Missing|🟣 Ambiguous \(decision required\))$"
-)
+_STATUS_PATTERN = re.compile(r"^\*\*Status:\*\* (✅ Completed|🟡 Incomplete|🔴 Missing|🟣 Ambiguous \(decision required\))$")
 _DECISION_NEEDED_PATTERN = re.compile(r"^\*\*Decision needed:\*\* .+$")
 _ACTIONABLE_HEADING_PATTERN = re.compile(r"^###\s+(?:\d+\)|[A-Z]\))\s+")
 _ACTIONABLE_LIST_ITEM_PATTERN = re.compile(r"^\d+\)\s+")
