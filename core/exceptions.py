@@ -48,6 +48,10 @@ class ValidationError(SAGACoreError):
     """Errors related to data validation."""
 
 
+class ContentIntegrityError(ValidationError):
+    """Raised when externalized `ContentRef` artifacts fail strict integrity validation."""
+
+
 class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
 

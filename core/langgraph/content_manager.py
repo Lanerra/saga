@@ -21,6 +21,8 @@ from typing import Any, NoReturn, TypedDict, cast
 
 import structlog
 
+from core.exceptions import ContentIntegrityError
+
 logger = structlog.get_logger(__name__)
 
 
@@ -181,6 +183,48 @@ class ContentManager:
         actual_checksum = self._compute_checksum(data_bytes)
         if actual_checksum != expected_checksum:
             raise ValueError(f"{caller} detected checksum mismatch for content file: {full_path}. " f"expected={expected_checksum}, actual={actual_checksum}")
+
+        return None
+
+    def _validate_content_ref_integrity(
+        self,
+        *,
+        content_ref: ContentRef,
+        full_path: Path,
+        data_bytes: bytes,
+        caller: str,
+    ) -> None:
+        expected_size_bytes = content_ref.get("size_bytes")
+        if expected_size_bytes is None:
+            raise ContentIntegrityError(
+                f"{caller} strict read requires ContentRef.size_bytes metadata; path={full_path}",
+            )
+        if not isinstance(expected_size_bytes, int) or isinstance(expected_size_bytes, bool) or expected_size_bytes < 0:
+            raise ContentIntegrityError(
+                f"{caller} strict read requires ContentRef.size_bytes as non-negative int; got {expected_size_bytes!r} for path={full_path}",
+            )
+
+        actual_size_bytes = len(data_bytes)
+        if actual_size_bytes != expected_size_bytes:
+            raise ContentIntegrityError(
+                f"{caller} strict read detected size mismatch; path={full_path}, expected={expected_size_bytes}, actual={actual_size_bytes}",
+            )
+
+        expected_checksum = content_ref.get("checksum")
+        if expected_checksum is None:
+            raise ContentIntegrityError(
+                f"{caller} strict read requires ContentRef.checksum metadata; path={full_path}",
+            )
+        if not isinstance(expected_checksum, str) or not expected_checksum:
+            raise ContentIntegrityError(
+                f"{caller} strict read requires ContentRef.checksum as non-empty str; got {expected_checksum!r} for path={full_path}",
+            )
+
+        actual_checksum = self._compute_checksum(data_bytes)
+        if actual_checksum != expected_checksum:
+            raise ContentIntegrityError(
+                f"{caller} strict read detected checksum mismatch; path={full_path}, expected={expected_checksum}, actual={actual_checksum}",
+            )
 
         return None
 
@@ -400,6 +444,19 @@ class ContentManager:
 
         return data_bytes.decode("utf-8")
 
+    def load_text_strict(self, content_ref: ContentRef) -> str:
+        """Load UTF-8 text and fail fast on `ContentRef` integrity mismatch."""
+        caller = "ContentManager.load_text_strict"
+        path_str = self._resolve_ref_path(content_ref, caller=caller)
+        full_path = self.project_dir / path_str
+
+        if not full_path.exists():
+            raise FileNotFoundError(f"Content file not found: {full_path}")
+
+        data_bytes = full_path.read_bytes()
+        self._validate_content_ref_integrity(content_ref=content_ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
+        return data_bytes.decode("utf-8")
+
     def load_json(self, ref: ContentRef | str | Path) -> dict[str, Any] | list[Any]:
         """Load JSON from a content reference.
 
@@ -426,6 +483,19 @@ class ContentManager:
         data_bytes = full_path.read_bytes()
         self._validate_checksum_if_present(ref=ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
 
+        return json.loads(data_bytes.decode("utf-8"))
+
+    def load_json_strict(self, content_ref: ContentRef) -> Any:
+        """Load JSON and fail fast on `ContentRef` integrity mismatch."""
+        caller = "ContentManager.load_json_strict"
+        path_str = self._resolve_ref_path(content_ref, caller=caller)
+        full_path = self.project_dir / path_str
+
+        if not full_path.exists():
+            raise FileNotFoundError(f"Content file not found: {full_path}")
+
+        data_bytes = full_path.read_bytes()
+        self._validate_content_ref_integrity(content_ref=content_ref, full_path=full_path, data_bytes=data_bytes, caller=caller)
         return json.loads(data_bytes.decode("utf-8"))
 
     def load_binary(self, ref: ContentRef | str | Path) -> Any:
@@ -569,6 +639,8 @@ def save_draft(
 
 def load_draft(manager: ContentManager, ref: ContentRef | str) -> str:
     """Load chapter draft text."""
+    if isinstance(ref, dict):
+        return manager.load_text_strict(ref)
     return manager.load_text(ref)
 
 
@@ -600,7 +672,7 @@ def save_outline(
 
 def load_outline(manager: ContentManager, ref: ContentRef | str) -> dict[str, Any]:
     """Load an outline."""
-    data = manager.load_json(ref)
+    data = manager.load_json_strict(ref) if isinstance(ref, dict) else manager.load_json(ref)
     if not isinstance(data, dict):
         raise ValueError(f"Expected dict outline, got {type(data)}")
     return data
@@ -722,7 +794,7 @@ def save_extracted_entities(
 
 def load_extracted_entities(manager: ContentManager, ref: ContentRef | str) -> dict[str, list[dict[str, Any]]]:
     """Load extracted entities for a chapter."""
-    data = manager.load_json(ref)
+    data = manager.load_json_strict(ref) if isinstance(ref, dict) else manager.load_json(ref)
     if not isinstance(data, dict):
         raise ValueError(f"Expected dict extracted entities, got {type(data)}")
     return cast(dict[str, list[dict[str, Any]]], data)
@@ -740,7 +812,7 @@ def save_extracted_relationships(
 
 def load_extracted_relationships(manager: ContentManager, ref: ContentRef | str) -> list[dict[str, Any]]:
     """Load extracted relationships for a chapter."""
-    data = manager.load_json(ref)
+    data = manager.load_json_strict(ref) if isinstance(ref, dict) else manager.load_json(ref)
     if not isinstance(data, list):
         raise ValueError(f"Expected list extracted relationships, got {type(data)}")
     return data
@@ -776,7 +848,7 @@ def save_chapter_plan(
 
 def load_chapter_plan(manager: ContentManager, ref: ContentRef | str) -> list[dict[str, Any]]:
     """Load chapter plan for a chapter."""
-    data = manager.load_json(ref)
+    data = manager.load_json_strict(ref) if isinstance(ref, dict) else manager.load_json(ref)
     if not isinstance(data, list):
         raise ValueError(f"Expected list chapter plan, got {type(data)}")
     return data
@@ -806,6 +878,8 @@ def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str | N
     if not draft_ref:
         return None
 
+    if isinstance(draft_ref, dict):
+        return manager.load_text_strict(cast(ContentRef, draft_ref))
     return manager.load_text(draft_ref)
 
 
@@ -916,7 +990,11 @@ def get_chapter_outlines(state: Mapping[str, Any], manager: ContentManager) -> d
     if not chapter_outlines_ref:
         return {}
 
-    data = manager.load_json(chapter_outlines_ref)
+    data = (
+        manager.load_json_strict(cast(ContentRef, chapter_outlines_ref))
+        if isinstance(chapter_outlines_ref, dict)
+        else manager.load_json(chapter_outlines_ref)
+    )
     # Convert string keys to int keys if needed, skipping non-int keys
     result = {}
     if isinstance(data, dict):
@@ -947,7 +1025,11 @@ def get_global_outline(state: Mapping[str, Any], manager: ContentManager) -> dic
     if not global_outline_ref:
         return None
 
-    data = manager.load_json(global_outline_ref)
+    data = (
+        manager.load_json_strict(cast(ContentRef, global_outline_ref))
+        if isinstance(global_outline_ref, dict)
+        else manager.load_json(global_outline_ref)
+    )
     if not isinstance(data, dict):
         return None
     return data
@@ -1024,7 +1106,10 @@ def get_act_outlines(state: Mapping[str, Any], manager: ContentManager) -> dict[
     if not act_outlines_ref:
         return {}
 
-    data = manager.load_json(act_outlines_ref)
+    if isinstance(act_outlines_ref, dict) and "checksum" in act_outlines_ref and "size_bytes" in act_outlines_ref:
+        data = manager.load_json_strict(cast(ContentRef, act_outlines_ref))
+    else:
+        data = manager.load_json(act_outlines_ref)
 
     if isinstance(data, list):
         return _normalize_v2_list(cast(list[object], data))
@@ -1071,7 +1156,11 @@ def get_extracted_entities(state: Mapping[str, Any], manager: ContentManager) ->
         # Fallback to in-state content if ref not available
         return state.get("extracted_entities", {})
 
-    data = manager.load_json(entities_ref)
+    data = (
+        manager.load_json_strict(cast(ContentRef, entities_ref))
+        if isinstance(entities_ref, dict)
+        else manager.load_json(entities_ref)
+    )
     if not isinstance(data, dict):
         return {}
     return cast(dict[str, list[dict[str, Any]]], data)
@@ -1099,7 +1188,11 @@ def get_extracted_relationships(state: Mapping[str, Any], manager: ContentManage
         # Fallback to in-state content if ref not available
         return state.get("extracted_relationships", [])
 
-    data = manager.load_json(relationships_ref)
+    data = (
+        manager.load_json_strict(cast(ContentRef, relationships_ref))
+        if isinstance(relationships_ref, dict)
+        else manager.load_json(relationships_ref)
+    )
     if not isinstance(data, list):
         return []
     return data
@@ -1220,7 +1313,11 @@ def get_chapter_plan(state: Mapping[str, Any], manager: ContentManager) -> list[
         # Fallback to in-state content if ref not available
         return state.get("chapter_plan") or []
 
-    data = manager.load_json(plan_ref)
+    data = (
+        manager.load_json_strict(cast(ContentRef, plan_ref))
+        if isinstance(plan_ref, dict)
+        else manager.load_json(plan_ref)
+    )
     if not isinstance(data, list):
         return []
     return data
