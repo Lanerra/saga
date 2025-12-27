@@ -110,7 +110,7 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
     caplog.set_level("WARNING")
 
     # Act
-    state = await orchestrator._load_or_create_state()
+    state = await orchestrator._load_or_create_state(project_id="test-project")
 
     # Assert: initialization_complete behavior unchanged (False with no characters)
     assert state["initialization_complete"] is False
@@ -187,7 +187,7 @@ async def test_load_or_create_state_no_warning_when_artifacts_complete(
     caplog.set_level("WARNING")
 
     # Act
-    state = await orchestrator._load_or_create_state()
+    state = await orchestrator._load_or_create_state(project_id="test-project")
 
     # Assert: initialization_complete remains driven solely by character profiles
     assert state["initialization_complete"] is True

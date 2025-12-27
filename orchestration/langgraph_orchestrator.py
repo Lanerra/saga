@@ -21,9 +21,11 @@ from types import ModuleType
 from typing import Any, cast
 
 import structlog
+import yaml
 
 import config
 from core.db_manager import neo4j_manager
+from core.exceptions import CheckpointResumeConflictError
 from core.langgraph.initialization.validation import validate_initialization_artifacts
 from core.langgraph.state import NarrativeState, create_initial_state
 from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
@@ -162,16 +164,22 @@ class LangGraphOrchestrator:
 
         - Starts the Rich progress display (if enabled).
         - Establishes a Neo4j connection and ensures the database schema exists.
-        - Creates a fresh workflow state seed for the run.
+        - Loads the latest checkpointed state when resuming (checkpoint-first).
         - Runs the workflow under:
           - a managed LLM client lifecycle context, and
           - a checkpointer context bound to a persistent SQLite file.
+
+        Resume policy:
+            Checkpoints are the single source of truth. Neo4j and filesystem artifacts are
+            treated as persisted artifacts and are only used for conflict detection. When
+            artifacts conflict with checkpoint state, orchestration fails fast with a clear,
+            stable error.
 
         Error policy:
             - Neo4j connection/setup failures and workflow construction/streaming
               failures propagate to the caller.
             - Chapter generation is best-effort: chapter-level failures inside
-              [`_run_chapter_generation_loop()`](orchestration/langgraph_orchestrator.py:273)
+              [`_run_chapter_generation_loop()`](orchestration/langgraph_orchestrator.py:343)
               are logged and stop the loop without raising.
 
         Cleanup:
@@ -194,19 +202,25 @@ class LangGraphOrchestrator:
             # Step 1: Connect to Neo4j
             await self._ensure_neo4j_connection()
 
-            # Step 2: Load or create state
-            state = await self._load_or_create_state()
+            requested_project_id = self._get_requested_project_id()
+            thread_id = self._checkpoint_thread_id(requested_project_id)
 
-            # Step 3: Create workflow with checkpointing
+            # Step 2: Create workflow with checkpointing and load checkpoint-first state
             # AsyncSqliteSaver.from_conn_string() returns an async context manager
             #
             # IMPORTANT: Establish an explicit LLM client lifecycle boundary at the
             # orchestrator/workflow boundary (not inside individual nodes).
             async with _managed_llm_lifecycle_for_workflow():
                 async with create_checkpointer(str(self.checkpointer_path)) as checkpointer:
+                    state = await self._load_state_for_run(
+                        checkpointer=checkpointer,
+                        requested_project_id=requested_project_id,
+                        thread_id=thread_id,
+                    )
+
                     graph = create_full_workflow_graph(checkpointer=checkpointer)
 
-                    # Step 4: Generate chapters
+                    # Step 3: Generate chapters
                     # The graph will automatically run initialization on first run
                     # via the conditional routing node
                     await self._run_chapter_generation_loop(graph, state)
@@ -241,13 +255,13 @@ class LangGraphOrchestrator:
         await neo4j_manager.create_db_schema()
         logger.info("✓ Neo4j connected")
 
-    async def _load_or_create_state(self) -> NarrativeState:
-        """Create a fresh workflow state seed for this run.
+    async def _load_or_create_state(self, *, project_id: str) -> NarrativeState:
+        """Create a fresh workflow state seed for this run (non-resume path).
 
-        This method does not load state from the checkpointer. Instead, it derives
-        the starting chapter from persisted chapters in Neo4j and constructs a new
-        [`NarrativeState`](core/langgraph/state.py:1) via
-        [`create_initial_state()`](core/langgraph/state.py:1).
+        This method is used only when no checkpoint is present for the project's checkpoint
+        thread. It derives the starting chapter from persisted chapters in Neo4j and
+        constructs a new [`NarrativeState`](core/langgraph/state.py:1) via
+        [`create_initial_state()`](core/langgraph/state.py:343).
 
         Initialization detection contract:
             - For chapter 1, initialization is artifact-driven: initialization is
@@ -255,6 +269,9 @@ class LangGraphOrchestrator:
               artifacts are present.
             - For continuation runs (when chapters already exist in Neo4j),
               initialization is treated as complete.
+
+        Args:
+            project_id: Project identifier to seed into state.
 
         Returns:
             A state dictionary seeded with project metadata plus:
@@ -300,7 +317,7 @@ class LangGraphOrchestrator:
 
         # Create initial state
         state = create_initial_state(
-            project_id="saga_novel",
+            project_id=project_id,
             title=config.DEFAULT_PLOT_OUTLINE_TITLE,
             genre=config.CONFIGURED_GENRE,
             theme=config.CONFIGURED_THEME or "",
@@ -357,8 +374,11 @@ class LangGraphOrchestrator:
             - Updates the provided `state` mapping as it receives updates from the
               workflow stream.
         """
-        project_id = state.get("project_id", "novel")
-        thread_id = f"saga_{project_id}"
+        project_id = state.get("project_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise ValueError("Workflow state must include a non-empty str 'project_id'")
+
+        thread_id = self._checkpoint_thread_id(project_id)
 
         logger.info(
             "Starting multi-chapter generation stream",
@@ -624,6 +644,135 @@ class LangGraphOrchestrator:
         }
 
         return node_descriptions.get(node_name, f"Processing: {node_name}")
+
+
+    def _checkpoint_thread_id(self, project_id: str) -> str:
+        safe_project_id = project_id.replace("/", "_").replace("\\", "_").strip()
+        return f"saga_{safe_project_id}"
+
+    def _get_requested_project_id(self) -> str:
+        saga_path = self.project_dir / "saga.yaml"
+        if saga_path.exists():
+            try:
+                data = yaml.safe_load(saga_path.read_text(encoding="utf-8"))
+            except Exception:
+                data = None
+
+            if isinstance(data, dict):
+                value = data.get("project_id")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
+        project_dir_name = self.project_dir.name.strip()
+        if not project_dir_name:
+            raise ValueError("Project directory name must be non-empty to derive project_id")
+
+        return project_dir_name
+
+    async def _load_state_for_run(
+        self,
+        *,
+        checkpointer: Any,
+        requested_project_id: str,
+        thread_id: str,
+    ) -> NarrativeState:
+        """Load checkpointed state when available; otherwise create a fresh seed state.
+
+        This implements checkpoint-first resume. When a checkpoint exists for the project's
+        thread id, it is treated as the single source of truth for in-flight fields like
+        `current_chapter`.
+        """
+        checkpoint = await checkpointer.aget({"configurable": {"thread_id": thread_id}})
+        if checkpoint is None:
+            return await self._load_or_create_state(project_id=requested_project_id)
+
+        if not isinstance(checkpoint, dict):
+            raise CheckpointResumeConflictError(
+                "Resume conflict: checkpointer returned an unexpected checkpoint type",
+                details={"type": type(checkpoint).__name__},
+            )
+
+        channel_values = checkpoint.get("channel_values")
+        if not isinstance(channel_values, dict):
+            raise CheckpointResumeConflictError(
+                "Resume conflict: checkpoint is missing required channel_values mapping",
+                details={"checkpoint_keys": sorted(list(checkpoint.keys()))},
+            )
+
+        checkpoint_state = cast(NarrativeState, channel_values)
+        await self._validate_resume_state_or_raise_async(
+            checkpoint_state=checkpoint_state,
+            requested_project_id=requested_project_id,
+        )
+        return checkpoint_state
+
+    def _validate_resume_state_or_raise(
+        self,
+        *,
+        checkpoint_state: NarrativeState,
+        requested_project_id: str,
+    ) -> None:
+        checkpoint_project_id = checkpoint_state.get("project_id")
+        if checkpoint_project_id != requested_project_id:
+            raise CheckpointResumeConflictError(
+                f"Resume conflict: checkpoint project_id '{checkpoint_project_id}' does not match requested project_id '{requested_project_id}'"
+            )
+
+        current_chapter = checkpoint_state.get("current_chapter")
+        if not isinstance(current_chapter, int) or isinstance(current_chapter, bool) or current_chapter <= 0:
+            raise CheckpointResumeConflictError(
+                "Resume conflict: checkpoint current_chapter must be a positive integer",
+                details={"current_chapter": current_chapter},
+            )
+
+        # Conflict: Neo4j indicates progress past checkpoint (chapters committed beyond checkpoint).
+        #
+        # Contract: if Neo4j chapter count is >= checkpoint current_chapter, then Neo4j contains
+        # a committed chapter at or beyond what the checkpoint believes is next/in-flight.
+        # That is treated as a hard conflict and must fail fast.
+        # Note: this method is sync; the DB call is async and is performed by the caller.
+        return None
+
+    async def _validate_resume_state_or_raise_async(
+        self,
+        *,
+        checkpoint_state: NarrativeState,
+        requested_project_id: str,
+    ) -> None:
+        self._validate_resume_state_or_raise(
+            checkpoint_state=checkpoint_state,
+            requested_project_id=requested_project_id,
+        )
+
+        current_chapter = cast(int, checkpoint_state.get("current_chapter"))
+        neo4j_chapter_count = await chapter_queries.load_chapter_count_from_db()
+        if neo4j_chapter_count >= current_chapter:
+            raise CheckpointResumeConflictError(
+                f"Resume conflict: Neo4j reports chapter_count={neo4j_chapter_count} which is ahead of checkpoint current_chapter={current_chapter}"
+            )
+
+        # Conflict: checkpoint references missing artifact files.
+        for key, value in checkpoint_state.items():
+            if not key.endswith("_ref"):
+                continue
+            if value is None:
+                continue
+            if not isinstance(value, dict):
+                raise CheckpointResumeConflictError(
+                    f"Resume conflict: checkpoint field '{key}' must be a ContentRef dict"
+                )
+            ref_path = value.get("path")
+            if not isinstance(ref_path, str) or not ref_path:
+                raise CheckpointResumeConflictError(
+                    f"Resume conflict: checkpoint field '{key}' must include ContentRef.path as non-empty str"
+                )
+            full_path = self.project_dir / ref_path
+            if not full_path.exists():
+                raise CheckpointResumeConflictError(
+                    f"Resume conflict: checkpoint references missing artifact for field '{key}': path='{ref_path}'"
+                )
+
+        return None
 
 
 __all__ = ["LangGraphOrchestrator"]
