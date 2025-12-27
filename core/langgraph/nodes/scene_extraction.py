@@ -1,3 +1,4 @@
+# core/langgraph/nodes/scene_extraction.py
 """Extract entities from individual scenes instead of full chapters.
 
 This module provides scene-level extraction to reduce prompt sizes and improve

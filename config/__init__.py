@@ -1,3 +1,4 @@
+# config/__init__.py
 """Expose SAGA configuration as stable module-level constants.
 
 This package provides a backwards-compatible facade over the underlying Pydantic settings

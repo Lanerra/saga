@@ -1,3 +1,4 @@
+# tests/test_langgraph/test_generation_node.py
 from core.langgraph.subgraphs.generation import generate_chapter, should_continue_scenes
 
 

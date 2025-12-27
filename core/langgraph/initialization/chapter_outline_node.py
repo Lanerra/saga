@@ -310,7 +310,7 @@ def _build_character_summary(character_sheets: dict[str, dict]) -> str:
         return "No characters defined."
 
     summaries = []
-    for name, sheet in list(character_sheets.items())[:5]:  # Top 5 characters
+    for name, sheet in list(character_sheets.items())[:3]:  # Top 3 characters
         is_protag = sheet.get("is_protagonist", False)
         role = "Protagonist" if is_protag else "Character"
         summaries.append(f"- **{name}** ({role})")

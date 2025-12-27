@@ -1,3 +1,4 @@
+# data_access/cache_coordinator.py
 """Coordinate `data_access` cache invalidation.
 
 This module centralizes invalidation so cache management is:

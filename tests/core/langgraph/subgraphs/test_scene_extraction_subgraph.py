@@ -1,3 +1,4 @@
+# tests/core/langgraph/subgraphs/test_scene_extraction_subgraph.py
 from unittest.mock import patch
 
 import pytest

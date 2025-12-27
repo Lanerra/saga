@@ -1,3 +1,4 @@
+# tests/core/langgraph/nodes/test_scene_extraction.py
 from typing import Any
 from unittest.mock import patch
 

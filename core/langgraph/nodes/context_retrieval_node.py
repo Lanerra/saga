@@ -38,7 +38,7 @@ DEFAULT_CONTEXT_BUDGET_TOKENS = config.settings.MAX_CONTEXT_TOKENS // 2  # Reser
 PREVIOUS_SCENES_TOKEN_BUDGET = 8192  # Max tokens for previous scene context
 SUMMARY_MAX_TOKENS = 4096  # Target tokens per scene summary
 CHARACTER_PROFILES_TOKEN_BUDGET = 8192  # Max tokens for character profiles
-KG_FACTS_TOKEN_BUDGET = 4096  # Max tokens for KG facts
+KG_FACTS_TOKEN_BUDGET = 8192  # Max tokens for KG facts
 SEMANTIC_CONTEXT_TOKEN_BUDGET = 4096  # Max tokens for semantic search results
 
 
@@ -613,7 +613,7 @@ async def _get_scene_location_context(
                     location_facts.append(f"- {location_name} {predicate}: {obj}")
 
             if location_facts:
-                return f"**Current Location - {location_name}:**\n" + "\n".join(location_facts[:5])
+                return f"**Current Location - {location_name}:**\n" + "\n".join(location_facts[:3])
 
     except Exception as e:
         logger.warning(

@@ -163,8 +163,17 @@ class EmbeddingService:
 
         self._stats["cache_misses"] += 1
 
+        # Truncate text to fit within model's context window
+        # The embedding model (embeddinggemma:latest) has a 2000 token limit
+        text_processor = TextProcessingService()
+        truncated_text = text_processor.tokenizer.truncate_text_by_tokens(
+            text,
+            config.EMBEDDING_MODEL,
+            2000
+        )
+
         try:
-            response_data = await self._embedding_client.get_embedding(text, config.EMBEDDING_MODEL)
+            response_data = await self._embedding_client.get_embedding(truncated_text, config.EMBEDDING_MODEL)
 
             # Extract and validate embedding
             embedding = self._extract_and_validate_embedding(response_data)

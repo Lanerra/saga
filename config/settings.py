@@ -205,8 +205,8 @@ class SagaSettings(BaseSettings):
     OPENAI_API_BASE: str = "http://127.0.0.1:8080/v1"
     OPENAI_API_KEY: str = "nope"
 
-    EMBEDDING_MODEL: str = "mxbai-embed-large:latest"
-    EXPECTED_EMBEDDING_DIM: int = 1024
+    EMBEDDING_MODEL: str = "nomic-embed-text:latest"
+    EXPECTED_EMBEDDING_DIM: int = 768
     EMBEDDING_DTYPE: str = "float16"
 
     # Neo4j Connection Settings
@@ -217,7 +217,7 @@ class SagaSettings(BaseSettings):
 
     # Neo4j Vector Index Configuration (Chapters)
     NEO4J_VECTOR_INDEX_NAME: str = "chapterEmbeddings"
-    NEO4J_VECTOR_DIMENSIONS: int = 1024
+    NEO4J_VECTOR_DIMENSIONS: int = 768
     NEO4J_VECTOR_SIMILARITY_FUNCTION: str = "cosine"
 
     # Neo4j Vector Index Configuration (Entities)
@@ -308,15 +308,15 @@ class SagaSettings(BaseSettings):
     TOKENIZER_CACHE_SIZE: int = 10
 
     # Agentic Planning & Prompt Context Snippets
-    MAX_PLANNING_TOKENS: int = 2048
+    MAX_PLANNING_TOKENS: int = 4096
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
     MAX_SUMMARY_TOKENS: int = 2048
-    MAX_KG_TRIPLE_TOKENS: int = 2048
-    MAX_PREPOP_KG_TOKENS: int = 2048
+    MAX_KG_TRIPLE_TOKENS: int = 8192
+    MAX_PREPOP_KG_TOKENS: int = 8192
 
     # Quality Assurance Configuration
     ENABLE_QA_CHECKS: bool = True

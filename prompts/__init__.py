@@ -1,3 +1,4 @@
+# prompts/__init__.py
 """Provide prompt rendering and prompt-context helpers.
 
 This package contains:

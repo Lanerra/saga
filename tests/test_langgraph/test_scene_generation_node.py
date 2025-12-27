@@ -1,3 +1,4 @@
+# tests/test_langgraph/test_scene_generation_node.py
 from __future__ import annotations
 
 from pathlib import Path

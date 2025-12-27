@@ -1,3 +1,4 @@
+# core/entity_embedding_service.py
 """Persist per-entity embedding vectors for semantic operations.
 
 This module computes embedding inputs for knowledge-graph entities and builds

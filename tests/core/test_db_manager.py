@@ -1,3 +1,4 @@
+# tests/core/test_db_manager.py
 """Comprehensive tests for core/db_manager.py"""
 
 import asyncio

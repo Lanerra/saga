@@ -1,3 +1,4 @@
+# core/langgraph/subgraphs/scene_extraction.py
 """Build the scene-level extraction subgraph for SAGA.
 
 This subgraph replaces chapter-level extraction to keep prompts small.
