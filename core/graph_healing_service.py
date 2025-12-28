@@ -25,10 +25,15 @@ import structlog
 
 import config
 from core.db_manager import neo4j_manager
+from core.exceptions import ValidationError
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE = (
+    "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
+)
 
 
 class GraphHealingService:
@@ -207,11 +212,15 @@ class GraphHealingService:
         Returns:
             A dict of inferred attributes (for example, inferred description/traits/role)
             and an overall confidence score. Returns an empty dict when no enrichment
-            is possible (no mentions found or enrichment fails).
+            is possible (no mentions found).
+
+        Raises:
+            ValidationError: When the model response violates the JSON-only contract after
+                a bounded retry loop.
 
         Notes:
-            This function is best-effort and intentionally does not raise for JSON
-            parsing failures or LLM call failures.
+            This function expects the prompt contract to be strict JSON-only. It retries
+            JSON decoding failures with an explicit corrective instruction.
         """
         # `element_id` is Neo4j-internal. Keep it internal-only.
         # For cross-module calls (data_access.*), use stable application id (`n.id`).
@@ -244,7 +253,7 @@ class GraphHealingService:
             if chap_num and summary:
                 summaries_text += f"Chapter {chap_num}: {summary}\n"
 
-        prompt = render_prompt(
+        base_prompt = render_prompt(
             "knowledge_agent/enrich_node_from_context.j2",
             {
                 "entity_name": node["name"],
@@ -255,16 +264,31 @@ class GraphHealingService:
             },
         )
 
-        try:
+        system_prompt = get_system_prompt("knowledge_agent")
+
+        prompt = base_prompt
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
             response_text, _ = await llm_service.async_call_llm(
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
                 max_tokens=16384,
-                system_prompt=get_system_prompt("knowledge_agent"),
+                system_prompt=system_prompt,
             )
 
-            enriched = json.loads(response_text)
+            try:
+                enriched = json.loads(response_text)
+            except json.JSONDecodeError as error:
+                if attempt == max_attempts:
+                    raise ValidationError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE) from error
+
+                prompt = (
+                    base_prompt
+                    + "\n\nCorrective instruction: Your previous response was invalid JSON. "
+                    + "Return ONLY a single valid JSON object with no surrounding text and no markdown code fences."
+                )
+                continue
 
             logger.info(
                 "Enrichment generated from context",
@@ -277,13 +301,7 @@ class GraphHealingService:
 
             return enriched
 
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(
-                "Failed to enrich node",
-                name=node["name"],
-                error=str(e),
-            )
-            return {}
+        raise AssertionError("unreachable: enrich_node_from_context retry loop did not return or raise")
 
     async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
         """Apply validated enrichment fields to a Neo4j node."""
