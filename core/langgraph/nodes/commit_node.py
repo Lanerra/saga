@@ -31,6 +31,7 @@ from core.langgraph.content_manager import (
     get_extracted_entities,
     get_extracted_relationships,
     load_embedding,
+    load_scene_embeddings,
     require_project_dir,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
@@ -189,15 +190,31 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 "error_node": "commit",
             }
 
-        # Get embedding from ref if available
+        # Get embedding from scene embeddings (preferred) or fallback to chapter embedding
         embedding = None
-        embedding_ref_obj = state.get("embedding_ref")
-        if embedding_ref_obj is not None:
+
+        # Try to load and aggregate scene embeddings
+        scene_embeddings_ref_obj = state.get("scene_embeddings_ref")
+        if scene_embeddings_ref_obj is not None:
             try:
-                embedding_ref = cast(ContentRef, embedding_ref_obj)
+                scene_embeddings_ref = cast(ContentRef, scene_embeddings_ref_obj)
+                scene_embeddings = load_scene_embeddings(content_manager, scene_embeddings_ref)
+                embedding = _aggregate_scene_embeddings_to_chapter(scene_embeddings)
+                logger.info(
+                    "commit_to_graph: aggregated scene embeddings into chapter embedding",
+                    num_scenes=len(scene_embeddings),
+                    embedding_dimensions=len(embedding) if embedding else 0,
+                )
+            except Exception as e:
+                logger.warning("commit_to_graph: failed to load/aggregate scene embeddings", error=str(e))
+
+        # Fallback for backward compatibility (should rarely be needed)
+        elif state.get("embedding_ref"):
+            try:
+                embedding_ref = cast(ContentRef, state.get("embedding_ref"))
                 embedding = load_embedding(content_manager, embedding_ref)
             except Exception as e:
-                logger.warning("commit_to_graph: failed to load embedding", error=str(e))
+                logger.warning("commit_to_graph: failed to load chapter embedding", error=str(e))
         elif state.get("generated_embedding"):
             # Fallback for backward compatibility or if not externalized yet
             embedding = state.get("generated_embedding")
@@ -1265,5 +1282,38 @@ async def _run_phase2_deduplication(chapter: int) -> dict[str, int]:
         # Don't fail the commit if Phase 2 deduplication fails
         return {"characters": 0, "world_items": 0}
 
+
+def _aggregate_scene_embeddings_to_chapter(scene_embeddings: list[list[float]] | dict[str, list[float]]) -> list[float]:
+    """
+    Aggregate scene-level embeddings into a single chapter embedding.
+
+    Strategy: Average all scene embeddings to create a representative chapter embedding.
+    This provides semantic coverage of the entire chapter while being computationally efficient.
+
+    Args:
+        scene_embeddings: List or dict of scene embedding vectors
+
+    Returns:
+        Single chapter embedding vector (averaged from all scenes)
+    """
+    if not scene_embeddings:
+        return []
+
+    # Handle both list and dict formats
+    if isinstance(scene_embeddings, dict):
+        embeddings_list = list(scene_embeddings.values())
+    else:
+        embeddings_list = scene_embeddings
+
+    if not embeddings_list:
+        return []
+
+    # Convert to numpy array for efficient computation
+    embeddings_array = np.array(embeddings_list)
+
+    # Average across scenes (axis=0)
+    chapter_embedding = np.mean(embeddings_array, axis=0).tolist()
+
+    return chapter_embedding
 
 __all__ = ["commit_to_graph"]

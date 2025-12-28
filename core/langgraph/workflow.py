@@ -14,7 +14,7 @@ from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, at
 
 from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.commit_node import commit_to_graph
-from core.langgraph.nodes.embedding_node import generate_embedding, generate_scene_embeddings
+from core.langgraph.nodes.embedding_node import generate_scene_embeddings
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
 from core.langgraph.nodes.quality_assurance_node import check_quality
@@ -414,7 +414,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     # Add all generation nodes (using subgraphs where applicable)
     workflow.add_node("generate", create_generation_subgraph())
-    workflow.add_node("gen_embedding", generate_embedding)
     workflow.add_node("extract", create_scene_extraction_subgraph())
     workflow.add_node("gen_scene_embeddings", generate_scene_embeddings)
     workflow.add_node("assemble_chapter", assemble_chapter)
@@ -504,18 +503,8 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     # Generation flow
     # Mainline Phase 2 ordering:
     # generate → extract → gen_scene_embeddings → assemble_chapter → normalize_relationships → validate → commit → summarize …
-    #
-    # The chapter-level embedding node remains available for non-mainline paths.
     workflow.add_conditional_edges(
         "generate",
-        should_handle_error,
-        {
-            "continue": "extract",
-            "error": "error_handler",
-        },
-    )
-    workflow.add_conditional_edges(
-        "gen_embedding",
         should_handle_error,
         {
             "continue": "extract",
