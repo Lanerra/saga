@@ -265,6 +265,7 @@ class NarrativeState(TypedDict, total=False):
     chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
     plot_point_focus: str | None
     current_scene_index: int  # Index of the scene currently being processed
+    chapter_plan_scene_count: int  # Total number of scenes in the current chapter plan
 
     # Externalized scene drafts reference
     scene_drafts_ref: ContentRef | None  # Reference to externalized scene drafts
@@ -475,6 +476,7 @@ def create_initial_state(
         "chapter_plan": None,
         "plot_point_focus": None,
         "current_scene_index": 0,
+        "chapter_plan_scene_count": 0,
         # Revision state
         "evaluation_result": None,
         "patch_instructions": None,

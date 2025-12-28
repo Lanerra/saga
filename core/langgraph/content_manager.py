@@ -104,6 +104,9 @@ class ContentManager:
             project_dir: Project root directory. The manager creates
                 `<project_dir>/.saga/content` if it does not exist.
         """
+        if not isinstance(project_dir, str) or not project_dir.strip():
+            raise ValueError("project_dir is required")
+
         self.project_dir = Path(project_dir)
         self.content_dir = self.project_dir / ".saga" / "content"
         self.content_dir.mkdir(parents=True, exist_ok=True)
@@ -1310,9 +1313,17 @@ def get_chapter_plan(state: Mapping[str, Any], manager: ContentManager) -> list[
     return data
 
 
+def require_project_dir(state: Mapping[str, Any]) -> str:
+    project_dir = state.get("project_dir")
+    if not isinstance(project_dir, str) or not project_dir.strip():
+        raise ValueError("project_dir is required")
+    return project_dir
+
+
 __all__ = [
     "ContentRef",
     "ContentManager",
+    "require_project_dir",
     "save_draft",
     "load_draft",
     "save_scenes",

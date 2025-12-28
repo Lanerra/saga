@@ -26,12 +26,12 @@ class TestCommitToGraph:
 
     async def test_commit_with_no_entities(
         self,
-        sample_initial_state,
+        sample_state_with_extraction,
         mock_knowledge_graph_service,
         mock_chapter_queries,
     ):
         """Test commit with no extracted entities."""
-        state = sample_initial_state
+        state = sample_state_with_extraction
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
@@ -123,9 +123,15 @@ class TestCommitToGraph:
 
         project_dir = str(tmp_path)
 
+        from core.langgraph.content_manager import ContentManager
+
+        content_manager = ContentManager(project_dir)
+        draft_ref = content_manager.save_text("draft", "draft", "chapter_1", 1)
+
         state = {
             "project_dir": project_dir,
             "current_chapter": 1,
+            "draft_ref": draft_ref,
             "draft_word_count": 0,
             "relationship_vocabulary": {
                 "WORKS_WITH": {
@@ -470,12 +476,12 @@ class TestCommitToGraph:
 
     async def test_commit_with_duplicate_world_items_in_batch(
         self,
-        sample_initial_state,
+        sample_state_with_extraction,
         mock_knowledge_graph_service,
         mock_chapter_queries,
     ):
         """Test that within-batch duplicate world items are detected."""
-        state = sample_initial_state
+        state = sample_state_with_extraction
         state["extracted_entities"] = {
             "world_items": [
                 {

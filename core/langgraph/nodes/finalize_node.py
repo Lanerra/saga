@@ -22,6 +22,7 @@ from core.langgraph.content_manager import (
     get_draft_text,
     get_previous_summaries,
     load_embedding,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -63,8 +64,10 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         chapter=state.get("current_chapter", 1),
     )
 
+    project_dir = require_project_dir(state)
+
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(project_dir)
 
     from core.exceptions import MissingDraftReferenceError
 
@@ -98,7 +101,7 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         await _save_chapter_to_filesystem(
             chapter_number=chapter_number,
             text=draft_text,
-            project_dir=state.get("project_dir", "output"),
+            project_dir=project_dir,
         )
     except Exception as e:
         error_msg = f"Error saving chapter to filesystem: {str(e)}"

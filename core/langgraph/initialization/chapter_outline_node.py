@@ -22,6 +22,7 @@ from core.langgraph.content_manager import (
     get_character_sheets,
     get_global_outline,
     get_previous_summaries,
+    require_project_dir,
 )
 from core.langgraph.initialization.chapter_allocation import (
     choose_act_ranges,
@@ -65,7 +66,7 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get chapter outlines (prefers externalized content, falls back to in-state)
     existing_outlines = get_chapter_outlines(state, content_manager)
@@ -175,7 +176,7 @@ async def _generate_single_chapter_outline(
         handling in the parent node.
     """
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Gather context (prefers externalized content, falls back to in-state)
     global_outline = get_global_outline(state, content_manager) or {}
@@ -284,7 +285,7 @@ def _determine_act_for_chapter(state: NarrativeState, chapter_number: int) -> in
     total_chapters = state.get("total_chapters", 20)
 
     # Initialize content manager and get global outline
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
     global_outline = get_global_outline(state, content_manager) or {}
 
     # Prefer explicit act chapter ranges from the global outline when present,

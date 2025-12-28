@@ -15,7 +15,7 @@ from typing import Any
 
 import structlog
 
-from core.langgraph.content_manager import ContentManager
+from core.langgraph.content_manager import ContentManager, require_project_dir
 from core.langgraph.state import (
     ExtractedEntity,
     ExtractedRelationship,
@@ -53,7 +53,7 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
         relationships=len(state.get("extracted_relationships", [])),
     )
 
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
     chapter_number = state.get("current_chapter", 1)
 
     current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1

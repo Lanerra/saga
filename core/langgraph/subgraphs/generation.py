@@ -27,18 +27,21 @@ def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end"]:
     Args:
         state: Workflow state. This function reads:
             - current_scene_index: Index of the next scene to draft.
-            - chapter_plan: Scene plan used to bound generation.
+            - chapter_plan_scene_count: Total number of scenes in the chapter plan.
 
     Returns:
         "continue" to draft another scene, or "end" to end the subgraph.
     """
-    current_index = state.get("current_scene_index", 0)
-    chapter_plan = state.get("chapter_plan", [])
+    scene_count = state.get("chapter_plan_scene_count", 0)
+    if isinstance(scene_count, bool) or not isinstance(scene_count, int):
+        raise TypeError("chapter_plan_scene_count must be an int")
 
-    if not chapter_plan:
+    if scene_count <= 0:
         return "end"
 
-    if current_index < len(chapter_plan):
+    current_index = state.get("current_scene_index", 0)
+
+    if current_index < scene_count:
         return "continue"
 
     return "end"

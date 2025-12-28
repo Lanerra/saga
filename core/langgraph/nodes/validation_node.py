@@ -217,9 +217,10 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         ContentManager,
         get_extracted_entities,
         get_extracted_relationships,
+        require_project_dir,
     )
 
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get extraction results (prefers externalized content)
     extracted_entities = get_extracted_entities(state, content_manager)

@@ -18,6 +18,7 @@ from core.langgraph.content_manager import (
     get_chapter_plan,
     get_previous_summaries,
     get_scene_drafts,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -67,7 +68,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     logger.info("retrieve_context: fetching scene-specific context")
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     chapter_number = state.get("current_chapter", 1)
     scene_index = state.get("current_scene_index", 0)

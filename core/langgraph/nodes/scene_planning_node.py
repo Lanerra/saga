@@ -17,6 +17,7 @@ import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
+    require_project_dir,
     save_chapter_plan,
 )
 from core.langgraph.state import NarrativeState
@@ -269,7 +270,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     chapter_number = state.get("current_chapter", 1)
 
     # Initialize content manager and get outlines
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
     chapter_outlines = get_chapter_outlines(state, content_manager)
     outline = chapter_outlines.get(chapter_number)
 
@@ -315,7 +316,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         await _ensure_scene_characters_exist(scenes_untyped, chapter_number)
 
         # Externalize chapter_plan to reduce state bloat
-        content_manager = ContentManager(state.get("project_dir", ""))
+        content_manager = ContentManager(require_project_dir(state))
 
         # Get current version for this chapter's plan
         current_version = content_manager.get_latest_version("chapter_plan", f"chapter_{chapter_number}") + 1
@@ -336,8 +337,8 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            "chapter_plan": scenes,
             "chapter_plan_ref": chapter_plan_ref,
+            "chapter_plan_scene_count": len(scenes),
             "current_scene_index": 0,
             "scene_drafts_ref": None,
             "current_node": "plan_scenes",

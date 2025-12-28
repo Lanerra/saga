@@ -31,6 +31,7 @@ from core.langgraph.content_manager import (
     get_extracted_entities,
     get_extracted_relationships,
     load_embedding,
+    require_project_dir,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.schema_validator import canonicalize_entity_type_for_persistence
@@ -80,7 +81,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
           stale reads within the same process.
     """
     # Initialize content manager to read externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get extraction results from externalized content
     extracted = get_extracted_entities(state, content_manager)
@@ -174,7 +175,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             all_statements.extend(relationship_statements)
 
         # Step 4c: Collect chapter node statement
-        content_manager = ContentManager(state.get("project_dir", ""))
+        content_manager = ContentManager(require_project_dir(state))
 
         from core.exceptions import MissingDraftReferenceError
 

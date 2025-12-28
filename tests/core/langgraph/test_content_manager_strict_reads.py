@@ -9,6 +9,16 @@ from core.exceptions import ContentIntegrityError, MissingDraftReferenceError
 from core.langgraph.content_manager import ContentManager, get_draft_text
 
 
+def test_content_manager_requires_project_dir_non_empty_and_non_whitespace() -> None:
+    with pytest.raises(ValueError) as exc:
+        ContentManager("")
+    assert str(exc.value) == "project_dir is required"
+
+    with pytest.raises(ValueError) as exc:
+        ContentManager("   ")
+    assert str(exc.value) == "project_dir is required"
+
+
 def test_load_text_strict_succeeds_when_checksum_and_size_match(tmp_path: Path) -> None:
     manager = ContentManager(str(tmp_path))
 

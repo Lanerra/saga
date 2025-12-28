@@ -27,7 +27,7 @@ def _make_state(tmp_path: Path) -> NarrativeState:
 
     world_item_description = "An ancient city hidden beneath the desert sands.\\n" "Legends speak of its cursed guardians.\n" "Explorers rarely return."
 
-    content_manager = ContentManager(project_dir)
+    content_manager = ContentManager(str(project_dir))
 
     # Save character sheets
     character_sheets = {

@@ -21,6 +21,7 @@ import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_extracted_relationships,
+    require_project_dir,
     set_extracted_relationships,
 )
 from core.langgraph.state import ExtractedRelationship, NarrativeState
@@ -59,7 +60,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
         }
 
     # Initialize content manager
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get current relationships and vocabulary
     # NOTE: [`get_extracted_relationships()`](core/langgraph/content_manager.py:783) prefers the ref when present.

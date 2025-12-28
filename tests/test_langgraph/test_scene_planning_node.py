@@ -92,7 +92,7 @@ async def test_plan_scenes_parses_valid_json_list(
 
     assert result["current_node"] == "plan_scenes"
     assert result["last_error"] is None if "last_error" in result else True
-    assert result["chapter_plan"] == scenes
+    assert result["chapter_plan_scene_count"] == len(scenes)
     assert result["chapter_plan_ref"]["path"] == "mock/path/chapter_plan.json"
 
 
@@ -111,7 +111,7 @@ async def test_plan_scenes_parses_json_in_markdown_fence(
 
     result = await plan_scenes(base_state)
 
-    assert result["chapter_plan"] == scenes
+    assert result["chapter_plan_scene_count"] == len(scenes)
 
 
 @pytest.mark.asyncio
@@ -129,7 +129,7 @@ async def test_plan_scenes_parses_json_with_commentary_before_and_after(
 
     result = await plan_scenes(base_state)
 
-    assert result["chapter_plan"] == scenes
+    assert result["chapter_plan_scene_count"] == len(scenes)
 
 
 @pytest.mark.asyncio

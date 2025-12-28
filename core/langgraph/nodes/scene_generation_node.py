@@ -14,6 +14,7 @@ from core.langgraph.content_manager import (
     get_chapter_plan,
     get_hybrid_context,
     get_scene_drafts,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -45,7 +46,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     logger.info("draft_scene: generating text")
 
     # Initialize content manager
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     chapter_number = state.get("current_chapter", 1)
     scene_index = state.get("current_scene_index", 0)

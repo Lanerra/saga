@@ -14,6 +14,7 @@ from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
     get_scene_drafts,
+    require_project_dir,
     save_scene_embeddings,
 )
 from core.langgraph.state import NarrativeState
@@ -46,7 +47,7 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
         This node performs network I/O to generate embeddings and filesystem I/O to
         persist the result via `ContentManager.save_binary()`.
     """
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
     chapter_num = state.get("current_chapter")
 
     from core.exceptions import MissingDraftReferenceError
@@ -96,7 +97,7 @@ async def generate_embedding(state: NarrativeState) -> NarrativeState:
             embedding_list = list(embedding)
 
         # Initialize content manager for external storage
-        content_manager = ContentManager(state.get("project_dir", ""))
+        content_manager = ContentManager(require_project_dir(state))
 
         # Get current version (for revision tracking)
         current_version = content_manager.get_latest_version("embedding", f"chapter_{chapter_num}") + 1
@@ -157,7 +158,7 @@ async def generate_scene_embeddings(state: NarrativeState) -> dict[str, Any]:
     if not isinstance(chapter_number, int) or isinstance(chapter_number, bool) or chapter_number <= 0:
         raise ValueError("generate_scene_embeddings expected current_chapter to be a positive int; " f"got {chapter_number!r}")
 
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     if not state.get("scene_drafts_ref"):
         return {

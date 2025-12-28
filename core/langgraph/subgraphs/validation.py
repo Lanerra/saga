@@ -32,6 +32,7 @@ from core.langgraph.content_manager import (
     get_extracted_entities,
     get_extracted_relationships,
     get_previous_summaries,
+    require_project_dir,
 )
 from core.langgraph.nodes.validation_node import (
     get_extracted_events_for_validation,
@@ -89,7 +90,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         word_count=state.get("draft_word_count", 0),
     )
 
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     from core.exceptions import MissingDraftReferenceError
 
@@ -344,7 +345,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     current_chapter = state.get("current_chapter", 1)
 
     # Initialize content manager to read externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Check 1: Timeline violations
     # Delegate state-shape assumptions to the validation node's helper so the subgraph

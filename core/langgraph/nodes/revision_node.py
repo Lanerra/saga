@@ -18,6 +18,7 @@ from core.langgraph.content_manager import (
     get_chapter_outlines,
     get_chapter_plan,
     get_hybrid_context,
+    require_project_dir,
 )
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -61,7 +62,7 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "current_node": "revise_failed",
         }
 
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     try:
         hybrid_context = get_hybrid_context(state, content_manager)

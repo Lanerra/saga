@@ -19,6 +19,7 @@ from core.langgraph.content_manager import (
     ContentManager,
     get_character_sheets,
     get_global_outline,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -53,7 +54,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         successful persistence.
     """
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get character sheets and global outline (from external files)
     character_sheets = get_character_sheets(state, content_manager)

@@ -14,7 +14,7 @@ import structlog
 from pydantic import BaseModel, Field
 
 import config
-from core.langgraph.content_manager import ContentManager, get_character_sheets
+from core.langgraph.content_manager import ContentManager, get_character_sheets, require_project_dir
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -84,7 +84,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get character sheets (prefers externalized content, falls back to in-state)
     character_sheets = get_character_sheets(state, content_manager)

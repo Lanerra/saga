@@ -13,7 +13,7 @@ import structlog
 
 import config
 from core.exceptions import LLMServiceError
-from core.langgraph.content_manager import ContentManager, get_scene_drafts
+from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -643,7 +643,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         logger.warning("extract_from_scenes: skipping due to fatal error")
         return {"current_node": "extract_from_scenes"}
 
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     try:
         scene_drafts = get_scene_drafts(state, content_manager)
