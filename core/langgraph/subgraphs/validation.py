@@ -510,11 +510,34 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
         new_contradictions=len(contradictions) - len(state.get("contradictions", [])),
     )
 
-    # Update needs_revision based on all contradictions
     critical_issues = [c for c in contradictions if c.severity == "critical"]
     major_issues = [c for c in contradictions if c.severity == "major"]
+    has_issues = len(critical_issues) > 0 or len(major_issues) > 0
+    force_continue = state.get("force_continue", False)
 
-    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 0) and not state.get("force_continue", False)
+    iteration_count = state.get("iteration_count", 0)
+    max_iterations = state.get("max_iterations", 3)
+
+    if iteration_count >= max_iterations and has_issues and not force_continue:
+        error_msg = f"Validation failed after {max_iterations} iterations. " f"Found {len(critical_issues)} critical and {len(major_issues)} major issues."
+        logger.error(
+            "detect_contradictions: validation failed on final iteration",
+            iteration_count=iteration_count,
+            max_iterations=max_iterations,
+            critical_issues=len(critical_issues),
+            major_issues=len(major_issues),
+        )
+        return {
+            **state,
+            "has_fatal_error": True,
+            "last_error": error_msg,
+            "error_node": "validate",
+            "needs_revision": False,
+            "contradictions": contradictions,
+            "current_node": "detect_contradictions",
+        }
+
+    needs_revision = has_issues and not force_continue
 
     return {
         **state,

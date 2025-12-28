@@ -61,7 +61,6 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
     )
 
     # These nodes should NOT be called
-    mock_gen_embedding = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_embedding"})
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
     mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
     mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
@@ -75,7 +74,6 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
             "core.langgraph.subgraphs.generation.create_generation_subgraph",
             return_value=mock_generate,
         ),
-        patch("core.langgraph.workflow.generate_embedding", mock_gen_embedding),
         patch(
             "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract,
@@ -107,7 +105,6 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
         mock_generate.assert_called_once()
 
         # Verify execution halted
-        mock_gen_embedding.assert_not_called()
         mock_extract.assert_not_called()
 
 
@@ -120,7 +117,6 @@ async def test_workflow_routes_to_error_handler_on_validation_fatal_error(
     # Mock nodes up to validate
     mock_chapter_outline = MagicMock(side_effect=lambda s: {**s, "current_node": "chapter_outline"})
     mock_generate = MagicMock(side_effect=lambda s: {**s, "current_node": "generate"})
-    mock_gen_embedding = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_embedding"})
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
     mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
     mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
@@ -151,7 +147,6 @@ async def test_workflow_routes_to_error_handler_on_validation_fatal_error(
             "core.langgraph.subgraphs.generation.create_generation_subgraph",
             return_value=mock_generate,
         ),
-        patch("core.langgraph.workflow.generate_embedding", mock_gen_embedding),
         patch(
             "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract,
@@ -195,7 +190,6 @@ async def test_workflow_continues_when_no_fatal_error(
     # Mock all Phase 2 nodes with successful returns
     mock_chapter_outline = MagicMock(side_effect=lambda s: {**s, "current_node": "chapter_outline"})
     mock_generate = MagicMock(side_effect=lambda s: {**s, "current_node": "generate"})
-    mock_gen_embedding = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_embedding"})
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
     mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
     mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
@@ -216,7 +210,6 @@ async def test_workflow_continues_when_no_fatal_error(
             "core.langgraph.subgraphs.generation.create_generation_subgraph",
             return_value=mock_generate,
         ),
-        patch("core.langgraph.workflow.generate_embedding", mock_gen_embedding),
         patch(
             "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract,
@@ -247,7 +240,6 @@ async def test_workflow_continues_when_no_fatal_error(
         # Verify all nodes called
         mock_chapter_outline.assert_called_once()
         mock_generate.assert_called_once()
-        mock_gen_embedding.assert_not_called()
         mock_extract.assert_called_once()
         mock_gen_scene_embeddings.assert_called_once()
         mock_assemble_chapter.assert_called_once()

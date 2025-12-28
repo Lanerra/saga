@@ -132,13 +132,6 @@ def mock_all_nodes() -> Any:
         "current_node": "validate",
     }
 
-    mock_embed_node = MagicMock()
-    mock_embed_node.side_effect = lambda state: {
-        **state,
-        "embedding_ref": {"path": "mock_embedding"},
-        "current_node": "gen_embedding",
-    }
-
     mock_chapter_outline_node = MagicMock()
     mock_chapter_outline_node.side_effect = lambda state: {
         **state,
@@ -220,10 +213,6 @@ def mock_all_nodes() -> Any:
             side_effect=mock_assemble_chapter_node,
         ),
         patch(
-            "core.langgraph.workflow.generate_embedding",
-            side_effect=mock_embed_node,
-        ),
-        patch(
             "core.langgraph.initialization.generate_chapter_outline",
             side_effect=mock_chapter_outline_node,
         ),
@@ -238,7 +227,6 @@ def mock_all_nodes() -> Any:
         yield {
             "chapter_outline": mock_chapter_outline_node,
             "generate": mock_gen_node,
-            "gen_embedding": mock_embed_node,
             "extract": mock_extract_node,
             "gen_scene_embeddings": mock_scene_embeddings_node,
             "assemble_chapter": mock_assemble_chapter_node,
@@ -333,7 +321,6 @@ class TestPhase2Workflow:
 
         # Verify all nodes were called in correct order
         mock_all_nodes["chapter_outline"].assert_called_once()
-        mock_all_nodes["gen_embedding"].assert_not_called()
         mock_all_nodes["gen_scene_embeddings"].assert_called_once()
         mock_all_nodes["assemble_chapter"].assert_called_once()
         mock_all_nodes["normalize_relationships"].assert_called_once()
@@ -470,7 +457,6 @@ class TestPhase2Workflow:
 
         mock_all_nodes["chapter_outline"].assert_called_once()
         mock_all_nodes["generate"].assert_called_once()
-        mock_all_nodes["gen_embedding"].assert_not_called()
         mock_all_nodes["extract"].assert_called_once()
         mock_all_nodes["gen_scene_embeddings"].assert_called_once()
         mock_all_nodes["assemble_chapter"].assert_called_once()
@@ -624,7 +610,6 @@ class TestPhase2Integration:
         expected_nodes = [
             "chapter_outline",
             "generate",
-            "gen_embedding",
             "extract",
             "gen_scene_embeddings",
             "assemble_chapter",

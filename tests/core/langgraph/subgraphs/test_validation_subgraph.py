@@ -542,6 +542,122 @@ class TestDetectContradictions:
 
             assert result["needs_revision"] is False
 
+    async def test_detect_contradictions_at_max_iterations_with_issues_triggers_fatal_error(self, sample_validation_state):
+        """Validation failure on final iteration triggers fatal error instead of committing."""
+        state = sample_validation_state.copy()
+        state["iteration_count"] = 3
+        state["max_iterations"] = 3
+
+        critical_contradiction = Contradiction(
+            type="timeline",
+            description="Critical timeline violation on final iteration",
+            conflicting_chapters=[1, 2],
+            severity="critical",
+            suggested_fix="Fix timeline",
+        )
+
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
+            mock_timeline.return_value = [critical_contradiction]
+            mock_rules.return_value = []
+            mock_relationships.return_value = []
+
+            result = await detect_contradictions(state)
+
+            assert result["has_fatal_error"] is True
+            assert result["needs_revision"] is False
+            assert result["error_node"] == "validate"
+            assert "after 3 iterations" in result["last_error"]
+            assert "1 critical" in result["last_error"]
+            assert len(result["contradictions"]) == 1
+
+    async def test_detect_contradictions_at_max_iterations_with_major_issues_triggers_fatal_error(self, sample_validation_state):
+        """Major issues on final iteration also trigger fatal error."""
+        state = sample_validation_state.copy()
+        state["iteration_count"] = 2
+        state["max_iterations"] = 2
+
+        major_contradiction = Contradiction(
+            type="world_rule",
+            description="Major world rule violation",
+            conflicting_chapters=[1],
+            severity="major",
+            suggested_fix="Fix rule",
+        )
+
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
+            mock_timeline.return_value = []
+            mock_rules.return_value = [major_contradiction]
+            mock_relationships.return_value = []
+
+            result = await detect_contradictions(state)
+
+            assert result["has_fatal_error"] is True
+            assert result["needs_revision"] is False
+            assert "1 major" in result["last_error"]
+
+    async def test_detect_contradictions_below_max_iterations_with_issues_sets_needs_revision(self, sample_validation_state):
+        """Issues below max iterations still set needs_revision normally."""
+        state = sample_validation_state.copy()
+        state["iteration_count"] = 1
+        state["max_iterations"] = 3
+
+        critical_contradiction = Contradiction(
+            type="timeline",
+            description="Critical issue",
+            conflicting_chapters=[1],
+            severity="critical",
+            suggested_fix="Fix it",
+        )
+
+        with (
+            patch(
+                "core.langgraph.subgraphs.validation._check_timeline",
+                new_callable=AsyncMock,
+            ) as mock_timeline,
+            patch(
+                "core.langgraph.subgraphs.validation._check_world_rules",
+                new_callable=AsyncMock,
+            ) as mock_rules,
+            patch(
+                "core.langgraph.subgraphs.validation._check_relationship_evolution",
+                new_callable=AsyncMock,
+            ) as mock_relationships,
+        ):
+            mock_timeline.return_value = [critical_contradiction]
+            mock_rules.return_value = []
+            mock_relationships.return_value = []
+
+            result = await detect_contradictions(state)
+
+            assert result["needs_revision"] is True
+            assert result.get("has_fatal_error", False) is False
+
 
 @pytest.mark.asyncio
 class TestCheckTimeline:
