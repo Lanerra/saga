@@ -7,9 +7,7 @@ import pytest
 from core.exceptions import ValidationError
 from core.graph_healing_service import GraphHealingService
 
-_ENRICHMENT_JSON_CONTRACT_ERROR_MESSAGE = (
-    "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
-)
+_ENRICHMENT_JSON_CONTRACT_ERROR_MESSAGE = "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
 
 
 @pytest.mark.asyncio
@@ -34,10 +32,7 @@ async def test_enrich_node_from_context_invalid_json_then_valid_retries_and_succ
     ]
 
     invalid_response = "I think the answer is:\n```json\n{}\n```"
-    valid_response = (
-        '{"inferred_description":"A brave leader.","inferred_traits":["Brave"],'
-        '"inferred_role":"Protagonist","confidence":0.9}'
-    )
+    valid_response = '{"inferred_description":"A brave leader.","inferred_traits":["Brave"],' '"inferred_role":"Protagonist","confidence":0.9}'
 
     with (
         patch(
@@ -125,10 +120,7 @@ async def test_enrich_node_from_context_valid_json_first_attempt_succeeds() -> N
         }
     ]
 
-    valid_response = (
-        '{"inferred_description":"A minor figure.","inferred_traits":[],'
-        '"inferred_role":"Ally","confidence":0.6}'
-    )
+    valid_response = '{"inferred_description":"A minor figure.","inferred_traits":[],' '"inferred_role":"Ally","confidence":0.6}'
 
     with (
         patch(

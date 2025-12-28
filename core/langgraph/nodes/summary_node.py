@@ -42,11 +42,7 @@ class ChapterSummaryContractError(ValueError):
 
 
 _SUMMARY_MAX_ATTEMPTS = 3
-_SUMMARY_CORRECTION_INSTRUCTION = (
-    "\n\nCORRECTION:\n"
-    'Return ONLY valid JSON. Output MUST be a single JSON object with exactly one key: "summary".\n'
-    "No markdown. No code fences. No extra text.\n"
-)
+_SUMMARY_CORRECTION_INSTRUCTION = "\n\nCORRECTION:\n" 'Return ONLY valid JSON. Output MUST be a single JSON object with exactly one key: "summary".\n' "No markdown. No code fences. No extra text.\n"
 
 
 async def summarize_chapter(state: NarrativeState) -> NarrativeState:
@@ -135,9 +131,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
             )
 
             if not summary_text or not summary_text.strip():
-                last_contract_error = ChapterSummaryContractError(
-                    "Chapter summary JSON contract violated: model returned an empty response."
-                )
+                last_contract_error = ChapterSummaryContractError("Chapter summary JSON contract violated: model returned an empty response.")
             else:
                 try:
                     summary = _parse_summary_response(summary_text)
@@ -252,28 +246,19 @@ def _parse_summary_response(response_text: str) -> str:
     )
 
     if not isinstance(parsed, dict):
-        raise ChapterSummaryContractError(
-            "Chapter summary JSON contract violated: could not parse a JSON object from the model response."
-        )
+        raise ChapterSummaryContractError("Chapter summary JSON contract violated: could not parse a JSON object from the model response.")
 
     if set(parsed.keys()) != {"summary"}:
         keys = ", ".join(sorted(str(k) for k in parsed.keys()))
-        raise ChapterSummaryContractError(
-            'Chapter summary JSON contract violated: expected a single JSON object with exactly one key: "summary". '
-            f"Found keys: {keys}"
-        )
+        raise ChapterSummaryContractError('Chapter summary JSON contract violated: expected a single JSON object with exactly one key: "summary". ' f"Found keys: {keys}")
 
     summary = parsed.get("summary")
     if not isinstance(summary, str):
-        raise ChapterSummaryContractError(
-            'Chapter summary JSON contract violated: key "summary" must be a string.'
-        )
+        raise ChapterSummaryContractError('Chapter summary JSON contract violated: key "summary" must be a string.')
 
     cleaned = summary.strip()
     if not cleaned:
-        raise ChapterSummaryContractError(
-            'Chapter summary JSON contract violated: key "summary" must be a non-empty string.'
-        )
+        raise ChapterSummaryContractError('Chapter summary JSON contract violated: key "summary" must be a non-empty string.')
 
     return cleaned
 

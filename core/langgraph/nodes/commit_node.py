@@ -1316,4 +1316,5 @@ def _aggregate_scene_embeddings_to_chapter(scene_embeddings: list[list[float]] |
 
     return chapter_embedding
 
+
 __all__ = ["commit_to_graph"]

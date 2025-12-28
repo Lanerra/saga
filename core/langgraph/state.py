@@ -27,7 +27,6 @@ from core.schema_validator import schema_validator
 from models.agent_models import (
     EvaluationResult,
     PatchInstruction,
-    SceneDetail,
 )
 
 # Import existing SAGA models for compatibility

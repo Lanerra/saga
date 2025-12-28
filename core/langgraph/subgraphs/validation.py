@@ -322,6 +322,122 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
     return fallback_scores
 
 
+async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
+    """Fetch all validation-related data from Neo4j in a single query.
+
+    This function combines three separate queries into one to reduce round-trips:
+    1. Events with timestamps from previous chapters (for timeline validation)
+    2. World rules (for world rule validation)
+    3. Character relationships (for relationship evolution validation)
+
+    Args:
+        current_chapter: Chapter number being validated.
+
+    Returns:
+        A dictionary containing:
+        - "events": List of events with timestamps
+        - "world_rules": List of world rules
+        - "relationships": Dict mapping (source, target) -> relationship info
+    """
+    try:
+        # Combined query that retrieves all validation data in one round-trip
+        query = """
+            // Events for timeline validation
+            MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
+            WHERE ch.number < $current_chapter AND e.timestamp IS NOT NULL
+            RETURN 'event' AS data_type,
+                   e.description AS description,
+                   e.timestamp AS timestamp,
+                   ch.number AS chapter
+
+            UNION
+
+            // World rules for world rule validation
+            MATCH (r:WorldRule)
+            RETURN 'world_rule' AS data_type,
+                   r.description AS description,
+                   r.constraint AS constraint,
+                   r.created_chapter AS created_chapter
+
+            UNION
+
+            // Character relationships for relationship evolution validation
+            MATCH (c1:Character)-[r]->(c2:Character)
+            RETURN 'relationship' AS data_type,
+                   c1.name AS source_name,
+                   c2.name AS target_name,
+                   type(r) AS rel_type,
+                   r.chapter_added AS first_chapter
+        """
+
+        results = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
+
+        # Organize results into structured data
+        validation_data = {
+            "events": [],
+            "world_rules": [],
+            "relationships": {},  # Key: (source_name, target_name), Value: {rel_type, first_chapter}
+        }
+
+        for row in results:
+            data_type = row.get("data_type")
+
+            if data_type == "event":
+                validation_data["events"].append(
+                    {
+                        "description": row.get("description"),
+                        "timestamp": row.get("timestamp"),
+                        "chapter": row.get("chapter"),
+                    }
+                )
+
+            elif data_type == "world_rule":
+                rule_text = row.get("description") or row.get("constraint")
+                if rule_text:
+                    validation_data["world_rules"].append(
+                        {
+                            "description": rule_text,
+                            "constraint": row.get("constraint"),
+                            "created_chapter": row.get("created_chapter"),
+                        }
+                    )
+
+            elif data_type == "relationship":
+                source = row.get("source_name", "")
+                target = row.get("target_name", "")
+                key = (source, target)
+
+                # Keep only the earliest relationship (lowest chapter_added)
+                if key not in validation_data["relationships"]:
+                    validation_data["relationships"][key] = {
+                        "rel_type": row.get("rel_type"),
+                        "first_chapter": row.get("first_chapter"),
+                    }
+
+        logger.debug(
+            "_fetch_validation_data: fetched validation data",
+            current_chapter=current_chapter,
+            events_count=len(validation_data["events"]),
+            world_rules_count=len(validation_data["world_rules"]),
+            relationships_count=len(validation_data["relationships"]),
+        )
+
+        return validation_data
+
+    except Exception as e:
+        logger.error(
+            "_fetch_validation_data: error fetching validation data",
+            error=str(e),
+            exc_info=True,
+        )
+        # Return empty data on error (best-effort behavior)
+        return {
+            "events": [],
+            "world_rules": [],
+            "relationships": {},
+        }
+
+
 async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     """Detect additional narrative contradictions and update revision decision.
 
@@ -347,6 +463,9 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     # Initialize content manager to read externalized content
     content_manager = ContentManager(require_project_dir(state))
 
+    # Fetch all validation data in a single Neo4j query to reduce round-trips
+    validation_data = await _fetch_validation_data(current_chapter)
+
     # Check 1: Timeline violations
     # Delegate state-shape assumptions to the validation node's helper so the subgraph
     # doesn't diverge (canonical events live in `world_items` with type == "Event").
@@ -355,6 +474,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     timeline_contradictions = await _check_timeline(
         extracted_events,
         current_chapter,
+        validation_data.get("events", []),
     )
     contradictions.extend(timeline_contradictions)
 
@@ -370,6 +490,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
         draft_text,
         state.get("current_world_rules", []),
         current_chapter,
+        validation_data.get("world_rules", []),
     )
     contradictions.extend(world_rule_contradictions)
 
@@ -378,6 +499,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     relationship_issues = await _check_relationship_evolution(
         extracted_relationships,
         current_chapter,
+        validation_data.get("relationships", {}),
     )
     contradictions.extend(relationship_issues)
 
@@ -405,12 +527,14 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
 async def _check_timeline(
     extracted_events: list[Any],
     current_chapter: int,
+    existing_events: list[dict] = None,
 ) -> list[Contradiction]:
     """Check for timeline violations using extracted events and Neo4j history.
 
     Args:
         extracted_events: Event-like objects derived from extraction.
         current_chapter: Chapter number being validated.
+        existing_events: Pre-fetched events from Neo4j (optional, for optimization).
 
     Returns:
         Timeline-related contradictions. Returns an empty list on query errors
@@ -422,18 +546,18 @@ async def _check_timeline(
     contradictions = []
 
     try:
-        # Query Neo4j for existing events with timestamps
-        query = """
-            MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
-            WHERE ch.number < $current_chapter
-            AND e.timestamp IS NOT NULL
-            RETURN e.description AS description,
-                   e.timestamp AS timestamp,
-                   ch.number AS chapter
-            ORDER BY ch.number, e.timestamp
-        """
-
-        existing_events = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
+        # Use pre-fetched events if provided, otherwise query Neo4j
+        if existing_events is None:
+            query = """
+                MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
+                WHERE ch.number < $current_chapter
+                AND e.timestamp IS NOT NULL
+                RETURN e.description AS description,
+                       e.timestamp AS timestamp,
+                       ch.number AS chapter
+                ORDER BY ch.number, e.timestamp
+            """
+            existing_events = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
 
         if not existing_events:
             return []
@@ -542,6 +666,7 @@ async def _check_world_rules(
     draft_text: str,
     world_rules: list[str],
     current_chapter: int,
+    existing_world_rules: list[dict] = None,
 ) -> list[Contradiction]:
     """Check draft text against established world rules (best-effort).
 
@@ -552,6 +677,7 @@ async def _check_world_rules(
         draft_text: Chapter text to analyze.
         world_rules: Pre-configured rule strings.
         current_chapter: Chapter number being validated.
+        existing_world_rules: Pre-fetched world rules from Neo4j (optional, for optimization).
 
     Returns:
         World rule violations as contradictions. Returns an empty list on errors.
@@ -565,15 +691,17 @@ async def _check_world_rules(
     contradictions = []
 
     try:
-        # Also query Neo4j for any stored world rules
-        query = """
-            MATCH (r:WorldRule)
-            RETURN r.description AS description,
-                   r.constraint AS constraint,
-                   r.created_chapter AS created_chapter
-        """
-
-        db_rules = await neo4j_manager.execute_read_query(query)
+        # Use pre-fetched world rules if provided, otherwise query Neo4j
+        if existing_world_rules is None:
+            query = """
+                MATCH (r:WorldRule)
+                RETURN r.description AS description,
+                       r.constraint AS constraint,
+                       r.created_chapter AS created_chapter
+            """
+            db_rules = await neo4j_manager.execute_read_query(query)
+        else:
+            db_rules = existing_world_rules
 
         # Combine configured rules with DB rules
         all_rules = list(world_rules)
@@ -683,12 +811,14 @@ def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
 async def _check_relationship_evolution(
     extracted_relationships: list[Any],
     current_chapter: int,
+    existing_relationships: dict[tuple[str, str], dict] = None,
 ) -> list[Contradiction]:
     """Flag abrupt relationship shifts that may require narrative development.
 
     Args:
         extracted_relationships: Relationships extracted from the current chapter.
         current_chapter: Chapter number being validated.
+        existing_relationships: Pre-fetched relationships from Neo4j (optional, for optimization).
 
     Returns:
         Informational contradictions (typically `minor`) for abrupt transitions.
@@ -719,42 +849,72 @@ async def _check_relationship_evolution(
                 target = getattr(rel, "target_name", "")
                 rel_type = getattr(rel, "relationship_type", "")
 
-            # Check for previous relationship between these characters
-            query = """
-                MATCH (c1:Character {name: $source})-[r]->(c2:Character {name: $target})
-                RETURN type(r) AS rel_type, r.chapter_added AS first_chapter
-                ORDER BY r.chapter_added DESC
-                LIMIT 1
-            """
+            # Use pre-fetched relationships if provided
+            if existing_relationships is not None:
+                key = (source, target)
+                prev_rel_data = existing_relationships.get(key)
+                if prev_rel_data:
+                    prev_type = prev_rel_data.get("rel_type", "")
+                    prev_chapter = prev_rel_data.get("first_chapter", 0)
 
-            result = await neo4j_manager.execute_read_query(query, {"source": source, "target": target})
+                    # Check if this is a dramatic shift
+                    for (old_rel, new_rel), description in requires_development.items():
+                        if prev_type == old_rel and rel_type == new_rel:
+                            # Check if enough chapters have passed for development
+                            chapters_between = current_chapter - prev_chapter
 
-            if result and len(result) > 0:
-                prev_rel = result[0]
-                prev_type = prev_rel.get("rel_type", "")
-                prev_chapter = prev_rel.get("first_chapter", 0)
-
-                # Check if this is a dramatic shift
-                for (old_rel, new_rel), description in requires_development.items():
-                    if prev_type == old_rel and rel_type == new_rel:
-                        # Check if enough chapters have passed for development
-                        chapters_between = current_chapter - prev_chapter
-
-                        if chapters_between < 3:  # Arbitrary threshold
-                            contradictions.append(
-                                Contradiction(
-                                    type="relationship",
-                                    description=f"{source} and {target}: {description} "
-                                    f"from '{prev_type}' to '{rel_type}' without sufficient development "
-                                    f"(only {chapters_between} chapters since chapter {prev_chapter})",
-                                    conflicting_chapters=[
-                                        prev_chapter,
-                                        current_chapter,
-                                    ],
-                                    severity="minor",
-                                    suggested_fix=f"Add intermediate scenes showing the {description}",
+                            if chapters_between < 3:  # Arbitrary threshold
+                                contradictions.append(
+                                    Contradiction(
+                                        type="relationship",
+                                        description=f"{source} and {target}: {description} "
+                                        f"from '{prev_type}' to '{rel_type}' without sufficient development "
+                                        f"(only {chapters_between} chapters since chapter {prev_chapter})",
+                                        conflicting_chapters=[
+                                            prev_chapter,
+                                            current_chapter,
+                                        ],
+                                        severity="minor",
+                                        suggested_fix=f"Add intermediate scenes showing the {description}",
+                                    )
                                 )
-                            )
+            else:
+                # Fallback: query Neo4j for previous relationship
+                query = """
+                    MATCH (c1:Character {name: $source})-[r]->(c2:Character {name: $target})
+                    RETURN type(r) AS rel_type, r.chapter_added AS first_chapter
+                    ORDER BY r.chapter_added DESC
+                    LIMIT 1
+                """
+
+                result = await neo4j_manager.execute_read_query(query, {"source": source, "target": target})
+
+                if result and len(result) > 0:
+                    prev_rel = result[0]
+                    prev_type = prev_rel.get("rel_type", "")
+                    prev_chapter = prev_rel.get("first_chapter", 0)
+
+                    # Check if this is a dramatic shift
+                    for (old_rel, new_rel), description in requires_development.items():
+                        if prev_type == old_rel and rel_type == new_rel:
+                            # Check if enough chapters have passed for development
+                            chapters_between = current_chapter - prev_chapter
+
+                            if chapters_between < 3:  # Arbitrary threshold
+                                contradictions.append(
+                                    Contradiction(
+                                        type="relationship",
+                                        description=f"{source} and {target}: {description} "
+                                        f"from '{prev_type}' to '{rel_type}' without sufficient development "
+                                        f"(only {chapters_between} chapters since chapter {prev_chapter})",
+                                        conflicting_chapters=[
+                                            prev_chapter,
+                                            current_chapter,
+                                        ],
+                                        severity="minor",
+                                        suggested_fix=f"Add intermediate scenes showing the {description}",
+                                    )
+                                )
 
         logger.debug(
             "_check_relationship_evolution: relationship evolution check complete",

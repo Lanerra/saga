@@ -12,7 +12,6 @@ import structlog
 
 from core.langgraph.content_manager import (
     ContentManager,
-    get_draft_text,
     get_scene_drafts,
     require_project_dir,
     save_scene_embeddings,
@@ -21,7 +20,6 @@ from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 
 logger = structlog.get_logger(__name__)
-
 
 
 async def generate_scene_embeddings(state: NarrativeState) -> dict[str, Any]:

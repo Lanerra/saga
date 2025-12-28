@@ -31,9 +31,7 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 
-_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE = (
-    "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
-)
+_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE = "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
 
 
 class GraphHealingService:

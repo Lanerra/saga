@@ -1,10 +1,12 @@
 """Test that extraction nodes consistently use ContentRefs."""
-import pytest
+
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from core.langgraph.content_manager import ContentManager, ContentRef
-from core.langgraph.nodes.scene_extraction import extract_from_scenes
 from core.langgraph.nodes.extraction_nodes import consolidate_extraction
+from core.langgraph.nodes.scene_extraction import extract_from_scenes
 from core.langgraph.state import NarrativeState
 
 
@@ -44,7 +46,7 @@ async def test_extract_from_scenes_externalizes_immediately():
         mock_cm.save_json.return_value = mock_entities_ref  # First call returns entities ref
         mock_cm.save_json.side_effect = [
             mock_entities_ref,  # First call for entities
-            mock_rels_ref,      # Second call for relationships
+            mock_rels_ref,  # Second call for relationships
         ]
 
         # Mock get_scene_drafts to return scene texts
