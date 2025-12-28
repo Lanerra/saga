@@ -10,12 +10,13 @@ Chapter outline:
 {% endfor %}
 
 CRITICAL OUTPUT CONTRACT:
-- Return ONLY valid JSON.
-- Return a single JSON array (not an object).
+- Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
+- Return a single JSON array at the top level.
+- Do NOT wrap the array in an object (for example: {"scenes": [...]} is invalid).
 - No markdown.
 - No code fences.
 - No commentary.
-- Each scene MUST be an object with EXACTLY these keys:
+- Each scene MUST be an object with EXACTLY these keys (no extras, no missing keys):
   - "title" (string)
   - "pov_character" (string)
   - "setting" (string)

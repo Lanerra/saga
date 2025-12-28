@@ -26,7 +26,6 @@ from data_access.character_queries import get_all_character_names, sync_characte
 from models.agent_models import SceneDetail
 from models.kg_models import CharacterProfile
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from utils.common import extract_json_candidates_from_response
 from utils.text_processing import normalize_entity_name
 
 logger = structlog.get_logger(__name__)
@@ -42,9 +41,16 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
     "outcome",
 )
 
+_SCENE_PLAN_CONTRACT_ERROR_PREFIX = "Scene plan contract violation:"
+
 
 def _validate_scene_plan_structure(scenes: Any) -> list[str]:
     """Validate the structure of a scene plan candidate.
+
+    Contract:
+    - Top-level must be a JSON array.
+    - Each element must be an object with exactly the required keys.
+    - Required keys must be present; extra keys are rejected.
 
     Args:
         scenes: Parsed JSON candidate.
@@ -55,7 +61,7 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
     errors: list[str] = []
 
     if not isinstance(scenes, list):
-        errors.append(f"Expected a JSON list of scenes, got {type(scenes).__name__}")
+        errors.append(f"Expected a JSON array of scenes, got {type(scenes).__name__}")
         return errors
 
     for i, scene in enumerate(scenes):
@@ -67,8 +73,12 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
         if missing:
             errors.append(f"Scene[{i}] is missing required keys: {missing}")
 
-        chars = scene.get("characters")
+        extra_keys = sorted([k for k in scene.keys() if k not in _SCENE_REQUIRED_KEYS])
+        if extra_keys:
+            errors.append(f"Scene[{i}] has unexpected keys: {extra_keys}")
+
         if "characters" in scene:
+            chars = scene.get("characters")
             if not isinstance(chars, list) or not all(isinstance(c, str) and c.strip() for c in chars):
                 errors.append(f"Scene[{i}].characters must be a non-empty list of character name strings")
 
@@ -78,6 +88,11 @@ def _validate_scene_plan_structure(scenes: Any) -> list[str]:
 def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, Any]]:
     """Parse a validated scene plan list from an LLM response.
 
+    Contract is strict:
+    - The entire response must be valid JSON (no surrounding text).
+    - Top-level JSON value must be an array (wrapper objects rejected).
+    - Each scene must have exactly the required keys.
+
     Args:
         response: Raw LLM response text.
 
@@ -85,40 +100,29 @@ def _parse_scene_plan_json_from_llm_response(response: str) -> list[dict[str, An
         A validated list of scene dictionaries.
 
     Raises:
-        ValueError: When no JSON candidate contains a valid list of scenes with the
-            required keys.
+        ValueError: When parsing fails or the contract is violated.
     """
-    candidates = extract_json_candidates_from_response(response)
-    if not candidates:
-        raise ValueError("LLM returned an empty response; expected a JSON list of scene objects. " "Required keys per scene: " + ", ".join(_SCENE_REQUIRED_KEYS))
+    response_stripped = response.strip()
+    if not response_stripped:
+        raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} empty response; expected a JSON array of scene objects.")
 
-    parse_errors: list[str] = []
+    try:
+        parsed = json.loads(response_stripped)
+    except JSONDecodeError as e:
+        raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} invalid JSON; expected a JSON array of scene objects. " f"JSONDecodeError at pos {e.pos}: {e.msg}") from e
 
-    for source, cand in candidates:
-        try:
-            parsed = json.loads(cand)
-        except JSONDecodeError as e:
-            parse_errors.append(f"{source}: JSONDecodeError at pos {e.pos}: {e.msg}")
-            continue
+    if isinstance(parsed, dict):
+        raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} top-level JSON must be an array, not an object.")
 
-        # Allow a wrapper object (some models return {"scenes": [...]})
-        if isinstance(parsed, dict) and "scenes" in parsed:
-            parsed = parsed["scenes"]
+    structure_errors = _validate_scene_plan_structure(parsed)
+    if structure_errors:
+        raise ValueError(
+            f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} invalid structure; "
+            f"expected a JSON array of scene objects with exactly these keys: {', '.join(_SCENE_REQUIRED_KEYS)}. "
+            f"Errors: {structure_errors}"
+        )
 
-        structure_errors = _validate_scene_plan_structure(parsed)
-        if structure_errors:
-            parse_errors.append(f"{source}: invalid structure: {structure_errors}")
-            continue
-
-        return parsed  # type: ignore[return-value]
-
-    # If we got here, no candidate worked.
-    debug_sources = [s for s, _ in candidates[:5]]
-    raise ValueError(
-        "Failed to parse a valid scene plan JSON list from LLM response. "
-        f"Tried candidates: {debug_sources}. "
-        "Expected: a JSON list of scene objects with keys " + ", ".join(_SCENE_REQUIRED_KEYS) + ". Errors: " + "; ".join(parse_errors[:5])
-    )
+    return cast(list[dict[str, Any]], parsed)
 
 
 async def _ensure_scene_characters_exist(
@@ -285,7 +289,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     # For now, we'll ask for 3-5 scenes depending on complexity, or just default to 3
     num_scenes = 3
 
-    prompt = render_prompt(
+    base_prompt = render_prompt(
         "narrative_agent/plan_scenes.j2",
         {
             "novel_title": state.get("title", ""),
@@ -297,31 +301,57 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
         },
     )
 
-    try:
-        response, _ = await llm_service.async_call_llm(
-            model_name=state.get("large_model", config.LARGE_MODEL),
-            prompt=prompt,
-            temperature=0.7,
-            max_tokens=16384,
-            system_prompt=get_system_prompt("narrative_agent"),
-        )
+    max_attempts = 3
+    correction_instruction = (
+        "\n\nYour last response was invalid. "
+        "Return ONLY valid JSON. "
+        "The top-level JSON value MUST be a single array (not an object). "
+        'Do not wrap the array in an object like {"scenes": [...]} and do not include any extra text.'
+    )
 
-        scenes_untyped = _parse_scene_plan_json_from_llm_response(response)
+    prompt = base_prompt
+
+    try:
+        scenes_untyped: list[dict[str, Any]] = []
+        parsed_successfully = False
+
+        for attempt in range(1, max_attempts + 1):
+            response, _ = await llm_service.async_call_llm(
+                model_name=state.get("large_model", config.LARGE_MODEL),
+                prompt=prompt,
+                temperature=0.7,
+                max_tokens=16384,
+                system_prompt=get_system_prompt("narrative_agent"),
+            )
+
+            try:
+                scenes_untyped = _parse_scene_plan_json_from_llm_response(response)
+                parsed_successfully = True
+                break
+            except ValueError as e:
+                logger.warning(
+                    "plan_scenes: scene plan contract violation",
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    error=str(e),
+                )
+                if attempt >= max_attempts:
+                    raise
+                prompt = base_prompt + correction_instruction
+
+        if not parsed_successfully:
+            raise ValueError(f"{_SCENE_PLAN_CONTRACT_ERROR_PREFIX} no valid scene plan produced after retries.")
+
         scenes = cast(list[SceneDetail], scenes_untyped)
 
         logger.info("plan_scenes: successfully planned scenes", count=len(scenes))
 
-        # Ensure all characters in the scene plans exist in Neo4j
-        # This creates stub profiles for any new characters the LLM introduced
         await _ensure_scene_characters_exist(scenes_untyped, chapter_number)
 
-        # Externalize chapter_plan to reduce state bloat
         content_manager = ContentManager(require_project_dir(state))
 
-        # Get current version for this chapter's plan
         current_version = content_manager.get_latest_version("chapter_plan", f"chapter_{chapter_number}") + 1
 
-        # Save chapter plan to external file
         chapter_plan_ref = save_chapter_plan(
             content_manager,
             scenes_untyped,
@@ -347,6 +377,6 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
     except Exception as e:
         logger.error("plan_scenes: error planning scenes", error=str(e))
         return {
-            "last_error": ("Error planning scenes: " + str(e) + " | Expected: JSON list of scene objects with keys: " + ", ".join(_SCENE_REQUIRED_KEYS)),
+            "last_error": ("Error planning scenes: " + str(e) + " | Expected: JSON array of scene objects with exactly these keys: " + ", ".join(_SCENE_REQUIRED_KEYS)),
             "current_node": "plan_scenes",
         }
