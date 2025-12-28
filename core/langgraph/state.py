@@ -174,8 +174,8 @@ class NarrativeState(TypedDict, total=False):
     # - extract_relationships: Populates extracted_relationships
     #
     # Each extraction cycle starts fresh by clearing these fields in the first node.
-    extracted_entities: dict[str, list[ExtractedEntity]]
-    extracted_relationships: list[ExtractedRelationship]
+    extracted_entities: dict[str, list[dict[str, Any]]]
+    extracted_relationships: list[dict[str, Any]]
 
     # Externalized extraction references (to reduce state bloat)
     extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities

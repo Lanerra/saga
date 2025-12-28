@@ -102,7 +102,7 @@ async def test_heal_graph_recomputes_confidence_from_updated_node_after_enrichme
             service,
             "graduate_node",
             new=AsyncMock(return_value=True),
-        ) as graduate,
+        ),
         # Keep the test hermetic: avoid other Neo4j reads from merge candidate discovery
         # and orphan cleanup, which are not part of CORE-009.
         patch.object(

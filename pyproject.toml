@@ -25,6 +25,10 @@ plugins = ["pydantic.mypy"]
 module = ["aiofiles"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["langgraph.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 addopts = [
     "-v",
