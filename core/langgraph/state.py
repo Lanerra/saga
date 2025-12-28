@@ -173,8 +173,9 @@ class NarrativeState(TypedDict, total=False):
     # - extract_relationships: Populates extracted_relationships
     #
     # Each extraction cycle starts fresh by clearing these fields in the first node.
-    extracted_entities: dict[str, list[dict[str, Any]]]
-    extracted_relationships: list[dict[str, Any]]
+    # NOTE: These fields have been removed in favor of ContentRef-based externalization
+    # extracted_entities: dict[str, list[dict[str, Any]]]
+    # extracted_relationships: list[dict[str, Any]]
 
     # Externalized extraction references (to reduce state bloat)
     extracted_entities_ref: ContentRef | None  # Reference to externalized extracted entities
@@ -261,7 +262,8 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Chapter Planning (properly typed with SceneDetail TypedDict)
     # =========================================================================
-    chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
+    # NOTE: chapter_plan field has been removed in favor of ContentRef-based externalization
+    # chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
     plot_point_focus: str | None
     current_scene_index: int  # Index of the scene currently being processed
     chapter_plan_scene_count: int  # Total number of scenes in the current chapter plan
@@ -424,8 +426,9 @@ def create_initial_state(
         "chapter_plan_ref": None,
         "revision_guidance_ref": None,
         # Entity extraction
-        "extracted_entities": {},
-        "extracted_relationships": [],
+        # NOTE: These fields have been removed in favor of ContentRef-based externalization
+        # "extracted_entities": {},
+        # "extracted_relationships": [],
         # Validation
         "contradictions": [],
         "needs_revision": False,
@@ -472,7 +475,8 @@ def create_initial_state(
         # Context management
         "context_epoch": 0,
         # Chapter planning
-        "chapter_plan": None,
+        # NOTE: chapter_plan field has been removed in favor of ContentRef-based externalization
+        # "chapter_plan": None,
         "plot_point_focus": None,
         "current_scene_index": 0,
         "chapter_plan_scene_count": 0,

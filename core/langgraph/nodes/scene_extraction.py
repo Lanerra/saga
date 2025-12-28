@@ -734,8 +734,35 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         relationships_count=len(extracted_relationships),
     )
 
+    # Externalize extraction results immediately to avoid state bloat
+    current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
+
+    extracted_entities_ref = content_manager.save_json(
+        {"characters": characters, "world_items": world_items},
+        "extracted_entities",
+        f"chapter_{chapter_number}",
+        current_version,
+    )
+
+    extracted_relationships_ref = content_manager.save_json(
+        extracted_relationships,
+        "extracted_relationships",
+        f"chapter_{chapter_number}",
+        current_version,
+    )
+
+    logger.info(
+        "extract_from_scenes: content externalized",
+        chapter=chapter_number,
+        version=current_version,
+        entities_size=len(characters) + len(world_items),
+        relationships_size=len(extracted_relationships),
+    )
+
     return {
-        "extracted_entities": {"characters": characters, "world_items": world_items},
-        "extracted_relationships": extracted_relationships,
+        "extracted_entities": {},
+        "extracted_relationships": [],
+        "extracted_entities_ref": extracted_entities_ref,
+        "extracted_relationships_ref": extracted_relationships_ref,
         "current_node": "extract_from_scenes",
     }

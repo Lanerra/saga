@@ -42,5 +42,5 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
     ):
         result = await workflow.ainvoke(state)
 
-    assert "extracted_entities" in result
-    assert "extracted_relationships" in result
+    assert "extracted_entities_ref" in result
+    assert "extracted_relationships_ref" in result
