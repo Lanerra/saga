@@ -833,6 +833,58 @@ async def _build_relationship_statements(
         entity_types=list(entity_type_map.items())[:10],  # Log first 10 for debugging
     )
 
+    # Pre-fetch existing entity IDs from database to avoid constraint violations
+    # This prevents creating duplicate nodes when deduplication fails or entities appear only in relationships
+    entity_id_cache: dict[str, str] = {}
+
+    # Collect ALL unique entity names from relationships (not just those missing from entity_type_map)
+    # This catches cases where deduplication failed or didn't find an exact name match
+    entity_names_to_check: set[tuple[str, str]] = set()  # (name, type) tuples
+    for rel in relationships:
+        source_name = char_mappings.get(rel.source_name, rel.source_name)
+        target_name = char_mappings.get(rel.target_name, rel.target_name)
+
+        source_type = getattr(rel, "source_type", None) or entity_type_map.get(rel.source_name)
+        target_type = getattr(rel, "target_type", None) or entity_type_map.get(rel.target_name)
+
+        # Check all non-Character entities (Characters merge by name, not ID)
+        if source_type != "Character":
+            entity_names_to_check.add((source_name, source_type or "Item"))
+        if target_type != "Character":
+            entity_names_to_check.add((target_name, target_type or "Item"))
+
+    # Batch query for all entity IDs
+    if entity_names_to_check:
+        from core.db_manager import neo4j_manager
+
+        for name, entity_type_raw in entity_names_to_check:
+            neo4j_type = canonicalize_entity_type_for_persistence(entity_type_raw or "Item")
+            label = _get_cypher_labels(neo4j_type).lstrip(":")
+
+            query = f"""
+            MATCH (n:{label} {{name: $name}})
+            RETURN n.id as id
+            LIMIT 1
+            """
+            try:
+                results = await neo4j_manager.execute_read_query(query, {"name": name})
+                if results and results[0].get("id"):
+                    cache_key = f"{name}:{neo4j_type}"
+                    entity_id_cache[cache_key] = str(results[0]["id"])
+                    logger.debug(
+                        "_build_relationship_statements: found existing entity in database",
+                        name=name,
+                        type=neo4j_type,
+                        id=entity_id_cache[cache_key],
+                    )
+            except Exception as e:
+                logger.warning(
+                    "_build_relationship_statements: failed to lookup existing entity",
+                    name=name,
+                    type=neo4j_type,
+                    error=str(e),
+                )
+
     # Helper to create subject/object dict with type + optional stable id.
     def _make_entity_dict(
         *,
@@ -877,11 +929,16 @@ async def _build_relationship_statements(
             if isinstance(mapped_id, str) and mapped_id:
                 resolved_stable_id = mapped_id
             else:
-                resolved_stable_id = generate_entity_id(
-                    name=name,
-                    category=entity_category or neo4j_type.lower(),
-                    chapter=chapter,
-                )
+                cache_key = f"{name}:{neo4j_type}"
+                cached_id = entity_id_cache.get(cache_key)
+                if cached_id:
+                    resolved_stable_id = cached_id
+                else:
+                    resolved_stable_id = generate_entity_id(
+                        name=name,
+                        category=entity_category or neo4j_type.lower(),
+                        chapter=chapter,
+                    )
 
         return {
             "name": name,

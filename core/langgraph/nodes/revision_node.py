@@ -21,6 +21,11 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.state import Contradiction, NarrativeState
+from core.langgraph.state_helpers import (
+    clear_error_state,
+    clear_extraction_state,
+    clear_generation_artifacts,
+)
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt
 
@@ -218,18 +223,10 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         "iteration_count": state.get("iteration_count", 0) + 1,
         "contradictions": [],
         "needs_revision": False,
-        "current_scene_index": 0,
-        "scene_drafts_ref": None,
-        "scene_embeddings_ref": None,
-        "draft_ref": None,
-        "embedding_ref": None,
-        "generated_embedding": None,
-        "extracted_entities_ref": None,
-        "extracted_relationships_ref": None,
-        "has_fatal_error": False,
-        "error_node": None,
-        "last_error": None,
         "current_node": "revise",
+        **clear_generation_artifacts(),
+        **clear_extraction_state(),
+        **clear_error_state(),
     }
 
 

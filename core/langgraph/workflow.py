@@ -24,6 +24,12 @@ from core.langgraph.nodes.relationship_normalization_node import (
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.state import NarrativeState
+from core.langgraph.state_helpers import (
+    clear_error_state,
+    clear_extraction_state,
+    clear_generation_artifacts,
+    clear_validation_state,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -279,26 +285,14 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
         **state,
         "current_chapter": next_chapter,
         "iteration_count": 0,
-        "needs_revision": False,
         "force_continue": False,
-        "last_error": None,
-        "has_fatal_error": False,
-        "error_node": None,
         "retry_count": 0,
-        "current_scene_index": 0,
-        "contradictions": [],
-        "revision_feedback": None,
-        "revision_guidance_ref": None,
-        "evaluation_result": None,
-        "patch_instructions": None,
-        "is_from_flawed_draft": False,
-        # Clear chapter-specific content references to avoid leaks or confusion
-        "draft_ref": None,
-        "embedding_ref": None,
-        "scene_embeddings_ref": None,
-        "generated_embedding": None,
         "chapter_plan": None,
         "chapter_plan_ref": None,
+        **clear_generation_artifacts(),
+        **clear_validation_state(),
+        **clear_error_state(),
+        **clear_extraction_state(),
     }
 
 
