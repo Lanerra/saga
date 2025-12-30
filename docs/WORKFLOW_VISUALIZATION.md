@@ -6,6 +6,8 @@ Visual debugging tools for SAGA's LangGraph workflows.
 
 The visualization module provides tools to generate visual representations of LangGraph workflows, making it easier to understand the control flow, debug routing logic, and document the system architecture.
 
+> Note: The standalone Phase 2 workflow graph has been removed. Use the full workflow graph and set `initialization_complete=True` in state to start directly at chapter generation when visualizing or running in isolation.
+
 ## Supported Formats
 
 - **Mermaid Diagrams** (`.md`, `.mmd`) - Text-based diagrams that can be rendered in GitHub, VS Code, and documentation sites
@@ -23,9 +25,7 @@ python visualize_workflow.py --all --output-dir docs/workflows
 ```
 
 This creates:
-- `docs/workflows/workflow_phase1.md` - Extract, Commit, Validate workflow
-- `docs/workflows/workflow_phase2.md` - Full chapter generation workflow
-- `docs/workflows/workflow_full.md` - Complete SAGA workflow with initialization
+- `docs/workflows/workflow_full.md` - Complete SAGA workflow with initialization and chapter generation
 
 ### Generate Single Workflow
 
@@ -36,10 +36,10 @@ Generate a specific workflow:
 python visualize_workflow.py --workflow full --output docs/workflow_full.md
 
 # PNG image (requires graphviz)
-python visualize_workflow.py --workflow phase2 --output docs/workflow_phase2.png --format png
+python visualize_workflow.py --workflow full --output docs/workflow_full.png --format png
 
-# ASCII text
-python visualize_workflow.py --workflow phase1 --output debug/workflow.txt --format ascii
+# ASCII text (structure overview)
+python visualize_workflow.py --workflow full --output debug/workflow.txt --format ascii
 ```
 
 ### Print Summary to Console
@@ -56,30 +56,13 @@ Output:
   Full SAGA Workflow (Initialization + Generation)
 ============================================================
 
-Nodes (14):
-  1. route
-  2. init_error
-  3. init_character_sheets
-  4. init_global_outline
-  5. init_act_outlines
-  6. init_commit_to_graph
-  7. init_persist_files
-  8. init_complete
-  9. chapter_outline
-  10. generate
-  11. extract
-  12. commit
-  13. validate
-  14. revise
-  15. summarize
-  16. finalize
+Nodes include:
+  route, init_error, init_character_sheets, init_global_outline, init_act_outlines,
+  init_commit_to_graph, init_persist_files, init_complete, chapter_outline,
+  generate, gen_embedding, extract, normalize_relationships, commit, validate,
+  revise, summarize, finalize, heal_graph, check_quality
 
-Edges (16):
-  1. route → init_character_sheets [conditional]
-  2. route → chapter_outline [conditional]
-  3. init_character_sheets → init_global_outline
-  4. init_global_outline → init_act_outlines
-  ...
+Edges are printed with routing annotations.
 ```
 
 ## Programmatic Usage
@@ -108,11 +91,11 @@ print_workflow_summary(graph, title="Full Workflow")
 ### In Jupyter Notebooks
 
 ```python
-from core.langgraph.workflow import create_phase2_graph
+from core.langgraph.workflow import create_full_workflow_graph
 from core.langgraph.visualization import visualize_workflow
 
 # Create graph
-graph = create_phase2_graph()
+graph = create_full_workflow_graph()
 
 # Generate Mermaid
 visualize_workflow(graph, "workflow.md", format="mermaid")
@@ -126,31 +109,9 @@ with open("workflow.md") as f:
 
 ## Workflow Types
 
-### Phase 1: Extract → Commit → Validate
-
-Minimal workflow focusing on entity extraction and validation:
-
-```bash
-python visualize_workflow.py --workflow phase1 --output docs/phase1.md
-```
-
-**Nodes**: extract, commit, validate, revise
-**Flow**: Linear with optional revision loop
-
-### Phase 2: Full Chapter Generation
-
-Complete chapter generation with all quality control:
-
-```bash
-python visualize_workflow.py --workflow phase2 --output docs/phase2.md
-```
-
-**Nodes**: generate, extract, commit, validate, revise, summarize, finalize
-**Flow**: Linear with conditional revision and finalization
-
 ### Full Workflow: Initialization + Generation
 
-Complete SAGA workflow including initialization:
+Complete SAGA workflow including initialization (recommended entry point):
 
 ```bash
 python visualize_workflow.py --workflow full --output docs/full.md
@@ -323,13 +284,13 @@ print_workflow_summary(graph)
 
 ```bash
 # Before making changes
-python visualize_workflow.py --workflow phase2 --output docs/workflow_before.md
+python visualize_workflow.py --workflow full --output docs/workflow_before.md
 
 # Make workflow changes
 # ... edit core/langgraph/workflow.py ...
 
 # After changes
-python visualize_workflow.py --workflow phase2 --output docs/workflow_after.md
+python visualize_workflow.py --workflow full --output docs/workflow_after.md
 
 # Compare
 diff docs/workflow_before.md docs/workflow_after.md
@@ -339,8 +300,6 @@ diff docs/workflow_before.md docs/workflow_after.md
 
 ```bash
 # Generate PNGs for slides
-python visualize_workflow.py --workflow phase1 --output slides/phase1.png --format png
-python visualize_workflow.py --workflow phase2 --output slides/phase2.png --format png
 python visualize_workflow.py --workflow full --output slides/full.png --format png
 ```
 

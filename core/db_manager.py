@@ -31,6 +31,7 @@ logger = structlog.get_logger(__name__)
 
 class Neo4jManagerSingleton:
     """Provide a process-wide async façade over the Neo4j driver."""
+
     _instance: "Neo4jManagerSingleton" = None  # type: ignore
     _initialized_flag: bool
 

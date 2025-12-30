@@ -10,11 +10,12 @@ from typing import Any, Literal
 
 import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
-from langgraph.graph import END, StateGraph  # type: ignore
+from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
-from core.langgraph.content_manager import ContentManager, get_chapter_outlines
+import config
+from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.commit_node import commit_to_graph
-from core.langgraph.nodes.embedding_node import generate_embedding
+from core.langgraph.nodes.embedding_node import generate_scene_embeddings
 from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
 from core.langgraph.nodes.quality_assurance_node import check_quality
@@ -24,6 +25,12 @@ from core.langgraph.nodes.relationship_normalization_node import (
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.state import NarrativeState
+from core.langgraph.state_helpers import (
+    clear_error_state,
+    clear_extraction_state,
+    clear_generation_artifacts,
+    clear_validation_state,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -175,156 +182,6 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
     }
 
 
-def create_phase2_graph(checkpointer: Any | None = None) -> StateGraph:
-    """Create the Phase 2 narrative workflow graph.
-
-    Phase 2 is the post-initialization chapter loop, including generation,
-    extraction, commit, validation, optional revision, and finalization.
-
-    Migration Reference: docs/phase2_migration_plan.md - Step 2.5
-
-    Args:
-        checkpointer: Optional LangGraph checkpointer instance. When provided, the
-            compiled graph persists state between steps.
-
-    Returns:
-        A compiled `StateGraph` ready for execution.
-    """
-    logger.info("create_phase2_graph: building complete workflow graph")
-
-    from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
-    from core.langgraph.subgraphs.generation import create_generation_subgraph
-    from core.langgraph.subgraphs.validation import create_validation_subgraph
-
-    # Create graph
-    workflow = StateGraph(NarrativeState)
-
-    # Add nodes (using subgraphs where applicable)
-    workflow.add_node("generate", create_generation_subgraph())
-    workflow.add_node("extract", create_scene_extraction_subgraph())
-    workflow.add_node("normalize_relationships", normalize_relationships)
-    workflow.add_node("commit", commit_to_graph)
-    workflow.add_node("validate", create_validation_subgraph())
-    workflow.add_node("revise", revise_chapter)
-    workflow.add_node("summarize", summarize_chapter)
-    workflow.add_node("finalize", finalize_chapter)
-    workflow.add_node("heal_graph", heal_graph)
-    workflow.add_node("check_quality", check_quality)
-    workflow.add_node("error_handler", handle_fatal_error)
-
-    # Add error checking after generate
-    workflow.add_conditional_edges(
-        "generate",
-        should_handle_error,
-        {
-            "error": "error_handler",
-            "continue": "extract",
-        },
-    )
-
-    # Add error checking after extract
-    workflow.add_conditional_edges(
-        "extract",
-        should_handle_error,
-        {
-            "error": "error_handler",
-            "continue": "normalize_relationships",
-        },
-    )
-
-    # Add error checking after normalize_relationships
-    workflow.add_conditional_edges(
-        "normalize_relationships",
-        should_handle_error,
-        {
-            "error": "error_handler",
-            "continue": "commit",
-        },
-    )
-
-    # Add error checking after commit
-    workflow.add_conditional_edges(
-        "commit",
-        should_handle_error,
-        {
-            "error": "error_handler",
-            "continue": "validate",
-        },
-    )
-
-    # Conditional edge: validate → (error, revise, or summarize)
-    workflow.add_conditional_edges(
-        "validate",
-        should_revise_or_handle_error,
-        {
-            "error": "error_handler",
-            "revise": "revise",
-            "continue": "summarize",
-        },
-    )
-
-    # After revision, check for errors then loop back to extract
-    workflow.add_conditional_edges(
-        "revise",
-        should_handle_error,
-        {
-            "error": "error_handler",
-            "continue": "extract",
-        },
-    )
-
-    # Summarize failures are non-critical (continue anyway)
-    workflow.add_edge("summarize", "finalize")
-
-    # Check for errors after finalize
-    workflow.add_conditional_edges(
-        "finalize",
-        should_handle_error,
-        {
-            "error": "error_handler",
-            "continue": "heal_graph",
-        },
-    )
-
-    # Graph healing runs after successful finalization
-    workflow.add_edge("heal_graph", "check_quality")
-    workflow.add_edge("check_quality", END)
-
-    # Error handler terminates workflow
-    workflow.add_edge("error_handler", END)
-
-    # Set entry point
-    workflow.set_entry_point("generate")
-
-    logger.info(
-        "create_phase2_graph: graph built successfully",
-        nodes=[
-            "generate (subgraph)",
-            "extract (subgraph)",
-            "normalize_relationships",
-            "commit",
-            "validate (subgraph)",
-            "revise",
-            "summarize",
-            "finalize",
-            "heal_graph",
-            "check_quality",
-            "error_handler",
-        ],
-        entry_point="generate",
-    )
-
-    # Compile graph
-    if checkpointer:
-        logger.info("create_phase2_graph: compiling with checkpointing enabled")
-        compiled_graph = workflow.compile(checkpointer=checkpointer)
-    else:
-        logger.info("create_phase2_graph: compiling without checkpointing")
-        compiled_graph = workflow.compile()
-
-    return compiled_graph
-
-
 def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSaver:
     """Create an async SQLite checkpointer for LangGraph state persistence.
 
@@ -353,36 +210,6 @@ def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSa
     checkpointer = AsyncSqliteSaver.from_conn_string(db_path)
 
     return checkpointer
-
-
-def should_generate_chapter_outline(
-    state: NarrativeState,
-) -> Literal["chapter_outline", "generate"]:
-    """Route to outline generation when the current chapter outline is missing.
-
-    Args:
-        state: Workflow state. Uses `project_dir` and `current_chapter`, plus any
-            outline references used by [`get_chapter_outlines()`](core/langgraph/content_manager.py:1).
-
-    Returns:
-        "chapter_outline" when an outline is missing, otherwise "generate".
-    """
-    current_chapter = state.get("current_chapter", 1)
-    content_manager = ContentManager(state.get("project_dir", ""))
-    chapter_outlines = get_chapter_outlines(state, content_manager)
-
-    if current_chapter not in chapter_outlines:
-        logger.info(
-            "should_generate_chapter_outline: outline needed",
-            chapter=current_chapter,
-        )
-        return "chapter_outline"
-    else:
-        logger.info(
-            "should_generate_chapter_outline: outline exists",
-            chapter=current_chapter,
-        )
-        return "generate"
 
 
 def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:
@@ -438,6 +265,81 @@ def should_initialize(state: NarrativeState) -> Literal["initialize", "generate"
         return "generate"
 
 
+def advance_chapter(state: NarrativeState) -> NarrativeState:
+    """Increment the chapter counter and reset per-chapter flags.
+
+    Args:
+        state: Current workflow state.
+
+    Returns:
+        Updated state with `current_chapter` incremented and flags reset.
+    """
+    next_chapter = state.get("current_chapter", 1) + 1
+
+    logger.info(
+        "advance_chapter: moving to next chapter",
+        previous_chapter=state.get("current_chapter"),
+        next_chapter=next_chapter,
+    )
+
+    return {
+        **state,
+        "current_chapter": next_chapter,
+        "iteration_count": 0,
+        "force_continue": False,
+        "chapter_plan_ref": None,
+        **clear_generation_artifacts(),
+        **clear_validation_state(),
+        **clear_error_state(),
+        **clear_extraction_state(),
+    }
+
+
+def should_continue_to_next_chapter(
+    state: NarrativeState,
+) -> Literal["continue", "end", "error"]:
+    """Determine if the workflow should proceed to the next chapter.
+
+    Args:
+        state: Current workflow state.
+
+    Returns:
+        "continue" to advance, "end" if finished, or "error" if fatal error.
+    """
+    if state.get("has_fatal_error", False):
+        return "error"
+
+    current = state.get("current_chapter", 1)
+    total = state.get("total_chapters", 1)
+    run_start = state.get("run_start_chapter", 1)
+    chapters_per_run = config.CHAPTERS_PER_RUN
+
+    chapters_generated_this_run = current - run_start + 1
+
+    logger.info(
+        "should_continue_to_next_chapter: checking progress",
+        current=current,
+        total=total,
+        run_start=run_start,
+        chapters_this_run=chapters_generated_this_run,
+        chapters_per_run_limit=chapters_per_run,
+    )
+
+    if chapters_generated_this_run >= chapters_per_run and current < total:
+        logger.info(
+            "should_continue_to_next_chapter: reached CHAPTERS_PER_RUN limit, stopping this run",
+            chapters_generated=chapters_generated_this_run,
+            limit=chapters_per_run,
+        )
+        return "end"
+
+    if current < total:
+        return "continue"
+
+    logger.info("should_continue_to_next_chapter: all chapters complete")
+    return "end"
+
+
 def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     """Create the end-to-end workflow graph (initialization + chapter loop).
 
@@ -481,8 +383,8 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         )
         return {
             **state,
-            "workflow_failed": True,
-            "failure_reason": f"Initialization failed at step {step}: {error}",
+            "has_fatal_error": True,
+            "last_error": f"Initialization failed at step {step}: {error}",
         }
 
     workflow.add_node("init_error", handle_init_error)
@@ -511,17 +413,18 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     workflow.add_node("init_complete", mark_initialization_complete)
 
-    # Add chapter outline generation (on-demand)
+    # Add chapter outline generation (always run before drafting)
     workflow.add_node("chapter_outline", generate_chapter_outline)
 
-    from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
     from core.langgraph.subgraphs.generation import create_generation_subgraph
+    from core.langgraph.subgraphs.scene_extraction import create_scene_extraction_subgraph
     from core.langgraph.subgraphs.validation import create_validation_subgraph
 
     # Add all generation nodes (using subgraphs where applicable)
     workflow.add_node("generate", create_generation_subgraph())
-    workflow.add_node("gen_embedding", generate_embedding)
     workflow.add_node("extract", create_scene_extraction_subgraph())
+    workflow.add_node("gen_scene_embeddings", generate_scene_embeddings)
+    workflow.add_node("assemble_chapter", assemble_chapter)
     workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
@@ -530,6 +433,11 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("finalize", finalize_chapter)
     workflow.add_node("heal_graph", heal_graph)
     workflow.add_node("check_quality", check_quality)
+    workflow.add_node("advance_chapter", advance_chapter)
+
+    # Phase 2 fatal error handler
+    workflow.add_node("error_handler", handle_fatal_error)
+    workflow.add_edge("error_handler", END)
 
     # Conditional entry: route → (init or chapter_outline)
     workflow.add_conditional_edges(
@@ -590,43 +498,143 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_edge("init_complete", "chapter_outline")
 
     # Chapter outline → generate
-    workflow.add_edge("chapter_outline", "generate")
+    # Gate on should_handle_error to catch outline failures before drafting.
+    workflow.add_conditional_edges(
+        "chapter_outline",
+        should_handle_error,
+        {
+            "continue": "generate",
+            "error": "error_handler",
+        },
+    )
 
     # Generation flow
-    # Run embedding generation and extraction after text generation
-    # Ideally these could be parallel, but for now we sequence them
-    # generate -> gen_embedding -> extract -> normalize_relationships -> commit
-    workflow.add_edge("generate", "gen_embedding")
-    workflow.add_edge("gen_embedding", "extract")
-    workflow.add_edge("extract", "normalize_relationships")
-    workflow.add_edge("normalize_relationships", "commit")
-    workflow.add_edge("commit", "validate")
+    # Mainline Phase 2 ordering:
+    # generate → extract → gen_scene_embeddings → assemble_chapter → normalize_relationships → validate → commit → summarize …
+    workflow.add_conditional_edges(
+        "generate",
+        should_handle_error,
+        {
+            "continue": "extract",
+            "error": "error_handler",
+        },
+    )
 
-    # Conditional edge: validate → (revise or summarize)
+    def should_continue_after_extract(
+        state: NarrativeState,
+    ) -> Literal["scene_embeddings", "error"]:
+        if state.get("has_fatal_error", False):
+            return "error"
+
+        return "scene_embeddings"
+
+    workflow.add_conditional_edges(
+        "extract",
+        should_continue_after_extract,
+        {
+            "scene_embeddings": "gen_scene_embeddings",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "gen_scene_embeddings",
+        should_handle_error,
+        {
+            "continue": "assemble_chapter",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "assemble_chapter",
+        should_handle_error,
+        {
+            "continue": "normalize_relationships",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "normalize_relationships",
+        should_handle_error,
+        {
+            "continue": "validate",
+            "error": "error_handler",
+        },
+    )
+
+    # Conditional edge: validate → (revise, commit, or error)
+    # Uses should_revise_or_handle_error to prioritize fatal errors over revision.
     workflow.add_conditional_edges(
         "validate",
-        should_revise_or_continue,
+        should_revise_or_handle_error,
         {
             "revise": "revise",
-            "summarize": "summarize",
+            "continue": "commit",
+            "error": "error_handler",
+        },
+    )
+
+    workflow.add_conditional_edges(
+        "commit",
+        should_handle_error,
+        {
+            "continue": "summarize",
+            "error": "error_handler",
         },
     )
 
     # Revision loop
-    workflow.add_edge("revise", "extract")
+    workflow.add_conditional_edges(
+        "revise",
+        should_handle_error,
+        {
+            "continue": "generate",
+            "error": "error_handler",
+        },
+    )
 
     # Finalization, graph healing, and quality assurance
-    workflow.add_edge("summarize", "finalize")
-    workflow.add_edge("finalize", "heal_graph")
-    workflow.add_edge("heal_graph", "check_quality")
-    workflow.add_edge("check_quality", END)
+    workflow.add_conditional_edges(
+        "summarize",
+        should_handle_error,
+        {
+            "continue": "finalize",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "finalize",
+        should_handle_error,
+        {
+            "continue": "heal_graph",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "heal_graph",
+        should_handle_error,
+        {
+            "continue": "check_quality",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "check_quality",
+        should_continue_to_next_chapter,
+        {
+            "continue": "advance_chapter",
+            "end": END,
+            "error": "error_handler",
+        },
+    )
+
+    workflow.add_edge("advance_chapter", "chapter_outline")
 
     # Set entry point to routing node
     workflow.set_entry_point("route")
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=16,  # route + init_error + 6 init + 8 generation (added normalize_relationships)
+        total_nodes=24,  # route + init_error + 6 init + 15 generation/QA nodes + error_handler
         entry_point="route",
     )
 
@@ -642,13 +650,13 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
 
 __all__ = [
-    "create_phase2_graph",
     "create_checkpointer",
     "create_full_workflow_graph",
     "should_revise_or_continue",
     "should_initialize",
-    "should_generate_chapter_outline",
     "should_handle_error",
     "should_revise_or_handle_error",
     "handle_fatal_error",
+    "advance_chapter",
+    "should_continue_to_next_chapter",
 ]

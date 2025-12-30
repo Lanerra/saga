@@ -26,12 +26,12 @@ class TestCommitToGraph:
 
     async def test_commit_with_no_entities(
         self,
-        sample_initial_state,
+        sample_state_with_extraction,
         mock_knowledge_graph_service,
         mock_chapter_queries,
     ):
         """Test commit with no extracted entities."""
-        state = sample_initial_state
+        state = sample_state_with_extraction
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
@@ -123,9 +123,51 @@ class TestCommitToGraph:
 
         project_dir = str(tmp_path)
 
+        from core.langgraph.content_manager import ContentManager
+
+        content_manager = ContentManager(project_dir)
+        draft_ref = content_manager.save_text("draft", "draft", "chapter_1", 1)
+
+        entities_data = {
+            "characters": [
+                {
+                    "name": "Alice",
+                    "type": "Character",
+                    "description": "Alice",
+                    "first_appearance_chapter": 1,
+                    "attributes": {},
+                },
+                {
+                    "name": "Bob",
+                    "type": "Character",
+                    "description": "Bob",
+                    "first_appearance_chapter": 1,
+                    "attributes": {},
+                },
+            ],
+            "world_items": [],
+        }
+
+        relationships_data = [
+            {
+                "source_name": "Alice",
+                "target_name": "Bob",
+                "relationship_type": "COLLABORATES_WITH",
+                "description": "They collaborate",
+                "chapter": 1,
+                "confidence": 0.9,
+            }
+        ]
+
+        from core.langgraph.content_manager import save_extracted_entities, save_extracted_relationships
+
+        entities_ref = save_extracted_entities(content_manager, entities_data, 1, 1)
+        relationships_ref = save_extracted_relationships(content_manager, relationships_data, 1, 1)
+
         state = {
             "project_dir": project_dir,
             "current_chapter": 1,
+            "draft_ref": draft_ref,
             "draft_word_count": 0,
             "relationship_vocabulary": {
                 "WORKS_WITH": {
@@ -137,45 +179,17 @@ class TestCommitToGraph:
                     "last_used_chapter": 0,
                 }
             },
-            "extracted_entities": {
-                "characters": [
-                    ExtractedEntity(
-                        name="Alice",
-                        type="Character",
-                        description="Alice",
-                        first_appearance_chapter=1,
-                        attributes={},
-                    ),
-                    ExtractedEntity(
-                        name="Bob",
-                        type="Character",
-                        description="Bob",
-                        first_appearance_chapter=1,
-                        attributes={},
-                    ),
-                ],
-                "world_items": [],
-            },
-            # IMPORTANT: this is the relationship we expect to be normalized away.
-            "extracted_relationships": [
-                ExtractedRelationship(
-                    source_name="Alice",
-                    target_name="Bob",
-                    relationship_type="COLLABORATES_WITH",
-                    description="They collaborate",
-                    chapter=1,
-                    confidence=0.9,
-                )
-            ],
+            "extracted_entities_ref": entities_ref,
+            "extracted_relationships_ref": relationships_ref,
         }
 
-        # Step 1: Consolidate extraction -> writes externalized refs.
+        # Step 1: Consolidate extraction -> verifies externalized refs exist.
         extraction_update = consolidate_extraction(state)
         state = {**state, **extraction_update}
 
         assert state.get("extracted_relationships_ref"), "consolidate_extraction must set extracted_relationships_ref"
 
-        # Poison the in-memory list to prove commit reads via the ref and not the in-state field.
+        # Poison the in-memory field (if present) to prove normalize_relationships reads via ref only.
         state["extracted_relationships"] = [
             ExtractedRelationship(
                 source_name="Alice",
@@ -198,6 +212,18 @@ class TestCommitToGraph:
         state = {**state, **normalization_update}
 
         assert state["extracted_relationships_ref"]["version"] >= 2
+
+        # Re-poison after normalization: commit should still ignore in-memory and read via ref.
+        state["extracted_relationships"] = [
+            ExtractedRelationship(
+                source_name="Alice",
+                target_name="Bob",
+                relationship_type="SHOULD_NOT_SEE",
+                description="poison-after-normalization",
+                chapter=1,
+                confidence=0.9,
+            )
+        ]
 
         # Step 3: Commit reads from extracted_relationships_ref (single source of truth) and uses WORKS_WITH.
         with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
@@ -365,12 +391,12 @@ class TestCommitToGraph:
 
     async def test_commit_with_duplicate_world_items_in_batch(
         self,
-        sample_initial_state,
+        sample_state_with_extraction,
         mock_knowledge_graph_service,
         mock_chapter_queries,
     ):
         """Test that within-batch duplicate world items are detected."""
-        state = sample_initial_state
+        state = sample_state_with_extraction
         state["extracted_entities"] = {
             "world_items": [
                 {
@@ -917,8 +943,9 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
-            query, params = statements[0]
+            # Should have the DELETE and the MERGE
+            assert len(statements) == 2
+            query, params = statements[1]
 
             assert "CALL apoc.merge.relationship" in query
             assert params["predicate_clean"] == "KNOWS"
@@ -927,9 +954,10 @@ class TestBuildRelationshipStatements:
             assert params["object_name"] == "Bob"
 
     async def test_empty_relationships(self):
-        """Test with empty relationships list."""
+        """Test with empty relationships list. Must still include the DELETE for the chapter."""
         statements = await _build_relationship_statements([], [], [], {}, {}, 1, False)
-        assert statements == []
+        assert len(statements) == 1
+        assert "DELETE r" in statements[0][0]
 
     async def test_applies_character_mappings(self):
         """Test that deduplication mappings are applied."""
@@ -974,8 +1002,8 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
-            query, params = statements[0]
+            assert len(statements) == 2
+            query, params = statements[1]
             assert params["subject_name"] == "ExistingAlice"
 
     async def test_applies_world_item_mappings(self):
@@ -1024,9 +1052,10 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
-            query, params = statements[0]
-            assert params["object_name"] == "sword_001"
+            assert len(statements) == 2
+            query, params = statements[1]
+            assert params["object_name"] == "Magic Sword"
+            assert params["object_id"] == "sword_001"
 
     async def test_validates_entity_types(self):
         """Test that entity types are validated."""
@@ -1074,7 +1103,7 @@ class TestBuildRelationshipStatements:
                 False,
             )
 
-            assert len(statements) == 1
+            assert len(statements) == 2
 
     async def test_canonicalizes_subtype_labels_for_persistence(self):
         """

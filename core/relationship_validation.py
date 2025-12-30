@@ -1,3 +1,4 @@
+# core/relationship_validation.py
 """Validate relationship semantics for the SAGA workflow.
 
 This module provides semantic validation helpers for relationships extracted from narrative

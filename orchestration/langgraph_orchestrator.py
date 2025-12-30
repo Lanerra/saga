@@ -21,9 +21,11 @@ from types import ModuleType
 from typing import Any, cast
 
 import structlog
+import yaml
 
 import config
 from core.db_manager import neo4j_manager
+from core.exceptions import CheckpointResumeConflictError
 from core.langgraph.initialization.validation import validate_initialization_artifacts
 from core.langgraph.state import NarrativeState, create_initial_state
 from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
@@ -44,11 +46,15 @@ _LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
     # Root singleton module (defensive; some tests patch this directly)
     "core.llm_interface_refactored",
     # LangGraph generation + extraction + embedding + revision + summary
-    "core.langgraph.nodes.generation_node",
     "core.langgraph.nodes.embedding_node",
     "core.langgraph.nodes.extraction_nodes",
     "core.langgraph.nodes.revision_node",
     "core.langgraph.nodes.summary_node",
+    # LangGraph scene-level generation/extraction
+    "core.langgraph.nodes.scene_generation_node",
+    "core.langgraph.nodes.scene_extraction",
+    # Finalization
+    "core.langgraph.nodes.finalize_node",
     # LangGraph initialization nodes
     "core.langgraph.initialization.character_sheets_node",
     "core.langgraph.initialization.global_outline_node",
@@ -58,8 +64,13 @@ _LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
     # Validation subgraph (LLM-based quality eval + world rule checks)
     "core.langgraph.subgraphs.validation",
     # Services invoked by workflow nodes that also import `llm_service`
+    "core.entity_embedding_service",
     "core.graph_healing_service",
     "core.relationship_normalization_service",
+    # UI telemetry
+    "ui.rich_display",
+    # Processing utilities that call LLM embeddings
+    "processing.text_deduplicator",
     # Defensive: other nodes occasionally used in graphs
     "core.langgraph.nodes.context_retrieval_node",
     "core.langgraph.nodes.scene_planning_node",
@@ -153,16 +164,22 @@ class LangGraphOrchestrator:
 
         - Starts the Rich progress display (if enabled).
         - Establishes a Neo4j connection and ensures the database schema exists.
-        - Creates a fresh workflow state seed for the run.
+        - Loads the latest checkpointed state when resuming (checkpoint-first).
         - Runs the workflow under:
           - a managed LLM client lifecycle context, and
           - a checkpointer context bound to a persistent SQLite file.
+
+        Resume policy:
+            Checkpoints are the single source of truth. Neo4j and filesystem artifacts are
+            treated as persisted artifacts and are only used for conflict detection. When
+            artifacts conflict with checkpoint state, orchestration fails fast with a clear,
+            stable error.
 
         Error policy:
             - Neo4j connection/setup failures and workflow construction/streaming
               failures propagate to the caller.
             - Chapter generation is best-effort: chapter-level failures inside
-              [`_run_chapter_generation_loop()`](orchestration/langgraph_orchestrator.py:273)
+              [`_run_chapter_generation_loop()`](orchestration/langgraph_orchestrator.py:343)
               are logged and stop the loop without raising.
 
         Cleanup:
@@ -185,19 +202,25 @@ class LangGraphOrchestrator:
             # Step 1: Connect to Neo4j
             await self._ensure_neo4j_connection()
 
-            # Step 2: Load or create state
-            state = await self._load_or_create_state()
+            requested_project_id = self._get_requested_project_id()
+            thread_id = self._checkpoint_thread_id(requested_project_id)
 
-            # Step 3: Create workflow with checkpointing
+            # Step 2: Create workflow with checkpointing and load checkpoint-first state
             # AsyncSqliteSaver.from_conn_string() returns an async context manager
             #
             # IMPORTANT: Establish an explicit LLM client lifecycle boundary at the
             # orchestrator/workflow boundary (not inside individual nodes).
             async with _managed_llm_lifecycle_for_workflow():
                 async with create_checkpointer(str(self.checkpointer_path)) as checkpointer:
+                    state = await self._load_state_for_run(
+                        checkpointer=checkpointer,
+                        requested_project_id=requested_project_id,
+                        thread_id=thread_id,
+                    )
+
                     graph = create_full_workflow_graph(checkpointer=checkpointer)
 
-                    # Step 4: Generate chapters
+                    # Step 3: Generate chapters
                     # The graph will automatically run initialization on first run
                     # via the conditional routing node
                     await self._run_chapter_generation_loop(graph, state)
@@ -232,13 +255,13 @@ class LangGraphOrchestrator:
         await neo4j_manager.create_db_schema()
         logger.info("✓ Neo4j connected")
 
-    async def _load_or_create_state(self) -> NarrativeState:
-        """Create a fresh workflow state seed for this run.
+    async def _load_or_create_state(self, *, project_id: str) -> NarrativeState:
+        """Create a fresh workflow state seed for this run (non-resume path).
 
-        This method does not load state from the checkpointer. Instead, it derives
-        the starting chapter from persisted chapters in Neo4j and constructs a new
-        [`NarrativeState`](core/langgraph/state.py:1) via
-        [`create_initial_state()`](core/langgraph/state.py:1).
+        This method is used only when no checkpoint is present for the project's checkpoint
+        thread. It derives the starting chapter from persisted chapters in Neo4j and
+        constructs a new [`NarrativeState`](core/langgraph/state.py:1) via
+        [`create_initial_state()`](core/langgraph/state.py:343).
 
         Initialization detection contract:
             - For chapter 1, initialization is artifact-driven: initialization is
@@ -246,6 +269,9 @@ class LangGraphOrchestrator:
               artifacts are present.
             - For continuation runs (when chapters already exist in Neo4j),
               initialization is treated as complete.
+
+        Args:
+            project_id: Project identifier to seed into state.
 
         Returns:
             A state dictionary seeded with project metadata plus:
@@ -291,17 +317,16 @@ class LangGraphOrchestrator:
 
         # Create initial state
         state = create_initial_state(
-            project_id="saga_novel",
+            project_id=project_id,
             title=config.DEFAULT_PLOT_OUTLINE_TITLE,
             genre=config.CONFIGURED_GENRE,
             theme=config.CONFIGURED_THEME or "",
             setting=config.CONFIGURED_SETTING_DESCRIPTION or "",
             target_word_count=80000,  # Default, could be loaded from user configuration
-            total_chapters=20,  # Default, could be loaded from user configuration
+            total_chapters=config.TOTAL_CHAPTERS or 12,  # Default, could be loaded from user configuration
             project_dir=str(self.project_dir),
             protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
             # Model Mapping
-            generation_model=config.NARRATIVE_MODEL,  # User override for generation
             extraction_model=config.MEDIUM_MODEL,
             revision_model=config.LARGE_MODEL,
             # Tiered models
@@ -314,6 +339,7 @@ class LangGraphOrchestrator:
         # Update current chapter and initialization status
         state["current_chapter"] = current_chapter
         state["initialization_complete"] = initialization_complete
+        state["run_start_chapter"] = current_chapter
 
         # Advisory validation of initialization artifacts (non-breaking)
         if self.project_dir.exists():
@@ -332,119 +358,112 @@ class LangGraphOrchestrator:
         return state
 
     async def _run_chapter_generation_loop(self, graph: Any, state: NarrativeState) -> None:
-        """Stream workflow events to generate up to `CHAPTERS_PER_RUN` chapters.
+        """Stream workflow events for end-to-end chapter generation.
 
-        For each chapter, this method updates `state["current_chapter"]`, runs the
-        workflow using `astream()` (updates mode), merges per-node state updates
-        into a single state dict, and determines completion based on the last
-        user-visible node executed.
+        This method runs the full LangGraph workflow, which handles initialization
+        and multiple chapters internally. It tracks progress via `astream()` and
+        updates the UI based on state changes across multiple chapters.
 
         Error policy:
-            This loop is best-effort. If a chapter fails to complete, the failure
-            is logged and the loop stops early without raising to the caller.
+            Workflow failures during streaming are logged and stop the run without
+            raising to the caller, allowing for graceful UI shutdown.
 
         Side Effects:
             - Executes workflow nodes, which may write files, update Neo4j, and
-              record checkpoints through the provided checkpointer.
-            - Mutates the provided `state` mapping in-place and also rebinds the
-              local `state` variable to merged copies.
-
-        Notes:
-            - The thread identifier is fixed to `"saga_generation"` for checkpoint
-              scoping, which means multiple concurrent orchestrator runs will
-              contend for the same checkpoint stream.
+              record checkpoints.
+            - Updates the provided `state` mapping as it receives updates from the
+              workflow stream.
         """
-        chapters_per_run = config.CHAPTERS_PER_RUN
-        total_chapters = state.get("total_chapters", 20)
-        current_chapter = state.get("current_chapter", 1)
+        project_id = state.get("project_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise ValueError("Workflow state must include a non-empty str 'project_id'")
+
+        thread_id = self._checkpoint_thread_id(project_id)
 
         logger.info(
-            "Starting chapter generation loop",
-            chapters_per_run=chapters_per_run,
-            starting_chapter=current_chapter,
-            total_chapters=total_chapters,
+            "Starting multi-chapter generation stream",
+            project_id=project_id,
+            thread_id=thread_id,
+            starting_chapter=state.get("current_chapter", 1),
+            total_chapters=state.get("total_chapters"),
         )
 
-        config_dict = {"configurable": {"thread_id": "saga_generation"}}
+        config_dict = {"configurable": {"thread_id": thread_id}, "recursion_limit": 500}
+        last_node = None
+        event_index = 0
 
-        chapters_generated = 0
-        while chapters_generated < chapters_per_run and current_chapter <= total_chapters:
-            logger.info("=" * 60 + f"\nGenerating Chapter {current_chapter} of {total_chapters}" + "\n" + "=" * 60)
+        try:
+            # Use astream() for event-based progress tracking across all chapters.
+            # The workflow now handles the loop internally.
+            async for event in graph.astream(state, config=config_dict):
+                if not isinstance(event, dict) or not event:
+                    continue
 
-            # Update state for this chapter
-            state["current_chapter"] = current_chapter
+                node_name = list(event.keys())[0]
+                if node_name.startswith("__"):
+                    continue
 
-            try:
-                # Run workflow for this chapter using event streaming
-                # The workflow will:
-                # 1. Generate chapter outline (on-demand)
-                # 2. Generate chapter text
-                # 3. Extract entities
-                # 4. Commit to graph
-                # 5. Validate
-                # 6. (Optional) Revise
-                # 7. Summarize
-                # 8. Finalize
+                event_index += 1
 
-                # Use astream() for event-based progress tracking
-                # LangGraph's astream() yields events in format: {node_name: state_update}
-                # We need to merge all updates to get the final state
-                last_node = None
-                async for event in graph.astream(state, config=config_dict):
-                    # Handle workflow event for progress tracking
-                    await self._handle_workflow_event(event, current_chapter)
+                state_update = event[node_name]
+                if not isinstance(state_update, dict):
+                    continue
 
-                    # Merge state updates from event
-                    # Event format: {node_name: state_update_dict}
-                    if isinstance(event, dict) and len(event) > 0:
-                        node_name = list(event.keys())[0]
-                        if not node_name.startswith("__"):  # Skip internal nodes
-                            state_update = event[node_name]
-                            if isinstance(state_update, dict):
-                                # Merge update into state
-                                state = {**state, **state_update}
-                                last_node = node_name
+                # Merge updates into local state tracking
+                state = {**state, **state_update}
+                last_node = node_name
 
-                # Check if chapter was successfully generated
-                # After finalization, last executed node should be "finalize", "heal_graph", or "check_quality"
-                if last_node in ["finalize", "heal_graph", "check_quality"]:
-                    chapters_generated += 1
-                    logger.info(
-                        f"✓ Chapter {current_chapter} complete",
-                        word_count=state.get("draft_word_count", 0),
-                        node=last_node,
-                    )
+                # Track chapter transitions and completion
+                current_chapter = state.get("current_chapter", 1)
 
-                    # Increment chapter for next iteration
-                    current_chapter = state.get("current_chapter", current_chapter) + 1
-                elif last_node:
-                    # Generation ran but didn't complete successfully
-                    error = state.get("last_error", "Unknown error")
-                    logger.error(
-                        f"Chapter {current_chapter} generation incomplete",
-                        final_node=last_node,
-                        error=error,
-                    )
-                    break
-                else:
-                    logger.error(f"Chapter {current_chapter} generation failed - no events received")
-                    break
+                # Handle workflow event for progress tracking
+                await self._handle_workflow_event(event, current_chapter, event_index)
 
-            except Exception as e:
-                logger.error(
-                    f"Error generating chapter {current_chapter}",
-                    error=str(e),
-                    exc_info=True,
+                # Log chapter completion
+                if node_name in ["finalize", "heal_graph", "check_quality"]:
+                    # Check if we just completed a chapter
+                    # In an internal loop, we might get multiple nodes for the same chapter.
+                    # We rely on finalize/heal_graph/check_quality being the 'completion' markers.
+                    if state.get("current_node") == node_name:
+                        logger.info(
+                            f"✓ Chapter {current_chapter} node reached: {node_name}",
+                            word_count=state.get("draft_word_count", 0),
+                        )
+
+            # Final summary of the run
+            if last_node in ["finalize", "heal_graph", "check_quality", "init_complete"]:
+                logger.info(
+                    "Workflow stream finished successfully",
+                    final_chapter=state.get("current_chapter"),
+                    final_node=last_node,
                 )
-                break
+            elif state.get("has_fatal_error"):
+                logger.error(
+                    "Workflow stream terminated with fatal error",
+                    error=state.get("last_error"),
+                    node=state.get("error_node"),
+                )
+            else:
+                logger.warning(
+                    "Workflow stream finished at unexpected node",
+                    final_node=last_node,
+                )
 
-        logger.info(
-            "Chapter generation loop complete",
-            chapters_generated=chapters_generated,
-            final_chapter=current_chapter - 1,
-        )
+        except Exception as e:
+            logger.error(
+                "Error during chapter generation stream",
+                error=str(e),
+                exc_info=True,
+            )
 
-    async def _handle_workflow_event(self, event: dict[str, Any], chapter_number: int) -> None:
+        logger.info("Multi-chapter generation stream complete.")
+
+    async def _handle_workflow_event(
+        self,
+        event: dict[str, Any],
+        chapter_number: int,
+        event_index: int = 0,
+    ) -> None:
         """Update UI and structured logs for a workflow event.
 
         This method is called once per `astream()` event and is responsible for:
@@ -504,6 +523,7 @@ class LangGraphOrchestrator:
             f"[Chapter {chapter_number}] {step_description}",
             node=node_name,
             chapter=chapter_number,
+            event_index=event_index,
             init_step=initialization_step if initialization_step else None,
         )
 
@@ -546,6 +566,18 @@ class LangGraphOrchestrator:
                 word_count=word_count,
                 chapter=chapter_number,
             )
+
+        elif node_name == "heal_graph":
+            warnings = state_update.get("last_healing_warnings", [])
+            apoc_available = state_update.get("last_apoc_available")
+            if warnings:
+                warning_message = f"⚠️  Healing warnings: {warnings}"
+                logger.warning(warning_message)
+                if self.display.live:
+                    console = self.display.get_shared_console()
+                    console.print(warning_message)
+            if apoc_available is False:
+                logger.warning("APOC unavailable during graph healing")
 
         elif node_name == "init_complete":
             character_count = len(state_update.get("character_sheets", {}))
@@ -612,6 +644,127 @@ class LangGraphOrchestrator:
         }
 
         return node_descriptions.get(node_name, f"Processing: {node_name}")
+
+    def _checkpoint_thread_id(self, project_id: str) -> str:
+        safe_project_id = project_id.replace("/", "_").replace("\\", "_").strip()
+        return f"saga_{safe_project_id}"
+
+    def _get_requested_project_id(self) -> str:
+        saga_path = self.project_dir / "saga.yaml"
+        if saga_path.exists():
+            try:
+                data = yaml.safe_load(saga_path.read_text(encoding="utf-8"))
+            except Exception:
+                data = None
+
+            if isinstance(data, dict):
+                value = data.get("project_id")
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
+        project_dir_name = self.project_dir.name.strip()
+        if not project_dir_name:
+            raise ValueError("Project directory name must be non-empty to derive project_id")
+
+        return project_dir_name
+
+    async def _load_state_for_run(
+        self,
+        *,
+        checkpointer: Any,
+        requested_project_id: str,
+        thread_id: str,
+    ) -> NarrativeState:
+        """Load checkpointed state when available; otherwise create a fresh seed state.
+
+        This implements checkpoint-first resume. When a checkpoint exists for the project's
+        thread id, it is treated as the single source of truth for in-flight fields like
+        `current_chapter`.
+        """
+        checkpoint = await checkpointer.aget({"configurable": {"thread_id": thread_id}})
+        if checkpoint is None:
+            return await self._load_or_create_state(project_id=requested_project_id)
+
+        if not isinstance(checkpoint, dict):
+            raise CheckpointResumeConflictError(
+                "Resume conflict: checkpointer returned an unexpected checkpoint type",
+                details={"type": type(checkpoint).__name__},
+            )
+
+        channel_values = checkpoint.get("channel_values")
+        if not isinstance(channel_values, dict):
+            raise CheckpointResumeConflictError(
+                "Resume conflict: checkpoint is missing required channel_values mapping",
+                details={"checkpoint_keys": sorted(list(checkpoint.keys()))},
+            )
+
+        checkpoint_state = cast(NarrativeState, channel_values)
+        await self._validate_resume_state_or_raise_async(
+            checkpoint_state=checkpoint_state,
+            requested_project_id=requested_project_id,
+        )
+
+        checkpoint_state["run_start_chapter"] = checkpoint_state.get("current_chapter", 1)
+
+        return checkpoint_state
+
+    def _validate_resume_state_or_raise(
+        self,
+        *,
+        checkpoint_state: NarrativeState,
+        requested_project_id: str,
+    ) -> None:
+        checkpoint_project_id = checkpoint_state.get("project_id")
+        if checkpoint_project_id != requested_project_id:
+            raise CheckpointResumeConflictError(f"Resume conflict: checkpoint project_id '{checkpoint_project_id}' does not match requested project_id '{requested_project_id}'")
+
+        current_chapter = checkpoint_state.get("current_chapter")
+        if not isinstance(current_chapter, int) or isinstance(current_chapter, bool) or current_chapter <= 0:
+            raise CheckpointResumeConflictError(
+                "Resume conflict: checkpoint current_chapter must be a positive integer",
+                details={"current_chapter": current_chapter},
+            )
+
+        # Conflict: Neo4j indicates progress past checkpoint (chapters committed beyond checkpoint).
+        #
+        # Contract: if Neo4j chapter count is >= checkpoint current_chapter, then Neo4j contains
+        # a committed chapter at or beyond what the checkpoint believes is next/in-flight.
+        # That is treated as a hard conflict and must fail fast.
+        # Note: this method is sync; the DB call is async and is performed by the caller.
+        return None
+
+    async def _validate_resume_state_or_raise_async(
+        self,
+        *,
+        checkpoint_state: NarrativeState,
+        requested_project_id: str,
+    ) -> None:
+        self._validate_resume_state_or_raise(
+            checkpoint_state=checkpoint_state,
+            requested_project_id=requested_project_id,
+        )
+
+        current_chapter = cast(int, checkpoint_state.get("current_chapter"))
+        neo4j_chapter_count = await chapter_queries.load_chapter_count_from_db()
+        if neo4j_chapter_count >= current_chapter:
+            raise CheckpointResumeConflictError(f"Resume conflict: Neo4j reports chapter_count={neo4j_chapter_count} which is ahead of checkpoint current_chapter={current_chapter}")
+
+        # Conflict: checkpoint references missing artifact files.
+        for key, value in checkpoint_state.items():
+            if not key.endswith("_ref"):
+                continue
+            if value is None:
+                continue
+            if not isinstance(value, dict):
+                raise CheckpointResumeConflictError(f"Resume conflict: checkpoint field '{key}' must be a ContentRef dict")
+            ref_path = value.get("path")
+            if not isinstance(ref_path, str) or not ref_path:
+                raise CheckpointResumeConflictError(f"Resume conflict: checkpoint field '{key}' must include ContentRef.path as non-empty str")
+            full_path = self.project_dir / ref_path
+            if not full_path.exists():
+                raise CheckpointResumeConflictError(f"Resume conflict: checkpoint references missing artifact for field '{key}': path='{ref_path}'")
+
+        return None
 
 
 __all__ = ["LangGraphOrchestrator"]

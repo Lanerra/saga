@@ -48,8 +48,26 @@ class ValidationError(SAGACoreError):
     """Errors related to data validation."""
 
 
+class ContentIntegrityError(ValidationError):
+    """Raised when externalized `ContentRef` artifacts fail strict integrity validation."""
+
+
+class MissingDraftReferenceError(ValidationError):
+    """Raised when workflow code requires `draft_ref` but it is missing from state."""
+
+
 class LLMServiceError(SAGACoreError):
     """Errors related to LLM service operations."""
+
+
+class CheckpointResumeConflictError(SAGACoreError):
+    """Raised when checkpointed state conflicts with persisted artifacts during resume.
+
+    Policy:
+        - Checkpoint state is the single source of truth.
+        - Neo4j/filesystem artifacts are treated as persisted artifacts.
+        - Any detected mismatch must fail fast with a clear, stable message.
+    """
 
 
 def create_error_context(**kwargs: Any) -> dict[str, Any]:

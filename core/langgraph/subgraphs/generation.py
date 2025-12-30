@@ -1,16 +1,18 @@
 # core/langgraph/subgraphs/generation.py
 """Build the scene-based generation subgraph for SAGA.
 
-This subgraph is the canonical chapter generation implementation:
-plan scenes → retrieve context → draft scenes → assemble chapter.
+This subgraph generates scene drafts for a chapter:
+plan scenes → retrieve context → draft scenes.
+
+Chapter assembly is intentionally performed at the top-level workflow after scene
+embeddings are generated.
 """
 
 from typing import Literal
 
 import structlog
-from langgraph.graph import END, StateGraph  # type: ignore
+from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
-from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.context_retrieval_node import retrieve_context
 from core.langgraph.nodes.scene_generation_node import draft_scene
 from core.langgraph.nodes.scene_planning_node import plan_scenes
@@ -25,18 +27,21 @@ def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end"]:
     Args:
         state: Workflow state. This function reads:
             - current_scene_index: Index of the next scene to draft.
-            - chapter_plan: Scene plan used to bound generation.
+            - chapter_plan_scene_count: Total number of scenes in the chapter plan.
 
     Returns:
-        "continue" to draft another scene, or "end" to assemble the chapter.
+        "continue" to draft another scene, or "end" to end the subgraph.
     """
-    current_index = state.get("current_scene_index", 0)
-    chapter_plan = state.get("chapter_plan", [])
+    scene_count = state.get("chapter_plan_scene_count", 0)
+    if isinstance(scene_count, bool) or not isinstance(scene_count, int):
+        raise TypeError("chapter_plan_scene_count must be an int")
 
-    if not chapter_plan:
+    if scene_count <= 0:
         return "end"
 
-    if current_index < len(chapter_plan):
+    current_index = state.get("current_scene_index", 0)
+
+    if current_index < scene_count:
         return "continue"
 
     return "end"
@@ -53,7 +58,6 @@ def create_generation_subgraph() -> StateGraph:
     workflow.add_node("plan_scenes", plan_scenes)
     workflow.add_node("retrieve_context", retrieve_context)
     workflow.add_node("draft_scene", draft_scene)
-    workflow.add_node("assemble_chapter", assemble_chapter)
 
     workflow.set_entry_point("plan_scenes")
 
@@ -63,10 +67,8 @@ def create_generation_subgraph() -> StateGraph:
     workflow.add_conditional_edges(
         "draft_scene",
         should_continue_scenes,
-        {"continue": "retrieve_context", "end": "assemble_chapter"},
+        {"continue": "retrieve_context", "end": END},
     )
-
-    workflow.add_edge("assemble_chapter", END)
 
     return workflow.compile()
 

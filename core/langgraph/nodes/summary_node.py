@@ -19,11 +19,13 @@ from pathlib import Path
 
 import structlog
 
+import config
 from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
     get_draft_text,
     get_previous_summaries,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -33,6 +35,14 @@ from utils.common import try_load_json_from_response
 from utils.file_io import write_text_file
 
 logger = structlog.get_logger(__name__)
+
+
+class ChapterSummaryContractError(ValueError):
+    """Raised when the chapter summary response violates the strict JSON contract."""
+
+
+_SUMMARY_MAX_ATTEMPTS = 3
+_SUMMARY_CORRECTION_INSTRUCTION = "\n\nCORRECTION:\n" 'Return ONLY valid JSON. Output MUST be a single JSON object with exactly one key: "summary".\n' "No markdown. No code fences. No extra text.\n"
 
 
 async def summarize_chapter(state: NarrativeState) -> NarrativeState:
@@ -64,16 +74,25 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
-    # Get draft text (prefers externalized content, falls back to in-state)
-    draft_text = get_draft_text(state, content_manager)
+    from core.exceptions import MissingDraftReferenceError
+
+    try:
+        draft_text = get_draft_text(state, content_manager)
+    except MissingDraftReferenceError:
+        logger.info(
+            "summarize_chapter: missing draft_ref; skipping summarization",
+            chapter=state.get("current_chapter", 1),
+        )
+        return {
+            "current_node": "summarize",
+        }
 
     # Validate we have text to summarize
     if not draft_text:
         logger.warning("summarize_chapter: no draft text to summarize")
         return {
-            **state,
             "current_node": "summarize",
         }
 
@@ -90,42 +109,46 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
     logger.info(
         "summarize_chapter: calling LLM for summary",
         chapter=state.get("current_chapter", 1),
-        model=state.get("extraction_model", ""),
+        model=state.get("extraction_model", config.SMALL_MODEL),
     )
 
     try:
-        summary_text, usage = await llm_service.async_call_llm(
-            model_name=state.get("small_model", ""),  # Use fast model
-            prompt=prompt,
-            temperature=0.3,  # Low temperature for consistency
-            max_tokens=16384,
-            allow_fallback=True,
-            auto_clean_response=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-        )
+        last_contract_error: ChapterSummaryContractError | None = None
 
-        if not summary_text or not summary_text.strip():
-            logger.error(
-                "summarize_chapter: LLM returned empty summary",
-                chapter=state.get("current_chapter", 1),
+        for attempt_index in range(_SUMMARY_MAX_ATTEMPTS):
+            attempt_prompt = prompt
+            if attempt_index > 0:
+                attempt_prompt = attempt_prompt + _SUMMARY_CORRECTION_INSTRUCTION
+
+            summary_text, usage = await llm_service.async_call_llm(
+                model_name=state.get("small_model", config.SMALL_MODEL),  # Use fast model
+                prompt=attempt_prompt,
+                temperature=0.3,  # Low temperature for consistency
+                max_tokens=16384,
+                allow_fallback=True,
+                auto_clean_response=True,
+                system_prompt=get_system_prompt("knowledge_agent"),
             )
-            # Continue without summary rather than fail
-            return {
-                **state,
-                "current_node": "summarize",
-            }
 
-        # Step 3: Parse summary from response
-        summary = _parse_summary_response(summary_text)
+            if not summary_text or not summary_text.strip():
+                last_contract_error = ChapterSummaryContractError("Chapter summary JSON contract violated: model returned an empty response.")
+            else:
+                try:
+                    summary = _parse_summary_response(summary_text)
+                    break
+                except ChapterSummaryContractError as error:
+                    last_contract_error = error
+            if attempt_index < _SUMMARY_MAX_ATTEMPTS - 1:
+                logger.warning(
+                    "summarize_chapter: chapter summary response violated JSON contract; retrying",
+                    chapter=state.get("current_chapter", 1),
+                    attempt=attempt_index + 1,
+                    max_attempts=_SUMMARY_MAX_ATTEMPTS,
+                    error=str(last_contract_error),
+                )
+                continue
 
-        if not summary:
-            logger.warning(
-                "summarize_chapter: failed to parse summary, using raw text",
-                chapter=state.get("current_chapter", 1),
-                raw_text=summary_text,
-            )
-            # Use first few sentences of raw text as fallback
-            summary = " ".join(summary_text.strip().split(".")[:3]) + "."
+            raise last_contract_error
 
         logger.info(
             "summarize_chapter: summary generated",
@@ -180,12 +203,13 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "summaries_ref": summaries_ref,
             "current_summary": summary,
             "current_node": "summarize",
         }
 
+    except ChapterSummaryContractError:
+        raise
     except Exception as e:
         logger.error(
             "summarize_chapter: exception during summarization",
@@ -196,41 +220,47 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
         # Continue workflow even if summarization fails
         # This is non-critical, so we don't block the pipeline
         return {
-            **state,
             "current_node": "summarize",
         }
 
 
-def _parse_summary_response(response_text: str) -> str | None:
-    """Parse a summary from an LLM response.
+def _parse_summary_response(response_text: str) -> str:
+    """Parse a chapter summary from an LLM response.
 
-    The canonical template returns a JSON object with a `"summary"` key, but this
-    parser falls back to using the raw response when JSON parsing fails.
+    Contract (see prompt template):
+    - Return ONLY valid JSON.
+    - Output MUST be a single JSON object with exactly one key: "summary".
 
     Args:
         response_text: Raw LLM response.
 
     Returns:
-        Parsed summary text, or `None` when no plausible summary can be derived.
+        The summary string.
+
+    Raises:
+        ChapterSummaryContractError: When the response is not a JSON object matching the contract.
     """
     parsed, _candidates, _parse_errors = try_load_json_from_response(
         response_text,
-        expected_root=(dict, str),
+        expected_root=(dict,),
     )
 
-    if isinstance(parsed, dict):
-        summary = parsed.get("summary")
-        if isinstance(summary, str):
-            return summary.strip()
+    if not isinstance(parsed, dict):
+        raise ChapterSummaryContractError("Chapter summary JSON contract violated: could not parse a JSON object from the model response.")
 
-    if isinstance(parsed, str):
-        return parsed.strip()
+    if set(parsed.keys()) != {"summary"}:
+        keys = ", ".join(sorted(str(k) for k in parsed.keys()))
+        raise ChapterSummaryContractError('Chapter summary JSON contract violated: expected a single JSON object with exactly one key: "summary". ' f"Found keys: {keys}")
 
-    cleaned = response_text.strip()
-    if cleaned and len(cleaned) > 10:
-        return cleaned
+    summary = parsed.get("summary")
+    if not isinstance(summary, str):
+        raise ChapterSummaryContractError('Chapter summary JSON contract violated: key "summary" must be a string.')
 
-    return None
+    cleaned = summary.strip()
+    if not cleaned:
+        raise ChapterSummaryContractError('Chapter summary JSON contract violated: key "summary" must be a non-empty string.')
+
+    return cleaned
 
 
 async def _save_summary_to_neo4j(

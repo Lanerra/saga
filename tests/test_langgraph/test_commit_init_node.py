@@ -1,3 +1,4 @@
+# tests/test_langgraph/test_commit_init_node.py
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,7 +28,6 @@ def base_state():
         total_chapters=20,
         project_dir="/tmp/test-project",
         protagonist_name="Hero",
-        generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )

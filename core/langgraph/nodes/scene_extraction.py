@@ -1,3 +1,4 @@
+# core/langgraph/nodes/scene_extraction.py
 """Extract entities from individual scenes instead of full chapters.
 
 This module provides scene-level extraction to reduce prompt sizes and improve
@@ -9,11 +10,12 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from pydantic import BaseModel
 
 import config
 from core.exceptions import LLMServiceError
-from core.langgraph.content_manager import ContentManager, get_scene_drafts
-from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
+from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
+from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
@@ -642,7 +644,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         logger.warning("extract_from_scenes: skipping due to fatal error")
         return {"current_node": "extract_from_scenes"}
 
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     try:
         scene_drafts = get_scene_drafts(state, content_manager)
@@ -650,7 +652,6 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         error_msg = f"Failed to load scene drafts: {e}"
         logger.error("extract_from_scenes: fatal error", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "extract_from_scenes",
@@ -660,8 +661,6 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     if not scene_drafts:
         logger.warning("extract_from_scenes: no scene drafts found, returning empty extraction")
         return {
-            "extracted_entities": {"characters": [], "world_items": []},
-            "extracted_relationships": [],
             "current_node": "extract_from_scenes",
         }
 
@@ -698,42 +697,32 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
 
     consolidated = consolidate_scene_extractions(scene_results)
 
-    characters: list[ExtractedEntity] = []
-    for character_dict in consolidated.get("characters", []):
-        characters.append(
-            ExtractedEntity(
-                name=character_dict["name"],
-                type=character_dict["type"],
-                description=character_dict["description"],
-                first_appearance_chapter=character_dict.get("first_appearance_chapter", chapter_number),
-                attributes=character_dict.get("attributes", {}),
-            )
-        )
+    def _normalize_dict_items(*, items: Any, item_kind: str) -> list[dict[str, Any]]:
+        if items is None:
+            return []
+        if not isinstance(items, list):
+            raise TypeError(f"extract_from_scenes: expected {item_kind} to be a list; got {type(items)}")
 
-    world_items: list[ExtractedEntity] = []
-    for world_item_dict in consolidated.get("world_items", []):
-        world_items.append(
-            ExtractedEntity(
-                name=world_item_dict["name"],
-                type=world_item_dict["type"],
-                description=world_item_dict["description"],
-                first_appearance_chapter=world_item_dict.get("first_appearance_chapter", chapter_number),
-                attributes=world_item_dict.get("attributes", {}),
-            )
-        )
+        normalized: list[dict[str, Any]] = []
+        for item in items:
+            if isinstance(item, BaseModel):
+                normalized_value = item.model_dump(mode="json")
+                if not isinstance(normalized_value, dict):
+                    raise TypeError(f"extract_from_scenes: expected {item_kind} model_dump to produce dict; got {type(normalized_value)}")
+                normalized.append(normalized_value)
+                continue
 
-    extracted_relationships: list[ExtractedRelationship] = []
-    for rel_dict in consolidated.get("relationships", []):
-        extracted_relationships.append(
-            ExtractedRelationship(
-                source_name=rel_dict["source_name"],
-                target_name=rel_dict["target_name"],
-                relationship_type=rel_dict["relationship_type"],
-                description=rel_dict.get("description", ""),
-                chapter=rel_dict.get("chapter", chapter_number),
-                confidence=rel_dict.get("confidence", 0.8),
-            )
-        )
+            if isinstance(item, dict):
+                normalized.append(item)
+                continue
+
+            raise TypeError(f"extract_from_scenes: expected {item_kind} item to be dict-like; got {type(item)}")
+
+        return normalized
+
+    characters = _normalize_dict_items(items=consolidated.get("characters", []), item_kind="characters")
+    world_items = _normalize_dict_items(items=consolidated.get("world_items", []), item_kind="world_items")
+    extracted_relationships = _normalize_dict_items(items=consolidated.get("relationships", []), item_kind="relationships")
 
     logger.info(
         "extract_from_scenes: extraction complete",
@@ -743,8 +732,33 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         relationships_count=len(extracted_relationships),
     )
 
+    # Externalize extraction results immediately to avoid state bloat
+    current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
+
+    extracted_entities_ref = content_manager.save_json(
+        {"characters": characters, "world_items": world_items},
+        "extracted_entities",
+        f"chapter_{chapter_number}",
+        current_version,
+    )
+
+    extracted_relationships_ref = content_manager.save_json(
+        extracted_relationships,
+        "extracted_relationships",
+        f"chapter_{chapter_number}",
+        current_version,
+    )
+
+    logger.info(
+        "extract_from_scenes: content externalized",
+        chapter=chapter_number,
+        version=current_version,
+        entities_size=len(characters) + len(world_items),
+        relationships_size=len(extracted_relationships),
+    )
+
     return {
-        "extracted_entities": {"characters": characters, "world_items": world_items},
-        "extracted_relationships": extracted_relationships,
+        "extracted_entities_ref": extracted_entities_ref,
+        "extracted_relationships_ref": extracted_relationships_ref,
         "current_node": "extract_from_scenes",
     }

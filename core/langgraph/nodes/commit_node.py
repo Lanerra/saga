@@ -31,6 +31,8 @@ from core.langgraph.content_manager import (
     get_extracted_entities,
     get_extracted_relationships,
     load_embedding,
+    load_scene_embeddings,
+    require_project_dir,
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.schema_validator import canonicalize_entity_type_for_persistence
@@ -80,7 +82,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
           stale reads within the same process.
     """
     # Initialize content manager to read externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get extraction results from externalized content
     extracted = get_extracted_entities(state, content_manager)
@@ -158,31 +160,61 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             all_statements.extend(entity_statements)
 
         # Step 4b: Collect relationship statements
-        if relationships:
-            relationship_statements = await _build_relationship_statements(
-                relationships,
-                char_entities,
-                world_entities,
-                char_mappings,
-                world_mappings,
-                state.get("current_chapter", 1),
-                is_from_flawed_draft=state.get("is_from_flawed_draft", False),
-            )
+        #
+        # Contract: relationship writes are chapter-idempotent.
+        # Every commit replaces the chapter's relationship set (including "no relationships").
+        relationship_statements = await _build_relationship_statements(
+            relationships,
+            char_entities,
+            world_entities,
+            char_mappings,
+            world_mappings,
+            state.get("current_chapter", 1),
+            is_from_flawed_draft=False,
+        )
+        if relationship_statements:
             all_statements.extend(relationship_statements)
 
         # Step 4c: Collect chapter node statement
-        content_manager = ContentManager(state.get("project_dir", ""))
-        draft_text = get_draft_text(state, content_manager) or ""
+        content_manager = ContentManager(require_project_dir(state))
 
-        # Get embedding from ref if available
+        from core.exceptions import MissingDraftReferenceError
+
+        try:
+            draft_text = get_draft_text(state, content_manager)
+        except MissingDraftReferenceError as error:
+            return {
+                "current_node": "commit_to_graph",
+                "last_error": str(error),
+                "has_fatal_error": True,
+                "error_node": "commit",
+            }
+
+        # Get embedding from scene embeddings (preferred) or fallback to chapter embedding
         embedding = None
-        embedding_ref_obj = state.get("embedding_ref")
-        if embedding_ref_obj is not None:
+
+        # Try to load and aggregate scene embeddings
+        scene_embeddings_ref_obj = state.get("scene_embeddings_ref")
+        if scene_embeddings_ref_obj is not None:
             try:
-                embedding_ref = cast(ContentRef, embedding_ref_obj)
+                scene_embeddings_ref = cast(ContentRef, scene_embeddings_ref_obj)
+                scene_embeddings = load_scene_embeddings(content_manager, scene_embeddings_ref)
+                embedding = _aggregate_scene_embeddings_to_chapter(scene_embeddings)
+                logger.info(
+                    "commit_to_graph: aggregated scene embeddings into chapter embedding",
+                    num_scenes=len(scene_embeddings),
+                    embedding_dimensions=len(embedding) if embedding else 0,
+                )
+            except Exception as e:
+                logger.warning("commit_to_graph: failed to load/aggregate scene embeddings", error=str(e))
+
+        # Fallback for backward compatibility (should rarely be needed)
+        elif state.get("embedding_ref"):
+            try:
+                embedding_ref = cast(ContentRef, state.get("embedding_ref"))
                 embedding = load_embedding(content_manager, embedding_ref)
             except Exception as e:
-                logger.warning("commit_to_graph: failed to load embedding", error=str(e))
+                logger.warning("commit_to_graph: failed to load chapter embedding", error=str(e))
         elif state.get("generated_embedding"):
             # Fallback for backward compatibility or if not externalized yet
             embedding = state.get("generated_embedding")
@@ -242,7 +274,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         phase2_merges = await _run_phase2_deduplication(state.get("current_chapter", 1))
 
         return {
-            **state,
             "current_node": "commit_to_graph",
             "last_error": None,
             "has_fatal_error": False,
@@ -257,7 +288,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "current_node": "commit_to_graph",
             "last_error": f"Commit to graph failed: {e}",
             "has_fatal_error": True,
@@ -767,8 +797,23 @@ async def _build_relationship_statements(
     Returns:
         List of `(cypher_query, parameters)` tuples suitable for batched execution.
     """
+    statements: list[tuple[str, dict]] = []
+
+    # Idempotency: Delete any existing relationships for this chapter before writing the new set.
+    # This ensures that revisions or re-runs do not accumulate stale edges.
+    delete_query = """
+    MATCH ()-[r]->()
+    WHERE coalesce(r.chapter_added, -1) = $chapter
+    DELETE r
+    """
+    statements.append((delete_query, {"chapter": chapter}))
+
     if not relationships:
-        return []
+        logger.info(
+            "_build_relationship_statements: no extracted relationships; clearing chapter relationship set",
+            chapter=chapter,
+        )
+        return statements
 
     # Build entity lookup maps for type resolution (same as _create_relationships)
     entity_type_map = {}
@@ -788,6 +833,58 @@ async def _build_relationship_statements(
         entity_types=list(entity_type_map.items())[:10],  # Log first 10 for debugging
     )
 
+    # Pre-fetch existing entity IDs from database to avoid constraint violations
+    # This prevents creating duplicate nodes when deduplication fails or entities appear only in relationships
+    entity_id_cache: dict[str, str] = {}
+
+    # Collect ALL unique entity names from relationships (not just those missing from entity_type_map)
+    # This catches cases where deduplication failed or didn't find an exact name match
+    entity_names_to_check: set[tuple[str, str]] = set()  # (name, type) tuples
+    for rel in relationships:
+        source_name = char_mappings.get(rel.source_name, rel.source_name)
+        target_name = char_mappings.get(rel.target_name, rel.target_name)
+
+        source_type = getattr(rel, "source_type", None) or entity_type_map.get(rel.source_name)
+        target_type = getattr(rel, "target_type", None) or entity_type_map.get(rel.target_name)
+
+        # Check all non-Character entities (Characters merge by name, not ID)
+        if source_type != "Character":
+            entity_names_to_check.add((source_name, source_type or "Item"))
+        if target_type != "Character":
+            entity_names_to_check.add((target_name, target_type or "Item"))
+
+    # Batch query for all entity IDs
+    if entity_names_to_check:
+        from core.db_manager import neo4j_manager
+
+        for name, entity_type_raw in entity_names_to_check:
+            neo4j_type = canonicalize_entity_type_for_persistence(entity_type_raw or "Item")
+            label = _get_cypher_labels(neo4j_type).lstrip(":")
+
+            query = f"""
+            MATCH (n:{label} {{name: $name}})
+            RETURN n.id as id
+            LIMIT 1
+            """
+            try:
+                results = await neo4j_manager.execute_read_query(query, {"name": name})
+                if results and results[0].get("id"):
+                    cache_key = f"{name}:{neo4j_type}"
+                    entity_id_cache[cache_key] = str(results[0]["id"])
+                    logger.debug(
+                        "_build_relationship_statements: found existing entity in database",
+                        name=name,
+                        type=neo4j_type,
+                        id=entity_id_cache[cache_key],
+                    )
+            except Exception as e:
+                logger.warning(
+                    "_build_relationship_statements: failed to lookup existing entity",
+                    name=name,
+                    type=neo4j_type,
+                    error=str(e),
+                )
+
     # Helper to create subject/object dict with type + optional stable id.
     def _make_entity_dict(
         *,
@@ -800,8 +897,14 @@ async def _build_relationship_statements(
 
         Contract:
         - `name` remains human-readable.
-        - `stable_id` (when present) is used for identity matching.
+        - `id` is a stable identifier used for identity matching when available.
         - Missing or empty types are canonicalized to `"Item"`.
+
+        Notes:
+            Relationship persistence may need to create provisional nodes for entities that were
+            not part of the extracted entity lists. For non-Character nodes, we generate a
+            deterministic id to avoid casing-based duplicates (for example "Crew" vs "crew")
+            and to prevent leaking deterministic ids into the `name` field.
 
         Args:
             name: Persisted entity name.
@@ -820,9 +923,26 @@ async def _build_relationship_statements(
         else:
             neo4j_type = canonicalize_entity_type_for_persistence(entity_type)
 
+        resolved_stable_id = stable_id
+        if resolved_stable_id is None and neo4j_type != "Character":
+            mapped_id = world_mappings.get(original_name)
+            if isinstance(mapped_id, str) and mapped_id:
+                resolved_stable_id = mapped_id
+            else:
+                cache_key = f"{name}:{neo4j_type}"
+                cached_id = entity_id_cache.get(cache_key)
+                if cached_id:
+                    resolved_stable_id = cached_id
+                else:
+                    resolved_stable_id = generate_entity_id(
+                        name=name,
+                        category=entity_category or neo4j_type.lower(),
+                        chapter=chapter,
+                    )
+
         return {
             "name": name,
-            "id": stable_id,
+            "id": resolved_stable_id,
             "type": neo4j_type,
             "category": entity_category,
         }
@@ -831,13 +951,9 @@ async def _build_relationship_statements(
     structured_triples: list[dict[str, Any]] = []
 
     for rel in relationships:
-        # `world_mappings` is a name canonicalization/dedup mapping (not an id mapping).
-        # It is applied symmetrically with `char_mappings`.
+        # `char_mappings` canonicalizes character names for consistent relationship endpoints.
         source_name = char_mappings.get(rel.source_name, rel.source_name)
         target_name = char_mappings.get(rel.target_name, rel.target_name)
-
-        source_name = world_mappings.get(source_name, source_name)
-        target_name = world_mappings.get(target_name, target_name)
 
         # Use explicit types from relationship if available (from parsing "Type:Name" format)
         # Otherwise _make_entity_dict will fall back to entity_type_map
@@ -869,8 +985,6 @@ async def _build_relationship_statements(
     # Build Cypher statements from triples
     # This creates basic relationship statements without full constraint validation
     # (Full validation logic from kg_queries is too complex to inline here)
-    statements: list[tuple[str, dict]] = []
-
     for triple in structured_triples:
         try:
             subject = triple["subject"]
@@ -1224,6 +1338,40 @@ async def _run_phase2_deduplication(chapter: int) -> dict[str, int]:
         )
         # Don't fail the commit if Phase 2 deduplication fails
         return {"characters": 0, "world_items": 0}
+
+
+def _aggregate_scene_embeddings_to_chapter(scene_embeddings: list[list[float]] | dict[str, list[float]]) -> list[float]:
+    """
+    Aggregate scene-level embeddings into a single chapter embedding.
+
+    Strategy: Average all scene embeddings to create a representative chapter embedding.
+    This provides semantic coverage of the entire chapter while being computationally efficient.
+
+    Args:
+        scene_embeddings: List or dict of scene embedding vectors
+
+    Returns:
+        Single chapter embedding vector (averaged from all scenes)
+    """
+    if not scene_embeddings:
+        return []
+
+    # Handle both list and dict formats
+    if isinstance(scene_embeddings, dict):
+        embeddings_list = list(scene_embeddings.values())
+    else:
+        embeddings_list = scene_embeddings
+
+    if not embeddings_list:
+        return []
+
+    # Convert to numpy array for efficient computation
+    embeddings_array = np.array(embeddings_list)
+
+    # Average across scenes (axis=0)
+    chapter_embedding = np.mean(embeddings_array, axis=0).tolist()
+
+    return chapter_embedding
 
 
 __all__ = ["commit_to_graph"]

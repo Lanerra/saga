@@ -5,13 +5,21 @@ Tests for LangGraph orchestrator.
 Covers orchestration/langgraph_orchestrator.py.
 """
 
+import ast
 from pathlib import Path
+from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
+from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
+from core.exceptions import CheckpointResumeConflictError
 from core.langgraph.state import Contradiction
-from orchestration.langgraph_orchestrator import LangGraphOrchestrator
+from orchestration.langgraph_orchestrator import (
+    _LLM_SERVICE_PATCH_MODULES,
+    LangGraphOrchestrator,
+)
 
 
 @pytest.fixture
@@ -28,7 +36,7 @@ def mock_config():
         mock_cfg.MEDIUM_MODEL = "medium-model"
         mock_cfg.LARGE_MODEL = "large-model"
         mock_cfg.SMALL_MODEL = "small-model"
-        mock_cfg.CHAPTERS_PER_RUN = 2
+        mock_cfg.CHAPTERS_PER_RUN = 3
         yield mock_cfg
 
 
@@ -42,6 +50,81 @@ def orchestrator(mock_config, tmp_path):
         with patch("orchestration.langgraph_orchestrator.RichDisplayManager"):
             orch = LangGraphOrchestrator()
             return orch
+
+
+def _repo_root_from_test_file(test_file: Path) -> Path:
+    return test_file.resolve().parents[1]
+
+
+def _path_to_module_name(repo_root: Path, file_path: Path) -> str:
+    relative_no_suffix = file_path.relative_to(repo_root).with_suffix("")
+    parts = list(relative_no_suffix.parts)
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+class _ModuleLevelLLMServiceImportFinder(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self._nesting_depth = 0
+        self.found = False
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
+        self._nesting_depth += 1
+        self.generic_visit(node)
+        self._nesting_depth -= 1
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+        self._nesting_depth += 1
+        self.generic_visit(node)
+        self._nesting_depth -= 1
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802
+        self._nesting_depth += 1
+        self.generic_visit(node)
+        self._nesting_depth -= 1
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
+        if self._nesting_depth != 0:
+            return
+
+        if node.module != "core.llm_interface_refactored":
+            return
+
+        for alias in node.names:
+            if alias.name == "llm_service":
+                self.found = True
+                return
+
+
+def _module_level_llm_service_importers(repo_root: Path) -> set[str]:
+    search_roots = (
+        "core",
+        "processing",
+        "ui",
+        "orchestration",
+        "data_access",
+        "models",
+        "prompts",
+        "utils",
+        "config",
+    )
+
+    modules: set[str] = set()
+    for root_name in search_roots:
+        root_path = repo_root / root_name
+        if not root_path.exists():
+            continue
+
+        for file_path in root_path.rglob("*.py"):
+            source = file_path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(file_path))
+            finder = _ModuleLevelLLMServiceImportFinder()
+            finder.visit(tree)
+            if finder.found:
+                modules.add(_path_to_module_name(repo_root, file_path))
+
+    return modules
 
 
 class TestLangGraphOrchestratorInit:
@@ -108,7 +191,7 @@ class TestLoadOrCreateState:
         ):
             mock_load.return_value = 0
 
-            state = await orchestrator._load_or_create_state()
+            state = await orchestrator._load_or_create_state(project_id="test-project")
 
             assert state["current_chapter"] == 1
             assert state["initialization_complete"] is False
@@ -121,7 +204,7 @@ class TestLoadOrCreateState:
         ) as mock_load:
             mock_load.return_value = 5
 
-            state = await orchestrator._load_or_create_state()
+            state = await orchestrator._load_or_create_state(project_id="test-project")
 
             assert state["current_chapter"] == 6
             assert state["initialization_complete"] is True
@@ -140,7 +223,7 @@ class TestLoadOrCreateState:
         ):
             mock_load.return_value = 0
 
-            state = await orchestrator._load_or_create_state()
+            state = await orchestrator._load_or_create_state(project_id="test-project")
 
             assert state["initialization_complete"] is True
 
@@ -166,7 +249,7 @@ class TestLoadOrCreateState:
             (tmp_path / "world" / "rules.yaml").write_text("rules: []\n")
             (tmp_path / "world" / "history.yaml").write_text("history: []\n")
 
-            state = await orchestrator._load_or_create_state()
+            state = await orchestrator._load_or_create_state(project_id="test-project")
 
             assert state["initialization_complete"] is True
 
@@ -184,11 +267,14 @@ class TestLoadOrCreateState:
         ):
             mock_load.return_value = 0
 
-            state = await orchestrator._load_or_create_state()
+            state = await orchestrator._load_or_create_state(project_id="test-project")
 
-            assert state["generation_model"] is not None
             assert state["extraction_model"] is not None
             assert state["revision_model"] is not None
+            assert state["large_model"] is not None
+            assert state["medium_model"] is not None
+            assert state["small_model"] is not None
+            assert state["narrative_model"] is not None
 
     async def test_load_or_create_state_validates_artifacts(self, orchestrator, tmp_path):
         """Validation check runs on existing project directory."""
@@ -205,7 +291,7 @@ class TestLoadOrCreateState:
             orchestrator.project_dir = tmp_path
             tmp_path.mkdir(exist_ok=True)
 
-            state = await orchestrator._load_or_create_state()
+            state = await orchestrator._load_or_create_state(project_id="test-project")
 
             mock_validate.assert_called_once_with(tmp_path)
             assert state is not None
@@ -230,6 +316,7 @@ class TestRunChapterGenerationLoop:
         mock_graph.astream = mock_stream_func
 
         state = {
+            "project_id": "test_proj",
             "current_chapter": 1,
             "total_chapters": 20,
             "draft_word_count": 2000,
@@ -237,6 +324,65 @@ class TestRunChapterGenerationLoop:
 
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
+
+    async def test_run_chapter_generation_loop_multi_chapter(self, orchestrator):
+        """Chapter generation loop handles multiple chapters in a single stream."""
+        mock_graph = MagicMock()
+
+        async def mock_stream_func(*args, **kwargs):
+            events = [
+                {"generate": {"current_chapter": 1, "current_node": "generate"}},
+                {"finalize": {"current_chapter": 1, "current_node": "finalize", "draft_word_count": 1000}},
+                {"advance_chapter": {"current_chapter": 2, "current_node": "advance_chapter"}},
+                {"generate": {"current_chapter": 2, "current_node": "generate"}},
+                {"finalize": {"current_chapter": 2, "current_node": "finalize", "draft_word_count": 1200}},
+            ]
+            for event in events:
+                yield event
+
+        mock_graph.astream = mock_stream_func
+
+        state = {
+            "project_id": "test_proj",
+            "current_chapter": 1,
+            "total_chapters": 5,
+        }
+
+        with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock) as mock_handle:
+            await orchestrator._run_chapter_generation_loop(mock_graph, state)
+
+            # Check that _handle_workflow_event was called with correct chapter numbers
+            assert mock_handle.call_count == 5
+            # First 2 calls should be chapter 1
+            assert mock_handle.call_args_list[0][0][1] == 1
+            assert mock_handle.call_args_list[1][0][1] == 1
+            # 3rd call (advance_chapter) should be chapter 2
+            assert mock_handle.call_args_list[2][0][1] == 2
+            # Remaining calls should be chapter 2
+            assert mock_handle.call_args_list[3][0][1] == 2
+            assert mock_handle.call_args_list[4][0][1] == 2
+
+    async def test_run_chapter_generation_loop_thread_id(self, orchestrator):
+        """Orchestrator uses project-specific thread ID."""
+        mock_graph = MagicMock()
+
+        async def empty_stream(*args, **kwargs):
+            if False:
+                yield
+
+        mock_graph.astream = MagicMock(side_effect=empty_stream)
+
+        state = {"project_id": "custom_project"}
+        await orchestrator._run_chapter_generation_loop(mock_graph, state)
+
+        # Check astream call arguments
+        # Need to find the call
+        found = False
+        for call in mock_graph.astream.call_args_list:
+            if call.kwargs.get("config", {}).get("configurable", {}).get("thread_id") == "saga_custom_project":
+                found = True
+                break
+        assert found, "Thread ID 'saga_custom_project' not found in astream calls"
 
     async def test_run_chapter_generation_loop_respects_total_chapters(self, orchestrator):
         """Loop stops at total chapter count."""
@@ -249,7 +395,7 @@ class TestRunChapterGenerationLoop:
 
         mock_graph.astream = mock_stream_func
 
-        state = {"current_chapter": 20, "total_chapters": 20, "draft_word_count": 2000}
+        state = {"project_id": "test_proj", "current_chapter": 20, "total_chapters": 20, "draft_word_count": 2000}
 
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
@@ -265,7 +411,7 @@ class TestRunChapterGenerationLoop:
 
         mock_graph.astream = mock_stream_error
 
-        state = {"current_chapter": 1, "total_chapters": 20}
+        state = {"project_id": "test_proj", "current_chapter": 1, "total_chapters": 20}
 
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
@@ -282,6 +428,7 @@ class TestRunChapterGenerationLoop:
         mock_graph.astream = mock_stream_func
 
         state = {
+            "project_id": "test_proj",
             "current_chapter": 1,
             "total_chapters": 20,
             "last_error": "Failed at extraction",
@@ -300,7 +447,7 @@ class TestRunChapterGenerationLoop:
 
         mock_graph.astream = empty_stream
 
-        state = {"current_chapter": 1, "total_chapters": 20}
+        state = {"project_id": "test_proj", "current_chapter": 1, "total_chapters": 20}
 
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
@@ -484,11 +631,12 @@ class TestRunNovelGenerationLoop:
 
         with (
             patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock) as mock_neo4j,
-            patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_state,
+            patch.object(orchestrator, "_load_state_for_run", new_callable=AsyncMock) as mock_state_for_run,
             patch("orchestration.langgraph_orchestrator.create_checkpointer") as mock_cp,
             patch("orchestration.langgraph_orchestrator.create_full_workflow_graph") as mock_graph_creator,
         ):
-            mock_state.return_value = {
+            mock_state_for_run.return_value = {
+                "project_id": "test_proj",
                 "current_chapter": 1,
                 "total_chapters": 20,
             }
@@ -498,7 +646,7 @@ class TestRunNovelGenerationLoop:
             await orchestrator.run_novel_generation_loop()
 
             mock_neo4j.assert_called_once()
-            mock_state.assert_called_once()
+            mock_state_for_run.assert_called_once()
             orchestrator.display.start.assert_called_once()
             orchestrator.display.stop.assert_called_once()
 
@@ -530,11 +678,11 @@ class TestRunNovelGenerationLoop:
         with (
             patch("core.http_client_service.httpx.AsyncClient", return_value=dummy_httpx_client) as mock_async_client_ctor,
             patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock),
-            patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_state,
+            patch.object(orchestrator, "_load_state_for_run", new_callable=AsyncMock) as mock_state_for_run,
             patch("orchestration.langgraph_orchestrator.create_checkpointer") as mock_cp,
             patch("orchestration.langgraph_orchestrator.create_full_workflow_graph") as mock_graph_creator,
         ):
-            mock_state.return_value = {"current_chapter": 1, "total_chapters": 1}
+            mock_state_for_run.return_value = {"project_id": "test_proj", "current_chapter": 1, "total_chapters": 1}
             mock_cp.return_value = mock_checkpointer
             mock_graph_creator.return_value = mock_graph
 
@@ -558,14 +706,14 @@ class TestRunNovelGenerationLoop:
         with (
             patch("core.http_client_service.httpx.AsyncClient", return_value=dummy_httpx_client) as mock_async_client_ctor,
             patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock),
-            patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_state,
+            patch.object(orchestrator, "_load_state_for_run", new_callable=AsyncMock) as mock_state_for_run,
             patch("orchestration.langgraph_orchestrator.create_checkpointer") as mock_cp,
             patch(
                 "orchestration.langgraph_orchestrator.create_full_workflow_graph",
                 side_effect=RuntimeError("Graph build failed"),
             ),
         ):
-            mock_state.return_value = {"current_chapter": 1, "total_chapters": 1}
+            mock_state_for_run.return_value = {"project_id": "test_proj", "current_chapter": 1, "total_chapters": 1}
             mock_cp.return_value = mock_checkpointer
 
             with pytest.raises(RuntimeError, match="Graph build failed"):
@@ -599,3 +747,219 @@ class TestRunNovelGenerationLoop:
                 pass
 
             orchestrator.display.stop.assert_called_once()
+
+
+def test_llm_service_patch_list_covers_all_module_level_importers() -> None:
+    repo_root = _repo_root_from_test_file(Path(__file__))
+    expected_modules = _module_level_llm_service_importers(repo_root)
+
+    patch_modules = set(_LLM_SERVICE_PATCH_MODULES)
+    missing = sorted(expected_modules - patch_modules)
+    assert missing == [], f"Missing llm_service patch modules: {missing}"
+
+    # Edge case contract: function-local imports of llm_service should not require patching because
+    # they resolve `core.llm_interface_refactored.llm_service` at call time.
+    assert "utils.similarity" not in expected_modules
+
+
+def test_llm_service_import_finder_ignores_non_import_references() -> None:
+    source = """
+text = "llm_service"
+def f():
+    value = "llm_service"
+"""
+    tree = ast.parse(source)
+    finder = _ModuleLevelLLMServiceImportFinder()
+    finder.visit(tree)
+    assert finder.found is False
+
+
+@pytest.mark.asyncio
+async def test_checkpoint_thread_id_is_per_project(tmp_path: Path) -> None:
+    """Two different project_ids do not share checkpoints (same DB, different thread_id)."""
+
+    class DemoState(TypedDict, total=False):
+        project_id: str
+        current_chapter: int
+
+    def bump(state: DemoState) -> DemoState:
+        return {**state, "current_chapter": int(state.get("current_chapter", 0)) + 1}
+
+    orchestrator = LangGraphOrchestrator()
+    orchestrator.project_dir = tmp_path
+
+    db_path = tmp_path / "checkpoints.db"
+
+    async with AsyncSqliteSaver.from_conn_string(str(db_path)) as saver:
+        graph = StateGraph(DemoState)
+        graph.add_node("bump", bump)
+        graph.set_entry_point("bump")
+        graph.add_edge("bump", END)
+        compiled = graph.compile(checkpointer=saver)
+
+        thread_a = orchestrator._checkpoint_thread_id("project_a")
+        thread_b = orchestrator._checkpoint_thread_id("project_b")
+
+        checkpoint_b_before = await saver.aget({"configurable": {"thread_id": thread_b}})
+        assert checkpoint_b_before is None
+
+        await compiled.ainvoke({"project_id": "project_a", "current_chapter": 1}, config={"configurable": {"thread_id": thread_a}})
+
+        checkpoint_a = await saver.aget({"configurable": {"thread_id": thread_a}})
+        assert isinstance(checkpoint_a, dict)
+        assert checkpoint_a["channel_values"]["project_id"] == "project_a"
+
+        checkpoint_b_after = await saver.aget({"configurable": {"thread_id": thread_b}})
+        assert checkpoint_b_after is None
+
+
+@pytest.mark.asyncio
+async def test_resume_uses_checkpoint_state_not_neo4j(orchestrator) -> None:
+    requested_project_id = "resume_project"
+    thread_id = orchestrator._checkpoint_thread_id(requested_project_id)
+
+    fake_checkpointer = MagicMock()
+    fake_checkpointer.aget = AsyncMock(
+        return_value={
+            "channel_values": {"project_id": requested_project_id, "current_chapter": 7},
+            "id": "checkpoint-id",
+            "v": 1,
+            "ts": "2020-01-01T00:00:00Z",
+        }
+    )
+
+    with (
+        patch(
+            "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+            new_callable=AsyncMock,
+        ) as mock_neo4j_count,
+        patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_seed_state,
+    ):
+        mock_neo4j_count.return_value = 0
+
+        state = await orchestrator._load_state_for_run(
+            checkpointer=fake_checkpointer,
+            requested_project_id=requested_project_id,
+            thread_id=thread_id,
+        )
+
+        assert state["current_chapter"] == 7
+        mock_seed_state.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_conflict_project_id_mismatch_raises(orchestrator) -> None:
+    fake_checkpointer = MagicMock()
+    fake_checkpointer.aget = AsyncMock(
+        return_value={
+            "channel_values": {"project_id": "checkpoint_project", "current_chapter": 1},
+            "id": "checkpoint-id",
+            "v": 1,
+            "ts": "2020-01-01T00:00:00Z",
+        }
+    )
+
+    with patch(
+        "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+        new_callable=AsyncMock,
+    ) as mock_neo4j_count:
+        mock_neo4j_count.return_value = 0
+
+        with pytest.raises(
+            CheckpointResumeConflictError,
+            match="Resume conflict: checkpoint project_id 'checkpoint_project' does not match requested project_id 'requested_project'",
+        ):
+            await orchestrator._load_state_for_run(
+                checkpointer=fake_checkpointer,
+                requested_project_id="requested_project",
+                thread_id=orchestrator._checkpoint_thread_id("requested_project"),
+            )
+
+
+@pytest.mark.asyncio
+async def test_resume_conflict_missing_artifact_reference_raises(orchestrator, tmp_path: Path) -> None:
+    orchestrator.project_dir = tmp_path
+
+    requested_project_id = "artifact_project"
+
+    fake_checkpointer = MagicMock()
+    fake_checkpointer.aget = AsyncMock(
+        return_value={
+            "channel_values": {
+                "project_id": requested_project_id,
+                "current_chapter": 3,
+                "draft_ref": {"path": "does-not-exist.txt"},
+            },
+            "id": "checkpoint-id",
+            "v": 1,
+            "ts": "2020-01-01T00:00:00Z",
+        }
+    )
+
+    with patch(
+        "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+        new_callable=AsyncMock,
+    ) as mock_neo4j_count:
+        mock_neo4j_count.return_value = 0
+
+        with pytest.raises(
+            CheckpointResumeConflictError,
+            match=r"Resume conflict: checkpoint references missing artifact for field 'draft_ref': path='does-not-exist\.txt'",
+        ):
+            await orchestrator._load_state_for_run(
+                checkpointer=fake_checkpointer,
+                requested_project_id=requested_project_id,
+                thread_id=orchestrator._checkpoint_thread_id(requested_project_id),
+            )
+
+
+@pytest.mark.asyncio
+async def test_resume_conflict_neo4j_ahead_of_checkpoint_raises(orchestrator) -> None:
+    requested_project_id = "neo4j_ahead_project"
+
+    fake_checkpointer = MagicMock()
+    fake_checkpointer.aget = AsyncMock(
+        return_value={
+            "channel_values": {"project_id": requested_project_id, "current_chapter": 3},
+            "id": "checkpoint-id",
+            "v": 1,
+            "ts": "2020-01-01T00:00:00Z",
+        }
+    )
+
+    with patch(
+        "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
+        new_callable=AsyncMock,
+    ) as mock_neo4j_count:
+        mock_neo4j_count.return_value = 3
+
+        with pytest.raises(
+            CheckpointResumeConflictError,
+            match="Resume conflict: Neo4j reports chapter_count=3 which is ahead of checkpoint current_chapter=3",
+        ):
+            await orchestrator._load_state_for_run(
+                checkpointer=fake_checkpointer,
+                requested_project_id=requested_project_id,
+                thread_id=orchestrator._checkpoint_thread_id(requested_project_id),
+            )
+
+
+@pytest.mark.asyncio
+async def test_load_state_for_run_no_checkpoint_uses_seed_state(orchestrator) -> None:
+    requested_project_id = "no_checkpoint_project"
+
+    fake_checkpointer = MagicMock()
+    fake_checkpointer.aget = AsyncMock(return_value=None)
+
+    with patch.object(orchestrator, "_load_or_create_state", new_callable=AsyncMock) as mock_seed_state:
+        mock_seed_state.return_value = {"project_id": requested_project_id, "current_chapter": 1}
+
+        state = await orchestrator._load_state_for_run(
+            checkpointer=fake_checkpointer,
+            requested_project_id=requested_project_id,
+            thread_id=orchestrator._checkpoint_thread_id(requested_project_id),
+        )
+
+        assert state["project_id"] == requested_project_id
+        assert state["current_chapter"] == 1
+        mock_seed_state.assert_awaited_once()

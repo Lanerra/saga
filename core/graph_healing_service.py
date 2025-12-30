@@ -25,10 +25,13 @@ import structlog
 
 import config
 from core.db_manager import neo4j_manager
+from core.exceptions import ValidationError
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE = "Graph healing enrichment JSON contract violated: could not parse a JSON object from the model response."
 
 
 class GraphHealingService:
@@ -43,11 +46,12 @@ class GraphHealingService:
         rather than raising, so the workflow can continue.
     """
 
-    CONFIDENCE_THRESHOLD = 0.6  # Lowered from 0.85 to make graduation achievable
+    CONFIDENCE_THRESHOLD = 0.75  # Lowered from 0.85 to make graduation achievable
+    MIN_CONFIDENCE_FOR_ENRICHMENT = 0.55
     MERGE_SIMILARITY_THRESHOLD = 0.75
-    AUTO_MERGE_THRESHOLD = 0.95
-    AGE_GRADUATION_CHAPTERS = 5  # Graduate nodes that survive this many chapters
-    ORPHAN_CLEANUP_CHAPTERS = 5  # Remove truly orphaned nodes after this many chapters
+    AUTO_MERGE_THRESHOLD = 0.85
+    AGE_GRADUATION_CHAPTERS = 4  # Graduate nodes that survive this many chapters
+    ORPHAN_CLEANUP_CHAPTERS = 3  # Remove truly orphaned nodes after this many chapters
 
     async def identify_provisional_nodes(self) -> list[dict[str, Any]]:
         """List provisional nodes eligible for healing."""
@@ -148,6 +152,53 @@ class GraphHealingService:
 
         return total_confidence
 
+    def _classify_non_entity_candidate(self, name: str, entity_type: str) -> str | None:
+        normalized_name = name.strip().lower()
+        normalized_type = str(entity_type).strip()
+
+        if not normalized_name:
+            return "empty_name"
+
+        if normalized_name.startswith("entity_"):
+            return "id_like_name"
+
+        pronoun_prefixes = ("her ", "his ", "their ", "my ", "our ", "your ", "its ")
+        if normalized_name.startswith(pronoun_prefixes):
+            return "pronoun_phrase"
+
+        generic_terms = {"crew", "corporate"}
+        if normalized_name in generic_terms:
+            return "generic_term"
+
+        possessive_marker = "'s "
+        if possessive_marker in normalized_name and normalized_type != "Character":
+            suffix = normalized_name.split(possessive_marker, 1)[1].strip()
+
+            body_parts = {
+                "hand",
+                "hands",
+                "arm",
+                "arms",
+                "leg",
+                "legs",
+                "foot",
+                "feet",
+                "finger",
+                "fingers",
+                "eye",
+                "eyes",
+                "head",
+                "face",
+                "hair",
+            }
+            if suffix in body_parts:
+                return "possessive_body_part"
+
+            if suffix.endswith("ing"):
+                return "possessive_gerund"
+
+        return None
+
     async def enrich_node_from_context(self, node: dict[str, Any], model: str) -> dict[str, Any]:
         """Infer missing attributes for an entity from accumulated chapter context.
 
@@ -159,11 +210,15 @@ class GraphHealingService:
         Returns:
             A dict of inferred attributes (for example, inferred description/traits/role)
             and an overall confidence score. Returns an empty dict when no enrichment
-            is possible (no mentions found or enrichment fails).
+            is possible (no mentions found).
+
+        Raises:
+            ValidationError: When the model response violates the JSON-only contract after
+                a bounded retry loop.
 
         Notes:
-            This function is best-effort and intentionally does not raise for JSON
-            parsing failures or LLM call failures.
+            This function expects the prompt contract to be strict JSON-only. It retries
+            JSON decoding failures with an explicit corrective instruction.
         """
         # `element_id` is Neo4j-internal. Keep it internal-only.
         # For cross-module calls (data_access.*), use stable application id (`n.id`).
@@ -196,7 +251,7 @@ class GraphHealingService:
             if chap_num and summary:
                 summaries_text += f"Chapter {chap_num}: {summary}\n"
 
-        prompt = render_prompt(
+        base_prompt = render_prompt(
             "knowledge_agent/enrich_node_from_context.j2",
             {
                 "entity_name": node["name"],
@@ -207,36 +262,62 @@ class GraphHealingService:
             },
         )
 
-        try:
+        system_prompt = get_system_prompt("knowledge_agent")
+
+        prompt = base_prompt
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
             response_text, _ = await llm_service.async_call_llm(
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
                 max_tokens=16384,
-                system_prompt=get_system_prompt("knowledge_agent"),
+                system_prompt=system_prompt,
             )
 
-            enriched = json.loads(response_text)
+            try:
+                enriched = json.loads(response_text)
+            except json.JSONDecodeError as error:
+                if attempt == max_attempts:
+                    raise ValidationError(_ENRICH_NODE_FROM_CONTEXT_JSON_CONTRACT_ERROR_MESSAGE) from error
+
+                prompt = (
+                    base_prompt
+                    + "\n\nCorrective instruction: Your previous response was invalid JSON. "
+                    + "Return ONLY a single valid JSON object with no surrounding text and no markdown code fences."
+                )
+                continue
 
             logger.info(
-                "Enriched node from context",
+                "Enrichment generated from context",
                 name=node["name"],
+                type=node.get("type"),
+                element_id=node.get("element_id"),
+                entity_id=node.get("id"),
                 confidence=enriched.get("confidence", 0),
             )
 
             return enriched
 
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(
-                "Failed to enrich node",
-                name=node["name"],
-                error=str(e),
-            )
-            return {}
+        raise AssertionError("unreachable: enrich_node_from_context retry loop did not return or raise")
 
     async def apply_enrichment(self, element_id: str, enriched: dict[str, Any]) -> bool:
         """Apply validated enrichment fields to a Neo4j node."""
-        if not enriched or enriched.get("confidence", 0) < 0.6:
+        if not enriched:
+            logger.debug(
+                "apply_enrichment: empty enrichment payload",
+                element_id=element_id,
+            )
+            return False
+
+        enrichment_confidence = float(enriched.get("confidence", 0) or 0)
+        if enrichment_confidence < 0.6:
+            logger.debug(
+                "apply_enrichment: enrichment confidence below apply threshold",
+                element_id=element_id,
+                confidence=enrichment_confidence,
+                threshold=0.6,
+            )
             return False
 
         updates: list[str] = []
@@ -781,7 +862,8 @@ class GraphHealingService:
             # Calculate confidence with current chapter for age-based scoring
             confidence = await self.calculate_node_confidence(node, current_chapter)
 
-            if confidence >= self.CONFIDENCE_THRESHOLD:
+            age = current_chapter - (node.get("created_chapter") or current_chapter)
+            if confidence >= self.CONFIDENCE_THRESHOLD and age >= 1:
                 # Graduate the node
                 if await self.graduate_node(node["element_id"], confidence):
                     results["nodes_graduated"] += 1
@@ -793,40 +875,95 @@ class GraphHealingService:
                         }
                     )
             else:
-                # Try to enrich
-                enriched = await self.enrich_node_from_context(node, model)
-                if await self.apply_enrichment(node["element_id"], enriched):
-                    results["nodes_enriched"] += 1
+                non_entity_reason = self._classify_non_entity_candidate(node.get("name", ""), node.get("type", ""))
+                if non_entity_reason is not None:
+                    logger.info(
+                        "Skipping enrichment for non-entity candidate",
+                        name=node.get("name"),
+                        type=node.get("type"),
+                        reason=non_entity_reason,
+                        confidence=confidence,
+                    )
                     results["actions"].append(
                         {
-                            "type": "enrich",
-                            "name": node["name"],
-                            "new_confidence": enriched.get("confidence", 0),
+                            "type": "skip_enrich",
+                            "name": node.get("name"),
+                            "reason": non_entity_reason,
+                            "confidence": confidence,
                         }
                     )
+                    continue
 
-                    # Re-check confidence after enrichment using UPDATED node properties.
-                    #
-                    # CORE-009: Enrichment writes to Neo4j; recomputing confidence with the
-                    # original in-memory `node` dict can be stale. Reload by element_id so
-                    # `description`/`traits` reflect the applied enrichment.
-                    updated_node = await self.get_node_by_element_id(node["element_id"])
-                    if updated_node is None:
-                        # Defensive fallback: if reload fails, at least avoid crashing and
-                        # proceed with the original node dict.
-                        updated_node = node
+                if confidence < self.MIN_CONFIDENCE_FOR_ENRICHMENT:
+                    logger.info(
+                        "Skipping enrichment due to low confidence",
+                        name=node.get("name"),
+                        type=node.get("type"),
+                        confidence=confidence,
+                        threshold=self.MIN_CONFIDENCE_FOR_ENRICHMENT,
+                    )
+                    results["actions"].append(
+                        {
+                            "type": "skip_enrich",
+                            "name": node.get("name"),
+                            "reason": "below_min_confidence",
+                            "confidence": confidence,
+                        }
+                    )
+                    continue
 
-                    new_confidence = await self.calculate_node_confidence(updated_node, current_chapter)
-                    if new_confidence >= self.CONFIDENCE_THRESHOLD:
-                        if await self.graduate_node(node["element_id"], new_confidence):
-                            results["nodes_graduated"] += 1
-                            results["actions"].append(
-                                {
-                                    "type": "graduate",
-                                    "name": node["name"],
-                                    "confidence": new_confidence,
-                                }
-                            )
+                enriched = await self.enrich_node_from_context(node, model)
+                applied = await self.apply_enrichment(node["element_id"], enriched)
+                if not applied:
+                    logger.debug(
+                        "Enrichment not applied",
+                        name=node.get("name"),
+                        type=node.get("type"),
+                        element_id=node.get("element_id"),
+                        enrichment_confidence=enriched.get("confidence", 0) if isinstance(enriched, dict) else None,
+                    )
+                    results["actions"].append(
+                        {
+                            "type": "enrich_attempt",
+                            "name": node.get("name"),
+                            "applied": False,
+                            "enrichment_confidence": enriched.get("confidence", 0) if isinstance(enriched, dict) else 0,
+                        }
+                    )
+                    continue
+
+                results["nodes_enriched"] += 1
+                results["actions"].append(
+                    {
+                        "type": "enrich",
+                        "name": node["name"],
+                        "new_confidence": enriched.get("confidence", 0),
+                    }
+                )
+
+                # Re-check confidence after enrichment using UPDATED node properties.
+                #
+                # CORE-009: Enrichment writes to Neo4j; recomputing confidence with the
+                # original in-memory `node` dict can be stale. Reload by element_id so
+                # `description`/`traits` reflect the applied enrichment.
+                updated_node = await self.get_node_by_element_id(node["element_id"])
+                if updated_node is None:
+                    # Defensive fallback: if reload fails, at least avoid crashing and
+                    # proceed with the original node dict.
+                    updated_node = node
+
+                age = current_chapter - (updated_node.get("created_chapter") or current_chapter)
+                new_confidence = await self.calculate_node_confidence(updated_node, current_chapter)
+                if new_confidence >= self.CONFIDENCE_THRESHOLD and age >= 1:
+                    if await self.graduate_node(node["element_id"], new_confidence):
+                        results["nodes_graduated"] += 1
+                        results["actions"].append(
+                            {
+                                "type": "graduate",
+                                "name": node["name"],
+                                "confidence": new_confidence,
+                            }
+                        )
 
         # Step 2: Find and process merge candidates
         merge_candidates = await self.find_merge_candidates()

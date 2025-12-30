@@ -61,11 +61,11 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         healing_warnings = results.get("warnings", []) or []
         if healing_warnings:
             logger.warning(
-                "heal_graph: Healing completed with warnings",
+                f"Graph healing warnings: {healing_warnings}",
                 chapter=current_chapter,
-                warnings=healing_warnings,
                 apoc_available=results.get("apoc_available"),
             )
+            state["last_healing_warnings"] = healing_warnings
 
         # Update healing history
         healing_history = state.get("healing_history", [])
@@ -114,7 +114,6 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "current_node": "heal_graph",
             "last_error": None,
             "last_healing_chapter": current_chapter,
@@ -129,7 +128,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             "healing_history": healing_history,
             # Snapshot for callers/tests so warnings are not "silent degradation".
             "last_healing_warnings": healing_warnings,
-            "last_apoc_available": None if results.get("apoc_available") is None else bool(results.get("apoc_available")),
+            "last_apoc_available": (None if results.get("apoc_available") is None else bool(results.get("apoc_available"))),
         }
 
     except Exception as e:
@@ -144,7 +143,6 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
 
         # Don't fail the workflow for healing errors
         return {
-            **state,
             "current_node": "heal_graph",
             "last_error": f"Graph healing warning: {str(e)}",
             "last_healing_chapter": current_chapter,

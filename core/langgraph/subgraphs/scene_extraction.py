@@ -1,10 +1,11 @@
+# core/langgraph/subgraphs/scene_extraction.py
 """Build the scene-level extraction subgraph for SAGA.
 
 This subgraph replaces chapter-level extraction to keep prompts small.
 """
 
 import structlog
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
 from core.langgraph.nodes.extraction_nodes import consolidate_extraction
 from core.langgraph.nodes.scene_extraction import extract_from_scenes

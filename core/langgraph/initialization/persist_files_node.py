@@ -24,6 +24,7 @@ from core.langgraph.content_manager import (
     get_act_outlines,
     get_character_sheets,
     get_global_outline,
+    require_project_dir,
 )
 from core.langgraph.initialization.validation import validate_initialization_artifacts
 from core.langgraph.state import NarrativeState
@@ -103,15 +104,17 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         The filesystem write is best-effort; unexpected exceptions are captured into the
         returned state via `last_error` without raising.
     """
+    project_dir_str = require_project_dir(state)
+
     logger.info(
         "persist_initialization_files: writing initialization data to disk",
-        project_dir=state.get("project_dir", ""),
+        project_dir=project_dir_str,
     )
 
-    project_dir = Path(state.get("project_dir", ""))
+    project_dir = Path(project_dir_str)
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(project_dir_str)
 
     # Get character sheets, global outline, and act outlines (from external files)
     character_sheets = get_character_sheets(state, content_manager)
@@ -506,8 +509,7 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
 
     history_data: dict = {}
 
-    # Accept several potential history/timeline fields without requiring any.
-    raw_events = state.get("world_history") or state.get("history_events") or state.get("timeline") or []
+    raw_events: list = []
 
     events: list = []
     if isinstance(raw_events, list):

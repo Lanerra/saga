@@ -99,12 +99,18 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
         _fake_get_character_profiles,
     )
 
+    # Force artifact validation to report missing artifacts regardless of filesystem
+    monkeypatch.setattr(
+        "orchestration.langgraph_orchestrator.validate_initialization_artifacts",
+        lambda _project_dir: (False, ["Missing saga.yaml"]),
+    )
+
     orchestrator = LangGraphOrchestrator()
 
     caplog.set_level("WARNING")
 
     # Act
-    state = await orchestrator._load_or_create_state()
+    state = await orchestrator._load_or_create_state(project_id="test-project")
 
     # Assert: initialization_complete behavior unchanged (False with no characters)
     assert state["initialization_complete"] is False
@@ -181,7 +187,7 @@ async def test_load_or_create_state_no_warning_when_artifacts_complete(
     caplog.set_level("WARNING")
 
     # Act
-    state = await orchestrator._load_or_create_state()
+    state = await orchestrator._load_or_create_state(project_id="test-project")
 
     # Assert: initialization_complete remains driven solely by character profiles
     assert state["initialization_complete"] is True

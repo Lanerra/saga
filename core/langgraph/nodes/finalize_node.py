@@ -22,6 +22,7 @@ from core.langgraph.content_manager import (
     get_draft_text,
     get_previous_summaries,
     load_embedding,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -63,18 +64,30 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         chapter=state.get("current_chapter", 1),
     )
 
-    # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    project_dir = require_project_dir(state)
 
-    # Get draft text (prefers externalized content, falls back to in-state)
-    draft_text = get_draft_text(state, content_manager)
+    # Initialize content manager for reading externalized content
+    content_manager = ContentManager(project_dir)
+
+    from core.exceptions import MissingDraftReferenceError
+
+    try:
+        draft_text = get_draft_text(state, content_manager)
+    except MissingDraftReferenceError as error:
+        error_msg = str(error)
+        logger.error("finalize_chapter: fatal error", error=error_msg)
+        return {
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "finalize",
+            "current_node": "finalize",
+        }
 
     # Validate we have text to finalize
     if not draft_text:
         error_msg = "No draft text available for finalization"
         logger.error("finalize_chapter: fatal error", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "finalize",
@@ -88,7 +101,7 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         await _save_chapter_to_filesystem(
             chapter_number=chapter_number,
             text=draft_text,
-            project_dir=state.get("project_dir", "output"),
+            project_dir=project_dir,
         )
     except Exception as e:
         error_msg = f"Error saving chapter to filesystem: {str(e)}"
@@ -165,37 +178,29 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
         )
         # This is critical - return error state
         return {
-            **state,
             "last_error": error_msg,
             "has_fatal_error": True,
             "error_node": "finalize",
             "current_node": "finalize",
         }
 
-    # Step 4: Clean up temporary state
-    # Remove large temporary data that's no longer needed
-    cleaned_state = {
-        **state,
-        # Clear extraction results (now committed to Neo4j)
-        "extracted_entities": {},
-        "extracted_relationships": [],
-        # Clear contradictions (chapter is finalized)
-        "contradictions": [],
-        # Clear iteration tracking
-        "iteration_count": 0,
-        "needs_revision": False,
-        # Update status
-        "current_node": "finalize",
-        "last_error": None,
-    }
-
+    # Step 4: Clean up temporary state (clear extraction artifacts and counters)
     logger.info(
         "finalize_chapter: finalization complete",
         chapter=chapter_number,
         word_count=state.get("draft_word_count", 0),
     )
 
-    return cast(NarrativeState, cleaned_state)
+    return cast(
+        NarrativeState,
+        {
+            "contradictions": [],
+            "iteration_count": 0,
+            "needs_revision": False,
+            "current_node": "finalize",
+            "last_error": None,
+        },
+    )
 
 
 async def _save_chapter_to_filesystem(

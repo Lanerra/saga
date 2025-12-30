@@ -18,6 +18,7 @@ from core.langgraph.content_manager import (
     get_chapter_plan,
     get_previous_summaries,
     get_scene_drafts,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -38,7 +39,7 @@ DEFAULT_CONTEXT_BUDGET_TOKENS = config.settings.MAX_CONTEXT_TOKENS // 2  # Reser
 PREVIOUS_SCENES_TOKEN_BUDGET = 8192  # Max tokens for previous scene context
 SUMMARY_MAX_TOKENS = 4096  # Target tokens per scene summary
 CHARACTER_PROFILES_TOKEN_BUDGET = 8192  # Max tokens for character profiles
-KG_FACTS_TOKEN_BUDGET = 4096  # Max tokens for KG facts
+KG_FACTS_TOKEN_BUDGET = 8192  # Max tokens for KG facts
 SEMANTIC_CONTEXT_TOKEN_BUDGET = 4096  # Max tokens for semantic search results
 
 
@@ -67,7 +68,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     logger.info("retrieve_context: fetching scene-specific context")
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     chapter_number = state.get("current_chapter", 1)
     scene_index = state.get("current_scene_index", 0)
@@ -77,7 +78,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
 
     if not chapter_plan or scene_index >= len(chapter_plan):
         logger.error("retrieve_context: invalid scene index", index=scene_index)
-        return state
+        return {"current_node": "retrieve_context"}
 
     current_scene = chapter_plan[scene_index]
     model_name = state.get("narrative_model", config.NARRATIVE_MODEL)
@@ -107,10 +108,10 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "has_fatal_error": True,
             "last_error": f"Failed to retrieve character profiles: {str(e)}",
             "error_node": "retrieve_context",
+            "current_node": "retrieve_context",
         }
 
     # =========================================================================
@@ -133,10 +134,10 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "has_fatal_error": True,
             "last_error": f"Failed to retrieve KG facts: {str(e)}",
             "error_node": "retrieve_context",
+            "current_node": "retrieve_context",
         }
 
     # =========================================================================
@@ -200,12 +201,14 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
         components=len(hybrid_context_parts),
     )
 
-    # Save hybrid context to content manager
+    identifier = f"chapter_{chapter_number}_scene_{scene_index}"
+    version = content_manager.get_latest_version("hybrid_context", identifier) + 1
+
     hybrid_context_ref = content_manager.save_text(
         hybrid_context,
         "hybrid_context",
-        f"chapter_{chapter_number}_scene_{scene_index}",
-        version=1,
+        identifier,
+        version=version,
     )
 
     return {
@@ -613,7 +616,7 @@ async def _get_scene_location_context(
                     location_facts.append(f"- {location_name} {predicate}: {obj}")
 
             if location_facts:
-                return f"**Current Location - {location_name}:**\n" + "\n".join(location_facts[:5])
+                return f"**Current Location - {location_name}:**\n" + "\n".join(location_facts[:3])
 
     except Exception as e:
         logger.warning(

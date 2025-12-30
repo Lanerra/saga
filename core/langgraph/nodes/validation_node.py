@@ -21,9 +21,42 @@ from typing import Any
 import structlog
 
 from core.db_manager import neo4j_manager
-from core.langgraph.state import Contradiction, ExtractedEntity, NarrativeState
+from core.langgraph.state import Contradiction, NarrativeState
 
 logger = structlog.get_logger(__name__)
+
+CONTRADICTORY_TRAIT_PAIRS: list[tuple[str, str]] = [
+    ("introverted", "extroverted"),
+    ("brave", "cowardly"),
+    ("honest", "deceitful"),
+    ("kind", "cruel"),
+    ("optimistic", "pessimistic"),
+    ("calm", "anxious"),
+    ("trusting", "suspicious"),
+    ("generous", "selfish"),
+    ("patient", "impatient"),
+    ("humble", "arrogant"),
+    ("selfish", "altruistic"),
+    ("lazy", "industrious"),
+    ("timid", "bold"),
+    ("cynical", "idealistic"),
+    ("merciful", "merciless"),
+    ("loyal", "treacherous"),
+    ("gentle", "aggressive"),
+    ("forgiving", "vengeful"),
+    ("cheerful", "gloomy"),
+    ("confident", "insecure"),
+    ("stoic", "emotional"),
+    ("rational", "impulsive"),
+    ("cautious", "reckless"),
+    ("modest", "vain"),
+    ("compassionate", "callous"),
+    ("honest", "deceptive"),
+    ("reliable", "unreliable"),
+    ("disciplined", "undisciplined"),
+    ("empathetic", "apathetic"),
+    ("trusting", "paranoid"),
+]
 
 
 def _normalize_trait(value: Any) -> str | None:
@@ -140,13 +173,13 @@ def _get_character_trait_values_for_validation(char: Any) -> set[str]:
     """Extract normalized trait values for a character.
 
     Args:
-        char: Character-like object (typically an `ExtractedEntity`).
+        char: Character-like object (typically an `ExtractedEntity` or dict).
 
     Returns:
-        Normalized trait values derived from `char.attributes["traits"]`. Missing or
+        Normalized trait values derived from `attributes["traits"]`. Missing or
         invalid shapes yield an empty set.
     """
-    attrs = getattr(char, "attributes", None)
+    attrs = char.get("attributes") if isinstance(char, dict) else getattr(char, "attributes", None)
     if not isinstance(attrs, dict):
         return set()
 
@@ -179,11 +212,59 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         Relationship validation is permissive by default and does not block writes;
         revision decisions are driven by contradiction severity and plot stagnation.
     """
+    # Initialize content manager to read externalized content
+    from core.langgraph.content_manager import (
+        ContentManager,
+        get_extracted_entities,
+        get_extracted_relationships,
+        require_project_dir,
+    )
+
+    content_manager = ContentManager(require_project_dir(state))
+
+    # Get extraction results (prefers externalized content)
+    extracted_entities = get_extracted_entities(state, content_manager)
+    extracted_relationships = get_extracted_relationships(state, content_manager)
+
+    def _summarize_bucket(bucket_name: str, value: Any) -> dict[str, Any]:
+        if not isinstance(value, list) or not value:
+            return {"bucket": bucket_name, "count": len(value) if isinstance(value, list) else 0, "sample_type": None}
+
+        sample = value[0]
+        if isinstance(sample, dict):
+            keys = sorted([str(k) for k in sample.keys()])
+            return {"bucket": bucket_name, "count": len(value), "sample_type": "dict", "sample_keys": keys[:12]}
+
+        return {"bucket": bucket_name, "count": len(value), "sample_type": type(sample).__name__}
+
+    buckets = [
+        _summarize_bucket("characters", extracted_entities.get("characters", [])),
+        _summarize_bucket("world_items", extracted_entities.get("world_items", [])),
+        _summarize_bucket("events", extracted_entities.get("events", [])),
+    ]
+    logger.info("validate_consistency: extracted_entities_shape", buckets=buckets)
+
+    rel_sample_type = None
+    rel_sample_keys = None
+    if extracted_relationships:
+        sample_rel = extracted_relationships[0]
+        if isinstance(sample_rel, dict):
+            rel_sample_type = "dict"
+            rel_sample_keys = sorted([str(k) for k in sample_rel.keys()])[:12]
+        else:
+            rel_sample_type = type(sample_rel).__name__
+
     logger.info(
         "validate_consistency",
         chapter=state.get("current_chapter", 1),
-        relationships=len(state.get("extracted_relationships", [])),
-        characters=len(state.get("extracted_entities", {}).get("characters", [])),
+        relationships=len(extracted_relationships),
+        characters=len(extracted_entities.get("characters", [])),
+    )
+    logger.info(
+        "validate_consistency: extracted_relationships_shape",
+        count=len(extracted_relationships),
+        sample_type=rel_sample_type,
+        sample_keys=rel_sample_keys,
     )
 
     contradictions: list[Contradiction] = []
@@ -192,9 +273,9 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # In permissive mode, this only logs info messages and never blocks.
     # Relationship validation is now informational only to support creative freedom.
     relationship_contradictions = await _validate_relationships(
-        state.get("extracted_relationships", []),
+        extracted_relationships,
         state.get("current_chapter", 1),
-        state.get("extracted_entities"),
+        extracted_entities,
     )
     # Note: In permissive mode, relationship_contradictions will be empty
     # since the validator always returns valid=True
@@ -203,14 +284,14 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     # Check 2: Character trait consistency
     # NEW FUNCTIONALITY: Checks for contradictory character traits
     trait_contradictions = await _check_character_traits(
-        state.get("extracted_entities", {}).get("characters", []),
+        extracted_entities.get("characters", []),
         state.get("current_chapter", 1),
     )
     contradictions.extend(trait_contradictions)
 
     # Check 3: Plot stagnation detection
     # NEW FUNCTIONALITY: Ensures chapter advances the plot
-    if _is_plot_stagnant(state):
+    if _is_plot_stagnant(state, extracted_entities, extracted_relationships):
         contradictions.append(
             Contradiction(
                 type="plot_stagnation",
@@ -228,9 +309,9 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 
     # Needs revision if:
     # - Any critical issues found, OR
-    # - More than 2 major issues found
+    # - Any major issues found
     # Unless force_continue is set
-    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 2) and not state.get("force_continue", False)
+    needs_revision = (len(critical_issues) > 0 or len(major_issues) > 0) and not state.get("force_continue", False)
 
     logger.info(
         "validate_consistency: validation complete",
@@ -242,7 +323,6 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "contradictions": contradictions,
         "needs_revision": needs_revision,
         "current_node": "validate_consistency",
@@ -253,7 +333,7 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
 async def _validate_relationships(
     relationships: list[Any],
     chapter: int,
-    extracted_entities: dict[str, list[ExtractedEntity]] | None = None,
+    extracted_entities: dict[str, Any] | None = None,
 ) -> list[Contradiction]:
     """
     Validate extracted relationships for semantic correctness.
@@ -291,28 +371,71 @@ async def _validate_relationships(
     if extracted_entities:
         # Add characters
         for char in extracted_entities.get("characters", []):
-            entity_type_map[char.name] = char.type
+            if isinstance(char, dict):
+                name = char.get("name")
+                entity_type = char.get("type")
+            else:
+                name = getattr(char, "name", None)
+                entity_type = getattr(char, "type", None)
+
+            if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
+                entity_type_map[name] = entity_type
 
         # Add world items (locations, objects, events, etc.)
         for item in extracted_entities.get("world_items", []):
-            entity_type_map[item.name] = item.type
+            if isinstance(item, dict):
+                name = item.get("name")
+                entity_type = item.get("type")
+            else:
+                name = getattr(item, "name", None)
+                entity_type = getattr(item, "type", None)
+
+            if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
+                entity_type_map[name] = entity_type
 
         # Add events if they're tracked separately
         for event in extracted_entities.get("events", []):
-            entity_type_map[event.name] = event.type
+            if isinstance(event, dict):
+                name = event.get("name")
+                entity_type = event.get("type")
+            else:
+                name = getattr(event, "name", None)
+                entity_type = getattr(event, "type", None)
+
+            if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
+                entity_type_map[name] = entity_type
 
     # Validate each relationship
     for rel in relationships:
+        if isinstance(rel, dict):
+            relationship_type = rel.get("relationship_type")
+            source_name = rel.get("source_name")
+            target_name = rel.get("target_name")
+        else:
+            relationship_type = getattr(rel, "relationship_type", None)
+            source_name = getattr(rel, "source_name", None)
+            target_name = getattr(rel, "target_name", None)
+
+        if not (isinstance(relationship_type, str) and relationship_type):
+            logger.warning("relationship_validation_missing_relationship_type", relationship=type(rel).__name__)
+            continue
+        if not (isinstance(source_name, str) and source_name):
+            logger.warning("relationship_validation_missing_source_name", relationship_type=relationship_type)
+            continue
+        if not (isinstance(target_name, str) and target_name):
+            logger.warning("relationship_validation_missing_target_name", relationship_type=relationship_type)
+            continue
+
         # Get entity types
-        source_type = entity_type_map.get(rel.source_name, "Character")  # Default to Character
-        target_type = entity_type_map.get(rel.target_name, "Character")  # Default to Character
+        source_type = entity_type_map.get(source_name, "Character")
+        target_type = entity_type_map.get(target_name, "Character")
 
         # Validate the relationship (permissive mode - always valid)
         is_valid, errors, info_warnings = validator.validate(
-            relationship_type=rel.relationship_type,
-            source_name=rel.source_name,
+            relationship_type=relationship_type,
+            source_name=source_name,
             source_type=source_type,
-            target_name=rel.target_name,
+            target_name=target_name,
             target_type=target_type,
             severity_mode="flexible",
         )
@@ -341,7 +464,7 @@ async def _validate_relationships(
 
 
 async def _check_character_traits(
-    extracted_chars: list[ExtractedEntity],
+    extracted_chars: list[Any],
     current_chapter: int,
 ) -> list[Contradiction]:
     """
@@ -365,22 +488,12 @@ async def _check_character_traits(
 
     contradictions = []
 
-    # Define contradictory trait pairs
-    contradictory_pairs = [
-        ("introverted", "extroverted"),
-        ("brave", "cowardly"),
-        ("honest", "deceitful"),
-        ("kind", "cruel"),
-        ("optimistic", "pessimistic"),
-        ("calm", "anxious"),
-        ("trusting", "suspicious"),
-        ("generous", "selfish"),
-        ("patient", "impatient"),
-        ("humble", "arrogant"),
-    ]
-
     try:
         for char in extracted_chars:
+            character_name = char.get("name") if isinstance(char, dict) else getattr(char, "name", None)
+            if not isinstance(character_name, str) or not character_name:
+                continue
+
             # Get established traits from Neo4j (from HAS_TRAIT relationships)
             query = """
                 MATCH (c:Character {name: $name})
@@ -391,7 +504,7 @@ async def _check_character_traits(
                 LIMIT 1
             """
 
-            result = await neo4j_manager.execute_read_query(query, {"name": char.name})
+            result = await neo4j_manager.execute_read_query(query, {"name": character_name})
 
             if result and len(result) > 0:
                 existing = result[0]
@@ -404,13 +517,13 @@ async def _check_character_traits(
                 new_trait_candidates = _get_character_trait_values_for_validation(char)
 
                 # Check for contradictions (pair values are already lowercase in our list)
-                for trait_a, trait_b in contradictory_pairs:
+                for trait_a, trait_b in CONTRADICTORY_TRAIT_PAIRS:
                     # Check if established trait conflicts with new trait
                     if trait_a in established_traits and trait_b in new_trait_candidates:
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_a}' " f"in chapter {existing.get('first_chapter', '?')}, " f"but is now described as '{trait_b}'",
+                                description=f"{character_name} was established as '{trait_a}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_b}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,
@@ -424,7 +537,7 @@ async def _check_character_traits(
                         contradictions.append(
                             Contradiction(
                                 type="character_trait",
-                                description=f"{char.name} was established as '{trait_b}' " f"in chapter {existing.get('first_chapter', '?')}, " f"but is now described as '{trait_a}'",
+                                description=f"{character_name} was established as '{trait_b}' in chapter {existing.get('first_chapter', '?')}, but is now described as '{trait_a}'",
                                 conflicting_chapters=[
                                     existing.get("first_chapter", 0),
                                     current_chapter,
@@ -452,7 +565,11 @@ async def _check_character_traits(
         return []
 
 
-def _is_plot_stagnant(state: NarrativeState) -> bool:
+def _is_plot_stagnant(
+    state: NarrativeState,
+    entities: dict[str, Any] | None = None,
+    relationships: list[Any] | None = None,
+) -> bool:
     """
     Detect if plot is not advancing sufficiently.
 
@@ -466,6 +583,8 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
 
     Args:
         state: Current narrative state
+        entities: Extracted entities for the current chapter
+        relationships: Extracted relationships for the current chapter
 
     Returns:
         True if plot appears stagnant, False otherwise
@@ -480,11 +599,15 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
         )
         return True
 
+    if entities is None:
+        entities = state.get("extracted_entities", {}) or {}
+
+    if relationships is None:
+        relationships = state.get("extracted_relationships", [])
+
     # Check 2: Get all extracted elements
-    entities = state.get("extracted_entities", {}) or {}
     characters = entities.get("characters", [])
     world_items = entities.get("world_items", [])
-    relationships = state.get("extracted_relationships", [])
 
     # Canonical state-shape: events are stored in world_items with type == "Event".
     # We also accept legacy `extracted_entities["events"]` if present.
@@ -519,4 +642,4 @@ def _is_plot_stagnant(state: NarrativeState) -> bool:
     return False
 
 
-__all__ = ["validate_consistency"]
+__all__ = ["validate_consistency", "CONTRADICTORY_TRAIT_PAIRS"]

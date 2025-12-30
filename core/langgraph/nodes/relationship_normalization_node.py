@@ -21,6 +21,7 @@ import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_extracted_relationships,
+    require_project_dir,
     set_extracted_relationships,
 )
 from core.langgraph.state import ExtractedRelationship, NarrativeState
@@ -38,7 +39,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
     Returns:
         Partial state update containing:
-        - extracted_relationships: Normalized relationships (in-memory mirror).
+        - extracted_relationships: [] (cleared to prevent checkpoint bloat).
         - extracted_relationships_ref: Content reference for normalized relationships.
         - relationship_vocabulary: Updated vocabulary (including usage stats).
         - relationships_normalized_this_chapter / relationships_novel_this_chapter: Metrics.
@@ -59,7 +60,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
         }
 
     # Initialize content manager
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get current relationships and vocabulary
     # NOTE: [`get_extracted_relationships()`](core/langgraph/content_manager.py:783) prefers the ref when present.
@@ -149,9 +150,11 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
         normalized_rels.append(normalized_rel)
 
-    # Prune vocabulary if needed (every 5 chapters)
-    if current_chapter % 5 == 0:
+    # Prune vocabulary if needed (every 5 chapters) and not already done for this chapter
+    last_pruned_chapter = state.get("last_pruned_chapter", 0)
+    if current_chapter % 5 == 0 and current_chapter > last_pruned_chapter:
         vocabulary = normalization_service.prune_vocabulary(vocabulary, current_chapter)
+        last_pruned_chapter = current_chapter
 
     # Log statistics
     logger.info(
@@ -171,18 +174,13 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
     # ignore normalized relationships unless `extracted_relationships_ref` is updated.
     normalized_ref = set_extracted_relationships(content_manager, normalized_rels, state)
 
-    # Update state
-    #
-    # Source-of-truth contract:
-    # - `extracted_relationships_ref` is authoritative for downstream nodes (including commit).
-    # - `extracted_relationships` is kept in sync for backward-compat with any in-memory consumers.
     return {
-        "extracted_relationships": normalized_rels,
         "extracted_relationships_ref": normalized_ref,
         "relationship_vocabulary": vocabulary,
         "relationship_vocabulary_size": len(vocabulary),
         "relationships_normalized_this_chapter": normalized_count,
         "relationships_novel_this_chapter": novel_count,
+        "last_pruned_chapter": last_pruned_chapter,
         "current_node": "normalize_relationships",
     }
 

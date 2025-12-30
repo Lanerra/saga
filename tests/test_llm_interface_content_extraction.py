@@ -150,3 +150,100 @@ def test_embedding_fallback_accepts_numeric_list_under_non_embedding_key(monkeyp
     assert isinstance(embedding, np.ndarray)
     assert embedding.shape == (3,)
     assert embedding.dtype == np.float32
+
+
+@pytest.mark.asyncio
+async def test_get_embedding_truncates_to_configured_max_before_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "EMBEDDING_MAX_INPUT_TOKENS", 5)
+    monkeypatch.setattr(config, "EMBEDDING_MODEL", "dummy-embed")
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+    monkeypatch.setattr(config, "EMBEDDING_DTYPE", np.float32)
+
+    import core.llm_interface_refactored as llm_interface_refactored
+
+    truncate_calls: dict[str, object] = {}
+
+    def fake_truncate_text_by_tokens(
+        *,
+        text: str,
+        model_name: str,
+        max_tokens: int,
+        truncation_marker: str = "\n... (truncated)",
+    ) -> str:
+        truncate_calls["text"] = text
+        truncate_calls["model_name"] = model_name
+        truncate_calls["max_tokens"] = max_tokens
+        truncate_calls["truncation_marker"] = truncation_marker
+        return "TRUNCATED"
+
+    monkeypatch.setattr(llm_interface_refactored, "truncate_text_by_tokens", fake_truncate_text_by_tokens)
+
+    class _CapturingEmbeddingClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        async def get_embedding(self, text: str, model: str) -> dict[str, Any]:
+            self.calls.append((text, model))
+            return {"embedding": [0.1, 0.2, 0.3]}
+
+    client = _CapturingEmbeddingClient()
+    svc = EmbeddingService(client)  # type: ignore[arg-type]
+
+    embedding = await svc.get_embedding("LONG INPUT TEXT")
+    assert isinstance(embedding, np.ndarray)
+    assert embedding.shape == (3,)
+
+    assert truncate_calls == {
+        "text": "LONG INPUT TEXT",
+        "model_name": "dummy-embed",
+        "max_tokens": 5,
+        "truncation_marker": "\n... (truncated)",
+    }
+    assert client.calls == [("TRUNCATED", "dummy-embed")]
+
+
+@pytest.mark.asyncio
+async def test_get_embedding_exact_limit_can_pass_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "EMBEDDING_MAX_INPUT_TOKENS", 5)
+    monkeypatch.setattr(config, "EMBEDDING_MODEL", "dummy-embed")
+    monkeypatch.setattr(config, "EXPECTED_EMBEDDING_DIM", 3)
+    monkeypatch.setattr(config, "EMBEDDING_DTYPE", np.float32)
+
+    import core.llm_interface_refactored as llm_interface_refactored
+
+    def fake_truncate_text_by_tokens(
+        *,
+        text: str,
+        model_name: str,
+        max_tokens: int,
+        truncation_marker: str = "\n... (truncated)",
+    ) -> str:
+        return text
+
+    monkeypatch.setattr(llm_interface_refactored, "truncate_text_by_tokens", fake_truncate_text_by_tokens)
+
+    class _CapturingEmbeddingClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        async def get_embedding(self, text: str, model: str) -> dict[str, Any]:
+            self.calls.append((text, model))
+            return {"embedding": [0.1, 0.2, 0.3]}
+
+    client = _CapturingEmbeddingClient()
+    svc = EmbeddingService(client)  # type: ignore[arg-type]
+
+    await svc.get_embedding("SHORT")
+    assert client.calls == [("SHORT", "dummy-embed")]
+
+
+@pytest.mark.asyncio
+async def test_get_embedding_empty_input_short_circuits_without_request() -> None:
+    class _ExplodingEmbeddingClient:
+        async def get_embedding(self, text: str, model: str) -> dict[str, Any]:
+            raise AssertionError("Embedding client must not be called for empty input")
+
+    svc = EmbeddingService(_ExplodingEmbeddingClient())  # type: ignore[arg-type]
+
+    assert await svc.get_embedding("") is None
+    assert await svc.get_embedding("   ") is None

@@ -77,3 +77,17 @@ async def test_check_quality_appends_parseable_iso8601_timestamp(
     parsed = datetime.fromisoformat(timestamp)
     assert parsed.tzinfo is not None
     assert parsed.utcoffset() is not None
+
+
+@pytest.mark.asyncio
+async def test_check_quality_returns_partial_update_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When QA is disabled, the node should return only current_node."""
+    monkeypatch.setattr(config.settings, "ENABLE_QA_CHECKS", False)
+
+    state: NarrativeState = {"some_existing_key": "value"}
+
+    result = await check_quality(state)
+
+    assert result == {"current_node": "check_quality"}

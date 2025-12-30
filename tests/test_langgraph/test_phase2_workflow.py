@@ -5,16 +5,19 @@ Tests for Phase 2 LangGraph workflow (Step 2.5).
 Tests the complete narrative generation workflow including all Phase 2 nodes.
 
 Migration Reference: docs/phase2_migration_plan.md - Step 2.5
+
+Note: The legacy Phase 2 graph has been removed. These tests exercise the chapter-generation
+path within the full workflow graph (skip initialization via `initialization_complete=True`).
 """
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from core.langgraph.state import Contradiction, NarrativeState, create_initial_state
 from core.langgraph.workflow import (
-    create_phase2_graph,
+    create_full_workflow_graph,
     handle_fatal_error,
     should_handle_error,
     should_revise_or_continue,
@@ -38,8 +41,8 @@ def test_create_checkpointer_filename_only_path_does_not_raise(tmp_path: Any, mo
 
 
 @pytest.fixture
-def sample_phase2_state(tmp_path: Any) -> NarrativeState:
-    """Sample state ready for Phase 2 workflow."""
+def sample_generation_state(tmp_path: Any) -> NarrativeState:
+    """Sample state ready for the chapter-generation portion of the workflow."""
     state = create_initial_state(
         project_id="test-project",
         title="Test Novel",
@@ -47,10 +50,9 @@ def sample_phase2_state(tmp_path: Any) -> NarrativeState:
         theme="Adventure",
         setting="Medieval world",
         target_word_count=80000,
-        total_chapters=20,
+        total_chapters=1,
         project_dir=str(tmp_path / "test-project"),
         protagonist_name="Hero",
-        generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )
@@ -63,103 +65,177 @@ def sample_phase2_state(tmp_path: Any) -> NarrativeState:
         1: {
             "plot_point": "The hero begins their journey",
             "chapter_summary": "Introduction",
-        }
+        },
+        2: {
+            "plot_point": "The hero meets a mentor",
+            "chapter_summary": "Meeting the mentor",
+        },
     }
     chapter_outlines_ref = content_manager.save_json(chapter_outlines, "chapter_outlines", "all", 1)
     state["chapter_outlines_ref"] = chapter_outlines_ref
 
     # Set current chapter
     state["current_chapter"] = 1
-    state["plot_point_focus"] = "The hero begins their journey"
+    state["initialization_complete"] = True
 
     return state
 
 
 @pytest.fixture
+def sample_phase2_state(sample_generation_state: NarrativeState) -> NarrativeState:
+    """Backwards-compatible alias for legacy test names."""
+    return sample_generation_state
+
+
+@pytest.fixture
 def mock_all_nodes() -> Any:
     """Mock all node functions for testing workflow routing."""
-    # Create mock nodes for subgraphs
-    mock_gen_node = lambda state: {
+
+    mock_gen_node = MagicMock()
+    mock_gen_node.side_effect = lambda state: {
         **state,
-        "draft_ref": {"path": "mock"},
-        "draft_word_count": 3,
+        "scene_drafts_ref": {"path": "mock_scene_drafts.json"},
+        "current_scene_index": 2,
         "current_node": "generate",
     }
 
-    mock_extract_node = lambda state: {
+    mock_extract_node = MagicMock()
+    mock_extract_node.side_effect = lambda state: {
         **state,
         "extracted_entities": {"characters": []},
         "extracted_relationships": [],
         "current_node": "extract",
     }
 
-    mock_validate_node = lambda state: {
+    mock_scene_embeddings_node = MagicMock()
+    mock_scene_embeddings_node.side_effect = lambda state: {
+        **state,
+        "scene_embeddings_ref": {"path": "mock_scene_embeddings.json"},
+        "current_node": "gen_scene_embeddings",
+    }
+
+    mock_assemble_chapter_node = MagicMock()
+    mock_assemble_chapter_node.side_effect = lambda state: {
+        **state,
+        "draft_ref": {"path": "mock_draft"},
+        "draft_word_count": 3,
+        "current_node": "assemble_chapter",
+    }
+
+    mock_validate_node = MagicMock()
+    mock_validate_node.side_effect = lambda state: {
         **state,
         "contradictions": [],
         "needs_revision": False,
         "current_node": "validate",
     }
 
+    mock_chapter_outline_node = MagicMock()
+    mock_chapter_outline_node.side_effect = lambda state: {
+        **state,
+        "chapter_outline_ref": {"path": "mock_outline"},
+        "current_node": "chapter_outline",
+    }
+
+    mock_commit_node = MagicMock()
+    mock_commit_node.side_effect = lambda state: {
+        **state,
+        "current_node": "commit",
+    }
+
+    mock_normalize_node = MagicMock()
+    mock_normalize_node.side_effect = lambda state: {
+        **state,
+        "current_node": "normalize_relationships",
+    }
+
+    mock_revise_node = MagicMock()
+    mock_revise_node.side_effect = lambda state: {
+        **state,
+        "draft_ref": {"path": "mock_revised"},
+        "iteration_count": state.get("iteration_count", 0) + 1,
+        "contradictions": [],
+        "needs_revision": False,
+        "current_node": "revise",
+    }
+
+    mock_summarize_node = MagicMock()
+    mock_summarize_node.side_effect = lambda state: {
+        **state,
+        "summaries_ref": {"path": "mock_summaries"},
+        "current_node": "summarize",
+    }
+
+    mock_finalize_node = MagicMock()
+    mock_finalize_node.side_effect = lambda state: {
+        **state,
+        "extracted_entities": {},
+        "extracted_relationships": [],
+        "contradictions": [],
+        "iteration_count": 0,
+        "needs_revision": False,
+        "current_node": "finalize",
+    }
+
+    mock_heal_node = MagicMock()
+    mock_heal_node.side_effect = lambda state: {
+        **state,
+        "current_node": "heal_graph",
+    }
+
+    mock_quality_node = MagicMock()
+    mock_quality_node.side_effect = lambda state: {
+        **state,
+        "current_node": "check_quality",
+    }
+
     with (
         patch(
             "core.langgraph.subgraphs.generation.create_generation_subgraph",
             return_value=mock_gen_node,
-        ) as mock_create_gen,
+        ),
         patch(
             "core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph",
             return_value=mock_extract_node,
-        ) as mock_create_extract,
+        ),
         patch(
             "core.langgraph.subgraphs.validation.create_validation_subgraph",
             return_value=mock_validate_node,
-        ) as mock_create_validate,
-        patch("core.langgraph.workflow.commit_to_graph") as mock_commit,
-        patch("core.langgraph.workflow.revise_chapter") as mock_revise,
-        patch("core.langgraph.workflow.summarize_chapter") as mock_summarize,
-        patch("core.langgraph.workflow.finalize_chapter") as mock_finalize,
+        ),
+        patch(
+            "core.langgraph.workflow.generate_scene_embeddings",
+            side_effect=mock_scene_embeddings_node,
+        ),
+        patch(
+            "core.langgraph.workflow.assemble_chapter",
+            side_effect=mock_assemble_chapter_node,
+        ),
+        patch(
+            "core.langgraph.initialization.generate_chapter_outline",
+            side_effect=mock_chapter_outline_node,
+        ),
+        patch("core.langgraph.workflow.commit_to_graph", side_effect=mock_commit_node),
+        patch("core.langgraph.workflow.normalize_relationships", side_effect=mock_normalize_node),
+        patch("core.langgraph.workflow.revise_chapter", side_effect=mock_revise_node),
+        patch("core.langgraph.workflow.summarize_chapter", side_effect=mock_summarize_node),
+        patch("core.langgraph.workflow.finalize_chapter", side_effect=mock_finalize_node),
+        patch("core.langgraph.workflow.heal_graph", side_effect=mock_heal_node),
+        patch("core.langgraph.workflow.check_quality", side_effect=mock_quality_node),
     ):
-        # Configure commit node
-        mock_commit.side_effect = lambda state: {
-            **state,
-            "current_node": "commit",
-        }
-
-        # Configure revise node
-        mock_revise.side_effect = lambda state: {
-            **state,
-            "draft_ref": {"path": "mock_revised"},
-            "iteration_count": state.get("iteration_count", 0) + 1,
-            "contradictions": [],
-            "needs_revision": False,
-            "current_node": "revise",
-        }
-
-        # Configure summarize node
-        mock_summarize.side_effect = lambda state: {
-            **state,
-            "summaries_ref": {"path": "mock_summaries"},
-            "current_node": "summarize",
-        }
-
-        # Configure finalize node
-        mock_finalize.side_effect = lambda state: {
-            **state,
-            "extracted_entities": {},
-            "extracted_relationships": [],
-            "contradictions": [],
-            "iteration_count": 0,
-            "needs_revision": False,
-            "current_node": "finalize",
-        }
-
         yield {
-            "generate": mock_create_gen,
-            "extract": mock_create_extract,
-            "commit": mock_commit,
-            "validate": mock_create_validate,
-            "revise": mock_revise,
-            "summarize": mock_summarize,
-            "finalize": mock_finalize,
+            "chapter_outline": mock_chapter_outline_node,
+            "generate": mock_gen_node,
+            "extract": mock_extract_node,
+            "gen_scene_embeddings": mock_scene_embeddings_node,
+            "assemble_chapter": mock_assemble_chapter_node,
+            "normalize_relationships": mock_normalize_node,
+            "commit": mock_commit_node,
+            "validate": mock_validate_node,
+            "revise": mock_revise_node,
+            "summarize": mock_summarize_node,
+            "finalize": mock_finalize_node,
+            "heal_graph": mock_heal_node,
+            "check_quality": mock_quality_node,
         }
 
 
@@ -233,49 +309,113 @@ class TestShouldReviseOrContinue:
 class TestPhase2Workflow:
     """Tests for complete Phase 2 workflow."""
 
-    async def test_workflow_successful_path_no_revision(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+    async def test_workflow_successful_path_no_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test successful workflow without any revisions."""
         # Create workflow
-        graph = create_phase2_graph()
+        graph = create_full_workflow_graph()
 
         # Execute workflow
-        await graph.ainvoke(sample_phase2_state)
+        await graph.ainvoke(sample_generation_state)
 
         # Verify all nodes were called in correct order
-        # Note: With subgraph, generate might be called differently or implicitly
-        # mock_all_nodes["generate"].assert_called_once()
-        # mock_all_nodes["extract"].assert_called() # subgraph might be mocking it
-        mock_all_nodes["commit"].assert_called()
-        # mock_all_nodes["validate"].assert_called() # subgraph might be mocking it
+        mock_all_nodes["chapter_outline"].assert_called_once()
+        mock_all_nodes["gen_scene_embeddings"].assert_called_once()
+        mock_all_nodes["assemble_chapter"].assert_called_once()
+        mock_all_nodes["normalize_relationships"].assert_called_once()
+        mock_all_nodes["validate"].assert_called_once()
+        mock_all_nodes["commit"].assert_called_once()
         mock_all_nodes["summarize"].assert_called_once()
         mock_all_nodes["finalize"].assert_called_once()
+        mock_all_nodes["heal_graph"].assert_called_once()
+        mock_all_nodes["check_quality"].assert_called_once()
 
         # Revision should not be called (no contradictions)
         mock_all_nodes["revise"].assert_not_called()
 
-        # Verify final state
-        # assert result["current_node"] == "finalize"
-        # assert result["draft_ref"] is not None
-
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes how revision is triggered")
-    async def test_workflow_with_single_revision(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+    async def test_workflow_with_single_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow with one revision cycle."""
-        pass
+        call_sequence: list[str] = []
+        validate_call_count = 0
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes how revision is triggered")
-    async def test_workflow_max_iterations_enforcement(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        def mock_validate(s):
+            nonlocal validate_call_count
+            call_sequence.append("validate")
+            validate_call_count += 1
+            if validate_call_count == 1:
+                return {
+                    **s,
+                    "contradictions": [
+                        Contradiction(
+                            type="test",
+                            description="Issue",
+                            conflicting_chapters=[1],
+                            severity="minor",
+                        )
+                    ],
+                    "needs_revision": True,
+                    "current_node": "validate",
+                }
+            return {
+                **s,
+                "contradictions": [],
+                "needs_revision": False,
+                "current_node": "validate",
+            }
+
+        def mock_commit(s):
+            call_sequence.append("commit")
+            return {
+                **s,
+                "current_node": "commit",
+            }
+
+        mock_all_nodes["validate"].side_effect = mock_validate
+        mock_all_nodes["commit"].side_effect = mock_commit
+
+        # Create workflow
+        graph = create_full_workflow_graph()
+
+        # Execute workflow
+        await graph.ainvoke(sample_generation_state)
+
+        # Revision should be called once
+        mock_all_nodes["revise"].assert_called_once()
+
+        # Validation should be called twice (revise then accept)
+        assert validate_call_count == 2
+
+        # Commit should happen only after validation accepts (continue branch)
+        assert mock_all_nodes["commit"].call_count == 1
+        assert call_sequence == ["validate", "validate", "commit"]
+
+    async def test_workflow_max_iterations_enforcement(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that max iterations are enforced."""
-        pass
+        # Configure validate to always request revision
+        mock_all_nodes["validate"].side_effect = lambda s: {
+            **s,
+            "contradictions": [Contradiction(type="test", description="Issue", conflicting_chapters=[1], severity="minor")],
+            "needs_revision": True,
+            "current_node": "validate",
+        }
 
-    async def test_workflow_force_continue_skips_revision(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        # Create workflow
+        graph = create_full_workflow_graph()
+
+        # Execute workflow
+        state = {**sample_generation_state, "max_iterations": 2}
+        await graph.ainvoke(state, config={"recursion_limit": 200})
+
+        # Revision should be called twice (max_iterations)
+        assert mock_all_nodes["revise"].call_count == 2
+
+    async def test_workflow_force_continue_skips_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that force_continue skips revision."""
         # Set force_continue
-        state = {**sample_phase2_state}
+        state = {**sample_generation_state}
         state["force_continue"] = True
 
         # Configure validate to request revision
-        # We need to set return_value because mock_all_nodes["validate"] is the create_validation_subgraph factory
-        mock_all_nodes["validate"].return_value = lambda s: {
+        mock_all_nodes["validate"].side_effect = lambda s: {
             **s,
             "contradictions": [
                 Contradiction(
@@ -290,7 +430,7 @@ class TestPhase2Workflow:
         }
 
         # Create workflow
-        graph = create_phase2_graph()
+        graph = create_full_workflow_graph()
 
         # Execute workflow
         await graph.ainvoke(state)
@@ -302,46 +442,100 @@ class TestPhase2Workflow:
         mock_all_nodes["summarize"].assert_called_once()
         mock_all_nodes["finalize"].assert_called_once()
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes execution tracking")
-    async def test_workflow_node_execution_order(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+    async def test_workflow_node_execution_order(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that nodes execute in correct order."""
-        pass
-
-    @pytest.mark.skip(
-        reason="AsyncSqliteSaver.from_conn_string() returns async context manager. "
-        "Checkpointing functionality is verified in Phase 1 tests. "
-        "This test needs refactoring to use async context manager properly."
-    )
-    async def test_workflow_with_checkpointing(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
-        """Test workflow with checkpointing enabled."""
-        from core.langgraph.workflow import create_checkpointer
-
-        # Create checkpointer
-        checkpoint_db = tmp_path / "test_checkpoint.db"
-        checkpointer = create_checkpointer(str(checkpoint_db))
-
-        # Create workflow with checkpointing
-        graph = create_phase2_graph(checkpointer=checkpointer)
+        # Create workflow
+        graph = create_full_workflow_graph()
 
         # Execute workflow
-        config = {"configurable": {"thread_id": "test-thread"}}
-        result = await graph.ainvoke(sample_phase2_state, config=config)
+        await graph.ainvoke(sample_generation_state)
 
-        # Verify completion
-        assert result["current_node"] == "finalize"
+        # Check call order of some key nodes
+        # Chapter outline -> Generate -> Extract -> Scene Embeddings -> Assemble -> Normalize -> Validate -> Commit -> Summarize -> Finalize -> Heal -> Quality
 
-        # Verify checkpoint file was created
+        mock_all_nodes["chapter_outline"].assert_called_once()
+        mock_all_nodes["generate"].assert_called_once()
+        mock_all_nodes["extract"].assert_called_once()
+        mock_all_nodes["gen_scene_embeddings"].assert_called_once()
+        mock_all_nodes["assemble_chapter"].assert_called_once()
+        mock_all_nodes["normalize_relationships"].assert_called_once()
+        mock_all_nodes["commit"].assert_called()
+        mock_all_nodes["validate"].assert_called_once()
+        mock_all_nodes["summarize"].assert_called_once()
+        mock_all_nodes["finalize"].assert_called_once()
+        mock_all_nodes["heal_graph"].assert_called_once()
+        mock_all_nodes["check_quality"].assert_called_once()
+
+    async def test_workflow_with_checkpointing(
+        self,
+        sample_generation_state: NarrativeState,
+        mock_all_nodes: Any,
+        tmp_path: Any,
+    ) -> None:
+        """Workflow writes checkpoints when a checkpointer is provided."""
+        from core.langgraph.workflow import create_checkpointer
+
+        checkpoint_db = tmp_path / "test_checkpoint.db"
+
+        async with create_checkpointer(str(checkpoint_db)) as checkpointer:
+            graph = create_full_workflow_graph(checkpointer=checkpointer)
+
+            config = {"configurable": {"thread_id": "test-thread"}}
+            result = await graph.ainvoke(sample_generation_state, config=config)
+
+        assert result["current_node"] == "check_quality"
         assert checkpoint_db.exists()
+        assert checkpoint_db.stat().st_size > 0
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes state field preservation")
-    async def test_workflow_preserves_state_through_nodes(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+    async def test_workflow_preserves_state_through_nodes(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that state is properly preserved through all nodes."""
-        pass
+        # Use a field that exists in NarrativeState but is not usually used in this context
+        state = {**sample_generation_state, "theme": "Custom Theme"}
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes how revision is triggered")
-    async def test_workflow_multiple_revision_cycles(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        # Create workflow
+        graph = create_full_workflow_graph()
+
+        # Execute workflow
+        result = await graph.ainvoke(state)
+
+        # Verify custom theme is preserved
+        assert result["theme"] == "Custom Theme"
+        assert result["project_id"] == "test-project"
+
+    async def test_workflow_multiple_revision_cycles(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow with multiple revision cycles."""
-        pass
+        # Configure validate to request revision twice then stop
+        call_count = 0
+
+        def mock_validate(s):
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                return {
+                    **s,
+                    "contradictions": [Contradiction(type="test", description="Issue", conflicting_chapters=[1], severity="minor")],
+                    "needs_revision": True,
+                    "current_node": "validate",
+                }
+            return {
+                **s,
+                "contradictions": [],
+                "needs_revision": False,
+                "current_node": "validate",
+            }
+
+        mock_all_nodes["validate"].side_effect = mock_validate
+
+        # Create workflow
+        graph = create_full_workflow_graph()
+
+        # Execute workflow
+        await graph.ainvoke(sample_generation_state, config={"recursion_limit": 200})
+
+        # Revision should be called twice
+        assert mock_all_nodes["revise"].call_count == 2
+        # Validation should be called three times
+        assert call_count == 3
 
 
 def test_phase2_graph_check_quality_is_reachable() -> None:
@@ -351,7 +545,7 @@ def test_phase2_graph_check_quality_is_reachable() -> None:
     If `check_quality` is declared in the Phase 2 graph, it must be reachable.
     This prevents dead-node drift where QA is assumed to run but never executes.
     """
-    graph = create_phase2_graph()
+    graph = create_full_workflow_graph()
     graph_obj = graph.get_graph()
 
     nodes = set(graph_obj.nodes)
@@ -364,7 +558,7 @@ def test_phase2_graph_check_quality_is_reachable() -> None:
     assert ("heal_graph", "check_quality") in edges
 
     # Ensure `check_quality` is reachable from the entrypoint through node-to-node edges.
-    start = "generate"
+    start = "route"
     adjacency: dict[str, set[str]] = {}
     for source, target in edges:
         if isinstance(source, str) and isinstance(target, str):
@@ -390,15 +584,65 @@ def test_phase2_graph_check_quality_is_reachable() -> None:
 class TestPhase2Integration:
     """Integration tests for Phase 2 workflow."""
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes state fields")
-    async def test_complete_chapter_generation_workflow(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
+    async def test_complete_chapter_generation_workflow(self, sample_generation_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
         """Test complete end-to-end chapter generation."""
-        pass
+        # Create workflow
+        graph = create_full_workflow_graph()
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes graph structure validation")
+        # Execute workflow
+        result = await graph.ainvoke(sample_generation_state)
+
+        # Verify final state reflects completion of one chapter
+        assert result["current_chapter"] == 1
+        assert result["initialization_complete"] is True
+
     async def test_workflow_graph_structure(self) -> None:
         """Test that Phase 2 graph has correct structure."""
-        pass
+        graph = create_full_workflow_graph()
+        graph_obj = graph.get_graph()
+
+        nodes = set(graph_obj.nodes)
+
+        # Verify presence of expected nodes
+        expected_nodes = [
+            "chapter_outline",
+            "generate",
+            "extract",
+            "gen_scene_embeddings",
+            "assemble_chapter",
+            "normalize_relationships",
+            "commit",
+            "validate",
+            "revise",
+            "summarize",
+            "finalize",
+            "heal_graph",
+            "check_quality",
+            "advance_chapter",
+        ]
+        for node in expected_nodes:
+            assert node in nodes
+
+    def test_workflow_graph_persistence_wiring_is_after_validation(self) -> None:
+        """Persistence boundary must be after validation acceptance."""
+        graph = create_full_workflow_graph()
+        graph_obj = graph.get_graph()
+
+        edges = {(edge.source, edge.target) for edge in graph_obj.edges}
+
+        assert ("normalize_relationships", "validate") in edges
+        assert ("validate", "commit") in edges
+        assert ("commit", "summarize") in edges
+
+    def test_workflow_revision_loop_routes_to_generate(self) -> None:
+        """Revision loop should route validate → revise → generate (scene regeneration)."""
+        graph = create_full_workflow_graph()
+        graph_obj = graph.get_graph()
+
+        edges = [(edge.source, edge.target) for edge in graph_obj.edges]
+
+        assert ("validate", "revise") in edges
+        assert ("revise", "generate") in edges
 
 
 class TestErrorRoutingFunctions:
@@ -487,32 +731,111 @@ class TestErrorRoutingFunctions:
 class TestWorkflowErrorHandling:
     """Tests for error handling in Phase 2 workflow (P1.1 & P1.3)."""
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_generation_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+    async def test_workflow_routes_to_error_handler_on_generation_failure(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when generation fails."""
-        pass
+        # Configure generate subgraph to return error
+        mock_all_nodes["generate"].side_effect = lambda s: {
+            **s,
+            "has_fatal_error": True,
+            "last_error": "Generation failed",
+            "error_node": "generate",
+        }
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_extraction_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        graph = create_full_workflow_graph()
+        result = await graph.ainvoke(sample_generation_state)
+
+        assert result["current_node"] == "error_handler"
+
+    async def test_workflow_routes_to_error_handler_on_extraction_failure(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when extraction fails."""
-        pass
+        mock_all_nodes["extract"].side_effect = lambda s: {
+            **s,
+            "has_fatal_error": True,
+            "last_error": "Extraction failed",
+            "error_node": "extract",
+        }
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_validation_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        graph = create_full_workflow_graph()
+        result = await graph.ainvoke(sample_generation_state)
+
+        assert result["current_node"] == "error_handler"
+
+    async def test_workflow_routes_to_error_handler_on_validation_failure(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when validation triggers fatal error."""
-        pass
+        mock_all_nodes["validate"].side_effect = lambda s: {
+            **s,
+            "has_fatal_error": True,
+            "last_error": "Validation failed",
+            "error_node": "validate",
+        }
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_routes_to_error_handler_on_revision_failure(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        graph = create_full_workflow_graph()
+        result = await graph.ainvoke(sample_generation_state)
+
+        assert result["current_node"] == "error_handler"
+
+    async def test_workflow_routes_to_error_handler_on_revision_failure(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow routes to error_handler when revision fails."""
-        pass
+        # Request revision first
+        mock_all_nodes["validate"].side_effect = lambda s: {
+            **s,
+            "needs_revision": True,
+            "current_node": "validate",
+        }
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes call expectations")
-    async def test_workflow_completes_successfully_without_errors(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        # Then make revise fail
+        mock_all_nodes["revise"].side_effect = lambda s: {
+            **s,
+            "has_fatal_error": True,
+            "last_error": "Revision failed",
+            "error_node": "revise",
+        }
+
+        graph = create_full_workflow_graph()
+        result = await graph.ainvoke(sample_generation_state)
+
+        assert result["current_node"] == "error_handler"
+
+    async def test_workflow_completes_successfully_without_errors(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow completes when no fatal errors occur."""
-        pass
+        graph = create_full_workflow_graph()
+        result = await graph.ainvoke(sample_generation_state)
 
-    @pytest.mark.skip(reason="Refactoring to use subgraphs changes error handling flow")
-    async def test_workflow_stops_at_first_fatal_error(self, sample_phase2_state: NarrativeState, mock_all_nodes: Any) -> None:
+        assert result["has_fatal_error"] is False
+        mock_all_nodes["check_quality"].assert_called_once()
+
+    async def test_workflow_stops_at_first_fatal_error(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test workflow stops execution at first fatal error encountered."""
-        pass
+        mock_all_nodes["gen_scene_embeddings"].side_effect = lambda s: {
+            **s,
+            "has_fatal_error": True,
+            "last_error": "Scene embeddings failed",
+            "error_node": "gen_scene_embeddings",
+        }
+
+        graph = create_full_workflow_graph()
+        result = await graph.ainvoke(sample_generation_state)
+
+        assert result["current_node"] == "error_handler"
+        mock_all_nodes["assemble_chapter"].assert_not_called()
+        mock_all_nodes["normalize_relationships"].assert_not_called()
+
+    async def test_workflow_multi_chapter_loop(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
+        """Test that workflow loops back for multiple chapters."""
+        # Set total chapters to 2
+        state = {**sample_generation_state}
+        state["total_chapters"] = 2
+        state["current_chapter"] = 1
+
+        # Create workflow
+        graph = create_full_workflow_graph()
+
+        # Execute workflow
+        result = await graph.ainvoke(state, config={"recursion_limit": 300})
+
+        # Verify that chapter_outline, generate, etc. were called twice
+        assert mock_all_nodes["chapter_outline"].call_count == 2
+        assert mock_all_nodes["generate"].call_count == 2
+        assert mock_all_nodes["check_quality"].call_count == 2
+
+        assert result["current_chapter"] == 2

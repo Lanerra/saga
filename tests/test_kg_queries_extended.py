@@ -1,3 +1,4 @@
+# tests/test_kg_queries_extended.py
 """Extended tests for data_access/kg_queries.py to improve coverage."""
 
 from unittest.mock import AsyncMock, patch
@@ -141,7 +142,8 @@ class TestKGQueriesExtended:
         called_query = args[0]
         call_params = args[1]
 
-        assert "CALL {" in called_query
+        # Neo4j supports both `CALL { ... }` and `CALL () { ... }` subquery syntax.
+        assert ("CALL {" in called_query) or ("CALL () {" in called_query)
         assert "LIMIT $candidate_pool_size" in called_query
 
         assert call_params["name_threshold"] == 0.8

@@ -32,7 +32,6 @@ def sample_finalize_state(tmp_path):
         total_chapters=20,
         project_dir=project_dir,
         protagonist_name="Hero",
-        generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )
@@ -99,18 +98,20 @@ class TestFinalizeChapter:
         """Test successful chapter finalization."""
         result = await finalize_chapter(sample_finalize_state)
 
+        merged = {**sample_finalize_state, **result}
+
         # Check that state was cleaned up
-        assert result["extracted_entities"] == {}
-        assert result["extracted_relationships"] == []
-        assert result["contradictions"] == []
-        assert result["iteration_count"] == 0
-        assert result["needs_revision"] is False
+        assert merged["extracted_entities"] == {}
+        assert merged["extracted_relationships"] == []
+        assert merged["contradictions"] == []
+        assert merged["iteration_count"] == 0
+        assert merged["needs_revision"] is False
 
         # Check current node was updated
-        assert result["current_node"] == "finalize"
+        assert merged["current_node"] == "finalize"
 
         # Check no errors
-        assert result["last_error"] is None
+        assert merged["last_error"] is None
 
         # Verify embedding was generated
         mock_llm_service.async_get_embedding.assert_called_once()
@@ -127,16 +128,18 @@ class TestFinalizeChapter:
         assert call_args.kwargs["is_provisional"] is False
 
     async def test_finalize_chapter_no_draft_text(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
-        """Test finalization fails gracefully without draft text."""
+        """Test finalization fails gracefully without draft_ref."""
         state = {**sample_finalize_state}
         state["draft_ref"] = None
 
         result = await finalize_chapter(state)
+        merged = {**state, **result}
 
         # Should return error state
-        assert result["last_error"] is not None
-        assert "No draft text" in result["last_error"]
-        assert result["current_node"] == "finalize"
+        assert merged["last_error"] == "Missing required state key: draft_ref"
+        assert merged["has_fatal_error"] is True
+        assert merged["error_node"] == "finalize"
+        assert merged["current_node"] == "finalize"
 
         # Embedding generation should not be called
         mock_llm_service.async_get_embedding.assert_not_called()
@@ -287,9 +290,10 @@ class TestFinalizeChapter:
         state["iteration_count"] = 3
 
         result = await finalize_chapter(state)
+        merged = {**state, **result}
 
         # Should be reset
-        assert result["iteration_count"] == 0
+        assert merged["iteration_count"] == 0
 
     async def test_finalize_chapter_resets_needs_revision(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
         """Test that needs_revision flag is reset."""
@@ -298,17 +302,19 @@ class TestFinalizeChapter:
         state["needs_revision"] = True
 
         result = await finalize_chapter(state)
+        merged = {**state, **result}
 
         # Should be reset
-        assert result["needs_revision"] is False
+        assert merged["needs_revision"] is False
 
     async def test_finalize_chapter_preserves_draft_text(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
         """Test that draft_text is preserved in state."""
         result = await finalize_chapter(sample_finalize_state)
+        merged = {**sample_finalize_state, **result}
 
         # Draft text should still be available
-        assert result["draft_ref"] == sample_finalize_state["draft_ref"]
-        assert result["draft_word_count"] == sample_finalize_state["draft_word_count"]
+        assert merged["draft_ref"] == sample_finalize_state["draft_ref"]
+        assert merged["draft_word_count"] == sample_finalize_state["draft_word_count"]
 
     async def test_finalize_chapter_includes_summary(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
         """Test that summary is included in Neo4j save."""
@@ -335,9 +341,10 @@ class TestFinalizeChapter:
         state["summaries_ref"] = None
 
         result = await finalize_chapter(state)
+        merged = {**state, **result}
 
         # Should succeed
-        assert result["last_error"] is None
+        assert merged["last_error"] is None
 
         # Neo4j should be called with None summary
         call_args = mock_save_chapter_data.call_args
@@ -381,12 +388,13 @@ class TestFinalizeChapter:
     async def test_finalize_chapter_preserves_other_state(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
         """Test that other state fields are preserved."""
         result = await finalize_chapter(sample_finalize_state)
+        merged = {**sample_finalize_state, **result}
 
         # Verify important fields are preserved
-        assert result["current_chapter"] == sample_finalize_state["current_chapter"]
-        assert result["title"] == sample_finalize_state["title"]
-        assert result["genre"] == sample_finalize_state["genre"]
-        assert result["project_id"] == sample_finalize_state["project_id"]
+        assert merged["current_chapter"] == sample_finalize_state["current_chapter"]
+        assert merged["title"] == sample_finalize_state["title"]
+        assert merged["genre"] == sample_finalize_state["genre"]
+        assert merged["project_id"] == sample_finalize_state["project_id"]
 
 
 @pytest.mark.asyncio
@@ -394,14 +402,13 @@ class TestFinalizeErrorHandling:
     """Tests for error handling in finalize node (P1.1 & P1.3)."""
 
     async def test_finalize_chapter_missing_draft_text_fatal_error(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
-        """Test finalization with missing draft_text triggers fatal error."""
+        """Test finalization with missing draft_ref triggers fatal error."""
         state = {**sample_finalize_state}
         state["draft_ref"] = None
 
         result = await finalize_chapter(state)
 
-        assert result["last_error"] is not None
-        assert "No draft text available" in result["last_error"]
+        assert result["last_error"] == "Missing required state key: draft_ref"
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "finalize"
         assert result["current_node"] == "finalize"
@@ -492,14 +499,15 @@ class TestFinalizeIntegration:
     async def test_finalization_ready_for_next_chapter(self, sample_finalize_state, mock_llm_service, mock_save_chapter_data):
         """Test that state is ready for next chapter after finalization."""
         result = await finalize_chapter(sample_finalize_state)
+        merged = {**sample_finalize_state, **result}
 
         # State should be clean for next chapter
-        assert result["iteration_count"] == 0
-        assert result["needs_revision"] is False
-        assert result["extracted_entities"] == {}
-        assert result["extracted_relationships"] == []
-        assert result["contradictions"] == []
+        assert merged["iteration_count"] == 0
+        assert merged["needs_revision"] is False
+        assert merged["extracted_entities"] == {}
+        assert merged["extracted_relationships"] == []
+        assert merged["contradictions"] == []
 
         # Summary ref should be preserved
-        assert result["summaries_ref"] is not None
+        assert merged["summaries_ref"] is not None
         # We can verify content if needed, but presence is enough for now

@@ -8,11 +8,13 @@ and advances the `current_scene_index` for the drafting loop.
 
 import structlog
 
+import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_plan,
     get_hybrid_context,
     get_scene_drafts,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -35,7 +37,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         - current_scene_index: Incremented for the next drafting iteration.
         - current_node: `"draft_scene"`.
 
-        If the scene index is invalid, returns the unchanged state.
+        If the scene index is invalid, returns only `current_node`.
         On drafting errors, returns an update with `last_error` populated.
 
     Notes:
@@ -44,7 +46,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     logger.info("draft_scene: generating text")
 
     # Initialize content manager
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     chapter_number = state.get("current_chapter", 1)
     scene_index = state.get("current_scene_index", 0)
@@ -54,7 +56,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     if not chapter_plan or scene_index >= len(chapter_plan):
         logger.error("draft_scene: invalid scene index", index=scene_index)
-        return state
+        return {"current_node": "draft_scene"}
 
     current_scene = chapter_plan[scene_index]
 
@@ -68,6 +70,11 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     # Get hybrid context from content manager
     hybrid_context = get_hybrid_context(state, content_manager) or ""
 
+    revision_guidance_text = ""
+    revision_guidance_ref = state.get("revision_guidance_ref")
+    if revision_guidance_ref:
+        revision_guidance_text = content_manager.load_text(revision_guidance_ref)
+
     prompt = render_prompt(
         "narrative_agent/draft_scene.j2",
         {
@@ -77,13 +84,14 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             "novel_theme": state.get("theme", ""),
             "scene": current_scene,
             "hybrid_context": hybrid_context,
+            "revision_guidance": revision_guidance_text,
             "target_word_count": scene_target,
         },
     )
 
     try:
         draft_text, _ = await llm_service.async_call_llm(
-            model_name=state.get("narrative_model", ""),
+            model_name=state.get("narrative_model", config.NARRATIVE_MODEL),
             prompt=prompt,
             temperature=0.7,
             max_tokens=6000,
@@ -122,7 +130,6 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     except Exception as e:
         logger.error("draft_scene: error generating scene", error=str(e))
         return {
-            **state,
             "last_error": f"Error generating scene: {str(e)}",
             "current_node": "draft_scene",
         }

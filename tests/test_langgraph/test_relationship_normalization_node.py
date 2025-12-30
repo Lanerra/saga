@@ -1,3 +1,4 @@
+# tests/test_langgraph/test_relationship_normalization_node.py
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,12 +11,13 @@ from core.langgraph.state import NarrativeState
 @pytest.mark.asyncio
 async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
     """
-    Unit test for [`normalize_relationships()`](core/langgraph/nodes/relationship_normalization_node.py:27).
+    Unit test for [`normalize_relationships()`](core/langgraph/nodes/relationship_normalization_node.py:32).
 
     Scope:
     - Avoid embedding/LLM calls by only testing case/punctuation normalization against an existing vocabulary key.
     - Ensure the node returns an updated `extracted_relationships_ref`, so downstream nodes that prefer the ref
-      (e.g. commit via [`get_extracted_relationships()`](core/langgraph/content_manager.py:783)) see normalized data.
+      (e.g. commit via [`get_extracted_relationships()`](core/langgraph/content_manager.py:929)) see normalized data.
+    - Ensure the in-memory mirror list is cleared to prevent checkpoint bloat.
     """
     project_dir = str(tmp_path)
 
@@ -73,6 +75,9 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
 
             # Node must return updated ref so downstream consumers read normalized content.
             assert new_state["extracted_relationships_ref"] == normalized_ref
+
+            # In-memory mirror must be cleared after externalization.
+            assert new_state["extracted_relationships"] == []
 
             # Verify normalized relationships were computed and persisted via setter call.
             args, _ = mock_set.call_args

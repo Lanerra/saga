@@ -15,6 +15,11 @@ Current known attributes:
 Chapter summaries mentioning this entity:
 {{ summaries_text }}
 
+Output requirements:
+- Return ONLY a single JSON object (no commentary, no preface, no markdown, no code fences).
+- The very first character of your response must be `{` and the very last character must be `}`.
+- Output must be valid JSON that can be parsed by `json.loads`.
+
 Output schema:
 - Output is a single JSON object with EXACTLY these keys in EXACTLY this order (no more, no less):
   1) "inferred_description" (string)

@@ -8,7 +8,7 @@ the full draft and the list of scene drafts to keep workflow state small.
 
 import structlog
 
-from core.langgraph.content_manager import ContentManager, get_scene_drafts
+from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
 from core.langgraph.state import NarrativeState
 
 logger = structlog.get_logger(__name__)
@@ -37,14 +37,13 @@ def assemble_chapter(state: NarrativeState) -> NarrativeState:
     logger.info("assemble_chapter: finalizing chapter draft")
 
     # Initialize content manager for external storage
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     scene_drafts = get_scene_drafts(state, content_manager)
 
     if not scene_drafts:
         logger.warning("assemble_chapter: no scene drafts found")
         return {
-            **state,
             "draft_ref": None,
             "draft_word_count": 0,
             "current_node": "assemble_chapter",

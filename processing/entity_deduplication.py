@@ -682,8 +682,8 @@ async def merge_duplicate_entities(
             // - If the canonical node already has a relationship of the same type to the same other node,
             //   keep the canonical relationship as-is and only add missing properties from the duplicate.
             // - Otherwise, recreate the relationship with the original type and full properties.
-            CALL {
-                WITH canonical, duplicate
+            CALL () {
+              WITH canonical, duplicate
                 OPTIONAL MATCH (other)-[r_in]->(duplicate)
                 WHERE other <> canonical
                 WITH canonical, collect({other: other, rel_type: type(r_in), rel_props: properties(r_in)}) AS incoming
@@ -701,8 +701,8 @@ async def merge_duplicate_entities(
                 RETURN count(*) AS incoming_processed
             }
 
-            CALL {
-                WITH canonical, duplicate
+            CALL () {
+              WITH canonical, duplicate
                 OPTIONAL MATCH (duplicate)-[r_out]->(other)
                 WHERE other <> canonical
                 WITH canonical, collect({other: other, rel_type: type(r_out), rel_props: properties(r_out)}) AS outgoing
@@ -742,8 +742,8 @@ async def merge_duplicate_entities(
             // - If the canonical node already has a relationship of the same type to the same other node,
             //   keep the canonical relationship as-is and only add missing properties from the duplicate.
             // - Otherwise, recreate the relationship with the original type and full properties.
-            CALL {
-                WITH canonical, duplicate
+            CALL () {
+              WITH canonical, duplicate
                 OPTIONAL MATCH (other)-[r_in]->(duplicate)
                 WHERE other <> canonical
                 WITH canonical, collect({other: other, rel_type: type(r_in), rel_props: properties(r_in)}) AS incoming
@@ -761,8 +761,8 @@ async def merge_duplicate_entities(
                 RETURN count(*) AS incoming_processed
             }
 
-            CALL {
-                WITH canonical, duplicate
+            CALL () {
+              WITH canonical, duplicate
                 OPTIONAL MATCH (duplicate)-[r_out]->(other)
                 WHERE other <> canonical
                 WITH canonical, collect({other: other, rel_type: type(r_out), rel_props: properties(r_out)}) AS outgoing

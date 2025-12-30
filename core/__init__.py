@@ -1,3 +1,4 @@
+# core/__init__.py
 """Core package initialization.
 
 NOTE: Some tests patch `core.knowledge_graph_service.knowledge_graph_service`.

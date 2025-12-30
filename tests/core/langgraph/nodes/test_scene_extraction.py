@@ -1,7 +1,31 @@
+# tests/core/langgraph/nodes/test_scene_extraction.py
+import json
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+from pydantic import BaseModel
+
+
+def _assert_no_pydantic_models(value: Any) -> None:
+    if isinstance(value, BaseModel):
+        raise AssertionError(f"Found Pydantic model in state: {type(value)}")
+    if isinstance(value, dict):
+        for nested in value.values():
+            _assert_no_pydantic_models(nested)
+        return
+    if isinstance(value, list):
+        for nested in value:
+            _assert_no_pydantic_models(nested)
+        return
+    if isinstance(value, tuple):
+        for nested in value:
+            _assert_no_pydantic_models(nested)
+        return
+
+
+def _assert_json_serializable(value: Any) -> None:
+    json.dumps(value)
 
 
 @pytest.mark.asyncio
@@ -132,9 +156,7 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
         "Scene 1: Elara enters the library.",
         "Scene 2: She meets Marcus at the tower.",
     ]
-    state["scene_drafts_ref"] = content_manager.save_list_of_texts(
-        scenes, "scenes", "chapter_1", 1
-    )
+    state["scene_drafts_ref"] = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
     state["current_chapter"] = 1
 
     async def mock_llm(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], None]:
@@ -149,3 +171,142 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
     assert "extracted_entities" in result
     assert "extracted_relationships" in result
     assert result["current_node"] == "extract_from_scenes"
+    _assert_no_pydantic_models(result)
+    _assert_json_serializable(result)
+
+
+@pytest.mark.asyncio
+async def test_extract_from_scenes_no_scenes_returns_empty_serializable_state(tmp_path: Any) -> None:
+    from core.langgraph.nodes.scene_extraction import extract_from_scenes
+    from core.langgraph.state import create_initial_state
+
+    project_dir = str(tmp_path / "test_project")
+    state = create_initial_state(
+        project_id="test",
+        title="Test Novel",
+        genre="Fantasy",
+        theme="Adventure",
+        setting="World",
+        target_word_count=50000,
+        total_chapters=10,
+        project_dir=project_dir,
+        protagonist_name="Elara",
+    )
+    state["current_chapter"] = 1
+
+    result = await extract_from_scenes(state)
+
+    assert result["extracted_entities"] == {"characters": [], "world_items": []}
+    assert result["extracted_relationships"] == []
+    _assert_no_pydantic_models(result)
+    _assert_json_serializable(result)
+
+
+@pytest.mark.asyncio
+async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: Any) -> None:
+    from core.langgraph.content_manager import ContentManager
+    from core.langgraph.nodes.scene_extraction import extract_from_scenes
+    from core.langgraph.state import ExtractedEntity, ExtractedRelationship, create_initial_state
+
+    project_dir = str(tmp_path / "test_project")
+    state = create_initial_state(
+        project_id="test",
+        title="Test Novel",
+        genre="Fantasy",
+        theme="Adventure",
+        setting="World",
+        target_word_count=50000,
+        total_chapters=10,
+        project_dir=project_dir,
+        protagonist_name="Elara",
+    )
+
+    content_manager = ContentManager(project_dir)
+    state["scene_drafts_ref"] = content_manager.save_list_of_texts(
+        ["Scene 1: Elara enters the library."],
+        "scenes",
+        "chapter_1",
+        1,
+    )
+    state["current_chapter"] = 1
+
+    extracted_entity = ExtractedEntity(
+        name="Elara",
+        type="Character",
+        description="A brave explorer",
+        first_appearance_chapter=1,
+        attributes={"traits": ["brave"]},
+    )
+    extracted_relationship = ExtractedRelationship(
+        source_name="Elara",
+        target_name="Marcus",
+        relationship_type="KNOWS",
+        description="They met recently",
+        chapter=1,
+        confidence=0.8,
+    )
+
+    def fake_consolidate(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {
+            "characters": [extracted_entity],
+            "world_items": [],
+            "relationships": [extracted_relationship],
+        }
+
+    async def fake_extract_from_scene(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"characters": [], "world_items": [], "relationships": []}
+
+    with (
+        patch(
+            "core.langgraph.nodes.scene_extraction.consolidate_scene_extractions",
+            side_effect=fake_consolidate,
+        ),
+        patch(
+            "core.langgraph.nodes.scene_extraction.extract_from_scene",
+            side_effect=fake_extract_from_scene,
+        ),
+        patch(
+            "core.llm_interface_refactored.llm_service.async_call_llm_json_object",
+            return_value=({"character_updates": {}, "world_updates": {"Location": {}, "Event": {}}, "kg_triples": []}, None),
+        ),
+    ):
+        result = await extract_from_scenes(state)
+
+    _assert_no_pydantic_models(result)
+    _assert_json_serializable(result)
+
+    assert result["extracted_entities"] == {}
+    assert result["extracted_relationships"] == []
+    assert result["extracted_entities_ref"] is not None
+    assert result["extracted_relationships_ref"] is not None
+
+    from core.langgraph.content_manager import ContentManager
+
+    content_manager = ContentManager(state["project_dir"])
+    extracted_entities = content_manager.load_json(result["extracted_entities_ref"])
+    extracted_relationships = content_manager.load_json(result["extracted_relationships_ref"])
+
+    characters = extracted_entities["characters"]
+    assert isinstance(characters, list)
+    assert characters == [
+        {
+            "name": "Elara",
+            "type": "Character",
+            "description": "A brave explorer",
+            "first_appearance_chapter": 1,
+            "attributes": {"traits": ["brave"]},
+        }
+    ]
+
+    assert extracted_relationships == [
+        {
+            "source_name": "Elara",
+            "target_name": "Marcus",
+            "relationship_type": "KNOWS",
+            "description": "They met recently",
+            "chapter": 1,
+            "confidence": 0.8,
+            "source_type": None,
+            "target_type": None,
+        }
+    ]

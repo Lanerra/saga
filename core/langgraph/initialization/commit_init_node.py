@@ -19,6 +19,7 @@ from core.langgraph.content_manager import (
     ContentManager,
     get_character_sheets,
     get_global_outline,
+    require_project_dir,
 )
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
@@ -53,7 +54,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         successful persistence.
     """
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get character sheets and global outline (from external files)
     character_sheets = get_character_sheets(state, content_manager)
@@ -74,7 +75,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         if character_sheets:
             character_profiles = await _parse_character_sheets_to_profiles(
                 character_sheets,
-                model_name=state.get("medium_model", ""),
+                model_name=state.get("medium_model", config.MEDIUM_MODEL),
             )
 
         # Step 2: Extract world items from outlines
@@ -83,7 +84,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             world_items = await _extract_world_items_from_outline(
                 global_outline,
                 state.get("setting", ""),
-                model_name=state.get("medium_model", ""),
+                model_name=state.get("medium_model", config.MEDIUM_MODEL),
             )
 
         # Step 3: Commit to Neo4j using direct batch approach
@@ -126,7 +127,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         # This makes characters immediately available to the generation loop
         updated_state: NarrativeState = {
             **state,
-            "active_characters": character_profiles[:5],  # Top 5 for initial context
+            "active_characters": character_profiles[:3],  # Top 5 for initial context
             "world_items": world_items,
             "current_node": "commit_initialization",
             "last_error": None,

@@ -572,24 +572,23 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
+            // Handle subject node - first try to find by name, then by ID if name lookup fails
+            OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
+            WITH s
+            WHERE s IS NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
             CALL apoc.merge.node(
                 [$subject_label],
-                CASE
-                    WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN {name: $subject_name_param}
-                    ELSE {id: $subject_id_param}
-                END,
+                {id: $subject_id_param},
                 {
                     created_ts: timestamp(),
                     updated_ts: timestamp(),
                     type: $subject_label,
                     name: $subject_name_param,
-                    id: CASE
-                        WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN randomUUID()
-                        ELSE $subject_id_param
-                    END
+                    id: $subject_id_param
                 },
                 {updated_ts: timestamp()}
-            ) YIELD node AS s
+            ) YIELD node AS s_new
+            WITH CASE WHEN s IS NOT NULL THEN s ELSE s_new END AS s
 
             MERGE (o:ValueNode {value: $object_literal_value_param, type: $value_node_type_param})
             ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
@@ -644,43 +643,44 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
+            // Handle subject node - first try to find by name, then by ID if name lookup fails
+            OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
+            WITH s
+            WHERE s IS NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
             CALL apoc.merge.node(
                 [$subject_label],
-                CASE
-                    WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN {name: $subject_name_param}
-                    ELSE {id: $subject_id_param}
-                END,
+                {id: $subject_id_param},
                 {
                     created_ts: timestamp(),
                     updated_ts: timestamp(),
                     type: $subject_label,
                     name: $subject_name_param,
-                    id: CASE
-                        WHEN $subject_id_param IS NULL OR toString($subject_id_param) = '' THEN randomUUID()
-                        ELSE $subject_id_param
-                    END
+                    id: $subject_id_param
                 },
                 {updated_ts: timestamp()}
-            ) YIELD node AS s
+            ) YIELD node AS s_new
+            WITH CASE WHEN s IS NOT NULL THEN s ELSE s_new END AS s
 
+            // Handle object node - first try to find by name, then by ID if name lookup fails
+            OPTIONAL MATCH (o:{$object_label} {name: $object_name_param})
+            WITH s, o
+            WHERE o IS NULL AND $object_id_param IS NOT NULL AND toString($object_id_param) <> ''
             CALL apoc.merge.node(
                 [$object_label],
-                CASE
-                    WHEN $object_id_param IS NULL OR toString($object_id_param) = '' THEN {name: $object_name_param}
-                    ELSE {id: $object_id_param}
-                END,
+                {id: $object_id_param},
                 {
                     created_ts: timestamp(),
                     updated_ts: timestamp(),
                     type: $object_label,
                     name: $object_name_param,
-                    id: CASE
-                        WHEN $object_id_param IS NULL OR toString($object_id_param) = '' THEN randomUUID()
-                        ELSE $object_id_param
-                    END
+                    id: $object_id_param
                 },
                 {updated_ts: timestamp()}
-            ) YIELD node AS o
+            ) YIELD node AS o_new
+            WITH s, o, o_new
+
+            // Use the found node (by name) or the merged node (by ID)
+            WITH s, CASE WHEN o IS NOT NULL THEN o ELSE o_new END AS o
 
             WITH s, o
             CALL apoc.merge.relationship(
@@ -1290,7 +1290,7 @@ async def find_candidate_duplicate_entities(
     # Description similarity is a simple overlap on tokenized, cleaned text.
     query = """
     // ---------- Character pairs (bounded candidate pool) ----------
-    CALL {
+    CALL () {
       MATCH (e:Character)
       WHERE e.name IS NOT NULL AND e.id IS NOT NULL
       RETURN e
@@ -1346,7 +1346,7 @@ async def find_candidate_duplicate_entities(
     UNION
 
     // ---------- Typed Entity pairs (non-Character; bounded candidate pool) ----------
-    CALL {
+    CALL () {
       MATCH (e)
       WHERE (e:Location OR e:Item OR e:Event)
         AND e.name IS NOT NULL AND e.id IS NOT NULL

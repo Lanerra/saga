@@ -1,3 +1,4 @@
+# tests/core/langgraph/subgraphs/test_scene_extraction_subgraph.py
 from unittest.mock import patch
 
 import pytest
@@ -29,9 +30,7 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
 
     content_manager = ContentManager(project_dir)
     scenes = ["Elara enters the library.", "She finds the map."]
-    state["scene_drafts_ref"] = content_manager.save_list_of_texts(
-        scenes, "scenes", "chapter_1", 1
-    )
+    state["scene_drafts_ref"] = content_manager.save_list_of_texts(scenes, "scenes", "chapter_1", 1)
     state["current_chapter"] = 1
 
     async def mock_llm(*args, **kwargs):
@@ -43,5 +42,5 @@ async def test_scene_extraction_subgraph_runs_extraction_and_consolidation(tmp_p
     ):
         result = await workflow.ainvoke(state)
 
-    assert "extracted_entities" in result
-    assert "extracted_relationships" in result
+    assert "extracted_entities_ref" in result
+    assert "extracted_relationships_ref" in result

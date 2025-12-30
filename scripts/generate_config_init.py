@@ -1,3 +1,4 @@
+# scripts/generate_config_init.py
 """Regenerate [`config.__init__`](config/__init__.py:1) from [`config.settings`](config/settings.py:1).
 
 This script prints Python source code to stdout. It is intended to be run from the repo

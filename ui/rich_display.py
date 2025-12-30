@@ -9,6 +9,7 @@ Non-goals:
     - Provide a stable API for building arbitrary dashboards.
     - Guarantee that display refresh succeeds under all terminal conditions.
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -13,7 +13,8 @@ from typing import Any
 import structlog
 from pydantic import BaseModel, Field
 
-from core.langgraph.content_manager import ContentManager, get_character_sheets
+import config
+from core.langgraph.content_manager import ContentManager, get_character_sheets, require_project_dir
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -83,7 +84,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
     )
 
     # Initialize content manager for reading externalized content
-    content_manager = ContentManager(state.get("project_dir", ""))
+    content_manager = ContentManager(require_project_dir(state))
 
     # Get character sheets (prefers externalized content, falls back to in-state)
     character_sheets = get_character_sheets(state, content_manager)
@@ -113,7 +114,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
 
     try:
         response, usage = await llm_service.async_call_llm(
-            model_name=state.get("large_model", ""),
+            model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,
             max_tokens=16384,
@@ -198,8 +199,6 @@ def _build_character_context_from_sheets(character_sheets: dict) -> str:
         context_parts.append(f"**{name}** ({role}): {desc}...")
 
     return "\n\n".join(context_parts)
-
-
 
 
 def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: int) -> list[str]:
