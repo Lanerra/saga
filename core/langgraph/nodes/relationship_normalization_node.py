@@ -174,13 +174,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
     # ignore normalized relationships unless `extracted_relationships_ref` is updated.
     normalized_ref = set_extracted_relationships(content_manager, normalized_rels, state)
 
-    # Update state
-    #
-    # Source-of-truth contract:
-    # - `extracted_relationships_ref` is authoritative for downstream nodes (including commit).
-    # - `extracted_relationships` is cleared to prevent checkpoint bloat.
     return {
-        "extracted_relationships": [],
         "extracted_relationships_ref": normalized_ref,
         "relationship_vocabulary": vocabulary,
         "relationship_vocabulary_size": len(vocabulary),

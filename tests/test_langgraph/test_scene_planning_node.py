@@ -97,7 +97,7 @@ async def test_plan_scenes_parses_valid_json_list(
 
 
 @pytest.mark.asyncio
-async def test_plan_scenes_parses_json_in_markdown_fence(
+async def test_plan_scenes_parses_strict_json_array(
     base_state,
     mock_content_manager,
     mock_get_chapter_outlines,
@@ -106,7 +106,7 @@ async def test_plan_scenes_parses_json_in_markdown_fence(
     mock_character_sync,
 ):
     scenes = _valid_scene_list()
-    response = "```json\n" + json.dumps(scenes) + "\n```"
+    response = json.dumps(scenes)
     mock_llm_service.async_call_llm = AsyncMock(return_value=(response, {}))
 
     result = await plan_scenes(base_state)
@@ -115,7 +115,7 @@ async def test_plan_scenes_parses_json_in_markdown_fence(
 
 
 @pytest.mark.asyncio
-async def test_plan_scenes_parses_json_with_commentary_before_and_after(
+async def test_plan_scenes_rejects_json_with_surrounding_text(
     base_state,
     mock_content_manager,
     mock_get_chapter_outlines,
@@ -129,7 +129,8 @@ async def test_plan_scenes_parses_json_with_commentary_before_and_after(
 
     result = await plan_scenes(base_state)
 
-    assert result["chapter_plan_scene_count"] == len(scenes)
+    assert "last_error" in result
+    assert "Scene plan contract violation" in result["last_error"]
 
 
 @pytest.mark.asyncio
@@ -148,4 +149,4 @@ async def test_plan_scenes_invalid_json_returns_clear_error(
 
     assert result["current_node"] == "plan_scenes"
     assert "last_error" in result
-    assert "Expected: JSON list of scene objects" in result["last_error"]
+    assert "Expected: JSON array of scene objects" in result["last_error"]

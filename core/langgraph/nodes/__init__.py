@@ -13,7 +13,7 @@ partial updates into the existing state to preserve immutability.
 
 Example:
     return {
-        "extracted_entities": entities,
+        "extracted_entities_ref": entities_ref,
         "current_node": "extract",
     }
 """

@@ -269,9 +269,12 @@ class TestLoadOrCreateState:
 
             state = await orchestrator._load_or_create_state(project_id="test-project")
 
-            assert state["generation_model"] is not None
             assert state["extraction_model"] is not None
             assert state["revision_model"] is not None
+            assert state["large_model"] is not None
+            assert state["medium_model"] is not None
+            assert state["small_model"] is not None
+            assert state["narrative_model"] is not None
 
     async def test_load_or_create_state_validates_artifacts(self, orchestrator, tmp_path):
         """Validation check runs on existing project directory."""

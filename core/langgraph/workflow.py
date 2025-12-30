@@ -12,6 +12,7 @@ import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
 from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
+import config
 from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
 from core.langgraph.nodes.commit_node import commit_to_graph
 from core.langgraph.nodes.embedding_node import generate_scene_embeddings
@@ -310,12 +311,27 @@ def should_continue_to_next_chapter(
 
     current = state.get("current_chapter", 1)
     total = state.get("total_chapters", 1)
+    run_start = state.get("run_start_chapter", 1)
+    chapters_per_run = config.CHAPTERS_PER_RUN
+
+    chapters_generated_this_run = current - run_start + 1
 
     logger.info(
         "should_continue_to_next_chapter: checking progress",
         current=current,
         total=total,
+        run_start=run_start,
+        chapters_this_run=chapters_generated_this_run,
+        chapters_per_run_limit=chapters_per_run,
     )
+
+    if chapters_generated_this_run >= chapters_per_run and current < total:
+        logger.info(
+            "should_continue_to_next_chapter: reached CHAPTERS_PER_RUN limit, stopping this run",
+            chapters_generated=chapters_generated_this_run,
+            limit=chapters_per_run,
+        )
+        return "end"
 
     if current < total:
         return "continue"

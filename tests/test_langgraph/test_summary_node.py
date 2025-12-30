@@ -50,8 +50,9 @@ async def _run_summarize_chapter(tmp_path: Path, summary_text: str = "This is a 
         auto_clean_response: bool,
         system_prompt: str,
     ):
-        # Return deterministic summary_text and dummy usage.
-        return summary_text, {
+        import json
+
+        return json.dumps({"summary": summary_text}), {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,

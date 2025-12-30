@@ -327,7 +327,6 @@ class LangGraphOrchestrator:
             project_dir=str(self.project_dir),
             protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
             # Model Mapping
-            generation_model=config.NARRATIVE_MODEL,  # User override for generation
             extraction_model=config.MEDIUM_MODEL,
             revision_model=config.LARGE_MODEL,
             # Tiered models
@@ -340,6 +339,7 @@ class LangGraphOrchestrator:
         # Update current chapter and initialization status
         state["current_chapter"] = current_chapter
         state["initialization_complete"] = initialization_complete
+        state["run_start_chapter"] = current_chapter
 
         # Advisory validation of initialization artifacts (non-breaking)
         if self.project_dir.exists():
@@ -703,6 +703,9 @@ class LangGraphOrchestrator:
             checkpoint_state=checkpoint_state,
             requested_project_id=requested_project_id,
         )
+
+        checkpoint_state["run_start_chapter"] = checkpoint_state.get("current_chapter", 1)
+
         return checkpoint_state
 
     def _validate_resume_state_or_raise(

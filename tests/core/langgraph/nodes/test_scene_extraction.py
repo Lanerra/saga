@@ -275,7 +275,18 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
 
-    characters = result["extracted_entities"]["characters"]
+    assert result["extracted_entities"] == {}
+    assert result["extracted_relationships"] == []
+    assert result["extracted_entities_ref"] is not None
+    assert result["extracted_relationships_ref"] is not None
+
+    from core.langgraph.content_manager import ContentManager
+
+    content_manager = ContentManager(state["project_dir"])
+    extracted_entities = content_manager.load_json(result["extracted_entities_ref"])
+    extracted_relationships = content_manager.load_json(result["extracted_relationships_ref"])
+
+    characters = extracted_entities["characters"]
     assert isinstance(characters, list)
     assert characters == [
         {
@@ -287,8 +298,7 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
         }
     ]
 
-    relationships = result["extracted_relationships"]
-    assert relationships == [
+    assert extracted_relationships == [
         {
             "source_name": "Elara",
             "target_name": "Marcus",
@@ -300,5 +310,3 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
             "target_type": None,
         }
     ]
-    _assert_no_pydantic_models(result)
-    _assert_json_serializable(result)

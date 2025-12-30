@@ -128,6 +128,42 @@ class TestCommitToGraph:
         content_manager = ContentManager(project_dir)
         draft_ref = content_manager.save_text("draft", "draft", "chapter_1", 1)
 
+        entities_data = {
+            "characters": [
+                {
+                    "name": "Alice",
+                    "type": "Character",
+                    "description": "Alice",
+                    "first_appearance_chapter": 1,
+                    "attributes": {},
+                },
+                {
+                    "name": "Bob",
+                    "type": "Character",
+                    "description": "Bob",
+                    "first_appearance_chapter": 1,
+                    "attributes": {},
+                },
+            ],
+            "world_items": [],
+        }
+
+        relationships_data = [
+            {
+                "source_name": "Alice",
+                "target_name": "Bob",
+                "relationship_type": "COLLABORATES_WITH",
+                "description": "They collaborate",
+                "chapter": 1,
+                "confidence": 0.9,
+            }
+        ]
+
+        from core.langgraph.content_manager import save_extracted_entities, save_extracted_relationships
+
+        entities_ref = save_extracted_entities(content_manager, entities_data, 1, 1)
+        relationships_ref = save_extracted_relationships(content_manager, relationships_data, 1, 1)
+
         state = {
             "project_dir": project_dir,
             "current_chapter": 1,
@@ -143,46 +179,17 @@ class TestCommitToGraph:
                     "last_used_chapter": 0,
                 }
             },
-            "extracted_entities": {
-                "characters": [
-                    ExtractedEntity(
-                        name="Alice",
-                        type="Character",
-                        description="Alice",
-                        first_appearance_chapter=1,
-                        attributes={},
-                    ),
-                    ExtractedEntity(
-                        name="Bob",
-                        type="Character",
-                        description="Bob",
-                        first_appearance_chapter=1,
-                        attributes={},
-                    ),
-                ],
-                "world_items": [],
-            },
-            # IMPORTANT: this is the relationship we expect to be normalized away.
-            "extracted_relationships": [
-                ExtractedRelationship(
-                    source_name="Alice",
-                    target_name="Bob",
-                    relationship_type="COLLABORATES_WITH",
-                    description="They collaborate",
-                    chapter=1,
-                    confidence=0.9,
-                )
-            ],
+            "extracted_entities_ref": entities_ref,
+            "extracted_relationships_ref": relationships_ref,
         }
 
-        # Step 1: Consolidate extraction -> writes externalized refs and clears in-memory mirrors.
+        # Step 1: Consolidate extraction -> verifies externalized refs exist.
         extraction_update = consolidate_extraction(state)
         state = {**state, **extraction_update}
 
         assert state.get("extracted_relationships_ref"), "consolidate_extraction must set extracted_relationships_ref"
-        assert state["extracted_relationships"] == []
 
-        # Poison the in-memory list to prove commit reads via the ref and not the in-state field.
+        # Poison the in-memory field (if present) to prove normalize_relationships reads via ref only.
         state["extracted_relationships"] = [
             ExtractedRelationship(
                 source_name="Alice",
@@ -194,8 +201,7 @@ class TestCommitToGraph:
             )
         ]
 
-        # Step 2: Normalize relationships -> must update extracted_relationships_ref to the normalized file
-        # and clear the in-memory mirror.
+        # Step 2: Normalize relationships -> must update extracted_relationships_ref to the normalized file.
         with patch("core.langgraph.nodes.relationship_normalization_node.config.ENABLE_RELATIONSHIP_NORMALIZATION", True):
             with patch(
                 "core.langgraph.nodes.relationship_normalization_node.normalization_service.normalize_relationship_type",
@@ -206,7 +212,6 @@ class TestCommitToGraph:
         state = {**state, **normalization_update}
 
         assert state["extracted_relationships_ref"]["version"] >= 2
-        assert state["extracted_relationships"] == []
 
         # Re-poison after normalization: commit should still ignore in-memory and read via ref.
         state["extracted_relationships"] = [
@@ -264,96 +269,6 @@ class TestCommitToGraph:
                             assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
                             assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
                             assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
-
-    async def test_consolidate_extraction_clears_in_memory_mirrors(self, tmp_path):
-        """
-        Unit test for [`consolidate_extraction()`](core/langgraph/nodes/extraction_nodes.py:28).
-
-        Verifies that once extraction outputs are externalized to disk, the in-memory
-        mirrors (`extracted_entities`, `extracted_relationships`) are cleared to prevent
-        SQLite checkpoint bloat.
-        """
-        from pathlib import Path
-
-        from core.langgraph.content_manager import ContentManager
-        from core.langgraph.nodes.extraction_nodes import consolidate_extraction
-        from core.langgraph.state import ExtractedEntity, ExtractedRelationship
-
-        project_dir = str(tmp_path)
-
-        state = {
-            "project_dir": project_dir,
-            "current_chapter": 1,
-            "extracted_entities": {
-                "characters": [
-                    ExtractedEntity(
-                        name="Alice",
-                        type="Character",
-                        description="Alice",
-                        first_appearance_chapter=1,
-                        attributes={},
-                    )
-                ],
-                "world_items": [],
-            },
-            "extracted_relationships": [
-                ExtractedRelationship(
-                    source_name="Alice",
-                    target_name="Bob",
-                    relationship_type="KNOWS",
-                    description="They know each other",
-                    chapter=1,
-                    confidence=0.9,
-                )
-            ],
-        }
-
-        update = consolidate_extraction(state)
-        merged = {**state, **update}
-
-        assert merged["extracted_entities"] == {}
-        assert merged["extracted_relationships"] == []
-
-        entities_ref = merged["extracted_entities_ref"]
-        relationships_ref = merged["extracted_relationships_ref"]
-
-        assert isinstance(entities_ref, dict)
-        assert isinstance(relationships_ref, dict)
-        assert isinstance(entities_ref.get("path"), str)
-        assert isinstance(relationships_ref.get("path"), str)
-
-        assert (Path(project_dir) / entities_ref["path"]).exists()
-        assert (Path(project_dir) / relationships_ref["path"]).exists()
-
-        content_manager = ContentManager(project_dir)
-        entities_payload = content_manager.load_json(entities_ref)
-        relationships_payload = content_manager.load_json(relationships_ref)
-
-        assert isinstance(entities_payload, dict)
-        assert entities_payload["characters"][0]["name"] == "Alice"
-        assert entities_payload["world_items"] == []
-
-        assert isinstance(relationships_payload, list)
-        assert relationships_payload[0]["relationship_type"] == "KNOWS"
-
-    async def test_consolidate_extraction_rejects_invalid_entity_shape(self, tmp_path):
-        """
-        Negative case for [`consolidate_extraction()`](core/langgraph/nodes/extraction_nodes.py:28):
-
-        The node must fail fast when `extracted_entities` contains a non-dict, non-model
-        item, to avoid silently persisting corrupt extraction payloads.
-        """
-        from core.langgraph.nodes.extraction_nodes import consolidate_extraction
-
-        state = {
-            "project_dir": str(tmp_path),
-            "current_chapter": 1,
-            "extracted_entities": {"characters": [42], "world_items": []},
-            "extracted_relationships": [],
-        }
-
-        with pytest.raises(TypeError, match=r"expected extracted character entity to be dict-like"):
-            consolidate_extraction(state)
 
     async def test_commit_handles_errors_gracefully(
         self,

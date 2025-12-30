@@ -134,6 +134,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     current_chapter: int
     total_chapters: int
+    run_start_chapter: int
 
     # =========================================================================
     # Active Context (for prompt construction)
@@ -363,6 +364,7 @@ def create_initial_state(
         # Position
         "current_chapter": 1,
         "total_chapters": total_chapters,
+        "run_start_chapter": 1,
         # Active context (initially empty)
         "active_characters": [],
         "key_events": [],

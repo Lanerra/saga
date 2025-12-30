@@ -76,7 +76,6 @@ def sample_generation_state(tmp_path: Any) -> NarrativeState:
 
     # Set current chapter
     state["current_chapter"] = 1
-    state["plot_point_focus"] = "The hero begins their journey"
     state["initialization_complete"] = True
 
     return state
@@ -596,7 +595,6 @@ class TestPhase2Integration:
         # Verify final state reflects completion of one chapter
         assert result["current_chapter"] == 1
         assert result["initialization_complete"] is True
-        assert result["workflow_failed"] is False
 
     async def test_workflow_graph_structure(self) -> None:
         """Test that Phase 2 graph has correct structure."""

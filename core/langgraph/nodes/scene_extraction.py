@@ -661,8 +661,6 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     if not scene_drafts:
         logger.warning("extract_from_scenes: no scene drafts found, returning empty extraction")
         return {
-            "extracted_entities": {"characters": [], "world_items": []},
-            "extracted_relationships": [],
             "current_node": "extract_from_scenes",
         }
 
@@ -760,8 +758,6 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     )
 
     return {
-        "extracted_entities": {},
-        "extracted_relationships": [],
         "extracted_entities_ref": extracted_entities_ref,
         "extracted_relationships_ref": extracted_relationships_ref,
         "current_node": "extract_from_scenes",

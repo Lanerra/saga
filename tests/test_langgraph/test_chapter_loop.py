@@ -55,16 +55,44 @@ def test_should_continue_to_next_chapter_logic(sample_state: NarrativeState) -> 
     # Case 1: More chapters remain
     sample_state["current_chapter"] = 1
     sample_state["total_chapters"] = 2
+    sample_state["run_start_chapter"] = 1
     assert should_continue_to_next_chapter(sample_state) == "continue"
 
     # Case 2: All chapters complete
     sample_state["current_chapter"] = 2
     sample_state["total_chapters"] = 2
+    sample_state["run_start_chapter"] = 1
     assert should_continue_to_next_chapter(sample_state) == "end"
 
     # Case 3: Fatal error
     sample_state["has_fatal_error"] = True
     assert should_continue_to_next_chapter(sample_state) == "error"
+
+
+def test_should_continue_respects_chapters_per_run(sample_state: NarrativeState) -> None:
+    """Verify that should_continue_to_next_chapter respects CHAPTERS_PER_RUN limit."""
+    with patch("config.CHAPTERS_PER_RUN", 3):
+        sample_state["total_chapters"] = 12
+        sample_state["run_start_chapter"] = 1
+
+        sample_state["current_chapter"] = 1
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 2
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 3
+        assert should_continue_to_next_chapter(sample_state) == "end"
+
+        sample_state["current_chapter"] = 4
+        sample_state["run_start_chapter"] = 4
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 5
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 6
+        assert should_continue_to_next_chapter(sample_state) == "end"
 
 
 @pytest.mark.asyncio
@@ -76,7 +104,6 @@ async def test_workflow_loops_to_next_chapter(sample_state: NarrativeState) -> N
     # Mock all nodes
     mock_chapter_outline = MagicMock(side_effect=lambda s: {**s, "current_node": "chapter_outline"})
     mock_generate = MagicMock(side_effect=lambda s: {**s, "current_node": "generate"})
-    mock_gen_embedding = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_embedding"})
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
     mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
     mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "draft_ref": {"path": "mock_draft"}, "draft_word_count": 1, "current_node": "assemble_chapter"})
@@ -91,7 +118,6 @@ async def test_workflow_loops_to_next_chapter(sample_state: NarrativeState) -> N
     with (
         patch("core.langgraph.initialization.generate_chapter_outline", mock_chapter_outline),
         patch("core.langgraph.subgraphs.generation.create_generation_subgraph", return_value=mock_generate),
-        patch("core.langgraph.workflow.generate_embedding", mock_gen_embedding),
         patch("core.langgraph.subgraphs.scene_extraction.create_scene_extraction_subgraph", return_value=mock_extract),
         patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
         patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),

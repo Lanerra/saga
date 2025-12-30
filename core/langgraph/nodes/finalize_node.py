@@ -194,8 +194,6 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
     return cast(
         NarrativeState,
         {
-            "extracted_entities": {},
-            "extracted_relationships": [],
             "contradictions": [],
             "iteration_count": 0,
             "needs_revision": False,
