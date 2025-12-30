@@ -163,21 +163,13 @@ async def test_world_rules_and_history_stubs_when_missing(tmp_path: Path) -> Non
 
 @pytest.mark.asyncio
 async def test_world_rules_and_history_populated_when_present(tmp_path: Path) -> None:
-    """Optional coverage: ensure provided rules/history surface into YAML."""
+    """Optional coverage: ensure provided rules surface into YAML."""
     state = _state_with_required_init_refs(tmp_path)
 
-    # Inject sample rules and history-like structures
+    # Inject sample rules
     state["current_world_rules"] = [
         "Magic cannot resurrect the dead.",
         {"name": "No FTL", "description": "Faster-than-light travel does not exist."},
-    ]
-    state["world_history"] = [
-        "The Shattering of the Ring, two centuries ago.",
-        {
-            "id": "founding",
-            "description": "Founding of the frontier habitats.",
-            "era": "Post-Shattering",
-        },
     ]
 
     result = await persist_initialization_files(state)
@@ -200,21 +192,13 @@ async def test_world_rules_and_history_populated_when_present(tmp_path: Path) ->
     assert rules[1]["name"] == "No FTL"
     assert "Faster-than-light travel does not exist." in rules[1]["description"]
 
-    # Validate history mapping
+    # Validate history stub is created (no world_history field in state)
     history_path = project_dir / "world" / "history.yaml"
     history_data = yaml.safe_load(history_path.read_text(encoding="utf-8"))
     events = history_data.get("events")
     assert isinstance(events, list)
-    assert len(events) == 2
-
-    # First event from string
-    assert events[0]["id"].startswith("event_")
-    assert "Shattering of the Ring" in events[0]["description"]
-
-    # Second event from mapping
-    assert events[1]["id"] == "founding"
-    assert "Founding of the frontier habitats." in events[1]["description"]
-    assert events[1].get("era") == "Post-Shattering"
+    assert len(events) == 0
+    assert "note" in history_data
 
 
 @pytest.mark.asyncio

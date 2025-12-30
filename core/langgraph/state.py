@@ -130,27 +130,19 @@ class NarrativeState(TypedDict, total=False):
     target_word_count: int
 
     # =========================================================================
-    # Neo4j Connection (reconstructed on load, not persisted)
-    # =========================================================================
-    neo4j_conn: Any | None  # Will be reconstructed from project_id
-
-    # =========================================================================
     # Current Position in Story
     # =========================================================================
     current_chapter: int
     total_chapters: int
-    current_act: int
 
     # =========================================================================
     # Active Context (for prompt construction)
     # =========================================================================
     active_characters: list[CharacterProfile]  # Reuses existing model
-    current_location: dict[str, Any] | None
     key_events: list[dict[str, Any]]
 
     # Externalized context references
     summaries_ref: ContentRef | None  # Reference to externalized summaries
-    active_characters_ref: ContentRef | None  # Reference to externalized active characters
 
     # =========================================================================
     # Generated Content (current chapter)
@@ -185,9 +177,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     contradictions: list[Contradiction]
     needs_revision: bool
-    revision_feedback: str | None
     revision_guidance_ref: ContentRef | None
-    is_from_flawed_draft: bool  # True if deduplication removed text or other quality issues detected
 
     # Used by finalize/persistence to store the latest summary string without re-loading.
     current_summary: str | None
@@ -215,7 +205,6 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Model Configuration
     # =========================================================================
-    generation_model: str
     extraction_model: str
     revision_model: str
     # New tiered model configuration
@@ -237,45 +226,30 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     last_error: str | None
     has_fatal_error: bool  # True if workflow should stop due to unrecoverable error
-    workflow_failed: bool  # Overall workflow failure status
-    failure_reason: str | None  # Reason for overall workflow failure
     error_node: str | None  # Which node encountered the fatal error
-    retry_count: int
 
     # =========================================================================
     # Filesystem Paths
     # =========================================================================
     project_dir: str
-    chapters_dir: str
-    summaries_dir: str
 
     # =========================================================================
     # Context Management (maintains compatibility with existing context system)
     # =========================================================================
-    context_epoch: int  # Compatible with NarrativeState.context_epoch
-
     # Externalized context references
     hybrid_context_ref: ContentRef | None  # Reference to externalized hybrid context
-    kg_facts_ref: ContentRef | None  # Reference to externalized KG facts
 
     # =========================================================================
     # Chapter Planning (properly typed with SceneDetail TypedDict)
     # =========================================================================
     # NOTE: chapter_plan field has been removed in favor of ContentRef-based externalization
     # chapter_plan: list[SceneDetail] | None  # List of SceneDetail TypedDicts
-    plot_point_focus: str | None
     current_scene_index: int  # Index of the scene currently being processed
     chapter_plan_scene_count: int  # Total number of scenes in the current chapter plan
 
     # Externalized scene drafts reference
     scene_drafts_ref: ContentRef | None  # Reference to externalized scene drafts
     chapter_plan_ref: ContentRef | None  # Reference to externalized chapter plan
-
-    # =========================================================================
-    # Revision State (properly typed with TypedDict structures)
-    # =========================================================================
-    evaluation_result: EvaluationResult | None  # EvaluationResult TypedDict
-    patch_instructions: list[PatchInstruction] | None  # List of PatchInstruction TypedDicts
 
     # =========================================================================
     # World Building Context
@@ -287,7 +261,6 @@ class NarrativeState(TypedDict, total=False):
     # Protagonist and Key Characters
     # =========================================================================
     protagonist_name: str
-    protagonist_profile: CharacterProfile | None
 
     # =========================================================================
     # Initialization Phase State (for initialization workflow)
@@ -297,12 +270,6 @@ class NarrativeState(TypedDict, total=False):
     global_outline_ref: ContentRef | None  # Reference to externalized global outline
     act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
     chapter_outlines_ref: ContentRef | None  # Reference to externalized chapter outlines
-
-    # Inline initialization artifacts (for tests or before persistence)
-    character_sheets: dict[str, Any] | None
-    global_outline: str | dict[str, Any] | None
-    act_outlines: dict[str, Any] | None
-    world_history: str | None
 
     # Initialization state tracking
     initialization_complete: bool
@@ -351,7 +318,6 @@ def create_initial_state(
     total_chapters: int,
     project_dir: str,
     protagonist_name: str,
-    generation_model: str = settings.NARRATIVE_MODEL,
     extraction_model: str = settings.SMALL_MODEL,
     revision_model: str = settings.MEDIUM_MODEL,
     # New model params with defaults
@@ -373,7 +339,6 @@ def create_initial_state(
         total_chapters: Total number of chapters planned.
         project_dir: Base directory for project files.
         protagonist_name: Protagonist name used for prompts and initialization.
-        generation_model: Default model for prose generation.
         extraction_model: Default model for entity/relationship extraction.
         revision_model: Default model for revision passes.
         large_model: Large model tier identifier (used by some nodes/subgraphs).
@@ -398,12 +363,8 @@ def create_initial_state(
         # Position
         "current_chapter": 1,
         "total_chapters": total_chapters,
-        "current_act": 1,
-        # Neo4j connection (will be set by workflow)
-        "neo4j_conn": None,
         # Active context (initially empty)
         "active_characters": [],
-        "current_location": None,
         "key_events": [],
         # Generated content
         "draft_word_count": 0,
@@ -414,14 +375,12 @@ def create_initial_state(
         "summaries_ref": None,
         "scene_drafts_ref": None,
         "hybrid_context_ref": None,
-        "kg_facts_ref": None,
         "character_sheets_ref": None,
         "global_outline_ref": None,
         "act_outlines_ref": None,
         "chapter_outlines_ref": None,
         "extracted_entities_ref": None,
         "extracted_relationships_ref": None,
-        "active_characters_ref": None,
         "chapter_plan_ref": None,
         "revision_guidance_ref": None,
         # Entity extraction
@@ -431,8 +390,6 @@ def create_initial_state(
         # Validation
         "contradictions": [],
         "needs_revision": False,
-        "revision_feedback": None,
-        "is_from_flawed_draft": False,
         "current_summary": None,
         "phase2_deduplication_merges": {},
         "last_qa_chapter": 0,
@@ -448,7 +405,6 @@ def create_initial_state(
         "tone_consistency_score": None,
         "quality_feedback": None,
         # Model configuration
-        "generation_model": generation_model,
         "extraction_model": extraction_model,
         "revision_model": revision_model,
         "large_model": large_model,
@@ -463,31 +419,20 @@ def create_initial_state(
         # Error handling
         "last_error": None,
         "has_fatal_error": False,
-        "workflow_failed": False,
-        "failure_reason": None,
         "error_node": None,
-        "retry_count": 0,
         # Filesystem paths
         "project_dir": project_dir,
-        "chapters_dir": os.path.join(project_dir, "chapters"),
-        "summaries_dir": os.path.join(project_dir, "summaries"),
         # Context management
-        "context_epoch": 0,
         # Chapter planning
         # NOTE: chapter_plan field has been removed in favor of ContentRef-based externalization
         # "chapter_plan": None,
-        "plot_point_focus": None,
         "current_scene_index": 0,
         "chapter_plan_scene_count": 0,
-        # Revision state
-        "evaluation_result": None,
-        "patch_instructions": None,
         # World building
         "world_items": [],
         "current_world_rules": [],
         # Protagonist
         "protagonist_name": protagonist_name,
-        "protagonist_profile": None,
         # Initialization phase
         "initialization_complete": False,
         "initialization_step": None,

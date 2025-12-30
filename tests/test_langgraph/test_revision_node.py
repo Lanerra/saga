@@ -29,7 +29,6 @@ def sample_revision_state(tmp_path: pytest.TempPathFactory) -> dict:
         total_chapters=20,
         project_dir=project_dir,
         protagonist_name="Hero",
-        generation_model="test-model",
         medium_model="test-model",
         revision_model="test-revision-model",
     )

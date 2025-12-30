@@ -23,7 +23,6 @@ def sample_generation_state(tmp_path: Any) -> NarrativeState:
         total_chapters=1,
         project_dir=str(tmp_path / "test-project"),
         protagonist_name="Hero",
-        generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )

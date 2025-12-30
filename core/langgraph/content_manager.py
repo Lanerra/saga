@@ -821,24 +821,6 @@ def load_extracted_relationships(manager: ContentManager, ref: ContentRef | str)
     return data
 
 
-def save_active_characters(
-    manager: ContentManager,
-    characters: list[dict[str, Any]],
-    chapter: int,
-    version: int = 1,
-) -> ContentRef:
-    """Save active characters for a chapter."""
-    return manager.save_json(characters, "active_characters", f"chapter_{chapter}", version)
-
-
-def load_active_characters(manager: ContentManager, ref: ContentRef | str) -> list[dict[str, Any]]:
-    """Load active characters for a chapter."""
-    data = manager.load_json(ref)
-    if not isinstance(data, list):
-        raise ValueError(f"Expected list active characters, got {type(data)}")
-    return data
-
-
 def save_chapter_plan(
     manager: ContentManager,
     plan: list[dict[str, Any]],
@@ -1259,33 +1241,6 @@ def set_extracted_relationships(
     return ref
 
 
-def get_active_characters(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
-    """Load active characters for prompt construction.
-
-    This function prefers externalized content via `active_characters_ref` and
-    falls back to in-state `active_characters` for back-compat.
-
-    Args:
-        state: Workflow state mapping.
-        manager: Content manager rooted at the project directory.
-
-    Returns:
-        A list of active character profile dicts, or an empty list when unavailable.
-
-    Raises:
-        FileNotFoundError: If `active_characters_ref` is present but the referenced file is missing.
-    """
-    characters_ref = state.get("active_characters_ref")
-    if not characters_ref:
-        # Fallback to in-state content if ref not available
-        return state.get("active_characters", [])
-
-    data = manager.load_json(characters_ref)
-    if not isinstance(data, list):
-        return []
-    return data
-
-
 def get_chapter_plan(state: Mapping[str, Any], manager: ContentManager) -> list[dict[str, Any]]:
     """Load the chapter plan (scene details) for the current chapter.
 
@@ -1342,8 +1297,6 @@ __all__ = [
     "load_extracted_entities",
     "save_extracted_relationships",
     "load_extracted_relationships",
-    "save_active_characters",
-    "load_active_characters",
     "save_chapter_plan",
     "load_chapter_plan",
     # Content getters (some include fallback for back-compat)
@@ -1358,6 +1311,5 @@ __all__ = [
     "get_extracted_entities",
     "get_extracted_relationships",
     "set_extracted_relationships",
-    "get_active_characters",
     "get_chapter_plan",
 ]

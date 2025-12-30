@@ -286,8 +286,6 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
         "current_chapter": next_chapter,
         "iteration_count": 0,
         "force_continue": False,
-        "retry_count": 0,
-        "chapter_plan": None,
         "chapter_plan_ref": None,
         **clear_generation_artifacts(),
         **clear_validation_state(),
@@ -369,8 +367,8 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         )
         return {
             **state,
-            "workflow_failed": True,
-            "failure_reason": f"Initialization failed at step {step}: {error}",
+            "has_fatal_error": True,
+            "last_error": f"Initialization failed at step {step}: {error}",
         }
 
     workflow.add_node("init_error", handle_init_error)

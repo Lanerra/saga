@@ -224,12 +224,9 @@ class TestCreateInitialState:
 
         # Check defaults
         assert state["current_chapter"] == 1
-        assert state["current_act"] == 1
         assert state["active_characters"] == []
         assert state["draft_ref"] is None
         assert state["draft_word_count"] == 0
-        assert state["extracted_entities"] == {}
-        assert state["extracted_relationships"] == []
         assert state["contradictions"] == []
         assert state["needs_revision"] is False
         assert state["iteration_count"] == 0
@@ -247,12 +244,10 @@ class TestCreateInitialState:
             total_chapters=20,
             project_dir="/tmp/test",
             protagonist_name="Hero",
-            generation_model="custom-gen",
             extraction_model="custom-extract",
             revision_model="custom-revise",
         )
 
-        assert state["generation_model"] == "custom-gen"
         assert state["extraction_model"] == "custom-extract"
         assert state["revision_model"] == "custom-revise"
 
@@ -288,8 +283,6 @@ class TestCreateInitialState:
         )
 
         assert state["project_dir"] == "/tmp/my-novel"
-        assert state["chapters_dir"] == "/tmp/my-novel/chapters"
-        assert state["summaries_dir"] == "/tmp/my-novel/summaries"
 
     def test_state_has_all_required_fields(self, sample_initial_state: Any) -> None:
         """Test that initial state has all required fields from schema."""
@@ -306,14 +299,9 @@ class TestCreateInitialState:
         # Position
         assert "current_chapter" in state
         assert "total_chapters" in state
-        assert "current_act" in state
-
-        # Neo4j connection
-        assert "neo4j_conn" in state
 
         # Active context
         assert "active_characters" in state
-        assert "current_location" in state
         assert "summaries_ref" in state
         assert "key_events" in state
 
@@ -321,17 +309,11 @@ class TestCreateInitialState:
         assert "draft_ref" in state
         assert "draft_word_count" in state
 
-        # Entity extraction
-        assert "extracted_entities" in state
-        assert "extracted_relationships" in state
-
         # Validation
         assert "contradictions" in state
         assert "needs_revision" in state
-        assert "revision_feedback" in state
 
         # Model configuration
-        assert "generation_model" in state
         assert "extraction_model" in state
         assert "revision_model" in state
 
@@ -343,12 +325,9 @@ class TestCreateInitialState:
 
         # Error handling
         assert "last_error" in state
-        assert "retry_count" in state
 
         # Filesystem paths
         assert "project_dir" in state
-        assert "chapters_dir" in state
-        assert "summaries_dir" in state
 
     def test_state_is_mutable(self, sample_initial_state: Any) -> None:
         """Test that state dict is mutable and can be updated."""

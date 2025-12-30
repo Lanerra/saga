@@ -31,11 +31,7 @@ def clear_validation_state() -> dict:
     return {
         "contradictions": [],
         "needs_revision": False,
-        "revision_feedback": None,
         "revision_guidance_ref": None,
-        "evaluation_result": None,
-        "patch_instructions": None,
-        "is_from_flawed_draft": False,
     }
 
 

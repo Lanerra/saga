@@ -32,7 +32,6 @@ def sample_finalize_state(tmp_path):
         total_chapters=20,
         project_dir=project_dir,
         protagonist_name="Hero",
-        generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )

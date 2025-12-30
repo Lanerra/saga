@@ -28,7 +28,6 @@ def base_state():
         total_chapters=20,
         project_dir="/tmp/test-project",
         protagonist_name="Hero",
-        generation_model="test-model",
         extraction_model="test-model",
         revision_model="test-model",
     )

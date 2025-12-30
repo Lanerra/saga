@@ -509,8 +509,7 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
 
     history_data: dict = {}
 
-    # Accept several potential history/timeline fields without requiring any.
-    raw_events = state.get("world_history") or state.get("history_events") or state.get("timeline") or []
+    raw_events: list = []
 
     events: list = []
     if isinstance(raw_events, list):
