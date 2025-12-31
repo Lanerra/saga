@@ -13,6 +13,7 @@ from __future__ import annotations
 import structlog
 
 import config
+from core.db_manager import neo4j_manager
 from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
@@ -32,6 +33,71 @@ from prompts.prompt_renderer import get_system_prompt
 logger = structlog.get_logger(__name__)
 
 
+async def _rollback_chapter_data(chapter_number: int) -> None:
+    """Delete entities and relationships committed for a chapter that needs revision.
+
+    This function performs a compensating transaction to rollback data committed
+    before validation determined that revision was needed.
+
+    Strategy:
+        1. Delete all relationships added in this chapter
+        2. Mark entities created in this chapter as provisional (graph healing will clean up orphans)
+        3. Delete the chapter node itself
+
+    Args:
+        chapter_number: The chapter number to rollback.
+
+    Notes:
+        This is a best-effort cleanup. Failures are logged but don't block revision.
+        Graph healing will eventually clean up any remaining orphaned nodes.
+    """
+    logger.info(
+        "rollback_chapter_data: removing committed data for revision",
+        chapter=chapter_number,
+    )
+
+    queries = [
+        (
+            """
+            MATCH ()-[r]->()
+            WHERE coalesce(r.chapter_added, -1) = $chapter
+            DELETE r
+            """,
+            {"chapter": chapter_number},
+        ),
+        (
+            """
+            MATCH (e)
+            WHERE coalesce(e.created_chapter, -1) = $chapter
+            SET e.is_provisional = true
+            """,
+            {"chapter": chapter_number},
+        ),
+        (
+            """
+            MATCH (ch:Chapter {number: $chapter})
+            DELETE ch
+            """,
+            {"chapter": chapter_number},
+        ),
+    ]
+
+    try:
+        await neo4j_manager.execute_cypher_batch(queries)
+        logger.info(
+            "rollback_chapter_data: successfully rolled back chapter data",
+            chapter=chapter_number,
+        )
+    except Exception as exc:
+        logger.error(
+            "rollback_chapter_data: failed to rollback chapter data",
+            chapter=chapter_number,
+            error=str(exc),
+            exc_info=True,
+        )
+        raise
+
+
 async def revise_chapter(state: NarrativeState) -> NarrativeState:
     """Produce revision guidance and reset chapter artifacts for scene-level regeneration.
 
@@ -42,6 +108,8 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         - It clears stale artifacts (`scene_drafts_ref`, `scene_embeddings_ref`, `draft_ref`,
           `embedding_ref`, extraction refs) so the regenerated pipeline cannot reuse them.
         - It resets `current_scene_index` to 0 so the generation subgraph drafts scenes again.
+        - ROLLBACK: Since commit now happens before validation, this node deletes
+          committed entities/relationships for this chapter before regenerating.
     """
     chapter_number = state.get("current_chapter", 1)
 
@@ -51,6 +119,17 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         iteration=state.get("iteration_count", 0),
         contradictions=len(state.get("contradictions", [])),
     )
+
+    # Rollback committed data before regenerating
+    try:
+        await _rollback_chapter_data(chapter_number)
+    except Exception as exc:
+        logger.warning(
+            "revise_chapter: rollback failed, continuing with revision",
+            chapter=chapter_number,
+            error=str(exc),
+            exc_info=True,
+        )
 
     if state.get("iteration_count", 0) >= state.get("max_iterations", 3):
         error_msg = f"Max revision attempts ({state.get('max_iterations', 3)}) reached"

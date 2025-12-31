@@ -344,7 +344,7 @@ async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
         query = """
             // Events for timeline validation
             MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
-            WHERE ch.number < $current_chapter AND e.timestamp IS NOT NULL
+            WHERE ch.number <= $current_chapter AND e.timestamp IS NOT NULL
             RETURN 'event' AS data_type,
                    e.description AS description,
                    e.timestamp AS timestamp,
@@ -573,7 +573,7 @@ async def _check_timeline(
         if existing_events is None:
             query = """
                 MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
-                WHERE ch.number < $current_chapter
+                WHERE ch.number <= $current_chapter
                 AND e.timestamp IS NOT NULL
                 RETURN e.description AS description,
                        e.timestamp AS timestamp,
