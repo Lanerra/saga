@@ -572,10 +572,19 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
-            // Handle subject node - first try to find by name, then by ID if name lookup fails
+            // Handle subject node - first try to find by name
             OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
             WITH s
-            WHERE s IS NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            WHERE s IS NOT NULL
+            RETURN s
+            UNION
+            // If not found by name, try to find by ID if available
+            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
+            WITH s
+            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            RETURN s
+            UNION
+            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$subject_label],
                 {id: $subject_id_param},
@@ -588,7 +597,8 @@ async def add_kg_triples_batch_to_db(
                 },
                 {updated_ts: timestamp()}
             ) YIELD node AS s_new
-            WITH CASE WHEN s IS NOT NULL THEN s ELSE s_new END AS s
+            WITH s_new as s
+            RETURN s
 
             MERGE (o:ValueNode {value: $object_literal_value_param, type: $value_node_type_param})
             ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
@@ -643,10 +653,19 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
-            // Handle subject node - first try to find by name, then by ID if name lookup fails
+            // Handle subject node - first try to find by name
             OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
             WITH s
-            WHERE s IS NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            WHERE s IS NOT NULL
+            RETURN s
+            UNION
+            // If not found by name, try to find by ID if available
+            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
+            WITH s
+            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            RETURN s
+            UNION
+            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$subject_label],
                 {id: $subject_id_param},
@@ -659,12 +678,22 @@ async def add_kg_triples_batch_to_db(
                 },
                 {updated_ts: timestamp()}
             ) YIELD node AS s_new
-            WITH CASE WHEN s IS NOT NULL THEN s ELSE s_new END AS s
+            WITH s_new as s
+            RETURN s
 
-            // Handle object node - first try to find by name, then by ID if name lookup fails
+            // Handle object node - first try to find by name
             OPTIONAL MATCH (o:{$object_label} {name: $object_name_param})
             WITH s, o
-            WHERE o IS NULL AND $object_id_param IS NOT NULL AND toString($object_id_param) <> ''
+            WHERE o IS NOT NULL
+            RETURN s, o
+            UNION
+            // If not found by name, try to find by ID if available
+            OPTIONAL MATCH (o:{$object_label} {id: $object_id_param})
+            WITH s, o
+            WHERE o IS NOT NULL AND $object_id_param IS NOT NULL AND toString($object_id_param) <> ''
+            RETURN s, o
+            UNION
+            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$object_label],
                 {id: $object_id_param},
@@ -677,10 +706,8 @@ async def add_kg_triples_batch_to_db(
                 },
                 {updated_ts: timestamp()}
             ) YIELD node AS o_new
-            WITH s, o, o_new
-
-            // Use the found node (by name) or the merged node (by ID)
-            WITH s, CASE WHEN o IS NOT NULL THEN o ELSE o_new END AS o
+            WITH s, o_new as o
+            RETURN s, o
 
             WITH s, o
             CALL apoc.merge.relationship(
