@@ -217,7 +217,11 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 logger.warning("commit_to_graph: failed to load chapter embedding", error=str(e))
         elif state.get("generated_embedding"):
             # Fallback for backward compatibility or if not externalized yet
-            embedding = state.get("generated_embedding")
+            generated_embedding = state.get("generated_embedding")
+            if isinstance(generated_embedding, list):
+                embedding = cast(list[float], generated_embedding)
+            else:
+                embedding = None
 
         chapter_statement = _build_chapter_node_statement(
             chapter_number=state.get("current_chapter", 1),
