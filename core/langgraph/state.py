@@ -24,11 +24,6 @@ from core.langgraph.content_manager import ContentRef
 from core.schema_validator import schema_validator
 
 # Import TypedDict structures for proper type annotations
-from models.agent_models import (
-    EvaluationResult,
-    PatchInstruction,
-)
-
 # Import existing SAGA models for compatibility
 from models.kg_models import CharacterProfile, WorldItem
 
@@ -351,7 +346,6 @@ def create_initial_state(
     Returns:
         A fully initialized state mapping suitable for `graph.invoke()` / `graph.ainvoke()`.
     """
-    import os
 
     state: NarrativeState = {
         # Project metadata
