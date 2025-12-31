@@ -938,11 +938,13 @@ async def _build_relationship_statements(
                 if cached_id:
                     resolved_stable_id = cached_id
                 else:
-                    resolved_stable_id = generate_entity_id(
+                    logger.debug(
+                        "_make_entity_dict: no existing entity found, will merge on name",
                         name=name,
-                        category=entity_category or neo4j_type.lower(),
-                        chapter=chapter,
+                        type=neo4j_type,
+                        cache_key=cache_key,
                     )
+                    resolved_stable_id = None
 
         return {
             "name": name,
