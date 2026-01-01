@@ -7,7 +7,7 @@ from async_lru import alru_cache  # type: ignore[import-untyped]
 import config
 import utils
 from core.db_manager import neo4j_manager
-from core.exceptions import handle_database_error
+from core.exceptions import ValidationError, handle_database_error
 from core.schema_validator import validate_kg_object
 from models import WorldItem
 from models.kg_constants import (
@@ -190,7 +190,15 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
             f"Error validating world item core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
             exc_info=True,
         )
-        return None
+        raise ValidationError(
+            f"Failed to validate world item fields",
+            details={
+                "category": category,
+                "name": item_name,
+                "id": we_id,
+                "error": str(e),
+            },
+        )
 
     # Prefer the fetched/validated node id as the single effective id for enrichment + identity.
     effective_id = we_id
