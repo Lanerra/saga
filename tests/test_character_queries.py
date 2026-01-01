@@ -130,9 +130,9 @@ class TestGetCharacterInfoForSnippet:
             mock_neo4j.execute_read_query = AsyncMock(
                 side_effect=ServiceUnavailable("Connection lost")
             )
-            mock_neo4j.ensure_connection = AsyncMock()
+            mock_neo4j.connect = AsyncMock()
 
-            with pytest.raises((DatabaseError, ServiceUnavailable)):
+            with pytest.raises(DatabaseError):
                 await character_queries.get_character_info_for_snippet_from_db("Alice", chapter_limit=5)
 
     async def test_get_character_info_for_snippet_returns_none_on_not_found(self):

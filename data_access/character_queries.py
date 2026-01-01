@@ -571,7 +571,7 @@ async def get_character_info_for_snippet_from_db(
             char_name,
             e,
         )
-        await neo4j_manager.ensure_connection()
+        await neo4j_manager.connect()
         try:
             result = await neo4j_manager.execute_read_query(query, params)
         except Exception as retry_error:
