@@ -1013,12 +1013,13 @@ async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | No
         results = await neo4j_manager.execute_read_query(query, {"novel_id_param": novel_id_param})
         if results and results[0] and "value" in results[0]:
             return results[0]["value"]
-    except Exception as e:  # pragma: no cover - narrow DB errors
-        logger.error(
-            f"Neo4j: Error retrieving NovelInfo property '{property_key}': {e}",
-            exc_info=True,
+        return None
+    except Exception as e:
+        raise handle_database_error(
+            "_get_novel_info_property_from_db_cached",
+            e,
+            property_key=property_key,
         )
-    return None
 
 
 async def get_novel_info_property_from_db(property_key: str) -> Any | None:
