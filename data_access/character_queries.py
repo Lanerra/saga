@@ -4,7 +4,7 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore[import-untyped]
-from neo4j.exceptions import ClientError, Neo4jError, ServiceUnavailable
+from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
 import utils
 from core.db_manager import neo4j_manager
