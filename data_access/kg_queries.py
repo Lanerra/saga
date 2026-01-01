@@ -1726,7 +1726,19 @@ async def consolidate_similar_relationships() -> int:
 
 
 async def get_shortest_path_length_between_entities(name1: str, name2: str, max_depth: int = 4) -> int | None:
-    """Return the shortest path length between two entities if it exists."""
+    """Return the shortest path length between two entities if it exists.
+
+    Args:
+        name1: First entity name
+        name2: Second entity name
+        max_depth: Maximum path depth to search
+
+    Returns:
+        Path length or None if no path exists
+
+    Raises:
+        DatabaseError: On database errors
+    """
     if max_depth <= 0:
         return None
 
@@ -1739,6 +1751,12 @@ async def get_shortest_path_length_between_entities(name1: str, name2: str, max_
         results = await neo4j_manager.execute_read_query(query, {"name1": name1, "name2": name2})
         if results:
             return results[0].get("len")
+        return None
     except Exception as exc:
-        logger.error(f"Failed to compute shortest path length: {exc}", exc_info=True)
-    return None
+        raise handle_database_error(
+            "get_shortest_path_length_between_entities",
+            exc,
+            name1=name1,
+            name2=name2,
+            max_depth=max_depth,
+        )

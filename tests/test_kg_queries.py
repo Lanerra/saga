@@ -461,6 +461,24 @@ class TestPathQueries:
         result = await kg_queries.get_shortest_path_length_between_entities("Alice", "Zoe")
         assert result is None
 
+    async def test_get_shortest_path_length_between_entities_raises_on_database_error(self, monkeypatch):
+        """get_shortest_path_length_between_entities should propagate DatabaseError, not return None."""
+        from neo4j.exceptions import TransientError
+
+        mock_read = AsyncMock(side_effect=TransientError("Timeout"))
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await kg_queries.get_shortest_path_length_between_entities("Alice", "Bob")
+
+    async def test_get_shortest_path_length_between_entities_returns_none_when_no_path(self, monkeypatch):
+        """When no path exists, should return None (not an error)."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        result = await kg_queries.get_shortest_path_length_between_entities("Alice", "Bob")
+        assert result is None
+
 
 @pytest.mark.asyncio
 class TestChapterContext:
