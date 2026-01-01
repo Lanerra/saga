@@ -160,6 +160,22 @@ class TestGetEmbedding:
         result = await chapter_queries.get_embedding_from_db(1)
         assert result is None
 
+    async def test_get_embedding_raises_on_database_error(self, monkeypatch):
+        """get_embedding_from_db should propagate DatabaseError, not return None."""
+        mock_read = AsyncMock(side_effect=Exception("Database connection failed"))
+        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await chapter_queries.get_embedding_from_db(1)
+
+    async def test_get_embedding_returns_none_when_missing(self, monkeypatch):
+        """When embedding doesn't exist, should return None (not an error)."""
+        mock_read = AsyncMock(return_value=[{}])
+        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        result = await chapter_queries.get_embedding_from_db(999)
+        assert result is None
+
 
 @pytest.mark.asyncio
 class TestFindSemanticContext:

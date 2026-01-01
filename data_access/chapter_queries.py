@@ -220,13 +220,11 @@ async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
 
     Returns:
         The embedding as a NumPy array when present. Returns None when:
-        - `chapter_number` is invalid,
-        - the chapter has no stored embedding vector, or
-        - the query fails.
+        - `chapter_number` is invalid
+        - the chapter has no stored embedding vector
 
-    Notes:
-        Error behavior:
-            This function logs exceptions and returns None rather than raising.
+    Raises:
+        DatabaseError: On database errors
     """
     if chapter_number <= 0:
         return None
@@ -243,8 +241,11 @@ async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
         logger.debug(f"Neo4j: No embedding vector found on chapter node {chapter_number}.")
         return None
     except Exception as e:
-        logger.error(f"Neo4j: Error getting embedding for {chapter_number}: {e}", exc_info=True)
-        return None
+        raise handle_database_error(
+            "get_embedding_from_db",
+            e,
+            chapter_number=chapter_number,
+        )
 
 
 async def find_semantic_context_native(
