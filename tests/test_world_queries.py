@@ -357,7 +357,9 @@ class TestGetWorldElementsForSnippet:
 
     async def test_get_world_elements_for_snippet_raises_database_error_on_db_failure(self, monkeypatch):
         """P1.9: DB failures should raise standardized DatabaseError (not return [])."""
-        mock_read = AsyncMock(side_effect=Exception("connection refused"))
+        from neo4j.exceptions import Neo4jError
+
+        mock_read = AsyncMock(side_effect=Neo4jError("connection refused"))
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         with pytest.raises(DatabaseError):
@@ -468,3 +470,13 @@ class TestGetBootstrapWorldElements:
 
         result = await world_queries.get_bootstrap_world_elements()
         assert isinstance(result, list)
+
+
+def test_world_queries_catch_specific_exceptions():
+    """Verify world_queries catches specific exceptions, not Exception."""
+    import inspect
+    from data_access import world_queries
+
+    source = inspect.getsource(world_queries)
+
+    assert "except Exception" not in source, "Found broad 'except Exception' handlers"
