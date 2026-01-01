@@ -1,11 +1,13 @@
 # tests/test_character_queries.py
 """Tests for data_access/character_queries.py"""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from neo4j.exceptions import ClientError, ServiceUnavailable
 
 import utils
+from core.exceptions import DatabaseConnectionError, DatabaseError
 from data_access import character_queries
 from models import CharacterProfile
 
@@ -121,6 +123,25 @@ class TestGetCharacterInfoForSnippet:
         assert result["current_status"] == "Active"
         assert result["most_recent_development_note"] == "N/A"
         assert result["is_provisional_overall"] is False
+
+    async def test_get_character_info_for_snippet_raises_on_database_error(self):
+        """get_character_info_for_snippet_from_db should propagate DatabaseError, not return None."""
+        with patch("data_access.character_queries.neo4j_manager") as mock_neo4j:
+            mock_neo4j.execute_read_query = AsyncMock(
+                side_effect=ServiceUnavailable("Connection lost")
+            )
+            mock_neo4j.ensure_connection = AsyncMock()
+
+            with pytest.raises((DatabaseError, ServiceUnavailable)):
+                await character_queries.get_character_info_for_snippet_from_db("Alice", chapter_limit=5)
+
+    async def test_get_character_info_for_snippet_returns_none_on_not_found(self):
+        """When character truly doesn't exist, should return None (not an error case)."""
+        with patch("data_access.character_queries.neo4j_manager") as mock_neo4j:
+            mock_neo4j.execute_read_query = AsyncMock(return_value=[])
+
+            result = await character_queries.get_character_info_for_snippet_from_db("NonExistent", chapter_limit=5)
+            assert result is None
 
 
 @pytest.mark.asyncio
