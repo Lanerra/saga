@@ -60,10 +60,13 @@ async def test_add_kg_triples_with_existing_entity_by_name():
         assert "OPTIONAL MATCH (o:{$object_label} {name: $object_name_param})" in query or "OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})" in query
 
         # Verify the query handles the case where node is found vs. needs to be created
-        assert "WHERE o IS NULL AND $object_id_param IS NOT NULL" in query or "WHERE s IS NULL AND $subject_id_param IS NOT NULL" in query
+        assert "WHERE o IS NOT NULL" in query or "WHERE s IS NOT NULL" in query
 
-        # Verify the query uses CASE WHEN to choose between found and merged nodes
-        assert "CASE WHEN o IS NOT NULL THEN o ELSE o_new END AS o" in query or "CASE WHEN s IS NOT NULL THEN s ELSE s_new END AS s" in query
+        # Verify the query uses UNION to try different lookup strategies
+        assert "UNION" in query
+
+        # Verify the query creates new nodes when needed
+        assert "CALL apoc.merge.node" in query
 
         print("✓ Test passed: Query correctly handles existing entities by name")
 

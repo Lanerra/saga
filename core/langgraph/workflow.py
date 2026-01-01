@@ -510,7 +510,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     # Generation flow
     # Mainline Phase 2 ordering:
-    # generate → extract → gen_scene_embeddings → assemble_chapter → normalize_relationships → validate → commit → summarize …
+    # generate → extract → gen_scene_embeddings → assemble_chapter → normalize_relationships → commit → validate → summarize …
     workflow.add_conditional_edges(
         "generate",
         should_handle_error,
@@ -556,18 +556,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         "normalize_relationships",
         should_handle_error,
         {
-            "continue": "validate",
-            "error": "error_handler",
-        },
-    )
-
-    # Conditional edge: validate → (revise, commit, or error)
-    # Uses should_revise_or_handle_error to prioritize fatal errors over revision.
-    workflow.add_conditional_edges(
-        "validate",
-        should_revise_or_handle_error,
-        {
-            "revise": "revise",
             "continue": "commit",
             "error": "error_handler",
         },
@@ -577,6 +565,18 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         "commit",
         should_handle_error,
         {
+            "continue": "validate",
+            "error": "error_handler",
+        },
+    )
+
+    # Conditional edge: validate → (revise, summarize, or error)
+    # Uses should_revise_or_handle_error to prioritize fatal errors over revision.
+    workflow.add_conditional_edges(
+        "validate",
+        should_revise_or_handle_error,
+        {
+            "revise": "revise",
             "continue": "summarize",
             "error": "error_handler",
         },

@@ -4,6 +4,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from neo4j.exceptions import ClientError
 
 from core.exceptions import DatabaseError
 from data_access import kg_queries
@@ -359,6 +360,22 @@ class TestEntityDeduplication:
         result = await kg_queries.get_entity_context_for_resolution("alice_entity_id")
         assert result is not None
 
+    async def test_get_entity_context_for_resolution_raises_on_database_error(self, monkeypatch):
+        """get_entity_context_for_resolution should propagate DatabaseError, not return None."""
+        mock_read = AsyncMock(side_effect=ClientError("Invalid query"))
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await kg_queries.get_entity_context_for_resolution("entity123")
+
+    async def test_get_entity_context_for_resolution_returns_none_when_not_found(self, monkeypatch):
+        """When entity doesn't exist, should return None (not an error)."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        result = await kg_queries.get_entity_context_for_resolution("nonexistent")
+        assert result is None
+
 
 @pytest.mark.asyncio
 class TestRelationshipMaintenance:
@@ -444,6 +461,24 @@ class TestPathQueries:
         result = await kg_queries.get_shortest_path_length_between_entities("Alice", "Zoe")
         assert result is None
 
+    async def test_get_shortest_path_length_between_entities_raises_on_database_error(self, monkeypatch):
+        """get_shortest_path_length_between_entities should propagate DatabaseError, not return None."""
+        from neo4j.exceptions import TransientError
+
+        mock_read = AsyncMock(side_effect=TransientError("Timeout"))
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await kg_queries.get_shortest_path_length_between_entities("Alice", "Bob")
+
+    async def test_get_shortest_path_length_between_entities_returns_none_when_no_path(self, monkeypatch):
+        """When no path exists, should return None (not an error)."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        result = await kg_queries.get_shortest_path_length_between_entities("Alice", "Bob")
+        assert result is None
+
 
 @pytest.mark.asyncio
 class TestChapterContext:
@@ -475,3 +510,55 @@ class TestChapterContext:
         assert called_params["chapter_context_limit"] == 5
         assert called_params["max_event_chapters"] > 0
         assert called_params["max_rel_chapters"] > 0
+
+
+@pytest.mark.asyncio
+class TestNovelInfoPropertyCached:
+    """Tests for _get_novel_info_property_from_db_cached exception propagation."""
+
+    async def test_get_novel_info_property_cached_raises_on_database_error(self, monkeypatch):
+        """_get_novel_info_property_from_db_cached should propagate DatabaseError, not return None."""
+        from neo4j.exceptions import DatabaseUnavailable
+
+        kg_queries._get_novel_info_property_from_db_cached.cache_clear()
+
+        mock_read = AsyncMock(side_effect=DatabaseUnavailable("Database unavailable"))
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await kg_queries._get_novel_info_property_from_db_cached("title")
+
+    async def test_get_novel_info_property_cached_returns_none_when_missing(self, monkeypatch):
+        """When property doesn't exist, should return None (not an error)."""
+        kg_queries._get_novel_info_property_from_db_cached.cache_clear()
+
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        result = await kg_queries._get_novel_info_property_from_db_cached("title")
+        assert result is None
+
+
+def test_kg_queries_catch_specific_exceptions():
+    """Verify kg_queries catches specific exceptions, not Exception.
+
+    Exception: 'except Exception' is allowed when followed by handle_database_error,
+    which standardizes all errors into DatabaseError.
+    """
+    import inspect
+    import re
+
+    source = inspect.getsource(kg_queries)
+
+    except_exception_pattern = re.compile(r'except Exception.*?(?=\n\s*(?:except|finally|$))', re.DOTALL)
+
+    invalid_handlers = []
+    for match in except_exception_pattern.finditer(source):
+        handler_text = match.group(0)
+        if "handle_database_error" not in handler_text:
+            invalid_handlers.append(handler_text[:100])
+
+    assert len(invalid_handlers) == 0, (
+        f"Found {len(invalid_handlers)} broad 'except Exception' handlers "
+        f"that don't use handle_database_error: {invalid_handlers}"
+    )

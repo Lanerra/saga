@@ -600,14 +600,22 @@ def _is_plot_stagnant(
         return True
 
     if entities is None:
-        entities = state.get("extracted_entities", {}) or {}
+        entities_raw = state.get("extracted_entities", {}) or {}
+        if not isinstance(entities_raw, dict):
+            entities = {}
+        else:
+            entities = entities_raw
 
     if relationships is None:
-        relationships = state.get("extracted_relationships", [])
+        relationships_raw = state.get("extracted_relationships", [])
+        if not isinstance(relationships_raw, list):
+            relationships = []
+        else:
+            relationships = relationships_raw
 
     # Check 2: Get all extracted elements
-    characters = entities.get("characters", [])
-    world_items = entities.get("world_items", [])
+    characters = entities.get("characters", []) if entities else []
+    world_items = entities.get("world_items", []) if entities else []
 
     # Canonical state-shape: events are stored in world_items with type == "Event".
     # We also accept legacy `extracted_entities["events"]` if present.
@@ -625,7 +633,7 @@ def _is_plot_stagnant(
 
     # Check 3: Count total new content
     total_new_elements = len(characters) + len(non_event_world_items) + len(extracted_events)
-    total_relationships = len(relationships)
+    total_relationships = len(relationships) if relationships is not None else 0
 
     # If we have no new elements AND no relationships, the plot is stagnant
     if total_new_elements == 0 and total_relationships == 0:

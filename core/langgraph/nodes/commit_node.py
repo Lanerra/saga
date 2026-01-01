@@ -217,7 +217,11 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 logger.warning("commit_to_graph: failed to load chapter embedding", error=str(e))
         elif state.get("generated_embedding"):
             # Fallback for backward compatibility or if not externalized yet
-            embedding = state.get("generated_embedding")
+            generated_embedding = state.get("generated_embedding")
+            if isinstance(generated_embedding, list):
+                embedding = cast(list[float], generated_embedding)
+            else:
+                embedding = None
 
         chapter_statement = _build_chapter_node_statement(
             chapter_number=state.get("current_chapter", 1),
@@ -934,11 +938,13 @@ async def _build_relationship_statements(
                 if cached_id:
                     resolved_stable_id = cached_id
                 else:
-                    resolved_stable_id = generate_entity_id(
+                    logger.debug(
+                        "_make_entity_dict: no existing entity found, will merge on name",
                         name=name,
-                        category=entity_category or neo4j_type.lower(),
-                        chapter=chapter,
+                        type=neo4j_type,
+                        cache_key=cache_key,
                     )
+                    resolved_stable_id = None
 
         return {
             "name": name,

@@ -119,7 +119,7 @@ class TestCommitToGraph:
         """
         from core.langgraph.nodes.extraction_nodes import consolidate_extraction
         from core.langgraph.nodes.relationship_normalization_node import normalize_relationships
-        from core.langgraph.state import ExtractedEntity, ExtractedRelationship
+        from core.langgraph.state import ExtractedRelationship
 
         project_dir = str(tmp_path)
 

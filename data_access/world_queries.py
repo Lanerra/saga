@@ -3,11 +3,12 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore[import-untyped]
+from neo4j.exceptions import Neo4jError
 
 import config
 import utils
 from core.db_manager import neo4j_manager
-from core.exceptions import handle_database_error
+from core.exceptions import ValidationError, handle_database_error
 from core.schema_validator import validate_kg_object
 from models import WorldItem
 from models.kg_constants import (
@@ -185,12 +186,20 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     # This ensures that all world items have valid id, category, and name
     try:
         category, item_name, we_id = utils.validate_world_item_fields(category, item_name, we_id)
-    except Exception as e:
+    except (KeyError, ValueError, TypeError) as e:
         logger.error(
             f"Error validating world item core fields: Category='{category}', Name='{item_name}', ID='{we_id}': {e}",
             exc_info=True,
         )
-        return None
+        raise ValidationError(
+            f"Failed to validate world item fields",
+            details={
+                "category": category,
+                "name": item_name,
+                "id": we_id,
+                "error": str(e),
+            },
+        )
 
     # Prefer the fetched/validated node id as the single effective id for enrichment + identity.
     effective_id = we_id
@@ -340,7 +349,7 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
                         "is_provisional": record.get("is_provisional", False),
                     }
                 )
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(
             f"Error fetching world elements for snippet (cat {category}): {e}",
             exc_info=True,
@@ -385,7 +394,7 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
     try:
         results = await neo4j_manager.execute_read_query(query)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error finding thin world elements: {e}", exc_info=True)
         return []
 
@@ -444,7 +453,7 @@ async def sync_world_items(
 
         return True
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError) as exc:
         logger.error(
             "Error persisting world item updates for chapter %d: %s",
             chapter_number,
@@ -492,7 +501,7 @@ async def get_world_building(*, include_provisional: bool = False) -> list[World
         logger.info("Fetched %d world items using native models", len(world_items))
         return world_items
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError) as exc:
         logger.error(f"Error fetching world building: {exc}", exc_info=True)
         return []
 
@@ -547,7 +556,7 @@ async def get_world_items_for_chapter_context_native(chapter_number: int, limit:
 
         return world_items
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError) as exc:
         logger.error(
             "Error fetching world items for chapter %d context: %s",
             chapter_number,
@@ -617,7 +626,7 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
                 if world_item.description and world_item.description.strip() and config.FILL_IN not in world_item.description:
                     bootstrap_elements.append(world_item)
 
-            except Exception as e:
+            except (KeyError, ValueError, TypeError) as e:
                 logger.warning(f"Failed to convert bootstrap element node to WorldItem: {e}. " f"Node: {dict(we_node)}")
                 continue
 
@@ -625,6 +634,6 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
 
         return bootstrap_elements
 
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Failed to retrieve bootstrap world elements: {e}. " f"Error type: {type(e).__name__}. " f"Check Neo4j connection and query syntax.")
         return []

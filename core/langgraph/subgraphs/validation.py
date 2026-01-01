@@ -344,7 +344,7 @@ async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
         query = """
             // Events for timeline validation
             MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
-            WHERE ch.number < $current_chapter AND e.timestamp IS NOT NULL
+            WHERE ch.number <= $current_chapter AND e.timestamp IS NOT NULL
             RETURN 'event' AS data_type,
                    e.description AS description,
                    e.timestamp AS timestamp,
@@ -373,7 +373,7 @@ async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
         results = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
 
         # Organize results into structured data
-        validation_data = {
+        validation_data: dict[str, Any] = {
             "events": [],
             "world_rules": [],
             "relationships": {},  # Key: (source_name, target_name), Value: {rel_type, first_chapter}
@@ -550,7 +550,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
 async def _check_timeline(
     extracted_events: list[Any],
     current_chapter: int,
-    existing_events: list[dict] = None,
+    existing_events: list[dict] | None = None,
 ) -> list[Contradiction]:
     """Check for timeline violations using extracted events and Neo4j history.
 
@@ -573,7 +573,7 @@ async def _check_timeline(
         if existing_events is None:
             query = """
                 MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
-                WHERE ch.number < $current_chapter
+                WHERE ch.number <= $current_chapter
                 AND e.timestamp IS NOT NULL
                 RETURN e.description AS description,
                        e.timestamp AS timestamp,
@@ -689,7 +689,7 @@ async def _check_world_rules(
     draft_text: str,
     world_rules: list[str],
     current_chapter: int,
-    existing_world_rules: list[dict] = None,
+    existing_world_rules: list[dict] | None = None,
 ) -> list[Contradiction]:
     """Check draft text against established world rules (best-effort).
 
@@ -834,7 +834,7 @@ def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
 async def _check_relationship_evolution(
     extracted_relationships: list[Any],
     current_chapter: int,
-    existing_relationships: dict[tuple[str, str], dict] = None,
+    existing_relationships: dict[tuple[str, str], dict] | None = None,
 ) -> list[Contradiction]:
     """Flag abrupt relationship shifts that may require narrative development.
 

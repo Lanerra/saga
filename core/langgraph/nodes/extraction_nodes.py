@@ -11,8 +11,6 @@ Notes:
 
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
 
 from core.langgraph.content_manager import ContentManager, require_project_dir
@@ -76,7 +74,4 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
             "current_node": "consolidate_extraction",
         }
     else:
-        raise ValueError(
-            f"consolidate_extraction: extracted_entities_ref and extracted_relationships_ref "
-            f"must be pre-externalized by extract_from_scenes subgraph (chapter {chapter_number})"
-        )
+        raise ValueError(f"consolidate_extraction: extracted_entities_ref and extracted_relationships_ref " f"must be pre-externalized by extract_from_scenes subgraph (chapter {chapter_number})")

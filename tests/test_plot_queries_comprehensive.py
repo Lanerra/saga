@@ -383,3 +383,13 @@ class TestGetLastPlotPointId:
 
         result = await plot_queries.get_last_plot_point_id()
         assert result is None
+
+
+def test_plot_queries_catch_specific_exceptions():
+    """Verify plot_queries catches specific exceptions, not Exception."""
+    import inspect
+    from data_access import plot_queries
+
+    source = inspect.getsource(plot_queries)
+
+    assert "except Exception" not in source, "Found broad 'except Exception' handlers"

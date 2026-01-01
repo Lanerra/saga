@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache
+from neo4j.exceptions import Neo4jError
 
 import config
 from core.db_manager import neo4j_manager
@@ -211,7 +212,7 @@ async def _promote_dynamic_relationships_to_typed_relationships(*, valid_types: 
     try:
         results = await neo4j_manager.execute_write_query(promotion_query, {"valid_types": valid_types})
         return results[0].get("promoted", 0) if results else 0
-    except Exception as exc:  # pragma: no cover - narrow DB errors
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(
             f"Failed to promote dynamic relationships to typed relationships: {exc}",
             exc_info=True,
@@ -307,7 +308,7 @@ async def normalize_and_deduplicate_relationships(
 
         return counts
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(
             f"Relationship maintenance pipeline failed: {exc}",
             exc_info=True,
@@ -555,7 +556,7 @@ async def add_kg_triples_batch_to_db(
                 from processing.entity_deduplication import generate_entity_id
 
                 subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
-            except Exception:
+            except (ImportError, ValueError, TypeError, AttributeError):
                 subject_id = None
         params["subject_id_param"] = subject_id
 
@@ -572,10 +573,19 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
-            // Handle subject node - first try to find by name, then by ID if name lookup fails
+            // Handle subject node - first try to find by name
             OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
             WITH s
-            WHERE s IS NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            WHERE s IS NOT NULL
+            RETURN s
+            UNION
+            // If not found by name, try to find by ID if available
+            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
+            WITH s
+            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            RETURN s
+            UNION
+            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$subject_label],
                 {id: $subject_id_param},
@@ -588,7 +598,8 @@ async def add_kg_triples_batch_to_db(
                 },
                 {updated_ts: timestamp()}
             ) YIELD node AS s_new
-            WITH CASE WHEN s IS NOT NULL THEN s ELSE s_new END AS s
+            WITH s_new as s
+            RETURN s
 
             MERGE (o:ValueNode {value: $object_literal_value_param, type: $value_node_type_param})
             ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
@@ -634,7 +645,7 @@ async def add_kg_triples_batch_to_db(
                     from processing.entity_deduplication import generate_entity_id
 
                     object_id = generate_entity_id(object_name, "character", int(chapter_number))
-                except Exception:
+                except (ImportError, ValueError, TypeError, AttributeError):
                     object_id = None
             params["object_id_param"] = object_id
 
@@ -643,10 +654,19 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
-            // Handle subject node - first try to find by name, then by ID if name lookup fails
+            // Handle subject node - first try to find by name
             OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
             WITH s
-            WHERE s IS NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            WHERE s IS NOT NULL
+            RETURN s
+            UNION
+            // If not found by name, try to find by ID if available
+            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
+            WITH s
+            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
+            RETURN s
+            UNION
+            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$subject_label],
                 {id: $subject_id_param},
@@ -659,12 +679,22 @@ async def add_kg_triples_batch_to_db(
                 },
                 {updated_ts: timestamp()}
             ) YIELD node AS s_new
-            WITH CASE WHEN s IS NOT NULL THEN s ELSE s_new END AS s
+            WITH s_new as s
+            RETURN s
 
-            // Handle object node - first try to find by name, then by ID if name lookup fails
+            // Handle object node - first try to find by name
             OPTIONAL MATCH (o:{$object_label} {name: $object_name_param})
             WITH s, o
-            WHERE o IS NULL AND $object_id_param IS NOT NULL AND toString($object_id_param) <> ''
+            WHERE o IS NOT NULL
+            RETURN s, o
+            UNION
+            // If not found by name, try to find by ID if available
+            OPTIONAL MATCH (o:{$object_label} {id: $object_id_param})
+            WITH s, o
+            WHERE o IS NOT NULL AND $object_id_param IS NOT NULL AND toString($object_id_param) <> ''
+            RETURN s, o
+            UNION
+            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$object_label],
                 {id: $object_id_param},
@@ -677,10 +707,8 @@ async def add_kg_triples_batch_to_db(
                 },
                 {updated_ts: timestamp()}
             ) YIELD node AS o_new
-            WITH s, o, o_new
-
-            // Use the found node (by name) or the merged node (by ID)
-            WITH s, CASE WHEN o IS NOT NULL THEN o ELSE o_new END AS o
+            WITH s, o_new as o
+            RETURN s, o
 
             WITH s, o
             CALL apoc.merge.relationship(
@@ -712,8 +740,7 @@ async def add_kg_triples_batch_to_db(
 
         clear_kg_read_caches()
 
-    except Exception as e:
-        # Log first few problematic params for debugging, if any
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         first_few_params_str = str([p_tuple[1] for p_tuple in statements_with_params[:2]]) if statements_with_params else "N/A"
         logger.error(
             f"Neo4j: Error in batch adding KG triples. First few params: {first_few_params_str}. Error: {e}",
@@ -943,7 +970,7 @@ async def get_most_recent_value_from_db(
                 f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
             )
             return value
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(
             f"Neo4j: Error querying KG. Query: '{full_query[:200]}...', Params: {parameters}, Error: {e}",
             exc_info=True,
@@ -966,6 +993,7 @@ async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | No
 
     Raises:
         ValueError: If `property_key` is not in `NOVEL_INFO_ALLOWED_PROPERTY_KEYS`.
+        DatabaseError: If database operation fails.
 
     Notes:
         Security:
@@ -986,12 +1014,13 @@ async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | No
         results = await neo4j_manager.execute_read_query(query, {"novel_id_param": novel_id_param})
         if results and results[0] and "value" in results[0]:
             return results[0]["value"]
-    except Exception as e:  # pragma: no cover - narrow DB errors
-        logger.error(
-            f"Neo4j: Error retrieving NovelInfo property '{property_key}': {e}",
-            exc_info=True,
+        return None
+    except Exception as e:
+        raise handle_database_error(
+            "_get_novel_info_property_from_db_cached",
+            e,
+            property_key=property_key,
         )
-    return None
 
 
 async def get_novel_info_property_from_db(property_key: str) -> Any | None:
@@ -1145,7 +1174,7 @@ async def get_chapter_context_for_entity(
         )
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(
             f"Error getting chapter context for entity '{entity_name or entity_id}': {e}",
             exc_info=True,
@@ -1188,7 +1217,7 @@ async def find_contradictory_trait_characters(
             results = await neo4j_manager.execute_read_query(query, params)
             if results:
                 all_findings.extend(results)
-        except Exception as e:
+        except (Neo4jError, KeyError, ValueError, TypeError) as e:
             logger.error(
                 f"Error checking for contradictory traits '{trait1}' vs '{trait2}': {e}",
                 exc_info=True,
@@ -1231,7 +1260,7 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
     try:
         results = await neo4j_manager.execute_read_query(query)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(f"Error checking for post-mortem activity: {e}", exc_info=True)
         return []
 
@@ -1417,7 +1446,7 @@ async def find_candidate_duplicate_entities(
         )
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(f"Error finding candidate duplicate entities: {e}", exc_info=True)
         return []
 
@@ -1427,6 +1456,15 @@ async def get_entity_context_for_resolution(
 ) -> dict[str, Any] | None:
     """
     Gathers comprehensive context for an entity to help an LLM decide on a merge.
+
+    Args:
+        entity_id: Entity ID to retrieve context for
+
+    Returns:
+        Entity context dict or None if not found
+
+    Raises:
+        DatabaseError: On database errors
     """
     query = """
     MATCH (e)
@@ -1455,20 +1493,14 @@ async def get_entity_context_for_resolution(
         if results:
             return results[0]
         else:
-            # Debug: Check if entity exists with any labels
-            debug_query = "MATCH (e) WHERE e.id = $entity_id OR e.name = $entity_id " "RETURN e.name AS name, labels(e) AS labels"
-            debug_results = await neo4j_manager.execute_read_query(debug_query, params)
-            if debug_results:
-                logger.debug(f"Entity {entity_id} exists with name '{debug_results[0]['name']}' " f"and labels {debug_results[0]['labels']} but returned no context")
-            else:
-                logger.debug(f"Entity {entity_id} does not exist in database")
+            logger.debug(f"Entity {entity_id} does not exist in database")
             return None
     except Exception as e:
-        logger.error(
-            f"Error getting context for entity resolution (id: {entity_id}): {e}",
-            exc_info=True,
+        raise handle_database_error(
+            "get_entity_context_for_resolution",
+            e,
+            entity_id=entity_id,
         )
-        return None
 
 
 async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = 3) -> bool:
@@ -1482,12 +1514,12 @@ async def merge_entities(source_id: str, target_id: str, reason: str, max_retrie
         try:
             logger.info(f"Merge attempt {attempt + 1}/{max_retries} for {source_id} -> {target_id}")
             return await _execute_atomic_merge(source_id, target_id, reason)
-        except Exception as e:
+        except (Neo4jError, KeyError, ValueError, TypeError) as e:
             logger.error(f"Merge attempt {attempt + 1}/{max_retries} failed: {e}", exc_info=True)
             error_msg = str(e).lower()
             if ("entitynotfound" in error_msg or "transaction" in error_msg or "locked" in error_msg or "deadlock" in error_msg) and attempt < max_retries - 1:
                 logger.warning(f"Entity merge attempt {attempt + 1}/{max_retries} failed, retrying: {e}")
-                await asyncio.sleep(0.1 * (2**attempt))  # Exponential backoff
+                await asyncio.sleep(0.1 * (2**attempt))
                 continue
             else:
                 logger.error(
@@ -1602,7 +1634,7 @@ async def _validate_and_correct_relationship_types() -> int:
 
         return corrected_count
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(f"Failed to validate relationship types: {exc}", exc_info=True)
         return 0
 
@@ -1619,7 +1651,7 @@ async def deduplicate_relationships() -> int:
     try:
         results = await neo4j_manager.execute_write_query(query)
         return results[0].get("deduplicated", 0) if results else 0
-    except Exception as exc:  # pragma: no cover - narrow DB errors
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(f"Failed to deduplicate relationships: {exc}", exc_info=True)
         return 0
 
@@ -1683,18 +1715,30 @@ async def consolidate_similar_relationships() -> int:
                 if count > 0:
                     logger.info(f"Consolidated {count} relationships: {current_type} -> {canonical_type}")
 
-            except Exception as exc:
+            except (Neo4jError, KeyError, ValueError, TypeError) as exc:
                 logger.warning(f"Failed to consolidate {current_type} -> {canonical_type}: {exc}")
 
         return consolidation_count
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error("Failed to consolidate similar relationships: %s", exc, exc_info=True)
         return 0
 
 
 async def get_shortest_path_length_between_entities(name1: str, name2: str, max_depth: int = 4) -> int | None:
-    """Return the shortest path length between two entities if it exists."""
+    """Return the shortest path length between two entities if it exists.
+
+    Args:
+        name1: First entity name
+        name2: Second entity name
+        max_depth: Maximum path depth to search
+
+    Returns:
+        Path length or None if no path exists
+
+    Raises:
+        DatabaseError: On database errors
+    """
     if max_depth <= 0:
         return None
 
@@ -1707,6 +1751,12 @@ async def get_shortest_path_length_between_entities(name1: str, name2: str, max_
         results = await neo4j_manager.execute_read_query(query, {"name1": name1, "name2": name2})
         if results:
             return results[0].get("len")
+        return None
     except Exception as exc:
-        logger.error(f"Failed to compute shortest path length: {exc}", exc_info=True)
-    return None
+        raise handle_database_error(
+            "get_shortest_path_length_between_entities",
+            exc,
+            name1=name1,
+            name2=name2,
+            max_depth=max_depth,
+        )

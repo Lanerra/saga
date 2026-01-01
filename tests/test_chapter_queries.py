@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
+from neo4j.exceptions import Neo4jError
 
 from core.exceptions import DatabaseError
 from data_access import chapter_queries
@@ -122,7 +123,7 @@ class TestGetChapterData:
 
     async def test_get_chapter_data_raises_database_error_on_db_failure(self, monkeypatch):
         """P1.9: DB failures should raise standardized DatabaseError (not return None)."""
-        mock_read = AsyncMock(side_effect=Exception("connection refused"))
+        mock_read = AsyncMock(side_effect=Neo4jError("connection refused"))
         monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
 
         with pytest.raises(DatabaseError):
@@ -158,6 +159,22 @@ class TestGetEmbedding:
         monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await chapter_queries.get_embedding_from_db(1)
+        assert result is None
+
+    async def test_get_embedding_raises_on_database_error(self, monkeypatch):
+        """get_embedding_from_db should propagate DatabaseError, not return None."""
+        mock_read = AsyncMock(side_effect=Neo4jError("Database connection failed"))
+        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await chapter_queries.get_embedding_from_db(1)
+
+    async def test_get_embedding_returns_none_when_missing(self, monkeypatch):
+        """When embedding doesn't exist, should return None (not an error)."""
+        mock_read = AsyncMock(return_value=[{}])
+        monkeypatch.setattr(chapter_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        result = await chapter_queries.get_embedding_from_db(999)
         assert result is None
 
 
@@ -275,3 +292,12 @@ class TestGetChapterContentBatch:
         assert len(result) == 2
         assert 1 in result
         assert 2 in result
+
+
+def test_chapter_queries_catch_specific_exceptions():
+    """Verify chapter_queries catches specific exceptions, not Exception (F006)."""
+    import inspect
+
+    source = inspect.getsource(chapter_queries)
+
+    assert "except Exception" not in source, "Found broad 'except Exception' handlers"
