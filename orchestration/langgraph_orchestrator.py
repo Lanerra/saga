@@ -334,6 +334,8 @@ class LangGraphOrchestrator:
             medium_model=config.MEDIUM_MODEL,
             small_model=config.SMALL_MODEL,
             narrative_model=config.NARRATIVE_MODEL,
+            # Revision control
+            max_iterations=config.MAX_REVISION_CYCLES_PER_CHAPTER,
         )
 
         # Update current chapter and initialization status
