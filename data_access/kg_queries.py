@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache
+from neo4j.exceptions import Neo4jError
 
 import config
 from core.db_manager import neo4j_manager
@@ -211,7 +212,7 @@ async def _promote_dynamic_relationships_to_typed_relationships(*, valid_types: 
     try:
         results = await neo4j_manager.execute_write_query(promotion_query, {"valid_types": valid_types})
         return results[0].get("promoted", 0) if results else 0
-    except Exception as exc:  # pragma: no cover - narrow DB errors
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(
             f"Failed to promote dynamic relationships to typed relationships: {exc}",
             exc_info=True,
@@ -307,7 +308,7 @@ async def normalize_and_deduplicate_relationships(
 
         return counts
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(
             f"Relationship maintenance pipeline failed: {exc}",
             exc_info=True,
@@ -555,7 +556,7 @@ async def add_kg_triples_batch_to_db(
                 from processing.entity_deduplication import generate_entity_id
 
                 subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
-            except Exception:
+            except (ImportError, ValueError, TypeError, AttributeError):
                 subject_id = None
         params["subject_id_param"] = subject_id
 
@@ -644,7 +645,7 @@ async def add_kg_triples_batch_to_db(
                     from processing.entity_deduplication import generate_entity_id
 
                     object_id = generate_entity_id(object_name, "character", int(chapter_number))
-                except Exception:
+                except (ImportError, ValueError, TypeError, AttributeError):
                     object_id = None
             params["object_id_param"] = object_id
 
@@ -739,8 +740,7 @@ async def add_kg_triples_batch_to_db(
 
         clear_kg_read_caches()
 
-    except Exception as e:
-        # Log first few problematic params for debugging, if any
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         first_few_params_str = str([p_tuple[1] for p_tuple in statements_with_params[:2]]) if statements_with_params else "N/A"
         logger.error(
             f"Neo4j: Error in batch adding KG triples. First few params: {first_few_params_str}. Error: {e}",
@@ -970,7 +970,7 @@ async def get_most_recent_value_from_db(
                 f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
             )
             return value
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(
             f"Neo4j: Error querying KG. Query: '{full_query[:200]}...', Params: {parameters}, Error: {e}",
             exc_info=True,
@@ -1174,7 +1174,7 @@ async def get_chapter_context_for_entity(
         )
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(
             f"Error getting chapter context for entity '{entity_name or entity_id}': {e}",
             exc_info=True,
@@ -1217,7 +1217,7 @@ async def find_contradictory_trait_characters(
             results = await neo4j_manager.execute_read_query(query, params)
             if results:
                 all_findings.extend(results)
-        except Exception as e:
+        except (Neo4jError, KeyError, ValueError, TypeError) as e:
             logger.error(
                 f"Error checking for contradictory traits '{trait1}' vs '{trait2}': {e}",
                 exc_info=True,
@@ -1260,7 +1260,7 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
     try:
         results = await neo4j_manager.execute_read_query(query)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(f"Error checking for post-mortem activity: {e}", exc_info=True)
         return []
 
@@ -1446,7 +1446,7 @@ async def find_candidate_duplicate_entities(
         )
         results = await neo4j_manager.execute_read_query(query, params)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(f"Error finding candidate duplicate entities: {e}", exc_info=True)
         return []
 
@@ -1514,12 +1514,12 @@ async def merge_entities(source_id: str, target_id: str, reason: str, max_retrie
         try:
             logger.info(f"Merge attempt {attempt + 1}/{max_retries} for {source_id} -> {target_id}")
             return await _execute_atomic_merge(source_id, target_id, reason)
-        except Exception as e:
+        except (Neo4jError, KeyError, ValueError, TypeError) as e:
             logger.error(f"Merge attempt {attempt + 1}/{max_retries} failed: {e}", exc_info=True)
             error_msg = str(e).lower()
             if ("entitynotfound" in error_msg or "transaction" in error_msg or "locked" in error_msg or "deadlock" in error_msg) and attempt < max_retries - 1:
                 logger.warning(f"Entity merge attempt {attempt + 1}/{max_retries} failed, retrying: {e}")
-                await asyncio.sleep(0.1 * (2**attempt))  # Exponential backoff
+                await asyncio.sleep(0.1 * (2**attempt))
                 continue
             else:
                 logger.error(
@@ -1634,7 +1634,7 @@ async def _validate_and_correct_relationship_types() -> int:
 
         return corrected_count
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(f"Failed to validate relationship types: {exc}", exc_info=True)
         return 0
 
@@ -1651,7 +1651,7 @@ async def deduplicate_relationships() -> int:
     try:
         results = await neo4j_manager.execute_write_query(query)
         return results[0].get("deduplicated", 0) if results else 0
-    except Exception as exc:  # pragma: no cover - narrow DB errors
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(f"Failed to deduplicate relationships: {exc}", exc_info=True)
         return 0
 
@@ -1715,12 +1715,12 @@ async def consolidate_similar_relationships() -> int:
                 if count > 0:
                     logger.info(f"Consolidated {count} relationships: {current_type} -> {canonical_type}")
 
-            except Exception as exc:
+            except (Neo4jError, KeyError, ValueError, TypeError) as exc:
                 logger.warning(f"Failed to consolidate {current_type} -> {canonical_type}: {exc}")
 
         return consolidation_count
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error("Failed to consolidate similar relationships: %s", exc, exc_info=True)
         return 0
 

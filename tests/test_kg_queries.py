@@ -537,3 +537,28 @@ class TestNovelInfoPropertyCached:
 
         result = await kg_queries._get_novel_info_property_from_db_cached("title")
         assert result is None
+
+
+def test_kg_queries_catch_specific_exceptions():
+    """Verify kg_queries catches specific exceptions, not Exception.
+
+    Exception: 'except Exception' is allowed when followed by handle_database_error,
+    which standardizes all errors into DatabaseError.
+    """
+    import inspect
+    import re
+
+    source = inspect.getsource(kg_queries)
+
+    except_exception_pattern = re.compile(r'except Exception.*?(?=\n\s*(?:except|finally|$))', re.DOTALL)
+
+    invalid_handlers = []
+    for match in except_exception_pattern.finditer(source):
+        handler_text = match.group(0)
+        if "handle_database_error" not in handler_text:
+            invalid_handlers.append(handler_text[:100])
+
+    assert len(invalid_handlers) == 0, (
+        f"Found {len(invalid_handlers)} broad 'except Exception' handlers "
+        f"that don't use handle_database_error: {invalid_handlers}"
+    )
