@@ -993,6 +993,7 @@ async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | No
 
     Raises:
         ValueError: If `property_key` is not in `NOVEL_INFO_ALLOWED_PROPERTY_KEYS`.
+        DatabaseError: If database operation fails.
 
     Notes:
         Security:
