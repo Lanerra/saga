@@ -483,7 +483,6 @@ class TestNovelInfoPropertyCached:
 
     async def test_get_novel_info_property_cached_raises_on_database_error(self, monkeypatch):
         """_get_novel_info_property_from_db_cached should propagate DatabaseError, not return None."""
-        from unittest.mock import patch
         from neo4j.exceptions import DatabaseUnavailable
 
         kg_queries._get_novel_info_property_from_db_cached.cache_clear()
@@ -491,7 +490,7 @@ class TestNovelInfoPropertyCached:
         mock_read = AsyncMock(side_effect=DatabaseUnavailable("Database unavailable"))
         monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
-        with pytest.raises((DatabaseError, DatabaseUnavailable)):
+        with pytest.raises(DatabaseError):
             await kg_queries._get_novel_info_property_from_db_cached("title")
 
     async def test_get_novel_info_property_cached_returns_none_when_missing(self, monkeypatch):
