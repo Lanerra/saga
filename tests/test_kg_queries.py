@@ -4,6 +4,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from neo4j.exceptions import ClientError
 
 from core.exceptions import DatabaseError
 from data_access import kg_queries
@@ -358,6 +359,22 @@ class TestEntityDeduplication:
 
         result = await kg_queries.get_entity_context_for_resolution("alice_entity_id")
         assert result is not None
+
+    async def test_get_entity_context_for_resolution_raises_on_database_error(self, monkeypatch):
+        """get_entity_context_for_resolution should propagate DatabaseError, not return None."""
+        mock_read = AsyncMock(side_effect=ClientError("Invalid query"))
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        with pytest.raises(DatabaseError):
+            await kg_queries.get_entity_context_for_resolution("entity123")
+
+    async def test_get_entity_context_for_resolution_returns_none_when_not_found(self, monkeypatch):
+        """When entity doesn't exist, should return None (not an error)."""
+        mock_read = AsyncMock(return_value=[])
+        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
+
+        result = await kg_queries.get_entity_context_for_resolution("nonexistent")
+        assert result is None
 
 
 @pytest.mark.asyncio

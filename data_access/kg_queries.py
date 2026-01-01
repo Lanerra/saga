@@ -1456,6 +1456,15 @@ async def get_entity_context_for_resolution(
 ) -> dict[str, Any] | None:
     """
     Gathers comprehensive context for an entity to help an LLM decide on a merge.
+
+    Args:
+        entity_id: Entity ID to retrieve context for
+
+    Returns:
+        Entity context dict or None if not found
+
+    Raises:
+        DatabaseError: On database errors
     """
     query = """
     MATCH (e)
@@ -1484,20 +1493,14 @@ async def get_entity_context_for_resolution(
         if results:
             return results[0]
         else:
-            # Debug: Check if entity exists with any labels
-            debug_query = "MATCH (e) WHERE e.id = $entity_id OR e.name = $entity_id " "RETURN e.name AS name, labels(e) AS labels"
-            debug_results = await neo4j_manager.execute_read_query(debug_query, params)
-            if debug_results:
-                logger.debug(f"Entity {entity_id} exists with name '{debug_results[0]['name']}' " f"and labels {debug_results[0]['labels']} but returned no context")
-            else:
-                logger.debug(f"Entity {entity_id} does not exist in database")
+            logger.debug(f"Entity {entity_id} does not exist in database")
             return None
     except Exception as e:
-        logger.error(
-            f"Error getting context for entity resolution (id: {entity_id}): {e}",
-            exc_info=True,
+        raise handle_database_error(
+            "get_entity_context_for_resolution",
+            e,
+            entity_id=entity_id,
         )
-        return None
 
 
 async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = 3) -> bool:
