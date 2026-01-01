@@ -3,6 +3,7 @@ from typing import Any
 
 import numpy as np
 import structlog
+from neo4j.exceptions import Neo4jError
 
 import config
 from core.db_manager import neo4j_manager
@@ -111,7 +112,7 @@ async def load_chapter_count_from_db() -> int:
         count = result[0]["chapter_count"] if result and result[0] else 0
         logger.info(f"Neo4j loaded chapter count: {count}")
         return count
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Failed to load chapter count from Neo4j: {e}", exc_info=True)
         return 0
 
@@ -157,7 +158,7 @@ async def save_chapter_data_to_db(
     try:
         await neo4j_manager.execute_write_query(query, parameters)
         logger.info(f"Neo4j: Successfully saved chapter data for chapter {chapter_number}.")
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(
             f"Neo4j: Error saving chapter data for chapter {chapter_number}: {e}",
             exc_info=True,
@@ -197,7 +198,7 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
             }
         logger.debug(f"Neo4j: No data found for chapter {chapter_number}.")
         return None
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(
             f"Neo4j: Error getting chapter data for {chapter_number}: {e}",
             exc_info=True,
@@ -240,7 +241,7 @@ async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
             return neo4j_manager.list_to_embedding(embedding_list)
         logger.debug(f"Neo4j: No embedding vector found on chapter node {chapter_number}.")
         return None
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         raise handle_database_error(
             "get_embedding_from_db",
             e,
@@ -388,7 +389,7 @@ async def find_semantic_context_native(
 
         return context_chapters
 
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native semantic context search: {e}", exc_info=True)
         return []
 
@@ -440,6 +441,6 @@ async def get_chapter_content_batch_native(
 
         return chapter_data
 
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native chapter batch retrieval: {e}", exc_info=True)
         return {}
