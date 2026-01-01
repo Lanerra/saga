@@ -331,3 +331,16 @@ class TestGetCharactersForChapterContext:
         result = await character_queries.get_characters_for_chapter_context_native(chapter_number=1, limit=10)
         assert len(result) > 0
         assert result[0].name == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_character_queries_catch_specific_exceptions():
+    """Verify character_queries catches specific exceptions, not Exception."""
+    import inspect
+
+    source = inspect.getsource(character_queries)
+
+    assert "except Exception" not in source, "Found broad 'except Exception' handlers"
+
+    assert "from neo4j.exceptions import" in source or "neo4j.exceptions" in source, \
+        "Should import specific Neo4j exceptions"

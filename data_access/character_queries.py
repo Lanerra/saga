@@ -4,7 +4,7 @@ from typing import Any
 
 import structlog
 from async_lru import alru_cache  # type: ignore[import-untyped]
-from neo4j.exceptions import ServiceUnavailable
+from neo4j.exceptions import ClientError, Neo4jError, ServiceUnavailable
 
 import utils
 from core.db_manager import neo4j_manager
@@ -574,14 +574,14 @@ async def get_character_info_for_snippet_from_db(
         await neo4j_manager.connect()
         try:
             result = await neo4j_manager.execute_read_query(query, params)
-        except Exception as retry_error:
+        except (ServiceUnavailable, Neo4jError, KeyError, ValueError, TypeError) as retry_error:
             raise handle_database_error(
                 "get_character_info_for_snippet_from_db (retry)",
                 retry_error,
                 character=char_name,
                 chapter_limit=chapter_limit,
             )
-    except Exception as e:
+    except (ServiceUnavailable, Neo4jError, KeyError, ValueError, TypeError) as e:
         raise handle_database_error(
             "get_character_info_for_snippet_from_db",
             e,
@@ -621,7 +621,7 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
     try:
         results = await neo4j_manager.execute_read_query(query)
         return results if results else []
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         logger.error(f"Error finding thin characters: {e}", exc_info=True)
         return []
 
@@ -683,7 +683,7 @@ async def sync_characters(
 
         return True
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(
             "Error persisting character updates for chapter %d: %s",
             chapter_number,
@@ -725,7 +725,7 @@ async def get_character_profiles() -> list[CharacterProfile]:
         logger.info("Fetched %d characters using native models", len(characters))
         return characters
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(f"Error fetching character profiles: {exc}", exc_info=True)
         return []
 
@@ -780,7 +780,7 @@ async def get_characters_for_chapter_context_native(chapter_number: int, limit: 
 
         return characters
 
-    except Exception as exc:
+    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(
             "Error fetching characters for chapter %d context: %s",
             chapter_number,
