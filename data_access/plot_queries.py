@@ -2,6 +2,7 @@
 from typing import Any
 
 import structlog
+from neo4j.exceptions import Neo4jError
 
 import config
 from core.db_manager import neo4j_manager
@@ -105,7 +106,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
                 {"novel_id_param": novel_id},
             )
             existing_db_pp_ids: set[str] = {record["id"] for record in existing_pp_records if record and record["id"]}
-        except Exception as e:
+        except (Neo4jError, KeyError, ValueError) as e:
             logger.error(
                 f"Failed to retrieve existing PlotPoint IDs for novel {novel_id}: {e}",
                 exc_info=True,
@@ -203,7 +204,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
             await neo4j_manager.execute_cypher_batch(statements)
         logger.info(f"Successfully synchronized plot outline for novel '{novel_id}' to Neo4j.")
         return True
-    except Exception as e:
+    except (Neo4jError, KeyError, ValueError) as e:
         logger.error(
             f"Error synchronizing plot outline for novel '{novel_id}': {e}",
             exc_info=True,
