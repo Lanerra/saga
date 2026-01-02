@@ -56,17 +56,20 @@ async def test_add_kg_triples_with_existing_entity_by_name():
         # Get the query and params for the relationship creation
         query, params = statements_with_params[0]
 
-        # Verify the query uses OPTIONAL MATCH to find existing nodes by name
-        assert "OPTIONAL MATCH (o:{$object_label} {name: $object_name_param})" in query or "OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})" in query
+        # Regression: Neo4j does not support parameterized labels like `:{$subject_label}`
+        assert ":{$" not in query
 
-        # Verify the query handles the case where node is found vs. needs to be created
-        assert "WHERE o IS NOT NULL" in query or "WHERE s IS NOT NULL" in query
-
-        # Verify the query uses UNION to try different lookup strategies
-        assert "UNION" in query
-
-        # Verify the query creates new nodes when needed
+        # Verify the query upserts subject/object via apoc.merge.node (valid dynamic label usage)
         assert "CALL apoc.merge.node" in query
+        assert "YIELD node AS s" in query
+        assert "YIELD node AS o" in query
+
+        # Verify stable id assignment occurs (prevents missing id)
+        assert "SET s.id = coalesce" in query
+        assert "SET o.id = coalesce" in query
+
+        # Verify the relationship merge occurs
+        assert "CALL apoc.merge.relationship" in query
 
         print("✓ Test passed: Query correctly handles existing entities by name")
 
@@ -100,10 +103,12 @@ async def test_add_kg_triples_with_literal_object():
 
         query, params = statements_with_params[0]
 
-        # Verify the query handles subject node correctly
-        assert "OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})" in query
+        # Regression: Neo4j does not support parameterized labels like `:{$subject_label}`
+        assert ":{$" not in query
 
-        # Verify it still creates ValueNode for literal objects
+        # Verify subject upsert and literal object handling
+        assert "CALL apoc.merge.node" in query
+        assert "YIELD node AS s" in query
         assert "MERGE (o:ValueNode" in query
 
         print("✓ Test passed: Literal object queries work correctly")

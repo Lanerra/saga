@@ -573,39 +573,26 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
-            // Handle subject node - first try to find by name
-            OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
-            WITH s
-            WHERE s IS NOT NULL
-            RETURN s
-            UNION
-            // If not found by name, try to find by ID if available
-            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
-            WITH s
-            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
-            RETURN s
-            UNION
-            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$subject_label],
-                {id: $subject_id_param},
+                {name: $subject_name_param},
                 {
                     created_ts: timestamp(),
                     updated_ts: timestamp(),
+                    created_chapter: $chapter_number_param,
                     type: $subject_label,
                     name: $subject_name_param,
-                    id: $subject_id_param
+                    is_provisional: true
                 },
                 {updated_ts: timestamp()}
-            ) YIELD node AS s_new
-            WITH s_new as s
-            RETURN s
+            ) YIELD node AS s
+
+            SET s.id = coalesce(s.id, $subject_id_param, randomUUID())
 
             MERGE (o:ValueNode {value: $object_literal_value_param, type: $value_node_type_param})
             ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
             ON MATCH SET o.updated_ts = timestamp()
 
-            WITH s, o
             CALL apoc.merge.relationship(
                 s,
                 $predicate_clean_param,
@@ -614,6 +601,7 @@ async def add_kg_triples_batch_to_db(
                 o,
                 apoc.map.merge($rel_props_param, {updated_ts: timestamp()})
             ) YIELD rel
+            RETURN rel
             """
             statements_with_params.append((query, params))
 
@@ -654,63 +642,38 @@ async def add_kg_triples_batch_to_db(
             params["rel_id_param"] = rel_id
 
             query = """
-            // Handle subject node - first try to find by name
-            OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
-            WITH s
-            WHERE s IS NOT NULL
-            RETURN s
-            UNION
-            // If not found by name, try to find by ID if available
-            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
-            WITH s
-            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
-            RETURN s
-            UNION
-            // If not found by name or ID, create a new node with the desired ID and name
             CALL apoc.merge.node(
                 [$subject_label],
-                {id: $subject_id_param},
+                {name: $subject_name_param},
                 {
                     created_ts: timestamp(),
                     updated_ts: timestamp(),
+                    created_chapter: $chapter_number_param,
                     type: $subject_label,
                     name: $subject_name_param,
-                    id: $subject_id_param
+                    is_provisional: true
                 },
                 {updated_ts: timestamp()}
-            ) YIELD node AS s_new
-            WITH s_new as s
-            RETURN s
+            ) YIELD node AS s
 
-            // Handle object node - first try to find by name
-            OPTIONAL MATCH (o:{$object_label} {name: $object_name_param})
-            WITH s, o
-            WHERE o IS NOT NULL
-            RETURN s, o
-            UNION
-            // If not found by name, try to find by ID if available
-            OPTIONAL MATCH (o:{$object_label} {id: $object_id_param})
-            WITH s, o
-            WHERE o IS NOT NULL AND $object_id_param IS NOT NULL AND toString($object_id_param) <> ''
-            RETURN s, o
-            UNION
-            // If not found by name or ID, create a new node with the desired ID and name
+            SET s.id = coalesce(s.id, $subject_id_param, randomUUID())
+
             CALL apoc.merge.node(
                 [$object_label],
-                {id: $object_id_param},
+                {name: $object_name_param},
                 {
                     created_ts: timestamp(),
                     updated_ts: timestamp(),
+                    created_chapter: $chapter_number_param,
                     type: $object_label,
                     name: $object_name_param,
-                    id: $object_id_param
+                    is_provisional: true
                 },
                 {updated_ts: timestamp()}
-            ) YIELD node AS o_new
-            WITH s, o_new as o
-            RETURN s, o
+            ) YIELD node AS o
 
-            WITH s, o
+            SET o.id = coalesce(o.id, $object_id_param, randomUUID())
+
             CALL apoc.merge.relationship(
                 s,
                 $predicate_clean_param,
@@ -719,6 +682,7 @@ async def add_kg_triples_batch_to_db(
                 o,
                 apoc.map.merge($rel_props_param, {updated_ts: timestamp()})
             ) YIELD rel
+            RETURN rel
             """
             statements_with_params.append((query, params))
         else:
@@ -728,6 +692,16 @@ async def add_kg_triples_batch_to_db(
     if not statements_with_params:
         logger.info("Neo4j: add_kg_triples_batch_to_db: No valid statements generated from triples.")
         return
+
+    preview_query, preview_params = statements_with_params[0]
+    logger.debug(
+        "Neo4j: add_kg_triples_batch_to_db batch preview",
+        query_preview=preview_query.strip()[:350],
+        preview_subject_label=preview_params.get("subject_label"),
+        preview_object_label=preview_params.get("object_label"),
+        preview_predicate=preview_params.get("predicate_clean_param"),
+        preview_chapter=preview_params.get("chapter_number_param"),
+    )
 
     try:
         await neo4j_manager.execute_cypher_batch(statements_with_params)
