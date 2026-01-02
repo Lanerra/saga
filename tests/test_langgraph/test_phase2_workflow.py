@@ -25,7 +25,7 @@ from core.langgraph.workflow import (
 )
 
 
-def test_create_checkpointer_filename_only_path_does_not_raise(tmp_path: Any, monkeypatch: Any) -> None:
+async def test_create_checkpointer_filename_only_path_does_not_raise(tmp_path: Any, monkeypatch: Any) -> None:
     """
     `create_checkpointer()` should not crash when `db_path` has no directory component.
 
@@ -36,8 +36,8 @@ def test_create_checkpointer_filename_only_path_does_not_raise(tmp_path: Any, mo
 
     from core.langgraph.workflow import create_checkpointer
 
-    checkpointer = create_checkpointer("saga.db")
-    assert checkpointer is not None
+    async with create_checkpointer("saga.db") as checkpointer:
+        assert checkpointer is not None
 
 
 @pytest.fixture

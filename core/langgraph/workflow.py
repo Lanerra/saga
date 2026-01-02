@@ -6,7 +6,8 @@ This module wires node callables and subgraphs into executable workflow graphs,
 including checkpointing and revision/error routing.
 """
 
-from typing import Any, Literal
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Literal
 
 import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
@@ -182,20 +183,18 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
     }
 
 
-def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSaver:
+@asynccontextmanager
+async def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncIterator[AsyncSqliteSaver]:
     """Create an async SQLite checkpointer for LangGraph state persistence.
 
     Args:
         db_path: Path to the SQLite checkpoint database.
 
-    Returns:
+    Yields:
         An `AsyncSqliteSaver` instance.
     """
     import os
 
-    # Ensure checkpoints directory exists.
-    #
-    # Note: `os.path.dirname("saga.db") == ""`, and `os.makedirs("")` can raise.
     db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
@@ -205,11 +204,8 @@ def create_checkpointer(db_path: str = "./checkpoints/saga.db") -> AsyncSqliteSa
         db_path=db_path,
     )
 
-    # Create async checkpointer
-    # AsyncSqliteSaver.from_conn_string handles the async connection
-    checkpointer = AsyncSqliteSaver.from_conn_string(db_path)
-
-    return checkpointer
+    async with AsyncSqliteSaver.from_conn_string(db_path) as checkpointer:
+        yield checkpointer
 
 
 def should_continue_init(state: NarrativeState) -> Literal["continue", "error"]:

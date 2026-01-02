@@ -132,7 +132,7 @@ class GraphHealingService:
         # Evidence 3: Age bonus - nodes that survive multiple chapters are likely important
         age_score = 0.0
         created_chapter = node.get("created_chapter", current_chapter)
-        if current_chapter > 0 and created_chapter:
+        if current_chapter > 0 and created_chapter is not None:
             age = current_chapter - created_chapter
             if age >= self.AGE_GRADUATION_CHAPTERS:
                 age_score = 0.2  # Full bonus for surviving 3+ chapters
