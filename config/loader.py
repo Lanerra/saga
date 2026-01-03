@@ -101,8 +101,12 @@ def reload_settings() -> bool:
 # -------------------------------------------------------------------------
 
 
-def _handle_sighup(signum: int, frame: Any) -> None:  # pragma: no cover
+def _handle_sighup(signum: int, _frame: Any) -> None:  # pragma: no cover
     """Handle `SIGHUP` by reloading configuration.
+
+    Args:
+        signum: Signal number (unused but required by signal handler signature).
+        _frame: Current stack frame (unused but required by signal handler signature).
 
     Side effects:
         Writes a success/failure message to stdout.

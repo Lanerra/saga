@@ -36,49 +36,7 @@ load_dotenv()
 logger = structlog.get_logger()
 
 
-async def _load_list_from_json_async(file_path: str, default_if_missing: list[str] | None = None) -> list[str]:
-    """Load a list of strings from a JSON file asynchronously.
 
-    This helper is intentionally permissive: it logs and returns a fallback rather than
-    raising. It is suitable for optional configuration artifacts where missing or invalid
-    content is treated as user input error rather than a fatal internal error.
-
-    Args:
-        file_path: Path to a JSON file expected to contain a list of strings.
-        default_if_missing: Value to return when the file is missing, unreadable, or does
-            not contain a list of strings.
-
-    Returns:
-        A list of strings from the file, or `default_if_missing` when the file cannot be
-        used.
-
-    """
-    if default_if_missing is None:
-        default_if_missing = []
-    try:
-        if os.path.exists(file_path):
-            async with aiofiles.open(file_path, mode="r", encoding="utf-8") as f:
-                raw_content = await f.read()
-            data = json.loads(raw_content)
-            if isinstance(data, list) and all(isinstance(item, str) for item in data):
-                return data
-            logger.warning(
-                "Content of file is not a list of strings. Using default.",
-                file_path=file_path,
-            )
-            return default_if_missing
-        logger.warning("Configuration file not found. Using default.", file_path=file_path)
-        return default_if_missing
-    except json.JSONDecodeError:
-        logger.error(
-            "Error decoding JSON from file. Using default.",
-            file_path=file_path,
-            exc_info=True,
-        )
-        return default_if_missing
-    except Exception:
-        logger.error("Unexpected error loading file.", file_path=file_path, exc_info=True)
-        return default_if_missing
 
 
 class SchemaEnforcementSettings(BaseSettings):

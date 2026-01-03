@@ -183,35 +183,7 @@ NORMALIZE_COMMON_VARIANTS = settings.schema_enforcement.NORMALIZE_COMMON_VARIANT
 LOG_SCHEMA_VIOLATIONS = settings.schema_enforcement.LOG_SCHEMA_VIOLATIONS
 
 
-# Legacy compatibility functions
-def get(key: str) -> Any:
-    """Return the value of a configuration attribute from `settings`.
 
-    Args:
-        key: Attribute name on the `settings` singleton.
-
-    Returns:
-        The current value of the named attribute.
-
-    Raises:
-        AttributeError: If `key` is not a valid attribute on `settings`.
-    """
-    return getattr(settings, key)
-
-
-def set(key: str, value: Any) -> None:
-    """Set a configuration attribute on `settings` at runtime.
-
-    This mutates the in-memory settings instance and does not persist to `.env`.
-
-    Args:
-        key: Attribute name on the `settings` singleton.
-        value: Value to assign.
-
-    Raises:
-        AttributeError: If `key` is not a valid attribute on `settings`.
-    """
-    setattr(settings, key, value)
 
 
 def reload() -> None:
