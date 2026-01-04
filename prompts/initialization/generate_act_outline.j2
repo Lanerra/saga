@@ -20,8 +20,6 @@ Chapters in act: ~{{ chapters_in_act }}
 
 ## Task
 
-Return valid JSON only; no markdown; no code fences; no commentary.
-
 The JSON root MUST be an object with EXACTLY these keys:
 - "act_number" (int): MUST equal {{ act_number }}
 - "total_acts" (int): MUST equal {{ total_acts }}
@@ -52,4 +50,7 @@ Constraints:
 - Do not include any keys not listed above.
 - Do not wrap the JSON in any surrounding text.
 
-Return the JSON object now.
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
+- Return a single JSON array at the top level.
+- Do NOT wrap the array in an object (for example: {"act_outline": [...]} is invalid).

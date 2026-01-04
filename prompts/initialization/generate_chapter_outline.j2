@@ -37,4 +37,7 @@ Content guidance (encode inside the JSON fields):
 - key_beats: 3-5 beats, each a concrete on-page action with clear cause→effect.
 - plot_point: 1-2 sentences for the chapter's single most important change.
 
-Return the JSON object.
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
+- Return a single JSON array at the top level.
+- Do NOT wrap the array in an object (for example: {"chapter_outline": [...]} is invalid).

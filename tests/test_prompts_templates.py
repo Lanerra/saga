@@ -118,8 +118,12 @@ def test_extract_relationships_prompt_contract_requires_wrapper_object() -> None
     # Wrapper key must be explicitly required.
     assert '"kg_triples"' in rendered or "kg_triples" in rendered
 
-    # JSON-only output contract must be explicit.
-    assert "Return ONLY valid JSON" in rendered
+    # JSON-only output contract must be explicit (standardized format).
+    assert "Output requirements:" in rendered
+    assert "Output valid JSON only." in rendered
+    assert "No markdown." in rendered
+    assert "No code fences." in rendered
+    assert "No commentary." in rendered
 
     # Must forbid returning a bare list (the drift regression we want to catch).
     assert "Do NOT return a bare list" in rendered
@@ -146,7 +150,8 @@ def test_relationship_disambiguation_prompt_contract_requires_decision_object() 
         },
     )
 
-    assert "Output MUST be valid JSON only." in rendered
+    assert "Output requirements:" in rendered
+    assert "Output valid JSON only." in rendered
     assert "No markdown." in rendered
     assert "No code fences." in rendered
     assert "No commentary." in rendered
@@ -169,10 +174,11 @@ def test_extract_characters_prompt_contract_requires_json_only_and_canonical_roo
         },
     )
 
-    assert re.search(r"Return\s+valid\s+JSON\s+only", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+markdown", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+code\s+fences", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+commentary", rendered, flags=re.IGNORECASE)
+    assert "Output requirements:" in rendered
+    assert "Output valid JSON only." in rendered
+    assert "No markdown." in rendered
+    assert "No code fences." in rendered
+    assert "No commentary." in rendered
 
     assert "character_updates" in rendered
     assert re.search(
@@ -193,10 +199,11 @@ def test_extract_events_prompt_contract_requires_json_only_and_canonical_root() 
         },
     )
 
-    assert re.search(r"Return\s+valid\s+JSON\s+only", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+markdown", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+code\s+fences", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+commentary", rendered, flags=re.IGNORECASE)
+    assert "Output requirements:" in rendered
+    assert "Output valid JSON only." in rendered
+    assert "No markdown." in rendered
+    assert "No code fences." in rendered
+    assert "No commentary." in rendered
 
     assert "world_updates" in rendered
     assert "Event" in rendered
@@ -218,10 +225,11 @@ def test_extract_locations_prompt_contract_requires_json_only_and_canonical_root
         },
     )
 
-    assert re.search(r"Return\s+valid\s+JSON\s+only", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+markdown", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+code\s+fences", rendered, flags=re.IGNORECASE)
-    assert re.search(r"no\s+commentary", rendered, flags=re.IGNORECASE)
+    assert "Output requirements:" in rendered
+    assert "Output valid JSON only." in rendered
+    assert "No markdown." in rendered
+    assert "No code fences." in rendered
+    assert "No commentary." in rendered
 
     assert "world_updates" in rendered
     assert "Location" in rendered
@@ -229,6 +237,125 @@ def test_extract_locations_prompt_contract_requires_json_only_and_canonical_root
         r'\{\s*"world_updates"\s*:\s*\{\s*"Location"\s*:\s*\{\s*\.\.\.\s*\}\s*\}\s*\}',
         rendered,
     )
+
+
+def test_all_json_templates_have_standardized_output_requirements() -> None:
+    """
+    Validation test for audit Group 1 (JSON output contract duplication).
+
+    Contract:
+    - All templates that output JSON MUST have the standardized "Output requirements" section.
+    - The section MUST include all five standardized bullet points:
+      - Output valid JSON only.
+      - Output a single JSON value only.
+      - No markdown.
+      - No code fences.
+      - No commentary.
+
+    This ensures consistency and prevents drift across 16+ JSON-outputting templates.
+    """
+    templates_requiring_json_contract = [
+        ("knowledge_agent/extract_characters.j2", {
+            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
+            "chapter_number": 1, "chapter_text": "Text"
+        }),
+        ("knowledge_agent/extract_locations.j2", {
+            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
+            "chapter_number": 1, "chapter_text": "Text"
+        }),
+        ("knowledge_agent/extract_events.j2", {
+            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
+            "chapter_number": 1, "chapter_text": "Text"
+        }),
+        ("knowledge_agent/extract_relationships.j2", {
+            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
+            "chapter_number": 1, "chapter_text": "Text"
+        }),
+        ("knowledge_agent/chapter_summary.j2", {
+            "chapter_number": 1, "chapter_text": "Text"
+        }),
+        ("knowledge_agent/extract_character_structured_lines.j2", {
+            "name": "Hero", "description": "A hero"
+        }),
+        ("knowledge_agent/extract_world_items_lines.j2", {
+            "setting": "Fantasy world", "outline_text": "Outline"
+        }),
+        ("knowledge_agent/enrich_node_from_context.j2", {
+            "entity_name": "Hero", "entity_type": "Character",
+            "current_description": "Unknown", "current_traits": [],
+            "summaries_text": "Context"
+        }),
+        ("knowledge_agent/relationship_disambiguate_normalize_or_distinct.j2", {
+            "new_type": "WORKS_WITH", "new_description": "Desc",
+            "existing_type": "COLLABORATES_WITH", "existing_usage_count": 5,
+            "examples_str": "Example"
+        }),
+        ("narrative_agent/plan_scenes.j2", {
+            "novel_title": "Test", "novel_genre": "Fantasy", "novel_theme": "Adventure",
+            "chapter_number": 1, "num_scenes": 4,
+            "outline": {"scene_description": "Desc", "key_beats": ["Beat1"]}
+        }),
+        ("initialization/generate_act_outline.j2", {
+            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
+            "setting": "World", "protagonist_name": "Hero", "act_number": 1,
+            "total_acts": 3, "act_role": "Setup", "chapters_in_act": 7,
+            "global_outline": "Outline", "character_context": "Context"
+        }),
+        ("initialization/generate_global_outline.j2", {
+            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
+            "setting": "World", "total_chapters": 20, "target_word_count": 80000,
+            "protagonist_name": "Hero", "character_context": "Context",
+            "character_names": ["Hero", "Ally"]
+        }),
+        ("initialization/generate_character_sheet.j2", {
+            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
+            "setting": "World", "character_name": "Hero", "is_protagonist": True,
+            "other_characters": [], "existing_traits_hint": ""
+        }),
+        ("initialization/generate_character_list.j2", {
+            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
+            "setting": "World", "protagonist_name": "Hero"
+        }),
+        ("initialization/generate_chapter_outline.j2", {
+            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
+            "setting": "World", "protagonist_name": "Hero", "chapter_number": 1,
+            "total_chapters": 20, "act_number": 1, "chapter_in_act": 1,
+            "global_outline": "Outline", "act_outline": "Act",
+            "character_context": "Context", "previous_context": "None"
+        }),
+        ("validation_agent/evaluate_quality.j2", {
+            "genre": "Fantasy", "theme": "Adventure", "chapter_number": 1,
+            "draft_text": "Chapter text", "summary_context": "Previous",
+            "outline_context": "Outline"
+        }),
+    ]
+
+    for template_path, context in templates_requiring_json_contract:
+        rendered = pr.render_prompt(template_path, context)
+
+        assert "Output requirements:" in rendered, (
+            f"{template_path} missing 'Output requirements:' header"
+        )
+
+        assert re.search(r"[-*]\s*Output valid JSON only\.", rendered), (
+            f"{template_path} missing 'Output valid JSON only.' bullet"
+        )
+
+        assert re.search(r"[-*]\s*Output a single JSON value only\.", rendered), (
+            f"{template_path} missing 'Output a single JSON value only.' bullet"
+        )
+
+        assert re.search(r"[-*]\s*No markdown\.", rendered), (
+            f"{template_path} missing 'No markdown.' bullet"
+        )
+
+        assert re.search(r"[-*]\s*No code fences\.", rendered), (
+            f"{template_path} missing 'No code fences.' bullet"
+        )
+
+        assert re.search(r"[-*]\s*No commentary\.", rendered), (
+            f"{template_path} missing 'No commentary.' bullet"
+        )
 
 
 def test_generate_act_outline_prompt_contract_requires_json_schema() -> None:
@@ -249,10 +376,11 @@ def test_generate_act_outline_prompt_contract_requires_json_schema() -> None:
         },
     )
 
-    assert "Return valid JSON only" in rendered
-    assert "no markdown" in rendered or "No markdown" in rendered
-    assert "no code fences" in rendered or "No code fences" in rendered
-    assert "no commentary" in rendered or "No commentary" in rendered
+    assert "Output requirements:" in rendered
+    assert "Output valid JSON only." in rendered
+    assert "No markdown." in rendered
+    assert "No code fences." in rendered
+    assert "No commentary." in rendered
 
     for required in [
         '"act_number"',
