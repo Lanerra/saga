@@ -350,6 +350,15 @@ def _parse_chapter_outline(
         # Try to parse as JSON first
         data = json.loads(cleaned_response)
 
+        # Ensure data is a dictionary (not a list or other type)
+        if not isinstance(data, dict):
+            logger.warning(
+                "_parse_chapter_outline: JSON parsing succeeded but returned non-dict type",
+                chapter=chapter_number,
+                type=type(data).__name__,
+            )
+            raise json.JSONDecodeError("Expected JSON object, got non-object type", cleaned_response, 0)
+
         scene_description = data.get("scene_description", "")
         key_beats = data.get("key_beats", [])
         plot_point = data.get("plot_point", "")

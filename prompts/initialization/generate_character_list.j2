@@ -11,7 +11,7 @@ Setting: {{ setting }}
 Generate the main character names for this story.
 
 Return a single JSON array of strings (character names), nothing else.
-- Output shape: ["{{ protagonist_name or "Protagonist" }}","Ava Serrano","Dmitri Volkov"]
+- Output shape: ["{{ protagonist_name or "Protagonist" }}","...","..."]
 
 Rules:
 - Each element is a character name string (no descriptions, no parenthetical text).
@@ -19,5 +19,5 @@ Rules:
 
 Include:
 - The protagonist{% if protagonist_name %} (must include exactly "{{ protagonist_name }}"){% endif %}
-- 3-5 supporting main characters
+- 3 supporting characters
 - 1-2 antagonists (if appropriate)

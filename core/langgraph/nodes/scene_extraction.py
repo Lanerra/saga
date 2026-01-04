@@ -208,7 +208,6 @@ async def _extract_characters_from_scene(
     prompt = render_prompt(
         "knowledge_agent/extract_characters.j2",
         {
-            "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,
@@ -310,7 +309,6 @@ async def _extract_locations_from_scene(
     prompt = render_prompt(
         "knowledge_agent/extract_locations.j2",
         {
-            "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,
@@ -423,7 +421,6 @@ async def _extract_events_from_scene(
     prompt = render_prompt(
         "knowledge_agent/extract_events.j2",
         {
-            "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,
@@ -536,7 +533,6 @@ async def _extract_relationships_from_scene(
     prompt = render_prompt(
         "knowledge_agent/extract_relationships.j2",
         {
-            "no_think": config.ENABLE_LLM_NO_THINK_DIRECTIVE,
             "protagonist": protagonist_name,
             "chapter_number": chapter_number,
             "novel_title": novel_title,

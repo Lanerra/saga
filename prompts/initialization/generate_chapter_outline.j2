@@ -39,5 +39,5 @@ Content guidance (encode inside the JSON fields):
 
 CRITICAL OUTPUT CONTRACT:
 - Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
-- Return a single JSON array at the top level.
-- Do NOT wrap the array in an object (for example: {"chapter_outline": [...]} is invalid).
+- Return a single JSON object at the top level.
+- Do NOT wrap the object in an array or another object.
