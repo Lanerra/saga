@@ -8,6 +8,10 @@ Scene:
 - plot_point: {{ scene.plot_point }}
 - conflict: {{ scene.conflict }}
 - outcome: {{ scene.outcome }}
+- key_beats_to_cover:
+{% for beat in scene.beats %}
+  - {{ beat }}
+{% endfor %}
 
 Novel context: {{ novel_genre }} | Theme: {{ novel_theme }}
 
