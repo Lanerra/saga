@@ -25,6 +25,7 @@ class SceneDetail(TypedDict, total=False):
     plot_point: str
     conflict: str
     outcome: str
+    beats: list[str]
 
     # Optional enriched/normalized fields used by downstream prompt composition.
     scene_number: int
