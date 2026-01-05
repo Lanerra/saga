@@ -15,13 +15,17 @@ Scene:
 
 CRITICAL SCENE BOUNDARIES:
 {% if scene.scene_number > 1 %}
-This is Scene {{ scene.scene_number }}. Previous scenes in this chapter have ALREADY covered earlier story events.
-- Do NOT re-establish context from previous scenes.
-- Do NOT repeat dialogue or actions that occurred in earlier scenes.
-- Do NOT show events that were already dramatized.
-- START your scene at the first assigned beat below.
+This is Scene {{ scene.scene_number }} of {{ total_scenes }}.
 
-If you need context from previous events, reference them BRIEFLY in narration (e.g., "After the tense conversation with Holt..."), but do NOT re-dramatize them.
+SCENES ALREADY COMPLETED IN THIS CHAPTER:
+{% for prev_scene in previous_scenes %}
+Scene {{ prev_scene.scene_number }}: {{ prev_scene.outcome }}
+{% endfor %}
+
+DO NOT re-dramatize any events from these completed scenes.
+DO NOT repeat dialogue that occurred in previous scenes.
+START immediately with your first assigned beat.
+
 {% else %}
 This is the opening scene of the chapter. Establish the setting and initial situation.
 {% endif %}

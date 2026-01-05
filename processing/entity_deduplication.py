@@ -43,13 +43,18 @@ def generate_entity_id(name: str, category: str, chapter: int) -> str:
     Notes:
         `chapter` is currently not incorporated into the ID computation. Callers may still pass a
         chapter value for API compatibility or future extensibility.
+
+        ID generation includes the category to ensure global uniqueness across entity types,
+        preventing constraint violations when the same name is used for different entity types.
     """
     # Normalize name for consistent ID generation
     normalized_name = re.sub(r"[^\w\s]", "", name.lower().strip())
     normalized_name = re.sub(r"\s+", "_", normalized_name)
 
-    # Use content-based hashing instead of category prefixes
-    content_hash = hashlib.md5(f"{normalized_name}_{category}".encode()).hexdigest()[:8]
+    # Use content-based hashing with extended hash space to reduce collision probability
+    # Include both name AND category to ensure different entity types with the same name
+    # generate different IDs (e.g., Character "Mars" vs Location "Mars")
+    content_hash = hashlib.md5(f"{normalized_name}_{category}".encode()).hexdigest()[:12]
 
     return f"entity_{content_hash}"
 

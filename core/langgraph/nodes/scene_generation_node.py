@@ -78,6 +78,18 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     if revision_guidance_ref:
         revision_guidance_text = content_manager.load_text(revision_guidance_ref)
 
+    # Collect outcomes from previous scenes in this chapter to prevent re-dramatization
+    previous_scenes = []
+    if scene_index > 0:
+        for i in range(scene_index):
+            prev_scene_plan = chapter_plan[i]
+            previous_scenes.append(
+                {
+                    "scene_number": i + 1,
+                    "outcome": prev_scene_plan.get("outcome", "Scene completed."),
+                }
+            )
+
     prompt = render_prompt(
         "narrative_agent/draft_scene.j2",
         {
@@ -87,6 +99,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             "novel_theme": state.get("theme", ""),
             "narrative_style": state.get("narrative_style", config.DEFAULT_NARRATIVE_STYLE),
             "total_scenes": len(chapter_plan),  # Total scenes in this chapter
+            "previous_scenes": previous_scenes,
             "scene": current_scene,
             "hybrid_context": hybrid_context,
             "revision_guidance": revision_guidance_text,

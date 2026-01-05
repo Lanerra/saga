@@ -473,7 +473,7 @@ async def _generate_character_sheet(
     # Prepare existing traits hint for the prompt
     existing_traits_hint = ""
     if existing_traits:
-        traits_sample = existing_traits[:40]  # Limit to 20 examples
+        traits_sample = existing_traits[:20]  # Limit to 20 examples
         existing_traits_hint = f"\n\nExisting traits in the story (consider reusing to create interconnectedness): " f"{', '.join(traits_sample)}"
 
     prompt = render_prompt(

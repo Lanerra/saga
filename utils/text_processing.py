@@ -93,9 +93,10 @@ def validate_world_item_fields(category: str, name: str, item_id: str, allow_emp
         norm_cat = _normalize_for_id(category) or "other"
         norm_name = _normalize_for_id(name) or "unnamed"
         base = f"{norm_cat}_{norm_name}"
-        # If either part is too short or generic, append a short stable hash for uniqueness
+        # If either part is too short or generic, append a stable hash for uniqueness
+        # Use 12-character hash to reduce collision probability (2^48 space)
         if norm_name in {"", "unnamed"} or norm_cat in {"", "other"}:
-            suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:8]
+            suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:12]
             item_id = f"{base}_{suffix}"
         else:
             item_id = base
