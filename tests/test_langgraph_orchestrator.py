@@ -401,7 +401,7 @@ class TestRunChapterGenerationLoop:
             await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
     async def test_run_chapter_generation_loop_stops_on_error(self, orchestrator):
-        """Loop stops when chapter generation fails."""
+        """Loop re-raises exceptions so caller can handle them."""
         mock_graph = MagicMock()
 
         async def mock_stream_error(*args, **kwargs):
@@ -413,8 +413,9 @@ class TestRunChapterGenerationLoop:
 
         state = {"project_id": "test_proj", "current_chapter": 1, "total_chapters": 20}
 
-        with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
-            await orchestrator._run_chapter_generation_loop(mock_graph, state)
+        with pytest.raises(Exception, match="Generation error"):
+            with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
+                await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
     async def test_run_chapter_generation_loop_handles_incomplete_generation(self, orchestrator):
         """Loop stops if generation doesn't reach finalize node."""

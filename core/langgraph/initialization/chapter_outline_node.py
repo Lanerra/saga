@@ -129,21 +129,21 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
         act=act_number,
     )
 
-    # Get current version (for revision tracking)
-    current_version = content_manager.get_latest_version("chapter_outlines", "all") + 1
+    # Always use version 1 for normal chapter generation
+    version = 1
 
     # Externalize chapter_outlines to reduce state bloat
     chapter_outlines_ref = content_manager.save_json(
         outlines_for_storage,
         "chapter_outlines",
         "all",
-        current_version,
+        version,
     )
 
     logger.info(
         "generate_chapter_outline: content externalized",
         chapter=chapter_number,
-        version=current_version,
+        version=version,
         size=chapter_outlines_ref["size_bytes"],
     )
 

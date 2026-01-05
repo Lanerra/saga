@@ -238,7 +238,11 @@ class LangGraphOrchestrator:
             raise
         finally:
             # Stop Rich display
-            await self.display.stop()
+            try:
+                await self.display.stop()
+            except Exception:
+                # Log but don't let this mask original error from workflow
+                logger.warning("Display shutdown failed", exc_info=True)
 
     async def _ensure_neo4j_connection(self) -> None:
         """Connect to Neo4j and ensure the required schema exists.
@@ -457,6 +461,7 @@ class LangGraphOrchestrator:
                 error=str(e),
                 exc_info=True,
             )
+            raise  # Re-raise to let caller handle original error
 
         logger.info("Multi-chapter generation stream complete.")
 
