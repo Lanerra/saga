@@ -72,6 +72,7 @@ def _valid_scene_list():
             "plot_point": "Quest begins",
             "conflict": "Doubt vs duty",
             "outcome": "Hero departs",
+            "beats": "Hero accepts the call to adventure",
         }
     ]
 
