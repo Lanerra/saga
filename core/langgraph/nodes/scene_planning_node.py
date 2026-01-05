@@ -39,6 +39,7 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
     "plot_point",
     "conflict",
     "outcome",
+    "beats",
 )
 
 _SCENE_PLAN_CONTRACT_ERROR_PREFIX = "Scene plan contract violation:"
