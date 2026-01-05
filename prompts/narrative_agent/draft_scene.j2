@@ -1,29 +1,51 @@
 You are writing a scene for Chapter {{ chapter_number }} of the novel "{{ novel_title }}".
 
+Narrative Style & Voice:
+{{ narrative_style }}
+
 Scene:
 - title: {{ scene.title }}
+- scene_number: {{ scene.scene_number }} of {{ total_scenes }}
 - pov_character: {{ scene.pov_character }}
 - setting: {{ scene.setting }}
 - characters_present: {{ scene.characters | join(", ") }}
 - plot_point: {{ scene.plot_point }}
 - conflict: {{ scene.conflict }}
 - outcome: {{ scene.outcome }}
-- key_beats_to_cover:
+
+CRITICAL SCENE BOUNDARIES:
+{% if scene.scene_number > 1 %}
+This is Scene {{ scene.scene_number }}. Previous scenes in this chapter have ALREADY covered earlier story events.
+- Do NOT re-establish context from previous scenes.
+- Do NOT repeat dialogue or actions that occurred in earlier scenes.
+- Do NOT show events that were already dramatized.
+- START your scene at the first assigned beat below.
+
+If you need context from previous events, reference them BRIEFLY in narration (e.g., "After the tense conversation with Holt..."), but do NOT re-dramatize them.
+{% else %}
+This is the opening scene of the chapter. Establish the setting and initial situation.
+{% endif %}
+
+Key Beats to Cover (ONLY these beats):
 {% for beat in scene.beats %}
   - {{ beat }}
 {% endfor %}
+
+IMPORTANT: Cover ONLY the beats listed above. Do not expand backward into previous beats or forward into future beats.
 
 Novel context: {{ novel_genre }} | Theme: {{ novel_theme }}
 
 Story so far (canon context):
 {{ hybrid_context }}
 
+{% if revision_guidance %}
 Revision guidance (apply these fixes while drafting this scene):
 {{ revision_guidance }}
+{% endif %}
 
 Instructions:
 - Write continuous prose for this scene.
-- Stay in the POV character’s interior and sensory experience.
+- Stay in the POV character's interior and sensory experience.
 - Show conflict through action and subtext; avoid exposition dumps.
 - End with the stated outcome and a forward hook.
 - Output ONLY the scene prose. No headings. No code fences.

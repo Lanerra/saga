@@ -402,3 +402,69 @@ def test_generate_act_outline_prompt_contract_requires_json_schema() -> None:
         '"effect"',
     ]:
         assert required in rendered
+
+
+def test_draft_scene_template_requires_scene_number() -> None:
+    """
+    Regression guard for scene_number attribute injection.
+
+    Contract:
+    - The draft_scene.j2 template accesses scene.scene_number for boundary logic.
+    - The plan_scenes.j2 template does NOT include scene_number in its required keys.
+    - Therefore, scene_generation_node.py MUST inject scene_number before rendering.
+    """
+    rendered = pr.render_prompt(
+        "narrative_agent/draft_scene.j2",
+        {
+            "chapter_number": 1,
+            "novel_title": "Test Novel",
+            "novel_genre": "Fantasy",
+            "novel_theme": "Adventure",
+            "narrative_style": "Third person limited",
+            "total_scenes": 4,  # Required by template
+            "scene": {
+                "title": "Opening Scene",
+                "scene_number": 1,  # Must be injected by scene_generation_node
+                "pov_character": "Hero",
+                "setting": "Castle",
+                "characters": ["Hero", "Villain"],
+                "plot_point": "Hero confronts Villain",
+                "conflict": "Tension rises",
+                "outcome": "Hero escapes",
+                "beats": ["Beat1", "Beat2"],
+            },
+            "hybrid_context": "Previous chapter context",
+            "revision_guidance": "",
+            "target_word_count": 500,
+        },
+    )
+
+    # Template must reference scene.scene_number
+    assert "{{ scene.scene_number }}" in rendered or "scene_number" in rendered
+
+    # The conditional logic uses scene_number for boundary checking
+    assert "scene.scene_number > 1" in rendered or "scene_number" in rendered
+
+
+def test_plan_scenes_template_does_not_require_scene_number() -> None:
+    """
+    Verify that plan_scenes.j2 does NOT require scene_number from the LLM.
+
+    Contract:
+    - scene_number is injected by scene_generation_node.py at render time.
+    - The LLM should not be burdened with this bookkeeping detail.
+    """
+    rendered = pr.render_prompt(
+        "narrative_agent/plan_scenes.j2",
+        {
+            "novel_title": "Test Novel",
+            "novel_genre": "Fantasy",
+            "novel_theme": "Adventure",
+            "chapter_number": 1,
+            "num_scenes": 4,
+            "outline": {"scene_description": "Desc", "key_beats": ["Beat1"]},
+        },
+    )
+
+    # scene_number should NOT be in the required keys list
+    assert '"scene_number"' not in rendered

@@ -123,6 +123,7 @@ class NarrativeState(TypedDict, total=False):
     theme: str
     setting: str
     target_word_count: int
+    narrative_style: str
 
     # =========================================================================
     # Current Position in Story
@@ -314,6 +315,7 @@ def create_initial_state(
     total_chapters: int,
     project_dir: str,
     protagonist_name: str,
+    narrative_style: str = settings.DEFAULT_NARRATIVE_STYLE,
     extraction_model: str = settings.SMALL_MODEL,
     revision_model: str = settings.MEDIUM_MODEL,
     # New model params with defaults
@@ -355,6 +357,7 @@ def create_initial_state(
         "theme": theme,
         "setting": setting,
         "target_word_count": target_word_count,
+        "narrative_style": narrative_style,
         # Position
         "current_chapter": 1,
         "total_chapters": total_chapters,

@@ -31,7 +31,7 @@ def normalize_entity_name(text: str) -> str:
     text = re.sub(r"\s*\(.*?\)", "", text)
 
     # Normalize smart quotes
-    text = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    text = text.replace("'", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
 
     return text.strip()
 
@@ -53,7 +53,7 @@ def _normalize_for_id(text: str) -> str:
 
 
 async def get_context_snippet_for_patch(original_text: str, problem: dict[str, Any], max_chars: int) -> str:
-    """Return a context snippet around the problem’s quote or start of text.
+    """Return a context snippet around the problem's quote or start of text.
 
     Replaces the old _get_context_window_for_patch_llm shim with a proper helper
     in utils.text_processing. If the problem contains a quote, take a window

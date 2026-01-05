@@ -2,7 +2,7 @@
 """Persist per-entity embedding vectors for semantic operations.
 
 This module computes embedding inputs for knowledge-graph entities and builds
-Cypher statements that update embedding properties when the entity’s embedding
+Cypher statements that update embedding properties when the entity's embedding
 text has changed.
 
 Notes:

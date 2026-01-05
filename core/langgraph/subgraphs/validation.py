@@ -129,7 +129,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
             model_name=model_name,
             prompt=evaluation_prompt,
             temperature=0.1,
-            max_tokens=16384,
+            max_tokens=config.MAX_GENERATION_TOKENS,
             auto_clean_response=True,
             system_prompt=get_system_prompt("validation_agent"),
         )
@@ -746,7 +746,7 @@ async def _check_world_rules(
             model_name=model_name,
             prompt=rule_check_prompt,
             temperature=0.1,
-            max_tokens=16384,
+            max_tokens=config.MAX_GENERATION_TOKENS,
             auto_clean_response=True,
         )
 

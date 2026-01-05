@@ -311,6 +311,9 @@ class SagaSettings(BaseSettings):
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
 
+    # Narrative Style Defaults
+    DEFAULT_NARRATIVE_STYLE: str = "Standard Third-Person Past Tense"
+
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
     LOG_FORMAT: str = "%(asctime)s - %(levelname)s - [%(name)s:%(funcName)s:%(lineno)d] - %(message)s"

@@ -271,7 +271,7 @@ class GraphHealingService:
                 prompt=prompt,
                 model_name=model,
                 temperature=0.3,
-                max_tokens=16384,
+                max_tokens=config.MAX_GENERATION_TOKENS,
                 system_prompt=system_prompt,
             )
 
