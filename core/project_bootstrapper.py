@@ -1,3 +1,4 @@
+# core/project_bootstrapper.py
 from __future__ import annotations
 
 from pathlib import Path

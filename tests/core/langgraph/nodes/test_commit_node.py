@@ -1,3 +1,4 @@
+# tests/core/langgraph/nodes/test_commit_node.py
 """Tests for core/langgraph/nodes/commit_node.py - entity and relationship persistence."""
 
 from unittest.mock import MagicMock, patch

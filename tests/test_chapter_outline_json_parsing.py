@@ -1,3 +1,4 @@
+# tests/test_chapter_outline_json_parsing.py
 """Test for chapter outline JSON parsing fix."""
 
 from core.langgraph.initialization.chapter_outline_node import _parse_chapter_outline
