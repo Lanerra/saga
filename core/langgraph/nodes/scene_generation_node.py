@@ -97,7 +97,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             "novel_title": state.get("title", ""),
             "novel_genre": state.get("genre", ""),
             "novel_theme": state.get("theme", ""),
-            "narrative_style": state.get("narrative_style", config.DEFAULT_NARRATIVE_STYLE),
+            "narrative_style": config.DEFAULT_NARRATIVE_STYLE,
             "total_scenes": len(chapter_plan),  # Total scenes in this chapter
             "previous_scenes": previous_scenes,
             "scene": current_scene,
