@@ -6,8 +6,9 @@ This module wires node callables and subgraphs into executable workflow graphs,
 including checkpointing and revision/error routing.
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Literal
+from typing import Any, Literal
 
 import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore

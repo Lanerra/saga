@@ -4,10 +4,10 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from neo4j.exceptions import ClientError, ServiceUnavailable
+from neo4j.exceptions import ServiceUnavailable
 
 import utils
-from core.exceptions import DatabaseConnectionError, DatabaseError
+from core.exceptions import DatabaseError
 from data_access import character_queries
 from models import CharacterProfile
 
@@ -127,9 +127,7 @@ class TestGetCharacterInfoForSnippet:
     async def test_get_character_info_for_snippet_raises_on_database_error(self):
         """get_character_info_for_snippet_from_db should propagate DatabaseError, not return None."""
         with patch("data_access.character_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.execute_read_query = AsyncMock(
-                side_effect=ServiceUnavailable("Connection lost")
-            )
+            mock_neo4j.execute_read_query = AsyncMock(side_effect=ServiceUnavailable("Connection lost"))
             mock_neo4j.connect = AsyncMock()
 
             with pytest.raises(DatabaseError):
@@ -342,5 +340,4 @@ async def test_character_queries_catch_specific_exceptions():
 
     assert "except Exception" not in source, "Found broad 'except Exception' handlers"
 
-    assert "from neo4j.exceptions import" in source or "neo4j.exceptions" in source, \
-        "Should import specific Neo4j exceptions"
+    assert "from neo4j.exceptions import" in source or "neo4j.exceptions" in source, "Should import specific Neo4j exceptions"

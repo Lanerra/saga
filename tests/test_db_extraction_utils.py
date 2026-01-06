@@ -1,9 +1,6 @@
 # tests/test_db_extraction_utils.py
 """Tests for models/db_extraction_utils.py - Neo4j data extraction utilities."""
 
-import pytest
-from unittest.mock import MagicMock
-
 from models.db_extraction_utils import Neo4jExtractor
 
 
@@ -199,19 +196,12 @@ class TestExtractCoreFieldsFromNode:
 
     def test_extract_core_fields_from_dict(self):
         """Test extracting non-core fields from dictionary node."""
-        node = {
-            "id": "item-001",
-            "name": "Sword",
-            "category": "Weapon",
-            "description": "Legendary blade",
-            "extra_field_1": "value1",
-            "extra_field_2": "value2"
-        }
-        
+        node = {"id": "item-001", "name": "Sword", "category": "Weapon", "description": "Legendary blade", "extra_field_1": "value1", "extra_field_2": "value2"}
+
         core_fields = {"id", "name", "category", "description"}
-        
+
         result = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
-        
+
         assert len(result) == 2
         assert result["extra_field_1"] == "value1"
         assert result["extra_field_2"] == "value2"
@@ -220,54 +210,40 @@ class TestExtractCoreFieldsFromNode:
 
     def test_extract_core_fields_from_neo4j_node(self):
         """Test extracting non-core fields from Neo4j node object."""
+
         # Create a proper dict-like node
         class MockNode:
             def __iter__(self):
-                return iter([
-                    ("id", "item-002"),
-                    ("name", "Shield"),
-                    ("category", "Armor"),
-                    ("description", "Protective gear"),
-                    ("material", "steel"),
-                    ("weight", "10kg")
-                ])
-        
+                return iter([("id", "item-002"), ("name", "Shield"), ("category", "Armor"), ("description", "Protective gear"), ("material", "steel"), ("weight", "10kg")])
+
         mock_node = MockNode()
-        
+
         core_fields = {"id", "name", "category", "description"}
-        
+
         result = Neo4jExtractor.extract_core_fields_from_node(mock_node, core_fields)
-        
+
         assert len(result) == 2
         assert result["material"] == "steel"
         assert result["weight"] == "10kg"
 
     def test_extract_core_fields_empty_result(self):
         """Test extracting when all fields are core."""
-        node = {
-            "id": "item-003",
-            "name": "Helmet",
-            "category": "Armor"
-        }
-        
+        node = {"id": "item-003", "name": "Helmet", "category": "Armor"}
+
         core_fields = {"id", "name", "category"}
-        
+
         result = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
-        
+
         assert len(result) == 0
 
     def test_extract_core_fields_with_empty_core_set(self):
         """Test extracting when core fields set is empty."""
-        node = {
-            "id": "item-004",
-            "name": "Gauntlet",
-            "category": "Armor"
-        }
-        
+        node = {"id": "item-004", "name": "Gauntlet", "category": "Armor"}
+
         core_fields = set()
-        
+
         result = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
-        
+
         assert len(result) == 3
         assert result["id"] == "item-004"
         assert result["name"] == "Gauntlet"
@@ -275,16 +251,12 @@ class TestExtractCoreFieldsFromNode:
 
     def test_extract_core_fields_with_extra_fields_only(self):
         """Test extracting when node only has extra fields."""
-        node = {
-            "extra_1": "value1",
-            "extra_2": "value2",
-            "extra_3": "value3"
-        }
-        
+        node = {"extra_1": "value1", "extra_2": "value2", "extra_3": "value3"}
+
         core_fields = {"id", "name"}
-        
+
         result = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
-        
+
         assert len(result) == 3
         assert result["extra_1"] == "value1"
         assert result["extra_2"] == "value2"
@@ -292,33 +264,23 @@ class TestExtractCoreFieldsFromNode:
 
     def test_extract_core_fields_with_none_values(self):
         """Test extracting when node contains None values."""
-        node = {
-            "id": "item-005",
-            "name": "Boots",
-            "extra_field": None
-        }
-        
+        node = {"id": "item-005", "name": "Boots", "extra_field": None}
+
         core_fields = {"id", "name"}
-        
+
         result = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
-        
+
         assert len(result) == 1
         assert result["extra_field"] is None
 
     def test_extract_core_fields_with_complex_values(self):
         """Test extracting with complex value types."""
-        node = {
-            "id": "item-006",
-            "name": "Cloak",
-            "extra_list": [1, 2, 3],
-            "extra_dict": {"key": "value"},
-            "extra_bool": True
-        }
-        
+        node = {"id": "item-006", "name": "Cloak", "extra_list": [1, 2, 3], "extra_dict": {"key": "value"}, "extra_bool": True}
+
         core_fields = {"id", "name"}
-        
+
         result = Neo4jExtractor.extract_core_fields_from_node(node, core_fields)
-        
+
         assert len(result) == 3
         assert result["extra_list"] == [1, 2, 3]
         assert result["extra_dict"] == {"key": "value"}

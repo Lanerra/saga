@@ -558,7 +558,7 @@ async def add_kg_triples_batch_to_db(
                 subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
             except (ImportError, ValueError, TypeError, AttributeError):
                 subject_id = None
-        
+
         params["subject_id_param"] = subject_id
 
         if is_literal_object:
@@ -1018,7 +1018,7 @@ async def _get_novel_info_property_from_db_cached(property_key: str) -> Any | No
             "_get_novel_info_property_from_db_cached",
             e,
             property_key=property_key,
-        )
+        ) from e
 
 
 async def get_novel_info_property_from_db(property_key: str) -> Any | None:
@@ -1498,7 +1498,7 @@ async def get_entity_context_for_resolution(
             "get_entity_context_for_resolution",
             e,
             entity_id=entity_id,
-        )
+        ) from e
 
 
 async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = 3) -> bool:
@@ -1757,4 +1757,4 @@ async def get_shortest_path_length_between_entities(name1: str, name2: str, max_
             name1=name1,
             name2=name2,
             max_depth=max_depth,
-        )
+        ) from exc

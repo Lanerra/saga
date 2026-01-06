@@ -1,6 +1,6 @@
 """Simple integration tests for core/langgraph/nodes/commit_node.py."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -37,7 +37,7 @@ class TestCommitNodeIntegration:
 
             # Should return a valid state dict
             assert isinstance(result, dict)
-            
+
             # Should update current_node
             assert result["current_node"] == "commit_to_graph"
 

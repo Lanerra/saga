@@ -253,6 +253,7 @@ class TestGetWorldItemById:
     async def test_get_world_item_by_id_raises_on_validation_error(self, monkeypatch):
         """get_world_item_by_id should propagate errors from validation, not return None."""
         from unittest.mock import patch
+
         from core.exceptions import ValidationError
 
         world_queries.get_world_item_by_id.cache_clear()
@@ -475,6 +476,7 @@ class TestGetBootstrapWorldElements:
 def test_world_queries_catch_specific_exceptions():
     """Verify world_queries catches specific exceptions, not Exception."""
     import inspect
+
     from data_access import world_queries
 
     source = inspect.getsource(world_queries)

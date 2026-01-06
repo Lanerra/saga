@@ -1,13 +1,10 @@
 """Tests for core/langgraph/nodes/commit_node.py - entity and relationship persistence."""
 
-import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from core.langgraph.nodes.commit_node import commit_to_graph
-from core.langgraph.state import NarrativeState
 
 
 class TestCommitNodeEntityPersistence:
@@ -18,7 +15,6 @@ class TestCommitNodeEntityPersistence:
         """Test that commit_to_graph generates unique entity IDs."""
         mock_state = {
             "chapter": 1,
-            "project_dir": "/tmp/test_project",
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -46,9 +42,9 @@ class TestCommitNodeEntityPersistence:
 
             with patch("core.langgraph.nodes.commit_node.generate_entity_id") as mock_generate_id:
                 mock_generate_id.side_effect = lambda x: f"id_{x}"
-                
-                with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
-                    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+
+                with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
+                    await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                     # Verify generate_entity_id was called for each entity
                     assert mock_generate_id.call_count == 3  # 2 characters + 1 world item
@@ -58,7 +54,6 @@ class TestCommitNodeEntityPersistence:
         """Test that commit_to_graph handles empty extraction results."""
         mock_state = {
             "chapter": 1,
-            "project_dir": "/tmp/test_project",
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -78,7 +73,7 @@ class TestCommitNodeEntityPersistence:
             }
 
             with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
-                result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+                await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Should still execute the batch (for chapter node creation)
                 assert mock_execute.called
@@ -88,7 +83,6 @@ class TestCommitNodeEntityPersistence:
         """Test that commit_to_graph performs entity deduplication."""
         mock_state = {
             "chapter": 1,
-            "project_dir": "/tmp/test_project",
             "project_dir": "/tmp/test_project",
             "extracted_entities_ref": {
                 "path": ".saga/content/extracted_entities/chapter_1.json",
@@ -112,9 +106,9 @@ class TestCommitNodeEntityPersistence:
 
             with patch("core.langgraph.nodes.commit_node.generate_entity_id") as mock_generate_id:
                 mock_generate_id.return_value = "alice_id"
-                
-                with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
-                    result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+
+                with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
+                    await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                     # Should generate ID only once for the duplicate
                     assert mock_generate_id.call_count == 1
@@ -164,7 +158,7 @@ class TestCommitNodeRelationshipPersistence:
             ]
 
             with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
-                result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+                await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Verify the batch was executed
                 assert mock_execute.called
@@ -194,7 +188,7 @@ class TestCommitNodeRelationshipPersistence:
             }
 
             with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
-                result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+                await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Should still execute the batch (for entities and chapter)
                 assert mock_execute.called
@@ -227,7 +221,7 @@ class TestCommitNodeChapterPersistence:
             }
 
             with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
-                result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+                await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Verify the batch was executed (should contain chapter creation)
                 assert mock_execute.called
@@ -256,7 +250,7 @@ class TestCommitNodeChapterPersistence:
             }
 
             with patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_execute:
-                result = await commit_to_graph(mock_state)  # type: ignore[arg-type]
+                await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
                 # Verify the batch was executed
                 assert mock_execute.called

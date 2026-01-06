@@ -106,6 +106,7 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 ## Documentation
 
 Key docs in `docs/`:
+- `bootstrapper.md`: Documentation for SAGA's bootstrap mode
 - `langgraph-architecture.md`: Detailed LangGraph design and architecture
 - `WORKFLOW_WALKTHROUGH.md`: Complete data flow walkthrough
 - `WORKFLOW_VISUALIZATION.md`: Visual representation of workflow graphs

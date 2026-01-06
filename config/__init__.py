@@ -20,8 +20,6 @@ Notes:
 """
 
 # Explicit exports for MyPy compatibility
-from typing import Any
-
 from . import settings as settings_mod
 from .settings import (
     Models as Models,
@@ -182,9 +180,6 @@ ENFORCE_SCHEMA_VALIDATION = settings.schema_enforcement.ENFORCE_SCHEMA_VALIDATIO
 REJECT_INVALID_ENTITIES = settings.schema_enforcement.REJECT_INVALID_ENTITIES
 NORMALIZE_COMMON_VARIANTS = settings.schema_enforcement.NORMALIZE_COMMON_VARIANTS
 LOG_SCHEMA_VIOLATIONS = settings.schema_enforcement.LOG_SCHEMA_VIOLATIONS
-
-
-
 
 
 def reload() -> None:

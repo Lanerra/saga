@@ -580,14 +580,14 @@ async def get_character_info_for_snippet_from_db(
                 retry_error,
                 character=char_name,
                 chapter_limit=chapter_limit,
-            )
-    except (ServiceUnavailable, Neo4jError, KeyError, ValueError, TypeError) as e:
+            ) from retry_error
+    except (Neo4jError, KeyError, ValueError, TypeError) as e:
         raise handle_database_error(
             "get_character_info_for_snippet_from_db",
             e,
             character=char_name,
             chapter_limit=chapter_limit,
-        )
+        ) from e
 
     if not result or not result[0]:
         logger.debug(

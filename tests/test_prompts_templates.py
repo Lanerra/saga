@@ -255,107 +255,95 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
     This ensures consistency and prevents drift across 16+ JSON-outputting templates.
     """
     templates_requiring_json_contract = [
-        ("knowledge_agent/extract_characters.j2", {
-            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
-            "chapter_number": 1, "chapter_text": "Text"
-        }),
-        ("knowledge_agent/extract_locations.j2", {
-            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
-            "chapter_number": 1, "chapter_text": "Text"
-        }),
-        ("knowledge_agent/extract_events.j2", {
-            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
-            "chapter_number": 1, "chapter_text": "Text"
-        }),
-        ("knowledge_agent/extract_relationships.j2", {
-            "novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero",
-            "chapter_number": 1, "chapter_text": "Text"
-        }),
-        ("knowledge_agent/chapter_summary.j2", {
-            "chapter_number": 1, "chapter_text": "Text"
-        }),
-        ("knowledge_agent/extract_character_structured_lines.j2", {
-            "name": "Hero", "description": "A hero"
-        }),
-        ("knowledge_agent/extract_world_items_lines.j2", {
-            "setting": "Fantasy world", "outline_text": "Outline"
-        }),
-        ("knowledge_agent/enrich_node_from_context.j2", {
-            "entity_name": "Hero", "entity_type": "Character",
-            "current_description": "Unknown", "current_traits": [],
-            "summaries_text": "Context"
-        }),
-        ("knowledge_agent/relationship_disambiguate_normalize_or_distinct.j2", {
-            "new_type": "WORKS_WITH", "new_description": "Desc",
-            "existing_type": "COLLABORATES_WITH", "existing_usage_count": 5,
-            "examples_str": "Example"
-        }),
-        ("narrative_agent/plan_scenes.j2", {
-            "novel_title": "Test", "novel_genre": "Fantasy", "novel_theme": "Adventure",
-            "chapter_number": 1, "num_scenes": 4,
-            "outline": {"scene_description": "Desc", "key_beats": ["Beat1"]}
-        }),
-        ("initialization/generate_act_outline.j2", {
-            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
-            "setting": "World", "protagonist_name": "Hero", "act_number": 1,
-            "total_acts": 3, "act_role": "Setup", "chapters_in_act": 7,
-            "global_outline": "Outline", "character_context": "Context"
-        }),
-        ("initialization/generate_global_outline.j2", {
-            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
-            "setting": "World", "total_chapters": 20, "target_word_count": 80000,
-            "protagonist_name": "Hero", "character_context": "Context",
-            "character_names": ["Hero", "Ally"]
-        }),
-        ("initialization/generate_character_sheet.j2", {
-            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
-            "setting": "World", "character_name": "Hero", "is_protagonist": True,
-            "other_characters": [], "existing_traits_hint": ""
-        }),
-        ("initialization/generate_character_list.j2", {
-            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
-            "setting": "World", "protagonist_name": "Hero"
-        }),
-        ("initialization/generate_chapter_outline.j2", {
-            "title": "Test", "genre": "Fantasy", "theme": "Adventure",
-            "setting": "World", "protagonist_name": "Hero", "chapter_number": 1,
-            "total_chapters": 20, "act_number": 1, "chapter_in_act": 1,
-            "global_outline": "Outline", "act_outline": "Act",
-            "character_context": "Context", "previous_context": "None"
-        }),
-        ("validation_agent/evaluate_quality.j2", {
-            "genre": "Fantasy", "theme": "Adventure", "chapter_number": 1,
-            "draft_text": "Chapter text", "summary_context": "Previous",
-            "outline_context": "Outline"
-        }),
+        ("knowledge_agent/extract_characters.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
+        ("knowledge_agent/extract_locations.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
+        ("knowledge_agent/extract_events.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
+        ("knowledge_agent/extract_relationships.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
+        ("knowledge_agent/chapter_summary.j2", {"chapter_number": 1, "chapter_text": "Text"}),
+        ("knowledge_agent/extract_character_structured_lines.j2", {"name": "Hero", "description": "A hero"}),
+        ("knowledge_agent/extract_world_items_lines.j2", {"setting": "Fantasy world", "outline_text": "Outline"}),
+        ("knowledge_agent/enrich_node_from_context.j2", {"entity_name": "Hero", "entity_type": "Character", "current_description": "Unknown", "current_traits": [], "summaries_text": "Context"}),
+        (
+            "knowledge_agent/relationship_disambiguate_normalize_or_distinct.j2",
+            {"new_type": "WORKS_WITH", "new_description": "Desc", "existing_type": "COLLABORATES_WITH", "existing_usage_count": 5, "examples_str": "Example"},
+        ),
+        (
+            "narrative_agent/plan_scenes.j2",
+            {"novel_title": "Test", "novel_genre": "Fantasy", "novel_theme": "Adventure", "chapter_number": 1, "num_scenes": 4, "outline": {"scene_description": "Desc", "key_beats": ["Beat1"]}},
+        ),
+        (
+            "initialization/generate_act_outline.j2",
+            {
+                "title": "Test",
+                "genre": "Fantasy",
+                "theme": "Adventure",
+                "setting": "World",
+                "protagonist_name": "Hero",
+                "act_number": 1,
+                "total_acts": 3,
+                "act_role": "Setup",
+                "chapters_in_act": 7,
+                "global_outline": "Outline",
+                "character_context": "Context",
+            },
+        ),
+        (
+            "initialization/generate_global_outline.j2",
+            {
+                "title": "Test",
+                "genre": "Fantasy",
+                "theme": "Adventure",
+                "setting": "World",
+                "total_chapters": 20,
+                "target_word_count": 80000,
+                "protagonist_name": "Hero",
+                "character_context": "Context",
+                "character_names": ["Hero", "Ally"],
+            },
+        ),
+        (
+            "initialization/generate_character_sheet.j2",
+            {"title": "Test", "genre": "Fantasy", "theme": "Adventure", "setting": "World", "character_name": "Hero", "is_protagonist": True, "other_characters": [], "existing_traits_hint": ""},
+        ),
+        ("initialization/generate_character_list.j2", {"title": "Test", "genre": "Fantasy", "theme": "Adventure", "setting": "World", "protagonist_name": "Hero"}),
+        (
+            "initialization/generate_chapter_outline.j2",
+            {
+                "title": "Test",
+                "genre": "Fantasy",
+                "theme": "Adventure",
+                "setting": "World",
+                "protagonist_name": "Hero",
+                "chapter_number": 1,
+                "total_chapters": 20,
+                "act_number": 1,
+                "chapter_in_act": 1,
+                "global_outline": "Outline",
+                "act_outline": "Act",
+                "character_context": "Context",
+                "previous_context": "None",
+            },
+        ),
+        (
+            "validation_agent/evaluate_quality.j2",
+            {"genre": "Fantasy", "theme": "Adventure", "chapter_number": 1, "draft_text": "Chapter text", "summary_context": "Previous", "outline_context": "Outline"},
+        ),
     ]
 
     for template_path, context in templates_requiring_json_contract:
         rendered = pr.render_prompt(template_path, context)
 
-        assert "Output requirements:" in rendered, (
-            f"{template_path} missing 'Output requirements:' header"
-        )
+        assert "Output requirements:" in rendered, f"{template_path} missing 'Output requirements:' header"
 
-        assert re.search(r"[-*]\s*Output valid JSON only\.", rendered), (
-            f"{template_path} missing 'Output valid JSON only.' bullet"
-        )
+        assert re.search(r"[-*]\s*Output valid JSON only\.", rendered), f"{template_path} missing 'Output valid JSON only.' bullet"
 
-        assert re.search(r"[-*]\s*Output a single JSON value only\.", rendered), (
-            f"{template_path} missing 'Output a single JSON value only.' bullet"
-        )
+        assert re.search(r"[-*]\s*Output a single JSON value only\.", rendered), f"{template_path} missing 'Output a single JSON value only.' bullet"
 
-        assert re.search(r"[-*]\s*No markdown\.", rendered), (
-            f"{template_path} missing 'No markdown.' bullet"
-        )
+        assert re.search(r"[-*]\s*No markdown\.", rendered), f"{template_path} missing 'No markdown.' bullet"
 
-        assert re.search(r"[-*]\s*No code fences\.", rendered), (
-            f"{template_path} missing 'No code fences.' bullet"
-        )
+        assert re.search(r"[-*]\s*No code fences\.", rendered), f"{template_path} missing 'No code fences.' bullet"
 
-        assert re.search(r"[-*]\s*No commentary\.", rendered), (
-            f"{template_path} missing 'No commentary.' bullet"
-        )
+        assert re.search(r"[-*]\s*No commentary\.", rendered), f"{template_path} missing 'No commentary.' bullet"
 
 
 def test_generate_act_outline_prompt_contract_requires_json_schema() -> None:
