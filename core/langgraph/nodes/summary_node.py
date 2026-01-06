@@ -124,7 +124,7 @@ async def summarize_chapter(state: NarrativeState) -> NarrativeState:
                 model_name=state.get("small_model", config.SMALL_MODEL),  # Use fast model
                 prompt=attempt_prompt,
                 temperature=0.3,  # Low temperature for consistency
-                max_tokens=16384,
+                max_tokens=config.MAX_GENERATION_TOKENS,
                 allow_fallback=True,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("knowledge_agent"),

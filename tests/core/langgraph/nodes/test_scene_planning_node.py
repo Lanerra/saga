@@ -20,6 +20,7 @@ def _valid_scene_plan_json() -> str:
                 "plot_point": "Start",
                 "conflict": "None",
                 "outcome": "Next",
+                "beats": "Hero discovers something unexpected",
             }
         ]
     )
@@ -37,6 +38,42 @@ def test_parse_scene_plan_missing_required_keys_fails() -> None:
 
     with pytest.raises(ValueError, match=r"^Scene plan contract violation: invalid structure;"):
         _parse_scene_plan_json_from_llm_response(response)
+
+
+def test_parse_scene_plan_missing_beats_field_fails() -> None:
+    scene_without_beats = {
+        "title": "Scene 1",
+        "pov_character": "Hero",
+        "setting": "Room",
+        "characters": ["Hero"],
+        "plot_point": "Start",
+        "conflict": "None",
+        "outcome": "Next",
+    }
+    response = json.dumps([scene_without_beats])
+
+    with pytest.raises(ValueError, match=r"Scene plan contract violation: invalid structure.*missing required keys.*beats"):
+        _parse_scene_plan_json_from_llm_response(response)
+
+
+def test_parse_scene_plan_with_beats_field_passes() -> None:
+    scene_with_beats = {
+        "title": "Scene 1",
+        "pov_character": "Hero",
+        "setting": "Room",
+        "characters": ["Hero"],
+        "plot_point": "Start",
+        "conflict": "None",
+        "outcome": "Next",
+        "beats": "Hero discovers something unexpected",
+    }
+    response = json.dumps([scene_with_beats])
+
+    parsed = _parse_scene_plan_json_from_llm_response(response)
+
+    assert isinstance(parsed, list)
+    assert len(parsed) == 1
+    assert parsed[0]["beats"] == "Hero discovers something unexpected"
 
 
 def test_parse_scene_plan_valid_top_level_array_passes() -> None:

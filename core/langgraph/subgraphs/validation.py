@@ -42,7 +42,7 @@ from core.langgraph.nodes.validation_node import (
 )
 from core.langgraph.state import Contradiction, NarrativeState
 from core.llm_interface_refactored import llm_service
-from prompts.prompt_renderer import render_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 
 logger = structlog.get_logger(__name__)
@@ -128,9 +128,10 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         response, usage = await llm_service.async_call_llm(
             model_name=model_name,
             prompt=evaluation_prompt,
-            temperature=0.1,  # Low temperature for consistent evaluation
-            max_tokens=16384,
+            temperature=0.1,
+            max_tokens=config.MAX_GENERATION_TOKENS,
             auto_clean_response=True,
+            system_prompt=get_system_prompt("validation_agent"),
         )
 
         # Parse the evaluation response
@@ -745,7 +746,7 @@ async def _check_world_rules(
             model_name=model_name,
             prompt=rule_check_prompt,
             temperature=0.1,
-            max_tokens=16384,
+            max_tokens=config.MAX_GENERATION_TOKENS,
             auto_clean_response=True,
         )
 

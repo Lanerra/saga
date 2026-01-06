@@ -9,6 +9,12 @@ Chapter outline:
   - {{ beat }}
 {% endfor %}
 
+BEAT ASSIGNMENT RULES:
+1. Assign each beat from the chapter outline to exactly ONE scene
+2. Assign beats in sequential order (maintain the order shown above)
+3. Recommended 1-3 beats per scene
+4. CRITICAL: ALL beats must be assigned (no beats left out)
+
 CRITICAL OUTPUT CONTRACT:
 - Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
 - Return a single JSON array at the top level.
@@ -24,6 +30,7 @@ CRITICAL OUTPUT CONTRACT:
   - "plot_point" (string)
   - "conflict" (string)
   - "outcome" (string)
+  - "beats" (array of strings; each string is one of the key beats from the chapter outline that this scene covers)
 - Use only character names (no parentheticals).
 
 Quality guidance:

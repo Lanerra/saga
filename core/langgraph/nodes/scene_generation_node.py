@@ -2,7 +2,7 @@
 """Draft individual scenes for a chapter.
 
 This module defines the scene drafting node used by the scene-based generation
-workflow. Each call drafts one scene, appends it to the chapter’s scene drafts,
+workflow. Each call drafts one scene, appends it to the chapter's scene drafts,
 and advances the `current_scene_index` for the drafting loop.
 """
 
@@ -24,7 +24,7 @@ logger = structlog.get_logger(__name__)
 
 
 async def draft_scene(state: NarrativeState) -> NarrativeState:
-    """Draft the next scene and append it to the chapter’s scene drafts.
+    """Draft the next scene and append it to the chapter's scene drafts.
 
     Args:
         state: Workflow state. Requires a valid chapter plan and `current_scene_index`.
@@ -60,6 +60,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
 
     current_scene = chapter_plan[scene_index]
 
+    # Inject scene_number for template access (scenes are 1-indexed)
+    current_scene["scene_number"] = scene_index + 1
+
     # Calculate target word count for this scene
     total_target = 3000  # Default chapter length
     if state.get("target_word_count") and state.get("total_chapters"):
@@ -75,6 +78,18 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     if revision_guidance_ref:
         revision_guidance_text = content_manager.load_text(revision_guidance_ref)
 
+    # Collect outcomes from previous scenes in this chapter to prevent re-dramatization
+    previous_scenes = []
+    if scene_index > 0:
+        for i in range(scene_index):
+            prev_scene_plan = chapter_plan[i]
+            previous_scenes.append(
+                {
+                    "scene_number": i + 1,
+                    "outcome": prev_scene_plan.get("outcome", "Scene completed."),
+                }
+            )
+
     prompt = render_prompt(
         "narrative_agent/draft_scene.j2",
         {
@@ -82,6 +97,9 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             "novel_title": state.get("title", ""),
             "novel_genre": state.get("genre", ""),
             "novel_theme": state.get("theme", ""),
+            "narrative_style": config.DEFAULT_NARRATIVE_STYLE,
+            "total_scenes": len(chapter_plan),  # Total scenes in this chapter
+            "previous_scenes": previous_scenes,
             "scene": current_scene,
             "hybrid_context": hybrid_context,
             "revision_guidance": revision_guidance_text,
@@ -94,7 +112,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             model_name=state.get("narrative_model", config.NARRATIVE_MODEL),
             prompt=prompt,
             temperature=0.7,
-            max_tokens=6000,
+            max_tokens=config.MAX_GENERATION_TOKENS,
             system_prompt=get_system_prompt("narrative_agent"),
         )
 

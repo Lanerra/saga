@@ -31,7 +31,7 @@ def normalize_entity_name(text: str) -> str:
     text = re.sub(r"\s*\(.*?\)", "", text)
 
     # Normalize smart quotes
-    text = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    text = text.replace("'", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
 
     return text.strip()
 
@@ -53,7 +53,7 @@ def _normalize_for_id(text: str) -> str:
 
 
 async def get_context_snippet_for_patch(original_text: str, problem: dict[str, Any], max_chars: int) -> str:
-    """Return a context snippet around the problem’s quote or start of text.
+    """Return a context snippet around the problem's quote or start of text.
 
     Replaces the old _get_context_window_for_patch_llm shim with a proper helper
     in utils.text_processing. If the problem contains a quote, take a window
@@ -93,9 +93,10 @@ def validate_world_item_fields(category: str, name: str, item_id: str, allow_emp
         norm_cat = _normalize_for_id(category) or "other"
         norm_name = _normalize_for_id(name) or "unnamed"
         base = f"{norm_cat}_{norm_name}"
-        # If either part is too short or generic, append a short stable hash for uniqueness
+        # If either part is too short or generic, append a stable hash for uniqueness
+        # Use 12-character hash to reduce collision probability (2^48 space)
         if norm_name in {"", "unnamed"} or norm_cat in {"", "other"}:
-            suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:8]
+            suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:12]
             item_id = f"{base}_{suffix}"
         else:
             item_id = base

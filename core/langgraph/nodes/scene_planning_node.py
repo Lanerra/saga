@@ -2,7 +2,7 @@
 """Plan scenes for chapter drafting.
 
 This module defines the scene planning node used by the scene-based generation
-workflow. It requests a structured scene plan from the LLM, validates the plan’s
+workflow. It requests a structured scene plan from the LLM, validates the plan's
 shape, externalizes it, and ensures any newly introduced characters exist in
 Neo4j (as provisional stubs) so downstream context retrieval can resolve them.
 """
@@ -39,6 +39,7 @@ _SCENE_REQUIRED_KEYS: tuple[str, ...] = (
     "plot_point",
     "conflict",
     "outcome",
+    "beats",
 )
 
 _SCENE_PLAN_CONTRACT_ERROR_PREFIX = "Scene plan contract violation:"
@@ -287,7 +288,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
 
     # Determine number of scenes (heuristic or config)
     # For now, we'll ask for 3-5 scenes depending on complexity, or just default to 3
-    num_scenes = 3
+    num_scenes = 4
 
     base_prompt = render_prompt(
         "narrative_agent/plan_scenes.j2",
@@ -320,7 +321,7 @@ async def plan_scenes(state: NarrativeState) -> NarrativeState:
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=0.7,
-                max_tokens=16384,
+                max_tokens=config.MAX_GENERATION_TOKENS,
                 system_prompt=get_system_prompt("narrative_agent"),
             )
 

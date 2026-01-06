@@ -117,7 +117,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,
-            max_tokens=16384,
+            max_tokens=config.MAX_GENERATION_TOKENS,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),

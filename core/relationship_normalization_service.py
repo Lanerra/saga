@@ -292,7 +292,7 @@ class RelationshipNormalizationService:
             data, _ = await llm_service.async_call_llm_json_object(
                 model_name=config.SMALL_MODEL,
                 prompt=prompt,
-                max_tokens=16384,
+                max_tokens=config.MAX_GENERATION_TOKENS,
             )
 
             allowed_keys = {"decision"}
@@ -323,7 +323,7 @@ class RelationshipNormalizationService:
             response, _ = await llm_service.async_call_llm(
                 model_name=config.SMALL_MODEL,
                 prompt=prompt,
-                max_tokens=16384,
+                max_tokens=config.MAX_GENERATION_TOKENS,
             )
 
             response_sha1 = hashlib.sha1(response.encode("utf-8")).hexdigest()[:12]

@@ -43,13 +43,18 @@ def generate_entity_id(name: str, category: str, chapter: int) -> str:
     Notes:
         `chapter` is currently not incorporated into the ID computation. Callers may still pass a
         chapter value for API compatibility or future extensibility.
+
+        ID generation includes the category to ensure global uniqueness across entity types,
+        preventing constraint violations when the same name is used for different entity types.
     """
     # Normalize name for consistent ID generation
     normalized_name = re.sub(r"[^\w\s]", "", name.lower().strip())
     normalized_name = re.sub(r"\s+", "_", normalized_name)
 
-    # Use content-based hashing instead of category prefixes
-    content_hash = hashlib.md5(f"{normalized_name}_{category}".encode()).hexdigest()[:8]
+    # Use content-based hashing with extended hash space to reduce collision probability
+    # Include both name AND category to ensure different entity types with the same name
+    # generate different IDs (e.g., Character "Mars" vs Location "Mars")
+    content_hash = hashlib.md5(f"{normalized_name}_{category}".encode()).hexdigest()[:12]
 
     return f"entity_{content_hash}"
 
@@ -293,7 +298,7 @@ async def should_merge_entities(
     new_name: str,
     new_description: str,
     existing_entity: dict[str, Any],
-    similarity_threshold: float = 0.4,
+    similarity_threshold: float = 0.55,
 ) -> bool:
     """Decide whether a candidate entity should be merged into an existing entity.
 
@@ -505,7 +510,7 @@ async def check_relationship_pattern_similarity(entity1_name: str, entity2_name:
 
 async def find_relationship_based_duplicates(
     entity_type: str = "character",
-    name_similarity_threshold: float = 0.6,
+    name_similarity_threshold: float = 0.7,
     relationship_similarity_threshold: float = 0.7,
 ) -> list[tuple[str, str, float, float]]:
     """Find likely duplicates using name similarity plus relationship-pattern overlap.

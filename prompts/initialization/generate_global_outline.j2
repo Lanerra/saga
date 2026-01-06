@@ -51,4 +51,7 @@ Constraints:
 - Include character_arcs for all main characters: {{ character_names | join(", ") }}
 - Each character_arc MUST include: character_name, starting_state, ending_state, key_moments.
 
-Return ONLY the JSON object, no additional text.
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
+- Return a single JSON object at the top level.
+- Do NOT wrap the object in an array or another object.

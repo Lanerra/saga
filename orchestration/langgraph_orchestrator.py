@@ -30,6 +30,7 @@ from core.langgraph.initialization.validation import validate_initialization_art
 from core.langgraph.state import NarrativeState, create_initial_state
 from core.langgraph.workflow import create_checkpointer, create_full_workflow_graph
 from core.llm_interface_refactored import async_llm_context
+from core.project_config import NarrativeProjectConfig
 from data_access import chapter_queries
 from ui.rich_display import RichDisplayManager
 
@@ -145,11 +146,11 @@ class LangGraphOrchestrator:
           stop generation early without raising to the caller.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, project_dir: Path | None = None) -> None:
         logger.info("Initializing LangGraph Orchestrator...")
         # Use settings.BASE_OUTPUT_DIR which is the Pydantic field
-        self.project_dir = Path(config.settings.BASE_OUTPUT_DIR)
-        self.checkpointer_path = self.project_dir / ".saga" / "checkpoints.db"
+        self.project_dir = Path(project_dir) if project_dir is not None else Path(config.settings.BASE_OUTPUT_DIR)
+        self.checkpointer_path = self.project_dir / "checkpoints" / "saga.db"
 
         # Initialize Rich display for progress tracking
         self.display = RichDisplayManager()
@@ -157,7 +158,7 @@ class LangGraphOrchestrator:
 
         logger.info("LangGraph Orchestrator initialized.")
 
-    async def run_novel_generation_loop(self) -> None:
+    async def run_novel_generation_loop(self, narrative_config: NarrativeProjectConfig | None = None) -> None:
         """Run the end-to-end LangGraph novel generation loop.
 
         This method owns the orchestration boundary and associated cleanup:
@@ -186,8 +187,13 @@ class LangGraphOrchestrator:
             The Rich display is stopped in a `finally` block. If display shutdown
             raises, that exception propagates (and can mask a prior error).
 
+        Args:
+            narrative_config: Optional narrative configuration to seed new runs. When
+                provided, it overrides the default config.settings values for narrative
+                metadata on new state creation.
+
         Side Effects:
-            - Creates/updates a checkpoint database at `project_dir/.saga/checkpoints.db`.
+            - Creates/updates a checkpoint database at `project_dir/checkpoints/saga.db`.
             - Executes workflow nodes that may write files and mutate Neo4j state.
         """
         logger.info("=" * 60)
@@ -216,6 +222,7 @@ class LangGraphOrchestrator:
                         checkpointer=checkpointer,
                         requested_project_id=requested_project_id,
                         thread_id=thread_id,
+                        narrative_config=narrative_config,
                     )
 
                     graph = create_full_workflow_graph(checkpointer=checkpointer)
@@ -238,7 +245,11 @@ class LangGraphOrchestrator:
             raise
         finally:
             # Stop Rich display
-            await self.display.stop()
+            try:
+                await self.display.stop()
+            except Exception:
+                # Log but don't let this mask original error from workflow
+                logger.warning("Display shutdown failed", exc_info=True)
 
     async def _ensure_neo4j_connection(self) -> None:
         """Connect to Neo4j and ensure the required schema exists.
@@ -255,7 +266,12 @@ class LangGraphOrchestrator:
         await neo4j_manager.create_db_schema()
         logger.info("✓ Neo4j connected")
 
-    async def _load_or_create_state(self, *, project_id: str) -> NarrativeState:
+    async def _load_or_create_state(
+        self,
+        *,
+        project_id: str,
+        narrative_config: NarrativeProjectConfig | None,
+    ) -> NarrativeState:
         """Create a fresh workflow state seed for this run (non-resume path).
 
         This method is used only when no checkpoint is present for the project's checkpoint
@@ -272,6 +288,7 @@ class LangGraphOrchestrator:
 
         Args:
             project_id: Project identifier to seed into state.
+            narrative_config: Optional narrative configuration used for new state creation.
 
         Returns:
             A state dictionary seeded with project metadata plus:
@@ -315,28 +332,56 @@ class LangGraphOrchestrator:
                 existing_chapters=chapter_count,
             )
 
-        # Create initial state
-        state = create_initial_state(
-            project_id=project_id,
-            title=config.DEFAULT_PLOT_OUTLINE_TITLE,
-            genre=config.CONFIGURED_GENRE,
-            theme=config.CONFIGURED_THEME or "",
-            setting=config.CONFIGURED_SETTING_DESCRIPTION or "",
-            target_word_count=80000,  # Default, could be loaded from user configuration
-            total_chapters=config.TOTAL_CHAPTERS or 12,  # Default, could be loaded from user configuration
-            project_dir=str(self.project_dir),
-            protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
-            # Model Mapping
-            extraction_model=config.MEDIUM_MODEL,
-            revision_model=config.LARGE_MODEL,
-            # Tiered models
-            large_model=config.LARGE_MODEL,
-            medium_model=config.MEDIUM_MODEL,
-            small_model=config.SMALL_MODEL,
-            narrative_model=config.NARRATIVE_MODEL,
-            # Revision control
-            max_iterations=config.MAX_REVISION_CYCLES_PER_CHAPTER,
-        )
+        if narrative_config is not None:
+            logger.info(
+                "Creating new state from narrative config",
+                title=narrative_config.title,
+                project_dir=str(self.project_dir),
+            )
+            state = create_initial_state(
+                project_id=project_id,
+                title=narrative_config.title,
+                genre=narrative_config.genre,
+                theme=narrative_config.theme,
+                setting=narrative_config.setting,
+                target_word_count=80000,
+                total_chapters=narrative_config.total_chapters,
+                project_dir=str(self.project_dir),
+                protagonist_name=narrative_config.protagonist_name,
+                narrative_style=narrative_config.narrative_style,
+                extraction_model=config.MEDIUM_MODEL,
+                revision_model=config.LARGE_MODEL,
+                large_model=config.LARGE_MODEL,
+                medium_model=config.MEDIUM_MODEL,
+                small_model=config.SMALL_MODEL,
+                narrative_model=config.NARRATIVE_MODEL,
+                max_iterations=config.MAX_REVISION_CYCLES_PER_CHAPTER,
+            )
+        else:
+            logger.info(
+                "Creating new state from config.settings",
+                title=config.DEFAULT_PLOT_OUTLINE_TITLE,
+                project_dir=str(self.project_dir),
+            )
+            state = create_initial_state(
+                project_id=project_id,
+                title=config.DEFAULT_PLOT_OUTLINE_TITLE,
+                genre=config.CONFIGURED_GENRE,
+                theme=config.CONFIGURED_THEME,
+                setting=config.CONFIGURED_SETTING_DESCRIPTION,
+                target_word_count=80000,
+                total_chapters=config.TOTAL_CHAPTERS or 12,
+                project_dir=str(self.project_dir),
+                protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
+                narrative_style=config.DEFAULT_NARRATIVE_STYLE,
+                extraction_model=config.MEDIUM_MODEL,
+                revision_model=config.LARGE_MODEL,
+                large_model=config.LARGE_MODEL,
+                medium_model=config.MEDIUM_MODEL,
+                small_model=config.SMALL_MODEL,
+                narrative_model=config.NARRATIVE_MODEL,
+                max_iterations=config.MAX_REVISION_CYCLES_PER_CHAPTER,
+            )
 
         # Update current chapter and initialization status
         state["current_chapter"] = current_chapter
@@ -457,6 +502,7 @@ class LangGraphOrchestrator:
                 error=str(e),
                 exc_info=True,
             )
+            raise  # Re-raise to let caller handle original error
 
         logger.info("Multi-chapter generation stream complete.")
 
@@ -676,16 +722,21 @@ class LangGraphOrchestrator:
         checkpointer: Any,
         requested_project_id: str,
         thread_id: str,
+        narrative_config: NarrativeProjectConfig | None,
     ) -> NarrativeState:
         """Load checkpointed state when available; otherwise create a fresh seed state.
 
         This implements checkpoint-first resume. When a checkpoint exists for the project's
         thread id, it is treated as the single source of truth for in-flight fields like
-        `current_chapter`.
+        `current_chapter`. Narrative configuration is only applied when no checkpoint
+        is available.
         """
         checkpoint = await checkpointer.aget({"configurable": {"thread_id": thread_id}})
         if checkpoint is None:
-            return await self._load_or_create_state(project_id=requested_project_id)
+            return await self._load_or_create_state(
+                project_id=requested_project_id,
+                narrative_config=narrative_config,
+            )
 
         if not isinstance(checkpoint, dict):
             raise CheckpointResumeConflictError(

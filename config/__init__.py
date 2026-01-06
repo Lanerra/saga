@@ -51,6 +51,7 @@ CHARACTER_PROFILES_FILE = settings_mod.CHARACTER_PROFILES_FILE
 CONFIGURED_GENRE = settings.CONFIGURED_GENRE
 CONFIGURED_SETTING_DESCRIPTION = settings.CONFIGURED_SETTING_DESCRIPTION
 CONFIGURED_THEME = settings.CONFIGURED_THEME
+DEFAULT_NARRATIVE_STYLE = settings.DEFAULT_NARRATIVE_STYLE
 CONTEXT_CHAPTER_COUNT = settings.CONTEXT_CHAPTER_COUNT
 DEDUPLICATION_MIN_SEGMENT_LENGTH = settings.DEDUPLICATION_MIN_SEGMENT_LENGTH
 DEDUPLICATION_SEMANTIC_THRESHOLD = settings.DEDUPLICATION_SEMANTIC_THRESHOLD
@@ -183,35 +184,7 @@ NORMALIZE_COMMON_VARIANTS = settings.schema_enforcement.NORMALIZE_COMMON_VARIANT
 LOG_SCHEMA_VIOLATIONS = settings.schema_enforcement.LOG_SCHEMA_VIOLATIONS
 
 
-# Legacy compatibility functions
-def get(key: str) -> Any:
-    """Return the value of a configuration attribute from `settings`.
 
-    Args:
-        key: Attribute name on the `settings` singleton.
-
-    Returns:
-        The current value of the named attribute.
-
-    Raises:
-        AttributeError: If `key` is not a valid attribute on `settings`.
-    """
-    return getattr(settings, key)
-
-
-def set(key: str, value: Any) -> None:
-    """Set a configuration attribute on `settings` at runtime.
-
-    This mutates the in-memory settings instance and does not persist to `.env`.
-
-    Args:
-        key: Attribute name on the `settings` singleton.
-        value: Value to assign.
-
-    Raises:
-        AttributeError: If `key` is not a valid attribute on `settings`.
-    """
-    setattr(settings, key, value)
 
 
 def reload() -> None:

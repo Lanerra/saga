@@ -558,6 +558,7 @@ async def add_kg_triples_batch_to_db(
                 subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
             except (ImportError, ValueError, TypeError, AttributeError):
                 subject_id = None
+        
         params["subject_id_param"] = subject_id
 
         if is_literal_object:
@@ -572,48 +573,56 @@ async def add_kg_triples_batch_to_db(
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
-            query = """
-            // Handle subject node - first try to find by name
-            OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
-            WITH s
-            WHERE s IS NOT NULL
-            RETURN s
-            UNION
-            // If not found by name, try to find by ID if available
-            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
-            WITH s
-            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
-            RETURN s
-            UNION
-            // If not found by name or ID, create a new node with the desired ID and name
-            CALL apoc.merge.node(
-                [$subject_label],
-                {id: $subject_id_param},
-                {
-                    created_ts: timestamp(),
-                    updated_ts: timestamp(),
-                    type: $subject_label,
-                    name: $subject_name_param,
-                    id: $subject_id_param
-                },
-                {updated_ts: timestamp()}
-            ) YIELD node AS s_new
-            WITH s_new as s
-            RETURN s
+            if subject_id:
+                subject_merge_query = """
+                MERGE (s {id: $subject_id_param})
+                ON CREATE SET
+                    s.created_ts = timestamp(),
+                    s.updated_ts = timestamp(),
+                    s.created_chapter = $chapter_number_param,
+                    s.type = $subject_label,
+                    s.name = $subject_name_param,
+                    s.is_provisional = true
+                ON MATCH SET s.updated_ts = timestamp()
+                WITH s
+                CALL apoc.create.addLabels(s, [$subject_label]) YIELD node AS s_ignore
+                WITH s
+                """
+            else:
+                subject_merge_query = """
+                CALL apoc.merge.node(
+                    [$subject_label],
+                    {name: $subject_name_param},
+                    {
+                        created_ts: timestamp(),
+                        updated_ts: timestamp(),
+                        created_chapter: $chapter_number_param,
+                        type: $subject_label,
+                        name: $subject_name_param,
+                        is_provisional: true
+                    },
+                    {updated_ts: timestamp()}
+                ) YIELD node AS s
+                SET s.id = coalesce(s.id, randomUUID())
+                WITH s
+                """
 
-            MERGE (o:ValueNode {value: $object_literal_value_param, type: $value_node_type_param})
+            query = f"""
+            {subject_merge_query}
+
+            MERGE (o:ValueNode {{value: $object_literal_value_param, type: $value_node_type_param}})
             ON CREATE SET o.created_ts = timestamp(), o.updated_ts = timestamp()
             ON MATCH SET o.updated_ts = timestamp()
 
-            WITH s, o
             CALL apoc.merge.relationship(
                 s,
                 $predicate_clean_param,
-                {id: $rel_id_param},
-                apoc.map.merge($rel_props_param, {created_ts: timestamp(), updated_ts: timestamp()}),
+                {{id: $rel_id_param}},
+                apoc.map.merge($rel_props_param, {{created_ts: timestamp(), updated_ts: timestamp()}}),
                 o,
-                apoc.map.merge($rel_props_param, {updated_ts: timestamp()})
+                apoc.map.merge($rel_props_param, {{updated_ts: timestamp()}})
             ) YIELD rel
+            RETURN rel
             """
             statements_with_params.append((query, params))
 
@@ -653,72 +662,51 @@ async def add_kg_triples_batch_to_db(
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
-            query = """
-            // Handle subject node - first try to find by name
-            OPTIONAL MATCH (s:{$subject_label} {name: $subject_name_param})
-            WITH s
-            WHERE s IS NOT NULL
-            RETURN s
-            UNION
-            // If not found by name, try to find by ID if available
-            OPTIONAL MATCH (s:{$subject_label} {id: $subject_id_param})
-            WITH s
-            WHERE s IS NOT NULL AND $subject_id_param IS NOT NULL AND toString($subject_id_param) <> ''
-            RETURN s
-            UNION
-            // If not found by name or ID, create a new node with the desired ID and name
-            CALL apoc.merge.node(
-                [$subject_label],
-                {id: $subject_id_param},
-                {
-                    created_ts: timestamp(),
-                    updated_ts: timestamp(),
-                    type: $subject_label,
-                    name: $subject_name_param,
-                    id: $subject_id_param
-                },
-                {updated_ts: timestamp()}
-            ) YIELD node AS s_new
-            WITH s_new as s
-            RETURN s
+            subject_merge_query = """
+            OPTIONAL MATCH (s_match)
+            WHERE s_match.id = $subject_id_param
+               OR ($subject_label IN labels(s_match) AND s_match.name = $subject_name_param)
+            WITH head(collect(s_match)) as s_found
 
-            // Handle object node - first try to find by name
-            OPTIONAL MATCH (o:{$object_label} {name: $object_name_param})
-            WITH s, o
-            WHERE o IS NOT NULL
-            RETURN s, o
-            UNION
-            // If not found by name, try to find by ID if available
-            OPTIONAL MATCH (o:{$object_label} {id: $object_id_param})
-            WITH s, o
-            WHERE o IS NOT NULL AND $object_id_param IS NOT NULL AND toString($object_id_param) <> ''
-            RETURN s, o
-            UNION
-            // If not found by name or ID, create a new node with the desired ID and name
-            CALL apoc.merge.node(
-                [$object_label],
-                {id: $object_id_param},
-                {
-                    created_ts: timestamp(),
-                    updated_ts: timestamp(),
-                    type: $object_label,
-                    name: $object_name_param,
-                    id: $object_id_param
-                },
-                {updated_ts: timestamp()}
-            ) YIELD node AS o_new
-            WITH s, o_new as o
-            RETURN s, o
+            CALL apoc.do.when(s_found IS NULL,
+                'CREATE (n) SET n.created_ts = timestamp(), n.updated_ts = timestamp(), n.created_chapter = $chapter, n.type = $label, n.name = $name, n.is_provisional = true, n.id = coalesce($id, randomUUID()) RETURN n as s',
+                'SET s_found.updated_ts = timestamp(), s_found.id = coalesce(s_found.id, $id, randomUUID()) RETURN s_found as s',
+                {chapter: $chapter_number_param, label: $subject_label, name: $subject_name_param, id: $subject_id_param, s_found: s_found}
+            ) YIELD value
+            WITH value.s as s
+            CALL apoc.create.addLabels(s, [$subject_label]) YIELD node as s_ignore
+            WITH s
+            """
 
+            object_merge_query = """
+            OPTIONAL MATCH (o_match)
+            WHERE o_match.id = $object_id_param
+               OR ($object_label IN labels(o_match) AND o_match.name = $object_name_param)
+            WITH s, head(collect(o_match)) as o_found
+
+            CALL apoc.do.when(o_found IS NULL,
+                'CREATE (n) SET n.created_ts = timestamp(), n.updated_ts = timestamp(), n.created_chapter = $chapter, n.type = $label, n.name = $name, n.is_provisional = true, n.id = coalesce($id, randomUUID()) RETURN n as o',
+                'SET o_found.updated_ts = timestamp(), o_found.id = coalesce(o_found.id, $id, randomUUID()) RETURN o_found as o',
+                {chapter: $chapter_number_param, label: $object_label, name: $object_name_param, id: $object_id_param, o_found: o_found}
+            ) YIELD value
+            WITH s, value.o as o
+            CALL apoc.create.addLabels(o, [$object_label]) YIELD node as o_ignore
             WITH s, o
+            """
+
+            query = f"""
+            {subject_merge_query}
+            {object_merge_query}
+
             CALL apoc.merge.relationship(
                 s,
                 $predicate_clean_param,
-                {id: $rel_id_param},
-                apoc.map.merge($rel_props_param, {created_ts: timestamp(), updated_ts: timestamp()}),
+                {{id: $rel_id_param}},
+                apoc.map.merge($rel_props_param, {{created_ts: timestamp(), updated_ts: timestamp()}}),
                 o,
-                apoc.map.merge($rel_props_param, {updated_ts: timestamp()})
+                apoc.map.merge($rel_props_param, {{updated_ts: timestamp()}})
             ) YIELD rel
+            RETURN rel
             """
             statements_with_params.append((query, params))
         else:
@@ -728,6 +716,16 @@ async def add_kg_triples_batch_to_db(
     if not statements_with_params:
         logger.info("Neo4j: add_kg_triples_batch_to_db: No valid statements generated from triples.")
         return
+
+    preview_query, preview_params = statements_with_params[0]
+    logger.debug(
+        "Neo4j: add_kg_triples_batch_to_db batch preview",
+        query_preview=preview_query.strip()[:350],
+        preview_subject_label=preview_params.get("subject_label"),
+        preview_object_label=preview_params.get("object_label"),
+        preview_predicate=preview_params.get("predicate_clean_param"),
+        preview_chapter=preview_params.get("chapter_number_param"),
+    )
 
     try:
         await neo4j_manager.execute_cypher_batch(statements_with_params)
@@ -1064,8 +1062,8 @@ async def get_chapter_context_for_entity(
     entity_id: str | None = None,
     *,
     chapter_context_limit: int = 5,
-    max_event_chapters: int = 50,
-    max_rel_chapters: int = 200,
+    max_event_chapters: int = 10,
+    max_rel_chapters: int = 20,
 ) -> list[dict[str, Any]]:
     """Return recent chapter context for a single entity.
 
@@ -1266,10 +1264,10 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
 
 
 async def find_candidate_duplicate_entities(
-    similarity_threshold: float = 0.45,
+    similarity_threshold: float = 0.55,
     limit: int = 50,
     *,
-    desc_threshold: float = 0.30,
+    desc_threshold: float = 0.55,
     per_label_limit: int | None = None,
     candidate_pool_size: int | None = None,
     max_candidate_pool_size: int = 500,

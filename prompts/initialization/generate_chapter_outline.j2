@@ -34,7 +34,10 @@ Return a single JSON object with EXACTLY these three keys (no more, no less):
 
 Content guidance (encode inside the JSON fields):
 - scene_description: 2-4 sentences grounding where/when/who + immediate tension.
-- key_beats: 3-5 beats, each a concrete on-page action with clear cause→effect.
+- key_beats: 3-5 sequential beats, each representing a concrete on-page action with clear cause→effect. These beats must be ordered chronologically and will be directly mapped to individual scenes in the chapter.
 - plot_point: 1-2 sentences for the chapter's single most important change.
 
-Return the JSON object.
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
+- Return a single JSON object at the top level.
+- Do NOT wrap the object in an array or another object.

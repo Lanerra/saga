@@ -1,4 +1,4 @@
-You are an expert literary critic and editor. Evaluate the following chapter from a {{ genre }} novel with the theme "{{ theme }}".
+Evaluate the following chapter from a {{ genre }} novel with the theme "{{ theme }}".
 
 ## Chapter {{ chapter_number }}
 
@@ -60,4 +60,7 @@ Example shape:
 ```
 {% endraw %}
 
-Return ONLY the JSON object. No additional text.
+CRITICAL OUTPUT CONTRACT:
+- Return ONLY valid JSON (the entire response must be JSON; no surrounding text).
+- Return a single JSON object at the top level.
+- Do NOT wrap the object in an array or another object.

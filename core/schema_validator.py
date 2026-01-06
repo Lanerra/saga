@@ -1,7 +1,7 @@
 # core/schema_validator.py
 """Validate and canonicalize knowledge-graph labels and categories.
 
-This module enforces SAGA’s canonical node-label contract at key boundaries:
+This module enforces SAGA's canonical node-label contract at key boundaries:
 - Extracted or legacy labels may be normalized to canonical labels.
 - Persistence boundaries require canonical labels to prevent unsafe Cypher label
   interpolation.

@@ -15,7 +15,7 @@ logger = structlog.get_logger(__name__)
 
 
 def assemble_chapter(state: NarrativeState) -> NarrativeState:
-    """Assemble the current chapter’s drafted scenes into a single draft.
+    """Assemble the current chapter's drafted scenes into a single draft.
 
     Args:
         state: Workflow state. Reads scene drafts (preferring externalized refs).

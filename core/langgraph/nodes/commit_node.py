@@ -1030,66 +1030,40 @@ async def _build_relationship_statements(
             query = """
             CALL apoc.merge.node(
                 [$subject_label],
-                CASE
-                    WHEN $subject_id IS NULL OR toString($subject_id) = '' THEN {name: $subject_name}
-                    ELSE {id: $subject_id}
-                END,
+                {name: $subject_name},
                 {
-                    id: CASE
-                        WHEN $subject_id IS NULL OR toString($subject_id) = '' THEN randomUUID()
-                        ELSE $subject_id
-                    END,
+                    created_ts: timestamp(),
+                    updated_ts: timestamp(),
+                    created_chapter: $chapter,
                     name: $subject_name,
                     is_provisional: true,
-                    created_chapter: $chapter,
-                    description: 'Entity created from relationship extraction. Details to be developed.',
-                    created_at: timestamp()
+                    description: 'Entity created from relationship extraction. Details to be developed.'
                 },
-                {}
-            ) YIELD node AS subj
+                {updated_ts: timestamp()}
+            ) YIELD node AS s
 
-            FOREACH (_ IN CASE WHEN $subject_id IS NULL OR toString($subject_id) = '' THEN [] ELSE [1] END |
-                SET subj.name =
-                    CASE
-                        WHEN subj.name IS NULL OR toString(subj.name) = '' OR toLower(toString(subj.name)) STARTS WITH 'entity_'
-                        THEN $subject_name
-                        ELSE subj.name
-                    END
-            )
+            SET s.id = coalesce(s.id, $subject_id, randomUUID())
+            WITH s
 
-            WITH subj
             CALL apoc.merge.node(
                 [$object_label],
-                CASE
-                    WHEN $object_id IS NULL OR toString($object_id) = '' THEN {name: $object_name}
-                    ELSE {id: $object_id}
-                END,
+                {name: $object_name},
                 {
-                    id: CASE
-                        WHEN $object_id IS NULL OR toString($object_id) = '' THEN randomUUID()
-                        ELSE $object_id
-                    END,
+                    created_ts: timestamp(),
+                    updated_ts: timestamp(),
+                    created_chapter: $chapter,
                     name: $object_name,
                     is_provisional: true,
-                    created_chapter: $chapter,
-                    description: 'Entity created from relationship extraction. Details to be developed.',
-                    created_at: timestamp()
+                    description: 'Entity created from relationship extraction. Details to be developed.'
                 },
-                {}
-            ) YIELD node AS obj
+                {updated_ts: timestamp()}
+            ) YIELD node AS o
 
-            FOREACH (_ IN CASE WHEN $object_id IS NULL OR toString($object_id) = '' THEN [] ELSE [1] END |
-                SET obj.name =
-                    CASE
-                        WHEN obj.name IS NULL OR toString(obj.name) = '' OR toLower(toString(obj.name)) STARTS WITH 'entity_'
-                        THEN $object_name
-                        ELSE obj.name
-                    END
-            )
+            SET o.id = coalesce(o.id, $object_id, randomUUID())
+            WITH s, o
 
-            WITH subj, obj
             CALL apoc.merge.relationship(
-                subj,
+                s,
                 $predicate_clean,
                 {id: $rel_id},
                 apoc.map.merge(
@@ -1102,7 +1076,7 @@ async def _build_relationship_statements(
                     },
                     {created_ts: timestamp(), updated_ts: timestamp()}
                 ),
-                obj,
+                o,
                 apoc.map.merge(
                     {
                         chapter_added: $chapter,
@@ -1114,15 +1088,16 @@ async def _build_relationship_statements(
                     {updated_ts: timestamp()}
                 )
             ) YIELD rel
+            WITH s, o, rel
 
-            WITH subj, obj
             OPTIONAL MATCH (c:Chapter {number: $chapter})
-            FOREACH (_ IN CASE WHEN subj.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (subj)-[:MENTIONED_IN]->(c)
+            FOREACH (_ IN CASE WHEN s.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (s)-[:MENTIONED_IN]->(c)
             )
-            FOREACH (_ IN CASE WHEN obj.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (obj)-[:MENTIONED_IN]->(c)
+            FOREACH (_ IN CASE WHEN o.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (o)-[:MENTIONED_IN]->(c)
             )
+            RETURN rel
             """
 
             params = {
@@ -1139,6 +1114,15 @@ async def _build_relationship_statements(
                 "confidence": triple.get("confidence", 1.0),
                 "description": triple.get("description", ""),
             }
+
+            logger.debug(
+                "_build_relationship_statements: relationship query preview",
+                query_preview=query.strip()[:350],
+                subject_label=subject_label,
+                object_label=object_label,
+                predicate=predicate_clean,
+                chapter=chapter,
+            )
 
             statements.append((query, params))
 

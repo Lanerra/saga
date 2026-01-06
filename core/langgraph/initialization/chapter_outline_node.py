@@ -129,21 +129,21 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
         act=act_number,
     )
 
-    # Get current version (for revision tracking)
-    current_version = content_manager.get_latest_version("chapter_outlines", "all") + 1
+    # Always use version 1 for normal chapter generation
+    version = 1
 
     # Externalize chapter_outlines to reduce state bloat
     chapter_outlines_ref = content_manager.save_json(
         outlines_for_storage,
         "chapter_outlines",
         "all",
-        current_version,
+        version,
     )
 
     logger.info(
         "generate_chapter_outline: content externalized",
         chapter=chapter_number,
-        version=current_version,
+        version=version,
         size=chapter_outlines_ref["size_bytes"],
     )
 
@@ -237,7 +237,7 @@ async def _generate_single_chapter_outline(
             model_name=state.get("large_model", config.LARGE_MODEL),
             prompt=prompt,
             temperature=0.7,
-            max_tokens=16384,
+            max_tokens=config.MAX_GENERATION_TOKENS,
             allow_fallback=True,
             auto_clean_response=True,
             system_prompt=get_system_prompt("initialization"),
@@ -349,6 +349,15 @@ def _parse_chapter_outline(
 
         # Try to parse as JSON first
         data = json.loads(cleaned_response)
+
+        # Ensure data is a dictionary (not a list or other type)
+        if not isinstance(data, dict):
+            logger.warning(
+                "_parse_chapter_outline: JSON parsing succeeded but returned non-dict type",
+                chapter=chapter_number,
+                type=type(data).__name__,
+            )
+            raise json.JSONDecodeError("Expected JSON object, got non-object type", cleaned_response, 0)
 
         scene_description = data.get("scene_description", "")
         key_beats = data.get("key_beats", [])

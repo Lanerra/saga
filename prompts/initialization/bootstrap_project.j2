@@ -1,0 +1,60 @@
+You are generating configuration for an autonomous novel generation system.
+
+The system will use your configuration to generate a complete multi-chapter novel. Your choices determine genre conventions, thematic focus, setting detail, and narrative coherence.
+
+User Input: {{ user_input }}
+
+CRITICAL GUIDELINES:
+
+1. **Genre Specificity**: Be as specific as the input allows.
+   - Vague input → broader genre (acceptable, gives LLM creative freedom)
+   - Specific input → precise subgenre (improves coherence)
+
+   Examples:
+   - "romance" → "Contemporary Romance"
+   - "romance in old South" → "Historical Romance - Antebellum American South"
+   - "sci-fi about miners" → "Science Fiction - Asteroid Belt Labor Drama"
+
+2. **Theme Concreteness**: State the central thematic question in 1-2 sentences.
+   - Good: "Can love transcend rigid social hierarchies in plantation society?"
+   - Bad: "Love and society" (too vague)
+
+3. **Setting Detail**: Include 2-3 sentences with specific details.
+   - Location names, technological context, social structures
+   - Good: "Charleston, SC, 1855. Grand estates and debutante balls against the shadow of slavery."
+   - Bad: "The old South" (system already knows this from user input)
+
+4. **Narrative Style**: Always use "{{ default_narrative_style }}"
+   - Other styles not yet supported by the system
+
+Return ONLY a JSON object with these exact fields:
+```json
+{
+  "title": "A compelling, specific title reflecting the premise",
+  "genre": "Most specific subgenre you can infer",
+  "theme": "Central thematic question (1-2 sentences, concrete)",
+  "setting": "Detailed setting description (2-3 sentences with specifics)",
+  "protagonist_name": "A fitting name for the main character",
+  "narrative_style": "{{ default_narrative_style }}",
+  "total_chapters": {{ target_plot_points // 3 }}
+}
+```
+
+EXAMPLE:
+
+Input: "A romance novel set in the old South"
+
+Output:
+```json
+{
+  "title": "Magnolia Vows",
+  "genre": "Historical Romance - Antebellum American South",
+  "theme": "Can love transcend the rigid social hierarchies of plantation society, or will tradition and family expectation ultimately prevail?",
+  "setting": "Charleston, South Carolina, 1855. A world of grand estates, debutante balls, and the looming shadow of slavery. The protagonist navigates a society where family reputation is everything and marriage is a strategic alliance rather than a matter of the heart.",
+  "protagonist_name": "Annabelle Ashford",
+  "narrative_style": "{{ default_narrative_style }}",
+  "total_chapters": {{ target_plot_points // 3 }}
+}
+```
+
+Now generate configuration for the user's input.

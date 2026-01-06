@@ -345,7 +345,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,
-                max_tokens=16384,
+                max_tokens=config.MAX_GENERATION_TOKENS,
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),
@@ -473,7 +473,7 @@ async def _generate_character_sheet(
     # Prepare existing traits hint for the prompt
     existing_traits_hint = ""
     if existing_traits:
-        traits_sample = existing_traits[:40]  # Limit to 20 examples
+        traits_sample = existing_traits[:20]  # Limit to 20 examples
         existing_traits_hint = f"\n\nExisting traits in the story (consider reusing to create interconnectedness): " f"{', '.join(traits_sample)}"
 
     prompt = render_prompt(
@@ -499,7 +499,7 @@ async def _generate_character_sheet(
                 model_name=state.get("large_model", config.LARGE_MODEL),
                 prompt=prompt,
                 temperature=temperature,
-                max_tokens=16384,
+                max_tokens=config.MAX_GENERATION_TOKENS,
                 allow_fallback=False,
                 auto_clean_response=True,
                 system_prompt=get_system_prompt("initialization"),

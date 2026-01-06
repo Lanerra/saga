@@ -31,8 +31,8 @@ async def build_context_from_graph(
     active_character_names: list[str] | None = None,
     location_id: str | None = None,
     lookback_chapters: int = 5,
-    max_characters: int = 10,
-    max_world_items: int = 10,
+    max_characters: int = 5,
+    max_world_items: int = 5,
 ) -> dict[str, Any]:
     """Build prompt context for a chapter by querying Neo4j.
 
