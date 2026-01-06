@@ -138,7 +138,7 @@ class TestLangGraphOrchestratorInit:
     def test_init_creates_checkpointer_path(self, orchestrator):
         """Orchestrator initializes with checkpointer path."""
         assert orchestrator.checkpointer_path is not None
-        assert str(orchestrator.checkpointer_path).endswith("checkpoints.db")
+        assert str(orchestrator.checkpointer_path).endswith("saga.db")
 
     def test_init_creates_display_manager(self, orchestrator):
         """Orchestrator initializes with display manager."""
@@ -191,7 +191,7 @@ class TestLoadOrCreateState:
         ):
             mock_load.return_value = 0
 
-            state = await orchestrator._load_or_create_state(project_id="test-project")
+            state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
             assert state["current_chapter"] == 1
             assert state["initialization_complete"] is False
@@ -204,7 +204,7 @@ class TestLoadOrCreateState:
         ) as mock_load:
             mock_load.return_value = 5
 
-            state = await orchestrator._load_or_create_state(project_id="test-project")
+            state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
             assert state["current_chapter"] == 6
             assert state["initialization_complete"] is True
@@ -223,7 +223,7 @@ class TestLoadOrCreateState:
         ):
             mock_load.return_value = 0
 
-            state = await orchestrator._load_or_create_state(project_id="test-project")
+            state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
             assert state["initialization_complete"] is True
 
@@ -249,7 +249,7 @@ class TestLoadOrCreateState:
             (tmp_path / "world" / "rules.yaml").write_text("rules: []\n")
             (tmp_path / "world" / "history.yaml").write_text("history: []\n")
 
-            state = await orchestrator._load_or_create_state(project_id="test-project")
+            state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
             assert state["initialization_complete"] is True
 
@@ -267,7 +267,7 @@ class TestLoadOrCreateState:
         ):
             mock_load.return_value = 0
 
-            state = await orchestrator._load_or_create_state(project_id="test-project")
+            state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
             assert state["extraction_model"] is not None
             assert state["revision_model"] is not None
@@ -291,7 +291,7 @@ class TestLoadOrCreateState:
             orchestrator.project_dir = tmp_path
             tmp_path.mkdir(exist_ok=True)
 
-            state = await orchestrator._load_or_create_state(project_id="test-project")
+            state = await orchestrator._load_or_create_state(project_id="test-project", narrative_config=None)
 
             mock_validate.assert_called_once_with(tmp_path)
             assert state is not None
@@ -842,6 +842,7 @@ async def test_resume_uses_checkpoint_state_not_neo4j(orchestrator) -> None:
             checkpointer=fake_checkpointer,
             requested_project_id=requested_project_id,
             thread_id=thread_id,
+            narrative_config=None,
         )
 
         assert state["current_chapter"] == 7
@@ -874,6 +875,7 @@ async def test_resume_conflict_project_id_mismatch_raises(orchestrator) -> None:
                 checkpointer=fake_checkpointer,
                 requested_project_id="requested_project",
                 thread_id=orchestrator._checkpoint_thread_id("requested_project"),
+                narrative_config=None,
             )
 
 
@@ -911,6 +913,7 @@ async def test_resume_conflict_missing_artifact_reference_raises(orchestrator, t
                 checkpointer=fake_checkpointer,
                 requested_project_id=requested_project_id,
                 thread_id=orchestrator._checkpoint_thread_id(requested_project_id),
+                narrative_config=None,
             )
 
 
@@ -942,6 +945,7 @@ async def test_resume_conflict_neo4j_ahead_of_checkpoint_raises(orchestrator) ->
                 checkpointer=fake_checkpointer,
                 requested_project_id=requested_project_id,
                 thread_id=orchestrator._checkpoint_thread_id(requested_project_id),
+                narrative_config=None,
             )
 
 
@@ -959,6 +963,7 @@ async def test_load_state_for_run_no_checkpoint_uses_seed_state(orchestrator) ->
             checkpointer=fake_checkpointer,
             requested_project_id=requested_project_id,
             thread_id=orchestrator._checkpoint_thread_id(requested_project_id),
+            narrative_config=None,
         )
 
         assert state["project_id"] == requested_project_id
