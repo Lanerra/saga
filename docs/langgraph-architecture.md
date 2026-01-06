@@ -159,7 +159,10 @@ Extraction runs **per-scene** to reduce prompt size and improve granularity, the
 
 The validation subgraph consists of three sequential checks:
 
-1.  **`validate_consistency`** – Verifies that characters, relationships, and world constraints are respected in the Neo4j graph.
+1.  **`validate_consistency`** – Runs three validation passes:
+    *   **Relationship Validation**: Checks source/target types against valid options (Permissive mode by default: informational only).
+    *   **Trait Consistency**: Checks for contradictory traits (e.g., "brave" vs "cowardly") in the graph.
+    *   **Plot Stagnation**: Ensures the chapter advances the plot significantly.
 2.  **`evaluate_quality`** – An LLM‑based evaluator scores:
     *   Coherence
     *   Prose quality
@@ -168,15 +171,13 @@ The validation subgraph consists of three sequential checks:
     *   Tone consistency
 
     The evaluator returns a JSON payload; scores below a configurable threshold (default `0.7`) trigger a `quality_issue` contradiction and set `needs_revision`.
-3.  **`detect_contradictions`** – Performs deeper narrative analysis:
-    *   **Relationship evolution problems** – Flags abrupt changes (e.g., `HATES → LOVES`) without sufficient narrative development.
-    *   Checks for graph-based logic issues.
+3.  **`detect_contradictions`** – Checks for abrupt relationship changes (e.g., `HATES → LOVES`) without sufficient narrative development.
 
 The subgraph returns `END` after `detect_contradictions`. The main workflow interprets `needs_revision` together with `iteration_count` and `max_iterations` to decide whether to loop back for a revision.
 
 ---
 
-### 5.4 Healing Subgraph (`core/langgraph/nodes/graph_healing_node.py`)
+### 5.4 Healing Node (`core/langgraph/nodes/graph_healing_node.py`)
 
 After a chapter is finalized, `heal_graph` runs maintenance on the knowledge graph:
 
@@ -214,17 +215,19 @@ Every major node is wrapped by the conditional edge `should_handle_error`. If `s
 The knowledge graph uses a **labeled property graph** with the following node and relationship types.
 
 #### Canonical domain node labels (schema contract)
-SAGA enforces a canonical set of **9** domain labels:
+SAGA enforces a canonical set of **6** domain labels:
 
 - `Character`
 - `Location`
 - `Event`
 - `Item`
-- `Organization`
-- `Concept`
 - `Trait`
 - `Chapter`
-- `Novel`
+
+**Infrastructure Labels:**
+- `NovelInfo` (Project metadata)
+- `WorldContainer` (Root node)
+- `ValueNode` (Literal values for complex properties)
 
 These labels are treated as a strict schema surface (indexes/constraints + Cypher label interpolation safety).
 
