@@ -31,7 +31,7 @@ class ProjectBootstrapper:
             },
         )
 
-        response_text, _usage = await self.language_model_service.get_completion(
+        response_text, _usage = await self.language_model_service.async_call_llm(
             model_name=config.LARGE_MODEL,
             prompt=prompt,
             temperature=config.TEMPERATURE_INITIAL_SETUP,
