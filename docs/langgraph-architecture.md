@@ -15,7 +15,19 @@ The architecture remains fully local‑first, targeting a single user on a singl
 
 ---
 
-## 2. High‑Level Architecture
+## 2. Project Bootstrapping
+
+Before the LangGraph workflow begins, a **bootstrapping phase** initializes the project structure and configuration.
+
+*   **ProjectBootstrapper**: Converts a high-level user prompt (e.g., "A cyberpunk detective story") into a structured JSON configuration using an LLM.
+*   **NarrativeProjectConfig**: A Pydantic schema defining the project's genre, theme, setting, and protagonist.
+*   **ProjectManager**: Handles the lifecycle of project directories, configuration persistence, and the promotion of candidate configurations to active projects.
+
+This separation ensures that the LangGraph orchestrator always starts with a valid, schema-compliant project configuration.
+
+---
+
+## 3. High‑Level Architecture
 
 ```mermaid
 graph TD
@@ -86,7 +98,7 @@ The diagram illustrates the two main phases:
 
 ---
 
-## 3. State Management (`NarrativeState`)
+## 4. State Management (`NarrativeState`)
 
 `NarrativeState` is a TypedDict defined in `core/langgraph/state.py`. It is the single source of truth passed between all LangGraph nodes and automatically persisted by the checkpoint saver. The schema is deliberately grouped into logical categories:
 
@@ -115,15 +127,15 @@ All fields are optional (`total=False`) but the `create_initial_state` factory p
 
 ---
 
-## 4. Content Externalization
+## 5. Content Externalization
 
 Large textual artifacts (drafts, scene drafts, outlines, summaries, embeddings) are stored on disk using the `ContentManager` utility. The state contains only a `ContentRef` that points to the file location. This design keeps the SQLite checkpoint database small (typically a few kilobytes per checkpoint) and enables efficient diffing and versioning of generated content.
 
 ---
 
-## 5. Subgraph Details
+## 6. Subgraph Details
 
-### 5.1 Generation Subgraph (`core/langgraph/subgraphs/generation.py`)
+### 6.1 Generation Subgraph (`core/langgraph/subgraphs/generation.py`)
 
 The generation subgraph builds a chapter **scene‑by‑scene**:
 
@@ -139,7 +151,7 @@ The subgraph loops while `should_continue_scenes` returns `"continue"`. When all
 
 ---
 
-### 5.2 Extraction Subgraph (`core/langgraph/subgraphs/scene_extraction.py`)
+### 6.2 Extraction Subgraph (`core/langgraph/subgraphs/scene_extraction.py`)
 
 Extraction runs **per-scene** to reduce prompt size and improve granularity, then consolidates the results.
 
@@ -155,7 +167,7 @@ Extraction runs **per-scene** to reduce prompt size and improve granularity, the
 
 ---
 
-### 5.3 Validation Subgraph (`core/langgraph/subgraphs/validation.py`)
+### 6.3 Validation Subgraph (`core/langgraph/subgraphs/validation.py`)
 
 The validation subgraph consists of three sequential checks:
 
@@ -177,7 +189,7 @@ The subgraph returns `END` after `detect_contradictions`. The main workflow inte
 
 ---
 
-### 5.4 Healing Node (`core/langgraph/nodes/graph_healing_node.py`)
+### 6.4 Healing Node (`core/langgraph/nodes/graph_healing_node.py`)
 
 After a chapter is finalized, `heal_graph` runs maintenance on the knowledge graph:
 
@@ -189,7 +201,7 @@ Healing updates the `graph_healing` metrics in `NarrativeState` for observabilit
 
 ---
 
-### 5.5 Quality Assurance & Advancement
+### 6.5 Quality Assurance & Advancement
 
 After graph healing, the workflow performs final quality checks and either moves to the next chapter or terminates.
 
@@ -202,15 +214,15 @@ The transition from `check_quality` is determined by `should_continue_to_next_ch
 
 ---
 
-## 6. Error Handling Strategy
+## 7. Error Handling Strategy
 
 Every major node is wrapped by the conditional edge `should_handle_error`. If `state["has_fatal_error"]` is true, control transfers to the `error_handler` node, which logs the failure, marks `workflow_failed`, and then terminates the graph (`END`). This approach ensures graceful shutdown and preserves the last good checkpoint for later debugging.
 
 ---
 
-## 7. Data & Persistence
+## 8. Data & Persistence
 
-### 7.1 Neo4j Schema
+### 8.1 Neo4j Schema
 
 The knowledge graph uses a **labeled property graph** with the following node and relationship types.
 
@@ -237,7 +249,7 @@ Subtypes (e.g., `Faction`, `Settlement`, `Artifact`) are represented using prope
 #### Relationships
 Relationship types are expected to be uppercase with underscores (e.g., `LOCATED_IN`, `MEMBER_OF`, `BETRAYS`). All write operations go through the `commit_to_graph` node, which performs a two‑phase deduplication (name‑based followed by relationship‑pattern‑based) to avoid graph pollution.
 
-### 7.2 File‑System Layout (under `output/`)
+### 8.2 File‑System Layout (under `output/`)
 
 ```
 output/
@@ -267,7 +279,7 @@ output/
 
 ---
 
-## 8. Future Directions
+## 9. Future Directions
 
 ### Planned Enhancements
 *   **Interactive Revision Mode** – allow a human to edit a chapter during the `revise` phase.
@@ -277,7 +289,7 @@ output/
 
 ---
 
-## 9. Project Constraints (Reminder)
+## 10. Project Constraints (Reminder)
 
 *   Single‑user, single‑machine deployment.
 *   No external web services or micro‑service architecture.
