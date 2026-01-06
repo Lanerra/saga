@@ -7,8 +7,9 @@ SAGA (Semantically And Graph‑enhanced Authoring) generates long‑form fiction
 *   **Scene‑level generation** – a chapter is broken into a sequence of scenes, each generated with context retrieved from the graph.
 *   **Scene-based extraction** – entities and relationships are extracted from each scene individually to improve accuracy and reduce prompt size, then consolidated.
 *   **LLM‑based quality evaluation** – prose quality, coherence, pacing, and tone are scored, and low‑scoring chapters trigger revision.
-*   **Extended contradiction detection** – timeline violations, world‑rule breaches, and abrupt relationship changes are now surfaced.
+*   **Extended contradiction detection** – relationship evolution checks (e.g., abrupt enemies-to-lovers shifts) and graph consistency validation.
 *   **Content externalization** – large text blobs (drafts, outlines, embeddings) are stored on disk via `ContentRef` to keep SQLite checkpoints lightweight.
+*   **Graph Healing** – automated maintenance of the knowledge graph to merge duplicates and enrich provisional nodes.
 
 The architecture remains fully local‑first, targeting a single user on a single machine.
 
@@ -91,23 +92,24 @@ The diagram illustrates the two main phases:
 
 | Category | Fields (excerpt) | Purpose |
 |---|---|---|
-| **Metadata** | `project_id`, `title`, `genre`, `theme`, `setting`, `target_word_count` | Immutable project configuration. |
-| **Progress** | `current_chapter`, `total_chapters`, `current_act` | Tracks where we are in the narrative. |
-| **Content (externalized)** | `draft_ref`, `embedding_ref`, `scene_drafts_ref`, `scene_embeddings_ref`, `chapter_plan_ref`, `summaries_ref` | References to large text stored on disk via `ContentRef`. |
+| **Metadata** | `project_id`, `title`, `genre`, `theme`, `setting`, `target_word_count`, `narrative_style` | Immutable project configuration. |
+| **Progress** | `current_chapter`, `total_chapters`, `run_start_chapter` | Tracks where we are in the narrative. |
+| **Content (externalized)** | `draft_ref`, `embedding_ref`, `scene_drafts_ref`, `scene_embeddings_ref`, `chapter_plan_ref`, `summaries_ref`, `hybrid_context_ref` | References to large text stored on disk via `ContentRef`. |
 | **Extraction** | `extracted_entities_ref`, `extracted_relationships_ref` | References to structured data parsed from the scenes. |
+| **Chapter Planning** | `current_scene_index`, `chapter_plan_scene_count` | Tracks progress through the scene-by-scene generation loop. |
 | **Validation** | `contradictions`, `needs_revision`, `revision_guidance_ref` | Results of consistency checks and quality evaluation. |
 | **Quality Metrics** | `coherence_score`, `prose_quality_score`, `plot_advancement_score`, `pacing_score`, `tone_consistency_score`, `quality_feedback` | Scores returned by the LLM quality evaluator. |
 | **Model Configuration** | `generation_model`, `extraction_model`, `revision_model`, `large_model`, `medium_model`, `small_model`, `narrative_model` | Names of LLMs used at each stage. |
 | **Workflow Control** | `current_node`, `iteration_count`, `max_iterations`, `force_continue` | Loop counters and override flags for revision cycles. |
 | **Error Handling** | `last_error`, `has_fatal_error`, `error_node` | Information needed to abort gracefully. |
 | **Filesystem Paths** | `project_dir` | Base directory for the project. |
-| **Context Management** | `active_characters`, `key_events`, `hybrid_context_ref` | Handles dynamic context for generation. |
-| **Chapter Planning** | `current_scene_index`, `chapter_plan_scene_count`, `chapter_plan_ref` | Scene‑level plan state. |
+| **Context Management** | `active_characters`, `key_events` | Handles dynamic context for generation. |
 | **World Building** | `world_items`, `current_world_rules` | Persistent world facts and rule set. |
 | **Protagonist** | `protagonist_name` | Primary character information. |
 | **Initialization** | `character_sheets_ref`, `global_outline_ref`, `act_outlines_ref`, `chapter_outlines_ref`, `initialization_complete`, `initialization_step` | Tracks the one‑time setup workflow. |
 | **Relationship Vocabulary** | `relationship_vocabulary`, `relationship_vocabulary_size`, `relationships_normalized_this_chapter` | Canonical relationship types and statistics. |
-| **Graph Healing** | `provisional_count`, `last_healing_chapter`, `merge_candidates`, `pending_merges`, `auto_approved_merges`, `healing_history`, `nodes_graduated`, `nodes_merged`, `nodes_enriched`, `nodes_removed` | Metrics for post‑chapter graph maintenance. |
+| **Graph Healing** | `provisional_count`, `last_healing_chapter`, `merge_candidates`, `pending_merges`, `auto_approved_merges`, `healing_history`, `nodes_graduated`, `nodes_merged` | Metrics for post‑chapter graph maintenance. |
+| **Quality Assurance** | `last_qa_chapter`, `qa_results`, `qa_history`, `total_qa_issues` | Metrics for periodic KG quality checks. |
 
 All fields are optional (`total=False`) but the `create_initial_state` factory populates sensible defaults for required data.
 
@@ -141,12 +143,12 @@ The subgraph loops while `should_continue_scenes` returns `"continue"`. When all
 
 Extraction runs **per-scene** to reduce prompt size and improve granularity, then consolidates the results.
 
-1.  **`extract_from_scenes`**: Iterates through all generated scene drafts (`scene_drafts_ref`). For each scene, it performs 4 distinct LLM calls in parallel (logical grouping) to extract:
+1.  **`extract_from_scenes`**: Iterates through all generated scene drafts (`scene_drafts_ref`). For each scene, it extracts:
     *   **Characters**: Updates to status, traits, and descriptions.
     *   **Locations**: New locations or updates to existing ones.
     *   **Events**: Key plot events occurring in the scene.
     *   **Relationships**: New or evolving relationships between entities.
-2.  **Consolidation**: After processing all scenes, the results are merged.
+2.  **`consolidate`**: After processing all scenes, the results are merged.
     *   Characters and World Items are deduplicated by name (keeping the most detailed description).
     *   Relationships are deduplicated by the `(source, target, type)` tuple.
 3.  **Externalization**: The consolidated entities and relationships are saved to disk via `ContentManager`, and references (`extracted_entities_ref`, `extracted_relationships_ref`) are stored in the state.
@@ -168,7 +170,7 @@ The validation subgraph consists of three sequential checks:
     The evaluator returns a JSON payload; scores below a configurable threshold (default `0.7`) trigger a `quality_issue` contradiction and set `needs_revision`.
 3.  **`detect_contradictions`** – Performs deeper narrative analysis:
     *   **Relationship evolution problems** – Flags abrupt changes (e.g., `HATES → LOVES`) without sufficient narrative development.
-    *   (Future expansion: Timeline violations, location inconsistencies).
+    *   Checks for graph-based logic issues.
 
 The subgraph returns `END` after `detect_contradictions`. The main workflow interprets `needs_revision` together with `iteration_count` and `max_iterations` to decide whether to loop back for a revision.
 
