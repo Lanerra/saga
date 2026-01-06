@@ -12,14 +12,8 @@ import pytest
 from core.langgraph.state import Contradiction
 from core.langgraph.subgraphs.validation import (
     _build_quality_evaluation_prompt,
-    _build_rule_check_prompt,
     _check_relationship_evolution,
-    _check_timeline,
-    _check_world_rules,
-    _events_are_related,
-    _is_temporal_violation,
     _parse_quality_scores,
-    _parse_rule_violations,
     create_validation_subgraph,
     detect_contradictions,
     evaluate_quality,

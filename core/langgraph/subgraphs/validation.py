@@ -8,7 +8,7 @@ This subgraph runs a sequence of checks over a chapter draft and extracted
 signals:
 - Consistency validation (graph- and heuristic-based).
 - LLM-based prose quality evaluation.
-- Additional contradiction detection (timeline/world rules/relationship evolution).
+- Additional contradiction detection (relationship evolution).
 
 Notes:
     These nodes are async and may perform I/O (Neo4j queries, LLM calls, and
@@ -29,13 +29,9 @@ from core.langgraph.content_manager import (
     ContentManager,
     get_chapter_outlines,
     get_draft_text,
-    get_extracted_entities,
     get_extracted_relationships,
     get_previous_summaries,
     require_project_dir,
-)
-from core.langgraph.nodes.validation_node import (
-    get_extracted_events_for_validation,
 )
 from core.langgraph.nodes.validation_node import (
     validate_consistency as original_validate_consistency,
@@ -324,102 +320,44 @@ def _parse_quality_scores(response: str) -> dict[str, Any]:
 
 
 async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
-    """Fetch all validation-related data from Neo4j in a single query.
-
-    This function combines three separate queries into one to reduce round-trips:
-    1. Events with timestamps from previous chapters (for timeline validation)
-    2. World rules (for world rule validation)
-    3. Character relationships (for relationship evolution validation)
+    """Fetch validation-related data from Neo4j.
 
     Args:
         current_chapter: Chapter number being validated.
 
     Returns:
         A dictionary containing:
-        - "events": List of events with timestamps
-        - "world_rules": List of world rules
         - "relationships": Dict mapping (source, target) -> relationship info
     """
     try:
-        # Combined query that retrieves all validation data in one round-trip
         query = """
-            // Events for timeline validation
-            MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
-            WHERE ch.number <= $current_chapter AND e.timestamp IS NOT NULL
-            RETURN 'event' AS data_type,
-                   e.description AS description,
-                   e.timestamp AS timestamp,
-                   ch.number AS chapter
-
-            UNION
-
-            // World rules for world rule validation
-            MATCH (r:WorldRule)
-            RETURN 'world_rule' AS data_type,
-                   r.description AS description,
-                   r.constraint AS constraint,
-                   r.created_chapter AS created_chapter
-
-            UNION
-
-            // Character relationships for relationship evolution validation
             MATCH (c1:Character)-[r]->(c2:Character)
-            RETURN 'relationship' AS data_type,
-                   c1.name AS source_name,
+            RETURN c1.name AS source_name,
                    c2.name AS target_name,
                    type(r) AS rel_type,
-                   r.chapter_added AS first_chapter
+                   r.chapter_added AS chapter
         """
 
         results = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
 
-        # Organize results into structured data
         validation_data: dict[str, Any] = {
-            "events": [],
-            "world_rules": [],
-            "relationships": {},  # Key: (source_name, target_name), Value: {rel_type, first_chapter}
+            "relationships": {},
         }
 
         for row in results:
-            data_type = row.get("data_type")
+            source = row.get("source_name", "")
+            target = row.get("target_name", "")
+            key = (source, target)
 
-            if data_type == "event":
-                validation_data["events"].append(
-                    {
-                        "description": row.get("description"),
-                        "timestamp": row.get("timestamp"),
-                        "chapter": row.get("chapter"),
-                    }
-                )
-
-            elif data_type == "world_rule":
-                rule_text = row.get("description") or row.get("constraint")
-                if rule_text:
-                    validation_data["world_rules"].append(
-                        {
-                            "description": rule_text,
-                            "constraint": row.get("constraint"),
-                            "created_chapter": row.get("created_chapter"),
-                        }
-                    )
-
-            elif data_type == "relationship":
-                source = row.get("source_name", "")
-                target = row.get("target_name", "")
-                key = (source, target)
-
-                # Keep only the earliest relationship (lowest chapter_added)
-                if key not in validation_data["relationships"]:
-                    validation_data["relationships"][key] = {
-                        "rel_type": row.get("rel_type"),
-                        "first_chapter": row.get("first_chapter"),
-                    }
+            if key not in validation_data["relationships"]:
+                validation_data["relationships"][key] = {
+                    "rel_type": row.get("rel_type"),
+                    "first_chapter": row.get("chapter"),
+                }
 
         logger.debug(
             "_fetch_validation_data: fetched validation data",
             current_chapter=current_chapter,
-            events_count=len(validation_data["events"]),
-            world_rules_count=len(validation_data["world_rules"]),
             relationships_count=len(validation_data["relationships"]),
         )
 
@@ -431,10 +369,7 @@ async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
             error=str(e),
             exc_info=True,
         )
-        # Return empty data on error (best-effort behavior)
         return {
-            "events": [],
-            "world_rules": [],
             "relationships": {},
         }
 
@@ -444,7 +379,7 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
 
     This step augments the contradictions produced by
     [`validate_consistency()`](core/langgraph/subgraphs/validation.py:49) with
-    additional checks (timeline violations, world rule violations, relationship evolution).
+    additional checks (relationship evolution).
 
     Args:
         state: Workflow state.
@@ -461,41 +396,10 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     contradictions = list(state.get("contradictions", []))
     current_chapter = state.get("current_chapter", 1)
 
-    # Initialize content manager to read externalized content
     content_manager = ContentManager(require_project_dir(state))
 
-    # Fetch all validation data in a single Neo4j query to reduce round-trips
     validation_data = await _fetch_validation_data(current_chapter)
 
-    # Check 1: Timeline violations
-    # Delegate state-shape assumptions to the validation node's helper so the subgraph
-    # doesn't diverge (canonical events live in `world_items` with type == "Event").
-    extracted_entities = get_extracted_entities(state, content_manager)
-    extracted_events = get_extracted_events_for_validation(extracted_entities)
-    timeline_contradictions = await _check_timeline(
-        extracted_events,
-        current_chapter,
-        validation_data.get("events", []),
-    )
-    contradictions.extend(timeline_contradictions)
-
-    # Check 2: World rule violations
-    from core.exceptions import MissingDraftReferenceError
-
-    try:
-        draft_text = get_draft_text(state, content_manager)
-    except MissingDraftReferenceError:
-        draft_text = ""
-
-    world_rule_contradictions = await _check_world_rules(
-        draft_text,
-        state.get("current_world_rules", []),
-        current_chapter,
-        validation_data.get("world_rules", []),
-    )
-    contradictions.extend(world_rule_contradictions)
-
-    # Check 3: Relationship evolution (non-contradictory but noteworthy changes)
     extracted_relationships = get_extracted_relationships(state, content_manager)
     relationship_issues = await _check_relationship_evolution(
         extracted_relationships,
@@ -546,290 +450,6 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
         "needs_revision": needs_revision,
         "current_node": "detect_contradictions",
     }
-
-
-async def _check_timeline(
-    extracted_events: list[Any],
-    current_chapter: int,
-    existing_events: list[dict] | None = None,
-) -> list[Contradiction]:
-    """Check for timeline violations using extracted events and Neo4j history.
-
-    Args:
-        extracted_events: Event-like objects derived from extraction.
-        current_chapter: Chapter number being validated.
-        existing_events: Pre-fetched events from Neo4j (optional, for optimization).
-
-    Returns:
-        Timeline-related contradictions. Returns an empty list on query errors
-        (best-effort behavior).
-    """
-    if not extracted_events:
-        return []
-
-    contradictions = []
-
-    try:
-        # Use pre-fetched events if provided, otherwise query Neo4j
-        if existing_events is None:
-            query = """
-                MATCH (e:Event)-[:OCCURRED_IN]->(ch:Chapter)
-                WHERE ch.number <= $current_chapter
-                AND e.timestamp IS NOT NULL
-                RETURN e.description AS description,
-                       e.timestamp AS timestamp,
-                       ch.number AS chapter
-                ORDER BY ch.number, e.timestamp
-            """
-            existing_events = await neo4j_manager.execute_read_query(query, {"current_chapter": current_chapter})
-
-        if not existing_events:
-            return []
-
-        # Build timeline of existing events
-        timeline = {
-            event["description"]: {
-                "timestamp": event.get("timestamp"),
-                "chapter": event.get("chapter"),
-            }
-            for event in existing_events
-            if event.get("timestamp")
-        }
-
-        # Check each extracted event for timeline issues
-        for event in extracted_events:
-            event_desc = getattr(event, "description", str(event))
-            event_attrs = getattr(event, "attributes", {})
-
-            # Check if event references something that should have happened earlier
-            if "timestamp" in event_attrs:
-                event_time = event_attrs["timestamp"]
-
-                # Look for chronological inconsistencies
-                for existing_desc, existing_data in timeline.items():
-                    if _events_are_related(event_desc, existing_desc):
-                        existing_time = existing_data.get("timestamp")
-                        existing_chapter = existing_data.get("chapter")
-
-                        # Check for "before" references to things that happened "after"
-                        if isinstance(event_time, str) and isinstance(existing_time, str) and _is_temporal_violation(event_time, existing_time):
-                            contradictions.append(
-                                Contradiction(
-                                    type="event_sequence",
-                                    description=f"Timeline issue: '{event_desc}' references time '{event_time}' "
-                                    f"which conflicts with '{existing_desc}' at '{existing_time}' "
-                                    f"from chapter {existing_chapter}",
-                                    conflicting_chapters=[
-                                        existing_chapter,
-                                        current_chapter,
-                                    ],
-                                    severity="major",
-                                    suggested_fix="Adjust temporal references to maintain consistency",
-                                )
-                            )
-
-        logger.debug(
-            "_check_timeline: timeline validation complete",
-            events_checked=len(extracted_events),
-            contradictions_found=len(contradictions),
-        )
-
-    except Exception as e:
-        logger.error(
-            "_check_timeline: error during timeline check",
-            error=str(e),
-            exc_info=True,
-        )
-
-    return contradictions
-
-
-def _events_are_related(event1: str, event2: str) -> bool:
-    """Return whether two event descriptions appear related by keyword overlap."""
-    # Extract significant words (> 4 chars, not common words)
-    common_words = {
-        "that",
-        "this",
-        "with",
-        "from",
-        "have",
-        "were",
-        "been",
-        "they",
-        "their",
-    }
-
-    words1 = {w.lower() for w in event1.split() if len(w) > 4 and w.lower() not in common_words}
-    words2 = {w.lower() for w in event2.split() if len(w) > 4 and w.lower() not in common_words}
-
-    overlap = words1 & words2
-    return len(overlap) >= 2
-
-
-def _is_temporal_violation(new_time: str, existing_time: str) -> bool:
-    """Return whether two time expressions contain an obvious ordering conflict."""
-    # Simple keyword-based temporal ordering
-    before_keywords = ["before", "earlier", "prior", "yesterday", "last"]
-    after_keywords = ["after", "later", "following", "tomorrow", "next"]
-
-    new_lower = str(new_time).lower()
-    existing_lower = str(existing_time).lower()
-
-    # Check for obvious contradictions
-    for before in before_keywords:
-        for after in after_keywords:
-            if before in new_lower and after in existing_lower:
-                return True
-            if after in new_lower and before in existing_lower:
-                return True
-
-    return False
-
-
-async def _check_world_rules(
-    draft_text: str,
-    world_rules: list[str],
-    current_chapter: int,
-    existing_world_rules: list[dict] | None = None,
-) -> list[Contradiction]:
-    """Check draft text against established world rules (best-effort).
-
-    This function may consult Neo4j for additional `WorldRule` nodes and then
-    uses an LLM to identify likely violations.
-
-    Args:
-        draft_text: Chapter text to analyze.
-        world_rules: Pre-configured rule strings.
-        current_chapter: Chapter number being validated.
-        existing_world_rules: Pre-fetched world rules from Neo4j (optional, for optimization).
-
-    Returns:
-        World rule violations as contradictions. Returns an empty list on errors.
-
-    Notes:
-        This function performs LLM I/O.
-    """
-    if not world_rules or not draft_text:
-        return []
-
-    contradictions = []
-
-    try:
-        # Use pre-fetched world rules if provided, otherwise query Neo4j
-        if existing_world_rules is None:
-            query = """
-                MATCH (r:WorldRule)
-                RETURN r.description AS description,
-                       r.constraint AS constraint,
-                       r.created_chapter AS created_chapter
-            """
-            db_rules = await neo4j_manager.execute_read_query(query)
-        else:
-            db_rules = existing_world_rules
-
-        # Combine configured rules with DB rules
-        all_rules = list(world_rules)
-        if db_rules:
-            for rule in db_rules:
-                rule_text = rule.get("description") or rule.get("constraint")
-                if rule_text and rule_text not in all_rules:
-                    all_rules.append(rule_text)
-
-        if not all_rules:
-            return []
-
-        # Use LLM to check for rule violations
-        rule_check_prompt = _build_rule_check_prompt(draft_text, all_rules)
-
-        model_name = config.NARRATIVE_MODEL
-        response, _ = await llm_service.async_call_llm(
-            model_name=model_name,
-            prompt=rule_check_prompt,
-            temperature=0.1,
-            max_tokens=config.MAX_GENERATION_TOKENS,
-            auto_clean_response=True,
-        )
-
-        # Parse violations from response
-        violations = _parse_rule_violations(response)
-
-        for violation in violations:
-            contradictions.append(
-                Contradiction(
-                    type="world_rule",
-                    description=violation.get("description", "World rule violation detected"),
-                    conflicting_chapters=[current_chapter],
-                    severity=violation.get("severity", "major"),
-                    suggested_fix=violation.get("fix", "Revise to comply with world rules"),
-                )
-            )
-
-        logger.debug(
-            "_check_world_rules: world rule validation complete",
-            rules_checked=len(all_rules),
-            violations_found=len(contradictions),
-        )
-
-    except Exception as e:
-        logger.error(
-            "_check_world_rules: error during world rule check",
-            error=str(e),
-            exc_info=True,
-        )
-
-    return contradictions
-
-
-def _build_rule_check_prompt(draft_text: str, rules: list[str]) -> str:
-    """Build the world-rule violation evaluation prompt."""
-    # Truncate text if too long
-    max_length = 6000
-    if len(draft_text) > max_length:
-        draft_text = draft_text[:max_length] + "\n[... truncated ...]"
-
-    rules_text = "\n".join([f"- {rule}" for rule in rules])
-
-    return f"""Analyze the following text for violations of established world rules.
-
-## World Rules
-{rules_text}
-
-## Text to Analyze
-{draft_text}
-
-## Task
-Identify any instances where the text violates the established world rules.
-
-Return your analysis as a JSON array. If no violations found, return an empty array [].
-If violations found, each violation should have:
-- "description": Brief description of the violation
-- "severity": "minor", "major", or "critical"
-- "fix": Suggested way to fix the violation
-
-Example response:
-```json
-[
-    {{
-        "description": "Character uses magic without speaking, violating the spoken words requirement",
-        "severity": "major",
-        "fix": "Add dialogue showing the character speaking the spell"
-    }}
-]
-```
-
-Return only the JSON array:"""
-
-
-def _parse_rule_violations(response: str) -> list[dict[str, Any]]:
-    """Parse a list of rule violations from an LLM response."""
-    parsed, _candidates, _parse_errors = try_load_json_from_response(
-        response,
-        expected_root=list,
-    )
-    if isinstance(parsed, list):
-        return parsed
-
-    return []
 
 
 async def _check_relationship_evolution(
