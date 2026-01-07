@@ -65,10 +65,24 @@ Neo4j defaults in this repo:
 - user: `neo4j`
 - password: `saga_password`
 
-### Run SAGA
+### Run SAGA's bootstrap mode with a high-level plot specification (see `docs/bootstrapper.md`)
 
 ```bash
-python main.py
+python main.py bootstrap "A suspenseful thriller set inside a deep-sea facility at the bottom of the ocean"
+```
+
+Review your `projects/{story_title}/config.json` to edit SAGA's generated content for the high-level plot specification if desired (optional).
+
+### Start SAGA's generation mode using the information from bootstrap mode
+
+```bash
+python main.py generate
+```
+
+### SAGA can also be started directly with the high-level plot specification to auto-accept LLM choices
+
+```bash
+python main.py generate "A suspenseful thriller set inside a deep-sea facility at the bottom of the ocean"
 ```
 
 ## Configuration
@@ -90,20 +104,9 @@ Important:
 Keep embedding dimensions consistent across:
 `EXPECTED_EMBEDDING_DIM`, `NEO4J_VECTOR_DIMENSIONS`, and your embedding model.
 
-## Local LLM endpoint examples
+## Local LLM endpoint expectation
 
-SAGA assumes generation is done via an **OpenAI-compatible HTTP API** on your machine (configured via `OPENAI_API_BASE`).
-
-Common local patterns:
-
-- **vLLM (OpenAI-compatible server)**  
-  Run vLLM in OpenAI server mode and point `OPENAI_API_BASE` at it.
-
-- **llama.cpp server (OpenAI-compatible)**  
-  Run llama.cpp's server mode and point `OPENAI_API_BASE` at it.
-
-- **OpenAI-compatible gateways (local)**  
-  If you run a local gateway that exposes `/v1` endpoints, point `OPENAI_API_BASE` at the gateway.
+SAGA assumes generation is done via an **OpenAI-compatible HTTP API** (configured via `OPENAI_API_BASE`).
 
 Embeddings are configured separately via `EMBEDDING_API_BASE`. Any embedding service that matches your configured model and dimension works.
 
@@ -176,6 +179,7 @@ Repeats for each chapter:
 - **Graph healing**: Automated maintenance to merge duplicates and enrich provisional nodes
 - **LLM-based quality evaluation**: Automatic scoring of coherence, prose quality, pacing, and tone
 - **Extended contradiction detection**: Relationship evolution checks and graph consistency validation
+- **Bootstrap capability**: Converts high-level prompts into structured project configurations via `python main.py bootstrap "A western about a robot sheriff"`, with optional review step before generation
 
 For the deep dive, start here:
 - Architecture overview: `docs/langgraph-architecture.md`
