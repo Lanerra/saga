@@ -12,13 +12,13 @@ Core philosophy: single machine, no web app, no microservices (see `docs/PROJECT
 
 SAGA's goal is to help you generate a novel while staying consistent with established story facts.
 
-Running it produces (under `output/`):
+Running it produces (under `projects/{story_title}/`):
 
-- Drafted and finalized chapters (`output/chapters/`)
-- Chapter summaries (`output/summaries/`)
-- Exportable compiled manuscript (`output/exports/`)
-- Human-readable YAML artifacts (`output/characters/`, `output/world/`, `output/outline/`)
-- Resumable workflow checkpoints (`output/.saga/checkpoints.db`)
+- Drafted and finalized chapters (`projects/{story_title}/chapters/`)
+- Chapter summaries (`projects/{story_title}/summaries/`)
+- Exportable compiled manuscript (`projects/{story_title}/exports/`)
+- Human-readable YAML artifacts (`projects/{story_title}/characters/`, `projects/{story_title}/world/`, `projects/{story_title}/outline/`)
+- Resumable workflow checkpoints (`projects/{story_title}/.saga/checkpoints.db`)
 
 The intended design is: **your canon lives in Neo4j**, while **your artifacts live in files**, so you can inspect and version outputs easily.
 
@@ -112,7 +112,7 @@ Embeddings are configured separately via `EMBEDDING_API_BASE`. Any embedding ser
 High-level output layout:
 
 ```
-output/
+projects/{story_title}/
 ├── .saga/
 │   ├── checkpoints.db          # LangGraph SQLite checkpoints
 │   ├── logs/                   # Runtime logs per chapter
@@ -185,7 +185,7 @@ For the deep dive, start here:
 ## Troubleshooting
 
 - Logs and debug artifacts:
-  - Check `output/chapter_logs/` and `output/debug_outputs/`
+  - Check `projects/{story_title}/.saga/logs/` and `projects/{story_title}/.saga/content/`
 - Neo4j reset (destructive):
   - Run `python reset_neo4j.py`
 - Neo4j connection failures:
