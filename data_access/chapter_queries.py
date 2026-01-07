@@ -246,7 +246,7 @@ async def get_embedding_from_db(chapter_number: int) -> np.ndarray | None:
             "get_embedding_from_db",
             e,
             chapter_number=chapter_number,
-        )
+        ) from e
 
 
 async def find_semantic_context_native(

@@ -1,13 +1,10 @@
+# tests/core/langgraph/test_workflow.py
 """Tests for core/langgraph/workflow.py - workflow graph construction and routing."""
 
-import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from langgraph.graph import END  # type: ignore[import-not-found]
 
-from core.langgraph.state import NarrativeState
 from core.langgraph.workflow import (
     create_checkpointer,
     create_full_workflow_graph,
@@ -83,11 +80,12 @@ class TestWorkflowGraphConstruction:
             summarize_chapter=MagicMock(),
         ):
             graph = create_full_workflow_graph()
-            
+
             # Verify it's a compiled graph (CompiledStateGraph type)
             from langgraph.graph.state import CompiledStateGraph
+
             assert isinstance(graph, CompiledStateGraph)
-            
+
             # Verify it has the expected structure
             assert hasattr(graph, "get_graph")
 
@@ -96,7 +94,7 @@ class TestWorkflowGraphConstruction:
         """Test that create_checkpointer returns an AsyncSqliteSaver instance."""
         # create_checkpointer returns a context manager, not the saver directly
         checkpointer_cm = create_checkpointer()
-        
+
         # Verify it's an async context manager
         assert hasattr(checkpointer_cm, "__aenter__")
         assert hasattr(checkpointer_cm, "__aexit__")
@@ -121,10 +119,10 @@ class TestWorkflowGraphStructure:
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
             graph = create_full_workflow_graph()
-            
+
             # Get the graph structure
             graph_structure = graph.get_graph()
-            
+
             # Check that key nodes are present
             nodes = list(graph_structure.nodes.keys())
             assert "assemble_chapter" in nodes
@@ -148,17 +146,17 @@ class TestWorkflowGraphStructure:
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
             graph = create_full_workflow_graph()
-            
+
             # Get the graph structure
             graph_structure = graph.get_graph()
-            
+
             # Check that edges exist between key nodes
             # edges is a list of tuples (u, v, condition_or_none)
             edges = [(u, v) for u, v, *_ in graph_structure.edges]
-            
+
             # Verify the graph has edges connecting nodes
             assert len(edges) > 0
-            
+
             # Verify some expected connections exist
             edge_strings = [f"{u}->{v}" for u, v in edges]
             # The workflow should have connections between major phases
@@ -173,7 +171,7 @@ class TestWorkflowErrorHandling:
         """Test that workflow can handle errors from individual nodes."""
         error_node = MagicMock()
         error_node.side_effect = Exception("Test error")
-        
+
         with patch.multiple(
             "core.langgraph.workflow",
             assemble_chapter=MagicMock(return_value=lambda s: s),
@@ -187,7 +185,7 @@ class TestWorkflowErrorHandling:
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
             graph = create_full_workflow_graph()
-            
+
             # The graph should be compilable even with error nodes
             assert graph is not None
 
@@ -200,7 +198,7 @@ class TestWorkflowStateManagement:
         """Test that state is properly passed through the workflow."""
         # Create a mock node that returns the state unchanged
         mock_node = MagicMock(return_value=lambda s: s)
-        
+
         with patch.multiple(
             "core.langgraph.workflow",
             assemble_chapter=mock_node,
@@ -214,6 +212,6 @@ class TestWorkflowStateManagement:
             summarize_chapter=mock_node,
         ):
             graph = create_full_workflow_graph()
-            
+
             # Verify the graph can be executed
             assert graph is not None

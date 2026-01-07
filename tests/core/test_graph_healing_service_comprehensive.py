@@ -1,7 +1,7 @@
 # tests/core/test_graph_healing_service_comprehensive.py
 """Comprehensive tests for GraphHealingService."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -164,10 +164,7 @@ class TestGraphHealingServiceConfidenceCalculation:
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
             # Mock both relationship query and status query (Character type triggers status check)
-            mock_query.side_effect = [
-                [{"rel_count": 0}],
-                [{"status": "Unknown"}]
-            ]
+            mock_query.side_effect = [[{"rel_count": 0}], [{"status": "Unknown"}]]
 
             # Node created in chapter 0, current chapter is 4 (age = 4, meets AGE_GRADUATION_CHAPTERS)
             confidence = await service.calculate_node_confidence(node, current_chapter=4)
@@ -192,10 +189,7 @@ class TestGraphHealingServiceConfidenceCalculation:
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
             # First call for relationships, second for status
-            mock_query.side_effect = [
-                [{"rel_count": 0}],
-                [{"status": "Alive"}]
-            ]
+            mock_query.side_effect = [[{"rel_count": 0}], [{"status": "Alive"}]]
 
             confidence = await service.calculate_node_confidence(node, current_chapter=1)
 
@@ -210,14 +204,7 @@ class TestGraphHealingServiceEnrichment:
     async def test_enrich_node_from_context_with_valid_data(self) -> None:
         """Test that enrich_node_from_context handles valid data."""
         service = GraphHealingService()
-        node = {
-            "element_id": "neo4j-element-1",
-            "id": "app-id-1",
-            "name": "Test Entity",
-            "type": "Character",
-            "description": "Unknown",
-            "traits": []
-        }
+        node = {"element_id": "neo4j-element-1", "id": "app-id-1", "name": "Test Entity", "type": "Character", "description": "Unknown", "traits": []}
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
             with patch("data_access.kg_queries.get_chapter_context_for_entity") as mock_context:
@@ -233,10 +220,7 @@ class TestGraphHealingServiceEnrichment:
     async def test_apply_enrichment_with_valid_data(self) -> None:
         """Test that apply_enrichment applies enrichment correctly."""
         service = GraphHealingService()
-        enriched = {
-            "inferred_description": "A test character",
-            "confidence": 0.8
-        }
+        enriched = {"inferred_description": "A test character", "confidence": 0.8}
 
         with patch("core.db_manager.neo4j_manager.execute_write_query") as mock_write:
             result = await service.apply_enrichment("test_element_id", enriched)
@@ -247,10 +231,7 @@ class TestGraphHealingServiceEnrichment:
     async def test_apply_enrichment_below_confidence_threshold(self) -> None:
         """Test that apply_enrichment rejects low confidence enrichment."""
         service = GraphHealingService()
-        enriched = {
-            "inferred_description": "A test character",
-            "confidence": 0.5
-        }
+        enriched = {"inferred_description": "A test character", "confidence": 0.5}
 
         with patch("core.db_manager.neo4j_manager.execute_write_query") as mock_write:
             result = await service.apply_enrichment("test_element_id", enriched)
@@ -321,7 +302,7 @@ class TestGraphHealingServiceDeduplication:
                 mock_query.side_effect = [
                     [{"element_id": "neo4j-element-1"}],
                     [{"element_id": "neo4j-element-2"}],
-                    []  # No embeddings found
+                    [],  # No embeddings found
                 ]
 
                 result = await service.find_merge_candidates(use_advanced_matching=True)
@@ -343,7 +324,7 @@ class TestGraphHealingServiceDeduplication:
                 [
                     {"node_id": "neo4j-element-1", "rel_type": "APPEARS_IN", "count": 2},
                     {"node_id": "neo4j-element-2", "rel_type": "APPEARS_IN", "count": 2},
-                ]
+                ],
             ]
 
             result = await service.validate_merge("neo4j-element-1", "neo4j-element-2")
@@ -358,10 +339,7 @@ class TestGraphHealingServiceDeduplication:
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
             # Has co-occurrences (indicates distinct entities)
-            mock_query.side_effect = [
-                [{"cooccurrences": 2}],
-                []
-            ]
+            mock_query.side_effect = [[{"cooccurrences": 2}], []]
 
             result = await service.validate_merge("neo4j-element-1", "neo4j-element-2")
 
@@ -383,19 +361,12 @@ class TestGraphHealingServiceDeduplication:
                     ]
 
                     # Mock context retrieval
-                    mock_context.side_effect = [
-                        {"name": "Alice"},
-                        {"name": "Alicia"}
-                    ]
+                    mock_context.side_effect = [{"name": "Alice"}, {"name": "Alicia"}]
 
                     # Mock successful merge
                     mock_merge.return_value = True
 
-                    result = await service.execute_merge(
-                        "neo4j-element-1",
-                        "neo4j-element-2",
-                        {"similarity": 0.85}
-                    )
+                    result = await service.execute_merge("neo4j-element-1", "neo4j-element-2", {"similarity": 0.85})
 
                     assert result is True
                     mock_merge.assert_called_once()
@@ -410,7 +381,7 @@ class TestGraphHealingServiceOrphanCleanup:
         service = GraphHealingService()
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
-            with patch("core.db_manager.neo4j_manager.execute_write_query") as mock_write:
+            with patch("core.db_manager.neo4j_manager.execute_write_query"):
                 # Mock orphaned nodes (created in chapter 1, current is 5)
                 mock_query.return_value = [
                     {
@@ -433,10 +404,10 @@ class TestGraphHealingServiceOrphanCleanup:
         service = GraphHealingService()
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_read:
-            with patch("core.db_manager.neo4j_manager.execute_write_query") as mock_write:
+            with patch("core.db_manager.neo4j_manager.execute_write_query"):
                 # Mock the query to return nodes created in chapter 1 (cutoff is 5-3=2, so 1 <= 2 means removed)
                 def mock_query_side_effect(query, params=None):
-                    if params and params.get('cutoff_chapter') == 2:
+                    if params and params.get("cutoff_chapter") == 2:
                         # Return nodes that are OLD ENOUGH to be removed (created in chapter 1)
                         return [
                             {
@@ -447,7 +418,7 @@ class TestGraphHealingServiceOrphanCleanup:
                             }
                         ]
                     return []
-                
+
                 mock_read.side_effect = mock_query_side_effect
 
                 result = await service.cleanup_orphaned_nodes(current_chapter=5)
@@ -500,5 +471,3 @@ class TestGraphHealingServiceIntegration:
                             assert isinstance(result, dict)
                             assert result["chapter"] == 1
                             assert "timestamp" in result
-
-

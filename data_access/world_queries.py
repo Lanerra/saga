@@ -192,14 +192,14 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
             exc_info=True,
         )
         raise ValidationError(
-            f"Failed to validate world item fields",
+            "Failed to validate world item fields",
             details={
                 "category": category,
                 "name": item_name,
                 "id": we_id,
                 "error": str(e),
             },
-        )
+        ) from e
 
     # Prefer the fetched/validated node id as the single effective id for enrichment + identity.
     effective_id = we_id

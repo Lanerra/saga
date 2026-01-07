@@ -388,6 +388,7 @@ class TestGetLastPlotPointId:
 def test_plot_queries_catch_specific_exceptions():
     """Verify plot_queries catches specific exceptions, not Exception."""
     import inspect
+
     from data_access import plot_queries
 
     source = inspect.getsource(plot_queries)

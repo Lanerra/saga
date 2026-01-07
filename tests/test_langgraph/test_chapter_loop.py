@@ -95,6 +95,28 @@ def test_should_continue_respects_chapters_per_run(sample_state: NarrativeState)
         assert should_continue_to_next_chapter(sample_state) == "end"
 
 
+def test_chapters_per_run_set_to_five(sample_state: NarrativeState) -> None:
+    """Verify that CHAPTERS_PER_RUN=5 generates exactly 5 chapters."""
+    with patch("config.CHAPTERS_PER_RUN", 5):
+        sample_state["total_chapters"] = 12
+        sample_state["run_start_chapter"] = 1
+
+        sample_state["current_chapter"] = 1
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 2
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 3
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 4
+        assert should_continue_to_next_chapter(sample_state) == "continue"
+
+        sample_state["current_chapter"] = 5
+        assert should_continue_to_next_chapter(sample_state) == "end"
+
+
 @pytest.mark.asyncio
 async def test_workflow_loops_to_next_chapter(sample_state: NarrativeState) -> None:
     """Verify that the full workflow graph loops back to chapter_outline when continuing."""

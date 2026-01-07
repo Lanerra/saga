@@ -1,6 +1,8 @@
+# tests/test_chapter_outline_json_parsing.py
 """Test for chapter outline JSON parsing fix."""
-import json
+
 from core.langgraph.initialization.chapter_outline_node import _parse_chapter_outline
+
 
 def test_parse_chapter_outline_with_object():
     """Test that _parse_chapter_outline correctly handles a JSON object response."""
@@ -25,6 +27,7 @@ def test_parse_chapter_outline_with_object():
     assert len(result["key_beats"]) == 4
     assert result["plot_point"] == "The protagonist realizes they are being hunted."
 
+
 def test_parse_chapter_outline_with_array_fallback():
     """Test that _parse_chapter_outline handles array responses gracefully via fallback parsing."""
     # Simulate an array response (which shouldn't happen with the fixed prompt)
@@ -43,6 +46,7 @@ def test_parse_chapter_outline_with_array_fallback():
     # Fallback should use the full response as scene_description
     assert result["raw_text"] == response
 
+
 def test_parse_chapter_outline_with_invalid_json():
     """Test that _parse_chapter_outline handles invalid JSON gracefully."""
     response = "This is not valid JSON but contains some text about a scene."
@@ -54,6 +58,7 @@ def test_parse_chapter_outline_with_invalid_json():
     assert result["act_number"] == 1
     # Fallback should use the full response as scene_description
     assert result["scene_description"] == response
+
 
 def test_parse_chapter_outline_missing_keys():
     """Test that _parse_chapter_outline handles missing keys with defaults."""

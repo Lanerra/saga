@@ -10,15 +10,15 @@ Core philosophy: single machine, no web app, no microservices (see `docs/PROJECT
 
 ## For writers: what you get
 
-SAGA’s goal is to help you generate a novel while staying consistent with established story facts.
+SAGA's goal is to help you generate a novel while staying consistent with established story facts.
 
-Running it produces (under `output/`):
+Running it produces (under `projects/{story_title}/`):
 
-- Drafted and finalized chapters (`output/chapters/`)
-- Chapter summaries (`output/summaries/`)
-- Exportable compiled manuscript (`output/exports/`)
-- Human-readable YAML artifacts (`output/characters/`, `output/world/`, `output/outline/`)
-- Resumable workflow checkpoints (`output/.saga/checkpoints.db`)
+- Drafted and finalized chapters (`projects/{story_title}/chapters/`)
+- Chapter summaries (`projects/{story_title}/summaries/`)
+- Exportable compiled manuscript (`projects/{story_title}/exports/`)
+- Human-readable YAML artifacts (`projects/{story_title}/characters/`, `projects/{story_title}/world/`, `projects/{story_title}/outline/`)
+- Resumable workflow checkpoints (`projects/{story_title}/.saga/checkpoints.db`)
 
 The intended design is: **your canon lives in Neo4j**, while **your artifacts live in files**, so you can inspect and version outputs easily.
 
@@ -81,7 +81,7 @@ Key environment variables (examples in `.env.example`):
 - `OPENAI_API_KEY`: token (can be dummy for purely local gateways)
 - `EMBEDDING_API_BASE`: embeddings endpoint base URL (example: `http://127.0.0.1:11434`)
 - `EMBEDDING_MODEL`: embedding model name
-- `EXPECTED_EMBEDDING_DIM` and `NEO4J_VECTOR_DIMENSIONS`: must match your embedding model’s output dimension
+- `EXPECTED_EMBEDDING_DIM` and `NEO4J_VECTOR_DIMENSIONS`: must match your embedding model's output dimension
 
 Important:
 - Defaults in `config/settings.py` assume a **1024-dim** embedding model unless overridden.
@@ -100,7 +100,7 @@ Common local patterns:
   Run vLLM in OpenAI server mode and point `OPENAI_API_BASE` at it.
 
 - **llama.cpp server (OpenAI-compatible)**  
-  Run llama.cpp’s server mode and point `OPENAI_API_BASE` at it.
+  Run llama.cpp's server mode and point `OPENAI_API_BASE` at it.
 
 - **OpenAI-compatible gateways (local)**  
   If you run a local gateway that exposes `/v1` endpoints, point `OPENAI_API_BASE` at the gateway.
@@ -112,32 +112,70 @@ Embeddings are configured separately via `EMBEDDING_API_BASE`. Any embedding ser
 High-level output layout:
 
 ```
-output/
-├── .saga/               # checkpoints + externalized content
-├── chapters/            # finalized chapters (markdown)
-├── summaries/           # per-chapter summaries
-├── outline/             # story/act/chapter outline YAML
-├── characters/          # character profiles YAML
-├── world/               # world items + rules YAML
-└── exports/             # compiled manuscript exports
+projects/{story_title}/
+├── .saga/
+│   ├── checkpoints.db          # LangGraph SQLite checkpoints
+│   ├── logs/                   # Runtime logs per chapter
+│   └── content/                # Externalized content (blobs)
+│       ├── drafts/
+│       ├── outlines/
+│       ├── summaries/
+│       ├── extractions/
+│       └── embeddings/
+├── chapters/            # Finalized chapters (markdown)
+│   └── chapter_01.md
+├── summaries/           # Per-chapter summaries
+│   └── chapter_01_summary.txt
+├── outline/             # Story/act/chapter outline YAML
+│   ├── structure.yaml          # Global act/plot structure
+│   └── beats.yaml              # Detailed outline per act/chapter
+├── characters/          # Character profiles YAML
+│   └── protagonist.yaml
+├── world/               # World items + rules YAML
+│   └── items.yaml
+└── exports/             # Compiled manuscript exports
+    └── novel_full.md
 ```
 
 ## How it works (high level)
 
-```mermaid
-flowchart TD
-    Start[Run CLI] --> Route[Route]
-    Route --> Init[Initialize story]
-    Route --> Plan[Plan chapter]
-    Init --> Plan
-    Plan --> Generate[Generate prose]
-    Generate --> Embed[Generate embedding]
-    Embed --> Extract[Extract canon]
-    Extract --> Commit[Commit to Neo4j]
-    Commit --> Validate[Validate]
-    Validate --> Finalize[Finalize files]
-    Finalize --> Next[Next chapter]
-```
+SAGA uses a two-phase workflow:
+
+### 1. Initialization Phase
+Runs once per project to establish the narrative foundation:
+- Generate character sheets for main characters
+- Create a global outline with act structure (3 or 5 acts)
+- Expand into detailed act outlines with chapter-level beats
+- Commit initialization to Neo4j knowledge graph
+- Persist artifacts as YAML/Markdown files
+
+### 2. Generation Loop (Chapter-by-Chapter)
+Repeats for each chapter:
+
+1. **Chapter Planning**: Generate a detailed scene-by-scene outline
+2. **Scene-level Generation**:
+   - Plan scenes from the chapter outline
+   - Retrieve relevant context from Neo4j (characters, relationships, events)
+   - Generate prose for each scene individually
+3. **Extraction**: Extract entities and relationships from each scene, then consolidate
+4. **Embedding Generation**: Create vector embeddings for the chapter
+5. **Relationship Normalization**: Map extracted relationships to canonical types
+6. **Commit to Graph**: Persist extracted information to Neo4j with deduplication
+7. **Validation**:
+   - Consistency checks (relationship validation, trait consistency, plot advancement)
+   - LLM-based quality evaluation (coherence, prose quality, pacing, tone)
+   - Contradiction detection (abrupt relationship changes, timeline issues)
+8. **Revision Loop**: If validation fails, revise the chapter and re-enter extraction
+9. **Finalization**: Generate summary, write final markdown, perform graph healing
+10. **Quality Assurance**: Final checks before advancing to next chapter
+
+### Key Features
+
+- **Scene-level generation**: Chapters are broken into scenes, each generated with relevant context from the knowledge graph
+- **Content externalization**: Large text blobs stored on disk via `ContentRef` to keep checkpoints lightweight
+- **Graph healing**: Automated maintenance to merge duplicates and enrich provisional nodes
+- **LLM-based quality evaluation**: Automatic scoring of coherence, prose quality, pacing, and tone
+- **Extended contradiction detection**: Relationship evolution checks and graph consistency validation
 
 For the deep dive, start here:
 - Architecture overview: `docs/langgraph-architecture.md`
@@ -147,7 +185,7 @@ For the deep dive, start here:
 ## Troubleshooting
 
 - Logs and debug artifacts:
-  - Check `output/chapter_logs/` and `output/debug_outputs/`
+  - Check `projects/{story_title}/.saga/logs/` and `projects/{story_title}/.saga/content/`
 - Neo4j reset (destructive):
   - Run `python reset_neo4j.py`
 - Neo4j connection failures:

@@ -550,7 +550,7 @@ def test_kg_queries_catch_specific_exceptions():
 
     source = inspect.getsource(kg_queries)
 
-    except_exception_pattern = re.compile(r'except Exception.*?(?=\n\s*(?:except|finally|$))', re.DOTALL)
+    except_exception_pattern = re.compile(r"except Exception.*?(?=\n\s*(?:except|finally|$))", re.DOTALL)
 
     invalid_handlers = []
     for match in except_exception_pattern.finditer(source):
@@ -558,7 +558,4 @@ def test_kg_queries_catch_specific_exceptions():
         if "handle_database_error" not in handler_text:
             invalid_handlers.append(handler_text[:100])
 
-    assert len(invalid_handlers) == 0, (
-        f"Found {len(invalid_handlers)} broad 'except Exception' handlers "
-        f"that don't use handle_database_error: {invalid_handlers}"
-    )
+    assert len(invalid_handlers) == 0, f"Found {len(invalid_handlers)} broad 'except Exception' handlers " f"that don't use handle_database_error: {invalid_handlers}"

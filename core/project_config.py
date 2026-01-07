@@ -1,3 +1,4 @@
+# core/project_config.py
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr

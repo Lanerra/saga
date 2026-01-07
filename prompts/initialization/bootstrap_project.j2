@@ -36,7 +36,7 @@ Return ONLY a JSON object with these exact fields:
   "setting": "Detailed setting description (2-3 sentences with specifics)",
   "protagonist_name": "A fitting name for the main character",
   "narrative_style": "{{ default_narrative_style }}",
-  "total_chapters": {{ target_plot_points // 3 }}
+  "total_chapters": {{ total_chapters }}
 }
 ```
 
@@ -53,7 +53,7 @@ Output:
   "setting": "Charleston, South Carolina, 1855. A world of grand estates, debutante balls, and the looming shadow of slavery. The protagonist navigates a society where family reputation is everything and marriage is a strategic alliance rather than a matter of the heart.",
   "protagonist_name": "Annabelle Ashford",
   "narrative_style": "{{ default_narrative_style }}",
-  "total_chapters": {{ target_plot_points // 3 }}
+  "total_chapters": {{ total_chapters }}
 }
 ```
 

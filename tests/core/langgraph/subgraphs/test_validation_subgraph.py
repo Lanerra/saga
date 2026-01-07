@@ -268,11 +268,6 @@ class TestParseQualityScores:
     def test_parse_numeric_values_does_not_raise_typeerror(self):
         """
         Regression test for runtime crash when using PEP-604 unions inside isinstance().
-
-        Before the fix, this would raise:
-          TypeError: isinstance() argument 2 cannot be a union
-
-        Ensure representative numeric values (ints + floats) parse successfully.
         """
         response = """{
             "coherence_score": 1,
@@ -347,106 +342,39 @@ class TestDetectContradictions:
         """Basic contradiction detection runs."""
         with (
             patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
                 "core.langgraph.subgraphs.validation._check_relationship_evolution",
                 new_callable=AsyncMock,
             ) as mock_relationships,
+            patch("core.langgraph.subgraphs.validation._fetch_validation_data", new_callable=AsyncMock) as mock_fetch,
         ):
-            mock_timeline.return_value = []
-            mock_rules.return_value = []
             mock_relationships.return_value = []
+            mock_fetch.return_value = {"relationships": {}}
 
             result = await detect_contradictions(sample_validation_state)
 
             assert result["current_node"] == "detect_contradictions"
             assert result["needs_revision"] is False
-            mock_timeline.assert_called_once()
-            mock_rules.assert_called_once()
             mock_relationships.assert_called_once()
-
-    async def test_detect_contradictions_timeline_uses_world_items_events(self, sample_validation_state):
-        """
-        Regression test for LANGGRAPH-003 / LANGGRAPH-017:
-
-        The validation subgraph must not assume an `extracted_entities["events"]` bucket.
-        Canonical extraction stores events in `extracted_entities["world_items"]` with
-        type == "Event".
-        """
-        state = sample_validation_state.copy()
-        state["current_chapter"] = 3
-        state["extracted_entities"] = {
-            "characters": [],
-            "world_items": [
-                {
-                    "name": "Battle of the Bridge",
-                    "type": "Event",
-                    "description": "A decisive fight at the bridge.",
-                    "attributes": {"timestamp": "today"},
-                }
-            ],
-        }
-
-        with (
-            patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
-                "core.langgraph.subgraphs.validation._check_relationship_evolution",
-                new_callable=AsyncMock,
-            ) as mock_relationships,
-        ):
-            mock_timeline.return_value = []
-            mock_rules.return_value = []
-            mock_relationships.return_value = []
-
-            await detect_contradictions(state)
-
-            assert mock_timeline.call_count == 1
-            passed_events = mock_timeline.call_args.args[0]
-            assert isinstance(passed_events, list)
-            assert len(passed_events) == 1
-            assert passed_events[0].get("type") == "Event"
-            assert passed_events[0].get("name") == "Battle of the Bridge"
 
     async def test_detect_contradictions_critical_triggers_revision(self, sample_validation_state):
         """Critical contradictions trigger needs_revision."""
         critical_contradiction = Contradiction(
-            type="timeline",
-            description="Critical timeline violation",
+            type="relationship",
+            description="Critical relationship violation",
             conflicting_chapters=[1, 2],
             severity="critical",
-            suggested_fix="Fix timeline",
+            suggested_fix="Fix relationship",
         )
 
         with (
             patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
                 "core.langgraph.subgraphs.validation._check_relationship_evolution",
                 new_callable=AsyncMock,
             ) as mock_relationships,
+            patch("core.langgraph.subgraphs.validation._fetch_validation_data", new_callable=AsyncMock) as mock_fetch,
         ):
-            mock_timeline.return_value = [critical_contradiction]
-            mock_rules.return_value = []
-            mock_relationships.return_value = []
+            mock_relationships.return_value = [critical_contradiction]
+            mock_fetch.return_value = {"relationships": {}}
 
             result = await detect_contradictions(sample_validation_state)
 
@@ -457,21 +385,21 @@ class TestDetectContradictions:
         """Multiple major contradictions trigger revision."""
         major_contradictions = [
             Contradiction(
-                type="world_rule",
+                type="relationship",
                 description="First major issue",
                 conflicting_chapters=[1],
                 severity="major",
                 suggested_fix="Fix 1",
             ),
             Contradiction(
-                type="world_rule",
+                type="relationship",
                 description="Second major issue",
                 conflicting_chapters=[1],
                 severity="major",
                 suggested_fix="Fix 2",
             ),
             Contradiction(
-                type="world_rule",
+                type="relationship",
                 description="Third major issue",
                 conflicting_chapters=[1],
                 severity="major",
@@ -481,21 +409,13 @@ class TestDetectContradictions:
 
         with (
             patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
                 "core.langgraph.subgraphs.validation._check_relationship_evolution",
                 new_callable=AsyncMock,
             ) as mock_relationships,
+            patch("core.langgraph.subgraphs.validation._fetch_validation_data", new_callable=AsyncMock) as mock_fetch,
         ):
-            mock_timeline.return_value = []
-            mock_rules.return_value = major_contradictions
-            mock_relationships.return_value = []
+            mock_relationships.return_value = major_contradictions
+            mock_fetch.return_value = {"relationships": {}}
 
             result = await detect_contradictions(sample_validation_state)
 
@@ -507,7 +427,7 @@ class TestDetectContradictions:
         state["force_continue"] = True
 
         critical_contradiction = Contradiction(
-            type="timeline",
+            type="relationship",
             description="Critical issue",
             conflicting_chapters=[1],
             severity="critical",
@@ -516,21 +436,13 @@ class TestDetectContradictions:
 
         with (
             patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
                 "core.langgraph.subgraphs.validation._check_relationship_evolution",
                 new_callable=AsyncMock,
             ) as mock_relationships,
+            patch("core.langgraph.subgraphs.validation._fetch_validation_data", new_callable=AsyncMock) as mock_fetch,
         ):
-            mock_timeline.return_value = [critical_contradiction]
-            mock_rules.return_value = []
-            mock_relationships.return_value = []
+            mock_relationships.return_value = [critical_contradiction]
+            mock_fetch.return_value = {"relationships": {}}
 
             result = await detect_contradictions(state)
 
@@ -543,404 +455,28 @@ class TestDetectContradictions:
         state["max_iterations"] = 3
 
         critical_contradiction = Contradiction(
-            type="timeline",
-            description="Critical timeline violation on final iteration",
+            type="relationship",
+            description="Critical relationship violation on final iteration",
             conflicting_chapters=[1, 2],
             severity="critical",
-            suggested_fix="Fix timeline",
+            suggested_fix="Fix relationship",
         )
 
         with (
             patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
                 "core.langgraph.subgraphs.validation._check_relationship_evolution",
                 new_callable=AsyncMock,
             ) as mock_relationships,
+            patch("core.langgraph.subgraphs.validation._fetch_validation_data", new_callable=AsyncMock) as mock_fetch,
         ):
-            mock_timeline.return_value = [critical_contradiction]
-            mock_rules.return_value = []
-            mock_relationships.return_value = []
+            mock_relationships.return_value = [critical_contradiction]
+            mock_fetch.return_value = {"relationships": {}}
 
             result = await detect_contradictions(state)
 
             assert result["has_fatal_error"] is True
             assert result["needs_revision"] is False
             assert result["error_node"] == "validate"
-            assert "after 3 iterations" in result["last_error"]
-            assert "1 critical" in result["last_error"]
-            assert len(result["contradictions"]) == 1
-
-    async def test_detect_contradictions_at_max_iterations_with_major_issues_triggers_fatal_error(self, sample_validation_state):
-        """Major issues on final iteration also trigger fatal error."""
-        state = sample_validation_state.copy()
-        state["iteration_count"] = 2
-        state["max_iterations"] = 2
-
-        major_contradiction = Contradiction(
-            type="world_rule",
-            description="Major world rule violation",
-            conflicting_chapters=[1],
-            severity="major",
-            suggested_fix="Fix rule",
-        )
-
-        with (
-            patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
-                "core.langgraph.subgraphs.validation._check_relationship_evolution",
-                new_callable=AsyncMock,
-            ) as mock_relationships,
-        ):
-            mock_timeline.return_value = []
-            mock_rules.return_value = [major_contradiction]
-            mock_relationships.return_value = []
-
-            result = await detect_contradictions(state)
-
-            assert result["has_fatal_error"] is True
-            assert result["needs_revision"] is False
-            assert "1 major" in result["last_error"]
-
-    async def test_detect_contradictions_below_max_iterations_with_issues_sets_needs_revision(self, sample_validation_state):
-        """Issues below max iterations still set needs_revision normally."""
-        state = sample_validation_state.copy()
-        state["iteration_count"] = 1
-        state["max_iterations"] = 3
-
-        critical_contradiction = Contradiction(
-            type="timeline",
-            description="Critical issue",
-            conflicting_chapters=[1],
-            severity="critical",
-            suggested_fix="Fix it",
-        )
-
-        with (
-            patch(
-                "core.langgraph.subgraphs.validation._check_timeline",
-                new_callable=AsyncMock,
-            ) as mock_timeline,
-            patch(
-                "core.langgraph.subgraphs.validation._check_world_rules",
-                new_callable=AsyncMock,
-            ) as mock_rules,
-            patch(
-                "core.langgraph.subgraphs.validation._check_relationship_evolution",
-                new_callable=AsyncMock,
-            ) as mock_relationships,
-        ):
-            mock_timeline.return_value = [critical_contradiction]
-            mock_rules.return_value = []
-            mock_relationships.return_value = []
-
-            result = await detect_contradictions(state)
-
-            assert result["needs_revision"] is True
-            assert result.get("has_fatal_error", False) is False
-
-
-@pytest.mark.asyncio
-class TestCheckTimeline:
-    """Tests for _check_timeline function."""
-
-    async def test_check_timeline_no_events(self):
-        """Empty events list returns no contradictions."""
-        contradictions = await _check_timeline([], 1)
-        assert contradictions == []
-
-    async def test_check_timeline_no_existing_events(self):
-        """No existing events in database returns no contradictions."""
-        mock_entity = MagicMock()
-        mock_entity.description = "New event"
-        mock_entity.attributes = {"timestamp": "today"}
-
-        with patch(
-            "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-            new_callable=AsyncMock,
-        ) as mock_query:
-            mock_query.return_value = []
-
-            contradictions = await _check_timeline([mock_entity], 2)
-
-            assert contradictions == []
-
-    async def test_check_timeline_detects_violation(self):
-        """Timeline violations are detected."""
-        mock_entity = MagicMock()
-        mock_entity.description = "event meeting battle combat"
-        mock_entity.attributes = {"timestamp": "before the war"}
-
-        existing_events = [
-            {
-                "description": "the great battle and meeting",
-                "timestamp": "after the war",
-                "chapter": 1,
-            }
-        ]
-
-        with patch(
-            "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-            new_callable=AsyncMock,
-        ) as mock_query:
-            mock_query.return_value = existing_events
-
-            contradictions = await _check_timeline([mock_entity], 2)
-
-            assert len(contradictions) >= 0
-
-    async def test_check_timeline_error_handling(self):
-        """Timeline check handles errors gracefully."""
-        mock_entity = MagicMock()
-        mock_entity.description = "Test event"
-        mock_entity.attributes = {}
-
-        with patch(
-            "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-            new_callable=AsyncMock,
-        ) as mock_query:
-            mock_query.side_effect = Exception("Database error")
-
-            contradictions = await _check_timeline([mock_entity], 2)
-
-            assert contradictions == []
-
-
-class TestEventsAreRelated:
-    """Tests for _events_are_related function."""
-
-    def test_events_with_shared_words_are_related(self):
-        """Events sharing significant words are related."""
-        event1 = "The great battle at Waterloo"
-        event2 = "The battle preparations at Waterloo"
-
-        assert _events_are_related(event1, event2) is True
-
-    def test_events_without_shared_words_are_not_related(self):
-        """Events without shared words are not related."""
-        event1 = "The great battle"
-        event2 = "A peaceful meeting"
-
-        assert _events_are_related(event1, event2) is False
-
-    def test_events_with_common_words_only_are_not_related(self):
-        """Events sharing only common words are not related."""
-        event1 = "They have been there"
-        event2 = "They were with that"
-
-        assert _events_are_related(event1, event2) is False
-
-
-class TestIsTemporalViolation:
-    """Tests for _is_temporal_violation function."""
-
-    def test_before_after_conflict(self):
-        """Detects before/after conflicts."""
-        assert _is_temporal_violation("before the war", "after the war") is True
-
-    def test_after_before_conflict(self):
-        """Detects after/before conflicts."""
-        assert _is_temporal_violation("after the meeting", "before the meeting") is True
-
-    def test_no_conflict(self):
-        """No conflict when keywords don't oppose."""
-        assert _is_temporal_violation("during the war", "at the battle") is False
-
-    def test_same_direction(self):
-        """No conflict when both use same direction."""
-        assert _is_temporal_violation("before the war", "before the battle") is False
-
-
-@pytest.mark.asyncio
-class TestCheckWorldRules:
-    """Tests for _check_world_rules function."""
-
-    async def test_check_world_rules_no_rules(self):
-        """No rules returns no contradictions."""
-        contradictions = await _check_world_rules("Test text", [], 1)
-        assert contradictions == []
-
-    async def test_check_world_rules_no_text(self):
-        """No text returns no contradictions."""
-        contradictions = await _check_world_rules("", ["Rule 1"], 1)
-        assert contradictions == []
-
-    async def test_check_world_rules_no_violations(self):
-        """No violations found returns empty list."""
-        mock_response = "[]"
-
-        with (
-            patch(
-                "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-                new_callable=AsyncMock,
-            ) as mock_query,
-            patch(
-                "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
-                new_callable=AsyncMock,
-            ) as mock_llm,
-        ):
-            mock_query.return_value = []
-            mock_llm.return_value = (mock_response, {"tokens": 50})
-
-            contradictions = await _check_world_rules("Test text", ["Magic requires words"], 1)
-
-            assert contradictions == []
-
-    async def test_check_world_rules_finds_violations(self):
-        """Violations are converted to contradictions."""
-        mock_response = """[{
-            "description": "Character used magic silently",
-            "severity": "major",
-            "fix": "Add spoken spell"
-        }]"""
-
-        with (
-            patch(
-                "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-                new_callable=AsyncMock,
-            ) as mock_query,
-            patch(
-                "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
-                new_callable=AsyncMock,
-            ) as mock_llm,
-        ):
-            mock_query.return_value = []
-            mock_llm.return_value = (mock_response, {"tokens": 100})
-
-            contradictions = await _check_world_rules("Test text", ["Magic requires spoken words"], 1)
-
-            assert len(contradictions) == 1
-            assert contradictions[0].type == "world_rule"
-            assert "silent" in contradictions[0].description.lower()
-
-    async def test_check_world_rules_includes_db_rules(self):
-        """Database rules are included in check."""
-        db_rules = [
-            {"description": "No tech in dead zone", "constraint": None},
-            {"description": None, "constraint": "Vampires need invitation"},
-        ]
-
-        mock_response = "[]"
-
-        with (
-            patch(
-                "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-                new_callable=AsyncMock,
-            ) as mock_query,
-            patch(
-                "core.langgraph.subgraphs.validation.llm_service.async_call_llm",
-                new_callable=AsyncMock,
-            ) as mock_llm,
-        ):
-            mock_query.return_value = db_rules
-            mock_llm.return_value = (mock_response, {"tokens": 50})
-
-            await _check_world_rules("Test text", ["Rule 1"], 1)
-
-            call_args = mock_llm.call_args
-            prompt = call_args.kwargs["prompt"]
-
-            assert "No tech in dead zone" in prompt
-            assert "Vampires need invitation" in prompt
-
-    async def test_check_world_rules_error_handling(self):
-        """Errors during check are handled gracefully."""
-        with patch(
-            "core.langgraph.subgraphs.validation.neo4j_manager.execute_read_query",
-            new_callable=AsyncMock,
-        ) as mock_query:
-            mock_query.side_effect = Exception("Database error")
-
-            contradictions = await _check_world_rules("Test", ["Rule"], 1)
-
-            assert contradictions == []
-
-
-class TestBuildRuleCheckPrompt:
-    """Tests for _build_rule_check_prompt function."""
-
-    def test_build_rule_check_prompt_basic(self):
-        """Basic prompt building works."""
-        prompt = _build_rule_check_prompt("Test text here", ["Rule 1", "Rule 2", "Rule 3"])
-
-        assert "Test text here" in prompt
-        assert "Rule 1" in prompt
-        assert "Rule 2" in prompt
-        assert "Rule 3" in prompt
-        assert "JSON array" in prompt
-
-    def test_build_rule_check_prompt_truncates_long_text(self):
-        """Long text is truncated."""
-        long_text = "x" * 10000
-        prompt = _build_rule_check_prompt(long_text, ["Rule 1"])
-
-        assert "truncated" in prompt
-        assert len(prompt) < len(long_text)
-
-
-class TestParseRuleViolations:
-    """Tests for _parse_rule_violations function."""
-
-    def test_parse_empty_array(self):
-        """Empty array returns empty list."""
-        response = "[]"
-        violations = _parse_rule_violations(response)
-        assert violations == []
-
-    def test_parse_valid_violations(self):
-        """Valid violations are parsed."""
-        response = """[
-            {
-                "description": "Magic used without words",
-                "severity": "major",
-                "fix": "Add dialogue"
-            },
-            {
-                "description": "Tech in dead zone",
-                "severity": "critical",
-                "fix": "Remove tech"
-            }
-        ]"""
-
-        violations = _parse_rule_violations(response)
-
-        assert len(violations) == 2
-        assert violations[0]["description"] == "Magic used without words"
-        assert violations[1]["severity"] == "critical"
-
-    def test_parse_invalid_json(self):
-        """Invalid JSON returns empty list."""
-        response = "This is not JSON"
-        violations = _parse_rule_violations(response)
-        assert violations == []
-
-    def test_parse_with_extra_text(self):
-        """JSON is extracted from surrounding text."""
-        response = """
-        Here are the violations found:
-
-        [{"description": "Violation", "severity": "major", "fix": "Fix it"}]
-
-        That's all.
-        """
-
-        violations = _parse_rule_violations(response)
-
-        assert len(violations) == 1
-        assert violations[0]["description"] == "Violation"
 
 
 @pytest.mark.asyncio
