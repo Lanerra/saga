@@ -263,7 +263,7 @@ def ensure_required_keys(*, value: Any, required_keys: set[str], context: str) -
         raise ValueError(f"{context} is missing required keys {missing}")
 
 
-def truncate_for_log(s: str, limit: int = 300) -> str:
+def truncate_for_log(s: str, limit: int = 600) -> str:
     """Return a truncated string for logging purposes."""
     if not isinstance(s, str):
         return ""

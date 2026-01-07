@@ -1062,8 +1062,8 @@ async def get_chapter_context_for_entity(
     entity_id: str | None = None,
     *,
     chapter_context_limit: int = 5,
-    max_event_chapters: int = 10,
-    max_rel_chapters: int = 20,
+    max_event_chapters: int = 5,
+    max_rel_chapters: int = 10,
 ) -> list[dict[str, Any]]:
     """Return recent chapter context for a single entity.
 
@@ -1264,10 +1264,10 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
 
 
 async def find_candidate_duplicate_entities(
-    similarity_threshold: float = 0.55,
+    similarity_threshold: float = 0.51,
     limit: int = 50,
     *,
-    desc_threshold: float = 0.55,
+    desc_threshold: float = 0.51,
     per_label_limit: int | None = None,
     candidate_pool_size: int | None = None,
     max_candidate_pool_size: int = 500,

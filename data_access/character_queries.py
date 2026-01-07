@@ -730,7 +730,7 @@ async def get_character_profiles() -> list[CharacterProfile]:
         return []
 
 
-async def get_characters_for_chapter_context_native(chapter_number: int, limit: int = 10) -> list[CharacterProfile]:
+async def get_characters_for_chapter_context_native(chapter_number: int, limit: int = 5) -> list[CharacterProfile]:
     """Return characters relevant for chapter context.
 
     Args:

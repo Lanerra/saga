@@ -331,7 +331,7 @@ async def _get_location_details(location_id: str) -> dict[str, Any] | None:
 
 async def get_key_events(
     current_chapter: int,
-    lookback_chapters: int = 10,
+    lookback_chapters: int = 5,
     max_events: int = 20,
 ) -> list[dict[str, Any]]:
     """Load key events from recent chapters for prompt context.
