@@ -323,7 +323,7 @@ def create_initial_state(
     medium_model: str = settings.MEDIUM_MODEL,
     small_model: str = settings.SMALL_MODEL,
     narrative_model: str = settings.NARRATIVE_MODEL,
-    max_iterations: int = 3,
+    max_iterations: int = 2,
 ) -> NarrativeState:
     """Create an initial, ready-to-run LangGraph workflow state.
 

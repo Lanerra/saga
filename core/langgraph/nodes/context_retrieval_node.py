@@ -36,11 +36,11 @@ logger = structlog.get_logger(__name__)
 # Context budget configuration (in tokens)
 # These can be tuned based on model context window
 DEFAULT_CONTEXT_BUDGET_TOKENS = config.settings.MAX_CONTEXT_TOKENS // 2  # Reserve half for generation
-PREVIOUS_SCENES_TOKEN_BUDGET = 16384  # Max tokens for previous scene context
-SUMMARY_MAX_TOKENS = 16384  # Target tokens per scene summary
-CHARACTER_PROFILES_TOKEN_BUDGET = 16384  # Max tokens for character profiles
-KG_FACTS_TOKEN_BUDGET = 16384  # Max tokens for KG facts
-SEMANTIC_CONTEXT_TOKEN_BUDGET = 16384  # Max tokens for semantic search results
+PREVIOUS_SCENES_TOKEN_BUDGET = config.MAX_GENERATION_TOKENS  # Max tokens for previous scene context
+SUMMARY_MAX_TOKENS = config.MAX_GENERATION_TOKENS  # Target tokens per scene summary
+CHARACTER_PROFILES_TOKEN_BUDGET = config.MAX_GENERATION_TOKENS  # Max tokens for character profiles
+KG_FACTS_TOKEN_BUDGET = config.MAX_GENERATION_TOKENS  # Max tokens for KG facts
+SEMANTIC_CONTEXT_TOKEN_BUDGET = config.MAX_GENERATION_TOKENS  # Max tokens for semantic search results
 
 
 async def retrieve_context(state: NarrativeState) -> NarrativeState:

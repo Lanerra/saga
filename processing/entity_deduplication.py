@@ -298,7 +298,7 @@ async def should_merge_entities(
     new_name: str,
     new_description: str,
     existing_entity: dict[str, Any],
-    similarity_threshold: float = 0.55,
+    similarity_threshold: float = 0.51,
 ) -> bool:
     """Decide whether a candidate entity should be merged into an existing entity.
 
@@ -510,8 +510,8 @@ async def check_relationship_pattern_similarity(entity1_name: str, entity2_name:
 
 async def find_relationship_based_duplicates(
     entity_type: str = "character",
-    name_similarity_threshold: float = 0.7,
-    relationship_similarity_threshold: float = 0.7,
+    name_similarity_threshold: float = 0.55,
+    relationship_similarity_threshold: float = 0.55,
 ) -> list[tuple[str, str, float, float]]:
     """Find likely duplicates using name similarity plus relationship-pattern overlap.
 
