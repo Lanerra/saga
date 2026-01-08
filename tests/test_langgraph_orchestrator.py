@@ -935,11 +935,11 @@ async def test_resume_conflict_neo4j_ahead_of_checkpoint_raises(orchestrator) ->
         "orchestration.langgraph_orchestrator.chapter_queries.load_chapter_count_from_db",
         new_callable=AsyncMock,
     ) as mock_neo4j_count:
-        mock_neo4j_count.return_value = 3
+        mock_neo4j_count.return_value = 4
 
         with pytest.raises(
             CheckpointResumeConflictError,
-            match="Resume conflict: Neo4j reports chapter_count=3 which is ahead of checkpoint current_chapter=3",
+            match="Resume conflict: Neo4j reports chapter_count=4 which is ahead of checkpoint current_chapter=3",
         ):
             await orchestrator._load_state_for_run(
                 checkpointer=fake_checkpointer,

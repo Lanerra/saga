@@ -610,7 +610,7 @@ class Neo4jManagerSingleton:
             try:
                 await self.execute_write_query(vector_index_query)
                 self.logger.info(
-                    "Vector index created successfully.",
+                    "Vector index verified (created or already exists).",
                     index_name=index_name,
                     node_label=node_label,
                     vector_property=vector_property,

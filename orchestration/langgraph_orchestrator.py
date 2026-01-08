@@ -799,7 +799,7 @@ class LangGraphOrchestrator:
 
         current_chapter = cast(int, checkpoint_state.get("current_chapter"))
         neo4j_chapter_count = await chapter_queries.load_chapter_count_from_db()
-        if neo4j_chapter_count >= current_chapter:
+        if neo4j_chapter_count > current_chapter:
             raise CheckpointResumeConflictError(f"Resume conflict: Neo4j reports chapter_count={neo4j_chapter_count} which is ahead of checkpoint current_chapter={current_chapter}")
 
         # Conflict: checkpoint references missing artifact files.
