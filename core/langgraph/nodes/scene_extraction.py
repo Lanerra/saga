@@ -655,8 +655,35 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
         }
 
     if not scene_drafts:
-        logger.warning("extract_from_scenes: no scene drafts found, returning empty extraction")
+        logger.warning("extract_from_scenes: no scene drafts found, creating empty externalized content")
+        
+        # Even with no scenes, create empty externalized content for consistency
+        chapter_number = state.get("current_chapter", 1)
+        current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
+        
+        extracted_entities_ref = content_manager.save_json(
+            {"characters": [], "world_items": []},
+            "extracted_entities",
+            f"chapter_{chapter_number}",
+            current_version,
+        )
+        
+        extracted_relationships_ref = content_manager.save_json(
+            [],
+            "extracted_relationships",
+            f"chapter_{chapter_number}",
+            current_version,
+        )
+        
+        logger.info(
+            "extract_from_scenes: empty content externalized",
+            chapter=chapter_number,
+            version=current_version,
+        )
+        
         return {
+            "extracted_entities_ref": extracted_entities_ref,
+            "extracted_relationships_ref": extracted_relationships_ref,
             "current_node": "extract_from_scenes",
         }
 
