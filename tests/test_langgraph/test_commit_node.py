@@ -1091,7 +1091,8 @@ class TestBuildRelationshipStatements:
         ]
 
         with patch("core.langgraph.nodes.commit_node._get_cypher_labels") as mock_labels:
-            mock_labels.side_effect = [":Character", ":DevelopmentEvent"]
+            # Mock is called multiple times: once in _resolve_entity_ids_from_db and twice in relationship building
+            mock_labels.side_effect = [":Event", ":Character", ":DevelopmentEvent"]
 
             statements = await _build_relationship_statements(
                 relationships,

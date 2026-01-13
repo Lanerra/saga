@@ -230,7 +230,7 @@ class TestCreateInitialState:
         assert state["contradictions"] == []
         assert state["needs_revision"] is False
         assert state["iteration_count"] == 0
-        assert state["max_iterations"] == 3
+        assert state["max_iterations"] == 2
 
     def test_create_state_with_custom_models(self) -> None:
         """Test creating state with custom model names."""

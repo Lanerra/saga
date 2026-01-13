@@ -176,6 +176,7 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
     return {
         "extracted_relationships_ref": normalized_ref,
+        "extracted_relationships": [],
         "relationship_vocabulary": vocabulary,
         "relationship_vocabulary_size": len(vocabulary),
         "relationships_normalized_this_chapter": normalized_count,

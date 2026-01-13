@@ -384,9 +384,8 @@ class TestPhase2Workflow:
         # Validation should be called twice (revise then accept)
         assert validate_call_count == 2
 
-        # Commit should happen only after validation accepts (continue branch)
-        assert mock_all_nodes["commit"].call_count == 1
-        assert call_sequence == ["validate", "validate", "commit"]
+        # Commit should happen twice: once from normalize_relationships, once after validation accepts
+        assert mock_all_nodes["commit"].call_count == 2
 
     async def test_workflow_max_iterations_enforcement(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that max iterations are enforced."""
@@ -630,9 +629,12 @@ class TestPhase2Integration:
 
         edges = {(edge.source, edge.target) for edge in graph_obj.edges}
 
-        assert ("normalize_relationships", "validate") in edges
-        assert ("validate", "commit") in edges
-        assert ("commit", "summarize") in edges
+        # Relationship persistence happens before validation
+        assert ("normalize_relationships", "commit") in edges
+        # Validation happens after relationship commit
+        assert ("commit", "validate") in edges
+        # If validation passes, continue to summarize
+        assert ("validate", "summarize") in edges
 
     def test_workflow_revision_loop_routes_to_generate(self) -> None:
         """Revision loop should route validate → revise → generate (scene regeneration)."""
