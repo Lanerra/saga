@@ -248,7 +248,7 @@ class SagaSettings(BaseSettings):
     # Generation Parameters
     # Token budgets (defaults are generous)
     MAX_CONTEXT_TOKENS: int = 32768
-    MAX_GENERATION_TOKENS: int = 8192
+    MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 3
     TOTAL_CHAPTERS: int = 12
@@ -262,15 +262,15 @@ class SagaSettings(BaseSettings):
     TOKENIZER_CACHE_SIZE: int = 10
 
     # Agentic Planning & Prompt Context Snippets
-    MAX_PLANNING_TOKENS: int = 8192
+    MAX_PLANNING_TOKENS: int = 16384
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
-    MAX_SUMMARY_TOKENS: int = 8192
-    MAX_KG_TRIPLE_TOKENS: int = 8192
-    MAX_PREPOP_KG_TOKENS: int = 8192
+    MAX_SUMMARY_TOKENS: int = 16384
+    MAX_KG_TRIPLE_TOKENS: int = 16384
+    MAX_PREPOP_KG_TOKENS: int = 16384
 
     # Quality Assurance Configuration
     ENABLE_QA_CHECKS: bool = True
