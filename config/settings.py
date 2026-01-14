@@ -76,7 +76,29 @@ class RelationshipNormalizationSettings(BaseSettings):
     # Master toggle
     ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=True, description="Enable relationship normalization system")
 
-    # Similarity thresholds
+    # Strict canonical mode
+    STRICT_CANONICAL_MODE: bool = Field(
+        default=True,
+        description="If True, disables dynamic vocabulary expansion and rejects unknown types",
+    )
+
+    STATIC_OVERRIDES_ENABLED: bool = Field(
+        default=True,
+        description="Enable static dictionary lookups for exact synonyms",
+    )
+
+    # Category-specific similarity thresholds
+    SIMILARITY_THRESHOLDS: dict[str, float] = Field(
+        default={
+            "CHARACTER_CHARACTER": 0.75,
+            "CHARACTER_WORLD": 0.70,
+            "PLOT_STRUCTURE": 0.80,
+            "DEFAULT": 0.75,
+        },
+        description="Category-specific similarity thresholds for relationship canonicalization",
+    )
+
+    # Legacy similarity thresholds (for backward compatibility)
     SIMILARITY_THRESHOLD: float = Field(
         default=0.85,
         ge=0.0,

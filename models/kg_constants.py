@@ -229,47 +229,29 @@ SUGGESTED_CATEGORIES = {
 
 # Character Social Relationships
 CHARACTER_SOCIAL_RELATIONSHIPS = {
-    "ALLY_OF",  # Strong positive alliance
-    "ENEMY_OF",  # Active antagonism
-    "FRIEND_OF",  # Personal friendship
-    "RIVAL_OF",  # Competitive relationship
-    "FAMILY_OF",  # Blood or adopted family
-    "ROMANTIC_WITH",  # Romantic involvement
-    "MENTOR_TO",  # Teaching/guidance relationship
-    "TEACHES",  # Instruction/education relationship
-    "STUDENT_OF",  # Learning relationship (inverse of mentor)
-    "WORKS_FOR",  # Employment/service
-    "LEADS",  # Authority/command
-    "SERVES",  # Loyal service/allegiance
-    "KNOWS",  # Basic acquaintance
-    "TRUSTS",  # Trust relationship
-    "DISTRUSTS",  # Mistrust relationship
-    "OWES_DEBT_TO",  # Obligation relationship
+    "ALLIES_WITH",
+    "CONFLICTS_WITH",
+    "LOVES",
+    "FAMILY_OF",
+    "MENTORS",
+    "PROTECTS",
+    "TRUSTS",
+    "DISTRUSTS",
+    "BETRAYED",
+    "FEARS",
+    "KNOWS_ABOUT",
+    "SEEKS",
+    "POSSESSES",
+    "CAUSED",
 }
 
 # Character Emotional Relationships
 CHARACTER_EMOTIONAL_RELATIONSHIPS = {
     "LOVES",  # Deep affection
-    "HATES",  # Deep animosity
+    "CONFLICTS_WITH",  # Deep animosity
     "FEARS",  # Fear of person
-    "RESPECTS",  # Admiration/respect
-    "DESPISES",  # Contempt
-    "ENVIES",  # Jealousy/envy
-    "PITIES",  # Sympathy/pity
-    "OBSESSED_WITH",  # Unhealthy fixation
-}
-
-# Status/State Relationships
-STATUS_RELATIONSHIPS = {
-    "HAS_STATUS",  # Current state/condition
-    "STATUS_IS",  # Alternative form of HAS_STATUS (legacy support)
-    "IS_DEAD",  # Death state
-    "IS_ALIVE",  # Life state
-    "IS_MISSING",  # Absence state
-    "IS_INJURED",  # Harm state
-    "IS_HEALTHY",  # Wellness state
-    "IS_ACTIVE",  # Activity state
-    "IS_INACTIVE",  # Inactivity state
+    "TRUSTS",  # Admiration/respect
+    "BETRAYED",  # Unhealthy fixation
 }
 
 # Relationship category mapping for validation and normalization
@@ -277,14 +259,39 @@ STATUS_RELATIONSHIPS = {
 RELATIONSHIP_CATEGORIES = {
     "character_social": CHARACTER_SOCIAL_RELATIONSHIPS,
     "character_emotional": CHARACTER_EMOTIONAL_RELATIONSHIPS,
-    "status": STATUS_RELATIONSHIPS,
 }
 
 # Combine all relationship categories into a single set
-# NOTE: This set contains commonly used relationship types, but is NOT exhaustive.
 RELATIONSHIP_TYPES = set()
 for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)
+
+# Static relationship mapping for exact synonyms
+STATIC_RELATIONSHIP_MAP = {
+    # Character-Character exact synonyms
+    "HATES": "CONFLICTS_WITH",
+    "DESPISES": "CONFLICTS_WITH",
+    "ENEMIES_WITH": "CONFLICTS_WITH",
+    "LOVES": "LOVES",
+    "FEARS": "DISTRUSTS",
+    
+    # Character-World exact synonyms
+    "KNOWS": "KNOWS_ABOUT",
+    "AWARE_OF": "KNOWS_ABOUT",
+    "WANTS": "SEEKS",
+    "DESIRES": "SEEKS",
+    "OWNS": "POSSESSES",
+    
+    # Plot exact synonyms
+    "TRIGGERED": "CAUSED",
+    "RESULTED_IN": "CAUSED",
+}
+
+# Relationships that should be node properties instead of relationships
+PROPERTY_RELATIONSHIPS = {
+    "HAS_STATUS", "IS_ALIVE", "IS_DEAD", "IS_ACTIVE",
+    "IS_INJURED", "HAS_CONDITION"
+}
 
 
 # --- NovelInfo property allowlist (P0.4: Cypher injection hardening) ---
