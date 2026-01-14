@@ -25,9 +25,11 @@ class SpacyService:
     """Centralized service for spaCy-based NLP operations."""
 
     def __init__(self) -> None:
-        """Initialize the SpacyService with lazy model loading."""
+        """Initialize the SpacyService with eager model loading."""
         self._nlp: Any | None = None
         self._model_name: str | None = None
+        # Load model eagerly to ensure it's available when needed
+        self.load_model()
 
     def load_model(self, model_name: str | None = None) -> bool:
         """Load the spaCy model if not already loaded.
