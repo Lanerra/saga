@@ -18,6 +18,7 @@ from core.langgraph.content_manager import ContentManager, get_scene_drafts, req
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from core.text_processing_service import TextProcessingService
+from models.kg_constants import RELATIONSHIP_TYPES
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
@@ -644,6 +645,7 @@ async def _extract_relationships_from_scene(
             "novel_title": novel_title,
             "novel_genre": novel_genre,
             "chapter_text": scene_text,
+            "canonical_relationship_types": sorted(RELATIONSHIP_TYPES),
         },
     )
 

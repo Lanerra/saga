@@ -7,13 +7,19 @@ Chapter: {{ chapter_number }}
 
 Context: {{ novel_title }} ({{ novel_genre }}) | Protagonist: {{ protagonist }}
 
+CANONICAL RELATIONSHIP TYPES (ONLY THESE ARE ACCEPTABLE):
+{% for rel_type in canonical_relationship_types %}
+- {{ rel_type }}
+{% endfor %}
+
 Extraction rules:
 - Extract ONLY the most significant relationships (≤ 15).
 - Direction matters: subject acts on object.
-- Predicates MUST be UPPERCASE_WITH_UNDERSCORES.
+- Predicates MUST be UPPERCASE_WITH_UNDERSCORES and MUST be one of the CANONICAL RELATIONSHIP TYPES listed above.
 - Do NOT create entities for generic nouns, emotions, atmosphere, or states (e.g., "Silence", "Darkness", "Not Dead").
 - Use plain entity names for subject and object_entity (e.g., "Elara", "Red Harbor").
 - Do NOT prefix names with types like "Character:" or "Location:".
+- If a relationship cannot be expressed using one of the CANONICAL RELATIONSHIP TYPES, DO NOT extract it.
 
 Required information (schema):
 
