@@ -223,6 +223,115 @@ class SpacyService:
             name = re.sub(r"\s+", " ", name)
             return name
 
+    def clean_text(self, text: str, aggressive: bool = False) -> str:
+        """Clean text using spaCy for advanced processing.
+
+        This method provides NLP-based text cleaning including:
+        - Normalization of whitespace and punctuation
+        - Removal of stop words (optional)
+        - Lemmatization
+        - Sentence boundary detection and normalization
+
+        Args:
+            text: Input text to clean.
+            aggressive: If True, remove stop words and excessive punctuation.
+                      If False, only normalize whitespace and basic punctuation.
+
+        Returns:
+            Cleaned text. Returns original text on error or if model not loaded.
+        """
+        if not self.is_loaded():
+            logger.warning("clean_text: spaCy model not loaded, using fallback")
+            # Fallback to simple regex-based cleaning
+            import re
+            cleaned = text.strip()
+            cleaned = re.sub(r'\s+', ' ', cleaned)
+            cleaned = re.sub(r'[\t\r\f\v]', ' ', cleaned)
+            return cleaned
+
+        if not text or not isinstance(text, str):
+            return ""
+
+        try:
+            doc = self._nlp(text)
+
+            if aggressive:
+                # Aggressive cleaning: remove stop words and excessive punctuation
+                tokens = []
+                for token in doc:
+                    # Skip stop words, punctuation, and whitespace
+                    if not token.is_stop and not token.is_punct and not token.is_space:
+                        tokens.append(token.lemma_.lower())
+                cleaned = " ".join(tokens)
+            else:
+                # Conservative cleaning: normalize whitespace and basic punctuation
+                # Reconstruct text from tokens but normalize excessive whitespace
+                cleaned_parts = []
+                for token in doc:
+                    if not token.is_space:
+                        # Add space before non-punctuation tokens if we have content already
+                        if cleaned_parts and not token.is_punct:
+                            cleaned_parts.append(' ' + token.text)
+                        else:
+                            cleaned_parts.append(token.text)
+                    elif cleaned_parts and not cleaned_parts[-1].endswith(' '):
+                        # Add single space for whitespace tokens
+                        cleaned_parts.append(' ')
+                
+                cleaned = "".join(cleaned_parts)
+                
+                # Normalize common punctuation patterns
+                import re
+                cleaned = re.sub(r'[\t\r\f\v]', ' ', cleaned)
+                cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+            return cleaned
+        except Exception as e:
+            logger.error("clean_text failed: %s", e, exc_info=True)
+            # Fallback to simple cleaning on error
+            import re
+            cleaned = text.strip()
+            cleaned = re.sub(r'\s+', ' ', cleaned)
+            cleaned = re.sub(r'[\t\r\f\v]', ' ', cleaned)
+            return cleaned
+
+    def extract_sentences(self, text: str) -> list[str]:
+        """Extract sentences from text using spaCy's sentence boundary detection.
+
+        Args:
+            text: Input text to process.
+
+        Returns:
+            List of sentences. Empty list on error or if model not loaded.
+        """
+        if not self.is_loaded():
+            logger.warning("extract_sentences: spaCy model not loaded, using fallback")
+            # Fallback to simple regex-based sentence splitting
+            import re
+            sentences = []
+            for match in re.finditer(r'([^\.!?]+(?:[\.!?]|$))', text):
+                sent_text = match.group(1).strip()
+                if sent_text:
+                    sentences.append(sent_text)
+            return sentences
+
+        if not text or not isinstance(text, str):
+            return []
+
+        try:
+            doc = self._nlp(text)
+            return [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+        except Exception as e:
+            logger.error("extract_sentences failed: %s", e, exc_info=True)
+            # Fallback to simple sentence splitting
+            import re
+            sentences = []
+            for match in re.finditer(r'([^\.!?]+(?:[\.!?]|$))', text):
+                sent_text = match.group(1).strip()
+                if sent_text:
+                    sentences.append(sent_text)
+            return sentences
+
     def get_model_name(self) -> str | None:
         """Get the name of the loaded model.
 

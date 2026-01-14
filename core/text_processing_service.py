@@ -416,6 +416,33 @@ class TextProcessingService:
         """
         return self.spacy_service.load_model(model_name)
 
+    def clean_text_with_spacy(self, text: str, aggressive: bool = False) -> str:
+        """Clean text using spaCy NLP processing.
+
+        Uses spaCy for advanced text cleaning including whitespace normalization,
+        punctuation handling, and optional stop word removal.
+
+        Args:
+            text: Input text to clean.
+            aggressive: If True, remove stop words and lemmatize.
+                      If False, only normalize whitespace and basic punctuation.
+
+        Returns:
+            Cleaned text. Falls back to regex-based cleaning if spaCy not available.
+        """
+        return self.spacy_service.clean_text(text, aggressive)
+
+    def extract_sentences_with_spacy(self, text: str) -> list[str]:
+        """Extract sentences using spaCy's sentence boundary detection.
+
+        Args:
+            text: Input text to process.
+
+        Returns:
+            List of sentences. Falls back to regex-based splitting if spaCy not available.
+        """
+        return self.spacy_service.extract_sentences(text)
+
     def get_combined_statistics(self) -> dict[str, Any]:
         """Return combined statistics for tokenization and response cleaning."""
         return {
@@ -445,3 +472,32 @@ def truncate_text_by_tokens(
 ) -> str:
     """Truncate text to a token budget using the module-default tokenizer service."""
     return _default_tokenizer.truncate_text_by_tokens(text, model_name, max_tokens, truncation_marker)
+
+
+def clean_text_with_spacy(text: str, aggressive: bool = False) -> str:
+    """Clean text using spaCy NLP processing (module-level convenience function).
+
+    Args:
+        text: Input text to clean.
+        aggressive: If True, remove stop words and lemmatize.
+
+    Returns:
+        Cleaned text. Falls back to regex-based cleaning if spaCy not available.
+    """
+    from core.spacy_service import SpacyService
+    spacy_service = SpacyService()
+    return spacy_service.clean_text(text, aggressive)
+
+
+def extract_sentences_with_spacy(text: str) -> list[str]:
+    """Extract sentences using spaCy's sentence boundary detection (module-level convenience function).
+
+    Args:
+        text: Input text to process.
+
+    Returns:
+        List of sentences. Falls back to regex-based splitting if spaCy not available.
+    """
+    from core.spacy_service import SpacyService
+    spacy_service = SpacyService()
+    return spacy_service.extract_sentences(text)
