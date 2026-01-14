@@ -65,27 +65,8 @@ class NativeCypherBuilder:
             c.chapter_last_updated = $chapter_number,
             c.last_updated = timestamp()
 
-        // Handle traits as separate Trait nodes with HAS_TRAIT relationships
-        // Differential update: only remove traits that are no longer present.
-        WITH c
-        OPTIONAL MATCH (c)-[old_ht:HAS_TRAIT]->(old_t:Trait)
-        WHERE NOT old_t.name IN $trait_data
-        DELETE old_ht
-
-        WITH c
-        FOREACH (trait_name IN $trait_data |
-            MERGE (t:Trait {name: trait_name})
-            ON CREATE SET
-                t.description = '',
-                t.created_at = timestamp(),
-                t.created_chapter = $chapter_number
-            MERGE (c)-[ht:HAS_TRAIT]->(t)
-            ON CREATE SET
-                ht.chapter_added = $chapter_number,
-                ht.last_updated = timestamp()
-            ON MATCH SET
-                ht.last_updated = timestamp()
-        )
+        // Handle traits as a node property
+        SET c.traits = $trait_data
 
         // Handle relationships as separate merge operations
         WITH c
@@ -251,27 +232,8 @@ class NativeCypherBuilder:
         WITH w
         SET w += $additional_props
 
-        // Handle traits as separate Trait nodes with HAS_TRAIT relationships
-        // Differential update: only remove traits that are no longer present.
-        WITH w
-        OPTIONAL MATCH (w)-[old_ht:HAS_TRAIT]->(old_t:Trait)
-        WHERE NOT old_t.name IN $trait_data
-        DELETE old_ht
-
-        WITH w
-        FOREACH (trait_name IN $trait_data |
-            MERGE (t:Trait {{name: trait_name}})
-            ON CREATE SET
-                t.description = '',
-                t.created_at = timestamp(),
-                t.created_chapter = $chapter_number
-            MERGE (w)-[ht:HAS_TRAIT]->(t)
-            ON CREATE SET
-                ht.chapter_added = $chapter_number,
-                ht.last_updated = timestamp()
-            ON MATCH SET
-                ht.last_updated = timestamp()
-        )
+        // Handle traits as a node property
+        SET w.traits = $trait_data
 
         // Handle relationships as separate merge operations
         WITH w
@@ -434,12 +396,7 @@ class NativeCypherBuilder:
         WHERE {where_clause}
 
         // Optionally collect relationships (use actual relationship type)
-        // Exclude HAS_TRAIT relationships as those are collected separately
         OPTIONAL MATCH (c)-[r]->(other)
-        WHERE NOT type(r) = 'HAS_TRAIT'
-
-        // Collect traits from HAS_TRAIT relationships to Trait nodes
-        OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
 
         RETURN c,
                collect(DISTINCT {{
@@ -447,8 +404,7 @@ class NativeCypherBuilder:
                    // Use actual relationship type; fallback to r.type property for legacy RELATIONSHIP types
                    type: CASE WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r)) ELSE type(r) END,
                    description: coalesce(r.description, '')
-               }}) as relationships,
-               collect(DISTINCT t.name) as traits
+               }}) as relationships
         ORDER BY c.name
         """
 
@@ -504,10 +460,7 @@ class NativeCypherBuilder:
         WHERE {label_predicate}
           AND {where_clause}
 
-        // Collect traits from HAS_TRAIT relationships to Trait nodes
-        OPTIONAL MATCH (w)-[:HAS_TRAIT]->(t:Trait)
-
-        RETURN w, collect(DISTINCT t.name) as traits
+        RETURN w
         ORDER BY w.category, w.name
         """
 

@@ -58,7 +58,6 @@ VALID_NODE_LABELS = {
     "Location",
     "Event",
     "Item",
-    "Trait",
     "Chapter",
 }
 
@@ -130,17 +129,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "resource": "Item",
     "Currency": "Item",
     "currency": "Item",
-    # ----------------------------
-    # Trait-like
-    # ----------------------------
-    "Skill": "Trait",
-    "skill": "Trait",
-    "Ability": "Trait",
-    "ability": "Trait",
-    "Quality": "Trait",
-    "quality": "Trait",
-    "Attribute": "Trait",
-    "attribute": "Trait",
     # ----------------------------
     # Event-like subtypes
     # ----------------------------
@@ -294,8 +282,6 @@ RELATIONSHIP_CATEGORIES = {
 
 # Combine all relationship categories into a single set
 # NOTE: This set contains commonly used relationship types, but is NOT exhaustive.
-# The LLM can and should create custom relationship types for narrative precision.
-# This set is used for reference and analytics, not enforcement.
 RELATIONSHIP_TYPES = set()
 for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)

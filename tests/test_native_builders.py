@@ -22,8 +22,8 @@ class TestCharacterUpsertCypher:
         # Contract: builder-created relationships must be visible to profile reads
         # that filter by r.source_profile_managed.
         assert "source_profile_managed: true" in cypher
-        # Contract: traits are updated differentially (do not delete all HAS_TRAIT edges).
-        assert "WHERE NOT old_t.name IN $trait_data" in cypher
+        # Contract: traits are now stored as node properties
+        assert "SET c.traits = $trait_data" in cypher
 
     def test_character_upsert_with_relationships(self):
         """Test character upsert with relationships."""
@@ -66,8 +66,8 @@ class TestWorldItemUpsertCypher:
         assert params["name"] == "Castle"
         assert params["category"] == "Locations"
 
-        # Contract: traits are updated differentially (do not delete all HAS_TRAIT edges).
-        assert "WHERE NOT old_t.name IN $trait_data" in cypher
+        # Contract: traits are now stored as node properties
+        assert "SET w.traits = $trait_data" in cypher
 
         # Contract: relationship targets are no longer forced to :Item; builder supports allowlisted typing.
         assert "apoc.merge.node" in cypher

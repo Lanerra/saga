@@ -116,7 +116,7 @@ def classify_category_label(category: str) -> str:
 
     Returns:
         Canonical Neo4j label: "Location", "Item" "Event",
-        "Trait", "Character", or "Chapter". Defaults to "Item" if ambiguous.
+        "Character", or "Chapter". Defaults to "Item" if ambiguous.
 
     Examples:
         >>> classify_category_label("place")
@@ -132,7 +132,6 @@ def classify_category_label(category: str) -> str:
         "Location",
         "Event",
         "Item",
-        "Trait",
         "Character",
         "Chapter",
     ]:

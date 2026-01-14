@@ -30,10 +30,10 @@ logger = structlog.get_logger(__name__)
 
 
 async def _get_existing_traits() -> list[str]:
-    """Fetch existing trait names to encourage reuse.
+    """Fetch existing trait names from node properties to encourage reuse.
 
     Returns:
-        Trait names from Neo4j, in display form.
+        Trait names from Neo4j nodes that have traits, in display form.
 
     Notes:
         This helper performs Neo4j I/O. Failures are treated as non-fatal and
@@ -41,8 +41,10 @@ async def _get_existing_traits() -> list[str]:
     """
     try:
         query = """
-        MATCH (t:Trait)
-        RETURN DISTINCT t.name AS trait_name
+        MATCH (n)
+        WHERE n.traits IS NOT NULL
+        UNWIND n.traits AS trait
+        RETURN DISTINCT trait AS trait_name
         ORDER BY trait_name
         LIMIT 100
         """
