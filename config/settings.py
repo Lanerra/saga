@@ -320,6 +320,7 @@ class SagaSettings(BaseSettings):
 
     # NLP / spaCy configuration
     SPACY_MODEL: str | None = None  # default None => utils.text_processing uses en_core_web_sm
+    ENABLE_ENTITY_VALIDATION: bool = True  # Enable spaCy-based entity validation during extraction
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"

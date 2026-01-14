@@ -17,9 +17,70 @@ from core.exceptions import LLMServiceError
 from core.langgraph.content_manager import ContentManager, get_scene_drafts, require_project_dir
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
+from core.text_processing_service import TextProcessingService
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
+
+# Global text processing service instance for entity validation
+text_processing_service = TextProcessingService()
+
+
+def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
+    """Validate that an extracted entity is actually present in the scene text.
+
+    Args:
+        scene_text: The source scene text.
+        entity_name: The entity name to validate.
+
+    Returns:
+        True if entity is validated (present or validation disabled), False if not found.
+    """
+    if not config.settings.ENABLE_ENTITY_VALIDATION:
+        logger.debug("_validate_entity_with_spacy: entity validation disabled by config")
+        return True
+
+    if not text_processing_service.spacy_service.is_loaded():
+        logger.warning("_validate_entity_with_spacy: spaCy model not loaded, skipping validation")
+        return True
+
+    try:
+        is_present = text_processing_service.spacy_service.verify_entity_presence(
+            scene_text, entity_name, threshold=0.7
+        )
+        
+        if not is_present:
+            logger.warning(
+                "_validate_entity_with_spacy: entity not found in text",
+                entity_name=entity_name,
+                entity_length=len(entity_name),
+                scene_text_length=len(scene_text),
+            )
+        
+        return is_present
+    except Exception as e:
+        logger.error("_validate_entity_with_spacy: validation failed, using fallback", error=str(e))
+        # Fallback to simple substring matching
+        return entity_name.lower() in scene_text.lower()
+
+
+def _get_normalized_entity_key(name: str) -> str:
+    """Get a normalized key for entity deduplication using spaCy.
+
+    Args:
+        name: The entity name to normalize.
+
+    Returns:
+        Normalized key for deduplication.
+    """
+    if config.settings.ENABLE_ENTITY_VALIDATION and text_processing_service.spacy_service.is_loaded():
+        try:
+            return text_processing_service.spacy_service.normalize_entity_name(name)
+        except Exception as e:
+            logger.warning("_get_normalized_entity_key: spaCy normalization failed, using fallback", error=str(e))
+    
+    # Fallback to simple case-insensitive normalization
+    return name.lower()
 
 
 def consolidate_scene_extractions(
@@ -28,9 +89,9 @@ def consolidate_scene_extractions(
     """Merge and deduplicate extraction results from multiple scenes.
 
     Deduplication strategy:
-    - Characters: Dedupe by name (case-insensitive), keep longest description
-    - World items: Dedupe by name (case-insensitive), keep longest description
-    - Relationships: Dedupe by (source, target, type) tuple
+    - Characters: Dedupe by name (spaCy-based normalization when available), keep longest description
+    - World items: Dedupe by name (spaCy-based normalization when available), keep longest description
+    - Relationships: Dedupe by (source, target, type) tuple with spaCy normalization
 
     Args:
         scene_results: List of extraction results from individual scenes.
@@ -46,38 +107,43 @@ def consolidate_scene_extractions(
     for scene_result in scene_results:
         for character in scene_result.get("characters", []):
             name = character["name"]
-            name_lower = name.lower()
+            name_key = _get_normalized_entity_key(name)
 
-            if name_lower in characters_map:
-                existing = characters_map[name_lower]
+            if name_key in characters_map:
+                existing = characters_map[name_key]
                 existing_desc_len = len(existing.get("description", ""))
                 new_desc_len = len(character.get("description", ""))
 
                 if new_desc_len > existing_desc_len:
-                    characters_map[name_lower] = character
+                    characters_map[name_key] = character
             else:
-                characters_map[name_lower] = character
+                characters_map[name_key] = character
 
         for world_item in scene_result.get("world_items", []):
             name = world_item["name"]
-            name_lower = name.lower()
+            name_key = _get_normalized_entity_key(name)
 
-            if name_lower in world_items_map:
-                existing = world_items_map[name_lower]
+            if name_key in world_items_map:
+                existing = world_items_map[name_key]
                 existing_desc_len = len(existing.get("description", ""))
                 new_desc_len = len(world_item.get("description", ""))
 
                 if new_desc_len > existing_desc_len:
-                    world_items_map[name_lower] = world_item
+                    world_items_map[name_key] = world_item
             else:
-                world_items_map[name_lower] = world_item
+                world_items_map[name_key] = world_item
 
         for relationship in scene_result.get("relationships", []):
             source = relationship.get("source_name", "")
             target = relationship.get("target_name", "")
             rel_type = relationship.get("relationship_type", "")
 
-            relationship_key = (source.lower(), target.lower(), rel_type.upper())
+            # Use spaCy normalization for relationship deduplication
+            source_key = _get_normalized_entity_key(source)
+            target_key = _get_normalized_entity_key(target)
+            rel_type_key = rel_type.upper()
+
+            relationship_key = (source_key, target_key, rel_type_key)
 
             if relationship_key not in relationships_set:
                 relationships_set.add(relationship_key)
@@ -241,6 +307,18 @@ async def _extract_characters_from_scene(
             if not isinstance(info, dict):
                 continue
 
+            # Validate entity presence using spaCy
+            is_validated = _validate_entity_with_spacy(scene_text, str(name))
+            
+            if not is_validated:
+                logger.warning(
+                    "_extract_characters_from_scene: skipping invalid character",
+                    character_name=str(name),
+                    scene_index=scene_index,
+                    chapter=chapter_number,
+                )
+                continue
+
             characters.append(
                 {
                     "name": str(name),
@@ -349,6 +427,18 @@ async def _extract_locations_from_scene(
         locations: list[dict[str, Any]] = []
         for name, info in location_dict.items():
             if not isinstance(info, dict):
+                continue
+
+            # Validate entity presence using spaCy
+            is_validated = _validate_entity_with_spacy(scene_text, str(name))
+            
+            if not is_validated:
+                logger.warning(
+                    "_extract_locations_from_scene: skipping invalid location",
+                    location_name=str(name),
+                    scene_index=scene_index,
+                    chapter=chapter_number,
+                )
                 continue
 
             category = str(info.get("category", "Location")).strip()
@@ -461,6 +551,18 @@ async def _extract_events_from_scene(
         events: list[dict[str, Any]] = []
         for name, info in event_dict.items():
             if not isinstance(info, dict):
+                continue
+
+            # Validate entity presence using spaCy
+            is_validated = _validate_entity_with_spacy(scene_text, str(name))
+            
+            if not is_validated:
+                logger.warning(
+                    "_extract_events_from_scene: skipping invalid event",
+                    event_name=str(name),
+                    scene_index=scene_index,
+                    chapter=chapter_number,
+                )
                 continue
 
             category = str(info.get("category", "Event")).strip()
@@ -580,6 +682,21 @@ async def _extract_relationships_from_scene(
             target_text = str(object_entity) if object_entity else ""
             predicate_text = str(predicate) if predicate else ""
 
+            # Validate entity presence using spaCy for both subjects and targets
+            subject_validated = _validate_entity_with_spacy(scene_text, subject_text)
+            target_validated = _validate_entity_with_spacy(scene_text, target_text)
+
+            if not subject_validated or not target_validated:
+                logger.warning(
+                    "_extract_relationships_from_scene: skipping invalid relationship",
+                    subject=subject_text,
+                    target=target_text,
+                    predicate=predicate_text,
+                    scene_index=scene_index,
+                    chapter=chapter_number,
+                )
+                continue
+
             if subject_text and target_text and predicate_text:
                 relationships.append(
                     {
@@ -692,6 +809,11 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     novel_genre = state.get("genre", "")
     protagonist_name = state.get("protagonist_name", "")
     model_name = state.get("extraction_model", config.MEDIUM_MODEL)
+
+    # Load spaCy model for entity validation if enabled
+    if config.settings.ENABLE_ENTITY_VALIDATION:
+        logger.info("extract_from_scenes: loading spaCy model for entity validation")
+        text_processing_service.load_spacy_model()
 
     logger.info(
         "extract_from_scenes: processing scenes",

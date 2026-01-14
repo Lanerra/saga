@@ -19,6 +19,7 @@ import structlog
 import tiktoken
 
 import config
+from core.spacy_service import SpacyService
 
 logger = structlog.get_logger(__name__)
 
@@ -400,14 +401,30 @@ class TextProcessingService:
         """Initialize the text processing service with all sub-services."""
         self.tokenizer = TokenizerService()
         self.response_cleaner = ResponseCleaningService()
+        self.spacy_service = SpacyService()
 
         logger.info("TextProcessingService initialized with all sub-services")
+
+    def load_spacy_model(self, model_name: str | None = None) -> bool:
+        """Load the spaCy model for NLP operations.
+
+        Args:
+            model_name: Optional model name override. If None, uses config.SPACY_MODEL or defaults.
+
+        Returns:
+            True if model loaded successfully, False otherwise.
+        """
+        return self.spacy_service.load_model(model_name)
 
     def get_combined_statistics(self) -> dict[str, Any]:
         """Return combined statistics for tokenization and response cleaning."""
         return {
             "tokenizer": self.tokenizer.get_statistics(),
             "response_cleaner": self.response_cleaner.get_statistics(),
+            "spacy_service": {
+                "model_loaded": self.spacy_service.is_loaded(),
+                "model_name": self.spacy_service.get_model_name(),
+            },
         }
 
 
