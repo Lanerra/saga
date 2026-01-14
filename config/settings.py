@@ -198,7 +198,7 @@ class SagaSettings(BaseSettings):
 
     # Entity embedding similarity configuration
     ENTITY_EMBEDDING_DEDUPLICATION_TOP_K: int = 15
-    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.65
+    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.55
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"
@@ -229,11 +229,11 @@ class SagaSettings(BaseSettings):
 
     # Concurrency and Rate Limiting
     MAX_CONCURRENT_LLM_CALLS: int = 1
-    LLM_TOP_P: float = 0.8
+    LLM_TOP_P: float = 0.95
 
     # LLM Frequency and Presence Penalties
-    FREQUENCY_PENALTY_DRAFTING: float = 0.3
-    PRESENCE_PENALTY_DRAFTING: float = 0.5
+    FREQUENCY_PENALTY_DRAFTING: float = 0.0
+    PRESENCE_PENALTY_DRAFTING: float = 0.0
 
     # Output and File Paths
     BASE_OUTPUT_DIR: str = "output"
@@ -251,7 +251,7 @@ class SagaSettings(BaseSettings):
     MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 3
-    TOTAL_CHAPTERS: int = 12
+    TOTAL_CHAPTERS: int = 15
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 12
     MAX_CONCURRENT_CHAPTERS: int = 1
 
@@ -288,8 +288,8 @@ class SagaSettings(BaseSettings):
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
 
     # De-duplication Configuration
-    DEDUPLICATION_USE_SEMANTIC: bool = False
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.65
+    DEDUPLICATION_USE_SEMANTIC: bool = True
+    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.55
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # Duplicate Prevention Settings
