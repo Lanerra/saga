@@ -189,6 +189,10 @@ async def extract_from_scene(
         scene_text_length=len(scene_text),
     )
 
+    # Clean input text with spaCy if entity validation is enabled
+    if config.settings.ENABLE_ENTITY_VALIDATION:
+        scene_text = text_processing_service.clean_text_with_spacy(scene_text, aggressive=False)
+
     characters = await _extract_characters_from_scene(
         scene_text=scene_text,
         scene_index=scene_index,

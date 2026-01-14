@@ -307,6 +307,7 @@ class CompletionService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
+        spacy_cleanup: bool = True,
         *,
         system_prompt: str | None = None,
         strict: bool = True,
@@ -321,6 +322,7 @@ class CompletionService:
             max_tokens: Maximum tokens to generate.
             allow_fallback: Whether to attempt a fallback model after a primary failure.
             auto_clean_response: Whether to apply response cleanup.
+            spacy_cleanup: Whether to apply spaCy-based text cleaning after regex cleanup.
             system_prompt: Optional system prompt injected as a system message.
             strict: Whether to raise a typed exception on failure.
             **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
@@ -384,6 +386,9 @@ class CompletionService:
 
             if auto_clean_response:
                 content = self._text_processor.response_cleaner.clean_response(content)
+                
+            if spacy_cleanup:
+                content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
 
             self._stats["completions_successful"] += 1
             return content, usage_data
@@ -445,6 +450,9 @@ class CompletionService:
 
                     if auto_clean_response:
                         content = self._text_processor.response_cleaner.clean_response(content)
+                        
+                    if spacy_cleanup:
+                        content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
 
                     self._stats["completions_successful"] += 1
                     return content, usage_data
@@ -601,6 +609,7 @@ class RefactoredLLMService:
         max_tokens: int | None = None,
         allow_fallback: bool = False,
         auto_clean_response: bool = True,
+        spacy_cleanup: bool = False,
         *,
         system_prompt: str | None = None,
         strict: bool = True,
@@ -615,6 +624,7 @@ class RefactoredLLMService:
             max_tokens: Maximum tokens to generate.
             allow_fallback: Whether to attempt a fallback model after a primary failure.
             auto_clean_response: Whether to apply response cleanup.
+            spacy_cleanup: Whether to apply spaCy-based text cleaning after regex cleanup.
             system_prompt: Optional system prompt injected as a system message.
             strict: Whether to raise a typed exception on failure.
             **kwargs: Provider-specific completion parameters forwarded to the HTTP client.
@@ -639,6 +649,7 @@ class RefactoredLLMService:
             max_tokens,
             allow_fallback,
             auto_clean_response,
+            spacy_cleanup,
             system_prompt=system_prompt,
             strict=strict,
             **kwargs,
