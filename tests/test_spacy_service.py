@@ -291,3 +291,58 @@ def test_verify_entity_presence_with_threshold(spacy_service):
     # Should fail with higher threshold (no overlap for partial match)
     result_high = spacy_service.verify_entity_presence("John works at Google", "Jane", threshold=0.9)
     assert result_high is False
+
+
+def test_verify_entity_presence_partial_match(spacy_service):
+    """Test entity verification with partial match of significant tokens."""
+    mock_nlp = MagicMock()
+    # Mock for text processing "Elias went home"
+    text_doc = MockDoc("Elias went home", tokens=[
+        MockToken("Elias"), MockToken("went"), MockToken("home")
+    ])
+    # Mock for entity processing "Elias Thorne"
+    entity_doc = MockDoc("Elias Thorne", tokens=[
+        MockToken("Elias"), MockToken("Thorne")
+    ])
+    
+    def nlp_side_effect(text):
+        if text == "Elias went home":
+            return text_doc
+        elif text == "Elias Thorne":
+            return entity_doc
+        return MockDoc(text)
+    
+    mock_nlp.side_effect = nlp_side_effect
+    spacy_service._nlp = mock_nlp
+
+    # Should pass even with high threshold because of "any significant token" logic
+    result = spacy_service.verify_entity_presence("Elias went home", "Elias Thorne", threshold=0.9)
+    assert result is True
+
+
+def test_verify_entity_presence_common_title_exclusion(spacy_service):
+    """Test that common titles are ignored during verification."""
+    mock_nlp = MagicMock()
+    # Mock for text processing "Mr. Jones went home"
+    text_doc = MockDoc("Mr. Jones went home", tokens=[
+        MockToken("Mr."), MockToken("Jones"), MockToken("went"), MockToken("home")
+    ])
+    # Mock for entity processing "Mr. Smith"
+    entity_doc = MockDoc("Mr. Smith", tokens=[
+        MockToken("Mr."), MockToken("Smith")
+    ])
+    
+    def nlp_side_effect(text):
+        if text == "Mr. Jones went home":
+            return text_doc
+        elif text == "Mr. Smith":
+            return entity_doc
+        return MockDoc(text)
+        
+    mock_nlp.side_effect = nlp_side_effect
+    spacy_service._nlp = mock_nlp
+    
+    # "Mr." should be ignored in entity, "Smith" is looked for.
+    # "Smith" is not in text.
+    result = spacy_service.verify_entity_presence("Mr. Jones went home", "Mr. Smith")
+    assert result is False

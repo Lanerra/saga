@@ -121,12 +121,14 @@ class SpacyService:
         - Exact matches
         - Case variations
         - Lemmatization (e.g., "guards" matches "guard")
-        - Partial matches with context
+        - Partial matches with context (ANY significant token presence)
 
         Args:
             text: The source text to search in.
             entity_name: The entity name to verify.
             threshold: Similarity threshold (0.0 to 1.0). Default 0.7.
+                       Note: Updated logic checks for ANY significant token presence,
+                       effectively behaving as a loose match for multi-word entities.
 
         Returns:
             True if entity is likely present, False otherwise.
@@ -147,27 +149,42 @@ class SpacyService:
             if entity_name.lower() in text.lower():
                 return True
 
-            # Check lemmatized forms
-            entity_lemma = " ".join([token.lemma_.lower() for token in entity_doc])
-            text_lemmas = [token.lemma_.lower() for token in doc]
+            # Identify significant tokens in the entity name
+            # Exclude stopwords, punctuation, and common titles
+            common_titles = {
+                "mr", "mr.", "mrs", "mrs.", "ms", "ms.", "dr", "dr.",
+                "prof", "prof.", "sir", "lady", "lord", "captain", "cpt", "cpt."
+            }
 
-            if entity_lemma in text_lemmas:
+            sig_entity_tokens = set()
+            for token in entity_doc:
+                txt = token.text.lower()
+                if not token.is_stop and not token.is_punct and txt not in common_titles:
+                    sig_entity_tokens.add(txt)
+
+            # If we filtered everything out (e.g. name was just "The Doctor" and Doctor is stopword/title?),
+            # fallback to using tokens that are just not punctuation
+            if not sig_entity_tokens:
+                sig_entity_tokens = {t.text.lower() for t in entity_doc if not t.is_punct}
+
+            text_tokens = {token.text.lower() for token in doc}
+
+            # Check overlap of significant tokens
+            # This logic allows "Elias" to match "Elias Thorne" (valid partial match)
+            if sig_entity_tokens & text_tokens:
                 return True
 
-            # Check for partial matches with context
-            entity_tokens = [token.text.lower() for token in entity_doc]
-            text_tokens = [token.text.lower() for token in doc]
+            # Check lemmatized forms of significant tokens
+            sig_entity_lemmas = set()
+            for token in entity_doc:
+                 txt = token.text.lower()
+                 if not token.is_stop and not token.is_punct and txt not in common_titles:
+                     sig_entity_lemmas.add(token.lemma_.lower())
 
-            # Simple token overlap check
-            entity_token_set = set(entity_tokens)
-            text_token_set = set(text_tokens)
-            overlap = entity_token_set & text_token_set
+            text_lemmas = {token.lemma_.lower() for token in doc}
 
-            if overlap:
-                # Calculate overlap ratio
-                overlap_ratio = len(overlap) / len(entity_token_set)
-                if overlap_ratio >= threshold:
-                    return True
+            if sig_entity_lemmas & text_lemmas:
+                return True
 
             return False
         except Exception as e:
