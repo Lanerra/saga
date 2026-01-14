@@ -117,6 +117,17 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
             current_chapter=current_chapter,
         )
 
+        # In strict mode, verify if the relationship was rejected.
+        # normalize_relationship_type returns original type on rejection, which makes it look "novel"
+        # if strict check isn't applied here first.
+        if config.REL_NORM_STRICT_CANONICAL_MODE and not was_normalized and normalized_type == original_type:
+            canonical_result = await normalization_service.map_to_canonical(original_type)
+            if canonical_result[0] is None:  # None means rejected
+                rejected_count += 1
+                if canonical_result[3]:  # is_property=True
+                    property_count += 1
+                continue  # Skip adding this relationship
+
         # Check if novel (before updating vocabulary)
         is_novel = False
         if not was_normalized and normalized_type not in vocabulary:
@@ -138,16 +149,6 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
             normalized_count += 1
         elif is_novel:
             novel_count += 1
-        else:
-            # In strict mode, this could be a rejected relationship
-            if config.REL_NORM_STRICT_CANONICAL_MODE and normalized_type == original_type:
-                # Check if it was rejected by calling map_to_canonical directly
-                canonical_result = await normalization_service.map_to_canonical(original_type)
-                if canonical_result[0] is None:  # None means rejected
-                    rejected_count += 1
-                    if canonical_result[3]:  # is_property=True
-                        property_count += 1
-                    continue  # Skip adding this relationship
 
         # Create normalized relationship
         normalized_rel = ExtractedRelationship(

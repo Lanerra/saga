@@ -239,7 +239,7 @@ CHARACTER_SOCIAL_RELATIONSHIPS = {
     "DISTRUSTS",
     "BETRAYED",
     "FEARS",
-    "KNOWS_ABOUT",
+    "KNOWS",
     "SEEKS",
     "POSSESSES",
     "CAUSED",
@@ -276,8 +276,8 @@ STATIC_RELATIONSHIP_MAP = {
     "FEARS": "DISTRUSTS",
     
     # Character-World exact synonyms
-    "KNOWS": "KNOWS_ABOUT",
-    "AWARE_OF": "KNOWS_ABOUT",
+    "KNOWS_ABOUT": "KNOWS",
+    "AWARE_OF": "KNOWS",
     "WANTS": "SEEKS",
     "DESIRES": "SEEKS",
     "OWNS": "POSSESSES",

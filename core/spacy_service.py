@@ -267,25 +267,34 @@ class SpacyService:
                 cleaned = " ".join(tokens)
             else:
                 # Conservative cleaning: normalize whitespace and basic punctuation
-                # Reconstruct text from tokens but normalize excessive whitespace
+                # Reconstruct text from tokens but preserve newlines
                 cleaned_parts = []
                 for token in doc:
                     if not token.is_space:
                         # Add space before non-punctuation tokens if we have content already
+                        # and the previous token didn't end with a newline
                         if cleaned_parts and not token.is_punct:
-                            cleaned_parts.append(' ' + token.text)
+                            if not cleaned_parts[-1].endswith('\n') and not cleaned_parts[-1].endswith(' '):
+                                cleaned_parts.append(' ')
+                        cleaned_parts.append(token.text)
+                    elif '\n' in token.text:
+                         # Preserve newlines (normalize multiple newlines to max 2)
+                        newlines = token.text.count('\n')
+                        if newlines >= 2:
+                            cleaned_parts.append('\n\n')
                         else:
-                            cleaned_parts.append(token.text)
-                    elif cleaned_parts and not cleaned_parts[-1].endswith(' '):
-                        # Add single space for whitespace tokens
+                            cleaned_parts.append('\n')
+                    elif cleaned_parts and not cleaned_parts[-1].endswith(' ') and not cleaned_parts[-1].endswith('\n'):
+                        # Add single space for other whitespace tokens if needed
                         cleaned_parts.append(' ')
                 
                 cleaned = "".join(cleaned_parts)
                 
-                # Normalize common punctuation patterns
+                # Normalize common punctuation patterns but preserve newlines
                 import re
                 cleaned = re.sub(r'[\t\r\f\v]', ' ', cleaned)
-                cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+                # Collapse multiple spaces but keep newlines
+                cleaned = re.sub(r'[ ]+', ' ', cleaned).strip()
 
             return cleaned
         except Exception as e:

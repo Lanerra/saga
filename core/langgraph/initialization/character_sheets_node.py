@@ -178,7 +178,7 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
             if not isinstance(desc, str):
                 continue
             structured_relationships[target] = {
-                "type": "ASSOCIATE",
+                "type": "KNOWS",
                 "description": desc,
             }
         parsed["relationships"] = structured_relationships

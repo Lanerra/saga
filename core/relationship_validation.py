@@ -21,7 +21,6 @@ from models.kg_constants import (
     CHARACTER_EMOTIONAL_RELATIONSHIPS,
     CHARACTER_SOCIAL_RELATIONSHIPS,
     RELATIONSHIP_TYPES,
-    STATUS_RELATIONSHIPS,
     VALID_NODE_LABELS,
 )
 
@@ -228,15 +227,6 @@ VALIDATION_RULES = [
         valid_target_types=QUALITY_TYPES | ABSTRACT_TYPES | {"Skill"},
         rule_name="ability_trait",
         rationale="[INFO] Abilities and traits are typically possessed by sentient beings",
-    ),
-    # Status relationships
-    # (informational only - not enforced)
-    RelationshipValidationRule(
-        relationship_types=STATUS_RELATIONSHIPS,
-        valid_source_types=SENTIENT_TYPES,
-        valid_target_types="ANY",
-        rule_name="status",
-        rationale="[INFO] Status relationships typically describe states of sentient beings",
     ),
 ]
 
