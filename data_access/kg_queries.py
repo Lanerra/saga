@@ -411,8 +411,6 @@ def _get_constraint_safe_merge(
         "WorldContainer",
         "PlotPoint",
         "ValueNode",
-        "DevelopmentEvent",
-        "WorldElaborationEvent",
     ]
 
     # Find the first constraint-sensitive label to use in MERGE
@@ -1131,10 +1129,9 @@ async def get_chapter_context_for_entity(
 
     CALL (e) {{
       WITH e
-      OPTIONAL MATCH (e)-[]->(event)
-      WHERE (event:DevelopmentEvent OR event:WorldElaborationEvent)
-        AND event.chapter_updated IS NOT NULL
-      WITH collect(DISTINCT event.chapter_updated) AS chapters
+      OPTIONAL MATCH (e)-[]->(event:Event)
+      WHERE event.chapter IS NOT NULL
+      WITH collect(DISTINCT event.chapter) AS chapters
       RETURN chapters[..$max_event_chapters] AS event_chapters
     }}
 
@@ -1206,9 +1203,9 @@ async def find_contradictory_trait_characters(
     all_findings = []
     for trait1, trait2 in contradictory_trait_pairs:
         query = """
-        MATCH (c:Character)-[:HAS_TRAIT]->(t1:Trait {name: $trait1_param}),
-              (c)-[:HAS_TRAIT]->(t2:Trait {name: $trait2_param})
-        RETURN c.name AS character_name, t1.name AS trait1, t2.name AS trait2
+        MATCH (c:Character)
+        WHERE $trait1_param IN c.traits AND $trait2_param IN c.traits
+        RETURN c.name AS character_name, $trait1_param AS trait1, $trait2_param AS trait2
         """
         params = {"trait1_param": trait1, "trait2_param": trait2}
         try:
@@ -1225,42 +1222,23 @@ async def find_contradictory_trait_characters(
 
 
 async def find_post_mortem_activity() -> list[dict[str, Any]]:
-    """Find characters with relationship activity after an `IS_DEAD` chapter.
+    """DEPRECATED: Find characters with relationship activity after an `IS_DEAD` chapter.
 
     Returns:
-        A list of dictionaries including:
-        - `character_name`
-        - `death_chapter`
-        - `post_mortem_activities` (a list of `{activity_type, activity_chapter}`)
+        An empty list. This function is deprecated because IS_DEAD relationships are no
+        longer used. Character status (including death) is now stored as a property on
+        Character nodes.
 
     Notes:
-        This is a diagnostic query. It filters out retrospective relationships (for example,
-        remembrance links) so the result focuses on potentially inconsistent timeline facts.
+        This function was a diagnostic query that relied on IS_DEAD relationships which
+        have been removed from the schema. The function is retained for backward
+        compatibility but always returns an empty list.
     """
-    query = """
-    MATCH (c:Character)-[death_rel:`IS_DEAD`]->()
-    WHERE death_rel.is_provisional = false OR death_rel.is_provisional IS NULL
-    WITH c, death_rel.chapter_added AS death_chapter
-
-    MATCH (c)-[activity_rel]->()
-    WHERE activity_rel.chapter_added > death_chapter
-      AND NOT type(activity_rel) IN ['IS_REMEMBERED_AS', 'WAS_FRIEND_OF'] // Exclude retrospective rels
-    RETURN DISTINCT c.name as character_name,
-           death_chapter,
-           collect(
-             {
-               activity_type: type(activity_rel),
-               activity_chapter: activity_rel.chapter_added
-             }
-           ) AS post_mortem_activities
-    LIMIT 20
-    """
-    try:
-        results = await neo4j_manager.execute_read_query(query)
-        return results if results else []
-    except (Neo4jError, KeyError, ValueError, TypeError) as e:
-        logger.error(f"Error checking for post-mortem activity: {e}", exc_info=True)
-        return []
+    logger.debug(
+        "find_post_mortem_activity() is deprecated and returns empty. "
+        "IS_DEAD relationships are no longer used; status is a node property."
+    )
+    return []
 
 
 async def find_candidate_duplicate_entities(

@@ -373,7 +373,7 @@ class SagaSettings(BaseSettings):
     schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)
 
     # Legacy Degradation Flags
-    ENABLE_STATUS_IS_ALIAS: bool = True
+    ENABLE_STATUS_IS_ALIAS: bool = False
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 

@@ -913,8 +913,8 @@ async def _gather_character_facts(
     for char_name in character_names_list:
         character_tasks.extend(
             [
-                kg_queries.get_most_recent_value_from_db(char_name, "STATUS_IS", kg_chapter_limit),
-                kg_queries.get_most_recent_value_from_db(char_name, "LOCATED_IN", kg_chapter_limit),
+                character_queries.get_character_info_for_snippet_from_db(char_name, kg_chapter_limit),
+                kg_queries.get_most_recent_value_from_db(char_name, "LOCATED_AT", kg_chapter_limit),
                 kg_queries.query_kg_from_db(subject=char_name, chapter_limit=kg_chapter_limit),
             ]
         )
@@ -938,18 +938,20 @@ async def _gather_character_facts(
 
         facts_for_this_char = 0
         # Get results for this character (3 results per character)
-        status_result = character_results[i * 3]
+        char_info_result = character_results[i * 3]
         location_result = character_results[i * 3 + 1]
         relationships_result = character_results[i * 3 + 2]
 
-        # Process status
-        if not isinstance(status_result, Exception) and status_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
-            fact_text = f"- {char_name}'s status is: {status_result}."
-            if fact_text not in facts_list:
-                facts_list.append(fact_text)
-                facts_for_this_char += 1
-        elif isinstance(status_result, Exception):
-            logger.warning("KG Query for %s's status failed: %s", char_name, status_result)
+        # Process status from character info
+        if not isinstance(char_info_result, Exception) and char_info_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
+            status_value = char_info_result.get("current_status")
+            if status_value:
+                fact_text = f"- {char_name}'s status is: {status_value}."
+                if fact_text not in facts_list:
+                    facts_list.append(fact_text)
+                    facts_for_this_char += 1
+        elif isinstance(char_info_result, Exception):
+            logger.warning("KG Query for %s's character info failed: %s", char_name, char_info_result)
 
         # Process location
         if not isinstance(location_result, Exception) and location_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:

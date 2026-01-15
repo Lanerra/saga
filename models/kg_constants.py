@@ -19,7 +19,6 @@ Notes:
 # Relationship and node property names
 KG_REL_CHAPTER_ADDED = "chapter_added"
 KG_NODE_CREATED_CHAPTER = "created_chapter"
-KG_NODE_CHAPTER_UPDATED = "chapter_updated"
 KG_IS_PROVISIONAL = "is_provisional"
 
 # --- World item label taxonomy (P0.2) ---
@@ -243,6 +242,7 @@ CHARACTER_SOCIAL_RELATIONSHIPS = {
     "SEEKS",
     "POSSESSES",
     "CAUSED",
+    "LOCATED_AT",
 }
 
 # Character Emotional Relationships
@@ -281,6 +281,7 @@ STATIC_RELATIONSHIP_MAP = {
     "WANTS": "SEEKS",
     "DESIRES": "SEEKS",
     "OWNS": "POSSESSES",
+    "LOCATED_IN": "LOCATED_AT",
     
     # Plot exact synonyms
     "TRIGGERED": "CAUSED",
@@ -288,10 +289,9 @@ STATIC_RELATIONSHIP_MAP = {
 }
 
 # Relationships that should be node properties instead of relationships
-PROPERTY_RELATIONSHIPS = {
-    "HAS_STATUS", "IS_ALIVE", "IS_DEAD", "IS_ACTIVE",
-    "IS_INJURED", "HAS_CONDITION"
-}
+# NOTE: This set is now empty as status-related relationships have been deprecated.
+# Status information (alive/dead/injured/active) is stored as properties on Character nodes.
+PROPERTY_RELATIONSHIPS: set[str] = set()
 
 
 # --- NovelInfo property allowlist (P0.4: Cypher injection hardening) ---

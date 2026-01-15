@@ -62,8 +62,6 @@ LOCATION_TYPES = {
 
 EVENT_TYPES = {
     "Event",
-    "DevelopmentEvent",
-    "WorldElaborationEvent",
     "Era",
     "Moment",
 }
@@ -186,7 +184,7 @@ VALIDATION_RULES = [
     # Spatial relationships - typically target locations or physical entities
     # (informational only - not enforced)
     RelationshipValidationRule(
-        relationship_types={"LOCATED_IN", "LOCATED_AT"},
+        relationship_types={"LOCATED_AT"},
         valid_source_types="ANY",
         valid_target_types=LOCATION_TYPES | PHYSICAL_OBJECT_TYPES | SENTIENT_TYPES,
         rule_name="spatial_containment",
@@ -219,14 +217,14 @@ VALIDATION_RULES = [
         rule_name="containment",
         rationale="[INFO] Containment relationships typically involve physical or conceptual containers",
     ),
-    # Ability/Trait relationships
+    # Ability relationships
     # (informational only - not enforced)
     RelationshipValidationRule(
-        relationship_types={"HAS_ABILITY", "HAS_TRAIT", "SKILLED_IN", "WEAK_IN"},
+        relationship_types={"HAS_ABILITY", "SKILLED_IN", "WEAK_IN"},
         valid_source_types=SENTIENT_TYPES,
         valid_target_types=QUALITY_TYPES | ABSTRACT_TYPES | {"Skill"},
         rule_name="ability_trait",
-        rationale="[INFO] Abilities and traits are typically possessed by sentient beings",
+        rationale="[INFO] Abilities are typically possessed by sentient beings",
     ),
 ]
 
