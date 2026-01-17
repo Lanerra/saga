@@ -199,15 +199,6 @@ VALIDATION_RULES = [
         rule_name="temporal_sequence",
         rationale="[INFO] Temporal relationships typically connect events or time periods",
     ),
-    # Possession relationships - typically sentient owners
-    # (informational only - not enforced)
-    RelationshipValidationRule(
-        relationship_types={"OWNS", "POSSESSES"},
-        valid_source_types=SENTIENT_TYPES,
-        valid_target_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES,
-        rule_name="ownership",
-        rationale="[INFO] Ownership typically involves sentient beings",
-    ),
     # Physical and informational containment
     # (informational only - not enforced)
     RelationshipValidationRule(

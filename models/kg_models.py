@@ -110,7 +110,7 @@ class CharacterProfile(BaseModel):
             for rel in rels:
                 if rel and rel.get("target_name"):
                     relationships[rel["target_name"]] = {
-                        "type": rel.get("type", "KNOWS"),
+                        "type": rel.get("type", ""),
                         "description": rel.get("description", ""),
                     }
 

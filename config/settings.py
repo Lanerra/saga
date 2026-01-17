@@ -329,7 +329,7 @@ class SagaSettings(BaseSettings):
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
 
     # Narrative Style Defaults
-    DEFAULT_NARRATIVE_STYLE: str = "Standard Third-Person Past Tense"
+    DEFAULT_NARRATIVE_STYLE: str = "Third-Person, personal with internal monologue"
 
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")

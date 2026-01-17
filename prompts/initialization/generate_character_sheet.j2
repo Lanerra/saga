@@ -27,7 +27,7 @@ Return a single JSON object with EXACTLY these top-level keys (no more, no less)
 - "motivations" (string)
 - "background" (string)
 - "skills" (array of strings)
-- "relationships" (object mapping character name -> string)
+- "relationships" (object mapping character name -> {"type": string, "description": string})
 - "internal_conflict" (string)
 
 Do NOT include a top-level "type" field; runtime injects it.
@@ -39,7 +39,9 @@ Field guidance (encode inside the JSON fields above):
 - background: 1-2 sentences (<= 240 chars).
 - internal_conflict: 1 sentence (<= 180 chars).
 - skills: 3-5 concrete skills; each item <= 30 chars.
-- relationships: include entries for relevant other main characters (if any); each value <= 180 chars.
+- relationships: include entries for relevant other main characters (if any).
+  - type: MUST be one of: {{ relationship_types }}
+  - description: <= 180 chars.
 
 Hard constraints:
 - Every string value MUST be a single line (no newline characters).

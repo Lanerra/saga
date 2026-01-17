@@ -2,38 +2,42 @@
 
 ## 1. Executive Summary
 
-SAGA (Semantically And Graph‑enhanced Authoring) generates long‑form fiction using a **LangGraph** workflow orchestrator and a **Neo4j** knowledge graph for persistent world state. The system deliberately separates **orchestration** (control flow, error handling, revision loops) from **memory** (characters, locations, events, relationships) so that each chapter can be generated, validated, and persisted without being constrained by the LLM's context window. Recent refinements have introduced:
+SAGA (Semantic And Graph-enhanced Authoring) generates long-form fiction using a **LangGraph** workflow orchestrator and a **Neo4j** knowledge graph for persistent world state. The system deliberately separates **orchestration** (control flow, error handling, revision loops) from **memory** (characters, locations, events, relationships). This ensures each chapter is generated, validated, and persisted without being constrained by the LLM's context window.
 
-*   **Scene‑level generation** – a chapter is broken into a sequence of scenes, each generated with context retrieved from the graph.
-*   **Scene-based extraction** – entities and relationships are extracted from each scene individually to improve accuracy and reduce prompt size, then consolidated.
-*   **LLM‑based quality evaluation** – prose quality, coherence, pacing, and tone are scored, and low‑scoring chapters trigger revision.
-*   **Extended contradiction detection** – relationship evolution checks (e.g., abrupt enemies-to-lovers shifts) and graph consistency validation.
-*   **Content externalization** – large text blobs (drafts, outlines, embeddings) are stored on disk via `ContentRef` to keep SQLite checkpoints lightweight.
-*   **Graph Healing** – automated maintenance of the knowledge graph to merge duplicates and enrich provisional nodes.
+Key architectural features include:
 
-The architecture remains fully local‑first, targeting a single user on a single machine.
+*   **Scene-Level Generation**: Chapters are planned and generated scene-by-scene, retrieving focused context for each scene.
+*   **Scene-Based Extraction**: Entities and relationships are extracted per scene to improve accuracy and consolidated before graph commitment.
+*   **Content Externalization**: Large text artifacts (drafts, outlines, embeddings) are stored on disk (`.saga/content/`) and referenced in the state via `ContentRef`, keeping SQLite checkpoints lightweight (~1KB).
+*   **Comprehensive Validation**: A multi-stage validation subgraph checks for graph consistency, evaluates prose quality (LLM-based scoring), and detects narrative contradictions (e.g., abrupt relationship shifts).
+*   **Graph Healing & QA**: Automated post-chapter maintenance merges duplicate entities, enriches provisional nodes, and performs periodic quality assurance checks.
+*   **Robust Error Handling**: A formalized error handling strategy routes fatal errors to a dedicated handler, ensuring graceful shutdown and state preservation.
+
+The architecture remains fully **local-first**, targeting a single user on a single machine with no external cloud dependencies.
 
 ---
 
 ## 2. Project Bootstrapping
 
-Before the LangGraph workflow begins, a **bootstrapping phase** initializes the project structure and configuration.
+Before the main LangGraph workflow begins, a **bootstrapping phase** initializes the project structure and configuration.
 
-*   **ProjectBootstrapper**: Converts a high-level user prompt (e.g., "A cyberpunk detective story") into a structured JSON configuration using an LLM.
-*   **NarrativeProjectConfig**: A Pydantic schema defining the project's genre, theme, setting, and protagonist.
-*   **ProjectManager**: Handles the lifecycle of project directories, configuration persistence, and the promotion of candidate configurations to active projects.
+*   **`ProjectBootstrapper`**: Converts a high-level user prompt (e.g., "A cyberpunk detective story") into a structured JSON configuration.
+*   **`NarrativeProjectConfig`**: A Pydantic schema defining the project's genre, theme, setting, and protagonist.
+*   **`ProjectManager`**: Handles lifecycle management, including directory creation, configuration persistence, and project promotion.
 
-This separation ensures that the LangGraph orchestrator always starts with a valid, schema-compliant project configuration.
+This separation ensures the LangGraph orchestrator always starts with a valid, schema-compliant project context.
 
 ---
 
-## 3. High‑Level Architecture
+## 3. High-Level Architecture
+
+The system uses a hierarchical graph structure with a main orchestrator and specialized subgraphs for complex tasks.
 
 ```mermaid
 graph TD
     User[User / CLI] -->|Config| Main[Main Workflow]
 
-    subgraph "Initialization"
+    subgraph "Initialization Phase"
         InitChar[Generate Character Sheets]
         InitGlob[Generate Global Outline]
         InitActs[Generate Act Outlines]
@@ -42,20 +46,36 @@ graph TD
         InitComplete[Initialization Complete]
     end
 
-    subgraph "Generation Loop"
-        Outline[Generate Chapter Outline]
-        Generate[Generation Subgraph]
-        Extract[Extraction Subgraph]
-        Embed[Generate Scene Embeddings]
+    subgraph "Generation Loop (Per Chapter)"
+        ChapOutline[Chapter Outline]
+        
+        subgraph "Generation Subgraph"
+            PlanScenes[Plan Scenes]
+            Retrieve[Retrieve Context]
+            Draft[Draft Scene]
+        end
+        
+        subgraph "Extraction Subgraph"
+            ExtractScene[Extract from Scenes]
+            Consolidate[Consolidate Results]
+        end
+        
+        Embed[Gen Scene Embeddings]
         Assemble[Assemble Chapter]
         Normalize[Normalize Relationships]
         Commit[Commit to Graph]
-        Validate[Validation Subgraph]
+        
+        subgraph "Validation Subgraph"
+            Validate[Validate Consistency]
+            Eval[Evaluate Quality]
+            Detect[Detect Contradictions]
+        end
+        
         Revise[Revise Chapter]
         Summarize[Summarize Chapter]
         Finalize[Finalize Chapter]
         Heal[Heal Graph]
-        QA[Quality Assurance]
+        QA[Check Quality]
         Advance[Advance Chapter]
     end
 
@@ -65,233 +85,182 @@ graph TD
 
     Main <--> SQLite[(LangGraph State\nCheckpoints)]
     Main <--> Neo4j[(Knowledge Graph\nWorld Model)]
-    Main --> FS[File System\nMarkdown/YAML]
+    Main --> Content[(Content Store\n.saga/content/)]
 
-    %% Entry routing
-    Main -->|Init incomplete| InitChar
-    Main -->|Init complete| Outline
+    %% Routing
+    Main -->|Init Incomplete| InitChar
+    Main -->|Init Complete| ChapOutline
 
-    %% Initialization flow
-    InitChar --> InitGlob --> InitActs --> InitCommit --> InitPersist --> InitComplete --> Outline
+    %% Initialization Flow
+    InitChar --> InitGlob --> InitActs --> InitCommit --> InitPersist --> InitComplete --> ChapOutline
 
-    %% Generation flow
-    Outline --> Generate --> Extract --> Embed --> Assemble --> Normalize --> Commit --> Validate
-    Validate -->|needs revision| Revise --> Generate
-    Validate -->|no revision| Summarize --> Finalize --> Heal --> QA
-    QA -->|next chapter| Advance --> Outline
-    QA -->|complete| END
+    %% Generation Flow
+    ChapOutline --> PlanScenes
+    PlanScenes --> Retrieve --> Draft
+    Draft -->|More Scenes| Retrieve
+    Draft -->|Done| ExtractScene
+    
+    ExtractScene --> Consolidate --> Embed --> Assemble --> Normalize --> Commit --> Validate
+    
+    Validate --> Eval --> Detect
+    Detect -->|Needs Revision| Revise --> PlanScenes
+    Detect -->|Approved| Summarize --> Finalize --> Heal --> QA
+    
+    QA -->|Next Chapter| Advance --> ChapOutline
+    QA -->|Complete| END
 
-    %% Error paths
-    Generate -->|error| ErrorHandler
-    Extract -->|error| ErrorHandler
-    Commit -->|error| ErrorHandler
-    Validate -->|error| ErrorHandler
-    Revise -->|error| ErrorHandler
-    Summarize -->|error| ErrorHandler
-    Finalize -->|error| ErrorHandler
+    %% Error Paths (Simplified)
+    ChapOutline -.->|Error| ErrorHandler
+    Draft -.->|Error| ErrorHandler
+    Commit -.->|Error| ErrorHandler
+    Detect -.->|Error| ErrorHandler
 ```
 
-The diagram illustrates the two main phases:
+### Workflow Phases
 
-1.  **Initialization** – runs once per project to create character sheets, a global outline, and act outlines. The results are committed to Neo4j and persisted to disk.
-2.  **Generation Loop** – repeats for each chapter. It creates a chapter outline, generates scenes, extracts entities/relationships from those scenes, generates embeddings, assembles the full chapter, normalizes relationships, commits to the graph, validates the result, optionally revises, summarizes, finalizes, and performs graph healing.
+1.  **Initialization**: Runs once per project. Generates character sheets, global/act outlines, and persists the initial canon to Neo4j.
+2.  **Generation Loop**: Repeats for each chapter:
+    *   **Planning**: Creates a scene-by-scene outline.
+    *   **Generation**: Drafts scenes iteratively using retrieved graph context.
+    *   **Extraction**: Extracts entities/relationships per scene and consolidates them.
+    *   **Assembly**: Concatenates scene drafts into a full chapter.
+    *   **Commit**: Normalizes relationships and updates the Knowledge Graph.
+    *   **Validation**: Checks consistency, evaluates quality, and detects contradictions.
+    *   **Finalization**: Summarizes the chapter, updates files, runs graph healing and QA.
 
 ---
 
 ## 4. State Management (`NarrativeState`)
 
-`NarrativeState` is a TypedDict defined in `core/langgraph/state.py`. It is the single source of truth passed between all LangGraph nodes and automatically persisted by the checkpoint saver. The schema is deliberately grouped into logical categories:
+`NarrativeState` is a `TypedDict` defined in `core/langgraph/state.py`. It serves as the single source of truth, passed between nodes and persisted by the SQLite checkpointer.
+
+### Key State Categories
 
 | Category | Fields (excerpt) | Purpose |
 |---|---|---|
-| **Metadata** | `project_id`, `title`, `genre`, `theme`, `setting`, `target_word_count`, `narrative_style` | Immutable project configuration. |
-| **Progress** | `current_chapter`, `total_chapters`, `run_start_chapter` | Tracks where we are in the narrative. |
-| **Content (externalized)** | `draft_ref`, `embedding_ref`, `scene_drafts_ref`, `scene_embeddings_ref`, `chapter_plan_ref`, `summaries_ref`, `hybrid_context_ref` | References to large text stored on disk via `ContentRef`. |
-| **Extraction** | `extracted_entities_ref`, `extracted_relationships_ref` | References to structured data parsed from the scenes. |
-| **Chapter Planning** | `current_scene_index`, `chapter_plan_scene_count` | Tracks progress through the scene-by-scene generation loop. |
-| **Validation** | `contradictions`, `needs_revision`, `revision_guidance_ref` | Results of consistency checks and quality evaluation. |
-| **Quality Metrics** | `coherence_score`, `prose_quality_score`, `plot_advancement_score`, `pacing_score`, `tone_consistency_score`, `quality_feedback` | Scores returned by the LLM quality evaluator. |
-| **Model Configuration** | `generation_model`, `extraction_model`, `revision_model`, `large_model`, `medium_model`, `small_model`, `narrative_model` | Names of LLMs used at each stage. |
-| **Workflow Control** | `current_node`, `iteration_count`, `max_iterations`, `force_continue` | Loop counters and override flags for revision cycles. |
-| **Error Handling** | `last_error`, `has_fatal_error`, `error_node` | Information needed to abort gracefully. |
-| **Filesystem Paths** | `project_dir` | Base directory for the project. |
-| **Context Management** | `active_characters`, `key_events` | Handles dynamic context for generation. |
-| **World Building** | `world_items`, `current_world_rules` | Persistent world facts and rule set. |
-| **Protagonist** | `protagonist_name` | Primary character information. |
-| **Initialization** | `character_sheets_ref`, `global_outline_ref`, `act_outlines_ref`, `chapter_outlines_ref`, `initialization_complete`, `initialization_step` | Tracks the one‑time setup workflow. |
-| **Relationship Vocabulary** | `relationship_vocabulary`, `relationship_vocabulary_size`, `relationships_normalized_this_chapter` | Canonical relationship types and statistics. |
-| **Graph Healing** | `provisional_count`, `last_healing_chapter`, `merge_candidates`, `pending_merges`, `auto_approved_merges`, `healing_history`, `nodes_graduated`, `nodes_merged` | Metrics for post‑chapter graph maintenance. |
-| **Quality Assurance** | `last_qa_chapter`, `qa_results`, `qa_history`, `total_qa_issues` | Metrics for periodic KG quality checks. |
+| **Metadata** | `project_id`, `title`, `genre`, `target_word_count` | Immutable project configuration. |
+| **Progress** | `current_chapter`, `total_chapters`, `run_start_chapter` | Tracks narrative progress. |
+| **Content References** | `draft_ref`, `scene_drafts_ref`, `chapter_plan_ref`, `extracted_entities_ref` | **ContentRef** pointers to externalized files. State does *not* hold large text blobs. |
+| **Validation** | `contradictions`, `needs_revision`, `revision_guidance_ref` | validation results and revision flags. |
+| **Quality Metrics** | `coherence_score`, `prose_quality_score`, `pacing_score` | LLM-generated quality scores (0.0 - 1.0). |
+| **Healing & QA** | `provisional_count`, `nodes_merged`, `qa_results`, `total_qa_issues` | Metrics from graph maintenance nodes. |
+| **Control Flow** | `current_node`, `iteration_count`, `force_continue`, `has_fatal_error` | Workflow routing and error flags. |
 
-All fields are optional (`total=False`) but the `create_initial_state` factory populates sensible defaults for required data.
+### Content Externalization Strategy
 
----
+To avoid SQLite size limits and improve performance, large artifacts are stored on disk using `ContentManager`. The state only holds a `ContentRef`:
 
-## 5. Content Externalization
-
-Large textual artifacts (drafts, scene drafts, outlines, summaries, embeddings) are stored on disk using the `ContentManager` utility. The state contains only a `ContentRef` that points to the file location. This design keeps the SQLite checkpoint database small (typically a few kilobytes per checkpoint) and enables efficient diffing and versioning of generated content.
-
----
-
-## 6. Subgraph Details
-
-### 6.1 Generation Subgraph (`core/langgraph/subgraphs/generation.py`)
-
-The generation subgraph builds a chapter **scene‑by‑scene**:
-
-| Node | Description |
-|---|---|
-| `plan_scenes` | Uses the chapter outline to create a list of `SceneDetail` objects, each describing the goal of a scene. Stores the plan in `chapter_plan_ref`. |
-| `retrieve_context` | Queries Neo4j for characters, relationships, recent events, and world‑rule facts relevant to the upcoming scene. |
-| `draft_scene` | Calls the LLM to generate prose for a single scene using the retrieved context and the scene description. Appends the draft to `scene_drafts_ref`. |
-
-The subgraph loops while `should_continue_scenes` returns `"continue"`. When all scenes are generated, the subgraph ends.
-
-**Note:** The `assemble_chapter` node runs **after** the generation and extraction phases in the main workflow. It concatenates all scene drafts into the final chapter draft (`draft_ref`).
-
----
-
-### 6.2 Extraction Subgraph (`core/langgraph/subgraphs/scene_extraction.py`)
-
-Extraction runs **per-scene** to reduce prompt size and improve granularity, then consolidates the results.
-
-1.  **`extract_from_scenes`**: Iterates through all generated scene drafts (`scene_drafts_ref`). For each scene, it extracts:
-    *   **Characters**: Updates to status, traits, and descriptions.
-    *   **Locations**: New locations or updates to existing ones.
-    *   **Events**: Key plot events occurring in the scene.
-    *   **Relationships**: New or evolving relationships between entities.
-2.  **`consolidate`**: After processing all scenes, the results are merged.
-    *   Characters and World Items are deduplicated by name (keeping the most detailed description).
-    *   Relationships are deduplicated by the `(source, target, type)` tuple.
-3.  **Externalization**: The consolidated entities and relationships are saved to disk via `ContentManager`, and references (`extracted_entities_ref`, `extracted_relationships_ref`) are stored in the state.
-
----
-
-### 6.3 Validation Subgraph (`core/langgraph/subgraphs/validation.py`)
-
-The validation subgraph consists of three sequential checks:
-
-1.  **`validate_consistency`** – Runs three validation passes:
-    *   **Relationship Validation**: Checks source/target types against valid options (Permissive mode by default: informational only).
-    *   **Trait Consistency**: Checks for contradictory traits (e.g., "brave" vs "cowardly") in the graph.
-    *   **Plot Stagnation**: Ensures the chapter advances the plot significantly.
-2.  **`evaluate_quality`** – An LLM‑based evaluator scores:
-    *   Coherence
-    *   Prose quality
-    *   Plot advancement
-    *   Pacing
-    *   Tone consistency
-
-    The evaluator returns a JSON payload; scores below a configurable threshold (default `0.7`) trigger a `quality_issue` contradiction and set `needs_revision`.
-3.  **`detect_contradictions`** – Checks for abrupt relationship changes (e.g., `HATES → LOVES`) without sufficient narrative development.
-
-The subgraph returns `END` after `detect_contradictions`. The main workflow interprets `needs_revision` together with `iteration_count` and `max_iterations` to decide whether to loop back for a revision.
-
----
-
-### 6.4 Healing Node (`core/langgraph/nodes/graph_healing_node.py`)
-
-After a chapter is finalized, `heal_graph` runs maintenance on the knowledge graph:
-
-*   **Enrichment** – Uses the LLM to fill missing attributes of provisional nodes.
-*   **Merging** – Automatically merges entities that have high name‑similarity and identical relationship patterns.
-*   **Garbage collection** – Removes orphaned nodes and updates statistics.
-
-Healing updates the `graph_healing` metrics in `NarrativeState` for observability.
-
----
-
-### 6.5 Quality Assurance & Advancement
-
-After graph healing, the workflow performs final quality checks and either moves to the next chapter or terminates.
-
-| Node | Description |
-|---|---|
-| `check_quality` | Performs a high-level assessment of the finalized chapter, checking for tone consistency and overall narrative quality. |
-| `advance_chapter` | Increments `current_chapter`, resets per-chapter flags (like `iteration_count` and `needs_revision`), and clears chapter-specific content references to prepare for the next loop. |
-
-The transition from `check_quality` is determined by `should_continue_to_next_chapter`, which checks if `current_chapter < total_chapters`.
-
----
-
-## 7. Error Handling Strategy
-
-Every major node is wrapped by the conditional edge `should_handle_error`. If `state["has_fatal_error"]` is true, control transfers to the `error_handler` node, which logs the failure, marks `workflow_failed`, and then terminates the graph (`END`). This approach ensures graceful shutdown and preserves the last good checkpoint for later debugging.
-
----
-
-## 8. Data & Persistence
-
-### 8.1 Neo4j Schema
-
-The knowledge graph uses a **labeled property graph** with the following node and relationship types.
-
-#### Canonical domain node labels (schema contract)
-SAGA enforces a canonical set of **6** domain labels:
-
-- `Character`
-- `Location`
-- `Event`
-- `Item`
-- `Trait`
-- `Chapter`
-
-**Infrastructure Labels:**
-- `NovelInfo` (Project metadata)
-- `WorldContainer` (Root node)
-- `ValueNode` (Literal values for complex properties)
-
-These labels are treated as a strict schema surface (indexes/constraints + Cypher label interpolation safety).
-
-#### Subtypes and legacy aliases
-Subtypes (e.g., `Faction`, `Settlement`, `Artifact`) are represented using properties (typically `category`) on nodes whose label is one of the canonical labels above.
-
-#### Relationships
-Relationship types are expected to be uppercase with underscores (e.g., `LOCATED_IN`, `MEMBER_OF`, `BETRAYS`). All write operations go through the `commit_to_graph` node, which performs a two‑phase deduplication (name‑based followed by relationship‑pattern‑based) to avoid graph pollution.
-
-### 8.2 File‑System Layout (under `output/`)
-
+```python
+class ContentRef(TypedDict):
+    path: str          # Relative path (e.g., ".saga/content/drafts/ch1_v1.txt")
+    content_type: str  # e.g., "draft", "outline"
+    version: int       # Revision version
+    size_bytes: int    # For integrity checks
+    checksum: str      # SHA-256 hash
 ```
+
+This ensures checkpoints remain small (~1-5KB) even as the novel grows.
+
+---
+
+## 5. Subgraph Details
+
+### 5.1 Generation Subgraph (`core/langgraph/subgraphs/generation.py`)
+
+Generates the chapter content scene-by-scene.
+
+| Node | Function |
+|---|---|
+| `plan_scenes` | Decomposes the chapter outline into a list of `SceneDetail` objects. |
+| `retrieve_context` | Queries Neo4j for characters, locations, and events relevant to the specific scene. |
+| `draft_scene` | Generates prose for one scene using the retrieved context. |
+
+*   **Loop**: The subgraph iterates `retrieve_context` → `draft_scene` until all planned scenes are complete.
+*   **Output**: A list of scene drafts stored in `scene_drafts_ref`.
+
+### 5.2 Extraction Subgraph (`core/langgraph/subgraphs/scene_extraction.py`)
+
+Extracts structured data from the generated text.
+
+| Node | Function |
+|---|---|
+| `extract_from_scenes` | Processes each scene draft individually to extract entities (Characters, Locations, Events) and Relationships. |
+| `consolidate` | Merges extraction results, deduplicating entities by name and relationships by `(source, target, type)`. |
+
+*   **Benefit**: Scene-level extraction reduces context window pressure on the LLM, resulting in higher accuracy than full-chapter extraction.
+
+### 5.3 Validation Subgraph (`core/langgraph/subgraphs/validation.py`)
+
+Ensures narrative quality and consistency.
+
+| Node | Function |
+|---|---|
+| `validate_consistency` | Checks graph constraints (e.g., valid relationship types) and trait consistency. |
+| `evaluate_quality` | Uses an LLM to score the chapter on Coherence, Prose, Pacing, etc. Low scores trigger `needs_revision`. |
+| `detect_contradictions` | Checks for abrupt relationship shifts (e.g., `HATES` → `LOVES` without development) and severe logic errors. |
+
+*   **Routing**: If `needs_revision` is true and `iteration_count < max_iterations`, the main workflow loops back to `revise`.
+
+---
+
+## 6. Graph Maintenance & QA
+
+### 6.1 Graph Healing (`core/langgraph/nodes/graph_healing_node.py`)
+
+Runs after every chapter to maintain graph hygiene.
+*   **Enrichment**: Fills in missing details for provisional nodes.
+*   **Merging**: Identifies and merges duplicate entities (e.g., "Bob" and "Bob Smith").
+*   **Observability**: Tracks metrics like `nodes_graduated` (provisional → confirmed) and `nodes_merged`.
+
+### 6.2 Quality Assurance (`core/langgraph/nodes/quality_assurance_node.py`)
+
+Runs periodically (configurable frequency) to perform deeper checks.
+*   **Contradictory Traits**: Finds characters with conflicting traits (e.g., "Brave" AND "Cowardly").
+*   **Post-Mortem Activity**: Detects events involving characters marked as "Dead".
+*   **Deduplication**: cleans up redundant relationships.
+
+---
+
+## 7. Error Handling & Persistence
+
+### 7.1 Error Handling Strategy
+*   **Fatal Errors**: Nodes catch unrecoverable errors and set `has_fatal_error: True` in state.
+*   **Routing**: The workflow checks `should_handle_error` after key steps.
+*   **Handler**: The `error_handler` node logs the failure and gracefully terminates the workflow, preserving the last valid checkpoint for debugging.
+
+### 7.2 Persistence
+*   **State**: LangGraph state is persisted to `output/.saga/checkpoints.db` (SQLite).
+*   **Graph**: Knowledge Graph data resides in Neo4j (local/Docker).
+*   **Content**: Large artifacts are stored in `output/.saga/content/`.
+*   **Exports**: Human-readable Markdown and YAML files are written to `output/chapters/`, `output/characters/`, etc.
+
+---
+
+## 8. Data Model
+
+### Neo4j Schema (Canonical Labels)
+*   `Character`
+*   `Location`
+*   `Event`
+*   `Item`
+*   `Trait`
+*   `Chapter`
+
+**Infrastructure Nodes**: `NovelInfo`, `WorldContainer`, `ValueNode`.
+
+### File System Layout
+```text
 output/
 ├── .saga/
-│   ├── checkpoints.db          # LangGraph SQLite checkpoints
-│   ├── logs/                   # Runtime logs per chapter
-│   └── content/                # Externalized content (blobs)
+│   ├── checkpoints.db          # Workflow state
+│   └── content/                # Externalized artifacts (binary/json/txt)
 │       ├── drafts/
-│       ├── outlines/
-│       ├── summaries/
-│       ├── extractions/
-│       └── embeddings/
-├── chapters/
-│   └── chapter_01.md           # Finalized prose for each chapter
-├── summaries/
-│   └── chapter_01_summary.txt
-├── outline/
-│   ├── structure.yaml          # Global act/plot structure
-│   └── beats.yaml              # Detailed outline per act/chapter
-├── characters/
-│   └── protagonist.yaml        # Character profiles (YAML)
-├── world/
-│   └── items.yaml              # Locations, objects, world rules
-└── exports/
-    └── novel_full.md           # Compiled manuscript
+│       ├── scene_drafts/
+│       ├── embeddings/
+│       └── ...
+├── chapters/                   # Final Markdown chapters
+├── characters/                 # Character profiles (YAML)
+├── world/                      # World building info
+├── outline/                    # Structure and beats
+└── exports/                    # Compiled manuscript
 ```
-
----
-
-## 9. Future Directions
-
-### Planned Enhancements
-*   **Interactive Revision Mode** – allow a human to edit a chapter during the `revise` phase.
-*   **Vector‑Only Mode** – skip Neo4j and rely solely on embedding‑based retrieval for lightweight setups.
-*   **Fine‑grained Model Tiering** – automatically select model size based on node complexity.
-*   **Persisted Revision History** – store patches and evaluation results for auditability.
-
----
-
-## 10. Project Constraints (Reminder)
-
-*   Single‑user, single‑machine deployment.
-*   No external web services or micro‑service architecture.
-*   All persistence is local: Neo4j (embedded or Docker) and the local filesystem.
-*   Designed for consumer‑grade hardware; no distributed scaling assumptions.

@@ -229,6 +229,7 @@ SUGGESTED_CATEGORIES = {
 # Character Social Relationships
 CHARACTER_SOCIAL_RELATIONSHIPS = {
     "ALLIES_WITH",
+    "RIVALS_WITH",
     "CONFLICTS_WITH",
     "LOVES",
     "FAMILY_OF",
@@ -236,22 +237,27 @@ CHARACTER_SOCIAL_RELATIONSHIPS = {
     "PROTECTS",
     "TRUSTS",
     "DISTRUSTS",
-    "BETRAYED",
+    "BETRAYS",
     "FEARS",
-    "KNOWS",
     "SEEKS",
-    "POSSESSES",
-    "CAUSED",
     "LOCATED_AT",
+    "SERVES",
+    "DEPENDS_ON",
+    "OWES",
+    "DECEIVES",
+    "MANIPULATES",
 }
 
 # Character Emotional Relationships
 CHARACTER_EMOTIONAL_RELATIONSHIPS = {
+    "ADMIRES",  # Admiration
     "LOVES",  # Deep affection
     "CONFLICTS_WITH",  # Deep animosity
     "FEARS",  # Fear of person
     "TRUSTS",  # Admiration/respect
-    "BETRAYED",  # Unhealthy fixation
+    "BETRAYS",  # Unhealthy fixation
+    "RESENTS",  # Resentment
+    "DISTRUSTS",  # Distrust/suspicion
 }
 
 # Relationship category mapping for validation and normalization
@@ -267,26 +273,7 @@ for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)
 
 # Static relationship mapping for exact synonyms
-STATIC_RELATIONSHIP_MAP = {
-    # Character-Character exact synonyms
-    "HATES": "CONFLICTS_WITH",
-    "DESPISES": "CONFLICTS_WITH",
-    "ENEMIES_WITH": "CONFLICTS_WITH",
-    "LOVES": "LOVES",
-    "FEARS": "DISTRUSTS",
-    
-    # Character-World exact synonyms
-    "KNOWS_ABOUT": "KNOWS",
-    "AWARE_OF": "KNOWS",
-    "WANTS": "SEEKS",
-    "DESIRES": "SEEKS",
-    "OWNS": "POSSESSES",
-    "LOCATED_IN": "LOCATED_AT",
-    
-    # Plot exact synonyms
-    "TRIGGERED": "CAUSED",
-    "RESULTED_IN": "CAUSED",
-}
+STATIC_RELATIONSHIP_MAP = {}
 
 # Relationships that should be node properties instead of relationships
 # NOTE: This set is now empty as status-related relationships have been deprecated.
