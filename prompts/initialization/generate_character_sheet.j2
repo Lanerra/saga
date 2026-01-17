@@ -11,7 +11,7 @@ Name: {{ character_name }}
 Role: {% if is_protagonist %}Protagonist{% else %}Main character{% endif %}
 
 {% if other_characters %}
-Other main characters:
+Other characters:
 {% for char in other_characters %}
 - {{ char }}
 {% endfor %}
