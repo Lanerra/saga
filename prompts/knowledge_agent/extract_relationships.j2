@@ -16,7 +16,15 @@ Extraction rules:
 - Extract ONLY the most significant relationships (≤ 15).
 - Direction matters: subject acts on object.
 - Predicates MUST be UPPERCASE_WITH_UNDERSCORES and MUST be one of the CANONICAL RELATIONSHIP TYPES listed above.
-- Do NOT create entities for generic nouns, emotions, atmosphere, or states (e.g., "Silence", "Darkness", "Not Dead").
+
+ENTITY VALIDATION (CRITICAL - ENFORCE STRICTLY):
+- Subject and object_entity MUST be CONCRETE, NAMED entities from the chapter.
+- ✓ VALID entities: "Elara", "Marcus", "Sunken Library", "Enchanted Blade", "Red Harbor"
+- ✗ INVALID entities: "truth", "knowledge", "secrets", "unknown dangers", "the bloom", "understanding"
+- ✗ INVALID entities: Abstract concepts, emotions, unnamed items, descriptive phrases, goals
+- ✗ INVALID entities: Relationship pairs like "Elias and Caleb" (extract two separate relationships instead)
+- ✗ INVALID entities: Generic references like "the fungus", "the entity", "the carvings"
+- If an entity doesn't have a proper name or specific identifier, DO NOT extract a relationship involving it.
 - Use plain entity names for subject and object_entity (e.g., "Elara", "Red Harbor").
 - Do NOT prefix names with types like "Character:" or "Location:".
 - If a relationship cannot be expressed using one of the CANONICAL RELATIONSHIP TYPES, DO NOT extract it.

@@ -161,7 +161,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     query = (
         f"MATCH (we {{id: $id}}) WHERE {label_predicate}"
         " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)"
-        " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)"
+        " AND ($include_provisional = FALSE OR coalesce(we.is_provisional, FALSE) = FALSE)"
         " RETURN we"
     )
 
@@ -238,7 +238,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
 
     elab_query = f"""
     MATCH ({{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:Event)
-    WHERE $include_provisional = TRUE OR coalesce(elab.{KG_IS_PROVISIONAL}, FALSE) = FALSE
+    WHERE $include_provisional = FALSE OR coalesce(elab.{KG_IS_PROVISIONAL}, FALSE) = FALSE
     RETURN elab.summary AS summary, elab.chapter AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
     ORDER BY elab.chapter ASC
     """
@@ -310,7 +310,7 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
       we,
       ( coalesce(we.{KG_IS_PROVISIONAL}, FALSE) = TRUE OR size(provisional_elaborations_found) > 0 )
         AS is_item_provisional_overall
-    WHERE $include_provisional = TRUE OR is_item_provisional_overall = FALSE
+    WHERE $include_provisional = FALSE OR is_item_provisional_overall = FALSE
 
     RETURN we.name AS name,
            we.description AS description,
@@ -516,7 +516,7 @@ async def get_world_items_for_chapter_context_native(chapter_number: int, limit:
         MATCH (w)-[:REFERENCED_IN]->(ch:Chapter)
         WHERE ch.number < $chapter_number
           AND (w.is_deleted IS NULL OR w.is_deleted = FALSE)
-          AND ($include_provisional = TRUE OR coalesce(w.is_provisional, FALSE) = FALSE)
+          AND ($include_provisional = FALSE OR coalesce(w.is_provisional, FALSE) = FALSE)
         WITH w, max(ch.number) as last_reference
         ORDER BY last_reference DESC
         LIMIT $limit

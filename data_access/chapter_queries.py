@@ -317,7 +317,7 @@ async def find_semantic_context_native(
     YIELD node AS similar_c, score
     WHERE similar_c.number < $current_chapter
       AND (
-            $include_provisional = true
+            $include_provisional = false
             OR COALESCE(similar_c.is_provisional, false) = false
           )
 
@@ -337,7 +337,7 @@ async def find_semantic_context_native(
     OPTIONAL MATCH (prev_c:Chapter {number: $prev_chapter_num})
     WHERE prev_c.number < $current_chapter
       AND (
-            $include_provisional = true
+            $include_provisional = false
             OR COALESCE(prev_c.is_provisional, false) = false
           )
       AND NOT ANY(sr IN similar_results WHERE sr.chapter_number = $prev_chapter_num)

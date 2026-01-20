@@ -163,6 +163,10 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         #
         # Contract: relationship writes are chapter-idempotent.
         # Every commit replaces the chapter's relationship set (including "no relationships").
+
+        # Filter out invalid abstract-concept relationships
+        relationships = _filter_invalid_relationships(relationships)
+
         relationship_statements = await _build_relationship_statements(
             relationships,
             char_entities,
@@ -297,6 +301,88 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             "has_fatal_error": True,
             "error_node": "commit",
         }
+
+
+def _filter_invalid_relationships(
+    relationships: list[ExtractedRelationship],
+) -> list[ExtractedRelationship]:
+    """Filter out relationships with abstract/invalid entities.
+
+    Rejects relationships where the target is:
+    - Generic concepts (truth, knowledge, secrets, understanding)
+    - Descriptive phrases (unknown dangers, the bloom)
+    - Relationship pairs (Elias and Caleb)
+    - Goals/actions (to understand the bloom)
+
+    Args:
+        relationships: Extracted relationships to validate.
+
+    Returns:
+        Filtered list containing only relationships with valid, concrete entities.
+    """
+    import re
+
+    invalid_patterns = [
+        r'^(the|a|an)\s',  # Articles: "the bloom", "a secret"
+        r'\s+and\s+',      # Pairs: "Elias and Caleb"
+        r'^to\s',          # Goals: "to understand"
+        r'(truth|knowledge|secrets?|understanding|consequences)',  # Abstract concepts
+        r'(unknown|mysterious)\s',  # Descriptive adjectives
+        r"('s|')\s",       # Possessives: "Elias's decision"
+    ]
+
+    combined_pattern = '|'.join(f'({p})' for p in invalid_patterns)
+    pattern = re.compile(combined_pattern, re.IGNORECASE)
+
+    valid = []
+    filtered_count = 0
+
+    for rel in relationships:
+        target = rel.target_name.strip()
+        source = rel.source_name.strip()
+
+        # Reject if target matches invalid pattern
+        if pattern.search(target):
+            logger.debug(
+                "_filter_invalid_relationships: rejected abstract target",
+                source=source,
+                predicate=rel.relationship_type,
+                target=target,
+            )
+            filtered_count += 1
+            continue
+
+        # Reject if source matches invalid pattern
+        if pattern.search(source):
+            logger.debug(
+                "_filter_invalid_relationships: rejected abstract source",
+                source=source,
+                predicate=rel.relationship_type,
+                target=target,
+            )
+            filtered_count += 1
+            continue
+
+        # Reject single-word lowercase concepts (except proper names)
+        if ' ' not in target and target.islower() and target not in ['bayou', 'plantation']:
+            logger.debug(
+                "_filter_invalid_relationships: rejected lowercase concept",
+                target=target,
+            )
+            filtered_count += 1
+            continue
+
+        valid.append(rel)
+
+    if filtered_count > 0:
+        logger.info(
+            "_filter_invalid_relationships: filtered abstract concepts",
+            original_count=len(relationships),
+            valid_count=len(valid),
+            filtered_count=filtered_count,
+        )
+
+    return valid
 
 
 def _deduplicate_entity_list(entities: list[ExtractedEntity]) -> list[ExtractedEntity]:
@@ -1069,7 +1155,9 @@ async def _build_relationship_statements(
             subject_label = _get_cypher_labels(subject_type).lstrip(":")
             object_label = _get_cypher_labels(object_type).lstrip(":")
 
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}|{chapter}"
+            # Generate stable relationship ID WITHOUT chapter number to prevent duplicates
+            # This ensures "Elias TRUSTS Caleb" creates ONE edge, not one per chapter
+            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}"
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
 
             query = """
@@ -1111,27 +1199,23 @@ async def _build_relationship_statements(
                 s,
                 $predicate_clean,
                 {id: $rel_id},
-                apoc.map.merge(
-                    {
-                        chapter_added: $chapter,
-                        is_provisional: $is_provisional,
-                        confidence: $confidence,
-                        description: $description,
-                        last_updated: timestamp()
-                    },
-                    {created_ts: timestamp(), updated_ts: timestamp()}
-                ),
+                {
+                    chapter_added: $chapter,
+                    is_provisional: $is_provisional,
+                    confidence: $confidence,
+                    description: $description,
+                    created_ts: timestamp(),
+                    updated_ts: timestamp(),
+                    last_updated: timestamp()
+                },
                 o,
-                apoc.map.merge(
-                    {
-                        chapter_added: $chapter,
-                        is_provisional: $is_provisional,
-                        confidence: $confidence,
-                        description: $description,
-                        last_updated: timestamp()
-                    },
-                    {updated_ts: timestamp()}
-                )
+                {
+                    is_provisional: $is_provisional,
+                    confidence: $confidence,
+                    description: $description,
+                    updated_ts: timestamp(),
+                    last_updated: timestamp()
+                }
             ) YIELD rel
             RETURN rel
             """

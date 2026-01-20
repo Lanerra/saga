@@ -78,7 +78,7 @@ class RelationshipNormalizationSettings(BaseSettings):
 
     # Strict canonical mode
     STRICT_CANONICAL_MODE: bool = Field(
-        default=True,
+        default=False,
         description="If True, disables dynamic vocabulary expansion and rejects unknown types",
     )
 
@@ -220,7 +220,7 @@ class SagaSettings(BaseSettings):
 
     # Entity embedding similarity configuration
     ENTITY_EMBEDDING_DEDUPLICATION_TOP_K: int = 15
-    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.55
+    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.85
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"
@@ -316,7 +316,7 @@ class SagaSettings(BaseSettings):
 
     # Duplicate Prevention Settings
     ENABLE_DUPLICATE_PREVENTION: bool = True
-    DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.6
+    DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.75
     DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = True
     DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = True
 

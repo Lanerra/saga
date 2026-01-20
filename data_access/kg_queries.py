@@ -567,7 +567,8 @@ async def add_kg_triples_batch_to_db(
             params["object_literal_value_param"] = str(object_literal_val)
             params["value_node_type_param"] = "Literal"
 
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{str(object_literal_val).strip()}|{chapter_number}"
+            # Generate stable relationship ID WITHOUT chapter number to prevent duplicates
+            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{str(object_literal_val).strip()}"
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
@@ -656,7 +657,8 @@ async def add_kg_triples_batch_to_db(
                     object_id = None
             params["object_id_param"] = object_id
 
-            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}|{chapter_number}"
+            # Generate stable relationship ID WITHOUT chapter number to prevent duplicates
+            rel_id_source = f"{predicate_clean}|{subject_name.strip().lower()}|{object_name.strip().lower()}"
             rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
             params["rel_id_param"] = rel_id
 
