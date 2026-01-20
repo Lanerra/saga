@@ -896,13 +896,16 @@ async def _build_relationship_statements(
         original_name: str,
         explicit_type: str | None = None,
         stable_id: str | None = None,
+        relationship_type: str | None = None,
+        role: str | None = None,
     ) -> dict[str, Any]:
         """Build an entity dictionary for relationship persistence.
 
         Contract:
         - `name` remains human-readable.
         - `id` is a stable identifier used for identity matching when available.
-        - Missing or empty types are canonicalized to `"Item"`.
+        - Missing or empty types are inferred from relationship semantics when possible,
+          otherwise canonicalized to `"Item"`.
 
         Notes:
             Relationship persistence may need to create provisional nodes for entities that were
@@ -915,15 +918,33 @@ async def _build_relationship_statements(
             original_name: Original extracted name used for type/category lookup.
             explicit_type: Explicit entity type override.
             stable_id: Stable identifier used for matching.
+            relationship_type: Relationship type (for type inference when type is unknown).
+            role: Entity role in relationship ("source" or "target") for type inference.
 
         Returns:
             Entity dictionary used by relationship persistence.
         """
+        from core.relationship_validation import infer_entity_type_from_relationship
+
         entity_type = explicit_type if explicit_type is not None else entity_type_map.get(original_name, None)
         entity_category = entity_category_map.get(original_name, "")
 
         if not entity_type or not str(entity_type).strip():
-            neo4j_type = "Item"
+            inferred_type = None
+            if relationship_type and role:
+                inferred_type = infer_entity_type_from_relationship(name, relationship_type, role)
+
+            if inferred_type:
+                neo4j_type = inferred_type
+                logger.info(
+                    "Inferred entity type from relationship semantics",
+                    entity=name,
+                    relationship=relationship_type,
+                    role=role,
+                    inferred_type=inferred_type,
+                )
+            else:
+                neo4j_type = "Item"
         else:
             neo4j_type = canonicalize_entity_type_for_persistence(entity_type)
 
@@ -972,6 +993,8 @@ async def _build_relationship_statements(
                 original_name=rel.source_name,
                 explicit_type=source_type,
                 stable_id=None,
+                relationship_type=rel.relationship_type,
+                role="source",
             ),
             "predicate": rel.relationship_type,
             "object_entity": _make_entity_dict(
@@ -979,6 +1002,8 @@ async def _build_relationship_statements(
                 original_name=rel.target_name,
                 explicit_type=target_type,
                 stable_id=None,
+                relationship_type=rel.relationship_type,
+                role="target",
             ),
             "is_literal_object": False,
             "description": rel.description,
@@ -1020,6 +1045,26 @@ async def _build_relationship_statements(
             object_name = obj["name"]
             object_type = obj["type"]
             object_id = obj.get("id")
+
+            from core.relationship_validation import validate_relationship_semantics_strict
+
+            is_valid, error_message = validate_relationship_semantics_strict(
+                predicate_clean,
+                subject_type,
+                object_type,
+            )
+
+            if not is_valid:
+                logger.warning(
+                    "_build_relationship_statements: skipping semantically invalid relationship",
+                    source=subject_name,
+                    source_type=subject_type,
+                    predicate=predicate_clean,
+                    target=object_name,
+                    target_type=object_type,
+                    reason=error_message,
+                )
+                continue
 
             subject_label = _get_cypher_labels(subject_type).lstrip(":")
             object_label = _get_cypher_labels(object_type).lstrip(":")

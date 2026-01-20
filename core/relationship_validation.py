@@ -158,6 +158,39 @@ class RelationshipValidationRule:
         return True, None
 
 
+# Strict semantic rules that are ALWAYS enforced at persistence boundaries
+# These prevent data quality issues and semantic nonsense
+STRICT_SEMANTIC_RULES = [
+    RelationshipValidationRule(
+        relationship_types={"LOCATED_AT"},
+        valid_source_types=SENTIENT_TYPES | PHYSICAL_OBJECT_TYPES,
+        valid_target_types=LOCATION_TYPES,
+        rule_name="located_at_strict",
+        rationale="LOCATED_AT must link entities to Location types. Characters cannot be located 'at' other characters.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"OWNS", "CARRIES", "WIELDS", "POSSESSES"},
+        valid_source_types=SENTIENT_TYPES,
+        valid_target_types=PHYSICAL_OBJECT_TYPES,
+        rule_name="possession_strict",
+        rationale="Possession relationships require a sentient owner and a physical object.",
+    ),
+    RelationshipValidationRule(
+        relationship_types=CHARACTER_EMOTIONAL_RELATIONSHIPS | {"LOVES"},
+        valid_source_types=SENTIENT_TYPES,
+        valid_target_types="ANY",
+        rule_name="emotional_strict",
+        rationale="Emotional relationships must have a sentient source (characters can fear/love anything).",
+    ),
+    RelationshipValidationRule(
+        relationship_types=(CHARACTER_SOCIAL_RELATIONSHIPS - CHARACTER_EMOTIONAL_RELATIONSHIPS - {"LOCATED_AT"}) | {"ALLY_OF", "ENEMY_OF"},
+        valid_source_types=SENTIENT_TYPES,
+        valid_target_types=SENTIENT_TYPES,
+        rule_name="social_strict",
+        rationale="Social relationships (ALLIES_WITH, ENEMY_OF, etc.) must link sentient beings to other sentient beings.",
+    ),
+]
+
 # Define validation rules for each relationship category
 # NOTE: These rules are now DISABLED by default for permissive mode.
 # They are kept for documentation and optional analytical purposes.
@@ -435,10 +468,86 @@ def get_relationship_validator() -> RelationshipValidator:
     return _validator
 
 
+def validate_relationship_semantics_strict(
+    relationship_type: str,
+    source_type: str,
+    target_type: str,
+) -> tuple[bool, str | None]:
+    """Validate a relationship against strict semantic rules.
+
+    This function is called at persistence boundaries to enforce data quality
+    constraints that prevent semantic nonsense (e.g., Character → LOCATED_AT → Character).
+
+    Args:
+        relationship_type: Relationship type to validate.
+        source_type: Source entity canonical label.
+        target_type: Target entity canonical label.
+
+    Returns:
+        Tuple of (is_valid, error_message). When valid, error_message is None.
+
+    Notes:
+        This enforces STRICT_SEMANTIC_RULES which are always applied regardless
+        of validator mode. These rules prevent clear data quality issues.
+    """
+    for rule in STRICT_SEMANTIC_RULES:
+        is_valid, error_message = rule.validate(relationship_type, source_type, target_type)
+        if not is_valid:
+            return False, error_message
+
+    return True, None
+
+
+def infer_entity_type_from_relationship(
+    entity_name: str,
+    relationship_type: str,
+    role: Literal["source", "target"],
+) -> str | None:
+    """Infer entity type from relationship semantics when type is unknown.
+
+    This prevents defaulting to "Item" for entities that have clear semantic
+    roles based on the relationship they participate in.
+
+    Args:
+        entity_name: Entity name (for logging only).
+        relationship_type: Relationship type.
+        role: Whether the entity is the source or target of the relationship.
+
+    Returns:
+        Inferred canonical entity type, or None if inference is not possible.
+
+    Examples:
+        - LOCATED_AT target → infer "Location"
+        - OWNS/CARRIES target → infer "Item"
+        - ALLIES_WITH/ALLY_OF target → infer "Character"
+    """
+    social_and_emotional = CHARACTER_SOCIAL_RELATIONSHIPS | CHARACTER_EMOTIONAL_RELATIONSHIPS
+    social_and_emotional = social_and_emotional - {"LOCATED_AT"}
+
+    if role == "target":
+        if relationship_type == "LOCATED_AT":
+            return "Location"
+        elif relationship_type in {"OWNS", "CARRIES", "WIELDS", "POSSESSES"}:
+            return "Item"
+        elif relationship_type in social_and_emotional or relationship_type in {"ALLY_OF", "ENEMY_OF"}:
+            return "Character"
+        elif relationship_type in {"HAPPENS_BEFORE", "HAPPENS_AFTER", "OCCURS_DURING"}:
+            return "Event"
+    elif role == "source":
+        if relationship_type in social_and_emotional or relationship_type in {"ALLY_OF", "ENEMY_OF"}:
+            return "Character"
+        elif relationship_type in {"HAPPENS_BEFORE", "HAPPENS_AFTER", "OCCURS_DURING"}:
+            return "Event"
+
+    return None
+
+
 __all__ = [
     "RelationshipValidator",
     "RelationshipValidationRule",
     "get_relationship_validator",
+    "validate_relationship_semantics_strict",
+    "infer_entity_type_from_relationship",
     "SENTIENT_TYPES",
     "LIVING_TYPES",
     "PHYSICAL_OBJECT_TYPES",
@@ -447,4 +556,5 @@ __all__ = [
     "ABSTRACT_TYPES",
     "SYSTEM_TYPES",
     "QUALITY_TYPES",
+    "STRICT_SEMANTIC_RULES",
 ]
