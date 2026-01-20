@@ -100,11 +100,10 @@ async def load_chapter_count_from_db() -> int:
     """Return the number of `:Chapter` nodes in Neo4j.
 
     Returns:
-        The chapter count. Returns 0 on errors.
+        The chapter count.
 
-    Notes:
-        Error behavior:
-            This function logs exceptions and returns 0 rather than raising.
+    Raises:
+        DatabaseError: When a database error occurs.
     """
     query = "MATCH (c:Chapter) RETURN count(c) AS chapter_count"
     try:
@@ -114,7 +113,7 @@ async def load_chapter_count_from_db() -> int:
         return count
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Failed to load chapter count from Neo4j: {e}", exc_info=True)
-        return 0
+        raise handle_database_error("load chapter count", e)
 
 
 async def save_chapter_data_to_db(
@@ -140,7 +139,7 @@ async def save_chapter_data_to_db(
 
         Error behavior:
             Invalid `chapter_number` returns early without raising. Neo4j write failures are
-            logged and not raised.
+            raised as DatabaseError.
     """
     if chapter_number <= 0:
         logger.error(f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}.")
@@ -163,6 +162,7 @@ async def save_chapter_data_to_db(
             f"Neo4j: Error saving chapter data for chapter {chapter_number}: {e}",
             exc_info=True,
         )
+        raise handle_database_error("save chapter data", e, chapter_number=chapter_number)
 
 
 async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None:
@@ -272,7 +272,11 @@ async def find_semantic_context_native(
         - `score`
         - `context_type`
 
-        Returns an empty list on failures or when no context exists.
+    Raises:
+        DatabaseError: When a database error occurs.
+
+    Returns:
+        An empty list when no context exists.
 
     Notes:
         Ordering and bounds:
@@ -391,7 +395,8 @@ async def find_semantic_context_native(
 
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native semantic context search: {e}", exc_info=True)
-        return []
+        raise handle_database_error("find semantic context", e, 
+                                   current_chapter_number=current_chapter_number, limit=limit)
 
 
 async def get_chapter_content_batch_native(
@@ -407,11 +412,11 @@ async def get_chapter_content_batch_native(
         - `summary`
         - `is_provisional`
 
-        Returns an empty dict when no chapter numbers are provided or when the query fails.
+    Raises:
+        DatabaseError: When a database error occurs.
 
-    Notes:
-        Error behavior:
-            This function logs exceptions and returns an empty dict rather than raising.
+    Returns:
+        An empty dict when no chapter numbers are provided.
     """
     if not chapter_numbers:
         return {}
@@ -443,4 +448,5 @@ async def get_chapter_content_batch_native(
 
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native chapter batch retrieval: {e}", exc_info=True)
-        return {}
+        raise handle_database_error("get chapter content batch", e, 
+                                   chapter_numbers=chapter_numbers)

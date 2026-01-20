@@ -261,9 +261,11 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
             - Node-level provisional status on the character is preserved on the returned
               profile so callers can make data-quality decisions.
 
-        Relationship shape caveat:
-            The relationships mapping does not preserve multiple relationship types to the
-            same target; later projections can overwrite earlier ones.
+        Relationship shape:
+            The relationships mapping preserves multiple relationship types to the same
+            target. If there is exactly one relationship to a target, it's returned as a dict.
+            If there are multiple relationships to the same target, they're returned as a list
+            sorted by type, description, and chapter_added.
 
         Cache semantics:
             This function is cached (read-through). Callers should treat returned model
@@ -321,7 +323,11 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
     profile["traits"] = sorted([t for t in record["traits"] if t])
 
-    relationships: dict[str, Any] = {}
+    # Collect all relationships, grouping by target_name to preserve multiple relationship
+    # types to the same target (matching get_character_profile_by_name behavior)
+    from collections import defaultdict
+    rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
     for rel_rec in record["relationships"]:
         if not rel_rec or not rel_rec.get("target_name"):
             continue
@@ -329,7 +335,11 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
         rel_props_full = rel_rec.get("rel_props", {})
         rel_props_cleaned = {}
         if isinstance(rel_props_full, dict):
-            rel_props_cleaned = {k: v for k, v in rel_props_full.items() if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]}
+            rel_props_cleaned = {
+                k: v
+                for k, v in rel_props_full.items()
+                if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
+            }
         # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
         # Fall back to legacy property-based typing if present.
         rel_type = rel_rec.get("rel_type")
@@ -340,7 +350,24 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
         if "chapter_added" in rel_props_full:
             rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
-        relationships[target_name] = rel_props_cleaned
+        
+        rels_by_target[target_name].append(rel_props_cleaned)
+
+    # Build final relationships dict with consistent shape:
+    # - Single relationship: dict
+    # - Multiple relationships: list
+    relationships: dict[str, Any] = {}
+    for target_name in sorted(rels_by_target.keys()):
+        rel_list = rels_by_target[target_name]
+        rel_list_sorted = sorted(
+            rel_list,
+            key=lambda r: (
+                str(r.get("type", "")),
+                str(r.get("description", "")),
+                str(r.get("chapter_added", "")),
+            ),
+        )
+        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
     profile["relationships"] = relationships
 
     return CharacterProfile.from_dict(name, profile)
