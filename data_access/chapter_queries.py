@@ -3,6 +3,7 @@ from typing import Any
 
 import numpy as np
 import structlog
+from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import Neo4jError
 
 import config
@@ -157,6 +158,11 @@ async def save_chapter_data_to_db(
     try:
         await neo4j_manager.execute_write_query(query, parameters)
         logger.info(f"Neo4j: Successfully saved chapter data for chapter {chapter_number}.")
+
+        from data_access.cache_coordinator import clear_chapter_read_caches
+
+        clear_chapter_read_caches()
+
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(
             f"Neo4j: Error saving chapter data for chapter {chapter_number}: {e}",

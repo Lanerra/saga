@@ -220,23 +220,6 @@ async def _ensure_scene_characters_exist(
                 "_ensure_scene_characters_exist: successfully created stub profiles",
                 count=len(stub_profiles),
             )
-
-            from core.db_manager import neo4j_manager
-
-            for char_name in new_characters:
-                link_query = """
-                    MATCH (c:Character {name: $char_name}), (chap:Chapter {number: $chapter})
-                    WHERE c.is_provisional = true
-                    MERGE (c)-[:MENTIONED_IN]->(chap)
-                """
-                try:
-                    await neo4j_manager.execute_write_query(link_query, {"char_name": char_name, "chapter": chapter_number})
-                except Exception as link_error:
-                    logger.debug(
-                        "_ensure_scene_characters_exist: could not link to chapter (may not exist yet)",
-                        char_name=char_name,
-                        error=str(link_error),
-                    )
         else:
             logger.warning("_ensure_scene_characters_exist: failed to persist stub profiles")
     except Exception as e:

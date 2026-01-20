@@ -108,13 +108,6 @@ class NativeCypherBuilder:
                 rel.last_updated = timestamp(),
                 rel.source_profile_managed = true,
                 rel.type = rel_data.rel_type
-
-            // Link provisional node to chapter for context retrieval
-            WITH other
-            OPTIONAL MATCH (chap:Chapter {number: $chapter_number})
-            FOREACH (_ IN CASE WHEN other.is_provisional = true AND chap IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (other)-[:MENTIONED_IN]->(chap)
-            )
         }
 
         RETURN c.name as updated_character
@@ -285,13 +278,6 @@ class NativeCypherBuilder:
             ) YIELD rel
             SET rel.description = rel_data.description,
                 rel.last_updated = timestamp()
-
-            // Link provisional node to chapter for context retrieval
-            WITH other
-            OPTIONAL MATCH (chap:Chapter {{number: $chapter_number}})
-            FOREACH (_ IN CASE WHEN other.is_provisional = true AND chap IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (other)-[:MENTIONED_IN]->(chap)
-            )
         }}
 
         RETURN w.id as updated_world_item

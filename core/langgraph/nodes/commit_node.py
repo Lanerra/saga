@@ -1088,15 +1088,6 @@ async def _build_relationship_statements(
                     {updated_ts: timestamp()}
                 )
             ) YIELD rel
-            WITH s, o, rel
-
-            OPTIONAL MATCH (c:Chapter {number: $chapter})
-            FOREACH (_ IN CASE WHEN s.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (s)-[:MENTIONED_IN]->(c)
-            )
-            FOREACH (_ IN CASE WHEN o.is_provisional = true AND c IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (o)-[:MENTIONED_IN]->(c)
-            )
             RETURN rel
             """
 
