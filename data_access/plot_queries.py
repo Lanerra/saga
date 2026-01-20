@@ -2,10 +2,12 @@
 from typing import Any
 
 import structlog
+from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import Neo4jError
 
 import config
 from core.db_manager import neo4j_manager
+from core.exceptions import handle_database_error
 
 logger = structlog.get_logger(__name__)
 
@@ -25,7 +27,9 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
 
     Returns:
         True when the sync completed successfully, or when `plot_data` is empty (no-op).
-        False when a database read/write failure occurs.
+
+    Raises:
+        DatabaseError: When a database read/write failure occurs.
 
     Notes:
         Destructive sync semantics:
@@ -111,7 +115,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
                 f"Failed to retrieve existing PlotPoint IDs for novel {novel_id}: {e}",
                 exc_info=True,
             )
-            return False
+            raise handle_database_error("retrieve existing PlotPoint IDs", e, novel_id=novel_id)
 
         pp_to_delete = existing_db_pp_ids - all_input_pp_ids
         if pp_to_delete:
@@ -203,15 +207,21 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
         if statements:
             await neo4j_manager.execute_cypher_batch(statements)
         logger.info(f"Successfully synchronized plot outline for novel '{novel_id}' to Neo4j.")
+
+        from data_access.cache_coordinator import clear_plot_read_caches
+
+        clear_plot_read_caches()
+
         return True
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(
             f"Error synchronizing plot outline for novel '{novel_id}': {e}",
             exc_info=True,
         )
-        return False
+        raise handle_database_error("synchronize plot outline", e, novel_id=novel_id)
 
 
+@alru_cache(maxsize=128)
 async def get_plot_outline_from_db() -> dict[str, Any]:
     """Return the plot outline for the active novel.
 
@@ -223,6 +233,11 @@ async def get_plot_outline_from_db() -> dict[str, Any]:
         is not a map, or when required data is missing.
 
     Notes:
+        Cache semantics:
+            This function is cached (read-through). Callers should treat returned data as
+            immutable to avoid leaking mutations across cache hits. Write paths should
+            invalidate via [`clear_plot_read_caches()`](data_access/cache_coordinator.py).
+
         JSON decoding contract:
             Properties stored under `<key>_json` are decoded using APOC JSON helpers and
             returned as structured list/dict values. The `_json` keys are removed from the
@@ -298,8 +313,10 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
             no previous link is created.
 
     Returns:
-        The newly created plot point id. Returns an empty string when the write query does
-        not return an id.
+        The newly created plot point id.
+
+    Raises:
+        DatabaseError: When a database error occurs or when the write query does not return an id.
 
     Notes:
         Concurrency:
@@ -335,7 +352,16 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
     """
 
     result = await neo4j_manager.execute_write_query(query, {"novel_id": novel_id, "desc": description, "prev_id": prev_id})
-    return result[0]["id"] if result and result[0] and result[0].get("id") else ""
+    if not result or not result[0] or not result[0].get("id"):
+        raise handle_database_error("append plot point",
+                                   Exception("No ID returned from plot point creation"),
+                                   novel_id=novel_id, description=description)
+
+    from data_access.cache_coordinator import clear_plot_read_caches
+
+    clear_plot_read_caches()
+
+    return result[0]["id"]
 
 
 async def plot_point_exists(description: str) -> bool:

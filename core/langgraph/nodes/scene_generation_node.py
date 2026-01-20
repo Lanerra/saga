@@ -114,6 +114,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
             temperature=0.7,
             max_tokens=config.MAX_GENERATION_TOKENS,
             system_prompt=get_system_prompt("narrative_agent"),
+            spacy_cleanup=True,
         )
 
         draft_word_count = len(draft_text.split())

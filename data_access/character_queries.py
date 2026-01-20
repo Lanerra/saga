@@ -124,16 +124,11 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
         MATCH (c:Character {name: $name})
         WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
-        OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
-
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
 
-        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
-
         WITH
             c,
-            collect(DISTINCT t.name) AS traits,
             collect(
                 DISTINCT CASE
                     WHEN coalesce(r.source_profile_managed, false) = true
@@ -147,27 +142,12 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
                         rel_props: properties(r)
                     }
                 END
-            ) AS relationships_raw,
-            collect(
-                DISTINCT CASE
-                    WHEN dev IS NOT NULL
-                     AND (
-                          $include_provisional = true
-                          OR coalesce(dev.is_provisional, FALSE) = FALSE
-                     )
-                    THEN {
-                        summary: dev.summary,
-                        chapter: dev.chapter_updated,
-                        is_provisional: coalesce(dev.is_provisional, FALSE)
-                    }
-                END
-            ) AS dev_events_raw
+            ) AS relationships_raw
 
         RETURN
             c,
-            traits,
-            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
-            [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events
+            coalesce(c.traits, []) AS traits,
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
     results = await neo4j_manager.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
@@ -253,17 +233,6 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
     profile["relationships"] = relationships
 
-    for dev_rec in record["dev_events"]:
-        if not dev_rec or dev_rec.get("summary") is None:
-            continue
-        chapter_num = dev_rec.get("chapter")
-        summary = dev_rec.get("summary")
-        if chapter_num is not None and summary is not None:
-            dev_key = f"development_in_chapter_{chapter_num}"
-            profile[dev_key] = summary
-            if dev_rec.get("is_provisional"):
-                profile[f"source_quality_chapter_{chapter_num}"] = "provisional_from_unrevised_draft"
-
     return CharacterProfile.from_dict(name, profile)
 
 
@@ -292,9 +261,11 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
             - Node-level provisional status on the character is preserved on the returned
               profile so callers can make data-quality decisions.
 
-        Relationship shape caveat:
-            The relationships mapping does not preserve multiple relationship types to the
-            same target; later projections can overwrite earlier ones.
+        Relationship shape:
+            The relationships mapping preserves multiple relationship types to the same
+            target. If there is exactly one relationship to a target, it's returned as a dict.
+            If there are multiple relationships to the same target, they're returned as a list
+            sorted by type, description, and chapter_added.
 
         Cache semantics:
             This function is cached (read-through). Callers should treat returned model
@@ -307,16 +278,11 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
         MATCH (c:Character {id: $character_id})
         WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
-        OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
-
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
 
-        OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
-
         WITH
             c,
-            collect(DISTINCT t.name) AS traits,
             collect(
                 DISTINCT CASE
                     WHEN coalesce(r.source_profile_managed, false) = true
@@ -330,27 +296,12 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
                         rel_props: properties(r)
                     }
                 END
-            ) AS relationships_raw,
-            collect(
-                DISTINCT CASE
-                    WHEN dev IS NOT NULL
-                     AND (
-                          $include_provisional = true
-                          OR coalesce(dev.is_provisional, FALSE) = FALSE
-                     )
-                    THEN {
-                        summary: dev.summary,
-                        chapter: dev.chapter_updated,
-                        is_provisional: coalesce(dev.is_provisional, FALSE)
-                    }
-                END
-            ) AS dev_events_raw
+            ) AS relationships_raw
 
         RETURN
             c,
-            traits,
-            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
-            [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events
+            coalesce(c.traits, []) AS traits,
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
     results = await neo4j_manager.execute_read_query(
@@ -372,7 +323,11 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
     profile["traits"] = sorted([t for t in record["traits"] if t])
 
-    relationships: dict[str, Any] = {}
+    # Collect all relationships, grouping by target_name to preserve multiple relationship
+    # types to the same target (matching get_character_profile_by_name behavior)
+    from collections import defaultdict
+    rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
     for rel_rec in record["relationships"]:
         if not rel_rec or not rel_rec.get("target_name"):
             continue
@@ -380,7 +335,11 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
         rel_props_full = rel_rec.get("rel_props", {})
         rel_props_cleaned = {}
         if isinstance(rel_props_full, dict):
-            rel_props_cleaned = {k: v for k, v in rel_props_full.items() if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]}
+            rel_props_cleaned = {
+                k: v
+                for k, v in rel_props_full.items()
+                if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
+            }
         # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
         # Fall back to legacy property-based typing if present.
         rel_type = rel_rec.get("rel_type")
@@ -391,19 +350,25 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
         if "chapter_added" in rel_props_full:
             rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
-        relationships[target_name] = rel_props_cleaned
-    profile["relationships"] = relationships
+        
+        rels_by_target[target_name].append(rel_props_cleaned)
 
-    for dev_rec in record["dev_events"]:
-        if not dev_rec or dev_rec.get("summary") is None:
-            continue
-        chapter_num = dev_rec.get("chapter")
-        summary = dev_rec.get("summary")
-        if chapter_num is not None and summary is not None:
-            dev_key = f"development_in_chapter_{chapter_num}"
-            profile[dev_key] = summary
-            if dev_rec.get("is_provisional"):
-                profile[f"source_quality_chapter_{chapter_num}"] = "provisional_from_unrevised_draft"
+    # Build final relationships dict with consistent shape:
+    # - Single relationship: dict
+    # - Multiple relationships: list
+    relationships: dict[str, Any] = {}
+    for target_name in sorted(rels_by_target.keys()):
+        rel_list = rels_by_target[target_name]
+        rel_list_sorted = sorted(
+            rel_list,
+            key=lambda r: (
+                str(r.get("type", "")),
+                str(r.get("description", "")),
+                str(r.get("chapter_added", "")),
+            ),
+        )
+        relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
+    profile["relationships"] = relationships
 
     return CharacterProfile.from_dict(name, profile)
 
@@ -428,52 +393,26 @@ def _process_snippet_result(record: dict[str, Any], *, include_provisional: bool
     Args:
         record: A single Neo4j record dict produced by
             [`get_character_info_for_snippet_from_db()`](data_access/character_queries.py:376).
-        include_provisional: Whether provisional development events may be selected as the
-            "most recent" development note.
+        include_provisional: Unused, kept for backward compatibility.
 
     Returns:
         A dictionary with keys:
         - `description`
         - `current_status`
-        - `most_recent_development_note`
         - `is_provisional_overall`
 
     Notes:
         Provisional semantics:
-            When `include_provisional=False`, provisional development events are not allowed
-            to become the "most recent" note, but `is_provisional_overall` still reflects
-            whether any underlying data (node/relationships/events) is provisional.
+            `is_provisional_overall` reflects whether the character node or any
+            relationships are provisional.
     """
-    dev_events = record.get("dev_events", [])
-
-    valid_events = [e for e in dev_events if isinstance(e, dict) and e.get("summary")]
-
-    non_provisional = [e for e in valid_events if not e.get("is_provisional")]
-    provisional = [e for e in valid_events if e.get("is_provisional")]
-
-    most_recent_non_prov = max(non_provisional, key=lambda e: e["chapter"]) if non_provisional else None
-    most_recent_prov = max(provisional, key=lambda e: e["chapter"]) if provisional else None
-
-    if include_provisional:
-        most_current: dict[str, Any] | None
-        if most_recent_prov and (not most_recent_non_prov or most_recent_prov["chapter"] >= most_recent_non_prov["chapter"]):
-            most_current = most_recent_prov
-        else:
-            most_current = most_recent_non_prov
-        dev_note = most_current.get("summary", "N/A") if most_current else "N/A"
-    else:
-        # Exclude provisional notes by default.
-        dev_note = most_recent_non_prov.get("summary", "N/A") if most_recent_non_prov else "N/A"
-
     char_is_provisional = record.get("char_is_provisional", False)
     has_provisional_relationships = record.get("provisional_rel_count", 0) > 0
-    has_provisional_events = len(provisional) > 0
-    is_provisional_overall = char_is_provisional or has_provisional_relationships or has_provisional_events
+    is_provisional_overall = char_is_provisional or has_provisional_relationships
 
     return {
         "description": record.get("description"),
         "current_status": record.get("current_status"),
-        "most_recent_development_note": dev_note,
         "is_provisional_overall": is_provisional_overall,
     }
 
@@ -489,16 +428,13 @@ async def get_character_info_for_snippet_from_db(
     Args:
         char_name: Character name. This is passed through
             [`resolve_character_name()`](data_access/character_queries.py:43) before querying.
-        chapter_limit: Upper bound on `chapter_updated` / `chapter_added` used to constrain the
-            "most recent" view.
-        include_provisional: Whether provisional development events may be selected as the
-            "most recent" development note.
+        chapter_limit: Upper bound on `chapter_added` used to constrain the view.
+        include_provisional: Unused, kept for backward compatibility.
 
     Returns:
         A dictionary with keys:
         - `description`
         - `current_status`
-        - `most_recent_development_note`
         - `is_provisional_overall`
 
         Returns None when the character is not found.
@@ -509,10 +445,8 @@ async def get_character_info_for_snippet_from_db(
 
     Notes:
         Provisional semantics:
-            When `include_provisional=False`, provisional development notes are excluded from
-            the "most recent" selection, but `is_provisional_overall` still reflects whether
-            the character node, any relationships up to `chapter_limit`, or any development
-            events are provisional.
+            `is_provisional_overall` reflects whether the character node or any
+            relationships up to `chapter_limit` are provisional.
 
         Error behavior:
             This function retries once on `neo4j.exceptions.ServiceUnavailable` by reconnecting
@@ -525,22 +459,10 @@ async def get_character_info_for_snippet_from_db(
     WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
     // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
-    OPTIONAL MATCH (c)-[:DEVELOPED_IN_CHAPTER]->(dev:DevelopmentEvent)
-
-    // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
     OPTIONAL MATCH (c)-[r]-()
 
     WITH
         c,
-        collect(
-            DISTINCT CASE
-                WHEN dev.chapter_updated <= $chapter_limit_param THEN {
-                    summary: dev.summary,
-                    chapter: dev.chapter_updated,
-                    is_provisional: coalesce(dev.is_provisional, FALSE)
-                }
-            END
-        ) AS dev_events_raw,
         count(
             DISTINCT CASE
                 WHEN coalesce(r.is_provisional, FALSE) = TRUE
@@ -549,15 +471,9 @@ async def get_character_info_for_snippet_from_db(
             END
         ) AS provisional_rel_count
 
-    WITH
-        c,
-        [e IN dev_events_raw WHERE e IS NOT NULL] AS dev_events,
-        provisional_rel_count
-
     RETURN c.description AS description,
            c.status AS current_status,
            c.is_provisional AS char_is_provisional,
-           dev_events,
            provisional_rel_count
     """
 

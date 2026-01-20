@@ -1,7 +1,16 @@
 {% if config.ENABLE_LLM_NO_THINK_DIRECTIVE %}/no_think{% endif %}
 
 You are a specialized character extraction agent for an autonomous novel writing system.
-Your task is to extract DETAILED character information from the provided chapter text.
+Your task is to extract DEFINING character information from the provided chapter text.
+
+Extract character information that is:
+- Defining (core traits, motivations, relationships)
+- Persistent (appearance, personality, ongoing conflicts)
+- Arc-relevant (character development, key decisions)
+- Consistency-critical (details that must remain coherent across chapters)
+
+EXCLUDE: Transient actions, incidental descriptions, 
+background character mentions with no ongoing role
 
 Chapter: {{ chapter_number }}
 

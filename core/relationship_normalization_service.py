@@ -38,6 +38,78 @@ class RelationshipNormalizationService:
     def __init__(self) -> None:
         """Initialize the service and in-memory embedding cache."""
         self.embedding_cache: dict[str, np.ndarray] = {}
+        self.canonical_embeddings: dict[str, np.ndarray] = {}
+        self.rejected_cache: set[str] = set()
+
+    async def map_to_canonical(self, rel_type: str, category_hint: str = "DEFAULT") -> tuple[str | None, bool, float, bool]:
+        """Map a relationship type to its canonical form using strict enforcement.
+
+        Args:
+            rel_type: Extracted relationship type.
+            category_hint: Category hint for threshold selection (e.g., "CHARACTER_CHARACTER").
+
+        Returns:
+            Tuple of `(canonical_type, was_normalized, similarity_score, is_property)`.
+            
+            - `canonical_type`: The canonical relationship type, or None if rejected.
+            - `was_normalized`: True if the input was normalized to a different type.
+            - `similarity_score`: Cosine similarity when semantic matching was used, 1.0 for exact matches.
+            - `is_property`: True if the relationship should be a node property instead.
+
+        Notes:
+            This method enforces strict canonicalization and rejects unknown types
+            when STRICT_CANONICAL_MODE is enabled.
+        """
+        from models.kg_constants import RELATIONSHIP_TYPES, STATIC_RELATIONSHIP_MAP, PROPERTY_RELATIONSHIPS
+
+        # 0. Check rejection cache
+        if rel_type in self.rejected_cache:
+            return None, False, 0.0, False
+
+        # 1. Canonicalize input (uppercase, underscores)
+        canonical_input = self._canonicalize(rel_type)
+
+        # 2. Check Property List
+        if canonical_input in PROPERTY_RELATIONSHIPS:
+            return None, False, 0.0, True  # is_property=True
+
+        # 3. Exact Match
+        if canonical_input in RELATIONSHIP_TYPES:
+            return canonical_input, (canonical_input != rel_type), 1.0, False
+
+        # 4. Static Map
+        if config.REL_NORM_STATIC_OVERRIDES_ENABLED and canonical_input in STATIC_RELATIONSHIP_MAP:
+            mapped = STATIC_RELATIONSHIP_MAP[canonical_input]
+            return mapped, True, 1.0, False
+
+        # 5. Semantic Match (only if not in strict mode)
+        if config.REL_NORM_STRICT_CANONICAL_MODE:
+            self.rejected_cache.add(rel_type)
+            return None, False, 0.0, False
+
+        await self._ensure_canonical_embeddings()
+        incoming_embedding = await self._get_embedding(canonical_input)
+        
+        if incoming_embedding is None:
+            self.rejected_cache.add(rel_type)
+            return None, False, 0.0, False
+            
+        best_match = None
+        best_similarity = 0.0
+        
+        for canonical_type, canonical_emb in self.canonical_embeddings.items():
+            sim = numpy_cosine_similarity(incoming_embedding, canonical_emb)
+            if sim > best_similarity:
+                best_similarity = sim
+                best_match = canonical_type
+                
+        threshold = self._get_threshold(category_hint)
+        
+        if best_similarity > threshold:
+            return best_match, True, best_similarity, False
+        else:
+            self.rejected_cache.add(rel_type)
+            return None, False, best_similarity, False
 
     async def normalize_relationship_type(
         self,
@@ -64,6 +136,7 @@ class RelationshipNormalizationService:
 
         Notes:
             - If normalization is disabled, this returns `(rel_type, False, 0.0)`.
+            - When STRICT_CANONICAL_MODE is enabled, uses `map_to_canonical` for strict enforcement.
             - Case/punctuation variants can be normalized even when semantic similarity is
               not computed.
             - If the best similarity falls in an ambiguous range and LLM disambiguation is
@@ -73,6 +146,35 @@ class RelationshipNormalizationService:
         if not config.ENABLE_RELATIONSHIP_NORMALIZATION:
             return rel_type, False, 0.0
 
+        # Use strict canonical mode if enabled
+        if config.REL_NORM_STRICT_CANONICAL_MODE:
+            canonical_type, was_normalized, similarity, is_property = await self.map_to_canonical(rel_type)
+            
+            if canonical_type is None:
+                if is_property:
+                    logger.info(
+                        "Relationship should be a node property, not an edge",
+                        original=rel_type,
+                    )
+                else:
+                    logger.warning(
+                        "Rejected relationship type in strict canonical mode",
+                        original=rel_type,
+                        similarity=f"{similarity:.3f}" if similarity > 0 else "N/A",
+                    )
+                # Return original type but mark as normalized to False
+                return rel_type, False, 0.0
+            
+            logger.info(
+                "Strict canonical normalization",
+                original=rel_type,
+                normalized_to=canonical_type,
+                was_normalized=was_normalized,
+                similarity=f"{similarity:.3f}" if similarity < 1.0 else "exact",
+            )
+            return canonical_type, was_normalized, similarity
+
+        # Legacy behavior for backward compatibility
         # Normalize case and punctuation if configured
         canonical_form = self._canonicalize(rel_type)
 
@@ -176,6 +278,31 @@ class RelationshipNormalizationService:
             canonical = re.sub(r"[^\w_]", "", canonical)
 
         return canonical
+
+    async def _ensure_canonical_embeddings(self) -> None:
+        """Lazily compute and cache embeddings for all canonical relationship types."""
+        if self.canonical_embeddings:
+            return
+
+        from models.kg_constants import RELATIONSHIP_TYPES
+
+        for rel_type in RELATIONSHIP_TYPES:
+            if rel_type not in self.canonical_embeddings:
+                embedding = await self._get_embedding(rel_type)
+                if embedding is not None:
+                    self.canonical_embeddings[rel_type] = embedding
+
+    def _get_threshold(self, category: str) -> float:
+        """Get the similarity threshold for a given category.
+
+        Args:
+            category: Category name (e.g., "CHARACTER_CHARACTER", "DEFAULT").
+
+        Returns:
+            Similarity threshold for the category, or default if not found.
+        """
+        thresholds = config.REL_NORM_SIMILARITY_THRESHOLDS
+        return thresholds.get(category, thresholds.get("DEFAULT", 0.75))
 
     async def _find_most_similar(self, rel_type: str, vocabulary_types: list[str]) -> tuple[str, float]:
         """Find the most semantically similar vocabulary type for an input type.

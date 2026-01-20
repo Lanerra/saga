@@ -10,6 +10,7 @@ from jinja2 import (
     UndefinedError,
 )
 
+from models.kg_constants import RELATIONSHIP_TYPES
 import prompts.prompt_renderer as pr
 
 
@@ -112,6 +113,7 @@ def test_extract_relationships_prompt_contract_requires_wrapper_object() -> None
             "protagonist": "Hero",
             "chapter_number": 1,
             "chapter_text": "Hero meets Bob in the Castle.",
+            "canonical_relationship_types": sorted(RELATIONSHIP_TYPES),
         },
     )
 
@@ -254,7 +256,7 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
         ("knowledge_agent/extract_characters.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
         ("knowledge_agent/extract_locations.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
         ("knowledge_agent/extract_events.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
-        ("knowledge_agent/extract_relationships.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
+        ("knowledge_agent/extract_relationships.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text", "canonical_relationship_types": sorted(RELATIONSHIP_TYPES)}),
         ("knowledge_agent/chapter_summary.j2", {"chapter_number": 1, "chapter_text": "Text"}),
         ("knowledge_agent/extract_character_structured_lines.j2", {"name": "Hero", "description": "A hero"}),
         ("knowledge_agent/extract_world_items_lines.j2", {"setting": "Fantasy world", "outline_text": "Outline"}),

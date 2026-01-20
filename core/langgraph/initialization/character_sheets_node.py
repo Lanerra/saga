@@ -30,10 +30,10 @@ logger = structlog.get_logger(__name__)
 
 
 async def _get_existing_traits() -> list[str]:
-    """Fetch existing trait names to encourage reuse.
+    """Fetch existing trait names from node properties to encourage reuse.
 
     Returns:
-        Trait names from Neo4j, in display form.
+        Trait names from Neo4j nodes that have traits, in display form.
 
     Notes:
         This helper performs Neo4j I/O. Failures are treated as non-fatal and
@@ -41,8 +41,10 @@ async def _get_existing_traits() -> list[str]:
     """
     try:
         query = """
-        MATCH (t:Trait)
-        RETURN DISTINCT t.name AS trait_name
+        MATCH (n)
+        WHERE n.traits IS NOT NULL
+        UNWIND n.traits AS trait
+        RETURN DISTINCT trait AS trait_name
         ORDER BY trait_name
         LIMIT 100
         """
@@ -170,15 +172,22 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
     relationships_value = parsed.get("relationships")
     structured_relationships: dict[str, dict[str, str]] = {}
     if isinstance(relationships_value, dict):
-        for target, desc in relationships_value.items():
+        for target, data in relationships_value.items():
             if not isinstance(target, str):
                 continue
-            if not isinstance(desc, str):
-                continue
-            structured_relationships[target] = {
-                "type": "ASSOCIATE",
-                "description": desc,
-            }
+            
+            # Handle new format: {"type": "FAMILY_OF", "description": "..."}
+            if isinstance(data, dict):
+                 structured_relationships[target] = {
+                    "type": data.get("type", ""),
+                    "description": data.get("description", "")
+                }
+            # Handle old format: "Childhood friend"
+            elif isinstance(data, str):
+                structured_relationships[target] = {
+                    "description": data,
+                }
+                
         parsed["relationships"] = structured_relationships
 
     # Double check that we are using a valid type (should be 'Character')
@@ -476,6 +485,8 @@ async def _generate_character_sheet(
         traits_sample = existing_traits[:20]  # Limit to 20 examples
         existing_traits_hint = f"\n\nExisting traits in the story (consider reusing to create interconnectedness): " f"{', '.join(traits_sample)}"
 
+    from models.kg_constants import RELATIONSHIP_TYPES
+    
     prompt = render_prompt(
         "initialization/generate_character_sheet.j2",
         {
@@ -487,6 +498,7 @@ async def _generate_character_sheet(
             "is_protagonist": is_protagonist,
             "other_characters": [c for c in other_characters if c != character_name],
             "existing_traits_hint": existing_traits_hint,
+            "relationship_types": sorted(list(RELATIONSHIP_TYPES)),
         },
     )
 

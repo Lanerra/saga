@@ -494,11 +494,10 @@ async def _check_character_traits(
             if not isinstance(character_name, str) or not character_name:
                 continue
 
-            # Get established traits from Neo4j (from HAS_TRAIT relationships)
+            # Get established traits from Neo4j (from traits property)
             query = """
                 MATCH (c:Character {name: $name})
-                OPTIONAL MATCH (c)-[:HAS_TRAIT]->(t:Trait)
-                RETURN collect(DISTINCT t.name) AS traits,
+                RETURN coalesce(c.traits, []) AS traits,
                        c.created_chapter AS first_chapter,
                        c.description AS description
                 LIMIT 1

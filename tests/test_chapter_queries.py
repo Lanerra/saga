@@ -9,6 +9,15 @@ from neo4j.exceptions import Neo4jError
 
 from core.exceptions import DatabaseError
 from data_access import chapter_queries
+from data_access.cache_coordinator import clear_chapter_read_caches
+
+
+@pytest.fixture(autouse=True)
+def clear_caches():
+    """Clear chapter read caches before each test."""
+    clear_chapter_read_caches()
+    yield
+    clear_chapter_read_caches()
 
 
 @pytest.mark.asyncio

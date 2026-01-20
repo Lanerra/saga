@@ -76,7 +76,29 @@ class RelationshipNormalizationSettings(BaseSettings):
     # Master toggle
     ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=True, description="Enable relationship normalization system")
 
-    # Similarity thresholds
+    # Strict canonical mode
+    STRICT_CANONICAL_MODE: bool = Field(
+        default=True,
+        description="If True, disables dynamic vocabulary expansion and rejects unknown types",
+    )
+
+    STATIC_OVERRIDES_ENABLED: bool = Field(
+        default=True,
+        description="Enable static dictionary lookups for exact synonyms",
+    )
+
+    # Category-specific similarity thresholds
+    SIMILARITY_THRESHOLDS: dict[str, float] = Field(
+        default={
+            "CHARACTER_CHARACTER": 0.75,
+            "CHARACTER_WORLD": 0.70,
+            "PLOT_STRUCTURE": 0.80,
+            "DEFAULT": 0.75,
+        },
+        description="Category-specific similarity thresholds for relationship canonicalization",
+    )
+
+    # Legacy similarity thresholds (for backward compatibility)
     SIMILARITY_THRESHOLD: float = Field(
         default=0.85,
         ge=0.0,
@@ -307,7 +329,7 @@ class SagaSettings(BaseSettings):
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
 
     # Narrative Style Defaults
-    DEFAULT_NARRATIVE_STYLE: str = "Standard Third-Person Past Tense"
+    DEFAULT_NARRATIVE_STYLE: str = "Third-Person, personal with internal monologue"
 
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
@@ -320,6 +342,7 @@ class SagaSettings(BaseSettings):
 
     # NLP / spaCy configuration
     SPACY_MODEL: str | None = None  # default None => utils.text_processing uses en_core_web_sm
+    ENABLE_ENTITY_VALIDATION: bool = True  # Enable spaCy-based entity validation during extraction
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
@@ -350,7 +373,7 @@ class SagaSettings(BaseSettings):
     schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)
 
     # Legacy Degradation Flags
-    ENABLE_STATUS_IS_ALIAS: bool = True
+    ENABLE_STATUS_IS_ALIAS: bool = False
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 

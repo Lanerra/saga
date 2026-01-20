@@ -94,12 +94,49 @@ def clear_kg_read_caches() -> dict[str, bool]:
     }
 
 
+def clear_plot_read_caches() -> dict[str, bool]:
+    """Clear caches for plot read APIs.
+
+    Returns:
+        A mapping of cache-bearing API names to whether their cache was cleared.
+
+    Notes:
+        Plot read functions are cached (read-through). Write paths that mutate plot state
+        (for example, `save_plot_outline_to_db()`) should call this coordinator to
+        invalidate cached reads.
+    """
+    from data_access import plot_queries
+
+    return {
+        "get_plot_outline_from_db": _best_effort_cache_clear(plot_queries.get_plot_outline_from_db),
+    }
+
+
+def clear_chapter_read_caches() -> dict[str, bool]:
+    """Clear caches for chapter read APIs.
+
+    Returns:
+        A mapping of cache-bearing API names to whether their cache was cleared.
+
+    Notes:
+        Chapter read functions are cached (read-through). Write paths that mutate chapter
+        state (for example, `save_chapter_data_to_db()`) should call this coordinator to
+        invalidate cached reads.
+    """
+    from data_access import chapter_queries
+
+    return {
+        "find_semantic_context_native": _best_effort_cache_clear(chapter_queries.find_semantic_context_native),
+        "get_chapter_content_batch_native": _best_effort_cache_clear(chapter_queries.get_chapter_content_batch_native),
+    }
+
+
 def clear_all_data_access_caches() -> dict[str, dict[str, bool]]:
     """Clear all known `data_access` caches.
 
     Returns:
-        A mapping by subsystem ("character", "world", "kg") whose values are the per-function
-        cleared/not-cleared mappings.
+        A mapping by subsystem ("character", "world", "kg", "plot", "chapter") whose values
+        are the per-function cleared/not-cleared mappings.
 
     Notes:
         This is intended for tests and debug tooling. Production write paths should prefer
@@ -109,4 +146,6 @@ def clear_all_data_access_caches() -> dict[str, dict[str, bool]]:
         "character": clear_character_read_caches(),
         "world": clear_world_read_caches(),
         "kg": clear_kg_read_caches(),
+        "plot": clear_plot_read_caches(),
+        "chapter": clear_chapter_read_caches(),
     }

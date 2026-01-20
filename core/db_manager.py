@@ -519,7 +519,6 @@ class Neo4jManagerSingleton:
             "CREATE CONSTRAINT location_id_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.id IS UNIQUE",
             "CREATE CONSTRAINT event_id_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.id IS UNIQUE",
             "CREATE CONSTRAINT item_id_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.id IS UNIQUE",
-            "CREATE CONSTRAINT trait_id_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.id IS UNIQUE",
             # Name Unique Constraints (domain; using name as key for lookup)
             "CREATE CONSTRAINT novel_title_unique IF NOT EXISTS FOR (n:Novel) REQUIRE n.title IS UNIQUE",
             "CREATE CONSTRAINT chapter_number_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.number IS UNIQUE",
@@ -527,7 +526,6 @@ class Neo4jManagerSingleton:
             "CREATE CONSTRAINT location_name_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.name IS UNIQUE",
             "CREATE CONSTRAINT event_name_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.name IS UNIQUE",
             "CREATE CONSTRAINT item_name_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.name IS UNIQUE",
-            "CREATE CONSTRAINT trait_name_unique IF NOT EXISTS FOR (t:Trait) REQUIRE t.name IS UNIQUE",
             # Support constraints (internal infrastructure labels)
             "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
             "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
@@ -708,47 +706,7 @@ class Neo4jManagerSingleton:
     # Database maintenance methods
     # -------------------------------------------------------------------------
 
-    async def cleanup_orphaned_traits(self) -> int:
-        """
-        Remove Trait nodes that have no incoming HAS_TRAIT relationships.
 
-        This cleanup removes orphaned Trait nodes that were created but are no longer
-        referenced by any Character or WorldItem nodes. This can happen when:
-        - Characters/WorldItems are deleted
-        - Traits are updated and old trait relationships are removed
-
-        Returns:
-            Number of orphaned Trait nodes deleted
-        """
-        query = """
-        MATCH (t:Trait)
-        WHERE NOT EXISTS(()-[:HAS_TRAIT]->(t))
-        WITH t, t.name AS trait_name
-        DELETE t
-        RETURN count(trait_name) AS deleted_count
-        """
-
-        try:
-            result = await self.execute_write_query(query)
-            deleted_count = result[0].get("deleted_count", 0) if result else 0
-
-            if deleted_count > 0:
-                self.logger.info(
-                    "cleanup_orphaned_traits: removed orphaned Trait nodes",
-                    deleted_count=deleted_count,
-                )
-            else:
-                self.logger.debug("cleanup_orphaned_traits: no orphaned Trait nodes found")
-
-            return deleted_count
-
-        except Exception as e:
-            self.logger.error(
-                "cleanup_orphaned_traits: error during cleanup",
-                error=str(e),
-                exc_info=True,
-            )
-            raise
 
     # -------------------------------------------------------------------------
     # Helper methods for embeddings – unchanged
