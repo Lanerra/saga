@@ -129,8 +129,10 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     alice_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("subject_name_param") == "Alice":
-            # Contract: we use constraint-safe APOC merges, with label passed separately.
-            assert "CALL apoc.merge.node" in query
+            # Contract: we use constraint-safe merges (either MERGE with ID or apoc.merge.node).
+            # When subject_id is available (for Characters), it uses MERGE with ID.
+            # Otherwise, it uses apoc.merge.node with name.
+            assert any(merge_type in query for merge_type in ["CALL apoc.merge.node", "MERGE (s {"])
             assert params.get("subject_label") == "Character"
             assert params.get("subject_name_param") == "Alice"
             alice_statement_found = True
@@ -142,7 +144,7 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     for query, params in captured_statements_for_tests:
         if params.get("subject_name_param") == "Bob":
             # Contract: type normalization updates subject_label to canonical "Character".
-            assert "CALL apoc.merge.node" in query
+            assert any(merge_type in query for merge_type in ["CALL apoc.merge.node", "MERGE (s {"])
             assert params.get("subject_label") == "Character"
             assert params.get("subject_name_param") == "Bob"
             bob_statement_found = True
@@ -164,7 +166,8 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     charles_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("object_name_param") == "Charles":
-            assert "CALL apoc.merge.node" in query
+            # Object entities use either apoc.merge.node or apoc.do.when depending on whether ID is available
+            assert any(merge_type in query for merge_type in ["CALL apoc.merge.node", "CALL apoc.do.when"])
             assert params.get("object_label") == "Character"
             assert params.get("object_name_param") == "Charles"
             charles_statement_found = True
@@ -175,7 +178,8 @@ async def test_add_entities_with_character_labeling(mock_neo4j_manager):
     diana_statement_found = False
     for query, params in captured_statements_for_tests:
         if params.get("object_name_param") == "Diana":
-            assert "CALL apoc.merge.node" in query
+            # Object entities use either apoc.merge.node or apoc.do.when depending on whether ID is available
+            assert any(merge_type in query for merge_type in ["CALL apoc.merge.node", "CALL apoc.do.when"])
             assert params.get("object_label") == "Character"
             assert params.get("object_name_param") == "Diana"
             diana_statement_found = True

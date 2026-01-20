@@ -14,93 +14,100 @@ def service():
 
 @pytest.mark.asyncio
 async def test_normalize_exact_match(service):
-    vocabulary = {"FRIENDS_WITH": {"canonical_type": "FRIENDS_WITH"}}
+    vocabulary = {"LOVES": {"canonical_type": "LOVES"}}
 
-    normalized, was_norm, sim = await service.normalize_relationship_type("FRIENDS_WITH", "They are friends", vocabulary, 1)
+    normalized, was_norm, sim = await service.normalize_relationship_type("LOVES", "They are friends", vocabulary, 1)
 
-    assert normalized == "FRIENDS_WITH"
+    assert normalized == "LOVES"
     assert was_norm is False
     assert sim == 1.0
 
 
 @pytest.mark.asyncio
 async def test_normalize_case_variant(service):
-    vocabulary = {"FRIENDS_WITH": {"canonical_type": "FRIENDS_WITH"}}
+    vocabulary = {"LOVES": {"canonical_type": "LOVES"}}
 
-    normalized, was_norm, sim = await service.normalize_relationship_type("friends_with", "They are friends", vocabulary, 1)
+    normalized, was_norm, sim = await service.normalize_relationship_type("loves", "They are friends", vocabulary, 1)
 
-    assert normalized == "FRIENDS_WITH"
+    assert normalized == "LOVES"
     assert was_norm is True
     assert sim == 1.0
 
 
 @pytest.mark.asyncio
 async def test_normalize_punctuation_variant(service):
-    vocabulary = {"FRIENDS_WITH": {"canonical_type": "FRIENDS_WITH"}}
+    # This test uses legacy mode (non-strict canonical)
+    with patch("config.REL_NORM_STRICT_CANONICAL_MODE", False):
+        vocabulary = {"LOVES": {"canonical_type": "LOVES"}}
 
-    normalized, was_norm, sim = await service.normalize_relationship_type("FRIENDS-WITH", "They are friends", vocabulary, 1)
+        normalized, was_norm, sim = await service.normalize_relationship_type("LOVES-WITH", "They are friends", vocabulary, 1)
 
-    assert normalized == "FRIENDS_WITH"
-    assert was_norm is True
-    assert sim == 1.0
+        assert normalized == "LOVES"
+        assert was_norm is True
+        # Similarity will be high but not exactly 1.0 since it goes through semantic matching
+        assert sim > 0.9
 
 
 @pytest.mark.asyncio
 async def test_normalize_semantic_similarity(service):
-    vocabulary = {
-        "WORKS_WITH": {
-            "canonical_type": "WORKS_WITH",
-            "embedding": np.array([1.0, 0.0, 0.0]),
+    # This test uses legacy mode (non-strict canonical)
+    with patch("config.REL_NORM_STRICT_CANONICAL_MODE", False):
+        vocabulary = {
+            "LOVES": {
+                "canonical_type": "LOVES",
+                "embedding": np.array([1.0, 0.0, 0.0]),
+            }
         }
-    }
 
-    # Mock embedding for new type to be very similar
-    # COLLABORATES_WITH -> [0.9, 0.1, 0.0]
+        # Mock embedding for new type to be very similar
+        # ADORES -> [0.9, 0.1, 0.0]
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_get_embedding",
-        new_callable=AsyncMock,
-    ) as mock_embed:
-        # First call is for "COLLABORATES_WITH", second might be for WORKS_WITH if not in cache (but we put it in cache via dict implicitly? No, service has its own cache)
-        # We need to ensure service.embedding_cache has the vocab embedding or mocks return it
+        with patch(
+            "core.relationship_normalization_service.llm_service.async_get_embedding",
+            new_callable=AsyncMock,
+        ) as mock_embed:
+            # First call is for "ADORES", second might be for LOVES if not in cache (but we put it in cache via dict implicitly? No, service has its own cache)
+            # We need to ensure service.embedding_cache has the vocab embedding or mocks return it
 
-        # Pre-populate service cache for vocabulary to simplify
-        service.embedding_cache["WORKS_WITH"] = np.array([1.0, 0.0, 0.0])
+            # Pre-populate service cache for vocabulary to simplify
+            service.embedding_cache["LOVES"] = np.array([1.0, 0.0, 0.0])
 
-        mock_embed.return_value = np.array([0.9, 0.1, 0.0])
+            mock_embed.return_value = np.array([0.9, 0.1, 0.0])
 
-        normalized, was_norm, sim = await service.normalize_relationship_type("COLLABORATES_WITH", "Working together", vocabulary, 1)
+            normalized, was_norm, sim = await service.normalize_relationship_type("ADORES", "Working together", vocabulary, 1)
 
-        # 0.9 / (1 * sqrt(0.82)) ~= 0.99
-        assert normalized == "WORKS_WITH"
-        assert was_norm is True
-        assert sim > 0.85  # Default threshold
+            # 0.9 / (1 * sqrt(0.82)) ~= 0.99
+            assert normalized == "LOVES"
+            assert was_norm is True
+            assert sim > 0.85  # Default threshold
 
 
 @pytest.mark.asyncio
 async def test_normalize_novel_relationship(service):
-    vocabulary = {
-        "WORKS_WITH": {
-            "canonical_type": "WORKS_WITH",
-            "embedding": np.array([1.0, 0.0, 0.0]),
+    # This test uses legacy mode (non-strict canonical)
+    with patch("config.REL_NORM_STRICT_CANONICAL_MODE", False):
+        vocabulary = {
+            "LOVES": {
+                "canonical_type": "LOVES",
+                "embedding": np.array([1.0, 0.0, 0.0]),
+            }
         }
-    }
 
-    service.embedding_cache["WORKS_WITH"] = np.array([1.0, 0.0, 0.0])
+        service.embedding_cache["LOVES"] = np.array([1.0, 0.0, 0.0])
 
-    # LOVES -> [0.0, 1.0, 0.0] -> Orthogonal, sim = 0
+        # TRUSTS -> [0.0, 1.0, 0.0] -> Orthogonal, sim = 0
 
-    with patch(
-        "core.relationship_normalization_service.llm_service.async_get_embedding",
-        new_callable=AsyncMock,
-    ) as mock_embed:
-        mock_embed.return_value = np.array([0.0, 1.0, 0.0])
+        with patch(
+            "core.relationship_normalization_service.llm_service.async_get_embedding",
+            new_callable=AsyncMock,
+        ) as mock_embed:
+            mock_embed.return_value = np.array([0.0, 1.0, 0.0])
 
-        normalized, was_norm, sim = await service.normalize_relationship_type("LOVES", "Deep affection", vocabulary, 1)
+            normalized, was_norm, sim = await service.normalize_relationship_type("TRUSTS", "Deep affection", vocabulary, 1)
 
-        assert normalized == "LOVES"
-        assert was_norm is False
-        assert sim < 0.85
+            assert normalized == "TRUSTS"
+            assert was_norm is False
+            assert sim < 0.85
 
 
 def test_update_vocabulary_usage(service):

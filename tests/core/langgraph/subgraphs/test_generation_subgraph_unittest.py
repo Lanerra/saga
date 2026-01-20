@@ -24,8 +24,8 @@ class TestGenerationSubgraph(unittest.TestCase):
                 # Mock planning response
                 mock_llm_plan.async_call_llm = AsyncMock(
                     return_value=(
-                        '[{"title": "Scene 1", "pov_character": "Hero", "setting": "Room", "characters": ["Hero"], "plot_point": "Start", "conflict": "None", "outcome": "Next"}, '
-                        '{"title": "Scene 2", "pov_character": "Hero", "setting": "Outside", "characters": ["Hero"], "plot_point": "End", "conflict": "None", "outcome": "Done"}]',
+                        '[{"title": "Scene 1", "pov_character": "Hero", "setting": "Room", "characters": ["Hero"], "plot_point": "Start", "conflict": "None", "outcome": "Next", "beats": ["Setup"]}, '
+                        '{"title": "Scene 2", "pov_character": "Hero", "setting": "Outside", "characters": ["Hero"], "plot_point": "End", "conflict": "None", "outcome": "Done", "beats": ["Climax"]}]',
                         {},
                     )
                 )

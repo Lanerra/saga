@@ -13,7 +13,6 @@ from core.schema_validator import validate_kg_object
 from models import WorldItem
 from models.kg_constants import (
     KG_IS_PROVISIONAL,
-    KG_NODE_CHAPTER_UPDATED,
     KG_NODE_CREATED_CHAPTER,
     WORLD_ITEM_CANONICAL_LABELS,
 )
@@ -234,23 +233,14 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     else:
         item_detail["is_provisional"] = False
 
-    # Fetch traits from Trait nodes
-    traits_query = """
-    MATCH ({id: $we_id_param})-[:HAS_TRAIT]->(t:Trait)
-    RETURN t.name AS trait_name
-    ORDER BY t.name ASC
-    """
-    traits_res = await neo4j_manager.execute_read_query(
-        traits_query,
-        {"we_id_param": effective_id},
-    )
-    item_detail["traits"] = sorted([res_item["trait_name"] for res_item in traits_res if res_item and res_item.get("trait_name") is not None])
+    # Traits are now stored as a property on the node
+    item_detail["traits"] = sorted(item_detail.get("traits", []))
 
     elab_query = f"""
-    MATCH ({{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent)
+    MATCH ({{id: $we_id_param}})-[:ELABORATED_IN_CHAPTER]->(elab:Event)
     WHERE $include_provisional = TRUE OR coalesce(elab.{KG_IS_PROVISIONAL}, FALSE) = FALSE
-    RETURN elab.summary AS summary, elab.{KG_NODE_CHAPTER_UPDATED} AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
-    ORDER BY elab.chapter_updated ASC
+    RETURN elab.summary AS summary, elab.chapter AS chapter, elab.{KG_IS_PROVISIONAL} AS is_provisional
+    ORDER BY elab.chapter ASC
     """
     elab_results = await neo4j_manager.execute_read_query(
         elab_query,
@@ -311,8 +301,8 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
       AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
       AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
 
-    OPTIONAL MATCH (we)-[:ELABORATED_IN_CHAPTER]->(elab:WorldElaborationEvent)
-    WHERE elab.{KG_NODE_CHAPTER_UPDATED} <= $chapter_limit_param
+    OPTIONAL MATCH (we)-[:ELABORATED_IN_CHAPTER]->(elab:Event)
+    WHERE elab.chapter <= $chapter_limit_param
       AND coalesce(elab.{KG_IS_PROVISIONAL}, FALSE) = TRUE
 
     WITH we, COLLECT(DISTINCT elab) AS provisional_elaborations_found

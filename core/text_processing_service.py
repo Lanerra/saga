@@ -19,6 +19,7 @@ import structlog
 import tiktoken
 
 import config
+from core.spacy_service import SpacyService
 
 logger = structlog.get_logger(__name__)
 
@@ -226,50 +227,45 @@ class ResponseCleaningService:
 
         self._compiled_patterns = self._compile_cleaning_patterns()
 
-    def _compile_cleaning_patterns(self) -> dict[str, list[re.Pattern]]:
-        """Compile regex patterns used for response cleaning."""
-        patterns: dict[str, list[re.Pattern]] = {
-            "think_blocks": [],
-            "think_self_closing": [],
-            "think_opening": [],
-            "think_closing": [],
-            "think_boundary": [],
-            "code_blocks": [],
-            "chapter_headers": [],
-            "common_phrases": [],
-        }
+    def _compile_cleaning_patterns(self) -> dict[str, re.Pattern | list[re.Pattern]]:
+        """Compile regex patterns used for response cleaning.
 
-        # Think tag patterns
-        for tag_name in self._think_tags:
-            patterns["think_blocks"].append(
-                re.compile(
-                    rf"<\s*{tag_name}\s*>.*?<\s*/\s*{tag_name}\s*>",
-                    flags=re.DOTALL | re.IGNORECASE,
-                )
-            )
-            patterns["think_self_closing"].append(re.compile(rf"<\s*{tag_name}\s*/\s*>", flags=re.IGNORECASE))
-            patterns["think_opening"].append(re.compile(rf"<\s*{tag_name}\s*>", flags=re.IGNORECASE))
-            patterns["think_closing"].append(re.compile(rf"<\s*/\s*{tag_name}\s*>", flags=re.IGNORECASE))
+        Optimization: Uses alternation to combine multiple tag patterns into single regexes,
+        reducing the number of pattern matching operations from 44+ to 4 for think tag removal.
+        """
+        tag_alternation = "|".join(re.escape(tag) for tag in self._think_tags)
 
-        patterns["think_boundary"].append(re.compile(r"<\s*/\s*think\s*>", flags=re.IGNORECASE))
-
-        # Code blocks
-        patterns["code_blocks"].append(
-            re.compile(
+        patterns: dict[str, re.Pattern | list[re.Pattern]] = {
+            "think_blocks": re.compile(
+                rf"<\s*(?:{tag_alternation})\s*>.*?<\s*/\s*(?:{tag_alternation})\s*>",
+                flags=re.DOTALL | re.IGNORECASE,
+            ),
+            "think_self_closing": re.compile(
+                rf"<\s*(?:{tag_alternation})\s*/\s*>",
+                flags=re.IGNORECASE,
+            ),
+            "think_opening": re.compile(
+                rf"<\s*(?:{tag_alternation})\s*>",
+                flags=re.IGNORECASE,
+            ),
+            "think_closing": re.compile(
+                rf"<\s*/\s*(?:{tag_alternation})\s*>",
+                flags=re.IGNORECASE,
+            ),
+            "think_boundary": re.compile(
+                r"<\s*/\s*think\s*>",
+                flags=re.IGNORECASE,
+            ),
+            "code_blocks": re.compile(
                 r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)\s*```",
                 flags=re.DOTALL,
-            )
-        )
-
-        # Chapter headers
-        patterns["chapter_headers"].append(
-            re.compile(
+            ),
+            "chapter_headers": re.compile(
                 r"^\s*Chapter \d+\s*[:\-—]?\s*(.*?)\s*$",
                 flags=re.MULTILINE | re.IGNORECASE,
-            )
-        )
+            ),
+        }
 
-        # Common phrase patterns
         phrase_patterns = [
             r"^\s*(Okay,\s*)?(Sure,\s*)?(Here's|Here is)\s+(the|your)\s+[\w\s]+?:\s*",
             r"^\s*I've written the\s+[\w\s]+?\s+as requested:\s*",
@@ -284,8 +280,10 @@ class ResponseCleaningService:
             r"\s*\[END SYSTEM OUTPUT\]\s*$",
         ]
 
-        for pattern_str in phrase_patterns:
-            patterns["common_phrases"].append(re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE))
+        patterns["common_phrases"] = [
+            re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE)
+            for pattern_str in phrase_patterns
+        ]
 
         return patterns
 
@@ -316,35 +314,31 @@ class ResponseCleaningService:
         text_before_think_removal = cleaned_text
 
         last_think_closing_tag_end_index = -1
-        for pattern in self._compiled_patterns["think_boundary"]:
-            for match in pattern.finditer(cleaned_text):
-                last_think_closing_tag_end_index = match.end()
+        think_boundary_pattern = self._compiled_patterns["think_boundary"]
+        for match in think_boundary_pattern.finditer(cleaned_text):
+            last_think_closing_tag_end_index = match.end()
 
         if last_think_closing_tag_end_index != -1:
             cleaned_text = cleaned_text[last_think_closing_tag_end_index:]
 
-        for pattern_list in [
-            self._compiled_patterns["think_blocks"],
-            self._compiled_patterns["think_self_closing"],
-            self._compiled_patterns["think_opening"],
-            self._compiled_patterns["think_closing"],
-        ]:
-            for pattern in pattern_list:
-                cleaned_text = pattern.sub("", cleaned_text)
+        cleaned_text = self._compiled_patterns["think_blocks"].sub("", cleaned_text)
+        cleaned_text = self._compiled_patterns["think_self_closing"].sub("", cleaned_text)
+        cleaned_text = self._compiled_patterns["think_opening"].sub("", cleaned_text)
+        cleaned_text = self._compiled_patterns["think_closing"].sub("", cleaned_text)
 
         if len(cleaned_text) < len(text_before_think_removal):
             self._stats["think_tags_removed"] += 1
             logger.debug(f"clean_response: Removed think tag content. " f"Length before: {len(text_before_think_removal)}, after: {len(cleaned_text)}.")
 
         # Remove code blocks
-        for pattern in self._compiled_patterns["code_blocks"]:
-            if pattern.search(cleaned_text):
-                self._stats["code_blocks_cleaned"] += 1
-            cleaned_text = pattern.sub(r"\1", cleaned_text)
+        code_blocks_pattern = self._compiled_patterns["code_blocks"]
+        if code_blocks_pattern.search(cleaned_text):
+            self._stats["code_blocks_cleaned"] += 1
+        cleaned_text = code_blocks_pattern.sub(r"\1", cleaned_text)
 
         # Remove chapter headers
-        for pattern in self._compiled_patterns["chapter_headers"]:
-            cleaned_text = pattern.sub(r"\1", cleaned_text).strip()
+        chapter_headers_pattern = self._compiled_patterns["chapter_headers"]
+        cleaned_text = chapter_headers_pattern.sub(r"\1", cleaned_text).strip()
 
         # Remove common phrases
         for pattern in self._compiled_patterns["common_phrases"]:
@@ -400,14 +394,57 @@ class TextProcessingService:
         """Initialize the text processing service with all sub-services."""
         self.tokenizer = TokenizerService()
         self.response_cleaner = ResponseCleaningService()
+        self.spacy_service = SpacyService()
 
         logger.info("TextProcessingService initialized with all sub-services")
+
+    def load_spacy_model(self, model_name: str | None = None) -> bool:
+        """Load the spaCy model for NLP operations.
+
+        Args:
+            model_name: Optional model name override. If None, uses config.SPACY_MODEL or defaults.
+
+        Returns:
+            True if model loaded successfully, False otherwise.
+        """
+        return self.spacy_service.load_model(model_name)
+
+    def clean_text_with_spacy(self, text: str, aggressive: bool = False) -> str:
+        """Clean text using spaCy NLP processing.
+
+        Uses spaCy for advanced text cleaning including whitespace normalization,
+        punctuation handling, and optional stop word removal.
+
+        Args:
+            text: Input text to clean.
+            aggressive: If True, remove stop words and lemmatize.
+                      If False, only normalize whitespace and basic punctuation.
+
+        Returns:
+            Cleaned text. Falls back to regex-based cleaning if spaCy not available.
+        """
+        return self.spacy_service.clean_text(text, aggressive)
+
+    def extract_sentences_with_spacy(self, text: str) -> list[str]:
+        """Extract sentences using spaCy's sentence boundary detection.
+
+        Args:
+            text: Input text to process.
+
+        Returns:
+            List of sentences. Falls back to regex-based splitting if spaCy not available.
+        """
+        return self.spacy_service.extract_sentences(text)
 
     def get_combined_statistics(self) -> dict[str, Any]:
         """Return combined statistics for tokenization and response cleaning."""
         return {
             "tokenizer": self.tokenizer.get_statistics(),
             "response_cleaner": self.response_cleaner.get_statistics(),
+            "spacy_service": {
+                "model_loaded": self.spacy_service.is_loaded(),
+                "model_name": self.spacy_service.get_model_name(),
+            },
         }
 
 
@@ -428,3 +465,32 @@ def truncate_text_by_tokens(
 ) -> str:
     """Truncate text to a token budget using the module-default tokenizer service."""
     return _default_tokenizer.truncate_text_by_tokens(text, model_name, max_tokens, truncation_marker)
+
+
+def clean_text_with_spacy(text: str, aggressive: bool = False) -> str:
+    """Clean text using spaCy NLP processing (module-level convenience function).
+
+    Args:
+        text: Input text to clean.
+        aggressive: If True, remove stop words and lemmatize.
+
+    Returns:
+        Cleaned text. Falls back to regex-based cleaning if spaCy not available.
+    """
+    from core.spacy_service import SpacyService
+    spacy_service = SpacyService()
+    return spacy_service.clean_text(text, aggressive)
+
+
+def extract_sentences_with_spacy(text: str) -> list[str]:
+    """Extract sentences using spaCy's sentence boundary detection (module-level convenience function).
+
+    Args:
+        text: Input text to process.
+
+    Returns:
+        List of sentences. Falls back to regex-based splitting if spaCy not available.
+    """
+    from core.spacy_service import SpacyService
+    spacy_service = SpacyService()
+    return spacy_service.extract_sentences(text)

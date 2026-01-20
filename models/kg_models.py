@@ -92,7 +92,8 @@ class CharacterProfile(BaseModel):
         """Construct a profile from a dictionary-shaped query result.
 
         This expects the character node to be available under the `c` alias and may
-        optionally include a `relationships` collection and a `traits` collection.
+        optionally include a `relationships` collection. Traits are read directly
+        from the node's traits property.
 
         Args:
             record: Dictionary-like query result mapping.
@@ -109,21 +110,18 @@ class CharacterProfile(BaseModel):
             for rel in rels:
                 if rel and rel.get("target_name"):
                     relationships[rel["target_name"]] = {
-                        "type": rel.get("type", "KNOWS"),
+                        "type": rel.get("type", ""),
                         "description": rel.get("description", ""),
                     }
 
-        # Extract traits from query result (HAS_TRAIT relationships)
-        # Fallback to node property for backward compatibility
+        # Extract traits from node property (new format) or from record field (old format for backward compatibility)
+        node_dict = node if isinstance(node, dict) else dict(node)
         traits = record.get("traits", [])
         if not traits:
-            node_dict = node if isinstance(node, dict) else dict(node)
-            traits = node_dict.get("traits", [])
+            traits = Neo4jExtractor.safe_list_extract(node_dict.get("traits", []))
         # Filter out None/empty values
         traits = [t for t in traits if t]
 
-        # Node is already a dict if coming from db_manager
-        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             name=node_dict.get("name", ""),
             description=node_dict.get("description", ""),
@@ -365,16 +363,14 @@ class WorldItem(BaseModel):
                         "description": rel.get("description", ""),
                     }
 
-        # Extract traits from query result (HAS_TRAIT relationships)
-        # Fallback to node property for backward compatibility
+        # Extract traits from node property (new format) or from record field (old format for backward compatibility)
+        node_dict = node if isinstance(node, dict) else dict(node)
         traits = record.get("traits", [])
         if not traits:
-            node_dict = node if isinstance(node, dict) else dict(node)
             traits = Neo4jExtractor.safe_list_extract(node_dict.get("traits", []))
         # Filter out None/empty values
         traits = [t for t in traits if t]
 
-        node_dict = node if isinstance(node, dict) else dict(node)
         return cls(
             id=Neo4jExtractor.safe_string_extract(node_dict.get("id", "")),
             category=Neo4jExtractor.safe_string_extract(node_dict.get("category", "")),

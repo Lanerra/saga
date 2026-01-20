@@ -74,4 +74,50 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
             "current_node": "consolidate_extraction",
         }
     else:
-        raise ValueError(f"consolidate_extraction: extracted_entities_ref and extracted_relationships_ref " f"must be pre-externalized by extract_from_scenes subgraph (chapter {chapter_number})")
+        # Backward compatibility: externalize in-memory data
+        from core.langgraph.content_manager import (
+            get_extracted_entities,
+            get_extracted_relationships,
+            save_extracted_entities,
+            save_extracted_relationships,
+        )
+
+        logger.info(
+            "consolidate_extraction: externalizing in-memory data (backward compatibility)",
+            chapter=chapter_number,
+        )
+
+        # Get entities and relationships from state (with fallback to in-state data)
+        extracted_entities = get_extracted_entities(state, content_manager)
+        extracted_relationships = get_extracted_relationships(state, content_manager)
+
+        # Externalize the data
+        current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
+
+        entities_ref = save_extracted_entities(
+            extracted_entities,
+            content_manager,
+            chapter_number=chapter_number,
+            version=current_version,
+        )
+
+        relationships_ref = save_extracted_relationships(
+            extracted_relationships,
+            content_manager,
+            chapter_number=chapter_number,
+            version=current_version,
+        )
+
+        logger.info(
+            "consolidate_extraction: in-memory data externalized",
+            chapter=chapter_number,
+            version=current_version,
+            entities_count=len(extracted_entities.get("characters", [])) + len(extracted_entities.get("world_items", [])),
+            relationships_count=len(extracted_relationships),
+        )
+
+        return {
+            "extracted_entities_ref": entities_ref,
+            "extracted_relationships_ref": relationships_ref,
+            "current_node": "consolidate_extraction",
+        }

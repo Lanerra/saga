@@ -199,6 +199,8 @@ async def finalize_chapter(state: NarrativeState) -> NarrativeState:
             "needs_revision": False,
             "current_node": "finalize",
             "last_error": None,
+            "extracted_entities": {},
+            "extracted_relationships": [],
         },
     )
 

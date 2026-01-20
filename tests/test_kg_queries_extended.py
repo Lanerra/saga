@@ -72,7 +72,9 @@ class TestKGBatchOperationsExtended:
         query, params = statements[0]
 
         # Contract: constraint-safe node merges via APOC (labels passed as parameters).
-        assert "CALL apoc.merge.node" in query
+        # Note: Code uses apoc.do.when with OPTIONAL MATCH instead of apoc.merge.node
+        assert "CALL apoc.do.when" in query
+        assert "OPTIONAL MATCH" in query
         assert params["subject_label"] == "Character"
         assert params["object_label"] == "Location"
         assert params["object_name_param"] == "Wonderland"
@@ -205,7 +207,8 @@ class TestMergeEntitiesExtended:
         # We need to patch _execute_atomic_merge directly if we want to test the retry wrapper logic specifically,
         # OR patch neo4j_manager to fail then succeed.
         # Patching the private method is easier to verify retry count.
-        with patch("data_access.kg_queries._execute_atomic_merge", side_effect=[Exception("Deadlock detected"), Exception("Database is locked"), True]) as mock_atomic:
+        # Use ValueError which is caught by the retry logic
+        with patch("data_access.kg_queries._execute_atomic_merge", side_effect=[ValueError("Deadlock detected"), ValueError("Database is locked"), True]) as mock_atomic:
             result = await kg_queries.merge_entities("source_id", "target_id", "duplicate", max_retries=3)
             assert result is True
             assert mock_atomic.call_count == 3

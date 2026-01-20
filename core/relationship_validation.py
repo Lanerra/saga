@@ -21,7 +21,6 @@ from models.kg_constants import (
     CHARACTER_EMOTIONAL_RELATIONSHIPS,
     CHARACTER_SOCIAL_RELATIONSHIPS,
     RELATIONSHIP_TYPES,
-    STATUS_RELATIONSHIPS,
     VALID_NODE_LABELS,
 )
 
@@ -63,8 +62,6 @@ LOCATION_TYPES = {
 
 EVENT_TYPES = {
     "Event",
-    "DevelopmentEvent",
-    "WorldElaborationEvent",
     "Era",
     "Moment",
 }
@@ -187,7 +184,7 @@ VALIDATION_RULES = [
     # Spatial relationships - typically target locations or physical entities
     # (informational only - not enforced)
     RelationshipValidationRule(
-        relationship_types={"LOCATED_IN", "LOCATED_AT"},
+        relationship_types={"LOCATED_AT"},
         valid_source_types="ANY",
         valid_target_types=LOCATION_TYPES | PHYSICAL_OBJECT_TYPES | SENTIENT_TYPES,
         rule_name="spatial_containment",
@@ -202,15 +199,6 @@ VALIDATION_RULES = [
         rule_name="temporal_sequence",
         rationale="[INFO] Temporal relationships typically connect events or time periods",
     ),
-    # Possession relationships - typically sentient owners
-    # (informational only - not enforced)
-    RelationshipValidationRule(
-        relationship_types={"OWNS", "POSSESSES"},
-        valid_source_types=SENTIENT_TYPES,
-        valid_target_types=PHYSICAL_OBJECT_TYPES | LOCATION_TYPES,
-        rule_name="ownership",
-        rationale="[INFO] Ownership typically involves sentient beings",
-    ),
     # Physical and informational containment
     # (informational only - not enforced)
     RelationshipValidationRule(
@@ -220,23 +208,14 @@ VALIDATION_RULES = [
         rule_name="containment",
         rationale="[INFO] Containment relationships typically involve physical or conceptual containers",
     ),
-    # Ability/Trait relationships
+    # Ability relationships
     # (informational only - not enforced)
     RelationshipValidationRule(
-        relationship_types={"HAS_ABILITY", "HAS_TRAIT", "SKILLED_IN", "WEAK_IN"},
+        relationship_types={"HAS_ABILITY", "SKILLED_IN", "WEAK_IN"},
         valid_source_types=SENTIENT_TYPES,
         valid_target_types=QUALITY_TYPES | ABSTRACT_TYPES | {"Skill"},
         rule_name="ability_trait",
-        rationale="[INFO] Abilities and traits are typically possessed by sentient beings",
-    ),
-    # Status relationships
-    # (informational only - not enforced)
-    RelationshipValidationRule(
-        relationship_types=STATUS_RELATIONSHIPS,
-        valid_source_types=SENTIENT_TYPES,
-        valid_target_types="ANY",
-        rule_name="status",
-        rationale="[INFO] Status relationships typically describe states of sentient beings",
+        rationale="[INFO] Abilities are typically possessed by sentient beings",
     ),
 ]
 

@@ -168,8 +168,9 @@ async def test_extract_from_scenes_node_processes_all_scenes(tmp_path: Any) -> N
     ):
         result = await extract_from_scenes(state)
 
-    assert "extracted_entities" in result
-    assert "extracted_relationships" in result
+    # Data is now externalized immediately, so only refs should be in result
+    assert "extracted_entities_ref" in result
+    assert "extracted_relationships_ref" in result
     assert result["current_node"] == "extract_from_scenes"
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
@@ -196,8 +197,9 @@ async def test_extract_from_scenes_no_scenes_returns_empty_serializable_state(tm
 
     result = await extract_from_scenes(state)
 
-    assert result["extracted_entities"] == {"characters": [], "world_items": []}
-    assert result["extracted_relationships"] == []
+    # When no scenes, refs should still be created (pointing to empty files)
+    assert "extracted_entities_ref" in result
+    assert "extracted_relationships_ref" in result
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
 
@@ -275,8 +277,9 @@ async def test_extract_from_scenes_converts_pydantic_models_to_dicts(tmp_path: A
     _assert_no_pydantic_models(result)
     _assert_json_serializable(result)
 
-    assert result["extracted_entities"] == {}
-    assert result["extracted_relationships"] == []
+    # Data is externalized, so in-memory state should be cleared
+    assert "extracted_entities" not in result or result.get("extracted_entities") == {}
+    assert "extracted_relationships" not in result or result.get("extracted_relationships") == []
     assert result["extracted_entities_ref"] is not None
     assert result["extracted_relationships_ref"] is not None
 

@@ -7,6 +7,15 @@ import pytest
 
 import config
 from data_access import plot_queries
+from data_access.cache_coordinator import clear_plot_read_caches
+
+
+@pytest.fixture(autouse=True)
+def clear_caches():
+    """Clear plot read caches before each test."""
+    clear_plot_read_caches()
+    yield
+    clear_plot_read_caches()
 
 
 @pytest.mark.asyncio

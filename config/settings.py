@@ -76,7 +76,29 @@ class RelationshipNormalizationSettings(BaseSettings):
     # Master toggle
     ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=True, description="Enable relationship normalization system")
 
-    # Similarity thresholds
+    # Strict canonical mode
+    STRICT_CANONICAL_MODE: bool = Field(
+        default=True,
+        description="If True, disables dynamic vocabulary expansion and rejects unknown types",
+    )
+
+    STATIC_OVERRIDES_ENABLED: bool = Field(
+        default=True,
+        description="Enable static dictionary lookups for exact synonyms",
+    )
+
+    # Category-specific similarity thresholds
+    SIMILARITY_THRESHOLDS: dict[str, float] = Field(
+        default={
+            "CHARACTER_CHARACTER": 0.75,
+            "CHARACTER_WORLD": 0.70,
+            "PLOT_STRUCTURE": 0.80,
+            "DEFAULT": 0.75,
+        },
+        description="Category-specific similarity thresholds for relationship canonicalization",
+    )
+
+    # Legacy similarity thresholds (for backward compatibility)
     SIMILARITY_THRESHOLD: float = Field(
         default=0.85,
         ge=0.0,
@@ -198,7 +220,7 @@ class SagaSettings(BaseSettings):
 
     # Entity embedding similarity configuration
     ENTITY_EMBEDDING_DEDUPLICATION_TOP_K: int = 15
-    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.65
+    ENTITY_EMBEDDING_DEDUPLICATION_SIMILARITY_THRESHOLD: float = 0.55
 
     # Base Model Definitions
     LARGE_MODEL: str = "qwen3-a3b"
@@ -229,11 +251,11 @@ class SagaSettings(BaseSettings):
 
     # Concurrency and Rate Limiting
     MAX_CONCURRENT_LLM_CALLS: int = 1
-    LLM_TOP_P: float = 0.8
+    LLM_TOP_P: float = 0.95
 
     # LLM Frequency and Presence Penalties
-    FREQUENCY_PENALTY_DRAFTING: float = 0.3
-    PRESENCE_PENALTY_DRAFTING: float = 0.5
+    FREQUENCY_PENALTY_DRAFTING: float = 0.0
+    PRESENCE_PENALTY_DRAFTING: float = 0.0
 
     # Output and File Paths
     BASE_OUTPUT_DIR: str = "output"
@@ -248,10 +270,10 @@ class SagaSettings(BaseSettings):
     # Generation Parameters
     # Token budgets (defaults are generous)
     MAX_CONTEXT_TOKENS: int = 32768
-    MAX_GENERATION_TOKENS: int = 8192
+    MAX_GENERATION_TOKENS: int = 16384
     CONTEXT_CHAPTER_COUNT: int = 2
     CHAPTERS_PER_RUN: int = 3
-    TOTAL_CHAPTERS: int = 12
+    TOTAL_CHAPTERS: int = 15
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 12
     MAX_CONCURRENT_CHAPTERS: int = 1
 
@@ -262,15 +284,15 @@ class SagaSettings(BaseSettings):
     TOKENIZER_CACHE_SIZE: int = 10
 
     # Agentic Planning & Prompt Context Snippets
-    MAX_PLANNING_TOKENS: int = 8192
+    MAX_PLANNING_TOKENS: int = 16384
     TARGET_SCENES_MIN: int = 4
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
-    MAX_SUMMARY_TOKENS: int = 8192
-    MAX_KG_TRIPLE_TOKENS: int = 8192
-    MAX_PREPOP_KG_TOKENS: int = 8192
+    MAX_SUMMARY_TOKENS: int = 16384
+    MAX_KG_TRIPLE_TOKENS: int = 16384
+    MAX_PREPOP_KG_TOKENS: int = 16384
 
     # Quality Assurance Configuration
     ENABLE_QA_CHECKS: bool = True
@@ -288,8 +310,8 @@ class SagaSettings(BaseSettings):
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
 
     # De-duplication Configuration
-    DEDUPLICATION_USE_SEMANTIC: bool = False
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.65
+    DEDUPLICATION_USE_SEMANTIC: bool = True
+    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.55
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # Duplicate Prevention Settings
@@ -307,7 +329,7 @@ class SagaSettings(BaseSettings):
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
 
     # Narrative Style Defaults
-    DEFAULT_NARRATIVE_STYLE: str = "Standard Third-Person Past Tense"
+    DEFAULT_NARRATIVE_STYLE: str = "Third-Person, personal with internal monologue"
 
     # Logging & UI
     LOG_LEVEL_STR: str = Field("INFO", alias="LOG_LEVEL")
@@ -320,6 +342,7 @@ class SagaSettings(BaseSettings):
 
     # NLP / spaCy configuration
     SPACY_MODEL: str | None = None  # default None => utils.text_processing uses en_core_web_sm
+    ENABLE_ENTITY_VALIDATION: bool = True  # Enable spaCy-based entity validation during extraction
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
@@ -350,7 +373,7 @@ class SagaSettings(BaseSettings):
     schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)
 
     # Legacy Degradation Flags
-    ENABLE_STATUS_IS_ALIAS: bool = True
+    ENABLE_STATUS_IS_ALIAS: bool = False
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 

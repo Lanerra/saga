@@ -19,7 +19,6 @@ Notes:
 # Relationship and node property names
 KG_REL_CHAPTER_ADDED = "chapter_added"
 KG_NODE_CREATED_CHAPTER = "created_chapter"
-KG_NODE_CHAPTER_UPDATED = "chapter_updated"
 KG_IS_PROVISIONAL = "is_provisional"
 
 # --- World item label taxonomy (P0.2) ---
@@ -58,7 +57,6 @@ VALID_NODE_LABELS = {
     "Location",
     "Event",
     "Item",
-    "Trait",
     "Chapter",
 }
 
@@ -130,17 +128,6 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     "resource": "Item",
     "Currency": "Item",
     "currency": "Item",
-    # ----------------------------
-    # Trait-like
-    # ----------------------------
-    "Skill": "Trait",
-    "skill": "Trait",
-    "Ability": "Trait",
-    "ability": "Trait",
-    "Quality": "Trait",
-    "quality": "Trait",
-    "Attribute": "Trait",
-    "attribute": "Trait",
     # ----------------------------
     # Event-like subtypes
     # ----------------------------
@@ -241,47 +228,36 @@ SUGGESTED_CATEGORIES = {
 
 # Character Social Relationships
 CHARACTER_SOCIAL_RELATIONSHIPS = {
-    "ALLY_OF",  # Strong positive alliance
-    "ENEMY_OF",  # Active antagonism
-    "FRIEND_OF",  # Personal friendship
-    "RIVAL_OF",  # Competitive relationship
-    "FAMILY_OF",  # Blood or adopted family
-    "ROMANTIC_WITH",  # Romantic involvement
-    "MENTOR_TO",  # Teaching/guidance relationship
-    "TEACHES",  # Instruction/education relationship
-    "STUDENT_OF",  # Learning relationship (inverse of mentor)
-    "WORKS_FOR",  # Employment/service
-    "LEADS",  # Authority/command
-    "SERVES",  # Loyal service/allegiance
-    "KNOWS",  # Basic acquaintance
-    "TRUSTS",  # Trust relationship
-    "DISTRUSTS",  # Mistrust relationship
-    "OWES_DEBT_TO",  # Obligation relationship
+    "ALLIES_WITH",
+    "RIVALS_WITH",
+    "CONFLICTS_WITH",
+    "LOVES",
+    "FAMILY_OF",
+    "MENTORS",
+    "PROTECTS",
+    "TRUSTS",
+    "DISTRUSTS",
+    "BETRAYS",
+    "FEARS",
+    "SEEKS",
+    "LOCATED_AT",
+    "SERVES",
+    "DEPENDS_ON",
+    "OWES",
+    "DECEIVES",
+    "MANIPULATES",
 }
 
 # Character Emotional Relationships
 CHARACTER_EMOTIONAL_RELATIONSHIPS = {
+    "ADMIRES",  # Admiration
     "LOVES",  # Deep affection
-    "HATES",  # Deep animosity
+    "CONFLICTS_WITH",  # Deep animosity
     "FEARS",  # Fear of person
-    "RESPECTS",  # Admiration/respect
-    "DESPISES",  # Contempt
-    "ENVIES",  # Jealousy/envy
-    "PITIES",  # Sympathy/pity
-    "OBSESSED_WITH",  # Unhealthy fixation
-}
-
-# Status/State Relationships
-STATUS_RELATIONSHIPS = {
-    "HAS_STATUS",  # Current state/condition
-    "STATUS_IS",  # Alternative form of HAS_STATUS (legacy support)
-    "IS_DEAD",  # Death state
-    "IS_ALIVE",  # Life state
-    "IS_MISSING",  # Absence state
-    "IS_INJURED",  # Harm state
-    "IS_HEALTHY",  # Wellness state
-    "IS_ACTIVE",  # Activity state
-    "IS_INACTIVE",  # Inactivity state
+    "TRUSTS",  # Admiration/respect
+    "BETRAYS",  # Unhealthy fixation
+    "RESENTS",  # Resentment
+    "DISTRUSTS",  # Distrust/suspicion
 }
 
 # Relationship category mapping for validation and normalization
@@ -289,16 +265,20 @@ STATUS_RELATIONSHIPS = {
 RELATIONSHIP_CATEGORIES = {
     "character_social": CHARACTER_SOCIAL_RELATIONSHIPS,
     "character_emotional": CHARACTER_EMOTIONAL_RELATIONSHIPS,
-    "status": STATUS_RELATIONSHIPS,
 }
 
 # Combine all relationship categories into a single set
-# NOTE: This set contains commonly used relationship types, but is NOT exhaustive.
-# The LLM can and should create custom relationship types for narrative precision.
-# This set is used for reference and analytics, not enforcement.
 RELATIONSHIP_TYPES = set()
 for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)
+
+# Static relationship mapping for exact synonyms
+STATIC_RELATIONSHIP_MAP = {}
+
+# Relationships that should be node properties instead of relationships
+# NOTE: This set is now empty as status-related relationships have been deprecated.
+# Status information (alive/dead/injured/active) is stored as properties on Character nodes.
+PROPERTY_RELATIONSHIPS: set[str] = set()
 
 
 # --- NovelInfo property allowlist (P0.4: Cypher injection hardening) ---
