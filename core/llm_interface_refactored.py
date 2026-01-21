@@ -352,7 +352,11 @@ class CompletionService:
             logger.error("get_completion: model_name and prompt are required", **error_details)
             return "", None
 
-        effective_temperature = temperature if temperature is not None else config.Temperatures.DEFAULT
+        # Respect global temperature override if set
+        if config.Temperatures.OVERRIDE is not None:
+            effective_temperature = config.Temperatures.OVERRIDE
+        else:
+            effective_temperature = temperature if temperature is not None else config.Temperatures.DEFAULT
         effective_max_tokens = max_tokens if max_tokens is not None else config.MAX_GENERATION_TOKENS
 
         # Build messages with optional system prompt

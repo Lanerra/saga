@@ -47,7 +47,7 @@ class SchemaEnforcementSettings(BaseSettings):
     ENFORCE_SCHEMA_VALIDATION: bool = Field(default=True, description="Master toggle for schema validation")
 
     REJECT_INVALID_ENTITIES: bool = Field(
-        default=False,
+        default=True,
         description="If True, entities with invalid types are rejected. If False, soft validation (warnings).",
     )
 
@@ -78,7 +78,7 @@ class RelationshipNormalizationSettings(BaseSettings):
 
     # Strict canonical mode
     STRICT_CANONICAL_MODE: bool = Field(
-        default=False,
+        default=True,
         description="If True, disables dynamic vocabulary expansion and rejects unknown types",
     )
 
@@ -127,23 +127,23 @@ class RelationshipNormalizationSettings(BaseSettings):
     )
 
     MAX_VOCABULARY_SIZE: int = Field(
-        default=100,
+        default=50,
         ge=10,
         description="Maximum number of relationship types to maintain",
     )
 
     # Example retention
     MAX_EXAMPLES_PER_RELATIONSHIP: int = Field(
-        default=5,
+        default=3,
         ge=1,
         description="Maximum example descriptions to keep per relationship type",
     )
 
     # Advanced features
-    USE_LLM_DISAMBIGUATION: bool = Field(default=False, description="Use LLM to disambiguate ambiguous similarity cases")
+    USE_LLM_DISAMBIGUATION: bool = Field(default=True, description="Use LLM to disambiguate ambiguous similarity cases")
 
     LLM_DISAMBIGUATION_JSON_MODE: bool = Field(
-        default=False,
+        default=True,
         description="If True, require strict JSON output for relationship normalization disambiguation",
     )
 
@@ -238,6 +238,9 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_KG_EXTRACTION: float = 0.1
     TEMPERATURE_SUMMARY: float = 0.3
     TEMPERATURE_PATCH: float = 0.7
+    
+    # Global Temperature Override
+    TEMPERATURE_OVERRIDE: float | None = None
 
     FILL_IN: str = ""
 
@@ -398,6 +401,7 @@ class TempsCompat:
     SUMMARY: float
     PATCH: float
     DEFAULT: float
+    OVERRIDE: float | None
 
 
 Models = ModelsCompat()
@@ -417,6 +421,7 @@ Temperatures.KG_EXTRACTION = settings.TEMPERATURE_KG_EXTRACTION
 Temperatures.SUMMARY = settings.TEMPERATURE_SUMMARY
 Temperatures.PATCH = settings.TEMPERATURE_PATCH
 Temperatures.DEFAULT = 0.7  # Set default explicitly
+Temperatures.OVERRIDE = settings.TEMPERATURE_OVERRIDE
 
 
 # Update module level variables for backward compatibility
