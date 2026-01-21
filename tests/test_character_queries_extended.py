@@ -56,9 +56,6 @@ class TestGetCharacterProfileFetchesNoRowDropping:
         assert isinstance(profile.relationships["Bob"], dict)
         assert profile.relationships["Bob"]["type"] == "FRIEND_OF"
 
-        profile_dict = profile.to_dict()
-        assert profile_dict["development_in_chapter_1"] == "Event1"
-
         clear_all_data_access_caches()
 
     async def test_get_character_profile_by_name_preserves_multi_relationships_same_target(self, monkeypatch):

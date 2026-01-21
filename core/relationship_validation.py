@@ -271,7 +271,7 @@ class RelationshipValidator:
             enable_strict_mode: If True, enforce rules as hard failures. If False, treat
                 rule violations as informational diagnostics.
         """
-        self.rules = VALIDATION_RULES
+        self.rules = STRICT_SEMANTIC_RULES if enable_strict_mode else VALIDATION_RULES
         self.known_relationship_types = RELATIONSHIP_TYPES
         self.known_node_labels = VALID_NODE_LABELS
         self.enable_strict_mode = enable_strict_mode

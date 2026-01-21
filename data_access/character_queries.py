@@ -126,7 +126,6 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
-        OPTIONAL MATCH (c)-[dev_rel:DEVELOPED_IN_CHAPTER]->(dev_event:Event)
 
         WITH
             c,
@@ -143,27 +142,12 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
                         rel_props: properties(r)
                     }
                 END
-            ) AS relationships_raw,
-            collect(
-                DISTINCT CASE
-                    WHEN dev_event IS NOT NULL
-                     AND (
-                          $include_provisional = true
-                          OR coalesce(dev_event.is_provisional, FALSE) = FALSE
-                     )
-                    THEN {
-                        summary: coalesce(dev_event.summary, dev_event.description, ''),
-                        chapter: coalesce(dev_event.chapter, dev_event.chapter_added, 0),
-                        is_provisional: coalesce(dev_event.is_provisional, FALSE)
-                    }
-                END
-            ) AS dev_events_raw
+            ) AS relationships_raw
 
         RETURN
             c,
             coalesce(c.traits, []) AS traits,
-            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
-            [dev IN dev_events_raw WHERE dev IS NOT NULL] AS dev_events
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
     results = await neo4j_manager.execute_read_query(query, {"name": canonical_name, "include_provisional": include_provisional})
@@ -249,17 +233,6 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
     profile["relationships"] = relationships
 
-    # Process development events into development_in_chapter_X fields
-    dev_events = record.get("dev_events", [])
-    for dev_event in dev_events:
-        if not dev_event:
-            continue
-        chapter = dev_event.get("chapter", 0)
-        summary = dev_event.get("summary", "")
-        if chapter > 0 and summary:
-            key = f"development_in_chapter_{chapter}"
-            profile[key] = summary
-
     return CharacterProfile.from_dict(name, profile)
 
 
@@ -307,7 +280,6 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
-        OPTIONAL MATCH (c)-[dev_rel:DEVELOPED_IN_CHAPTER]->(dev_event:Event)
 
         WITH
             c,
@@ -324,27 +296,12 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
                         rel_props: properties(r)
                     }
                 END
-            ) AS relationships_raw,
-            collect(
-                DISTINCT CASE
-                    WHEN dev_event IS NOT NULL
-                     AND (
-                          $include_provisional = true
-                          OR coalesce(dev_event.is_provisional, FALSE) = FALSE
-                     )
-                    THEN {
-                        summary: coalesce(dev_event.summary, dev_event.description, ''),
-                        chapter: coalesce(dev_event.chapter, dev_event.chapter_added, 0),
-                        is_provisional: coalesce(dev_event.is_provisional, FALSE)
-                    }
-                END
-            ) AS dev_events_raw
+            ) AS relationships_raw
 
         RETURN
             c,
             coalesce(c.traits, []) AS traits,
-            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships,
-            [dev IN dev_events_raw WHERE dev IS NOT NULL] AS dev_events
+            [rel IN relationships_raw WHERE rel IS NOT NULL] AS relationships
     """
 
     results = await neo4j_manager.execute_read_query(
@@ -412,17 +369,6 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
         )
         relationships[target_name] = rel_list_sorted[0] if len(rel_list_sorted) == 1 else rel_list_sorted
     profile["relationships"] = relationships
-
-    # Process development events into development_in_chapter_X fields
-    dev_events = record.get("dev_events", [])
-    for dev_event in dev_events:
-        if not dev_event:
-            continue
-        chapter = dev_event.get("chapter", 0)
-        summary = dev_event.get("summary", "")
-        if chapter > 0 and summary:
-            key = f"development_in_chapter_{chapter}"
-            profile[key] = summary
 
     return CharacterProfile.from_dict(name, profile)
 
