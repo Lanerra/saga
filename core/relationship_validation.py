@@ -19,7 +19,15 @@ import structlog
 
 from models.kg_constants import (
     CHARACTER_EMOTIONAL_RELATIONSHIPS,
+    CHARACTER_EVENT_RELATIONSHIPS,
+    CHARACTER_ITEM_RELATIONSHIPS,
+    CHARACTER_LOCATION_RELATIONSHIPS,
     CHARACTER_SOCIAL_RELATIONSHIPS,
+    EVENT_ITEM_RELATIONSHIPS,
+    EVENT_LOCATION_RELATIONSHIPS,
+    EVENT_TEMPORAL_RELATIONSHIPS,
+    LOCATION_ITEM_RELATIONSHIPS,
+    LOCATION_SPATIAL_RELATIONSHIPS,
     RELATIONSHIP_TYPES,
     VALID_NODE_LABELS,
 )
@@ -188,6 +196,62 @@ STRICT_SEMANTIC_RULES = [
         valid_target_types=SENTIENT_TYPES,
         rule_name="social_strict",
         rationale="Social relationships (ALLIES_WITH, ENEMY_OF, etc.) must link sentient beings to other sentient beings.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"PARTICIPATES_IN", "WITNESSES", "CAUSES", "AFFECTED_BY"},
+        valid_source_types=SENTIENT_TYPES,
+        valid_target_types=EVENT_TYPES,
+        rule_name="character_event_strict",
+        rationale="Character-Event relationships require sentient source and Event target.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"SEEKS", "GUARDS", "CREATED"},
+        valid_source_types=SENTIENT_TYPES,
+        valid_target_types=PHYSICAL_OBJECT_TYPES,
+        rule_name="character_item_extended_strict",
+        rationale="Extended Character-Item relationships require sentient source and physical object target.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"ORIGINATES_FROM", "RULES", "OWNS_LOCATION", "SEEKS_LOCATION", "EXILED_FROM"},
+        valid_source_types=SENTIENT_TYPES,
+        valid_target_types=LOCATION_TYPES,
+        rule_name="character_location_extended_strict",
+        rationale="Extended Character-Location relationships require sentient source and Location target.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"OCCURS_AT", "ORIGINATES_FROM_LOCATION", "AFFECTS_LOCATION"},
+        valid_source_types=EVENT_TYPES,
+        valid_target_types=LOCATION_TYPES,
+        rule_name="event_location_strict",
+        rationale="Event-Location relationships require Event source and Location target.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"INVOLVES_ITEM", "CREATES_ITEM", "DESTROYS_ITEM", "TRANSFERS_ITEM"},
+        valid_source_types=EVENT_TYPES,
+        valid_target_types=PHYSICAL_OBJECT_TYPES,
+        rule_name="event_item_strict",
+        rationale="Event-Item relationships require Event source and physical object target.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"HAPPENS_BEFORE", "HAPPENS_AFTER", "OCCURS_DURING", "CAUSES_EVENT", "INTERRUPTS"},
+        valid_source_types=EVENT_TYPES,
+        valid_target_types=EVENT_TYPES,
+        rule_name="event_temporal_strict",
+        rationale="Event-Event temporal relationships require both source and target to be Events.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"CONTAINS_LOCATION", "PART_OF_LOCATION", "BORDERS", "CONNECTED_TO", "VISIBLE_FROM"},
+        valid_source_types=LOCATION_TYPES,
+        valid_target_types=LOCATION_TYPES,
+        rule_name="location_spatial_strict",
+        rationale="Location-Location spatial relationships require both source and target to be Locations.",
+    ),
+    RelationshipValidationRule(
+        relationship_types={"CONTAINS_ITEM", "PRODUCES", "REQUIRES_ITEM"},
+        valid_source_types=LOCATION_TYPES,
+        valid_target_types=PHYSICAL_OBJECT_TYPES,
+        rule_name="location_item_strict",
+        rationale="Location-Item relationships require Location source and physical object target.",
     ),
 ]
 
@@ -533,11 +597,43 @@ def infer_entity_type_from_relationship(
             return "Character"
         elif relationship_type in {"HAPPENS_BEFORE", "HAPPENS_AFTER", "OCCURS_DURING"}:
             return "Event"
+        elif relationship_type in CHARACTER_EVENT_RELATIONSHIPS:
+            return "Event"
+        elif relationship_type in CHARACTER_ITEM_RELATIONSHIPS:
+            return "Item"
+        elif relationship_type in CHARACTER_LOCATION_RELATIONSHIPS:
+            return "Location"
+        elif relationship_type in EVENT_LOCATION_RELATIONSHIPS:
+            return "Location"
+        elif relationship_type in EVENT_ITEM_RELATIONSHIPS:
+            return "Item"
+        elif relationship_type in EVENT_TEMPORAL_RELATIONSHIPS:
+            return "Event"
+        elif relationship_type in LOCATION_SPATIAL_RELATIONSHIPS:
+            return "Location"
+        elif relationship_type in LOCATION_ITEM_RELATIONSHIPS:
+            return "Item"
     elif role == "source":
         if relationship_type in social_and_emotional or relationship_type in {"ALLY_OF", "ENEMY_OF"}:
             return "Character"
         elif relationship_type in {"HAPPENS_BEFORE", "HAPPENS_AFTER", "OCCURS_DURING"}:
             return "Event"
+        elif relationship_type in CHARACTER_EVENT_RELATIONSHIPS:
+            return "Character"
+        elif relationship_type in CHARACTER_ITEM_RELATIONSHIPS:
+            return "Character"
+        elif relationship_type in CHARACTER_LOCATION_RELATIONSHIPS:
+            return "Character"
+        elif relationship_type in EVENT_LOCATION_RELATIONSHIPS:
+            return "Event"
+        elif relationship_type in EVENT_ITEM_RELATIONSHIPS:
+            return "Event"
+        elif relationship_type in EVENT_TEMPORAL_RELATIONSHIPS:
+            return "Event"
+        elif relationship_type in LOCATION_SPATIAL_RELATIONSHIPS:
+            return "Location"
+        elif relationship_type in LOCATION_ITEM_RELATIONSHIPS:
+            return "Location"
 
     return None
 

@@ -20,6 +20,57 @@ logger = structlog.get_logger(__name__)
 if TYPE_CHECKING:
     import spacy
 
+ABSTRACT_CONCEPTS = {
+    "fear",
+    "hope",
+    "despair",
+    "joy",
+    "sadness",
+    "anger",
+    "love",
+    "hate",
+    "power",
+    "darkness",
+    "light",
+    "evil",
+    "good",
+    "death",
+    "life",
+    "time",
+    "fate",
+    "destiny",
+    "chaos",
+    "order",
+    "truth",
+    "lies",
+    "freedom",
+    "justice",
+    "peace",
+    "war",
+    "silence",
+    "noise",
+    "knowledge",
+    "wisdom",
+    "ignorance",
+    "courage",
+    "cowardice",
+    "strength",
+    "weakness",
+    "beauty",
+    "ugliness",
+    "magic",
+    "nature",
+    "civilization",
+    "escape",
+    "revenge",
+    "betrayal",
+    "loyalty",
+    "honor",
+    "shame",
+    "pride",
+    "humility",
+}
+
 
 class SpacyService:
     """Centralized service for spaCy-based NLP operations."""
@@ -113,6 +164,66 @@ class SpacyService:
         except Exception as e:
             logger.error("extract_entities failed: %s", e, exc_info=True)
             return []
+
+    def should_classify_as_character(self, entity_name: str) -> tuple[bool, str]:
+        """Determine if an entity should be classified as a Character node.
+
+        Uses spaCy NER and POS tagging to classify entities as characters based on:
+        - PERSON entity recognition (spaCy NER)
+        - Proper noun detection (POS tagging)
+        - Pattern-based rejection (possessives, non-capitalized, abstract concepts)
+
+        Args:
+            entity_name: The entity name to classify.
+
+        Returns:
+            Tuple of (should_classify, reason). When True, entity should be a Character.
+            When False, reason explains why it was rejected.
+        """
+        if not entity_name or not isinstance(entity_name, str):
+            return False, "Empty or invalid entity name"
+
+        entity_name_stripped = entity_name.strip()
+        if not entity_name_stripped:
+            return False, "Entity name is whitespace only"
+
+        if "'" in entity_name_stripped:
+            return False, "Contains possessive marker"
+
+        if not entity_name_stripped[0].isupper():
+            return False, "Not capitalized"
+
+        entity_lower = entity_name_stripped.lower()
+        if entity_lower in ABSTRACT_CONCEPTS:
+            return False, f"Abstract concept: {entity_lower}"
+
+        if not self.is_loaded():
+            logger.warning("should_classify_as_character: spaCy model not loaded, using fallback")
+            is_capitalized_multiword = all(word[0].isupper() for word in entity_name_stripped.split() if word)
+            if is_capitalized_multiword:
+                return True, "Capitalized (fallback)"
+            return False, "Not capitalized (fallback)"
+
+        try:
+            doc = self._nlp(entity_name_stripped)
+
+            if doc.ents:
+                for ent in doc.ents:
+                    if ent.label_ == "PERSON":
+                        return True, f"spaCy NER: PERSON entity"
+
+            has_proper_noun = any(token.pos_ == "PROPN" for token in doc)
+            if has_proper_noun:
+                return True, "Contains proper noun"
+
+            return False, "No PERSON entity or proper noun detected"
+
+        except Exception as e:
+            logger.error("should_classify_as_character failed: %s", e, exc_info=True)
+            is_capitalized_multiword = all(word[0].isupper() for word in entity_name_stripped.split() if word)
+            if is_capitalized_multiword:
+                return True, "Capitalized (fallback after error)"
+            return False, "Classification error, rejected by default"
 
     def verify_entity_presence(self, text: str, entity_name: str, threshold: float = 0.75) -> bool:
         """Verify if an entity is present in the text using fuzzy matching.

@@ -255,11 +255,87 @@ CHARACTER_EMOTIONAL_RELATIONSHIPS = {
     "DISTRUSTS",  # Distrust/suspicion
 }
 
+# Character ↔ Event Relationships
+CHARACTER_EVENT_RELATIONSHIPS = {
+    "PARTICIPATES_IN",
+    "WITNESSES",
+    "CAUSES",
+    "AFFECTED_BY",
+}
+
+# Character ↔ Item Relationships
+CHARACTER_ITEM_RELATIONSHIPS = {
+    "OWNS",
+    "CARRIES",
+    "WIELDS",
+    "SEEKS",
+    "GUARDS",
+    "CREATED",
+}
+
+# Character ↔ Location Relationships (Extended)
+CHARACTER_LOCATION_RELATIONSHIPS = {
+    "LOCATED_AT",
+    "ORIGINATES_FROM",
+    "RULES",
+    "OWNS_LOCATION",
+    "SEEKS_LOCATION",
+    "EXILED_FROM",
+}
+
+# Event ↔ Location Relationships
+EVENT_LOCATION_RELATIONSHIPS = {
+    "OCCURS_AT",
+    "ORIGINATES_FROM_LOCATION",
+    "AFFECTS_LOCATION",
+}
+
+# Event ↔ Item Relationships
+EVENT_ITEM_RELATIONSHIPS = {
+    "INVOLVES_ITEM",
+    "CREATES_ITEM",
+    "DESTROYS_ITEM",
+    "TRANSFERS_ITEM",
+}
+
+# Event ↔ Event Relationships (Temporal)
+EVENT_TEMPORAL_RELATIONSHIPS = {
+    "HAPPENS_BEFORE",
+    "HAPPENS_AFTER",
+    "OCCURS_DURING",
+    "CAUSES_EVENT",
+    "INTERRUPTS",
+}
+
+# Location ↔ Location Relationships (Spatial)
+LOCATION_SPATIAL_RELATIONSHIPS = {
+    "CONTAINS_LOCATION",
+    "PART_OF_LOCATION",
+    "BORDERS",
+    "CONNECTED_TO",
+    "VISIBLE_FROM",
+}
+
+# Location ↔ Item Relationships
+LOCATION_ITEM_RELATIONSHIPS = {
+    "CONTAINS_ITEM",
+    "PRODUCES",
+    "REQUIRES_ITEM",
+}
+
 # Relationship category mapping for validation and normalization
 # Generated programmatically from the category sets above
 RELATIONSHIP_CATEGORIES = {
     "character_social": CHARACTER_SOCIAL_RELATIONSHIPS,
     "character_emotional": CHARACTER_EMOTIONAL_RELATIONSHIPS,
+    "character_event": CHARACTER_EVENT_RELATIONSHIPS,
+    "character_item": CHARACTER_ITEM_RELATIONSHIPS,
+    "character_location": CHARACTER_LOCATION_RELATIONSHIPS,
+    "event_location": EVENT_LOCATION_RELATIONSHIPS,
+    "event_item": EVENT_ITEM_RELATIONSHIPS,
+    "event_temporal": EVENT_TEMPORAL_RELATIONSHIPS,
+    "location_spatial": LOCATION_SPATIAL_RELATIONSHIPS,
+    "location_item": LOCATION_ITEM_RELATIONSHIPS,
 }
 
 # Combine all relationship categories into a single set

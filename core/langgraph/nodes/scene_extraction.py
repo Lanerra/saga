@@ -312,13 +312,26 @@ async def _extract_characters_from_scene(
             if not isinstance(info, dict):
                 continue
 
-            # Validate entity presence using spaCy
-            is_validated = _validate_entity_with_spacy(scene_text, str(name))
-            
+            character_name = str(name)
+
+            should_classify, classification_reason = text_processing_service.spacy_service.should_classify_as_character(character_name)
+
+            if not should_classify:
+                logger.debug(
+                    "_extract_characters_from_scene: rejecting entity based on classification",
+                    entity_name=character_name,
+                    reason=classification_reason,
+                    scene_index=scene_index,
+                    chapter=chapter_number,
+                )
+                continue
+
+            is_validated = _validate_entity_with_spacy(scene_text, character_name)
+
             if not is_validated:
                 logger.warning(
                     "_extract_characters_from_scene: skipping invalid character",
-                    character_name=str(name),
+                    character_name=character_name,
                     scene_index=scene_index,
                     chapter=chapter_number,
                 )
