@@ -172,7 +172,6 @@ async def normalize_relationships(state: NarrativeState) -> dict[str, Any]:
 
     # Calculate rejection metrics
     total_processed = len(extracted_rels)
-    accepted_count = total_processed - rejected_count
     rejection_rate = (rejected_count / total_processed) if total_processed > 0 else 0.0
 
     # Log statistics

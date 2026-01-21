@@ -301,7 +301,7 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
         ),
         (
             "initialization/generate_character_sheet.j2",
-            {"title": "Test", "genre": "Fantasy", "theme": "Adventure", "setting": "World", "character_name": "Hero", "is_protagonist": True, "other_characters": [], "existing_traits_hint": ""},
+            {"title": "Test", "genre": "Fantasy", "theme": "Adventure", "setting": "World", "character_name": "Hero", "is_protagonist": True, "other_characters": [], "existing_traits_hint": "", "relationship_types": ["FRIEND_OF", "LOVES", "RIVALS_WITH"]},
         ),
         ("initialization/generate_character_list.j2", {"title": "Test", "genre": "Fantasy", "theme": "Adventure", "setting": "World", "protagonist_name": "Hero"}),
         (

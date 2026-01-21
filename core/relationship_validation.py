@@ -247,7 +247,7 @@ VALIDATION_RULES = [
         relationship_types={"HAS_ABILITY", "SKILLED_IN", "WEAK_IN"},
         valid_source_types=SENTIENT_TYPES,
         valid_target_types=QUALITY_TYPES | ABSTRACT_TYPES | {"Skill"},
-        rule_name="ability_trait",
+        rule_name="ability_skill",
         rationale="[INFO] Abilities are typically possessed by sentient beings",
     ),
 ]

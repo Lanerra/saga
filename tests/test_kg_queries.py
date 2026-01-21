@@ -414,15 +414,6 @@ class TestDynamicRelationships:
 
     async def test_promote_dynamic_relationships(self, monkeypatch):
         """Test promoting dynamic relationships."""
-        # Relationship maintenance can be disabled globally via config; this test exercises
-        # the "enabled" code path so we can assert the underlying DB calls deterministically.
-        monkeypatch.setattr(
-            kg_queries.config.settings,
-            "DISABLE_RELATIONSHIP_NORMALIZATION",
-            False,
-            raising=False,
-        )
-
         # promote_dynamic_relationships() is now a thin wrapper around the canonical
         # relationship maintenance pipeline. It performs:
         # - _validate_and_correct_relationship_types(): execute_read_query (+ optional write updates)

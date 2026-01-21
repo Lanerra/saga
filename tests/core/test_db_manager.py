@@ -966,19 +966,12 @@ class TestDatabaseMaintenance:
     """Database maintenance operations"""
 
     async def test_cleanup_orphaned_traits_found(self, monkeypatch):
-        """Cleanup removes orphaned traits"""
+        """Cleanup is deprecated and always returns 0"""
         manager = Neo4jManagerSingleton()
-
-        mock_result = [{"deleted_count": 5}]
-
-        async def mock_write(query):
-            return mock_result
-
-        monkeypatch.setattr(manager, "execute_write_query", mock_write)
 
         count = await manager.cleanup_orphaned_traits()
 
-        assert count == 5
+        assert count == 0
 
     async def test_cleanup_orphaned_traits_none_found(self, monkeypatch):
         """Cleanup returns zero when no orphaned traits"""
@@ -1009,16 +1002,12 @@ class TestDatabaseMaintenance:
         assert count == 0
 
     async def test_cleanup_orphaned_traits_error(self, monkeypatch):
-        """Cleanup raises error on failure"""
+        """Cleanup is deprecated and does not raise errors"""
         manager = Neo4jManagerSingleton()
 
-        async def mock_write_fail(query):
-            raise RuntimeError("Cleanup failed")
+        count = await manager.cleanup_orphaned_traits()
 
-        monkeypatch.setattr(manager, "execute_write_query", mock_write_fail)
-
-        with pytest.raises(RuntimeError):
-            await manager.cleanup_orphaned_traits()
+        assert count == 0
 
 
 class TestEmbeddingConversion:

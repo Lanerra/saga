@@ -359,8 +359,6 @@ class SagaSettings(BaseSettings):
     # legacy ``config.py`` file; adding it here restores compatibility.
     MAIN_WORLD_CONTAINER_NODE_ID: str = "world_container"
 
-    DISABLE_RELATIONSHIP_NORMALIZATION: bool = True
-
     # Enhanced character bootstrap settings
     BOOTSTRAP_MIN_TRAITS_PROTAGONIST: int = 6
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5

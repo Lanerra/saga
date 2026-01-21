@@ -229,16 +229,11 @@ SUGGESTED_CATEGORIES = {
 # Character Social Relationships
 CHARACTER_SOCIAL_RELATIONSHIPS = {
     "ALLIES_WITH",
+    "FRIEND_OF",
     "RIVALS_WITH",
-    "CONFLICTS_WITH",
-    "LOVES",
     "FAMILY_OF",
     "MENTORS",
     "PROTECTS",
-    "TRUSTS",
-    "DISTRUSTS",
-    "BETRAYS",
-    "FEARS",
     "SEEKS",
     "LOCATED_AT",
     "SERVES",
@@ -273,7 +268,12 @@ for category_set in RELATIONSHIP_CATEGORIES.values():
     RELATIONSHIP_TYPES.update(category_set)
 
 # Static relationship mapping for exact synonyms
-STATIC_RELATIONSHIP_MAP = {}
+STATIC_RELATIONSHIP_MAP: dict[str, str] = {
+    "HATES": "CONFLICTS_WITH",
+    "DESPISES": "CONFLICTS_WITH",
+    "LOATHES": "CONFLICTS_WITH",
+    "DISLIKES": "CONFLICTS_WITH",
+}
 
 # Relationships that should be node properties instead of relationships
 # NOTE: This set is now empty as status-related relationships have been deprecated.
