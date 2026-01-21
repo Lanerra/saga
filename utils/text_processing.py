@@ -541,7 +541,7 @@ async def find_quote_and_sentence_offsets_with_spacy(doc_text: str, quote_text_f
         original_doc=doc_text,
         query_text=quote_text_from_llm,
         segment_type="sentence",
-        min_similarity_threshold=0.65,
+        min_similarity_threshold=0.6,
     )
 
     if semantic_sentence_match:

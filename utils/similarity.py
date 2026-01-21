@@ -76,7 +76,7 @@ async def find_semantically_closest_segment(
     original_doc: str,
     query_text: str,
     segment_type: str = "paragraph",
-    min_similarity_threshold: float = 0.55,
+    min_similarity_threshold: float = 0.45,
 ) -> tuple[int, int, float] | None:
     """Find the document segment most semantically similar to ``query_text``."""
     if not original_doc or not query_text:

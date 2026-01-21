@@ -114,7 +114,7 @@ class SpacyService:
             logger.error("extract_entities failed: %s", e, exc_info=True)
             return []
 
-    def verify_entity_presence(self, text: str, entity_name: str, threshold: float = 0.7) -> bool:
+    def verify_entity_presence(self, text: str, entity_name: str, threshold: float = 0.75) -> bool:
         """Verify if an entity is present in the text using fuzzy matching.
 
         This method handles various forms of entity mentions including:
@@ -126,7 +126,7 @@ class SpacyService:
         Args:
             text: The source text to search in.
             entity_name: The entity name to verify.
-            threshold: Similarity threshold (0.0 to 1.0). Default 0.7.
+            threshold: Similarity threshold (0.0 to 1.0). Default 0.75.
                        Note: Updated logic checks for ANY significant token presence,
                        effectively behaving as a loose match for multi-word entities.
 

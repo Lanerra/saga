@@ -100,7 +100,7 @@ class RelationshipNormalizationSettings(BaseSettings):
 
     # Legacy similarity thresholds (for backward compatibility)
     SIMILARITY_THRESHOLD: float = Field(
-        default=0.85,
+        default=0.75,
         ge=0.0,
         le=1.0,
         description="Cosine similarity threshold for normalizing relationships",
