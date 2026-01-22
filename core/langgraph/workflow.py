@@ -350,6 +350,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     from core.langgraph.initialization import (
         commit_initialization_to_graph,
+        extract_outline_relationships,
         generate_act_outlines,
         generate_chapter_outline,
         generate_character_sheets,
@@ -390,6 +391,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("init_character_sheets", generate_character_sheets)
     workflow.add_node("init_global_outline", generate_global_outline)
     workflow.add_node("init_act_outlines", generate_act_outlines)
+    workflow.add_node("init_outline_relationships", extract_outline_relationships)
     workflow.add_node("init_commit_to_graph", commit_initialization_to_graph)
     workflow.add_node("init_persist_files", persist_initialization_files)
 
@@ -466,6 +468,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     )
     workflow.add_conditional_edges(
         "init_act_outlines",
+        should_continue_init,
+        {
+            "continue": "init_outline_relationships",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_outline_relationships",
         should_continue_init,
         {
             "continue": "init_commit_to_graph",

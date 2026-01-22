@@ -60,10 +60,33 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
     character_sheets = get_character_sheets(state, content_manager)
     global_outline = get_global_outline(state, content_manager)
 
+    outline_relationships_ref = state.get("outline_relationships_ref")
+    outline_relationships = []
+    if outline_relationships_ref:
+        logger.info(
+            "commit_initialization_to_graph: loading outline relationships",
+            ref=outline_relationships_ref,
+        )
+        try:
+            outline_relationships = content_manager.load_json(outline_relationships_ref)
+            logger.info(
+                "commit_initialization_to_graph: loaded outline relationships",
+                count=len(outline_relationships),
+            )
+        except Exception as e:
+            logger.warning(
+                "commit_initialization_to_graph: failed to load outline relationships",
+                error=str(e),
+                ref=outline_relationships_ref,
+            )
+    else:
+        logger.warning("commit_initialization_to_graph: no outline_relationships_ref in state")
+
     logger.info(
         "commit_initialization_to_graph: starting initialization data commit",
         characters=len(character_sheets),
         has_global_outline=bool(global_outline),
+        outline_relationships=len(outline_relationships),
     )
 
     if not character_sheets:
@@ -88,10 +111,11 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             )
 
         # Step 3: Commit to Neo4j using direct batch approach
-        if character_profiles or world_items:
+        if character_profiles or world_items or outline_relationships:
             statements = await _build_entity_persistence_statements(
                 character_profiles,
                 world_items,
+                outline_relationships,
                 chapter_number=0,  # Initialization entities exist before any chapters
             )
 
@@ -521,9 +545,89 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
     return items
 
 
+async def _build_outline_relationship_statements(
+    relationships: list[dict[str, Any]],
+    chapter_number: int,
+) -> list[tuple[str, dict]]:
+    """Build Cypher statements to persist outline relationships.
+
+    Args:
+        relationships: List of relationship dicts with keys: source_name, target_name, relationship_type, description.
+        chapter_number: Current chapter for tracking (0 for initialization).
+
+    Returns:
+        List of (cypher_query, parameters) tuples.
+    """
+    import hashlib
+
+    statements: list[tuple[str, dict]] = []
+
+    for rel in relationships:
+        source_name = rel.get("source_name", "")
+        target_name = rel.get("target_name", "")
+        relationship_type = rel.get("relationship_type", "")
+        description = rel.get("description", "")
+        confidence = rel.get("confidence", 0.8)
+
+        if not source_name or not target_name or not relationship_type:
+            logger.warning(
+                "_build_outline_relationship_statements: skipping incomplete relationship",
+                source=source_name,
+                target=target_name,
+                type=relationship_type,
+            )
+            continue
+
+        rel_id_source = f"{relationship_type}|{source_name.strip().lower()}|{target_name.strip().lower()}"
+        rel_id = hashlib.sha1(rel_id_source.encode("utf-8")).hexdigest()[:16]
+
+        cypher = """
+        MATCH (s {name: $source_name})
+        MATCH (t {name: $target_name})
+        WITH s, t
+        WHERE s IS NOT NULL AND t IS NOT NULL
+        CALL apoc.merge.relationship(
+            s,
+            $relationship_type,
+            {id: $rel_id},
+            {
+                chapter_added: $chapter,
+                is_provisional: false,
+                confidence: $confidence,
+                description: $description,
+                created_ts: timestamp(),
+                updated_ts: timestamp()
+            },
+            t,
+            {}
+        ) YIELD rel
+        RETURN rel
+        """
+
+        params = {
+            "source_name": source_name,
+            "target_name": target_name,
+            "relationship_type": relationship_type,
+            "rel_id": rel_id,
+            "chapter": chapter_number,
+            "confidence": confidence,
+            "description": description,
+        }
+
+        statements.append((cypher, params))
+
+    logger.info(
+        "_build_outline_relationship_statements: built relationship statements",
+        count=len(statements),
+    )
+
+    return statements
+
+
 async def _build_entity_persistence_statements(
     characters: list[CharacterProfile],
     world_items: list[WorldItem],
+    outline_relationships: list[dict[str, Any]],
     chapter_number: int,
 ) -> list[tuple[str, dict]]:
     """
@@ -535,6 +639,7 @@ async def _build_entity_persistence_statements(
     Args:
         characters: List of CharacterProfile models
         world_items: List of WorldItem models
+        outline_relationships: List of relationship dicts from outline extraction
         chapter_number: Current chapter for tracking (0 for initialization)
 
     Returns:
@@ -552,6 +657,13 @@ async def _build_entity_persistence_statements(
         cypher, params = cypher_builder.world_item_upsert_cypher(item, chapter_number)
         statements.append((cypher, params))
 
+    if outline_relationships:
+        relationship_statements = await _build_outline_relationship_statements(
+            outline_relationships,
+            chapter_number,
+        )
+        statements.extend(relationship_statements)
+
     embedding_statements_count = 0
     if config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE:
         from core.entity_embedding_service import build_entity_embedding_update_statements
@@ -567,6 +679,7 @@ async def _build_entity_persistence_statements(
         "_build_entity_persistence_statements: built statements",
         characters=len(characters),
         world_items=len(world_items),
+        outline_relationships=len(outline_relationships),
         embedding_statements=embedding_statements_count,
         total_statements=len(statements),
     )

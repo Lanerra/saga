@@ -19,6 +19,9 @@ from core.langgraph.initialization.commit_init_node import (
     commit_initialization_to_graph,
 )
 from core.langgraph.initialization.global_outline_node import generate_global_outline
+from core.langgraph.initialization.outline_relationships_node import (
+    extract_outline_relationships,
+)
 from core.langgraph.initialization.persist_files_node import (
     persist_initialization_files,
 )
@@ -27,6 +30,7 @@ __all__ = [
     "generate_character_sheets",
     "generate_global_outline",
     "generate_act_outlines",
+    "extract_outline_relationships",
     "generate_chapter_outline",
     "commit_initialization_to_graph",
     "persist_initialization_files",

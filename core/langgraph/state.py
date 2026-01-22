@@ -266,6 +266,7 @@ class NarrativeState(TypedDict, total=False):
     character_sheets_ref: ContentRef | None  # Reference to externalized character sheets
     global_outline_ref: ContentRef | None  # Reference to externalized global outline
     act_outlines_ref: ContentRef | None  # Reference to externalized act outlines
+    outline_relationships_ref: ContentRef | None  # Reference to externalized outline relationships
     chapter_outlines_ref: ContentRef | None  # Reference to externalized chapter outlines
 
     # Initialization state tracking
@@ -377,6 +378,7 @@ def create_initial_state(
         "character_sheets_ref": None,
         "global_outline_ref": None,
         "act_outlines_ref": None,
+        "outline_relationships_ref": None,
         "chapter_outlines_ref": None,
         "extracted_entities_ref": None,
         "extracted_relationships_ref": None,
