@@ -54,7 +54,7 @@ class NativeCypherBuilder:
         """
         cypher = """
         MERGE (c:Character {name: $name})
-        SET c.description = $description,
+        SET c.personality_description = $description,
             c.status = $status,
             c.id = CASE WHEN c.id IS NULL OR c.id = '' THEN $id ELSE c.id END,
             c.created_chapter = CASE
@@ -144,7 +144,7 @@ class NativeCypherBuilder:
 
         params = {
             "name": char.name,
-            "description": char.description,
+            "description": char.personality_description,
             "trait_data": trait_data,  # List of trait names for UNWIND
             "status": char.status,
             # Stable deterministic ID for characters (assigned once)

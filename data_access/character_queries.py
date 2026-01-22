@@ -476,7 +476,7 @@ async def get_character_info_for_snippet_from_db(
             END
         ) AS provisional_rel_count
 
-    RETURN c.description AS description,
+    RETURN c.personality_description AS description,
            c.status AS current_status,
            c.is_provisional AS char_is_provisional,
            provisional_rel_count
@@ -533,9 +533,9 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
     """
     query = """
     MATCH (c:Character)
-    WHERE c.description STARTS WITH 'Auto-created via relationship'
-       OR c.description IS NULL
-       OR c.description = ''
+    WHERE c.personality_description STARTS WITH 'Auto-created via relationship'
+       OR c.personality_description IS NULL
+       OR c.personality_description = ''
     RETURN c.name AS name
     LIMIT 20 // Limit to avoid overwhelming the LLM in one cycle
     """

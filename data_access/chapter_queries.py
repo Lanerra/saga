@@ -38,6 +38,8 @@ def compute_chapter_id(chapter_number: int, *, novel_id: str | None = None) -> s
 def build_chapter_upsert_statement(
     *,
     chapter_number: int,
+    title: str | None = None,
+    act_number: int | None = None,
     summary: str | None = None,
     embedding_vector: list[float] | None = None,
     is_provisional: bool | None = None,
@@ -47,6 +49,8 @@ def build_chapter_upsert_statement(
 
     Args:
         chapter_number: Chapter number (unique).
+        title: Chapter title to set. When None, the title field is not modified.
+        act_number: Act number to set. When None, the act_number field is not modified.
         summary: Summary to set. When None, the summary field is not modified.
         embedding_vector: Embedding vector to set. When None, the embedding field is not
             modified.
@@ -71,6 +75,9 @@ def build_chapter_upsert_statement(
         c.created_ts = timestamp()
     SET
         c.id = coalesce(c.id, $chapter_id_param),
+        c.title = coalesce(c.title, $title_param),
+        c.act_number = coalesce(c.act_number, $act_number_param),
+        c.created_chapter = $chapter_number_param,
         c.last_updated = timestamp()
 
     FOREACH (_ IN CASE WHEN $summary_param IS NULL THEN [] ELSE [1] END |
@@ -89,6 +96,8 @@ def build_chapter_upsert_statement(
     parameters = {
         "chapter_number_param": int(chapter_number),
         "chapter_id_param": chapter_id,
+        "title_param": title,
+        "act_number_param": act_number,
         "summary_param": summary,
         "is_provisional_param": is_provisional,
         "embedding_vector_param": embedding_vector,
@@ -119,14 +128,18 @@ async def load_chapter_count_from_db() -> int:
 
 async def save_chapter_data_to_db(
     chapter_number: int,
-    summary: str | None,
-    embedding_array: np.ndarray | None,
+    title: str | None = None,
+    act_number: int | None = None,
+    summary: str | None = None,
+    embedding_array: np.ndarray | None = None,
     is_provisional: bool = False,
 ) -> None:
     """Persist Chapter metadata using canonical Chapter persistence semantics.
 
     Args:
         chapter_number: Chapter number to persist.
+        title: Chapter title to set. When None, title is not modified.
+        act_number: Act number to set. When None, act_number is not modified.
         summary: Summary to set. When None, summary is not modified.
         embedding_array: Embedding vector to set. When None, embedding is not modified.
         is_provisional: Whether the chapter should be marked provisional.
@@ -150,6 +163,8 @@ async def save_chapter_data_to_db(
 
     query, parameters = build_chapter_upsert_statement(
         chapter_number=chapter_number,
+        title=title,
+        act_number=act_number,
         summary=summary,
         embedding_vector=embedding_list,
         is_provisional=is_provisional,

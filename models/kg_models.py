@@ -42,13 +42,25 @@ class CharacterProfile(BaseModel):
 
     name: str
     type: str = "Character"
-    description: str = ""
+    # Phase 1: Rename description to personality_description
+    personality_description: str = ""
     traits: list[str] = Field(default_factory=list)
     relationships: dict[str, Any] = Field(default_factory=dict)
     status: str = "Unknown"
-    updates: dict[str, Any] = Field(default_factory=dict)
+    # Phase 1: Add physical_description
+    physical_description: str | None = None
+    # Phase 1: Add arc properties (Stage 2)
+    arc_start: str | None = None
+    arc_end: str | None = None
+    arc_key_moments: list[str] = Field(default_factory=list)
+    # Phase 1: Add timestamps
+    created_ts: int | None = None  # Neo4j timestamp
+    updated_ts: int | None = None  # Neo4j timestamp
+    # Phase 1: Keep last_updated for backward compatibility
+    last_updated: int | None = None  # Deprecated, use updated_ts
     created_chapter: int = 0
     is_provisional: bool = False
+    updates: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> CharacterProfile:
@@ -67,6 +79,11 @@ class CharacterProfile(BaseModel):
 
         known_fields = cls.model_fields.keys()
         profile_data = {k: v for k, v in data.items() if k in known_fields}
+        
+        # Phase 1: Handle backward compatibility for description -> personality_description
+        if "description" in data and "personality_description" not in data:
+            profile_data["personality_description"] = data["description"]
+        
         updates_data = {k: v for k, v in data.items() if k not in known_fields}
         if "updates" in profile_data:
             updates_data.update(profile_data["updates"])
@@ -122,9 +139,12 @@ class CharacterProfile(BaseModel):
         # Filter out None/empty values
         traits = [t for t in traits if t]
 
+        # Phase 1: Handle backward compatibility for description -> personality_description
+        personality_description = node_dict.get("personality_description", node_dict.get("description", ""))
+
         return cls(
             name=node_dict.get("name", ""),
-            description=node_dict.get("description", ""),
+            personality_description=personality_description,
             traits=traits,
             status=node_dict.get("status", "Unknown"),
             relationships=relationships,
@@ -159,9 +179,13 @@ class CharacterProfile(BaseModel):
             A populated character profile.
         """
         node_dict = node if isinstance(node, dict) else dict(node)
+        
+        # Phase 1: Handle backward compatibility for description -> personality_description
+        personality_description = node_dict.get("personality_description", node_dict.get("description", ""))
+        
         return cls(
             name=node_dict.get("name", ""),
-            description=node_dict.get("description", ""),
+            personality_description=personality_description,
             traits=node_dict.get("traits", []),
             status=node_dict.get("status", "Unknown"),
             relationships={},  # Relationships handled separately
@@ -181,7 +205,7 @@ class CharacterProfile(BaseModel):
         """
         return {
             "name": self.name,
-            "description": self.description,
+            "personality_description": self.personality_description,
             "traits": self.traits,
             "status": self.status,
             "created_chapter": self.created_chapter,
@@ -474,6 +498,138 @@ class WorldItem(BaseModel):
 from dataclasses import dataclass, field
 
 
+class Scene(BaseModel):
+    """Represent a narrative scene within a chapter.
+
+    Notes:
+        - `id` is the stable identifier used for read-by-id operations and upserts.
+        - `chapter_number` and `scene_index` together form a unique identifier for the scene.
+        - `beats` is a list of key moments in the scene (1-3 items typically).
+    """
+
+    id: str
+    chapter_number: int
+    scene_index: int
+    title: str
+    pov_character: str
+    setting: str
+    plot_point: str
+    conflict: str
+    outcome: str
+    beats: list[str] = Field(default_factory=list)
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Scene:
+        """Create a scene from a raw dictionary.
+
+        Args:
+            data: Source mapping containing scene properties.
+
+        Returns:
+            A populated scene instance.
+        """
+        return cls(
+            id=data.get("id", ""),
+            chapter_number=data.get("chapter_number", 0),
+            scene_index=data.get("scene_index", 0),
+            title=data.get("title", ""),
+            pov_character=data.get("pov_character", ""),
+            setting=data.get("setting", ""),
+            plot_point=data.get("plot_point", ""),
+            conflict=data.get("conflict", ""),
+            outcome=data.get("outcome", ""),
+            beats=data.get("beats", []),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the scene to a dictionary.
+
+        Returns:
+            A dictionary suitable for JSON serialization.
+        """
+        return {
+            "id": self.id,
+            "chapter_number": self.chapter_number,
+            "scene_index": self.scene_index,
+            "title": self.title,
+            "pov_character": self.pov_character,
+            "setting": self.setting,
+            "plot_point": self.plot_point,
+            "conflict": self.conflict,
+            "outcome": self.outcome,
+            "beats": self.beats,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
+class Location(BaseModel):
+    """Represent a physical location where events occur.
+
+    Notes:
+        - `id` is the stable identifier used for read-by-id operations and upserts.
+        - `name` is the location name (added in Stage 3).
+        - `category` is always "Location" (constant).
+    """
+
+    id: str
+    name: str | None = None
+    description: str
+    category: str = "Location"
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Location:
+        """Create a location from a raw dictionary.
+
+        Args:
+            data: Source mapping containing location properties.
+
+        Returns:
+            A populated location instance.
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name"),
+            description=data.get("description", ""),
+            category=data.get("category", "Location"),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the location to a dictionary.
+
+        Returns:
+            A dictionary suitable for JSON serialization.
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
 @dataclass
 class RelationshipUsage:
     """Track narrative usage statistics for a relationship type.
@@ -541,5 +697,7 @@ class RelationshipUsage:
 __all__ = [
     "CharacterProfile",
     "WorldItem",
+    "Scene",
+    "Location",
     "RelationshipUsage",
 ]
