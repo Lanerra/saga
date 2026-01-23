@@ -572,7 +572,7 @@ def _convert_to_character_profiles(
         profiles.append(
             CharacterProfile(
                 name=final_name,
-                description=entity.description,
+                personality_description=entity.description,
                 traits=traits,
                 status=status if isinstance(status, str) else "Unknown",
                 relationships=relationships,
@@ -1205,16 +1205,14 @@ async def _build_relationship_statements(
                     confidence: $confidence,
                     description: $description,
                     created_ts: timestamp(),
-                    updated_ts: timestamp(),
-                    last_updated: timestamp()
+                    updated_ts: timestamp()
                 },
                 o,
                 {
                     is_provisional: $is_provisional,
                     confidence: $confidence,
                     description: $description,
-                    updated_ts: timestamp(),
-                    last_updated: timestamp()
+                    updated_ts: timestamp()
                 }
             ) YIELD rel
             RETURN rel

@@ -21,10 +21,14 @@ from typing import Any
 import structlog
 from pydantic import BaseModel, Field
 
+import config
 from core.db_manager import neo4j_manager
 from core.exceptions import DatabaseError
+from core.llm_interface_refactored import llm_service
 from models.kg_models import CharacterProfile, Location, WorldItem
-from utils.common import try_load_json_from_response
+from processing.entity_deduplication import generate_entity_id
+from prompts.prompt_renderer import get_system_prompt, render_prompt
+from utils.common import ensure_exact_keys, try_load_json_from_response
 
 logger = structlog.get_logger(__name__)
 
@@ -200,8 +204,10 @@ class GlobalOutlineParser:
 
         return plot_points
 
-    def _parse_locations(self, global_outline_data: dict[str, Any]) -> list[Location]:
+    async def _parse_locations(self, global_outline_data: dict[str, Any]) -> list[Location]:
         """Parse locations from global outline data.
+
+        Extracts locations from narrative text using LLM-based extraction.
 
         Args:
             global_outline_data: Parsed global outline data
@@ -209,43 +215,29 @@ class GlobalOutlineParser:
         Returns:
             List of Location instances
         """
-        locations = []
+        world_items = await self._extract_world_items_from_outline(global_outline_data)
 
-        # Check if locations are in the global outline
-        # They might be in acts or as a separate list
-        if "locations" in global_outline_data:
-            for location_data in global_outline_data["locations"]:
+        locations = []
+        for item in world_items:
+            if item.category == "location":
                 location = Location(
-                    id=self._generate_event_id(location_data.get("name", ""), 0),
-                    name=None,  # Names added in Stage 3
-                    description=location_data.get("description", ""),
+                    id=item.id,
+                    name=None,
+                    description=item.description,
                     category="Location",
                     created_chapter=0,
                     is_provisional=False,
-                    created_ts=location_data.get("created_ts"),
-                    updated_ts=location_data.get("updated_ts"),
+                    created_ts=item.created_ts,
+                    updated_ts=item.updated_ts,
                 )
                 locations.append(location)
 
-        # Also check acts for location data
-        if "acts" in global_outline_data:
-            for act in global_outline_data["acts"]:
-                if "locations" in act:
-                    for location_data in act["locations"]:
-                        location = Location(
-                            id=self._generate_event_id(location_data.get("name", ""), 0),
-                            name=None,  # Names added in Stage 3
-                            description=location_data.get("description", ""),
-                            category="Location",
-                            created_chapter=0,
-                            is_provisional=False,
-                        )
-                        locations.append(location)
-
         return locations
 
-    def _parse_items(self, global_outline_data: dict[str, Any]) -> list[WorldItem]:
+    async def _parse_items(self, global_outline_data: dict[str, Any]) -> list[WorldItem]:
         """Parse items from global outline data.
+
+        Extracts items (objects) from narrative text using LLM-based extraction.
 
         Args:
             global_outline_data: Parsed global outline data
@@ -253,37 +245,12 @@ class GlobalOutlineParser:
         Returns:
             List of WorldItem instances
         """
+        world_items = await self._extract_world_items_from_outline(global_outline_data)
+
         items = []
-
-        # Check if items are in the global outline
-        if "items" in global_outline_data:
-            for item_data in global_outline_data["items"]:
-                item = WorldItem(
-                    id=self._generate_event_id(item_data.get("name", ""), 0),
-                    name=item_data.get("name", ""),
-                    description=item_data.get("description", ""),
-                    category=item_data.get("category", "Item"),
-                    created_chapter=0,
-                    is_provisional=False,
-                    created_ts=item_data.get("created_ts"),
-                    updated_ts=item_data.get("updated_ts"),
-                )
+        for item in world_items:
+            if item.category == "object":
                 items.append(item)
-
-        # Also check acts for item data
-        if "acts" in global_outline_data:
-            for act in global_outline_data["acts"]:
-                if "items" in act:
-                    for item_data in act["items"]:
-                        item = WorldItem(
-                            id=self._generate_event_id(item_data.get("name", ""), 0),
-                            name=item_data.get("name", ""),
-                            description=item_data.get("description", ""),
-                            category=item_data.get("category", "Item"),
-                            created_chapter=0,
-                            is_provisional=False,
-                        )
-                        items.append(item)
 
         return items
 
@@ -311,6 +278,128 @@ class GlobalOutlineParser:
                 }
 
         return character_arcs
+
+    async def _extract_world_items_from_outline(self, global_outline_data: dict[str, Any]) -> list[WorldItem]:
+        """Extract world items (locations and objects) from global outline using LLM.
+
+        This method extracts locations and items from the narrative text in the global outline
+        using LLM-based entity extraction.
+
+        Args:
+            global_outline_data: Parsed global outline data
+
+        Returns:
+            List of WorldItem instances (with category="location" or category="object")
+        """
+        outline_text = global_outline_data.get("raw_text", "")
+        if not outline_text:
+            outline_text = json.dumps(global_outline_data, indent=2)
+
+        prompt = render_prompt(
+            "knowledge_agent/extract_world_items_lines.j2",
+            {
+                "setting": global_outline_data.get("setting", ""),
+                "outline_text": outline_text,
+            },
+        )
+
+        for attempt in range(1, 3):
+            try:
+                response, _ = await llm_service.async_call_llm(
+                    model_name=config.NARRATIVE_MODEL,
+                    prompt=prompt,
+                    temperature=0.5,
+                    max_tokens=config.MAX_GENERATION_TOKENS,
+                    allow_fallback=True,
+                    auto_clean_response=True,
+                    system_prompt=get_system_prompt("knowledge_agent"),
+                )
+
+                return self._parse_world_items_extraction(response)
+            except (json.JSONDecodeError, ValueError) as e:
+                if attempt == 2:
+                    logger.warning(
+                        "Failed to extract world items after %d attempts: %s",
+                        attempt,
+                        str(e),
+                        exc_info=True
+                    )
+                    return []
+
+        return []
+
+    def _parse_world_items_extraction(self, response: str) -> list[WorldItem]:
+        """Parse LLM response into WorldItem models.
+
+        Args:
+            response: LLM response (JSON array)
+
+        Returns:
+            List of WorldItem models
+
+        Raises:
+            ValueError: If the output violates the JSON/schema contract
+        """
+        raw_text = response.strip()
+
+        data = try_load_json_from_response(raw_text)
+
+        if not isinstance(data, list):
+            raise ValueError("World items extraction must be a JSON array")
+
+        items: list[WorldItem] = []
+        allowed_categories = {"location", "object"}
+
+        for index, item in enumerate(data):
+            if not isinstance(item, dict):
+                raise ValueError(f"World item at index {index} must be a JSON object")
+
+            required_keys = {"name", "category", "description"}
+            missing_keys = required_keys - set(item.keys())
+            if missing_keys:
+                logger.warning(
+                    "World item at index %d missing required keys: %s",
+                    index,
+                    missing_keys
+                )
+                continue
+
+            name = item["name"]
+            category = item["category"]
+            description = item["description"]
+
+            if not isinstance(name, str) or not name.strip():
+                logger.warning("World item at index %d has invalid name", index)
+                continue
+            if not isinstance(category, str) or category not in allowed_categories:
+                logger.warning(
+                    "World item at index %d has invalid category: %s (expected one of %s)",
+                    index,
+                    category,
+                    sorted(allowed_categories)
+                )
+                continue
+            if not isinstance(description, str) or not description.strip():
+                logger.warning("World item at index %d has invalid description", index)
+                continue
+
+            items.append(
+                WorldItem(
+                    id=generate_entity_id(name.strip(), category, chapter=0),
+                    name=name.strip(),
+                    description=description.strip(),
+                    category=category,
+                    created_chapter=0,
+                    is_provisional=False,
+                )
+            )
+
+        logger.info(
+            "_parse_world_items_extraction: extracted world items",
+            count=len(items),
+        )
+
+        return items
 
     async def create_major_plot_point_nodes(self, plot_points: list[MajorPlotPoint]) -> bool:
         """Create MajorPlotPoint Event nodes in Neo4j.
@@ -569,7 +658,7 @@ class GlobalOutlineParser:
 
             # Step 3: Parse locations
             logger.info("Parsing locations from global outline")
-            locations = self._parse_locations(global_outline_data)
+            locations = await self._parse_locations(global_outline_data)
 
             if not locations:
                 logger.warning("No locations found in global outline")
@@ -578,7 +667,7 @@ class GlobalOutlineParser:
 
             # Step 4: Parse items
             logger.info("Parsing items from global outline")
-            items = self._parse_items(global_outline_data)
+            items = await self._parse_items(global_outline_data)
 
             if not items:
                 logger.warning("No items found in global outline")

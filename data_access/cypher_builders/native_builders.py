@@ -63,7 +63,7 @@ class NativeCypherBuilder:
             END,
             c.is_provisional = $is_provisional,
             c.chapter_last_updated = $chapter_number,
-            c.last_updated = timestamp()
+            c.updated_ts = timestamp()
 
         // Handle traits as a node property
         SET c.traits = $trait_data
@@ -81,7 +81,8 @@ class NativeCypherBuilder:
                 other.created_chapter = $chapter_number,
                 other.id = randomUUID(),
                 other.description = 'Character created from relationship. Details to be developed.',
-                other.status = 'Unknown'
+                other.status = 'Unknown',
+                other.updated_ts = timestamp()
 
             // Use apoc.merge.relationship to create relationships with dynamic types
             // This allows proper semantic relationship types (KNOWS, LOVES, etc.) instead of generic RELATIONSHIP
@@ -92,7 +93,7 @@ class NativeCypherBuilder:
                 {},
                 {
                     description: rel_data.description,
-                    last_updated: timestamp(),
+                    updated_ts: timestamp(),
                     chapter_added: $chapter_number,
 
                     // P1.7: Ensure builder-created relationships are visible to profile reads
@@ -105,7 +106,7 @@ class NativeCypherBuilder:
                 other
             ) YIELD rel
             SET rel.description = rel_data.description,
-                rel.last_updated = timestamp(),
+                rel.updated_ts = timestamp(),
                 rel.source_profile_managed = true,
                 rel.type = rel_data.rel_type
         }
@@ -212,7 +213,7 @@ class NativeCypherBuilder:
             w.created_chapter = $created_chapter,
             w.is_provisional = $is_provisional,
             w.chapter_last_updated = $chapter_number,
-            w.last_updated = timestamp(),
+            w.updated_ts = timestamp(),
             w.created_at = timestamp()
         ON MATCH SET
             w.name = $name,
@@ -223,7 +224,7 @@ class NativeCypherBuilder:
             w.key_elements = $key_elements,
             w.is_provisional = $is_provisional,
             w.chapter_last_updated = $chapter_number,
-            w.last_updated = timestamp()
+            w.updated_ts = timestamp()
         WITH w
         SET w += $additional_props
 
@@ -273,11 +274,11 @@ class NativeCypherBuilder:
                 w,
                 rel_data.rel_type,
                 {{}},
-                {{description: rel_data.description, last_updated: timestamp(), chapter_added: $chapter_number}},
+                {{description: rel_data.description, updated_ts: timestamp(), chapter_added: $chapter_number}},
                 other
             ) YIELD rel
             SET rel.description = rel_data.description,
-                rel.last_updated = timestamp()
+                rel.updated_ts = timestamp()
         }}
 
         RETURN w.id as updated_world_item

@@ -726,7 +726,7 @@ async def merge_duplicate_entities(
             }
 
             SET canonical.deduplication_merged_from = coalesce(canonical.deduplication_merged_from, []) + [$duplicate],
-                canonical.last_updated = timestamp()
+                canonical.updated_ts = timestamp()
 
             DETACH DELETE duplicate
 
@@ -786,7 +786,7 @@ async def merge_duplicate_entities(
             }
 
             SET canonical.deduplication_merged_from = coalesce(canonical.deduplication_merged_from, []) + [$duplicate],
-                canonical.last_updated = timestamp()
+                canonical.updated_ts = timestamp()
 
             DETACH DELETE duplicate
 

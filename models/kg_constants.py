@@ -49,7 +49,7 @@ WORLD_ITEM_LEGACY_LABELS: tuple[str, ...] = (
 # Contract (SAGA labeling strategy):
 # - Node labels are a strict schema surface. Application code MUST NOT create arbitrary
 #   new labels in the graph (prevents schema drift / index & constraint mismatch).
-# - The canonical domain label set is the 9 labels below.
+# - The canonical domain label set is the 6 labels below.
 # - Subtypes (e.g., Faction, Settlement, Artifact, PlotPoint) MUST be represented via
 #   properties (typically `category`), not as Neo4j node labels.
 VALID_NODE_LABELS = {
@@ -58,6 +58,7 @@ VALID_NODE_LABELS = {
     "Event",
     "Item",
     "Chapter",
+    "Scene",
 }
 
 # Map common variations / legacy labels / subtype "types" to canonical labels.
@@ -305,6 +306,7 @@ EVENT_TEMPORAL_RELATIONSHIPS = {
     "OCCURS_DURING",
     "CAUSES_EVENT",
     "INTERRUPTS",
+    "PART_OF",
 }
 
 # Location ↔ Location Relationships (Spatial)
@@ -323,6 +325,26 @@ LOCATION_ITEM_RELATIONSHIPS = {
     "REQUIRES_ITEM",
 }
 
+# Scene ↔ Scene Relationships (Sequential)
+SCENE_SEQUENTIAL_RELATIONSHIPS = {
+    "FOLLOWS",
+}
+
+# Scene ↔ Chapter Relationships (Structural)
+SCENE_CHAPTER_RELATIONSHIPS = {
+    "PART_OF",
+}
+
+# Scene ↔ Event Relationships
+SCENE_EVENT_RELATIONSHIPS = {
+    "OCCURS_IN_SCENE",
+}
+
+# Scene ↔ Location Relationships
+SCENE_LOCATION_RELATIONSHIPS = {
+    "OCCURS_AT",
+}
+
 # Relationship category mapping for validation and normalization
 # Generated programmatically from the category sets above
 RELATIONSHIP_CATEGORIES = {
@@ -336,6 +358,10 @@ RELATIONSHIP_CATEGORIES = {
     "event_temporal": EVENT_TEMPORAL_RELATIONSHIPS,
     "location_spatial": LOCATION_SPATIAL_RELATIONSHIPS,
     "location_item": LOCATION_ITEM_RELATIONSHIPS,
+    "scene_sequential": SCENE_SEQUENTIAL_RELATIONSHIPS,
+    "scene_chapter": SCENE_CHAPTER_RELATIONSHIPS,
+    "scene_event": SCENE_EVENT_RELATIONSHIPS,
+    "scene_location": SCENE_LOCATION_RELATIONSHIPS,
 }
 
 # Combine all relationship categories into a single set

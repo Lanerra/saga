@@ -78,7 +78,7 @@ def build_chapter_upsert_statement(
         c.title = coalesce(c.title, $title_param),
         c.act_number = coalesce(c.act_number, $act_number_param),
         c.created_chapter = $chapter_number_param,
-        c.last_updated = timestamp()
+        c.updated_ts = timestamp()
 
     FOREACH (_ IN CASE WHEN $summary_param IS NULL THEN [] ELSE [1] END |
         SET c.summary = $summary_param

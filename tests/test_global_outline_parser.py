@@ -140,49 +140,71 @@ def test_parse_major_plot_points_missing_data():
         parser._parse_major_plot_points(incomplete_data)
 
 
-def test_parse_locations(sample_global_outline):
-    """Test parsing of locations."""
-    # Add locations to sample data
-    sample_global_outline["locations"] = [
-        {
-            "name": "Castle",
-            "description": "A large medieval castle",
-        },
-        {
-            "name": "Forest",
-            "description": "Dark and mysterious forest",
-        },
-    ]
-    
+@pytest.mark.asyncio
+async def test_parse_locations(sample_global_outline):
+    """Test parsing of locations from narrative text using LLM extraction."""
     parser = GlobalOutlineParser()
-    locations = parser._parse_locations(sample_global_outline)
-    
-    assert len(locations) == 2
-    assert all(loc.name is None for loc in locations)  # Names should be None in Stage 2
-    assert all(loc.category == "Location" for loc in locations)
+
+    with patch.object(parser, '_extract_world_items_from_outline') as mock_extract:
+        from models.kg_models import WorldItem
+        mock_extract.return_value = [
+            WorldItem(
+                id="loc_1",
+                name="Blackwater Creek",
+                description="A small town",
+                category="location",
+                created_chapter=0,
+                is_provisional=False,
+            ),
+            WorldItem(
+                id="item_1",
+                name="Bloodstained doll",
+                description="A creepy doll",
+                category="object",
+                created_chapter=0,
+                is_provisional=False,
+            ),
+        ]
+
+        locations = await parser._parse_locations(sample_global_outline)
+
+        assert len(locations) == 1
+        assert locations[0].name is None
+        assert locations[0].category == "Location"
+        assert "Blackwater Creek" not in locations[0].description
 
 
-def test_parse_items(sample_global_outline):
-    """Test parsing of items."""
-    # Add items to sample data
-    sample_global_outline["items"] = [
-        {
-            "name": "Sword",
-            "description": "A sharp sword",
-            "category": "Weapon",
-        },
-        {
-            "name": "Potion",
-            "description": "Healing potion",
-            "category": "Consumable",
-        },
-    ]
-    
+@pytest.mark.asyncio
+async def test_parse_items(sample_global_outline):
+    """Test parsing of items from narrative text using LLM extraction."""
     parser = GlobalOutlineParser()
-    items = parser._parse_items(sample_global_outline)
-    
-    assert len(items) == 2
-    assert all(item.category in ["Weapon", "Consumable"] for item in items)
+
+    with patch.object(parser, '_extract_world_items_from_outline') as mock_extract:
+        from models.kg_models import WorldItem
+        mock_extract.return_value = [
+            WorldItem(
+                id="loc_1",
+                name="Blackwater Creek",
+                description="A small town",
+                category="location",
+                created_chapter=0,
+                is_provisional=False,
+            ),
+            WorldItem(
+                id="item_1",
+                name="Bloodstained doll",
+                description="A creepy doll",
+                category="object",
+                created_chapter=0,
+                is_provisional=False,
+            ),
+        ]
+
+        items = await parser._parse_items(sample_global_outline)
+
+        assert len(items) == 1
+        assert items[0].category == "object"
+        assert items[0].name == "Bloodstained doll"
 
 
 def test_parse_character_arcs(sample_global_outline):
@@ -317,13 +339,16 @@ async def test_enrich_character_arcs_failure():
 async def test_parse_and_persist_success(mock_global_outline_file):
     """Test successful parse and persist operation."""
     parser = GlobalOutlineParser(global_outline_path=mock_global_outline_file)
-    
-    # Mock all the database operations
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query:
+
+    # Mock all the database operations and LLM extraction
+    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query, \
+         patch.object(parser, '_extract_world_items_from_outline') as mock_extract:
+
         mock_query.return_value = None
-        
+        mock_extract.return_value = []
+
         result = await parser.parse_and_persist()
-        
+
         assert result[0] is True
         assert "Successfully parsed and persisted" in result[1]
 
@@ -332,15 +357,17 @@ async def test_parse_and_persist_success(mock_global_outline_file):
 async def test_parse_and_persist_failure(mock_global_outline_file):
     """Test error handling in parse and persist operation."""
     parser = GlobalOutlineParser(global_outline_path=mock_global_outline_file)
-    
-    # Mock the database manager to raise an exception
-    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query:
+
+    # Mock the database manager to raise an exception and LLM extraction
+    with patch("core.parsers.global_outline_parser.neo4j_manager.execute_write_query") as mock_query, \
+         patch.object(parser, '_extract_world_items_from_outline') as mock_extract:
+
         mock_query.side_effect = Exception("Database error")
-        
+        mock_extract.return_value = []
+
         result = await parser.parse_and_persist()
-        
+
         assert result[0] is False
-        # The error message should contain some indication of failure
         assert "Failed" in result[1] or "Error" in result[1]
 
 

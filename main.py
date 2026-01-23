@@ -8,6 +8,7 @@ import structlog
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import async_llm_context
 from core.logging_config import setup_saga_logging
+from core.parser_runner import run_parser_command
 from core.project_bootstrapper import ProjectBootstrapper
 from core.project_config import NarrativeProjectConfig
 from core.project_manager import ProjectManager
@@ -60,32 +61,66 @@ def main() -> None:
     setup_saga_logging()
 
     parser = argparse.ArgumentParser(description="SAGA - Autonomous Novel Generation")
-    parser.add_argument(
-        "command",
-        nargs="?",
-        help="Story prompt (quick mode) or command: bootstrap/generate",
+    subparsers = parser.add_subparsers(title="Commands", dest="command")
+
+    # Quick mode (default)
+    quick_parser = subparsers.add_parser("quick", help="Quick mode: bootstrap and generate")
+    quick_parser.add_argument("prompt", help="Story premise")
+
+    # Bootstrap mode
+    bootstrap_parser = subparsers.add_parser("bootstrap", help="Bootstrap mode: generate metadata")
+    bootstrap_parser.add_argument("prompt", help="Story premise")
+
+    # Generate mode
+    generate_parser = subparsers.add_parser("generate", help="Generate mode: run novel generation loop")
+    generate_parser.add_argument(
+        "--from-candidate",
+        action="store_true",
+        help="Use candidate config instead of existing project",
     )
-    parser.add_argument(
-        "prompt",
-        nargs="?",
-        help="Story premise for bootstrap mode",
+
+    # Parser mode
+    parser_parser = subparsers.add_parser("parse", help="Parser mode: run parsers independently")
+    parser_parser.add_argument(
+        "--project-dir",
+        "-p",
+        type=str,
+        help="Path to the project directory containing the initialization files",
     )
+    parser_parser.add_argument(
+        "--parser",
+        "-n",
+        type=str,
+        choices=["character_sheets", "global_outline", "act_outlines", "chapter_outlines"],
+        help="Name of the parser to run (optional; if not specified, all parsers are run)",
+    )
+
     arguments = parser.parse_args()
 
     try:
         if arguments.command == "bootstrap":
-            if not arguments.prompt:
-                raise ValueError("Bootstrap mode requires a story premise")
             asyncio.run(run_bootstrap_mode(arguments.prompt, review=True))
         elif arguments.command == "generate":
-            if arguments.prompt:
-                raise ValueError("Generate mode does not accept a prompt argument")
-            asyncio.run(run_generation_mode(from_candidate=True))
+            asyncio.run(run_generation_mode(from_candidate=arguments.from_candidate))
+        elif arguments.command == "quick":
+            asyncio.run(run_quick_mode(arguments.prompt))
+        elif arguments.command == "parse":
+            results = asyncio.run(run_parser_command(arguments.project_dir, arguments.parser))
+            # Print results
+            print("\nParser Results:")
+            print("-" * 50)
+            for parser_name, (success, message) in results.items():
+                status = "✅" if success else "❌"
+                print(f"{status} {parser_name}: {message}")
+            # Check if all parsers succeeded
+            all_successful = all(success for success, _ in results.values())
+            if not all_successful:
+                exit(1)
         elif arguments.command:
-            if arguments.prompt:
-                raise ValueError("Quick mode accepts a single prompt argument")
+            # Handle case where command is a prompt for quick mode
             asyncio.run(run_quick_mode(arguments.command))
         else:
+            # Default to generate mode
             asyncio.run(run_generation_mode(from_candidate=False))
     except KeyboardInterrupt:
         logger.info("SAGA Orchestrator shutting down gracefully due to KeyboardInterrupt...")

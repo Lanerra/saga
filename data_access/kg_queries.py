@@ -1529,7 +1529,7 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
     SET node.merge_reason = $reason,
         node.merge_timestamp = timestamp(),
-        node.last_updated = timestamp(),
+        node.updated_ts = timestamp(),
         node.description =
             CASE
                 WHEN source_description = '' THEN node.description

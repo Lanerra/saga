@@ -225,7 +225,7 @@ async def build_entity_embedding_update_statements(
             SET c.`{vector_property}` = $vector,
                 c.`{text_hash_property}` = $text_hash,
                 c.`{model_property}` = $model,
-                c.last_updated = timestamp()
+                c.updated_ts = timestamp()
             """
             params = {
                 "name": embedding_input["node_key"],
@@ -244,7 +244,7 @@ async def build_entity_embedding_update_statements(
             SET w.`{vector_property}` = $vector,
                 w.`{text_hash_property}` = $text_hash,
                 w.`{model_property}` = $model,
-                w.last_updated = timestamp()
+                w.updated_ts = timestamp()
             """
             params = {
                 "id": embedding_input["node_key"],

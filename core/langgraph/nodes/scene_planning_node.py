@@ -204,7 +204,7 @@ async def _ensure_scene_characters_exist(
     for char_name in new_characters:
         stub = CharacterProfile(
             name=char_name,
-            description=f"Character appearing in chapter {chapter_number}. Role and background to be developed through narrative.",
+            personality_description=f"Character appearing in chapter {chapter_number}. Role and background to be developed through narrative.",
             traits=["to_be_developed"],  # Marker trait for provisional characters
             relationships={},
             status="Active",  # Default to Active so they can participate in scenes

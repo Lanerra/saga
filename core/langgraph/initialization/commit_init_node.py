@@ -234,7 +234,7 @@ async def _parse_character_sheets_to_profiles(
         # Create CharacterProfile model
         profile = CharacterProfile(
             name=name,
-            description=description,
+            personality_description=description,
             traits=traits,
             status=status,
             relationships=relationships,  # Now populated from pre-parsed data

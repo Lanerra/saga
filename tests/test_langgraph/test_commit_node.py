@@ -461,7 +461,7 @@ class TestConvertToCharacterProfiles:
 
         assert len(profiles) == 1
         assert profiles[0].name == "Alice"
-        assert profiles[0].description == "A brave warrior"
+        assert profiles[0].personality_description == "A brave warrior"
         assert profiles[0].created_chapter == 1
         assert profiles[0].traits == ["brave", "loyal", "determined"]
         assert profiles[0].status == "alive"
