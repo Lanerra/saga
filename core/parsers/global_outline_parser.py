@@ -110,6 +110,7 @@ class GlobalOutlineParser:
         """
         self.global_outline_path = global_outline_path
         self.chapter_number = chapter_number
+        self._world_items_cache: list[WorldItem] | None = None
 
     async def parse_global_outline(self) -> dict[str, Any]:
         """Parse global outline from JSON file.
@@ -215,10 +216,11 @@ class GlobalOutlineParser:
         Returns:
             List of Location instances
         """
-        world_items = await self._extract_world_items_from_outline(global_outline_data)
+        if self._world_items_cache is None:
+            self._world_items_cache = await self._extract_world_items_from_outline(global_outline_data)
 
         locations = []
-        for item in world_items:
+        for item in self._world_items_cache:
             if item.category == "location":
                 location = Location(
                     id=item.id,
@@ -245,10 +247,11 @@ class GlobalOutlineParser:
         Returns:
             List of WorldItem instances
         """
-        world_items = await self._extract_world_items_from_outline(global_outline_data)
+        if self._world_items_cache is None:
+            self._world_items_cache = await self._extract_world_items_from_outline(global_outline_data)
 
         items = []
-        for item in world_items:
+        for item in self._world_items_cache:
             if item.category == "object":
                 items.append(item)
 
@@ -342,7 +345,10 @@ class GlobalOutlineParser:
         """
         raw_text = response.strip()
 
-        data = try_load_json_from_response(raw_text)
+        data, candidates_tried, parse_errors = try_load_json_from_response(raw_text)
+
+        if data is None:
+            raise ValueError(f"Failed to parse JSON from response. Errors: {parse_errors}")
 
         if not isinstance(data, list):
             raise ValueError("World items extraction must be a JSON array")
