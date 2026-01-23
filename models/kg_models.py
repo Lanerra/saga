@@ -857,6 +857,166 @@ class ActKeyEvent(BaseModel):
         }
 
 
+class Chapter(BaseModel):
+    """Represent a story chapter.
+    
+    This is a Stage 4 entity that represents a chapter in the story.
+    
+    Attributes:
+        id: Stable identifier (generated)
+        number: Chapter number (1-indexed)
+        title: Chapter title
+        summary: Generated from scene summaries
+        act_number: Act this chapter belongs to (1, 2, or 3)
+        embedding: Vector embedding of chapter content (Stage 5)
+        created_chapter: Same as number (for provenance)
+        is_provisional: Whether created as stub
+        created_ts: Creation timestamp
+        updated_ts: Last update timestamp
+    """
+    
+    id: str
+    number: int
+    title: str
+    summary: str = ""
+    act_number: int
+    embedding: list[float] | None = None
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Chapter:
+        """Create a Chapter from a dictionary.
+        
+        Args:
+            data: Dictionary containing chapter data
+            
+        Returns:
+            Chapter object
+        """
+        return cls(
+            id=data.get("id", ""),
+            number=data.get("number", 0),
+            title=data.get("title", ""),
+            summary=data.get("summary", ""),
+            act_number=data.get("act_number", 0),
+            embedding=data.get("embedding"),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+        
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "number": self.number,
+            "title": self.title,
+            "summary": self.summary,
+            "act_number": self.act_number,
+            "embedding": self.embedding,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
+class SceneEvent(BaseModel):
+    """Represent a scene-level event in the story.
+    
+    This is a Stage 4 entity that represents key events within a scene.
+    
+    Attributes:
+        id: Stable identifier (generated)
+        name: Event name
+        description: Event description
+        event_type: Always "SceneEvent"
+        chapter_number: Chapter number
+        act_number: Act number
+        scene_index: Scene position in chapter
+        conflict: Tension/obstacle
+        outcome: Resolution
+        pov_character: POV character name
+        created_chapter: Chapter when created
+        is_provisional: Whether created as stub
+        created_ts: Creation timestamp
+        updated_ts: Last update timestamp
+    """
+    
+    id: str
+    name: str
+    description: str
+    event_type: str = "SceneEvent"
+    chapter_number: int
+    act_number: int
+    scene_index: int
+    conflict: str
+    outcome: str
+    pov_character: str
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SceneEvent:
+        """Create a SceneEvent from a dictionary.
+        
+        Args:
+            data: Dictionary containing scene event data
+            
+        Returns:
+            SceneEvent object
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            event_type=data.get("event_type", "SceneEvent"),
+            chapter_number=data.get("chapter_number", 0),
+            act_number=data.get("act_number", 0),
+            scene_index=data.get("scene_index", 0),
+            conflict=data.get("conflict", ""),
+            outcome=data.get("outcome", ""),
+            pov_character=data.get("pov_character", ""),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+        
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "event_type": self.event_type,
+            "chapter_number": self.chapter_number,
+            "act_number": self.act_number,
+            "scene_index": self.scene_index,
+            "conflict": self.conflict,
+            "outcome": self.outcome,
+            "pov_character": self.pov_character,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
 __all__ = [
     "CharacterProfile",
     "WorldItem",
@@ -865,4 +1025,6 @@ __all__ = [
     "RelationshipUsage",
     "MajorPlotPoint",
     "ActKeyEvent",
+    "Chapter",
+    "SceneEvent",
 ]

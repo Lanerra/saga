@@ -1,0 +1,309 @@
+# tests/test_chapter_outline_parser.py
+"""Test for ChapterOutlineParser implementation."""
+
+import json
+import tempfile
+import os
+from unittest.mock import AsyncMock, patch, MagicMock
+
+import pytest
+
+from core.parsers import ChapterOutlineParser
+
+
+@pytest.fixture
+def sample_chapter_outline_data():
+    """Create sample chapter outline data for testing."""
+    return {
+        "chapter_number": 1,
+        "act_number": 1,
+        "title": "The Beginning",
+        "summary": "The hero's journey begins",
+        "scenes": [
+            {
+                "scene_index": 0,
+                "title": "Opening Scene",
+                "pov_character": "Hero",
+                "setting": "A dark forest",
+                "plot_point": "The hero enters the forest",
+                "conflict": "Danger lurks",
+                "outcome": "The hero survives",
+                "beats": ["Hero hears rustling", "Shadow appears", "Hero draws weapon"],
+                "events": [
+                    {
+                        "name": "Forest Encounter",
+                        "description": "The hero encounters danger",
+                        "conflict": "Tension builds",
+                        "outcome": "Hero escapes",
+                        "pov_character": "Hero"
+                    }
+                ],
+                "location": {
+                    "name": "Dark Forest",
+                    "description": "A dense, dark forest"
+                }
+            },
+            {
+                "scene_index": 1,
+                "title": "Second Scene",
+                "pov_character": "Hero",
+                "setting": "A cave",
+                "plot_point": "The hero finds shelter",
+                "conflict": "The cave is dark",
+                "outcome": "The hero rests",
+                "beats": ["Hero enters cave", "Hero finds shelter", "Hero rests"],
+                "events": [
+                    {
+                        "name": "Cave Shelter",
+                        "description": "The hero finds shelter in the cave",
+                        "conflict": "Darkness",
+                        "outcome": "Rest",
+                        "pov_character": "Hero"
+                    }
+                ],
+                "location": {
+                    "name": "Cave",
+                    "description": "A dark cave"
+                }
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def temp_chapter_outline_file(sample_chapter_outline_data):
+    """Create a temporary chapter outline file for testing."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(sample_chapter_outline_data, f)
+        temp_file = f.name
+    
+    yield temp_file
+    
+    # Clean up
+    if os.path.exists(temp_file):
+        os.unlink(temp_file)
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_initialization():
+    """Test that ChapterOutlineParser initializes correctly."""
+    parser = ChapterOutlineParser(
+        chapter_outline_path="test_path.json",
+        chapter_number=1
+    )
+    
+    assert parser.chapter_outline_path == "test_path.json"
+    assert parser.chapter_number == 1
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_parse_chapter_outline(temp_chapter_outline_file, sample_chapter_outline_data):
+    """Test that parse_chapter_outline correctly reads and parses JSON."""
+    parser = ChapterOutlineParser(
+        chapter_outline_path=temp_chapter_outline_file,
+        chapter_number=1
+    )
+    
+    result = await parser.parse_chapter_outline()
+    
+    assert result == sample_chapter_outline_data
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_parse_chapter(temp_chapter_outline_file):
+    """Test that _parse_chapter correctly parses chapter data."""
+    parser = ChapterOutlineParser(
+        chapter_outline_path=temp_chapter_outline_file,
+        chapter_number=1
+    )
+    
+    # Parse the chapter outline
+    chapter_outline_data = await parser.parse_chapter_outline()
+    
+    # Parse the chapter
+    chapter = parser._parse_chapter(chapter_outline_data)
+    
+    assert chapter.number == 1
+    assert chapter.act_number == 1
+    assert chapter.title == "The Beginning"
+    assert chapter.summary == "The hero's journey begins"
+    assert chapter.created_chapter == 1
+    assert chapter.is_provisional == False
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_parse_scenes(temp_chapter_outline_file):
+    """Test that _parse_scenes correctly parses scene data."""
+    parser = ChapterOutlineParser(
+        chapter_outline_path=temp_chapter_outline_file,
+        chapter_number=1
+    )
+    
+    # Parse the chapter outline
+    chapter_outline_data = await parser.parse_chapter_outline()
+    
+    # Parse the scenes
+    scenes = parser._parse_scenes(chapter_outline_data)
+    
+    assert len(scenes) == 2
+    assert scenes[0].chapter_number == 1
+    assert scenes[0].scene_index == 0
+    assert scenes[0].title == "Opening Scene"
+    assert scenes[0].pov_character == "Hero"
+    assert len(scenes[0].beats) == 3
+    
+    assert scenes[1].chapter_number == 1
+    assert scenes[1].scene_index == 1
+    assert scenes[1].title == "Second Scene"
+    assert len(scenes[1].beats) == 3
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_parse_scene_events(temp_chapter_outline_file):
+    """Test that _parse_scene_events correctly parses event data."""
+    parser = ChapterOutlineParser(
+        chapter_outline_path=temp_chapter_outline_file,
+        chapter_number=1
+    )
+    
+    # Parse the chapter outline
+    chapter_outline_data = await parser.parse_chapter_outline()
+    
+    # Parse the scene events
+    events = parser._parse_scene_events(chapter_outline_data)
+    
+    assert len(events) == 2
+    assert events[0].chapter_number == 1
+    assert events[0].act_number == 1
+    assert events[0].scene_index == 0
+    assert events[0].event_type == "SceneEvent"
+    assert events[0].name == "Forest Encounter"
+    
+    assert events[1].chapter_number == 1
+    assert events[1].act_number == 1
+    assert events[1].scene_index == 1
+    assert events[1].event_type == "SceneEvent"
+    assert events[1].name == "Cave Shelter"
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_parse_locations(temp_chapter_outline_file):
+    """Test that _parse_locations correctly parses location data."""
+    parser = ChapterOutlineParser(
+        chapter_outline_path=temp_chapter_outline_file,
+        chapter_number=1
+    )
+    
+    # Parse the chapter outline
+    chapter_outline_data = await parser.parse_chapter_outline()
+    
+    # Parse the locations
+    locations = parser._parse_locations(chapter_outline_data)
+    
+    assert len(locations) == 2
+    assert locations[0].name == "Dark Forest"
+    assert locations[0].description == "A dense, dark forest"
+    assert locations[0].category == "Location"
+    
+    assert locations[1].name == "Cave"
+    assert locations[1].description == "A dark cave"
+    assert locations[1].category == "Location"
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_generate_id():
+    """Test that _generate_id generates consistent IDs."""
+    parser = ChapterOutlineParser()
+    
+    # Generate IDs for the same entity
+    id1 = parser._generate_id("Chapter", 1, 0)
+    id2 = parser._generate_id("Chapter", 1, 0)
+    
+    # IDs should be the same for the same input
+    assert id1 == id2
+    
+    # Generate IDs for different entities
+    id3 = parser._generate_id("Scene", 1, 0)
+    id4 = parser._generate_id("Event", 1, 0, 0)
+    
+    # IDs should be different for different entity types
+    assert id1 != id3
+    assert id1 != id4
+    assert id3 != id4
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_missing_scenes(temp_chapter_outline_file):
+    """Test that parser handles missing scenes gracefully."""
+    # Create a chapter outline without scenes
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump({
+            "chapter_number": 1,
+            "act_number": 1,
+            "title": "Test Chapter",
+            "summary": "Test summary"
+        }, f)
+        temp_file = f.name
+    
+    try:
+        parser = ChapterOutlineParser(
+            chapter_outline_path=temp_file,
+            chapter_number=1
+        )
+        
+        # Parse the chapter outline
+        chapter_outline_data = await parser.parse_chapter_outline()
+        
+        # Parse scenes (should return empty list)
+        scenes = parser._parse_scenes(chapter_outline_data)
+        assert len(scenes) == 0
+        
+        # Parse events (should return empty list)
+        events = parser._parse_scene_events(chapter_outline_data)
+        assert len(events) == 0
+        
+        # Parse locations (should return empty list)
+        locations = parser._parse_locations(chapter_outline_data)
+        assert len(locations) == 0
+        
+    finally:
+        if os.path.exists(temp_file):
+            os.unlink(temp_file)
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_invalid_json():
+    """Test that parser handles invalid JSON gracefully."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write("invalid json {{{")
+        temp_file = f.name
+    
+    try:
+        parser = ChapterOutlineParser(
+            chapter_outline_path=temp_file,
+            chapter_number=1
+        )
+        
+        # Should raise ValueError for invalid JSON
+        with pytest.raises(ValueError):
+            await parser.parse_chapter_outline()
+    finally:
+        if os.path.exists(temp_file):
+            os.unlink(temp_file)
+
+
+@pytest.mark.asyncio
+async def test_chapter_outline_parser_file_not_found():
+    """Test that parser handles missing file gracefully."""
+    parser = ChapterOutlineParser(
+        chapter_outline_path="/nonexistent/file.json",
+        chapter_number=1
+    )
+    
+    # Should raise ValueError for missing file
+    with pytest.raises(ValueError):
+        await parser.parse_chapter_outline()
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
