@@ -9,5 +9,15 @@ from .character_sheet_parser import CharacterSheetParser
 from .global_outline_parser import GlobalOutlineParser, MajorPlotPoint
 from .act_outline_parser import ActOutlineParser
 from .chapter_outline_parser import ChapterOutlineParser
+from .narrative_enrichment_parser import NarrativeEnrichmentParser, PhysicalDescriptionExtractionResult, ChapterEmbeddingExtractionResult
 
-__all__ = ["CharacterSheetParser", "GlobalOutlineParser", "MajorPlotPoint", "ActOutlineParser", "ChapterOutlineParser"]
+__all__ = [
+    "CharacterSheetParser",
+    "GlobalOutlineParser",
+    "MajorPlotPoint",
+    "ActOutlineParser",
+    "ChapterOutlineParser",
+    "NarrativeEnrichmentParser",
+    "PhysicalDescriptionExtractionResult",
+    "ChapterEmbeddingExtractionResult",
+]
