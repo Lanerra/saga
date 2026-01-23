@@ -390,7 +390,7 @@ class SpaCyModelManager:
         except Exception:
             model_name = None
         if not model_name:
-            model_name = "en_core_web_sm"
+            model_name = "en_core_web_lg"
 
         try:
             self._nlp = spacy.load(model_name)

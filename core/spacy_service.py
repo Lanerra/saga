@@ -86,7 +86,7 @@ class SpacyService:
         """Load the spaCy model if not already loaded.
 
         Args:
-            model_name: Optional model name override. If None, uses config.SPACY_MODEL or defaults to 'en_core_web_sm'.
+            model_name: Optional model name override. If None, uses config.SPACY_MODEL or defaults to 'en_core_web_lg'.
 
         Returns:
             True if model loaded successfully, False otherwise.
@@ -111,7 +111,7 @@ class SpacyService:
                 selected_model = None
 
             if not selected_model:
-                selected_model = "en_core_web_sm"
+                selected_model = "en_core_web_lg"
 
         self._model_name = selected_model
 
