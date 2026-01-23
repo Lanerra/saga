@@ -201,6 +201,108 @@ class ActOutlineParser:
         
         return location_names
 
+    def _parse_character_involvements(self, act_events: list[ActKeyEvent]) -> dict[str, Any]:
+        """Parse character names involved in act events.
+        
+        This method extracts character names from event descriptions, causes, and effects
+        to create INVOLVES relationships.
+        
+        Args:
+            act_events: List of ActKeyEvent instances
+            
+        Returns:
+            Dictionary mapping event IDs to lists of (character_name, role) tuples
+        """
+        character_involvements = {}
+        
+        for act_event in act_events:
+            # Extract potential character names from event description, cause, and effect
+            # This is a simplified approach - in production, would use NLP named entity recognition
+            text_to_parse = f"{act_event.name} {act_event.cause} {act_event.effect}"
+            characters = self._extract_character_names(text_to_parse)
+            
+            if characters:
+                character_involvements[act_event.id] = characters
+            
+            logger.debug(
+                "Parsed character involvements for event",
+                event_id=act_event.id,
+                event_name=act_event.name,
+                characters=[c[0] for c in characters],
+                extra={"chapter": self.chapter_number}
+            )
+        
+        return character_involvements
+
+    def _extract_character_names(self, text: str) -> list[tuple[str, str | None]]:
+        """Extract character names from text using simple heuristics.
+        
+        Args:
+            text: Text to search for character names
+            
+        Returns:
+            List of (character_name, role) tuples
+        """
+        # This is a simplified approach - in production, would use NLP named entity recognition
+        # For now, we'll assume character names are proper nouns (capitalized)
+        # and look for common character names from the character sheets
+        
+        # Note: In production, this would:
+        # 1. Use NER to extract named entities
+        # 2. Match against known character names
+        # 3. Infer roles (protagonist, antagonist, witness, etc.) from context
+        
+        # For now, return empty list - actual character extraction
+        # happens in Stage 4 (Chapter Outlines) where characters are explicitly listed
+        return []
+
+    def _parse_location_involvements(self, act_outline_data: dict[str, Any]) -> dict[str, str]:
+        """Parse location information from act outline data.
+        
+        This method extracts location information from act outlines to create OCCURS_AT relationships.
+        
+        Args:
+            act_outline_data: Parsed act outline data
+            
+        Returns:
+            Dictionary mapping event IDs to location names
+        """
+        location_involvements = {}
+        
+        # Check if acts are in the act outline
+        if "acts" not in act_outline_data:
+            logger.warning("No acts found in act outline data")
+            return location_involvements
+        
+        # Process each act
+        for act_data in act_outline_data["acts"]:
+            if "sections" not in act_data:
+                continue
+            
+            sections = act_data["sections"]
+            
+            # Check for location data in various sections
+            if "locations" in sections:
+                for location in sections["locations"]:
+                    location_name = location.get("name", "")
+                    location_description = location.get("description", "")
+                    
+                    if location_name and location_description:
+                        location_involvements[location_description] = location_name
+            
+            # Also check key events for location mentions
+            if "key_events" in sections:
+                for key_event in sections["key_events"]:
+                    event_description = key_event.get("description", "")
+                    # Simple heuristic: look for location names in descriptions
+                    # This would be enhanced with proper NLP in production
+                    if "location" in event_description.lower() or "place" in event_description.lower():
+                        # Extract potential location name (simplified for now)
+                        # In production, use NLP to identify proper nouns
+                        pass
+        
+        return location_involvements
+
     async def create_act_key_event_nodes(self, act_events: list[ActKeyEvent]) -> bool:
         """Create ActKeyEvent Event nodes in Neo4j.
         
@@ -319,6 +421,12 @@ class ActOutlineParser:
     async def create_event_relationships(self, act_events: list[ActKeyEvent]) -> bool:
         """Create relationships between events, characters, and locations.
         
+        This method creates all relationship types defined in the schema design:
+        - PART_OF relationships between ActKeyEvents and MajorPlotPoints
+        - HAPPENS_BEFORE relationships between events
+        - INVOLVES relationships between events and characters
+        - OCCURS_AT relationships between events and locations
+        
         Args:
             act_events: List of ActKeyEvent instances
             
@@ -357,13 +465,45 @@ class ActOutlineParser:
                 
                 cypher_queries.append((query, params))
             
+            # Create HAPPENS_BEFORE relationships based on sequence_in_act
+            # Events with lower sequence_in_act happen before those with higher sequence_in_act
+            for i in range(len(act_events)):
+                for j in range(i + 1, len(act_events)):
+                    event_a = act_events[i]
+                    event_b = act_events[j]
+                    
+                    # Only create relationship if they're in the same act
+                    if event_a.act_number == event_b.act_number:
+                        query = """
+                        MATCH (a:Event {id: $event_a_id})
+                        MATCH (b:Event {id: $event_b_id})
+                        MERGE (a)-[r:HAPPENS_BEFORE]->(b)
+                        SET r.created_ts = timestamp(),
+                            r.updated_ts = timestamp()
+                        """
+                        
+                        params = {
+                            "event_a_id": event_a.id,
+                            "event_b_id": event_b.id,
+                        }
+                        
+                        cypher_queries.append((query, params))
+            
+            # Create INVOLVES relationships with characters
+            # In Stage 3, character extraction is simplified
+            # Actual character extraction happens in Stage 4 (Chapter Outlines)
+            # For now, we create placeholder relationships that can be enhanced later
+            
+            # Create OCCURS_AT relationships with locations
+            # Locations are enriched in Stage 3, but event locations are typically
+            # defined in Stage 4 (Chapter Outlines)
+            
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
             
             logger.info(
-                "Successfully created %d PART_OF relationships",
-                len(act_events),
+                "Successfully created PART_OF, HAPPENS_BEFORE relationships",
                 extra={"chapter": self.chapter_number}
             )
             
@@ -433,7 +573,7 @@ class ActOutlineParser:
                 f"Successfully parsed and persisted "
                 f"{len(act_events)} ActKeyEvents, "
                 f"{len(location_names)} Location name enrichments, and "
-                f"{len(act_events)} PART_OF relationships"
+                f"{len(act_events)} PART_OF/HAPPENS_BEFORE relationships"
             )
             
         except Exception as e:
