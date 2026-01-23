@@ -610,8 +610,23 @@ class ChapterOutlineParser:
                     cypher_queries.append((query, params))
             
             # Create Scene -[FEATURES_CHARACTER]-> Character relationships
-            # Note: This would need to query existing characters from Neo4j
-            # For now, we'll skip this as it requires character lookup
+            for scene in scenes:
+                # Check if pov_character exists in Neo4j
+                character = await self._get_character_by_name(scene.pov_character)
+                if character:
+                    query = """
+                    MATCH (s:Scene {id: $scene_id})
+                    MATCH (c:Character {name: $character_name})
+                    MERGE (s)-[r:FEATURES_CHARACTER]->(c)
+                    SET r.is_pov = true,
+                        r.created_ts = timestamp(),
+                        r.updated_ts = timestamp()
+                    """
+                    params = {
+                        "scene_id": scene.id,
+                        "character_name": scene.pov_character,
+                    }
+                    cypher_queries.append((query, params))
             
             # Create Scene -[OCCURS_AT]-> Location relationships
             for scene in scenes:
@@ -654,8 +669,42 @@ class ChapterOutlineParser:
                         cypher_queries.append((query, params))
             
             # Create Event -[INVOLVES]-> Character relationships
-            # Note: This would need to query existing characters from Neo4j
-            # For now, we'll skip this as it requires character lookup
+            for event in events:
+                # Check if pov_character exists in Neo4j
+                character = await self._get_character_by_name(event.pov_character)
+                if character:
+                    query = """
+                    MATCH (e:Event {id: $event_id})
+                    MATCH (c:Character {name: $character_name})
+                    MERGE (e)-[r:INVOLVES]->(c)
+                    SET r.role = "protagonist",
+                        r.created_ts = timestamp(),
+                        r.updated_ts = timestamp()
+                    """
+                    params = {
+                        "event_id": event.id,
+                        "character_name": event.pov_character,
+                    }
+                    cypher_queries.append((query, params))
+            
+            # Create SceneEvent -[PART_OF]-> ActKeyEvent relationships
+            for event in events:
+                # Lookup ActKeyEvent for this act and scene
+                act_key_event = await self._get_act_key_event(event.act_number, event.scene_index)
+                
+                if act_key_event:
+                    query = """
+                    MATCH (e:Event {id: $event_id})
+                    MATCH (ake:Event {id: $ake_id})
+                    MERGE (e)-[r:PART_OF]->(ake)
+                    SET r.created_ts = timestamp(),
+                        r.updated_ts = timestamp()
+                    """
+                    params = {
+                        "event_id": event.id,
+                        "ake_id": act_key_event.get("id"),
+                    }
+                    cypher_queries.append((query, params))
             
             # Execute all queries
             for query, params in cypher_queries:
@@ -672,6 +721,38 @@ class ChapterOutlineParser:
         except Exception as e:
             logger.error("Error creating relationships: %s", str(e), exc_info=True)
             return False
+
+    async def _get_character_by_name(self, character_name: str) -> "CharacterProfile | None":
+        """Query Neo4j for a character by name.
+        
+        Args:
+            character_name: Name of character to look up
+            
+        Returns:
+            CharacterProfile if found, None otherwise
+        """
+        from data_access.character_queries import get_character_profile_by_name
+        return await get_character_profile_by_name(character_name)
+
+    async def _get_act_key_event(self, act_number: int, sequence_in_act: int) -> dict | None:
+        """Query Neo4j for an ActKeyEvent by act_number and sequence_in_act.
+        
+        Args:
+            act_number: Act number (1, 2, or 3)
+            sequence_in_act: Position within act
+            
+        Returns:
+            Event dict if found, None otherwise
+        """
+        query = """
+        MATCH (e:Event {event_type: "ActKeyEvent", act_number: $act_number, sequence_in_act: $sequence_in_act})
+        RETURN e
+        """
+        results = await neo4j_manager.execute_read_query(query, {
+            "act_number": act_number,
+            "sequence_in_act": sequence_in_act
+        })
+        return results[0] if results else None
 
     async def parse_and_persist(self) -> tuple[bool, str]:
         """Parse chapter outline and persist to Neo4j.
