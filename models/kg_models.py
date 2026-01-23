@@ -231,6 +231,8 @@ class WorldItem(BaseModel):
     type: str = "Item"
     created_chapter: int = 0
     is_provisional: bool = False
+    created_ts: int | None = None  # Neo4j timestamp
+    updated_ts: int | None = None  # Neo4j timestamp
     description: str = ""
     goals: list[str] = Field(default_factory=list)
     rules: list[str] = Field(default_factory=list)
@@ -276,6 +278,10 @@ class WorldItem(BaseModel):
         # Extract and validate is_provisional
         is_provisional = bool(data.get(KG_IS_PROVISIONAL, False))
 
+        # Extract timestamps
+        created_ts = data.get("created_ts")
+        updated_ts = data.get("updated_ts")
+
         # Extract structured fields
         description = data.get("description", "")
         goals = data.get("goals", [])
@@ -312,6 +318,8 @@ class WorldItem(BaseModel):
             name=name,
             created_chapter=created_chapter,
             is_provisional=is_provisional,
+            created_ts=created_ts,
+            updated_ts=updated_ts,
             description=description,
             goals=goals,
             rules=rules,
@@ -369,6 +377,8 @@ class WorldItem(BaseModel):
             "traits",
             "created_chapter",
             "is_provisional",
+            "created_ts",
+            "updated_ts",
             "chapter_last_updated",
             "last_updated",
         }
@@ -406,6 +416,8 @@ class WorldItem(BaseModel):
             traits=traits,
             created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            created_ts=node_dict.get("created_ts"),
+            updated_ts=node_dict.get("updated_ts"),
             relationships=relationships,
             additional_properties=additional_props,
         )
@@ -448,6 +460,8 @@ class WorldItem(BaseModel):
             "traits",
             "created_chapter",
             "is_provisional",
+            "created_ts",
+            "updated_ts",
             "chapter_last_updated",
             "last_updated",
         }
@@ -467,6 +481,8 @@ class WorldItem(BaseModel):
             traits=Neo4jExtractor.safe_list_extract(node_dict.get("traits", [])),
             created_chapter=Neo4jExtractor.safe_int_extract(node_dict.get("created_chapter", 0)),
             is_provisional=bool(node_dict.get("is_provisional", False)),
+            created_ts=node_dict.get("created_ts"),
+            updated_ts=node_dict.get("updated_ts"),
             relationships={},  # Relationships handled separately
             additional_properties=additional_props,
         )
@@ -694,10 +710,80 @@ class RelationshipUsage:
         )
 
 
+class MajorPlotPoint(BaseModel):
+    """Represent a major plot point event in the story.
+    
+    This is a Stage 2 entity that represents one of the four key events:
+    - Inciting Incident
+    - Midpoint
+    - Climax
+    - Resolution
+    
+    Attributes:
+        id: Stable identifier (generated)
+        name: Event name (one of the four major plot points)
+        description: Event description
+        event_type: Always "MajorPlotPoint"
+        sequence_order: 1-4 (1=inciting, 2=midpoint, 3=climax, 4=resolution)
+        created_chapter: Always 0 (initialization)
+        is_provisional: Always False (canonical entities)
+    """
+    
+    id: str
+    name: str
+    description: str
+    event_type: str = "MajorPlotPoint"
+    sequence_order: int
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MajorPlotPoint:
+        """Create a MajorPlotPoint from a dictionary.
+        
+        Args:
+            data: Dictionary containing plot point data
+            
+        Returns:
+            MajorPlotPoint object
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            sequence_order=data.get("sequence_order", 0),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+        
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "event_type": self.event_type,
+            "sequence_order": self.sequence_order,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
 __all__ = [
     "CharacterProfile",
     "WorldItem",
     "Scene",
     "Location",
     "RelationshipUsage",
+    "MajorPlotPoint",
 ]
