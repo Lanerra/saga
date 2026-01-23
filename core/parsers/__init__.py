@@ -7,5 +7,6 @@ into knowledge graph entities.
 
 from .character_sheet_parser import CharacterSheetParser
 from .global_outline_parser import GlobalOutlineParser, MajorPlotPoint
+from .act_outline_parser import ActOutlineParser
 
-__all__ = ["CharacterSheetParser", "GlobalOutlineParser", "MajorPlotPoint"]
+__all__ = ["CharacterSheetParser", "GlobalOutlineParser", "MajorPlotPoint", "ActOutlineParser"]

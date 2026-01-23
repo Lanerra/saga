@@ -779,6 +779,84 @@ class MajorPlotPoint(BaseModel):
         }
 
 
+class ActKeyEvent(BaseModel):
+    """Represent an act-level key event in the story.
+    
+    This is a Stage 3 entity that represents key events within an act.
+    
+    Attributes:
+        id: Stable identifier (generated)
+        name: Event name
+        description: Event description
+        event_type: Always "ActKeyEvent"
+        act_number: Act number (1, 2, or 3 for 3-act structure)
+        sequence_in_act: Position within act (1-5 typically)
+        cause: What triggers this event
+        effect: What results from this event
+        created_chapter: Always 0 (initialization)
+        is_provisional: Always False (canonical entities)
+    """
+    
+    id: str
+    name: str
+    description: str
+    event_type: str = "ActKeyEvent"
+    act_number: int
+    sequence_in_act: int
+    cause: str
+    effect: str
+    created_chapter: int = 0
+    is_provisional: bool = False
+    created_ts: int | None = None
+    updated_ts: int | None = None
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ActKeyEvent:
+        """Create an ActKeyEvent from a dictionary.
+        
+        Args:
+            data: Dictionary containing act key event data
+            
+        Returns:
+            ActKeyEvent object
+        """
+        return cls(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            description=data.get("description", ""),
+            event_type=data.get("event_type", "ActKeyEvent"),
+            act_number=data.get("act_number", 0),
+            sequence_in_act=data.get("sequence_in_act", 0),
+            cause=data.get("cause", ""),
+            effect=data.get("effect", ""),
+            created_chapter=data.get("created_chapter", 0),
+            is_provisional=data.get("is_provisional", False),
+            created_ts=data.get("created_ts"),
+            updated_ts=data.get("updated_ts"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization.
+        
+        Returns:
+            Dictionary representation
+        """
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "event_type": self.event_type,
+            "act_number": self.act_number,
+            "sequence_in_act": self.sequence_in_act,
+            "cause": self.cause,
+            "effect": self.effect,
+            "created_chapter": self.created_chapter,
+            "is_provisional": self.is_provisional,
+            "created_ts": self.created_ts,
+            "updated_ts": self.updated_ts,
+        }
+
+
 __all__ = [
     "CharacterProfile",
     "WorldItem",
@@ -786,4 +864,5 @@ __all__ = [
     "Location",
     "RelationshipUsage",
     "MajorPlotPoint",
+    "ActKeyEvent",
 ]
