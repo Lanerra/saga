@@ -283,7 +283,7 @@ async def test_parse_character_sheets_to_profiles_with_traits():
 
     assert len(profiles) == 1
     assert profiles[0].name == "Hero"
-    assert profiles[0].description == "A brave warrior"
+    assert profiles[0].personality_description == "A brave warrior"
     assert "brave" in profiles[0].traits
     assert profiles[0].status == "Active"
     assert profiles[0].created_chapter == 0

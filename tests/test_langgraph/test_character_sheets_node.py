@@ -239,7 +239,40 @@ def test_parse_character_sheet_response_transforms_relationships(
 
         assert "Mentor" in result["relationships"]
         assert result["relationships"]["Mentor"]["description"] == "Wise guide"
-        assert result["relationships"]["Mentor"]["type"] == "ASSOCIATE"
+        # String-format relationships don't have a type field
+        assert "type" not in result["relationships"]["Mentor"]
+
+
+def test_parse_character_sheet_response_transforms_relationships_dict_format(
+    mock_schema_validator,
+):
+    """Verify relationship transformation for dictionary format with type."""
+    response = json.dumps(
+        {
+            "name": "Hero",
+            "relationships": {
+                "Mentor": {
+                    "type": "MENTORS",
+                    "description": "Wise guide"
+                },
+                "Friend": {
+                    "type": "FRIEND_OF",
+                    "description": "Close ally"
+                },
+            },
+        }
+    )
+
+    with patch("core.langgraph.initialization.character_sheets_node.validate_and_filter_traits") as mock_validate:
+        mock_validate.return_value = []
+
+        result = _parse_character_sheet_response(response, "Hero")
+
+        assert "Mentor" in result["relationships"]
+        assert result["relationships"]["Mentor"]["description"] == "Wise guide"
+        assert result["relationships"]["Mentor"]["type"] == "MENTORS"
+        assert "Friend" in result["relationships"]
+        assert result["relationships"]["Friend"]["type"] == "FRIEND_OF"
 
 
 @pytest.mark.asyncio
