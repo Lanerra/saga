@@ -129,11 +129,12 @@ class ChapterOutlineParser:
 
         return chapter
 
-    def _parse_scenes(self, chapter_outline_data: dict[str, Any]) -> list[Scene]:
+    def _parse_scenes(self, chapter_outline_data: dict[str, Any], character_names: list[str]) -> list[Scene]:
         """Parse scenes from chapter outline data.
 
         Args:
             chapter_outline_data: Parsed chapter outline data (single chapter dict)
+            character_names: List of known character names from Neo4j
 
         Returns:
             List of Scene instances
@@ -152,7 +153,7 @@ class ChapterOutlineParser:
         scene_index = 0
         scene_id = self._generate_id("Scene", chapter_number, scene_index)
 
-        pov_character = self._extract_pov_character_from_beats(key_beats)
+        pov_character = self._extract_pov_character_from_beats(key_beats, character_names)
 
         scene = Scene(
             id=scene_id,
@@ -175,11 +176,12 @@ class ChapterOutlineParser:
 
         return scenes
 
-    def _extract_pov_character_from_beats(self, key_beats: list[str]) -> str:
+    def _extract_pov_character_from_beats(self, key_beats: list[str], character_names: list[str]) -> str:
         """Extract POV character from key beats using simple heuristic.
 
         Args:
             key_beats: List of key beat descriptions
+            character_names: List of known character names from Neo4j
 
         Returns:
             POV character name (first character mentioned, or empty string)
@@ -188,17 +190,18 @@ class ChapterOutlineParser:
             return ""
 
         for beat in key_beats:
-            for name in ["Eleanor Whitaker", "James Carter", "Thomas Reed", "Ezekiel Vance", "Sarah Jenkins", "Silas Thorne"]:
+            for name in character_names:
                 if name in beat:
                     return name
 
         return ""
 
-    def _parse_scene_events(self, chapter_outline_data: dict[str, Any]) -> list[SceneEvent]:
+    def _parse_scene_events(self, chapter_outline_data: dict[str, Any], character_names: list[str]) -> list[SceneEvent]:
         """Parse scene events from chapter outline data.
 
         Args:
             chapter_outline_data: Parsed chapter outline data (single chapter dict)
+            character_names: List of known character names from Neo4j
 
         Returns:
             List of SceneEvent instances
@@ -217,7 +220,7 @@ class ChapterOutlineParser:
         for event_index, beat in enumerate(key_beats):
             event_id = self._generate_id("Event", chapter_number, scene_index, event_index)
 
-            pov_character = self._extract_pov_character_from_beats([beat])
+            pov_character = self._extract_pov_character_from_beats([beat], character_names)
 
             scene_event = SceneEvent(
                 id=event_id,
@@ -705,12 +708,26 @@ class ChapterOutlineParser:
             logger.error("Error creating relationships: %s", str(e), exc_info=True)
             return False
 
+    async def _get_all_character_names(self) -> list[str]:
+        """Get all character names from Neo4j.
+
+        Returns:
+            List of character names
+        """
+        try:
+            query = "MATCH (c:Character) RETURN c.name as name ORDER BY c.name"
+            result = await neo4j_manager.execute_read_query(query, {})
+            return [record["name"] for record in result if record.get("name")]
+        except Exception as e:
+            logger.error("Error fetching character names: %s", str(e), exc_info=True)
+            return []
+
     async def _get_character_by_name(self, character_name: str) -> "CharacterProfile | None":
         """Query Neo4j for a character by name.
-        
+
         Args:
             character_name: Name of character to look up
-            
+
         Returns:
             CharacterProfile if found, None otherwise
         """
@@ -752,6 +769,9 @@ class ChapterOutlineParser:
 
             logger.info("Parsed chapter outline data", extra={"chapter": self.chapter_number})
 
+            logger.info("Fetching character names for POV extraction")
+            character_names = await self._get_all_character_names()
+
             all_chapters = []
             all_scenes = []
             all_events = []
@@ -771,7 +791,7 @@ class ChapterOutlineParser:
                 logger.info("Parsed chapter", extra={"chapter": chapter.number})
 
                 logger.info("Parsing scenes from chapter outline")
-                scenes = self._parse_scenes(chapter_outline_data)
+                scenes = self._parse_scenes(chapter_outline_data, character_names)
 
                 if not scenes:
                     logger.warning("No scenes found in chapter outline")
@@ -779,7 +799,7 @@ class ChapterOutlineParser:
                 logger.info("Parsed %d scenes", len(scenes), extra={"chapter": chapter.number})
 
                 logger.info("Parsing scene events from chapter outline")
-                events = self._parse_scene_events(chapter_outline_data)
+                events = self._parse_scene_events(chapter_outline_data, character_names)
 
                 if not events:
                     logger.warning("No scene events found in chapter outline")

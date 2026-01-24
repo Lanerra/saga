@@ -469,6 +469,97 @@ class ActOutlineParser:
             logger.error("Error fetching locations: %s", str(e), exc_info=True)
             return []
 
+    async def _get_all_items(self) -> list[dict[str, str]]:
+        """Get all items from Neo4j.
+
+        Returns:
+            List of dicts with 'name' and 'description' keys
+        """
+        try:
+            query = "MATCH (i:Item) RETURN i.name as name, i.description as description ORDER BY i.name"
+            result = await neo4j_manager.execute_read_query(query, {})
+            return [
+                {"name": record["name"], "description": record["description"]}
+                for record in result
+                if record.get("name")
+            ]
+        except Exception as e:
+            logger.error("Error fetching items: %s", str(e), exc_info=True)
+            return []
+
+    async def _extract_event_item_involvements(
+        self, act_events: list[ActKeyEvent], items: list[dict[str, str]]
+    ) -> dict[str, list[tuple[str, str]]]:
+        """Extract which items are featured in which events using LLM.
+
+        Args:
+            act_events: List of ActKeyEvent instances
+            items: List of dicts with item 'name' and 'description'
+
+        Returns:
+            Dictionary mapping event IDs to list of (item_name, role) tuples
+        """
+        item_involvements = {}
+
+        for event in act_events:
+            prompt = render_prompt(
+                "knowledge_agent/extract_event_item.j2",
+                {
+                    "event_name": event.name,
+                    "event_description": event.description,
+                    "event_cause": event.cause,
+                    "event_effect": event.effect,
+                    "known_items": items,
+                },
+            )
+
+            for attempt in range(1, 3):
+                try:
+                    response, _ = await llm_service.async_call_llm(
+                        model_name=config.NARRATIVE_MODEL,
+                        prompt=prompt,
+                        temperature=0.3,
+                        max_tokens=config.MAX_GENERATION_TOKENS,
+                        allow_fallback=True,
+                        auto_clean_response=True,
+                        system_prompt=get_system_prompt("knowledge_agent"),
+                    )
+
+                    data, _, _ = try_load_json_from_response(response)
+                    if not data or not isinstance(data, dict) or "featured_items" not in data:
+                        if attempt == 2:
+                            break
+                        continue
+
+                    featured_items = []
+                    for item_data in data["featured_items"]:
+                        item_name = item_data.get("item", "")
+                        role = item_data.get("role", "featured")
+                        if item_name:
+                            featured_items.append((item_name, role))
+
+                    if featured_items:
+                        item_involvements[event.id] = featured_items
+
+                    break
+
+                except (json.JSONDecodeError, ValueError) as e:
+                    if attempt == 2:
+                        logger.warning(
+                            "Failed to extract item involvement for event %s after %d attempts: %s",
+                            event.id,
+                            attempt,
+                            str(e),
+                            exc_info=True
+                        )
+
+        logger.info(
+            "Parsed item involvements for %d events",
+            len(item_involvements),
+            extra={"chapter": 0}
+        )
+        return item_involvements
+
     async def create_act_key_event_nodes(self, act_events: list[ActKeyEvent]) -> bool:
         """Create ActKeyEvent Event nodes in Neo4j.
         
@@ -588,20 +679,23 @@ class ActOutlineParser:
         self,
         act_events: list[ActKeyEvent],
         character_involvements: dict[str, list[tuple[str, str | None]]],
-        location_involvements: dict[str, str]
+        location_involvements: dict[str, str],
+        item_involvements: dict[str, list[tuple[str, str]]] = None,
     ) -> bool:
-        """Create relationships between events, characters, and locations.
+        """Create relationships between events, characters, locations, and items.
 
         This method creates all relationship types defined in the schema design:
         - PART_OF relationships between ActKeyEvents and MajorPlotPoints
         - HAPPENS_BEFORE relationships between events
         - INVOLVES relationships between events and characters
         - OCCURS_AT relationships between events and locations
+        - FEATURES_ITEM relationships between events and items
 
         Args:
             act_events: List of ActKeyEvent instances
             character_involvements: Dict mapping event IDs to character names with roles
             location_involvements: Dict mapping event IDs to location names
+            item_involvements: Dict mapping event IDs to item names with roles (optional)
 
         Returns:
             True if successful, False otherwise
@@ -700,14 +794,39 @@ class ActOutlineParser:
                 cypher_queries.append((query, params))
                 occurs_at_count += 1
 
+            # Create FEATURES_ITEM relationships with items
+            features_item_count = 0
+            if item_involvements:
+                for event_id, items in item_involvements.items():
+                    for item_name, role in items:
+                        query = """
+                        MATCH (e:Event {id: $event_id})
+                        MATCH (i:Item)
+                        WHERE i.name = $item_name OR i.name CONTAINS $item_name OR $item_name CONTAINS i.name
+                        MERGE (e)-[r:FEATURES_ITEM]->(i)
+                        SET r.role = $role,
+                            r.created_ts = timestamp(),
+                            r.updated_ts = timestamp()
+                        """
+
+                        params = {
+                            "event_id": event_id,
+                            "item_name": item_name,
+                            "role": role,
+                        }
+
+                        cypher_queries.append((query, params))
+                        features_item_count += 1
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
 
             logger.info(
-                "Successfully created event relationships: PART_OF, HAPPENS_BEFORE, %d INVOLVES, %d OCCURS_AT",
+                "Successfully created event relationships: PART_OF, HAPPENS_BEFORE, %d INVOLVES, %d OCCURS_AT, %d FEATURES_ITEM",
                 involves_count,
                 occurs_at_count,
+                features_item_count,
                 extra={"chapter": self.chapter_number}
             )
 
@@ -773,12 +892,28 @@ class ActOutlineParser:
             logger.info("Extracting location involvements from events")
             location_involvements = await self._parse_location_involvements(act_events)
 
-            # Step 8: Create event relationships
+            # Step 8: Get all items for item involvement extraction
+            logger.info("Fetching items for item involvement extraction")
+            items = await self._get_all_items()
+
+            # Step 9: Extract item involvements
+            item_involvements = {}
+            if items:
+                logger.info("Extracting item involvements from events")
+                item_involvements = await self._extract_event_item_involvements(act_events, items)
+
+                if not item_involvements:
+                    logger.info("No item involvements found in act outline")
+
+                logger.info("Parsed item involvements for %d events", len(item_involvements), extra={"chapter": self.chapter_number})
+
+            # Step 10: Create event relationships
             logger.info("Creating event relationships in Neo4j")
             relationships_success = await self.create_event_relationships(
                 act_events,
                 character_involvements,
-                location_involvements
+                location_involvements,
+                item_involvements
             )
 
             if not relationships_success:
@@ -786,14 +921,16 @@ class ActOutlineParser:
 
             involves_count = sum(len(chars) for chars in character_involvements.values())
             occurs_at_count = len(location_involvements)
+            features_item_count = sum(len(items) for items in item_involvements.values())
 
             return (
                 True,
                 f"Successfully parsed and persisted "
                 f"{len(act_events)} ActKeyEvents, "
                 f"{len(location_names)} Location name enrichments, "
-                f"{involves_count} INVOLVES relationships, and "
-                f"{occurs_at_count} OCCURS_AT relationships"
+                f"{involves_count} INVOLVES relationships, "
+                f"{occurs_at_count} OCCURS_AT relationships, and "
+                f"{features_item_count} FEATURES_ITEM relationships"
             )
 
         except Exception as e:

@@ -1,0 +1,31 @@
+Identify which characters possess or own which items in this story.
+
+Story Context:
+{{ outline_text }}
+
+Known Characters:
+{% for char in known_characters %}
+- {{ char }}
+{% endfor %}
+
+Known Items:
+{% for item in known_items %}
+- {{ item.name }}: {{ item.description }}
+{% endfor %}
+
+Instructions:
+1. Identify which characters possess, own, carry, or are associated with which items
+2. Match characters and items to the Known lists above
+3. Return ALL character-item possession relationships you can identify
+4. If a character clearly possesses multiple items, include all of them
+5. If no clear possessions are found, return an empty list
+
+Output contract (STRICT JSON, no exceptions):
+- Output MUST be valid JSON only
+- Output MUST be a JSON object with one key: "possessions"
+- The "possessions" value must be a list of objects
+- Each object must have: "character" (string), "item" (string matching Known Items name)
+- Do NOT output markdown, code fences, or commentary
+
+Example output:
+{"possessions":[{"character":"Eleanor Whitaker","item":"Bloodstained Doll"},{"character":"James Carter","item":"Rusted Musket"}]}

@@ -1,0 +1,29 @@
+Identify which items are featured, used, or significant in this event.
+
+Event: {{ event_name }}
+Description: {{ event_description }}
+Cause: {{ event_cause }}
+Effect: {{ event_effect }}
+
+Known Items:
+{% for item in known_items %}
+- {{ item.name }}: {{ item.description }}
+{% endfor %}
+
+Instructions:
+1. Identify which items (if any) are featured, used, discovered, or significant in this event
+2. Match to items from the Known Items list
+3. Determine the role each item plays (weapon, clue, gift, tool, evidence, obstacle, etc.)
+4. If no items are clearly featured, return an empty list
+
+Output contract (STRICT JSON, no exceptions):
+- Output MUST be valid JSON only
+- Output MUST be a JSON object with one key: "featured_items"
+- The "featured_items" value must be a list of objects
+- Each object must have: "item" (string matching Known Items name), "role" (string describing the item's role)
+- Do NOT output markdown, code fences, or commentary
+
+Example outputs:
+{"featured_items":[{"item":"Bloodstained Doll","role":"clue"}]}
+{"featured_items":[{"item":"Rusted Musket","role":"weapon"},{"item":"Pocket Watch","role":"keepsake"}]}
+{"featured_items":[]}

@@ -639,6 +639,135 @@ class GlobalOutlineParser:
             logger.error("Error enriching Character arcs: %s", str(e), exc_info=True)
             return False
 
+    async def _get_all_characters(self) -> list[str]:
+        """Get all character names from Neo4j.
+
+        Returns:
+            List of character names
+        """
+        try:
+            query = "MATCH (c:Character) RETURN c.name as name ORDER BY c.name"
+            result = await neo4j_manager.execute_read_query(query, {})
+            return [record["name"] for record in result if record.get("name")]
+        except Exception as e:
+            logger.error("Error fetching character names: %s", str(e), exc_info=True)
+            return []
+
+    async def _extract_item_possessions(
+        self, global_outline_data: dict[str, Any], characters: list[str], items: list[WorldItem]
+    ) -> dict[str, str]:
+        """Extract Character-Item possession relationships using LLM.
+
+        Args:
+            global_outline_data: Parsed global outline data
+            characters: List of character names
+            items: List of items
+
+        Returns:
+            Dictionary mapping character names to item names
+        """
+        outline_text = global_outline_data.get("raw_text", "")
+        if not outline_text:
+            outline_text = json.dumps(global_outline_data, indent=2)
+
+        prompt = render_prompt(
+            "knowledge_agent/extract_item_possession.j2",
+            {
+                "outline_text": outline_text,
+                "known_characters": characters,
+                "known_items": [{"name": item.name, "description": item.description} for item in items],
+            },
+        )
+
+        for attempt in range(1, 3):
+            try:
+                response, _ = await llm_service.async_call_llm(
+                    model_name=config.NARRATIVE_MODEL,
+                    prompt=prompt,
+                    temperature=0.3,
+                    max_tokens=config.MAX_GENERATION_TOKENS,
+                    allow_fallback=True,
+                    auto_clean_response=True,
+                    system_prompt=get_system_prompt("knowledge_agent"),
+                )
+
+                data, _, _ = try_load_json_from_response(response)
+                logger.info("LLM response parsed: %s", data)
+                if not data or not isinstance(data, dict) or "possessions" not in data:
+                    logger.warning("No possessions key in LLM response. Response was: %s", response[:500])
+                    if attempt == 2:
+                        return {}
+                    continue
+
+                possessions = {}
+                for possession in data["possessions"]:
+                    character = possession.get("character", "")
+                    item = possession.get("item", "")
+                    if character and item:
+                        possessions[character] = item
+
+                logger.info("Parsed item possessions for %d characters: %s", len(possessions), possessions, extra={"chapter": 0})
+                return possessions
+
+            except (json.JSONDecodeError, ValueError) as e:
+                if attempt == 2:
+                    logger.warning(
+                        "Failed to extract item possessions after %d attempts: %s",
+                        attempt,
+                        str(e),
+                        exc_info=True
+                    )
+                    return {}
+
+        return {}
+
+    async def create_item_possession_relationships(
+        self, possessions: dict[str, str]
+    ) -> bool:
+        """Create Character -[POSSESSES]-> Item relationships in Neo4j.
+
+        Args:
+            possessions: Dictionary mapping character names to item names
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cypher_queries = []
+
+            for character_name, item_name in possessions.items():
+                query = """
+                MATCH (c:Character {name: $character_name})
+                MATCH (i:Item)
+                WHERE i.name = $item_name OR i.name CONTAINS $item_name OR $item_name CONTAINS i.name
+                MERGE (c)-[r:POSSESSES]->(i)
+                SET r.acquired_chapter = 0,
+                    r.created_ts = timestamp(),
+                    r.updated_ts = timestamp()
+                """
+
+                params = {
+                    "character_name": character_name,
+                    "item_name": item_name,
+                }
+
+                cypher_queries.append((query, params))
+
+            for query, params in cypher_queries:
+                await neo4j_manager.execute_write_query(query, params)
+
+            logger.info(
+                "Successfully created %d POSSESSES relationships",
+                len(possessions),
+                extra={"chapter": self.chapter_number}
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error("Error creating POSSESSES relationships: %s", str(e), exc_info=True)
+            return False
+
     async def parse_and_persist(self) -> tuple[bool, str]:
         """Parse global outline and persist to Neo4j.
 
@@ -719,13 +848,37 @@ class GlobalOutlineParser:
             if not character_arcs_success:
                 return False, "Failed to enrich Character arcs"
 
+            # Step 10: Get all characters for item possession extraction
+            logger.info("Fetching character names for item possession extraction")
+            characters = await self._get_all_characters()
+
+            # Step 11: Extract item possessions
+            possessions = {}
+            if characters and items:
+                logger.info("Extracting item possessions from global outline")
+                possessions = await self._extract_item_possessions(global_outline_data, characters, items)
+
+                if not possessions:
+                    logger.info("No item possessions found in global outline")
+
+                logger.info("Parsed %d item possessions", len(possessions), extra={"chapter": self.chapter_number})
+
+            # Step 12: Create item possession relationships
+            if possessions:
+                logger.info("Creating Character -[POSSESSES]-> Item relationships in Neo4j")
+                possessions_success = await self.create_item_possession_relationships(possessions)
+
+                if not possessions_success:
+                    return False, "Failed to create POSSESSES relationships"
+
             return (
                 True,
                 f"Successfully parsed and persisted "
                 f"{len(plot_points)} MajorPlotPoints, "
                 f"{len(locations)} Locations, "
-                f"{len(items)} Items, and "
-                f"{len(character_arcs)} Character arcs"
+                f"{len(items)} Items, "
+                f"{len(character_arcs)} Character arcs, and "
+                f"{len(possessions)} Character-Item POSSESSES relationships"
             )
 
         except Exception as e:
