@@ -723,6 +723,249 @@ class Neo4jManagerSingleton:
         return 0
 
     # -------------------------------------------------------------------------
+    # Orphaned Node Detection Methods
+    # -------------------------------------------------------------------------
+
+    async def detect_orphaned_characters(self) -> list[dict[str, Any]]:
+        """Find Character nodes that have no relationships to other characters.
+        
+        According to schema-design.md, characters should have social/emotional relationships
+        with other characters. An orphaned character has no such relationships.
+        
+        Returns:
+            List of character nodes that are orphaned (no relationships to other characters)
+        """
+        query = """
+        MATCH (c:Character)
+        WHERE NOT EXISTS {
+            MATCH (c)-[r]->(other:Character)
+            WHERE other <> c
+        }
+        RETURN c
+        """
+        return await self.execute_read_query(query)
+
+    async def cleanup_orphaned_characters(self) -> int:
+        """Remove Character nodes that have no relationships to other characters.
+        
+        This is a destructive operation that should only be used in testing/validation.
+        
+        Returns:
+            Number of orphaned characters removed
+        """
+        query = """
+        MATCH (c:Character)
+        WHERE NOT EXISTS {
+            MATCH (c)-[r]->(other:Character)
+            WHERE other <> c
+        }
+        DETACH DELETE c
+        """
+        result = await self.execute_write_query(query)
+        return len(result) if result else 0
+
+    async def detect_orphaned_events(self) -> list[dict[str, Any]]:
+        """Find Event nodes that have no relationships to characters, locations, or other events.
+        
+        According to schema-design.md, events should have:
+        - PART_OF relationships to other events
+        - HAPPENS_BEFORE relationships to other events
+        - INVOLVES relationships to characters
+        - OCCURS_AT relationships to locations
+        - OCCURS_IN_SCENE relationships to scenes
+        
+        Returns:
+            List of event nodes that are orphaned (no relationships)
+        """
+        query = """
+        MATCH (e:Event)
+        WHERE NOT EXISTS {
+            MATCH (e)-[r]->(other)
+            WHERE other <> e
+        }
+        RETURN e
+        """
+        return await self.execute_read_query(query)
+
+    async def cleanup_orphaned_events(self) -> int:
+        """Remove Event nodes that have no relationships to other nodes.
+        
+        This is a destructive operation that should only be used in testing/validation.
+        
+        Returns:
+            Number of orphaned events removed
+        """
+        query = """
+        MATCH (e:Event)
+        WHERE NOT EXISTS {
+            MATCH (e)-[r]->(other)
+            WHERE other <> e
+        }
+        DETACH DELETE e
+        """
+        result = await self.execute_write_query(query)
+        return len(result) if result else 0
+
+    async def detect_orphaned_locations(self) -> list[dict[str, Any]]:
+        """Find Location nodes that have no relationships to events or scenes.
+        
+        According to schema-design.md, locations should have:
+        - OCCURS_AT relationships from events
+        - OCCURS_AT relationships from scenes
+        
+        Returns:
+            List of location nodes that are orphaned (no relationships)
+        """
+        query = """
+        MATCH (l:Location)
+        WHERE NOT EXISTS {
+            MATCH (l)<-[r]-(other)
+            WHERE other <> l
+        }
+        RETURN l
+        """
+        return await self.execute_read_query(query)
+
+    async def cleanup_orphaned_locations(self) -> int:
+        """Remove Location nodes that have no relationships to other nodes.
+        
+        This is a destructive operation that should only be used in testing/validation.
+        
+        Returns:
+            Number of orphaned locations removed
+        """
+        query = """
+        MATCH (l:Location)
+        WHERE NOT EXISTS {
+            MATCH (l)<-[r]-(other)
+            WHERE other <> l
+        }
+        DETACH DELETE l
+        """
+        result = await self.execute_write_query(query)
+        return len(result) if result else 0
+
+    async def detect_orphaned_items(self) -> list[dict[str, Any]]:
+        """Find Item nodes that have no relationships to characters or events/scenes.
+        
+        According to schema-design.md, items should have:
+        - POSSESSES relationships from characters
+        - FEATURES_ITEM relationships from events
+        - FEATURES_ITEM relationships from scenes
+        
+        Returns:
+            List of item nodes that are orphaned (no relationships)
+        """
+        query = """
+        MATCH (i:Item)
+        WHERE NOT EXISTS {
+            MATCH (i)<-[r]-(other)
+            WHERE other <> i
+        }
+        RETURN i
+        """
+        return await self.execute_read_query(query)
+
+    async def cleanup_orphaned_items(self) -> int:
+        """Remove Item nodes that have no relationships to other nodes.
+        
+        This is a destructive operation that should only be used in testing/validation.
+        
+        Returns:
+            Number of orphaned items removed
+        """
+        query = """
+        MATCH (i:Item)
+        WHERE NOT EXISTS {
+            MATCH (i)<-[r]-(other)
+            WHERE other <> i
+        }
+        DETACH DELETE i
+        """
+        result = await self.execute_write_query(query)
+        return len(result) if result else 0
+
+    async def detect_orphaned_scenes(self) -> list[dict[str, Any]]:
+        """Find Scene nodes that have no relationships to chapters or characters.
+        
+        According to schema-design.md, scenes should have:
+        - PART_OF relationships to chapters
+        - FEATURES_CHARACTER relationships to characters
+        - OCCURS_AT relationships to locations
+        - FEATURES_ITEM relationships to items
+        - FOLLOWS relationships to other scenes
+        
+        Returns:
+            List of scene nodes that are orphaned (no relationships)
+        """
+        query = """
+        MATCH (s:Scene)
+        WHERE NOT EXISTS {
+            MATCH (s)-[r]->(other)
+            WHERE other <> s
+        }
+        RETURN s
+        """
+        return await self.execute_read_query(query)
+
+    async def cleanup_orphaned_scenes(self) -> int:
+        """Remove Scene nodes that have no relationships to other nodes.
+        
+        This is a destructive operation that should only be used in testing/validation.
+        
+        Returns:
+            Number of orphaned scenes removed
+        """
+        query = """
+        MATCH (s:Scene)
+        WHERE NOT EXISTS {
+            MATCH (s)-[r]->(other)
+            WHERE other <> s
+        }
+        DETACH DELETE s
+        """
+        result = await self.execute_write_query(query)
+        return len(result) if result else 0
+
+    async def detect_orphaned_chapters(self) -> list[dict[str, Any]]:
+        """Find Chapter nodes that have no relationships to scenes.
+        
+        According to schema-design.md, chapters should have:
+        - PART_OF relationships from scenes
+        
+        Returns:
+            List of chapter nodes that are orphaned (no relationships)
+        """
+        query = """
+        MATCH (c:Chapter)
+        WHERE NOT EXISTS {
+            MATCH (c)<-[r]-(other:Scene)
+            WHERE other <> c
+        }
+        RETURN c
+        """
+        return await self.execute_read_query(query)
+
+    async def cleanup_orphaned_chapters(self) -> int:
+        """Remove Chapter nodes that have no relationships to other nodes.
+        
+        This is a destructive operation that should only be used in testing/validation.
+        
+        Returns:
+            Number of orphaned chapters removed
+        """
+        query = """
+        MATCH (c:Chapter)
+        WHERE NOT EXISTS {
+            MATCH (c)<-[r]-(other:Scene)
+            WHERE other <> c
+        }
+        DETACH DELETE c
+        """
+        result = await self.execute_write_query(query)
+        return len(result) if result else 0
+
+    # -------------------------------------------------------------------------
     # Helper methods for embeddings – unchanged
     # -------------------------------------------------------------------------
 

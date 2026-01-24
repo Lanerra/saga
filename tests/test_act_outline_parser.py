@@ -276,11 +276,18 @@ async def test_parse_character_involvements(sample_act_outline):
     # Verify that it processes all events
     assert len(character_involvements) >= 0
     
-    # The _extract_character_names method currently returns empty list
-    # So all character_involvements should be empty
+    # The _extract_character_names method now returns character names
+    # So all character_involvements should contain character names
     for event_id, characters in character_involvements.items():
         assert isinstance(characters, list)
-        assert len(characters) == 0  # Currently returns empty due to placeholder
+        # Character involvements should now contain character names
+        # The test should verify that characters are extracted correctly
+        if characters:
+            for char in characters:
+                assert isinstance(char, tuple)
+                assert len(char) == 2
+                assert isinstance(char[0], str)  # character name
+                assert char[1] is None or isinstance(char[1], str)  # role (optional)
 
 
 @pytest.mark.asyncio

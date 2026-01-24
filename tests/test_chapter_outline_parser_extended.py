@@ -187,15 +187,16 @@ async def test_chapter_outline_parser_features_character_relationship():
         # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
         
-        # Parse the scenes
-        scenes = parser._parse_scenes(chapter_outline_data)
-        
-        # Parse the events
-        events = parser._parse_scene_events(chapter_outline_data)
-        
+        # Parse the scenes (with character names)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+
+        # Parse the events (with character names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+
         # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
-        
+
         # Mock the character lookup to return a character
         with patch('data_access.character_queries.get_character_profile_by_name', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(
@@ -298,15 +299,16 @@ async def test_chapter_outline_parser_involves_relationship():
         # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
         
-        # Parse the scenes
-        scenes = parser._parse_scenes(chapter_outline_data)
-        
-        # Parse the events
-        events = parser._parse_scene_events(chapter_outline_data)
-        
+        # Parse the scenes (with character names)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+
+        # Parse the events (with character names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+
         # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
-        
+
         # Mock the character lookup to return a character
         with patch('data_access.character_queries.get_character_profile_by_name', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(
@@ -386,15 +388,16 @@ async def test_chapter_outline_parser_part_of_relationship():
         # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
         
-        # Parse the scenes
-        scenes = parser._parse_scenes(chapter_outline_data)
-        
-        # Parse the events
-        events = parser._parse_scene_events(chapter_outline_data)
-        
+        # Parse the scenes (with character names)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+
+        # Parse the events (with character names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+
         # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
-        
+
         # Mock the character lookup to return a character
         with patch('data_access.character_queries.get_character_profile_by_name', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(
@@ -511,15 +514,16 @@ async def test_chapter_outline_parser_all_relationships_created():
         # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
         
-        # Parse the scenes
-        scenes = parser._parse_scenes(chapter_outline_data)
-        
-        # Parse the events
-        events = parser._parse_scene_events(chapter_outline_data)
-        
+        # Parse the scenes (with character names)
+        character_names = ["TestCharacter"]
+        scenes = parser._parse_scenes(chapter_outline_data, character_names)
+
+        # Parse the events (with character names)
+        events = parser._parse_scene_events(chapter_outline_data, character_names)
+
         # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
-        
+
         # Mock the character lookup to return a character
         with patch('data_access.character_queries.get_character_profile_by_name', new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(

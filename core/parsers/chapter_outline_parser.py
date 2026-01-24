@@ -111,9 +111,8 @@ class ChapterOutlineParser:
 
         chapter_id = self._generate_id("Chapter", chapter_number)
 
-        scene_description = chapter_outline_data.get("scene_description", "")
-        plot_point = chapter_outline_data.get("plot_point", "")
-        summary = f"{scene_description}\n\n{plot_point}" if scene_description and plot_point else scene_description or plot_point
+        # Use the summary field directly from chapter outline data
+        summary = chapter_outline_data.get("summary", "")
 
         chapter = Chapter(
             id=chapter_id,
@@ -159,7 +158,7 @@ class ChapterOutlineParser:
             id=scene_id,
             chapter_number=chapter_number,
             scene_index=scene_index,
-            title=f"Chapter {chapter_number} Scene",
+            title=f"Chapter {chapter_number} Scene {scene_index + 1}",
             pov_character=pov_character,
             setting=scene_description,
             plot_point=plot_point,
@@ -189,10 +188,30 @@ class ChapterOutlineParser:
         if not key_beats:
             return ""
 
+        # First, try to find POV character in provided character names
         for beat in key_beats:
             for name in character_names:
                 if name in beat:
                     return name
+
+        # If no character_names provided, extract the first character mentioned in beats
+        # by looking for capitalized names (assuming proper names start with capital letters)
+        for beat in key_beats:
+            # Split by spaces and look for capitalized words that could be names
+            words = beat.split()
+            for i, word in enumerate(words):
+                # Check if word is a proper noun (starts with capital letter and is not a common article)
+                if len(word) > 1 and word[0].isupper() and word[1].islower():
+                    # Filter out common words that are not names
+                    common_words = {'the', 'a', 'an', 'and', 'but', 'or', 'for', 'nor', 'so', 'yet'}
+                    if word.lower() not in common_words:
+                        # Try to extend to multi-word name if the next word also starts with capital
+                        if i + 1 < len(words) and words[i + 1][0].isupper():
+                            full_name = f"{word} {words[i + 1]}"
+                            # Validate it's not just a common two-word phrase
+                            if full_name.lower() not in {'the end', 'the end of', 'the beginning', 'the start of', 'the story begins', 'the story ends'}:
+                                return full_name
+                        return word
 
         return ""
 
@@ -224,7 +243,7 @@ class ChapterOutlineParser:
 
             scene_event = SceneEvent(
                 id=event_id,
-                name=beat[:50] + "..." if len(beat) > 50 else beat,
+                name=beat,
                 description=beat,
                 event_type="SceneEvent",
                 chapter_number=chapter_number,

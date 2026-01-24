@@ -19,54 +19,13 @@ def sample_chapter_outline_data():
         "act_number": 1,
         "title": "The Beginning",
         "summary": "The hero's journey begins",
-        "scenes": [
-            {
-                "scene_index": 0,
-                "title": "Opening Scene",
-                "pov_character": "Hero",
-                "setting": "A dark forest",
-                "plot_point": "The hero enters the forest",
-                "conflict": "Danger lurks",
-                "outcome": "The hero survives",
-                "beats": ["Hero hears rustling", "Shadow appears", "Hero draws weapon"],
-                "events": [
-                    {
-                        "name": "Forest Encounter",
-                        "description": "The hero encounters danger",
-                        "conflict": "Tension builds",
-                        "outcome": "Hero escapes",
-                        "pov_character": "Hero"
-                    }
-                ],
-                "location": {
-                    "name": "Dark Forest",
-                    "description": "A dense, dark forest"
-                }
-            },
-            {
-                "scene_index": 1,
-                "title": "Second Scene",
-                "pov_character": "Hero",
-                "setting": "A cave",
-                "plot_point": "The hero finds shelter",
-                "conflict": "The cave is dark",
-                "outcome": "The hero rests",
-                "beats": ["Hero enters cave", "Hero finds shelter", "Hero rests"],
-                "events": [
-                    {
-                        "name": "Cave Shelter",
-                        "description": "The hero finds shelter in the cave",
-                        "conflict": "Darkness",
-                        "outcome": "Rest",
-                        "pov_character": "Hero"
-                    }
-                ],
-                "location": {
-                    "name": "Cave",
-                    "description": "A dark cave"
-                }
-            }
-        ]
+        "scene_description": "Eleanor Whitaker patrols the refugee camp's muddy perimeter as mist swallows the pines near the Oconee River swamps. Her lantern flickers over Sarah's bloodstained doll, found where the child vanished.",
+        "key_beats": [
+            "Eleanor Whitaker discovers Sarah's bloodstained doll at the swamp's edge during her night patrol",
+            "James Carter finds charred Confederate musket fragments near the marshes",
+            "Thomas Reed discovers claw marks on his cabin porch"
+        ],
+        "plot_point": "Eleanor's discovery of the doll ignites the hunt, exposing the creature's pattern."
     }
 
 
@@ -142,20 +101,19 @@ async def test_chapter_outline_parser_parse_scenes(temp_chapter_outline_file):
     # Parse the chapter outline
     chapter_outline_data = await parser.parse_chapter_outline()
     
-    # Parse the scenes
-    scenes = parser._parse_scenes(chapter_outline_data)
+    # Parse the scenes (provide empty list for character_names as we're not using the database)
+    scenes = parser._parse_scenes(chapter_outline_data, [])
     
-    assert len(scenes) == 2
+    # Parser creates ONE scene per chapter from scene_description
+    assert len(scenes) == 1
     assert scenes[0].chapter_number == 1
     assert scenes[0].scene_index == 0
-    assert scenes[0].title == "Opening Scene"
-    assert scenes[0].pov_character == "Hero"
+    assert scenes[0].title == "Chapter 1 Scene 1"
+    assert scenes[0].pov_character == "Eleanor Whitaker"
     assert len(scenes[0].beats) == 3
-    
-    assert scenes[1].chapter_number == 1
-    assert scenes[1].scene_index == 1
-    assert scenes[1].title == "Second Scene"
-    assert len(scenes[1].beats) == 3
+    assert scenes[0].beats[0] == "Eleanor Whitaker discovers Sarah's bloodstained doll at the swamp's edge during her night patrol"
+    assert scenes[0].beats[1] == "James Carter finds charred Confederate musket fragments near the marshes"
+    assert scenes[0].beats[2] == "Thomas Reed discovers claw marks on his cabin porch"
 
 
 @pytest.mark.asyncio
@@ -169,21 +127,28 @@ async def test_chapter_outline_parser_parse_scene_events(temp_chapter_outline_fi
     # Parse the chapter outline
     chapter_outline_data = await parser.parse_chapter_outline()
     
-    # Parse the scene events
-    events = parser._parse_scene_events(chapter_outline_data)
+    # Parse the scene events (provide empty list for character_names)
+    events = parser._parse_scene_events(chapter_outline_data, [])
     
-    assert len(events) == 2
+    # Parser creates ONE event per beat in key_beats list
+    assert len(events) == 3
     assert events[0].chapter_number == 1
     assert events[0].act_number == 1
     assert events[0].scene_index == 0
     assert events[0].event_type == "SceneEvent"
-    assert events[0].name == "Forest Encounter"
+    assert events[0].name == "Eleanor Whitaker discovers Sarah's bloodstained doll at the swamp's edge during her night patrol"
     
     assert events[1].chapter_number == 1
     assert events[1].act_number == 1
-    assert events[1].scene_index == 1
+    assert events[1].scene_index == 0
     assert events[1].event_type == "SceneEvent"
-    assert events[1].name == "Cave Shelter"
+    assert events[1].name == "James Carter finds charred Confederate musket fragments near the marshes"
+    
+    assert events[2].chapter_number == 1
+    assert events[2].act_number == 1
+    assert events[2].scene_index == 0
+    assert events[2].event_type == "SceneEvent"
+    assert events[2].name == "Thomas Reed discovers claw marks on his cabin porch"
 
 
 @pytest.mark.asyncio
@@ -200,14 +165,9 @@ async def test_chapter_outline_parser_parse_locations(temp_chapter_outline_file)
     # Parse the locations
     locations = parser._parse_locations(chapter_outline_data)
     
-    assert len(locations) == 2
-    assert locations[0].name == "Dark Forest"
-    assert locations[0].description == "A dense, dark forest"
-    assert locations[0].category == "Location"
-    
-    assert locations[1].name == "Cave"
-    assert locations[1].description == "A dark cave"
-    assert locations[1].category == "Location"
+    # Locations are enriched from act outlines in Stage 3, not parsed from chapter outlines
+    # ChapterOutlineParser returns empty list for locations
+    assert len(locations) == 0
 
 
 @pytest.mark.asyncio
@@ -255,11 +215,11 @@ async def test_chapter_outline_parser_missing_scenes(temp_chapter_outline_file):
         chapter_outline_data = await parser.parse_chapter_outline()
         
         # Parse scenes (should return empty list)
-        scenes = parser._parse_scenes(chapter_outline_data)
+        scenes = parser._parse_scenes(chapter_outline_data, [])
         assert len(scenes) == 0
         
         # Parse events (should return empty list)
-        events = parser._parse_scene_events(chapter_outline_data)
+        events = parser._parse_scene_events(chapter_outline_data, [])
         assert len(events) == 0
         
         # Parse locations (should return empty list)
