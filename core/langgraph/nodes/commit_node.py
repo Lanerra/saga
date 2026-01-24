@@ -45,11 +45,7 @@ from data_access.kg_queries import (
     validate_relationship_type_for_cypher_interpolation,
 )
 from models.kg_models import CharacterProfile, WorldItem
-from processing.entity_deduplication import (
-    check_entity_similarity,
-    generate_entity_id,
-    should_merge_entities,
-)
+from processing.entity_deduplication import generate_entity_id
 from utils.text_processing import validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
@@ -106,15 +102,15 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         relationships=len(relationships),
     )
 
-    # Track mappings for deduplication
+    # Track mappings for deduplication (kept for backward compatibility)
     char_mappings: dict[str, str] = {}  # new_name -> existing_name (or same)
     world_mappings: dict[str, str] = {}  # new_name -> existing_id (or new_id)
 
     try:
         # Step 1: Deduplicate characters (READ operations)
+        # Since entities are canonical from Stage 1, no deduplication is needed
         for char in char_entities:
-            deduplicated_name = await _deduplicate_character(char.name, char.description, state.get("current_chapter", 1))
-            char_mappings[char.name] = deduplicated_name
+            char_mappings[char.name] = char.name
 
         # Step 2: Deduplicate world items (READ operations)
         # First pass: deduplicate within batch (same name = same id)
@@ -132,11 +128,10 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 )
                 continue
 
-            # First time seeing this name, check database for duplicates
-            deduplicated_id = await _deduplicate_world_item(
+            # First time seeing this name, generate deterministic ID
+            deduplicated_id = generate_entity_id(
                 item.name,
                 item.attributes.get("category", ""),
-                item.description,
                 state.get("current_chapter", 1),
             )
             world_mappings[item.name] = deduplicated_id
@@ -276,16 +271,10 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 },
             )
 
-        # Step 6: Phase 2 Deduplication - Relationship-based duplicate detection
-        # This runs AFTER relationships are committed, so relationship context is available
-        # to help identify duplicates that were missed in Phase 1 (name-based deduplication)
-        phase2_merges = await _run_phase2_deduplication(state.get("current_chapter", 1))
-
         return {
             "current_node": "commit_to_graph",
             "last_error": None,
             "has_fatal_error": False,
-            "phase2_deduplication_merges": phase2_merges,
         }
 
     except Exception as e:
@@ -419,111 +408,7 @@ def _deduplicate_entity_list(entities: list[ExtractedEntity]) -> list[ExtractedE
     return unique_entities
 
 
-async def _deduplicate_character(name: str, description: str, chapter: int) -> str:
-    """Resolve a character name to an existing character when a likely duplicate exists.
 
-    Args:
-        name: Extracted character name.
-        description: Extracted character description used for similarity checks.
-        chapter: Chapter number used for logging/provenance.
-
-    Returns:
-        The name to use for persistence. This may be an existing character name when
-        deduplication decides a merge is appropriate, otherwise the original `name`.
-
-    Notes:
-        This helper performs similarity checks (which may involve I/O) when duplicate
-        prevention is enabled. If duplicate prevention is disabled, it returns `name`
-        unchanged.
-    """
-    # Check if duplicate prevention is enabled in config
-    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_CHARACTER_ENABLED:
-        return name
-
-    # Check for similar existing character
-    similar_entity = await check_entity_similarity(
-        name,
-        "character",
-        description=description,
-    )
-
-    if similar_entity:
-        # Determine if we should merge based on similarity
-        should_merge = await should_merge_entities(
-            name,
-            description,
-            similar_entity,
-            similarity_threshold=config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD,
-        )
-
-        if should_merge:
-            existing_name = similar_entity["existing_name"]
-            logger.info(
-                "commit_to_graph: merged character",
-                new_name=name,
-                existing_name=existing_name,
-                similarity=similar_entity.get("similarity", 0.0),
-            )
-            return existing_name
-
-    # No merge - use original name
-    return name
-
-
-async def _deduplicate_world_item(name: str, category: str, description: str, chapter: int) -> str:
-    """Resolve a world item to a stable identifier suitable for persistence.
-
-    Args:
-        name: Extracted world item name.
-        category: Extracted world item category (used in deterministic ID generation).
-        description: Extracted world item description used for similarity checks.
-        chapter: Chapter number used for deterministic IDs and provenance.
-
-    Returns:
-        Stable world-item identifier to use for persistence. When duplicate prevention
-        is disabled, this is a deterministic ID derived from `name`, `category`, and
-        `chapter`. When enabled, this may instead be an existing item ID.
-
-    Notes:
-        This helper may perform I/O for similarity checks when duplicate prevention
-        is enabled.
-    """
-    # Check if duplicate prevention is enabled in config
-    if not config.ENABLE_DUPLICATE_PREVENTION or not config.DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED:
-        # Generate new ID
-        return generate_entity_id(name, category, chapter)
-
-    # Check for similar existing world item
-    similar_entity = await check_entity_similarity(
-        name,
-        "world_element",
-        category,
-        description=description,
-    )
-
-    if similar_entity:
-        # Determine if we should merge based on similarity
-        should_merge = await should_merge_entities(
-            name,
-            description,
-            similar_entity,
-            similarity_threshold=config.DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD,
-        )
-
-        if should_merge:
-            existing_id = similar_entity.get("existing_id")
-            logger.info(
-                "commit_to_graph: merged world item",
-                new_name=name,
-                existing_id=existing_id,
-                category=category,
-                similarity=similar_entity.get("similarity", 0.0),
-            )
-            if isinstance(existing_id, str) and existing_id:
-                return existing_id
-
-    # No merge - generate new deterministic ID
-    return generate_entity_id(name, category, chapter)
 
 
 def _convert_to_character_profiles(
@@ -1309,143 +1194,7 @@ def _build_chapter_node_statement(
     return (query, parameters)
 
 
-async def _run_phase2_deduplication(chapter: int) -> dict[str, int]:
-    """
-    Run Phase 2 deduplication using relationship patterns.
 
-    This function runs AFTER relationships are committed to Neo4j, allowing us to use
-    relationship context to identify duplicates that were missed in Phase 1 (name-based
-    deduplication).
-
-    Example failure case this addresses:
-    - Chapter 5 extracts "Alice" (young woman) and "Alice Chen" (protagonist)
-    - Phase 1 deduplication: Names are similar but not identical, borderline similarity
-    - Phase 2 deduplication: Both have relationships with "Bob" and "Central Lab",
-      so they're clearly the same person -> merge them
-
-    Args:
-        chapter: Current chapter number for logging
-
-    Returns:
-        Dict with merge counts: {"characters": N, "world_items": M}
-    """
-    try:
-        import config
-
-        # Check if Phase 2 deduplication is enabled
-        if not getattr(config, "ENABLE_PHASE2_DEDUPLICATION", False):
-            logger.debug(
-                "_run_phase2_deduplication: Phase 2 deduplication disabled in config",
-                chapter=chapter,
-            )
-            return {"characters": 0, "world_items": 0}
-
-        # Import Phase 2 functions
-        from processing.entity_deduplication import (
-            find_relationship_based_duplicates,
-            merge_duplicate_entities,
-        )
-
-        # Get configuration thresholds
-        name_threshold = getattr(config, "PHASE2_NAME_SIMILARITY_THRESHOLD", 0.6)
-        rel_threshold = getattr(config, "PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD", 0.7)
-
-        logger.info(
-            "_run_phase2_deduplication: starting Phase 2 deduplication",
-            chapter=chapter,
-            name_threshold=name_threshold,
-            rel_threshold=rel_threshold,
-        )
-
-        merge_counts = {"characters": 0, "world_items": 0}
-
-        # Phase 2 for characters
-        char_duplicates = await find_relationship_based_duplicates(
-            entity_type="character",
-            name_similarity_threshold=name_threshold,
-            relationship_similarity_threshold=rel_threshold,
-        )
-
-        for entity1, entity2, name_sim, rel_sim in char_duplicates:
-            success = await merge_duplicate_entities(entity1, entity2, entity_type="character")
-            if success:
-                merge_counts["characters"] += 1
-                logger.info(
-                    "_run_phase2_deduplication: merged character duplicates",
-                    entity1=entity1,
-                    entity2=entity2,
-                    name_similarity=name_sim,
-                    relationship_similarity=rel_sim,
-                    chapter=chapter,
-                )
-
-        # Phase 2 for world items
-        world_duplicates = await find_relationship_based_duplicates(
-            entity_type="world_element",
-            name_similarity_threshold=name_threshold,
-            relationship_similarity_threshold=rel_threshold,
-        )
-
-        for entity1, entity2, name_sim, rel_sim in world_duplicates:
-            success = await merge_duplicate_entities(entity1, entity2, entity_type="world_element")
-            if success:
-                merge_counts["world_items"] += 1
-                logger.info(
-                    "_run_phase2_deduplication: merged world item duplicates",
-                    entity1=entity1,
-                    entity2=entity2,
-                    name_similarity=name_sim,
-                    relationship_similarity=rel_sim,
-                    chapter=chapter,
-                )
-
-        if merge_counts["characters"] > 0 or merge_counts["world_items"] > 0:
-            # Cache invalidation after Phase 2 merges
-            #
-            # Rationale:
-            # - Phase 2 merges mutate Neo4j state *after* the main commit transaction.
-            # - data_access read APIs are cached (async_lru), so failing to clear caches
-            #   here can cause stale reads of now-merged/deleted entities.
-            #
-            # Local import avoids eager import side effects / circular deps.
-            from data_access.cache_coordinator import (
-                clear_character_read_caches,
-                clear_kg_read_caches,
-                clear_world_read_caches,
-            )
-
-            cleared_character = clear_character_read_caches()
-            cleared_world = clear_world_read_caches()
-            cleared_kg = clear_kg_read_caches()
-
-            logger.debug(
-                "_run_phase2_deduplication: invalidated caches after merges",
-                chapter=chapter,
-                cache_cleared={
-                    "character": cleared_character,
-                    "world": cleared_world,
-                    "kg": cleared_kg,
-                },
-            )
-
-        logger.info(
-            "_run_phase2_deduplication: completed Phase 2 deduplication",
-            chapter=chapter,
-            character_merges=merge_counts["characters"],
-            world_item_merges=merge_counts["world_items"],
-        )
-
-        return merge_counts
-
-    except Exception as e:
-        logger.error(
-            "_run_phase2_deduplication: error during Phase 2 deduplication",
-            error=str(e),
-            chapter=chapter,
-            exc_info=True,
-        )
-        # Don't fail the commit if Phase 2 deduplication fails
-        return {"characters": 0, "world_items": 0}
 
 
 def _aggregate_scene_embeddings_to_chapter(scene_embeddings: list[list[float]] | dict[str, list[float]]) -> list[float]:

@@ -313,18 +313,22 @@ class SagaSettings(BaseSettings):
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
 
     # De-duplication Configuration
-    DEDUPLICATION_USE_SEMANTIC: bool = True
+    # DEPRECATED: Deduplication is no longer needed per Phase 4 requirements
+    # Entities are canonical from Stage 1, so deduplication is disabled
+    DEDUPLICATION_USE_SEMANTIC: bool = False
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.55
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
-    # Duplicate Prevention Settings
-    ENABLE_DUPLICATE_PREVENTION: bool = True
+    # DEPRECATED: Duplicate prevention is disabled per Phase 4 requirements
+    # Entities are canonical from Stage 1
+    ENABLE_DUPLICATE_PREVENTION: bool = False
     DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.75
-    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = True
-    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = True
+    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = False
+    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = False
 
-    # Phase 2 Deduplication (Relationship-Based)
-    ENABLE_PHASE2_DEDUPLICATION: bool = True
+    # DEPRECATED: Phase 2 deduplication is disabled per Phase 4 requirements
+    # Relationships are canonical from Stage 1
+    ENABLE_PHASE2_DEDUPLICATION: bool = False
     PHASE2_NAME_SIMILARITY_THRESHOLD: float = 0.5
     PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD: float = 0.6
 
@@ -359,15 +363,17 @@ class SagaSettings(BaseSettings):
     # Chapter embedding extraction settings
     ENABLE_CHAPTER_EMBEDDING_EXTRACTION: bool = True  # Extract chapter embeddings from narrative
     
-    # FORBIDDEN: These settings should be False to prevent creation of new structural entities
+    # DEPRECATED: These settings are permanently disabled per Phase 4 requirements
     # Stage 5 should NOT extract or create new structural entities
-    ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - characters created in Stage 1
-    ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - locations created in Stage 2/3
-    ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - events created in Stage 2/3/4
-    ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - items created in Stage 2
+    # These are kept for backward compatibility but should never be enabled
+    ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - characters created in Stage 1 only
+    ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - locations created in Stage 2/3 only
+    ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - events created in Stage 2/3/4 only
+    ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - items created in Stage 2 only
     
-    # Relationship extraction settings
-    ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - relationships created in Stage 1
+    # DEPRECATED: Relationship extraction is permanently disabled
+    # Relationships are canonical from Stage 1 and should not be extracted from narrative
+    ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - relationships created in Stage 1 only
     
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
@@ -389,8 +395,13 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
-    # Relationship Normalization
-    relationship_normalization: RelationshipNormalizationSettings = Field(default_factory=RelationshipNormalizationSettings)
+    # DEPRECATED: Relationship normalization is disabled per Phase 4 requirements
+    # Relationships are canonical from Stage 1 and should not be normalized
+    relationship_normalization: RelationshipNormalizationSettings = Field(default_factory=lambda: RelationshipNormalizationSettings(
+        ENABLE_RELATIONSHIP_NORMALIZATION=False,
+        STRICT_CANONICAL_MODE=False,
+        STATIC_OVERRIDES_ENABLED=False,
+    ))
 
     # Schema Enforcement
     schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)
