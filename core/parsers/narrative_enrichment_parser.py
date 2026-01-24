@@ -22,6 +22,7 @@ import numpy as np
 import structlog
 from pydantic import BaseModel, Field
 
+import config
 from core.db_manager import neo4j_manager
 from core.entity_embedding_service import (
     compute_entity_embedding_text,
@@ -115,6 +116,11 @@ class NarrativeEnrichmentParser:
             ValueError: If narrative text cannot be parsed
             DatabaseError: If there are issues accessing the database
         """
+        # Check if physical description extraction is enabled
+        if not config.ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION:
+            logger.info("Physical description extraction is disabled by configuration")
+            return []
+            
         if not self.narrative_text:
             logger.warning("No narrative text provided for physical description extraction")
             return []
@@ -261,6 +267,11 @@ class NarrativeEnrichmentParser:
             ValueError: If narrative text cannot be parsed
             DatabaseError: If there are issues accessing the database
         """
+        # Check if chapter embedding extraction is enabled
+        if not config.ENABLE_CHAPTER_EMBEDDING_EXTRACTION:
+            logger.info("Chapter embedding extraction is disabled by configuration")
+            return []
+            
         if not self.narrative_text:
             logger.warning("No narrative text provided for chapter embedding extraction")
             return []
@@ -346,6 +357,11 @@ class NarrativeEnrichmentParser:
         Returns:
             True if validation passes, False otherwise
         """
+        # Check if physical description validation is enabled
+        if not config.ENABLE_PHYSICAL_DESCRIPTION_VALIDATION:
+            logger.info("Physical description validation is disabled by configuration")
+            return True
+            
         try:
             # Get the character profile
             character = await get_character_profile_by_name(character_name)
@@ -530,29 +546,37 @@ class NarrativeEnrichmentParser:
             Tuple of (success: bool, message: str)
         """
         try:
-            # Step 1: Extract physical descriptions
-            logger.info("Extracting physical descriptions from narrative text")
-            physical_descriptions = await self.extract_physical_descriptions()
-            
-            if not physical_descriptions:
-                logger.warning("No physical descriptions extracted from narrative text")
-            
-            logger.info(
-                f"Extracted {len(physical_descriptions)} physical descriptions from narrative text",
-                extra={"chapter": self.chapter_number},
-            )
+            # Step 1: Extract physical descriptions (only if enabled)
+            if config.ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION:
+                logger.info("Extracting physical descriptions from narrative text")
+                physical_descriptions = await self.extract_physical_descriptions()
+                
+                if not physical_descriptions:
+                    logger.warning("No physical descriptions extracted from narrative text")
+                
+                logger.info(
+                    f"Extracted {len(physical_descriptions)} physical descriptions from narrative text",
+                    extra={"chapter": self.chapter_number},
+                )
+            else:
+                physical_descriptions = []
+                logger.info("Physical description extraction is disabled by configuration")
 
-            # Step 2: Extract chapter embeddings
-            logger.info("Extracting chapter embeddings from narrative text")
-            chapter_embeddings = await self.extract_chapter_embeddings()
-            
-            if not chapter_embeddings:
-                logger.warning("No chapter embeddings extracted from narrative text")
-            
-            logger.info(
-                f"Extracted {len(chapter_embeddings)} chapter embeddings from narrative text",
-                extra={"chapter": self.chapter_number},
-            )
+            # Step 2: Extract chapter embeddings (only if enabled)
+            if config.ENABLE_CHAPTER_EMBEDDING_EXTRACTION:
+                logger.info("Extracting chapter embeddings from narrative text")
+                chapter_embeddings = await self.extract_chapter_embeddings()
+                
+                if not chapter_embeddings:
+                    logger.warning("No chapter embeddings extracted from narrative text")
+                
+                logger.info(
+                    f"Extracted {len(chapter_embeddings)} chapter embeddings from narrative text",
+                    extra={"chapter": self.chapter_number},
+                )
+            else:
+                chapter_embeddings = []
+                logger.info("Chapter embedding extraction is disabled by configuration")
 
             # Step 3: Update character physical descriptions
             if physical_descriptions:

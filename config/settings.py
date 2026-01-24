@@ -347,6 +347,28 @@ class SagaSettings(BaseSettings):
     SPACY_MODEL: str | None = None  # default None => utils.text_processing uses en_core_web_lg
     ENABLE_ENTITY_VALIDATION: bool = True  # Enable spaCy-based entity validation during extraction
 
+    # Stage 5: Narrative Generation & Enrichment Configuration
+    # These settings control what can be extracted from narrative text in Stage 5
+    # According to schema design, Stage 5 should only extract physical descriptions and embeddings
+    # It should NOT create new structural entities (Characters, Events, Locations, Items)
+    
+    # Physical description extraction settings
+    ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION: bool = True  # Extract physical descriptions from narrative
+    ENABLE_PHYSICAL_DESCRIPTION_VALIDATION: bool = True  # Validate extracted descriptions against existing properties
+    
+    # Chapter embedding extraction settings
+    ENABLE_CHAPTER_EMBEDDING_EXTRACTION: bool = True  # Extract chapter embeddings from narrative
+    
+    # FORBIDDEN: These settings should be False to prevent creation of new structural entities
+    # Stage 5 should NOT extract or create new structural entities
+    ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - characters created in Stage 1
+    ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - locations created in Stage 2/3
+    ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - events created in Stage 2/3/4
+    ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - items created in Stage 2
+    
+    # Relationship extraction settings
+    ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE: bool = False  # Should be False - relationships created in Stage 1
+    
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
     CONFIGURED_THEME: str = "the hubris of humanity"
