@@ -87,6 +87,7 @@ Module Organization
 - `chapter_queries.py`: Chapter node and embedding queries
 - `world_queries.py`: World-building element queries
 - `plot_queries.py`: Plot point and narrative arc queries
+- `scene_queries.py`: Scene and event node queries for context building
 - `kg_queries.py`: General KG operations, entity management
 - `cache_coordinator.py`: Query result caching coordination
 
@@ -167,6 +168,7 @@ _SUBMODULES: dict[str, str] = {
     "kg_queries": "data_access.kg_queries",
     "plot_queries": "data_access.plot_queries",
     "world_queries": "data_access.world_queries",
+    "scene_queries": "data_access.scene_queries",
     "cache_coordinator": "data_access.cache_coordinator",
     "cypher_builders": "data_access.cypher_builders",
 }
