@@ -222,9 +222,11 @@ class GlobalOutlineParser:
         locations = []
         for item in self._world_items_cache:
             if item.category == "location":
+                # Stage 2: Locations should NOT have names yet (per schema)
+                # Names are added in Stage 3 when act outlines provide canonical names
                 location = Location(
                     id=item.id,
-                    name=None,
+                    name=None,  # Stage 2: No name yet
                     description=item.description,
                     category="Location",
                     created_chapter=0,

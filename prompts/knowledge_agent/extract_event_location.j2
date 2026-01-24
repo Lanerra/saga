@@ -1,0 +1,28 @@
+Identify the primary location where this event occurs.
+
+Event: {{ event_name }}
+Description: {{ event_description }}
+Cause: {{ event_cause }}
+Effect: {{ event_effect }}
+
+Known Locations:
+{% for loc in known_locations %}
+- {{ loc.name }}: {{ loc.description }}
+{% endfor %}
+
+Instructions:
+1. Identify where this event takes place based on the event text
+2. Match to ONE location from the Known Locations list
+3. Return the exact location name as it appears in the Known Locations list
+4. If no clear location match is found, return null
+
+Output contract (STRICT JSON, no exceptions):
+- Output MUST be valid JSON only
+- Output MUST be a single JSON object with one key: "location"
+- The "location" value must be either a string (matching a Known Location name) or null
+- Do NOT output markdown, code fences, or commentary
+
+Example outputs:
+{"location":"Refugee Camp"}
+{"location":"Swamps"}
+{"location":null}
