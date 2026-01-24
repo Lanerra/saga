@@ -458,12 +458,12 @@ class ActOutlineParser:
             List of dicts with 'name' and 'description' keys
         """
         try:
-            query = "MATCH (l:Location) WHERE l.name IS NOT NULL RETURN l.name as name, l.description as description ORDER BY l.name"
+            query = "MATCH (l:Location) RETURN l.name as name, l.description as description ORDER BY l.name"
             result = await neo4j_manager.execute_read_query(query, {})
             return [
-                {"name": record["name"], "description": record["description"]}
+                {"name": record.get("name"), "description": record["description"]}
                 for record in result
-                if record.get("name")
+                if record.get("description")
             ]
         except Exception as e:
             logger.error("Error fetching locations: %s", str(e), exc_info=True)
@@ -682,10 +682,11 @@ class ActOutlineParser:
 
             # Create OCCURS_AT relationships with locations
             occurs_at_count = 0
-            for event_id, location_name in location_involvements.items():
+            for event_id, location_identifier in location_involvements.items():
                 query = """
                 MATCH (e:Event {id: $event_id})
-                MATCH (l:Location {name: $location_name})
+                MATCH (l:Location)
+                WHERE l.name = $location_identifier OR l.description = $location_identifier
                 MERGE (e)-[r:OCCURS_AT]->(l)
                 SET r.created_ts = timestamp(),
                     r.updated_ts = timestamp()
@@ -693,7 +694,7 @@ class ActOutlineParser:
 
                 params = {
                     "event_id": event_id,
-                    "location_name": location_name,
+                    "location_identifier": location_identifier,
                 }
 
                 cypher_queries.append((query, params))

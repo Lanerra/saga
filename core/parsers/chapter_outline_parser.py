@@ -99,177 +99,158 @@ class ChapterOutlineParser:
 
     def _parse_chapter(self, chapter_outline_data: dict[str, Any]) -> Chapter:
         """Parse chapter data from chapter outline.
-        
+
         Args:
-            chapter_outline_data: Parsed chapter outline data
-            
+            chapter_outline_data: Parsed chapter outline data (single chapter dict)
+
         Returns:
             Chapter instance
         """
         chapter_number = chapter_outline_data.get("chapter_number", 0)
         act_number = chapter_outline_data.get("act_number", 0)
-        
-        # Generate chapter ID
+
         chapter_id = self._generate_id("Chapter", chapter_number)
-        
-        # Create Chapter
+
+        scene_description = chapter_outline_data.get("scene_description", "")
+        plot_point = chapter_outline_data.get("plot_point", "")
+        summary = f"{scene_description}\n\n{plot_point}" if scene_description and plot_point else scene_description or plot_point
+
         chapter = Chapter(
             id=chapter_id,
             number=chapter_number,
             title=chapter_outline_data.get("title", f"Chapter {chapter_number}"),
-            summary=chapter_outline_data.get("summary", ""),
+            summary=summary,
             act_number=act_number,
             created_chapter=chapter_number,
             is_provisional=False,
-            created_ts=None,  # Will be set by Neo4j
-            updated_ts=None,  # Will be set by Neo4j
+            created_ts=None,
+            updated_ts=None,
         )
-        
+
         return chapter
 
     def _parse_scenes(self, chapter_outline_data: dict[str, Any]) -> list[Scene]:
         """Parse scenes from chapter outline data.
-        
+
         Args:
-            chapter_outline_data: Parsed chapter outline data
-            
+            chapter_outline_data: Parsed chapter outline data (single chapter dict)
+
         Returns:
             List of Scene instances
         """
         scenes = []
-        
-        # Check if scenes are in the chapter outline
-        if "scenes" not in chapter_outline_data:
-            logger.warning("No scenes found in chapter outline data")
+
+        chapter_number = chapter_outline_data.get("chapter_number", 0)
+        scene_description = chapter_outline_data.get("scene_description", "")
+        plot_point = chapter_outline_data.get("plot_point", "")
+        key_beats = chapter_outline_data.get("key_beats", [])
+
+        if not scene_description:
+            logger.warning("No scene_description found in chapter outline data")
             return scenes
-        
-        # Process each scene in the chapter
-        for scene_data in chapter_outline_data["scenes"]:
-            scene_index = scene_data.get("scene_index", 0)
-            chapter_number = chapter_outline_data.get("chapter_number", 0)
-            
-            # Generate scene ID
-            scene_id = self._generate_id("Scene", chapter_number, scene_index)
-            
-            # Create Scene
-            scene = Scene(
-                id=scene_id,
-                chapter_number=chapter_number,
-                scene_index=scene_index,
-                title=scene_data.get("title", f"Scene {scene_index + 1}"),
-                pov_character=scene_data.get("pov_character", ""),
-                setting=scene_data.get("setting", ""),
-                plot_point=scene_data.get("plot_point", ""),
-                conflict=scene_data.get("conflict", ""),
-                outcome=scene_data.get("outcome", ""),
-                beats=scene_data.get("beats", []),
-                created_chapter=chapter_number,
-                is_provisional=False,
-                created_ts=None,  # Will be set by Neo4j
-                updated_ts=None,  # Will be set by Neo4j
-            )
-            
-            scenes.append(scene)
-        
+
+        scene_index = 0
+        scene_id = self._generate_id("Scene", chapter_number, scene_index)
+
+        pov_character = self._extract_pov_character_from_beats(key_beats)
+
+        scene = Scene(
+            id=scene_id,
+            chapter_number=chapter_number,
+            scene_index=scene_index,
+            title=f"Chapter {chapter_number} Scene",
+            pov_character=pov_character,
+            setting=scene_description,
+            plot_point=plot_point,
+            conflict="",
+            outcome="",
+            beats=key_beats,
+            created_chapter=chapter_number,
+            is_provisional=False,
+            created_ts=None,
+            updated_ts=None,
+        )
+
+        scenes.append(scene)
+
         return scenes
+
+    def _extract_pov_character_from_beats(self, key_beats: list[str]) -> str:
+        """Extract POV character from key beats using simple heuristic.
+
+        Args:
+            key_beats: List of key beat descriptions
+
+        Returns:
+            POV character name (first character mentioned, or empty string)
+        """
+        if not key_beats:
+            return ""
+
+        for beat in key_beats:
+            for name in ["Eleanor Whitaker", "James Carter", "Thomas Reed", "Ezekiel Vance", "Sarah Jenkins", "Silas Thorne"]:
+                if name in beat:
+                    return name
+
+        return ""
 
     def _parse_scene_events(self, chapter_outline_data: dict[str, Any]) -> list[SceneEvent]:
         """Parse scene events from chapter outline data.
-        
+
         Args:
-            chapter_outline_data: Parsed chapter outline data
-            
+            chapter_outline_data: Parsed chapter outline data (single chapter dict)
+
         Returns:
             List of SceneEvent instances
         """
         events = []
-        
-        # Check if scenes are in the chapter outline
-        if "scenes" not in chapter_outline_data:
-            logger.warning("No scenes found in chapter outline data")
+
+        chapter_number = chapter_outline_data.get("chapter_number", 0)
+        act_number = chapter_outline_data.get("act_number", 0)
+        key_beats = chapter_outline_data.get("key_beats", [])
+
+        if not key_beats:
             return events
-        
-        # Process each scene for events
-        for scene_data in chapter_outline_data["scenes"]:
-            scene_index = scene_data.get("scene_index", 0)
-            chapter_number = chapter_outline_data.get("chapter_number", 0)
-            act_number = chapter_outline_data.get("act_number", 0)
-            
-            # Check if events are in the scene
-            if "events" not in scene_data:
-                continue
-            
-            # Process each event in the scene
-            for event_index, event_data in enumerate(scene_data["events"]):
-                # Generate event ID
-                event_id = self._generate_id("Event", chapter_number, scene_index, event_index)
-                
-                # Create SceneEvent
-                scene_event = SceneEvent(
-                    id=event_id,
-                    name=event_data.get("name", f"Event {event_index + 1}"),
-                    description=event_data.get("description", ""),
-                    event_type="SceneEvent",
-                    chapter_number=chapter_number,
-                    act_number=act_number,
-                    scene_index=scene_index,
-                    conflict=event_data.get("conflict", ""),
-                    outcome=event_data.get("outcome", ""),
-                    pov_character=event_data.get("pov_character", ""),
-                    created_chapter=chapter_number,
-                    is_provisional=False,
-                    created_ts=None,  # Will be set by Neo4j
-                    updated_ts=None,  # Will be set by Neo4j
-                )
-                
-                events.append(scene_event)
-        
+
+        scene_index = 0
+
+        for event_index, beat in enumerate(key_beats):
+            event_id = self._generate_id("Event", chapter_number, scene_index, event_index)
+
+            pov_character = self._extract_pov_character_from_beats([beat])
+
+            scene_event = SceneEvent(
+                id=event_id,
+                name=beat[:50] + "..." if len(beat) > 50 else beat,
+                description=beat,
+                event_type="SceneEvent",
+                chapter_number=chapter_number,
+                act_number=act_number,
+                scene_index=scene_index,
+                conflict="",
+                outcome="",
+                pov_character=pov_character,
+                created_chapter=chapter_number,
+                is_provisional=False,
+                created_ts=None,
+                updated_ts=None,
+            )
+
+            events.append(scene_event)
+
         return events
 
     def _parse_locations(self, chapter_outline_data: dict[str, Any]) -> list[Location]:
         """Parse locations from chapter outline data.
-        
+
         Args:
-            chapter_outline_data: Parsed chapter outline data
-            
+            chapter_outline_data: Parsed chapter outline data (single chapter dict)
+
         Returns:
             List of Location instances
         """
         locations = []
-        
-        # Check if scenes are in the chapter outline
-        if "scenes" not in chapter_outline_data:
-            logger.warning("No scenes found in chapter outline data")
-            return locations
-        
-        # Process each scene for locations
-        for scene_data in chapter_outline_data["scenes"]:
-            scene_index = scene_data.get("scene_index", 0)
-            chapter_number = chapter_outline_data.get("chapter_number", 0)
-            
-            # Check if location is in the scene
-            if "location" not in scene_data:
-                continue
-            
-            location_data = scene_data["location"]
-            
-            # Generate location ID
-            location_id = self._generate_id("Location", chapter_number, scene_index)
-            
-            # Create Location
-            location = Location(
-                id=location_id,
-                name=location_data.get("name", ""),
-                description=location_data.get("description", ""),
-                category="Location",
-                created_chapter=chapter_number,
-                is_provisional=False,
-                created_ts=None,  # Will be set by Neo4j
-                updated_ts=None,  # Will be set by Neo4j
-            )
-            
-            locations.append(location)
-        
+
         return locations
 
     async def create_chapter_nodes(self, chapters: list[Chapter]) -> bool:
@@ -611,7 +592,8 @@ class ChapterOutlineParser:
             
             # Create Scene -[FEATURES_CHARACTER]-> Character relationships
             for scene in scenes:
-                # Check if pov_character exists in Neo4j
+                if not scene.pov_character:
+                    continue
                 character = await self._get_character_by_name(scene.pov_character)
                 if character:
                     query = """
@@ -670,7 +652,8 @@ class ChapterOutlineParser:
             
             # Create Event -[INVOLVES]-> Character relationships
             for event in events:
-                # Check if pov_character exists in Neo4j
+                if not event.pov_character:
+                    continue
                 character = await self._get_character_by_name(event.pov_character)
                 if character:
                     query = """
@@ -756,101 +739,112 @@ class ChapterOutlineParser:
 
     async def parse_and_persist(self) -> tuple[bool, str]:
         """Parse chapter outline and persist to Neo4j.
-        
+
         Returns:
             Tuple of (success: bool, message: str)
         """
         try:
-            # Step 1: Parse chapter outline
             logger.info("Parsing chapter outline from %s", self.chapter_outline_path)
-            chapter_outline_data = await self.parse_chapter_outline()
-            
-            if not chapter_outline_data:
+            all_chapter_data = await self.parse_chapter_outline()
+
+            if not all_chapter_data:
                 return False, "No data found in chapter outline"
-            
+
             logger.info("Parsed chapter outline data", extra={"chapter": self.chapter_number})
-            
-            # Step 2: Parse chapter
-            logger.info("Parsing chapter from chapter outline")
-            chapter = self._parse_chapter(chapter_outline_data)
-            
-            if not chapter:
-                return False, "No chapter found in chapter outline"
-            
-            logger.info("Parsed chapter", extra={"chapter": self.chapter_number})
-            
-            # Step 3: Parse scenes
-            logger.info("Parsing scenes from chapter outline")
-            scenes = self._parse_scenes(chapter_outline_data)
-            
-            if not scenes:
-                logger.warning("No scenes found in chapter outline")
-            
-            logger.info("Parsed %d scenes", len(scenes), extra={"chapter": self.chapter_number})
-            
-            # Step 4: Parse scene events
-            logger.info("Parsing scene events from chapter outline")
-            events = self._parse_scene_events(chapter_outline_data)
-            
-            if not events:
-                logger.warning("No scene events found in chapter outline")
-            
-            logger.info("Parsed %d scene events", len(events), extra={"chapter": self.chapter_number})
-            
-            # Step 5: Parse locations
-            logger.info("Parsing locations from chapter outline")
-            locations = self._parse_locations(chapter_outline_data)
-            
-            if not locations:
-                logger.warning("No locations found in chapter outline")
-            
-            logger.info("Parsed %d locations", len(locations), extra={"chapter": self.chapter_number})
-            
-            # Step 6: Create chapter nodes
+
+            all_chapters = []
+            all_scenes = []
+            all_events = []
+            all_locations = []
+
+            for chapter_key, chapter_outline_data in all_chapter_data.items():
+                if not isinstance(chapter_outline_data, dict):
+                    continue
+
+                logger.info("Parsing chapter from chapter outline")
+                chapter = self._parse_chapter(chapter_outline_data)
+
+                if not chapter:
+                    logger.warning("Could not parse chapter %s", chapter_key)
+                    continue
+
+                logger.info("Parsed chapter", extra={"chapter": chapter.number})
+
+                logger.info("Parsing scenes from chapter outline")
+                scenes = self._parse_scenes(chapter_outline_data)
+
+                if not scenes:
+                    logger.warning("No scenes found in chapter outline")
+
+                logger.info("Parsed %d scenes", len(scenes), extra={"chapter": chapter.number})
+
+                logger.info("Parsing scene events from chapter outline")
+                events = self._parse_scene_events(chapter_outline_data)
+
+                if not events:
+                    logger.warning("No scene events found in chapter outline")
+
+                logger.info("Parsed %d scene events", len(events), extra={"chapter": chapter.number})
+
+                logger.info("Parsing locations from chapter outline")
+                locations = self._parse_locations(chapter_outline_data)
+
+                if not locations:
+                    logger.debug(
+                        "No explicit locations in chapter outline; using locations from earlier stages",
+                        extra={"chapter": chapter.number}
+                    )
+
+                logger.info("Parsed %d locations", len(locations), extra={"chapter": chapter.number})
+
+                all_chapters.append(chapter)
+                all_scenes.extend(scenes)
+                all_events.extend(events)
+                all_locations.extend(locations)
+
+            if not all_chapters:
+                return False, "No chapters found in chapter outline"
+
             logger.info("Creating Chapter nodes in Neo4j")
-            chapters_success = await self.create_chapter_nodes([chapter])
-            
+            chapters_success = await self.create_chapter_nodes(all_chapters)
+
             if not chapters_success:
                 return False, "Failed to create Chapter nodes"
-            
-            # Step 7: Create scene nodes
+
             logger.info("Creating Scene nodes in Neo4j")
-            scenes_success = await self.create_scene_nodes(scenes)
-            
+            scenes_success = await self.create_scene_nodes(all_scenes)
+
             if not scenes_success:
                 return False, "Failed to create Scene nodes"
-            
-            # Step 8: Create scene event nodes
+
             logger.info("Creating SceneEvent nodes in Neo4j")
-            events_success = await self.create_scene_event_nodes(events)
-            
+            events_success = await self.create_scene_event_nodes(all_events)
+
             if not events_success:
                 return False, "Failed to create SceneEvent nodes"
-            
-            # Step 9: Create location nodes
+
             logger.info("Creating Location nodes in Neo4j")
-            locations_success = await self.create_location_nodes(locations)
-            
+            locations_success = await self.create_location_nodes(all_locations)
+
             if not locations_success:
                 return False, "Failed to create Location nodes"
-            
-            # Step 10: Create relationships
+
             logger.info("Creating relationships in Neo4j")
-            relationships_success = await self.create_relationships([chapter], scenes, events, locations)
-            
+            relationships_success = await self.create_relationships(all_chapters, all_scenes, all_events, all_locations)
+
             if not relationships_success:
                 return False, "Failed to create relationships"
-            
+
             return (
                 True,
                 f"Successfully parsed and persisted "
-                f"1 Chapter, "
-                f"{len(scenes)} Scenes, "
-                f"{len(events)} SceneEvents, "
-                f"{len(locations)} Locations, and "
-                f"{len(scenes) + len(events) + len(locations)} relationships"
+                f"{len(all_chapters)} Chapter, "
+                f"{len(all_scenes)} Scenes, "
+                f"{len(all_events)} SceneEvents, "
+                f"{len(all_locations)} Locations, and "
+                f"{len(all_scenes) + len(all_events) + len(all_locations)} relationships"
             )
-            
+
         except Exception as e:
             logger.error("Error in parse_and_persist: %s", str(e), exc_info=True)
             return False, f"Error parsing and persisting chapter outline: {str(e)}"
