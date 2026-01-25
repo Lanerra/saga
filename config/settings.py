@@ -334,6 +334,7 @@ class SagaSettings(BaseSettings):
 
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
+    GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT: bool = True
 
     # Narrative Style Defaults
     DEFAULT_NARRATIVE_STYLE: str = "Third-Person, personal with internal monologue"
@@ -568,8 +569,8 @@ def simple_log_format_rich(logger: Any, name: str, event_dict: MutableMapping[st
             if key.startswith("_"):
                 continue
             # Format value nicely
-            if isinstance(value, str) and len(value) > 50:
-                value_str = f"{value[:47]}..."
+            if isinstance(value, str) and len(value) > 200:
+                value_str = f"{value[:197]}..."
             else:
                 value_str = str(value)
             context_parts.append(f"[dim]{key}[/dim]={value_str}")
@@ -627,8 +628,8 @@ def simple_log_format_plain(logger: Any, name: str, event_dict: MutableMapping[s
             if key.startswith("_"):
                 continue
             # Format value nicely
-            if isinstance(value, str) and len(value) > 50:
-                value_str = f"{value[:47]}..."
+            if isinstance(value, str) and len(value) > 200:
+                value_str = f"{value[:197]}..."
             else:
                 value_str = str(value)
             context_parts.append(f"{key}={value_str}")

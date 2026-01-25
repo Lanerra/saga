@@ -352,10 +352,12 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         commit_initialization_to_graph,
         extract_outline_relationships,
         generate_act_outlines,
+        generate_all_chapter_outlines,
         generate_chapter_outline,
         generate_character_sheets,
         generate_global_outline,
         persist_initialization_files,
+        run_initialization_parsers,
     )
 
     # Create graph
@@ -391,9 +393,11 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     workflow.add_node("init_character_sheets", generate_character_sheets)
     workflow.add_node("init_global_outline", generate_global_outline)
     workflow.add_node("init_act_outlines", generate_act_outlines)
+    workflow.add_node("init_all_chapter_outlines", generate_all_chapter_outlines)
     workflow.add_node("init_outline_relationships", extract_outline_relationships)
     workflow.add_node("init_commit_to_graph", commit_initialization_to_graph)
     workflow.add_node("init_persist_files", persist_initialization_files)
+    workflow.add_node("init_run_parsers", run_initialization_parsers)
 
     # Mark initialization complete
     def mark_initialization_complete(state: NarrativeState) -> NarrativeState:
@@ -470,6 +474,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
         "init_act_outlines",
         should_continue_init,
         {
+            "continue": "init_all_chapter_outlines",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_all_chapter_outlines",
+        should_continue_init,
+        {
             "continue": "init_outline_relationships",
             "error": "init_error",
         },
@@ -492,6 +504,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
     )
     workflow.add_conditional_edges(
         "init_persist_files",
+        should_continue_init,
+        {
+            "continue": "init_run_parsers",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_run_parsers",
         should_continue_init,
         {
             "continue": "init_complete",
@@ -641,7 +661,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=24,  # route + init_error + 6 init + 15 generation/QA nodes + error_handler
+        total_nodes=25,  # route + init_error + 7 init + 15 generation/QA nodes + error_handler
         entry_point="route",
     )
 

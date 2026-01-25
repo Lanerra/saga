@@ -39,12 +39,18 @@ async def run_generation_mode(*, from_candidate: bool) -> None:
     if from_candidate:
         project_directory = ProjectManager.find_candidate_project()
         if project_directory is None:
-            raise ValueError("No candidate config found for generate mode")
+            raise ValueError("No candidate config found for generate mode with --from-candidate flag")
         ProjectManager.promote_candidate(project_directory)
     else:
-        project_directory = ProjectManager.find_resume_project()
-        if project_directory is None:
-            project_directory = ProjectManager.create_default_project()
+        candidate_directory = ProjectManager.find_candidate_project()
+        if candidate_directory is not None:
+            logger.info("Found candidate config, using it for generation")
+            ProjectManager.promote_candidate(candidate_directory)
+            project_directory = candidate_directory
+        else:
+            project_directory = ProjectManager.find_resume_project()
+            if project_directory is None:
+                project_directory = ProjectManager.create_default_project()
 
     project_config = ProjectManager.load_config(project_directory)
     orchestrator = LangGraphOrchestrator(project_dir=project_directory)

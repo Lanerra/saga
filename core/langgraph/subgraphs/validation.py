@@ -31,6 +31,7 @@ from core.langgraph.content_manager import (
     get_draft_text,
     get_extracted_relationships,
     get_previous_summaries,
+    get_scene_drafts,
     require_project_dir,
 )
 from core.langgraph.nodes.validation_node import (
@@ -374,12 +375,99 @@ async def _fetch_validation_data(current_chapter: int) -> dict[str, Any]:
         }
 
 
+def _check_scene_duplication(state: NarrativeState, content_manager: ContentManager) -> list[Contradiction]:
+    """Check for duplicate or highly similar scenes in the chapter draft.
+
+    Args:
+        state: Workflow state containing scene_drafts_ref.
+        content_manager: Content manager for loading scene drafts.
+
+    Returns:
+        List of contradictions flagging duplicate scenes.
+    """
+    scene_drafts = get_scene_drafts(state, content_manager)
+
+    if len(scene_drafts) < 2:
+        return []
+
+    duplicates = []
+
+    for i in range(len(scene_drafts)):
+        for j in range(i + 1, len(scene_drafts)):
+            scene_i = scene_drafts[i]
+            scene_j = scene_drafts[j]
+
+            sample_length = min(800, len(scene_i), len(scene_j))
+            sample_i = scene_i[:sample_length].lower().strip()
+            sample_j = scene_j[:sample_length].lower().strip()
+
+            if len(sample_i) < 100 or len(sample_j) < 100:
+                continue
+
+            similarity = _calculate_text_similarity(sample_i, sample_j)
+
+            if similarity > 0.7:
+                duplicates.append(
+                    Contradiction(
+                        type="scene_duplication",
+                        description=f"Scene {i + 1} and Scene {j + 1} are highly similar ({int(similarity * 100)}% match). Each scene should be distinct with unique content and purpose.",
+                        conflicting_chapters=[state.get("current_chapter", 1)],
+                        severity="critical",
+                        suggested_fix=f"Rewrite Scene {j + 1} to ensure it covers different content, POV, or plot beats than Scene {i + 1}.",
+                    )
+                )
+
+                logger.warning(
+                    "Scene duplication detected",
+                    scene_i_index=i,
+                    scene_j_index=j,
+                    similarity=round(similarity, 2),
+                    sample_i_start=sample_i[:100],
+                    sample_j_start=sample_j[:100],
+                )
+
+    return duplicates
+
+
+def _calculate_text_similarity(text1: str, text2: str) -> float:
+    """Calculate simple character-level similarity between two texts.
+
+    Uses a basic approach: count common bigrams and trigrams.
+
+    Args:
+        text1: First text sample.
+        text2: Second text sample.
+
+    Returns:
+        Similarity score between 0.0 and 1.0.
+    """
+    if not text1 or not text2:
+        return 0.0
+
+    def get_ngrams(text: str, n: int) -> set[str]:
+        return set(text[i : i + n] for i in range(len(text) - n + 1))
+
+    bigrams1 = get_ngrams(text1, 2)
+    bigrams2 = get_ngrams(text2, 2)
+
+    trigrams1 = get_ngrams(text1, 3)
+    trigrams2 = get_ngrams(text2, 3)
+
+    if not bigrams1 or not bigrams2 or not trigrams1 or not trigrams2:
+        return 0.0
+
+    bigram_overlap = len(bigrams1 & bigrams2) / max(len(bigrams1), len(bigrams2))
+    trigram_overlap = len(trigrams1 & trigrams2) / max(len(trigrams1), len(trigrams2))
+
+    return (bigram_overlap + trigram_overlap) / 2
+
+
 async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     """Detect additional narrative contradictions and update revision decision.
 
     This step augments the contradictions produced by
     [`validate_consistency()`](core/langgraph/subgraphs/validation.py:49) with
-    additional checks (relationship evolution).
+    additional checks (relationship evolution, scene duplication).
 
     Args:
         state: Workflow state.
@@ -407,6 +495,9 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
         validation_data.get("relationships", {}),
     )
     contradictions.extend(relationship_issues)
+
+    scene_duplication_issues = _check_scene_duplication(state, content_manager)
+    contradictions.extend(scene_duplication_issues)
 
     logger.info(
         "detect_contradictions: contradiction detection complete",

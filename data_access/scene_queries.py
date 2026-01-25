@@ -54,22 +54,20 @@ async def get_scene_events(
     """
 
     try:
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(
-                query,
-                chapter_number=chapter_number,
-                scene_index=scene_index,
-            )
-            records = await result.data()
+        params = {
+            "chapter_number": chapter_number,
+            "scene_index": scene_index,
+        }
+        records = await neo4j_manager.execute_read_query(query, params)
 
-            logger.debug(
-                "get_scene_events: fetched events",
-                chapter=chapter_number,
-                scene_index=scene_index,
-                count=len(records),
-            )
+        logger.debug(
+            "get_scene_events: fetched events",
+            chapter=chapter_number,
+            scene_index=scene_index,
+            count=len(records),
+        )
 
-            return records
+        return records
 
     except Exception as e:
         logger.error(
@@ -144,33 +142,32 @@ async def get_act_events(
     """
 
     try:
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(query, act_number=act_number)
-            records = await result.data()
+        params = {"act_number": act_number}
+        records = await neo4j_manager.execute_read_query(query, params)
 
-            if not records:
-                logger.debug(
-                    "get_act_events: no events found for act",
-                    act_number=act_number,
-                )
-                return {
-                    "major_plot_points": [],
-                    "act_key_events": [],
-                }
-
-            record = records[0]
-
+        if not records:
             logger.debug(
-                "get_act_events: fetched events",
+                "get_act_events: no events found for act",
                 act_number=act_number,
-                major_points=len(record.get("major_points", [])),
-                act_events=len(record.get("act_events", [])),
             )
-
             return {
-                "major_plot_points": record.get("major_points", []),
-                "act_key_events": record.get("act_events", []),
+                "major_plot_points": [],
+                "act_key_events": [],
             }
+
+        record = records[0]
+
+        logger.debug(
+            "get_act_events: fetched events",
+            act_number=act_number,
+            major_points=len(record.get("major_points", [])),
+            act_events=len(record.get("act_events", [])),
+        )
+
+        return {
+            "major_plot_points": record.get("major_points", []),
+            "act_key_events": record.get("act_events", []),
+        }
 
     except Exception as e:
         logger.error(
@@ -221,21 +218,19 @@ async def get_character_relationships_for_scene(
     """
 
     try:
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(
-                query,
-                character_names=character_names,
-                chapter_limit=chapter_limit,
-            )
-            records = await result.data()
+        params = {
+            "character_names": character_names,
+            "chapter_limit": chapter_limit,
+        }
+        records = await neo4j_manager.execute_read_query(query, params)
 
-            logger.debug(
-                "get_character_relationships_for_scene: fetched relationships",
-                characters=len(character_names),
-                relationships=len(records),
-            )
+        logger.debug(
+            "get_character_relationships_for_scene: fetched relationships",
+            characters=len(character_names),
+            relationships=len(records),
+        )
 
-            return records
+        return records
 
     except Exception as e:
         logger.error(
@@ -285,21 +280,19 @@ async def get_character_items(
     """
 
     try:
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(
-                query,
-                character_names=character_names,
-                chapter_limit=chapter_limit,
-            )
-            records = await result.data()
+        params = {
+            "character_names": character_names,
+            "chapter_limit": chapter_limit,
+        }
+        records = await neo4j_manager.execute_read_query(query, params)
 
-            logger.debug(
-                "get_character_items: fetched items",
-                characters=len(character_names),
-                items=len(records),
-            )
+        logger.debug(
+            "get_character_items: fetched items",
+            characters=len(character_names),
+            items=len(records),
+        )
 
-            return records
+        return records
 
     except Exception as e:
         logger.error(
@@ -340,22 +333,20 @@ async def get_scene_items(
     """
 
     try:
-        async with neo4j_manager.get_session() as session:
-            result = await session.run(
-                query,
-                chapter_number=chapter_number,
-                scene_index=scene_index,
-            )
-            records = await result.data()
+        params = {
+            "chapter_number": chapter_number,
+            "scene_index": scene_index,
+        }
+        records = await neo4j_manager.execute_read_query(query, params)
 
-            logger.debug(
-                "get_scene_items: fetched items",
-                chapter=chapter_number,
-                scene_index=scene_index,
-                items=len(records),
-            )
+        logger.debug(
+            "get_scene_items: fetched items",
+            chapter=chapter_number,
+            scene_index=scene_index,
+            items=len(records),
+        )
 
-            return records
+        return records
 
     except Exception as e:
         logger.error(

@@ -129,8 +129,16 @@ class ParserRunner:
             file_path = self.content_manager._get_content_path("act_outlines", "all", 1, "json")
             return ActOutlineParser(act_outline_path=str(file_path))
         elif parser_class == ChapterOutlineParser:
-            # Chapter outlines are typically per chapter, but for initialization we use the all_v1.json
-            file_path = self.content_manager._get_content_path("chapter_outlines", "all", 1, "json")
+            v0_path = self.content_manager._get_content_path("chapter_outlines", "all", 0, "json")
+            v1_path = self.content_manager._get_content_path("chapter_outlines", "all", 1, "json")
+
+            if v0_path.exists():
+                file_path = v0_path
+            elif v1_path.exists():
+                file_path = v1_path
+            else:
+                file_path = v1_path
+
             return ChapterOutlineParser(chapter_outline_path=str(file_path))
         else:
             raise ValueError(f"Unsupported parser class: {parser_class}")

@@ -73,9 +73,52 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
 
     # Check if outline already exists
     if chapter_number in existing_outlines:
+        existing_outline = existing_outlines[chapter_number]
+        outline_version = existing_outline.get("version", 1)
+
+        if outline_version == 0:
+            logger.info(
+                "generate_chapter_outline: enriching skeleton outline from initialization",
+                chapter=chapter_number,
+            )
+
+            enriched_outline = await _enrich_skeleton_outline(
+                state=state,
+                chapter_number=chapter_number,
+                skeleton_outline=existing_outline,
+            )
+
+            if enriched_outline:
+                updated_outlines = {**existing_outlines, chapter_number: enriched_outline}
+                outlines_for_storage: dict[str, Any] = {
+                    str(chapter): outline for chapter, outline in updated_outlines.items()
+                }
+
+                chapter_outlines_ref = content_manager.save_json(
+                    outlines_for_storage,
+                    "chapter_outlines",
+                    "all",
+                    version=1,
+                )
+
+                logger.info(
+                    "generate_chapter_outline: skeleton outline enriched",
+                    chapter=chapter_number,
+                    version=1,
+                )
+
+                return {
+                    **state,
+                    "chapter_outlines_ref": chapter_outlines_ref,
+                    "current_node": "chapter_outline",
+                    "last_error": None,
+                    "initialization_step": f"chapter_outline_{chapter_number}_enriched",
+                }
+
         logger.info(
-            "generate_chapter_outline: outline already exists",
+            "generate_chapter_outline: using existing outline",
             chapter=chapter_number,
+            version=outline_version,
         )
         return {
             **state,
@@ -405,6 +448,148 @@ def _parse_chapter_outline(
     }
 
     return chapter_outline
+
+
+async def _enrich_skeleton_outline(
+    state: NarrativeState,
+    chapter_number: int,
+    skeleton_outline: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Enrich a skeleton outline with recent summaries and graph context.
+
+    Args:
+        state: Workflow state.
+        chapter_number: Chapter number.
+        skeleton_outline: The v0 skeleton outline from initialization.
+
+    Returns:
+        Enriched chapter outline dictionary, or None when enrichment fails.
+
+    Notes:
+        Enrichment adds contextual awareness from:
+        - Recent chapter summaries (last 3 chapters)
+        - Updated character states from graph
+        - Current narrative momentum
+
+        The enriched outline maintains the structural framework from the
+        skeleton while adding scene-level detail informed by actual story
+        progression.
+    """
+    content_manager = ContentManager(require_project_dir(state))
+    act_number = skeleton_outline.get("act_number", 1)
+
+    global_outline = get_global_outline(state, content_manager) or {}
+    act_outlines = get_act_outlines(state, content_manager)
+    character_sheets = get_character_sheets(state, content_manager)
+    previous_summaries = get_previous_summaries(state, content_manager)
+
+    act_outline = act_outlines.get(act_number, {})
+    act_outline_text = act_outline.get("raw_text", "")
+
+    character_context = _build_character_summary(character_sheets)
+
+    previous_context = (
+        "\n".join(previous_summaries[-3:])
+        if previous_summaries
+        else "This is the beginning of the story."
+    )
+
+    total_chapters = state.get("total_chapters", 20)
+    act_ranges = choose_act_ranges(
+        global_outline=global_outline, total_chapters=total_chapters
+    )
+    act_range = act_ranges.get(act_number)
+
+    if act_range and act_range.contains(chapter_number):
+        chapter_in_act = (chapter_number - act_range.chapters_start) + 1
+    else:
+        chapter_in_act = 0
+
+    enrichment_context = f"""
+# Skeleton Outline (from initialization)
+
+Scene Description: {skeleton_outline.get("scene_description", "")}
+
+Key Beats:
+{chr(10).join(f"- {beat}" for beat in skeleton_outline.get("key_beats", []))}
+
+Plot Point: {skeleton_outline.get("plot_point", "")}
+
+# Task
+
+Enrich this skeleton outline with scene-level detail based on recent story progression.
+Maintain the structural framework (key beats and plot point) while adding:
+- Updated character motivations from recent chapters
+- Concrete scene settings and transitions
+- Foreshadowing opportunities based on upcoming plot points
+
+Return the enriched outline in the same JSON format:
+- "scene_description" (string)
+- "key_beats" (array of strings)
+- "plot_point" (string)
+"""
+
+    prompt = render_prompt(
+        "initialization/generate_chapter_outline.j2",
+        {
+            "title": state.get("title", ""),
+            "genre": state.get("genre", ""),
+            "theme": state.get("theme", ""),
+            "setting": state.get("setting", ""),
+            "chapter_number": chapter_number,
+            "act_number": act_number,
+            "chapter_in_act": chapter_in_act,
+            "total_chapters": total_chapters,
+            "global_outline": global_outline.get("raw_text", ""),
+            "act_outline": act_outline_text,
+            "character_context": character_context,
+            "previous_context": previous_context,
+            "protagonist_name": state.get("protagonist_name", ""),
+        },
+    )
+
+    prompt = prompt + "\n\n" + enrichment_context
+
+    try:
+        response, usage = await llm_service.async_call_llm(
+            model_name=state.get("large_model", config.LARGE_MODEL),
+            prompt=prompt,
+            temperature=0.7,
+            max_tokens=config.MAX_GENERATION_TOKENS,
+            allow_fallback=True,
+            auto_clean_response=True,
+            system_prompt=get_system_prompt("initialization"),
+        )
+
+        if not response or not response.strip():
+            logger.error(
+                "_enrich_skeleton_outline: empty response",
+                chapter=chapter_number,
+            )
+            return None
+
+        enriched_outline = _parse_chapter_outline(response, chapter_number, act_number)
+
+        enriched_outline["generated_at"] = "enriched"
+        enriched_outline["version"] = 1
+        enriched_outline["skeleton_outline"] = skeleton_outline
+
+        logger.debug(
+            "_enrich_skeleton_outline: outline enriched",
+            chapter=chapter_number,
+            length=len(response),
+        )
+
+        return enriched_outline
+
+    except Exception as e:
+        logger.error(
+            "_enrich_skeleton_outline: exception during enrichment",
+            chapter=chapter_number,
+            error=str(e),
+            exc_info=True,
+        )
+        return skeleton_outline
 
 
 __all__ = ["generate_chapter_outline"]
