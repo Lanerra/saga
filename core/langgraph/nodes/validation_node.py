@@ -22,6 +22,7 @@ import structlog
 
 from core.db_manager import neo4j_manager
 from core.langgraph.state import Contradiction, NarrativeState
+from config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -212,6 +213,16 @@ async def validate_consistency(state: NarrativeState) -> NarrativeState:
         Relationship validation is permissive by default and does not block writes;
         revision decisions are driven by contradiction severity and plot stagnation.
     """
+    # Check if validation is disabled
+    if not settings.validation.ENABLE_VALIDATION:
+        logger.info("validate_consistency: validation disabled, skipping all checks")
+        return {
+            "contradictions": [],
+            "needs_revision": False,
+            "current_node": "validate_consistency",
+            "last_error": None,
+        }
+
     # Initialize content manager to read externalized content
     from core.langgraph.content_manager import (
         ContentManager,

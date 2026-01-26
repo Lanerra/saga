@@ -290,9 +290,9 @@ class ChapterOutlineParser:
             
             for chapter in chapters:
                 query = """
-                MERGE (c:Chapter {id: $id})
-                ON CREATE SET 
-                    c.number = $number,
+                MERGE (c:Chapter {number: $number})
+                ON CREATE SET
+                    c.id = $id,
                     c.title = $title,
                     c.summary = $summary,
                     c.act_number = $act_number,
@@ -300,8 +300,8 @@ class ChapterOutlineParser:
                     c.is_provisional = $is_provisional,
                     c.created_ts = timestamp(),
                     c.updated_ts = timestamp()
-                ON MATCH SET 
-                    c.number = $number,
+                ON MATCH SET
+                    c.id = $id,
                     c.title = $title,
                     c.summary = $summary,
                     c.act_number = $act_number,
@@ -431,9 +431,9 @@ class ChapterOutlineParser:
             
             for event in events:
                 query = """
-                MERGE (e:Event {id: $id})
-                ON CREATE SET 
-                    e.name = $name,
+                MERGE (e:Event {name: $name})
+                ON CREATE SET
+                    e.id = $id,
                     e.description = $description,
                     e.event_type = $event_type,
                     e.chapter_number = $chapter_number,
@@ -446,8 +446,8 @@ class ChapterOutlineParser:
                     e.is_provisional = $is_provisional,
                     e.created_ts = timestamp(),
                     e.updated_ts = timestamp()
-                ON MATCH SET 
-                    e.name = $name,
+                ON MATCH SET
+                    e.id = $id,
                     e.description = $description,
                     e.event_type = $event_type,
                     e.chapter_number = $chapter_number,

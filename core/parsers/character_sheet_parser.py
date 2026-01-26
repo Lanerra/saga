@@ -168,50 +168,126 @@ class CharacterSheetParser:
         )
         
         return character_profile
-    
+
+    def _normalize_character_name(self, name: str) -> str:
+        """Normalize character name by removing titles and honorifics.
+
+        Args:
+            name: Character name to normalize
+
+        Returns:
+            Normalized name without titles
+        """
+        if not name:
+            return ""
+
+        titles = [
+            "Dr.", "Dr", "Doctor",
+            "Prof.", "Prof", "Professor",
+            "Mr.", "Mr", "Mister",
+            "Mrs.", "Mrs", "Missus",
+            "Ms.", "Ms", "Miss",
+            "Director",
+            "Captain", "Capt.", "Capt",
+            "Lieutenant", "Lt.", "Lt",
+            "Sergeant", "Sgt.", "Sgt",
+            "Major", "Maj.", "Maj",
+            "Colonel", "Col.", "Col",
+            "General", "Gen.", "Gen",
+            "Admiral", "Adm.", "Adm",
+            "Commander", "Cmdr.", "Cmdr",
+            "Lord", "Lady",
+            "Sir", "Dame",
+            "Reverend", "Rev.", "Rev",
+            "Father", "Mother",
+            "Brother", "Sister",
+        ]
+
+        normalized = name.strip()
+
+        for title in titles:
+            if normalized.startswith(title + " "):
+                normalized = normalized[len(title):].strip()
+                break
+
+        return normalized
+
+    def _find_character_by_name(self, target_name: str, character_map: dict) -> str | None:
+        """Find a character in the map, trying various normalization strategies.
+
+        Args:
+            target_name: Name to search for
+            character_map: Dictionary of character names to character data
+
+        Returns:
+            Matching character name from the map, or None if not found
+        """
+        if target_name in character_map:
+            return target_name
+
+        target_normalized = self._normalize_character_name(target_name)
+
+        for char_name in character_map.keys():
+            if char_name == target_name:
+                return char_name
+
+            char_normalized = self._normalize_character_name(char_name)
+
+            if char_normalized.lower() == target_normalized.lower():
+                return char_name
+
+            if target_normalized.lower() in char_normalized.lower() or char_normalized.lower() in target_normalized.lower():
+                if len(target_normalized) > 3 and len(char_normalized) > 3:
+                    return char_name
+
+        return None
+
     async def parse_relationships(self, characters: list[CharacterProfile]) -> dict[str, dict[str, Any]]:
         """Parse relationships from character sheets.
-        
+
         Args:
             characters: List of CharacterProfile objects
-            
+
         Returns:
             Dictionary mapping character names to their relationships
         """
-        # Create a mapping of character names to their data for quick lookup
         character_map = {char.name: char for char in characters}
-        
-        # Parse relationships from each character sheet
+
         relationships = {}
-        
+
         for character_name, character_data in character_map.items():
-            # Check if the character has relationships
             if hasattr(character_data, 'relationships') and character_data.relationships:
                 for target_name, rel_data in character_data.relationships.items():
-                    # Validate target exists
-                    if target_name not in character_map:
+                    matched_name = self._find_character_by_name(target_name, character_map)
+
+                    if matched_name is None:
                         logger.warning(f"Character {character_name} references non-existent character {target_name} in relationship")
                         continue
+
+                    if matched_name != target_name:
+                        logger.debug(
+                            f"Fuzzy matched character reference: '{target_name}' -> '{matched_name}'",
+                            source=character_name
+                        )
                     
                     # Validate relationship type
                     if not isinstance(rel_data, dict):
-                        logger.warning(f"Invalid relationship data for {character_name} -> {target_name}")
+                        logger.warning(f"Invalid relationship data for {character_name} -> {matched_name}")
                         continue
-                    
+
                     rel_type = rel_data.get('type', '')
                     if not rel_type:
-                        logger.warning(f"Missing relationship type for {character_name} -> {target_name}")
+                        logger.warning(f"Missing relationship type for {character_name} -> {matched_name}")
                         continue
-                    
-                    # Create relationship entry
+
                     if character_name not in relationships:
                         relationships[character_name] = {}
-                    
-                    relationships[character_name][target_name] = {
+
+                    relationships[character_name][matched_name] = {
                         'type': rel_type,
                         'description': rel_data.get('description', ''),
                         'chapter_added': self.chapter_number,
-                        'source_profile_managed': True,  # From character sheets
+                        'source_profile_managed': True,
                     }
         
         return relationships

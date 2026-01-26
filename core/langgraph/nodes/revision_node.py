@@ -75,8 +75,16 @@ async def _rollback_chapter_data(chapter_number: int) -> None:
         ),
         (
             """
+            MATCH (s:Scene)-[r:PART_OF]->(ch:Chapter {number: $chapter})
+            DELETE r, s
+            """,
+            {"chapter": chapter_number},
+        ),
+        (
+            """
             MATCH (ch:Chapter {number: $chapter})
-            DELETE ch
+            OPTIONAL MATCH (ch)-[r]-()
+            DELETE r, ch
             """,
             {"chapter": chapter_number},
         ),

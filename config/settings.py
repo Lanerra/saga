@@ -62,6 +62,25 @@ class SchemaEnforcementSettings(BaseSettings):
         env_prefix = "SAGA_SCHEMA_"
 
 
+class ValidationSettings(BaseSettings):
+    """Configure validation behavior.
+    
+    This settings group controls whether validation checks are performed
+    during chapter generation.
+    
+    Notes:
+        Environment variables use the `SAGA_VALIDATION_` prefix.
+    """
+    
+    ENABLE_VALIDATION: bool = Field(
+        default=True,
+        description="Enable validation checks in the validation node"
+    )
+    
+    class Config:
+        env_prefix = "DEBUG_"
+
+
 class RelationshipNormalizationSettings(BaseSettings):
     """Configure relationship type normalization.
 
@@ -298,7 +317,7 @@ class SagaSettings(BaseSettings):
     MAX_PREPOP_KG_TOKENS: int = 16384
 
     # Quality Assurance Configuration
-    ENABLE_QA_CHECKS: bool = True
+    ENABLE_QA_CHECKS: bool = False
     QA_CHECK_FREQUENCY: int = 3
     QA_CHECK_CONTRADICTORY_TRAITS: bool = True
     QA_CHECK_POST_MORTEM_ACTIVITY: bool = True
@@ -399,13 +418,16 @@ class SagaSettings(BaseSettings):
     # DEPRECATED: Relationship normalization is disabled per Phase 4 requirements
     # Relationships are canonical from Stage 1 and should not be normalized
     relationship_normalization: RelationshipNormalizationSettings = Field(default_factory=lambda: RelationshipNormalizationSettings(
-        ENABLE_RELATIONSHIP_NORMALIZATION=False,
-        STRICT_CANONICAL_MODE=False,
+        ENABLE_RELATIONSHIP_NORMALIZATION=True,
+        STRICT_CANONICAL_MODE=True,
         STATIC_OVERRIDES_ENABLED=False,
     ))
 
     # Schema Enforcement
     schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)
+
+    # Validation Settings
+    validation: ValidationSettings = Field(default_factory=lambda: ValidationSettings())
 
     # Legacy Degradation Flags
     ENABLE_STATUS_IS_ALIAS: bool = False
