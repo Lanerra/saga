@@ -251,14 +251,8 @@ def test_parse_character_sheet_response_transforms_relationships_dict_format(
         {
             "name": "Hero",
             "relationships": {
-                "Mentor": {
-                    "type": "MENTORS",
-                    "description": "Wise guide"
-                },
-                "Friend": {
-                    "type": "FRIEND_OF",
-                    "description": "Close ally"
-                },
+                "Mentor": {"type": "MENTORS", "description": "Wise guide"},
+                "Friend": {"type": "FRIEND_OF", "description": "Close ally"},
             },
         }
     )

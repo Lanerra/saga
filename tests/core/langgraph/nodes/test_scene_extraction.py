@@ -31,7 +31,7 @@ def _assert_json_serializable(value: Any) -> None:
 @pytest.mark.asyncio
 async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
     """Test that extract_from_scene returns empty results when structural entity extraction is disabled.
-    
+
     This test verifies Stage 5 compliance: structural entities should not be extracted from narrative.
     """
     from core.langgraph.nodes.scene_extraction import extract_from_scene
@@ -95,7 +95,7 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
     assert "characters" in result
     assert "world_items" in result
     assert "relationships" in result
-    
+
     # Stage 5: Structural entity extraction is disabled by configuration
     # Characters, locations, events, and relationships should NOT be extracted from narrative
     assert len(result["characters"]) == 0, "Characters should not be extracted in Stage 5"

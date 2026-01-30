@@ -1236,10 +1236,7 @@ async def find_post_mortem_activity() -> list[dict[str, Any]]:
         have been removed from the schema. The function is retained for backward
         compatibility but always returns an empty list.
     """
-    logger.debug(
-        "find_post_mortem_activity() is deprecated and returns empty. "
-        "IS_DEAD relationships are no longer used; status is a node property."
-    )
+    logger.debug("find_post_mortem_activity() is deprecated and returns empty. " "IS_DEAD relationships are no longer used; status is a node property.")
     return []
 
 

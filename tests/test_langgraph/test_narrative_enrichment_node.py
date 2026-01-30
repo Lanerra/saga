@@ -13,15 +13,12 @@ This test file covers:
 Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 """
 
-import json
-import os
-import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from core.langgraph.nodes.narrative_enrichment_node import NarrativeEnrichmentNode
-from models.kg_models import CharacterProfile, Chapter
+from models.kg_models import Chapter, CharacterProfile
 
 
 @pytest.fixture
@@ -83,11 +80,12 @@ class TestNarrativeEnrichmentNode:
         node = NarrativeEnrichmentNode()
 
         # Mock the database operations
-        with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-             patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-             patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-             patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+        with (
+            patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+            patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+            patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+            patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+        ):
             # Set up mocks to return sample data
             mock_get_chars.return_value = sample_character_profiles
             mock_get_chapter.return_value = sample_chapter_data
@@ -134,9 +132,15 @@ class TestNarrativeEnrichmentNode:
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 
-        with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-             patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter:
-            mock_get_chars.return_value = [CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)]
+        with (
+            patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+            patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+        ):
+            mock_get_chars.return_value = [
+                CharacterProfile(
+                    id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
+            ]
             mock_get_chapter.return_value = None
 
             result = await node.process(narrative_text, 1)
@@ -148,10 +152,7 @@ class TestNarrativeEnrichmentNode:
         node = NarrativeEnrichmentNode()
 
         # Test with non-contradictory descriptions
-        result = node._validate_physical_description(
-            "Alice is tall with brown hair",
-            "Alice has long brown hair and blue eyes"
-        )
+        result = node._validate_physical_description("Alice is tall with brown hair", "Alice has long brown hair and blue eyes")
         assert result is True
 
     async def test_validate_embedding(self):
@@ -159,10 +160,7 @@ class TestNarrativeEnrichmentNode:
         node = NarrativeEnrichmentNode()
 
         # Test with similar embeddings
-        result = node._validate_embedding(
-            [0.1, 0.2, 0.3],
-            [0.11, 0.21, 0.31]
-        )
+        result = node._validate_embedding([0.1, 0.2, 0.3], [0.11, 0.21, 0.31])
         assert result is True
 
     async def test_physical_description_extraction(self, sample_narrative_text):
@@ -180,17 +178,24 @@ class TestNarrativeEnrichmentNode:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
-                    CharacterProfile(id="char_002", name="Bob", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
+                    CharacterProfile(
+                        id="char_002", name="Bob", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -214,16 +219,21 @@ class TestNarrativeEnrichmentNode:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -247,16 +257,21 @@ class TestNarrativeEnrichmentNode:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -280,16 +295,21 @@ class TestNarrativeEnrichmentNode:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -312,16 +332,21 @@ class TestNarrativeEnrichmentNode:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -346,16 +371,21 @@ class TestNarrativeEnrichmentNode:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -380,11 +410,12 @@ class TestNarrativeEnrichmentNode:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data with existing physical description
                 mock_get_chars.return_value = [
                     CharacterProfile(
@@ -400,7 +431,9 @@ class TestNarrativeEnrichmentNode:
                         physical_description="Short woman with blonde hair",  # Contradictory description
                     ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -439,17 +472,24 @@ class TestNarrativeEnrichmentNodeIntegration:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
-                    CharacterProfile(id="char_002", name="Bob", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
+                    CharacterProfile(
+                        id="char_002", name="Bob", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -472,16 +512,21 @@ class TestNarrativeEnrichmentNodeIntegration:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -545,16 +590,21 @@ class TestNarrativeEnrichmentNodeEdgeCases:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data without the character
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -579,16 +629,21 @@ class TestNarrativeEnrichmentNodeEdgeCases:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data without the chapter
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -616,16 +671,21 @@ class TestNarrativeEnrichmentNodePerformance:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -665,14 +725,17 @@ class TestNarrativeEnrichmentNodePerformance:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return many character profiles
                 mock_get_chars.return_value = character_profiles
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -692,10 +755,7 @@ class TestNarrativeEnrichmentNodeValidation:
         node = NarrativeEnrichmentNode()
 
         # Test with contradictory descriptions
-        result = node._validate_physical_description(
-            "Alice is tall with brown hair",
-            "Alice is short with blonde hair"
-        )
+        result = node._validate_physical_description("Alice is tall with brown hair", "Alice is short with blonde hair")
         # This should return False if validation is implemented
         # Now that validation is implemented, it should return False
         assert result is False
@@ -707,7 +767,7 @@ class TestNarrativeEnrichmentNodeValidation:
         # Test with significantly different embeddings
         result = node._validate_embedding(
             [0.1, 0.2, 0.3],
-            [0.9, 0.8, 0.7]  # Very different
+            [0.9, 0.8, 0.7],  # Very different
         )
         # This should return False if validation is implemented
         # For now, it returns True as a placeholder
@@ -720,7 +780,7 @@ class TestNarrativeEnrichmentNodeValidation:
         # Test with similar embeddings
         result = node._validate_embedding(
             [0.1, 0.2, 0.3],
-            [0.11, 0.21, 0.31]  # Similar
+            [0.11, 0.21, 0.31],  # Similar
         )
         assert result is True
 
@@ -729,10 +789,7 @@ class TestNarrativeEnrichmentNodeValidation:
         node = NarrativeEnrichmentNode()
 
         # Test with consistent descriptions
-        result = node._validate_physical_description(
-            "Alice is tall with brown hair",
-            "Alice has long brown hair and blue eyes"
-        )
+        result = node._validate_physical_description("Alice is tall with brown hair", "Alice has long brown hair and blue eyes")
         assert result is True
 
 
@@ -755,16 +812,21 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -789,16 +851,21 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -821,16 +888,21 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
@@ -853,16 +925,21 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
             mock_parser_class.return_value = mock_parser
 
             # Mock the database operations
-            with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars, \
-                 patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter:
-
+            with (
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
+                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
+            ):
                 # Set up mocks to return sample data
                 mock_get_chars.return_value = [
-                    CharacterProfile(id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890),
+                    CharacterProfile(
+                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                    ),
                 ]
-                mock_get_chapter.return_value = Chapter(id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890)
+                mock_get_chapter.return_value = Chapter(
+                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                )
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 

@@ -79,11 +79,11 @@ class CharacterProfile(BaseModel):
 
         known_fields = cls.model_fields.keys()
         profile_data = {k: v for k, v in data.items() if k in known_fields}
-        
+
         # Phase 1: Handle backward compatibility for description -> personality_description
         if "description" in data and "personality_description" not in data:
             profile_data["personality_description"] = data["description"]
-        
+
         updates_data = {k: v for k, v in data.items() if k not in known_fields}
         if "updates" in profile_data:
             updates_data.update(profile_data["updates"])
@@ -179,10 +179,10 @@ class CharacterProfile(BaseModel):
             A populated character profile.
         """
         node_dict = node if isinstance(node, dict) else dict(node)
-        
+
         # Phase 1: Handle backward compatibility for description -> personality_description
         personality_description = node_dict.get("personality_description", node_dict.get("description", ""))
-        
+
         return cls(
             name=node_dict.get("name", ""),
             personality_description=personality_description,
@@ -712,13 +712,13 @@ class RelationshipUsage:
 
 class MajorPlotPoint(BaseModel):
     """Represent a major plot point event in the story.
-    
+
     This is a Stage 2 entity that represents one of the four key events:
     - Inciting Incident
     - Midpoint
     - Climax
     - Resolution
-    
+
     Attributes:
         id: Stable identifier (generated)
         name: Event name (one of the four major plot points)
@@ -728,7 +728,7 @@ class MajorPlotPoint(BaseModel):
         created_chapter: Always 0 (initialization)
         is_provisional: Always False (canonical entities)
     """
-    
+
     id: str
     name: str
     description: str
@@ -738,14 +738,14 @@ class MajorPlotPoint(BaseModel):
     is_provisional: bool = False
     created_ts: int | None = None
     updated_ts: int | None = None
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MajorPlotPoint:
         """Create a MajorPlotPoint from a dictionary.
-        
+
         Args:
             data: Dictionary containing plot point data
-            
+
         Returns:
             MajorPlotPoint object
         """
@@ -759,10 +759,10 @@ class MajorPlotPoint(BaseModel):
             created_ts=data.get("created_ts"),
             updated_ts=data.get("updated_ts"),
         )
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
-        
+
         Returns:
             Dictionary representation
         """
@@ -781,9 +781,9 @@ class MajorPlotPoint(BaseModel):
 
 class ActKeyEvent(BaseModel):
     """Represent an act-level key event in the story.
-    
+
     This is a Stage 3 entity that represents key events within an act.
-    
+
     Attributes:
         id: Stable identifier (generated)
         name: Event name
@@ -796,7 +796,7 @@ class ActKeyEvent(BaseModel):
         created_chapter: Always 0 (initialization)
         is_provisional: Always False (canonical entities)
     """
-    
+
     id: str
     name: str
     description: str
@@ -809,14 +809,14 @@ class ActKeyEvent(BaseModel):
     is_provisional: bool = False
     created_ts: int | None = None
     updated_ts: int | None = None
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ActKeyEvent:
         """Create an ActKeyEvent from a dictionary.
-        
+
         Args:
             data: Dictionary containing act key event data
-            
+
         Returns:
             ActKeyEvent object
         """
@@ -834,10 +834,10 @@ class ActKeyEvent(BaseModel):
             created_ts=data.get("created_ts"),
             updated_ts=data.get("updated_ts"),
         )
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
-        
+
         Returns:
             Dictionary representation
         """
@@ -859,9 +859,9 @@ class ActKeyEvent(BaseModel):
 
 class Chapter(BaseModel):
     """Represent a story chapter.
-    
+
     This is a Stage 4 entity that represents a chapter in the story.
-    
+
     Attributes:
         id: Stable identifier (generated)
         number: Chapter number (1-indexed)
@@ -874,7 +874,7 @@ class Chapter(BaseModel):
         created_ts: Creation timestamp
         updated_ts: Last update timestamp
     """
-    
+
     id: str
     number: int
     title: str
@@ -885,14 +885,14 @@ class Chapter(BaseModel):
     is_provisional: bool = False
     created_ts: int | None = None
     updated_ts: int | None = None
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Chapter:
         """Create a Chapter from a dictionary.
-        
+
         Args:
             data: Dictionary containing chapter data
-            
+
         Returns:
             Chapter object
         """
@@ -908,10 +908,10 @@ class Chapter(BaseModel):
             created_ts=data.get("created_ts"),
             updated_ts=data.get("updated_ts"),
         )
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
-        
+
         Returns:
             Dictionary representation
         """
@@ -931,9 +931,9 @@ class Chapter(BaseModel):
 
 class SceneEvent(BaseModel):
     """Represent a scene-level event in the story.
-    
+
     This is a Stage 4 entity that represents key events within a scene.
-    
+
     Attributes:
         id: Stable identifier (generated)
         name: Event name
@@ -950,7 +950,7 @@ class SceneEvent(BaseModel):
         created_ts: Creation timestamp
         updated_ts: Last update timestamp
     """
-    
+
     id: str
     name: str
     description: str
@@ -965,14 +965,14 @@ class SceneEvent(BaseModel):
     is_provisional: bool = False
     created_ts: int | None = None
     updated_ts: int | None = None
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SceneEvent:
         """Create a SceneEvent from a dictionary.
-        
+
         Args:
             data: Dictionary containing scene event data
-            
+
         Returns:
             SceneEvent object
         """
@@ -992,10 +992,10 @@ class SceneEvent(BaseModel):
             created_ts=data.get("created_ts"),
             updated_ts=data.get("updated_ts"),
         )
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
-        
+
         Returns:
             Dictionary representation
         """

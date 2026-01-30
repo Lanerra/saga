@@ -49,23 +49,13 @@ async def test_fetch_validation_data_combined_query():
 async def test_check_relationship_evolution_uses_prefetched_data():
     """Test that _check_relationship_evolution uses pre-fetched data instead of querying Neo4j."""
 
-    extracted_relationships = [
-        type("Relationship", (), {
-            "source_name": "Alice", 
-            "target_name": "Bob", 
-            "relationship_type": "LOVES"
-        })()
-    ]
+    extracted_relationships = [type("Relationship", (), {"source_name": "Alice", "target_name": "Bob", "relationship_type": "LOVES"})()]
 
     existing_relationships = {("Alice", "Bob"): {"rel_type": "HATES", "first_chapter": 1}}
 
     with patch("core.langgraph.subgraphs.validation.neo4j_manager") as mock_manager:
         # Should not call execute_read_query when existing_relationships is provided
-        result = await _check_relationship_evolution(
-            extracted_relationships=extracted_relationships, 
-            current_chapter=2, 
-            existing_relationships=existing_relationships
-        )
+        result = await _check_relationship_evolution(extracted_relationships=extracted_relationships, current_chapter=2, existing_relationships=existing_relationships)
 
         assert mock_manager.execute_read_query.call_count == 0
         assert len(result) > 0  # Should find a relationship shift
@@ -82,13 +72,7 @@ async def test_validation_subgraph_reduces_queries():
         "current_chapter": 3,
         "extracted_events": [],  # No longer used
         "extracted_world_rules": [],  # No longer used
-        "extracted_relationships": [
-            type("Relationship", (), {
-                "source_name": "Alice", 
-                "target_name": "Bob", 
-                "relationship_type": "LOVES"
-            })()
-        ],
+        "extracted_relationships": [type("Relationship", (), {"source_name": "Alice", "target_name": "Bob", "relationship_type": "LOVES"})()],
         "current_world_rules": [],  # No longer used
     }
 

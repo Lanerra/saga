@@ -20,7 +20,6 @@ According to schema-design.md:
 
 from typing import Any
 
-
 # -------------------------------------------------------------------------
 # Character Orphan Detection
 # -------------------------------------------------------------------------
@@ -28,10 +27,10 @@ from typing import Any
 
 async def detect_orphaned_characters() -> list[dict[str, Any]]:
     """Find Character nodes that have no relationships to other characters.
-    
+
     According to schema-design.md, characters should have social/emotional relationships
     with other characters. An orphaned character has no such relationships.
-    
+
     Returns:
         List of character nodes that are orphaned (no relationships to other characters)
     """
@@ -48,9 +47,9 @@ async def detect_orphaned_characters() -> list[dict[str, Any]]:
 
 async def cleanup_orphaned_characters() -> int:
     """Remove Character nodes that have no relationships to other characters.
-    
+
     This is a destructive operation that should only be used in testing/validation.
-    
+
     Returns:
         Number of orphaned characters removed
     """
@@ -72,14 +71,14 @@ async def cleanup_orphaned_characters() -> int:
 
 async def detect_orphaned_events() -> list[dict[str, Any]]:
     """Find Event nodes that have no relationships to characters, locations, or other events.
-    
+
     According to schema-design.md, events should have:
     - PART_OF relationships to other events
     - HAPPENS_BEFORE relationships to other events
     - INVOLVES relationships to characters
     - OCCURS_AT relationships to locations
     - OCCURS_IN_SCENE relationships to scenes
-    
+
     Returns:
         List of event nodes that are orphaned (no relationships)
     """
@@ -96,9 +95,9 @@ async def detect_orphaned_events() -> list[dict[str, Any]]:
 
 async def cleanup_orphaned_events() -> int:
     """Remove Event nodes that have no relationships to other nodes.
-    
+
     This is a destructive operation that should only be used in testing/validation.
-    
+
     Returns:
         Number of orphaned events removed
     """
@@ -120,11 +119,11 @@ async def cleanup_orphaned_events() -> int:
 
 async def detect_orphaned_locations() -> list[dict[str, Any]]:
     """Find Location nodes that have no relationships to events or scenes.
-    
+
     According to schema-design.md, locations should have:
     - OCCURS_AT relationships from events
     - OCCURS_AT relationships from scenes
-    
+
     Returns:
         List of location nodes that are orphaned (no relationships)
     """
@@ -141,9 +140,9 @@ async def detect_orphaned_locations() -> list[dict[str, Any]]:
 
 async def cleanup_orphaned_locations() -> int:
     """Remove Location nodes that have no relationships to other nodes.
-    
+
     This is a destructive operation that should only be used in testing/validation.
-    
+
     Returns:
         Number of orphaned locations removed
     """
@@ -165,12 +164,12 @@ async def cleanup_orphaned_locations() -> int:
 
 async def detect_orphaned_items() -> list[dict[str, Any]]:
     """Find Item nodes that have no relationships to characters or events/scenes.
-    
+
     According to schema-design.md, items should have:
     - POSSESSES relationships from characters
     - FEATURES_ITEM relationships from events
     - FEATURES_ITEM relationships from scenes
-    
+
     Returns:
         List of item nodes that are orphaned (no relationships)
     """
@@ -187,9 +186,9 @@ async def detect_orphaned_items() -> list[dict[str, Any]]:
 
 async def cleanup_orphaned_items() -> int:
     """Remove Item nodes that have no relationships to other nodes.
-    
+
     This is a destructive operation that should only be used in testing/validation.
-    
+
     Returns:
         Number of orphaned items removed
     """
@@ -211,14 +210,14 @@ async def cleanup_orphaned_items() -> int:
 
 async def detect_orphaned_scenes() -> list[dict[str, Any]]:
     """Find Scene nodes that have no relationships to chapters or characters.
-    
+
     According to schema-design.md, scenes should have:
     - PART_OF relationships to chapters
     - FEATURES_CHARACTER relationships to characters
     - OCCURS_AT relationships to locations
     - FEATURES_ITEM relationships to items
     - FOLLOWS relationships to other scenes
-    
+
     Returns:
         List of scene nodes that are orphaned (no relationships)
     """
@@ -235,9 +234,9 @@ async def detect_orphaned_scenes() -> list[dict[str, Any]]:
 
 async def cleanup_orphaned_scenes() -> int:
     """Remove Scene nodes that have no relationships to other nodes.
-    
+
     This is a destructive operation that should only be used in testing/validation.
-    
+
     Returns:
         Number of orphaned scenes removed
     """
@@ -259,10 +258,10 @@ async def cleanup_orphaned_scenes() -> int:
 
 async def detect_orphaned_chapters() -> list[dict[str, Any]]:
     """Find Chapter nodes that have no relationships to scenes.
-    
+
     According to schema-design.md, chapters should have:
     - PART_OF relationships from scenes
-    
+
     Returns:
         List of chapter nodes that are orphaned (no relationships)
     """
@@ -279,9 +278,9 @@ async def detect_orphaned_chapters() -> list[dict[str, Any]]:
 
 async def cleanup_orphaned_chapters() -> int:
     """Remove Chapter nodes that have no relationships to other nodes.
-    
+
     This is a destructive operation that should only be used in testing/validation.
-    
+
     Returns:
         Number of orphaned chapters removed
     """

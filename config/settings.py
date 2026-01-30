@@ -64,19 +64,16 @@ class SchemaEnforcementSettings(BaseSettings):
 
 class ValidationSettings(BaseSettings):
     """Configure validation behavior.
-    
+
     This settings group controls whether validation checks are performed
     during chapter generation.
-    
+
     Notes:
         Environment variables use the `SAGA_VALIDATION_` prefix.
     """
-    
-    ENABLE_VALIDATION: bool = Field(
-        default=True,
-        description="Enable validation checks in the validation node"
-    )
-    
+
+    ENABLE_VALIDATION: bool = Field(default=True, description="Enable validation checks in the validation node")
+
     class Config:
         env_prefix = "DEBUG_"
 
@@ -257,7 +254,7 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_KG_EXTRACTION: float = 0.1
     TEMPERATURE_SUMMARY: float = 0.3
     TEMPERATURE_PATCH: float = 0.7
-    
+
     # Global Temperature Override
     TEMPERATURE_OVERRIDE: float | None = None
 
@@ -375,14 +372,14 @@ class SagaSettings(BaseSettings):
     # These settings control what can be extracted from narrative text in Stage 5
     # According to schema design, Stage 5 should only extract physical descriptions and embeddings
     # It should NOT create new structural entities (Characters, Events, Locations, Items)
-    
+
     # Physical description extraction settings
     ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION: bool = True  # Extract physical descriptions from narrative
     ENABLE_PHYSICAL_DESCRIPTION_VALIDATION: bool = True  # Validate extracted descriptions against existing properties
-    
+
     # Chapter embedding extraction settings
     ENABLE_CHAPTER_EMBEDDING_EXTRACTION: bool = True  # Extract chapter embeddings from narrative
-    
+
     # DEPRECATED: These settings are permanently disabled per Phase 4 requirements
     # Stage 5 should NOT extract or create new structural entities
     # These are kept for backward compatibility but should never be enabled
@@ -390,11 +387,11 @@ class SagaSettings(BaseSettings):
     ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - locations created in Stage 2/3 only
     ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - events created in Stage 2/3/4 only
     ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - items created in Stage 2 only
-    
+
     # DEPRECATED: Relationship extraction is permanently disabled
     # Relationships are canonical from Stage 1 and should not be extracted from narrative
     ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - relationships created in Stage 1 only
-    
+
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
     CONFIGURED_THEME: str = "the hubris of humanity"
@@ -417,11 +414,13 @@ class SagaSettings(BaseSettings):
 
     # DEPRECATED: Relationship normalization is disabled per Phase 4 requirements
     # Relationships are canonical from Stage 1 and should not be normalized
-    relationship_normalization: RelationshipNormalizationSettings = Field(default_factory=lambda: RelationshipNormalizationSettings(
-        ENABLE_RELATIONSHIP_NORMALIZATION=True,
-        STRICT_CANONICAL_MODE=True,
-        STATIC_OVERRIDES_ENABLED=False,
-    ))
+    relationship_normalization: RelationshipNormalizationSettings = Field(
+        default_factory=lambda: RelationshipNormalizationSettings(
+            ENABLE_RELATIONSHIP_NORMALIZATION=True,
+            STRICT_CANONICAL_MODE=True,
+            STATIC_OVERRIDES_ENABLED=False,
+        )
+    )
 
     # Schema Enforcement
     schema_enforcement: SchemaEnforcementSettings = Field(default_factory=SchemaEnforcementSettings)

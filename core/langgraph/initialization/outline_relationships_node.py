@@ -48,7 +48,7 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
             **state,
             "outline_relationships_ref": None,
             "current_node": "outline_relationships",
-        }
+        }  # type: ignore[return-value]
 
     global_text = global_outline.get("raw_text", "") if global_outline else ""
     act_texts = []
@@ -90,7 +90,7 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
             **state,
             "outline_relationships_ref": None,
             "current_node": "outline_relationships",
-        }
+        }  # type: ignore[return-value]
 
     logger.info(
         "extract_outline_relationships: extracted relationships",
@@ -110,7 +110,7 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
         ref_type=type(outline_relationships_ref).__name__,
     )
 
-    result = {
+    result: NarrativeState = {
         **state,
         "outline_relationships_ref": outline_relationships_ref,
         "current_node": "outline_relationships",
@@ -267,13 +267,15 @@ def _parse_relationships_extraction(response: str) -> list[dict[str, Any]]:
             )
             continue
 
-        relationships.append({
-            "source_name": subject_text,
-            "target_name": target_text,
-            "relationship_type": predicate_text,
-            "description": str(description).strip() if description else "",
-            "chapter": 0,
-            "confidence": 0.8,
-        })
+        relationships.append(
+            {
+                "source_name": subject_text,
+                "target_name": target_text,
+                "relationship_type": predicate_text,
+                "description": str(description).strip() if description else "",
+                "chapter": 0,
+                "confidence": 0.8,
+            }
+        )
 
     return relationships

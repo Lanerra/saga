@@ -52,10 +52,7 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
     from config.settings import settings
 
     if not settings.GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT:
-        logger.info(
-            "generate_all_chapter_outlines: skipping (disabled by config), "
-            "will generate on-demand"
-        )
+        logger.info("generate_all_chapter_outlines: skipping (disabled by config), " "will generate on-demand")
         return {
             **state,
             "initialization_step": "all_chapter_outlines_skipped",
@@ -109,9 +106,7 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
             "initialization_step": "all_chapter_outlines_failed",
         }
 
-    outlines_for_storage: dict[str, Any] = {
-        str(chapter): outline for chapter, outline in all_outlines.items()
-    }
+    outlines_for_storage: dict[str, Any] = {str(chapter): outline for chapter, outline in all_outlines.items()}
 
     chapter_outlines_ref = content_manager.save_json(
         outlines_for_storage,

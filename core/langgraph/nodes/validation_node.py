@@ -20,9 +20,9 @@ from typing import Any
 
 import structlog
 
+from config.settings import settings
 from core.db_manager import neo4j_manager
 from core.langgraph.state import Contradiction, NarrativeState
-from config.settings import settings
 
 logger = structlog.get_logger(__name__)
 

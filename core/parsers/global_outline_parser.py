@@ -19,16 +19,15 @@ import json
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 import config
 from core.db_manager import neo4j_manager
-from core.exceptions import DatabaseError
 from core.llm_interface_refactored import llm_service
-from models.kg_models import CharacterProfile, Location, WorldItem
+from models.kg_models import Location, WorldItem
 from processing.entity_deduplication import generate_entity_id
 from prompts.prompt_renderer import get_system_prompt, render_prompt
-from utils.common import ensure_exact_keys, try_load_json_from_response
+from utils.common import try_load_json_from_response
 
 logger = structlog.get_logger(__name__)
 
@@ -124,7 +123,7 @@ class GlobalOutlineParser:
         """
         try:
             # Read the global outline JSON file
-            with open(self.global_outline_path, 'r', encoding='utf-8') as f:
+            with open(self.global_outline_path, encoding="utf-8") as f:
                 global_outline_data = json.load(f)
         except FileNotFoundError as e:
             logger.error(f"Global outline file not found: {self.global_outline_path}", exc_info=True)
@@ -147,7 +146,7 @@ class GlobalOutlineParser:
         """
         # Use SHA256 hash of event name + sequence order for stable ID
         hash_input = f"{event_name}_{sequence_order}"
-        hash_obj = hashlib.sha256(hash_input.encode('utf-8'))
+        hash_obj = hashlib.sha256(hash_input.encode("utf-8"))
         hash_hex = hash_obj.hexdigest()[:16]  # Use first 16 chars for brevity
         return f"event_{hash_hex}"
 
@@ -323,12 +322,7 @@ class GlobalOutlineParser:
                 return self._parse_world_items_extraction(response)
             except (json.JSONDecodeError, ValueError) as e:
                 if attempt == 2:
-                    logger.warning(
-                        "Failed to extract world items after %d attempts: %s",
-                        attempt,
-                        str(e),
-                        exc_info=True
-                    )
+                    logger.warning("Failed to extract world items after %d attempts: %s", attempt, str(e), exc_info=True)
                     return []
 
         return []
@@ -365,11 +359,7 @@ class GlobalOutlineParser:
             required_keys = {"name", "category", "description"}
             missing_keys = required_keys - set(item.keys())
             if missing_keys:
-                logger.warning(
-                    "World item at index %d missing required keys: %s",
-                    index,
-                    missing_keys
-                )
+                logger.warning("World item at index %d missing required keys: %s", index, missing_keys)
                 continue
 
             name = item["name"]
@@ -380,12 +370,7 @@ class GlobalOutlineParser:
                 logger.warning("World item at index %d has invalid name", index)
                 continue
             if not isinstance(category, str) or category not in allowed_categories:
-                logger.warning(
-                    "World item at index %d has invalid category: %s (expected one of %s)",
-                    index,
-                    category,
-                    sorted(allowed_categories)
-                )
+                logger.warning("World item at index %d has invalid category: %s (expected one of %s)", index, category, sorted(allowed_categories))
                 continue
             if not isinstance(description, str) or not description.strip():
                 logger.warning("World item at index %d has invalid description", index)
@@ -460,11 +445,7 @@ class GlobalOutlineParser:
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
 
-            logger.info(
-                "Successfully created %d MajorPlotPoint event nodes",
-                len(plot_points),
-                extra={"chapter": self.chapter_number}
-            )
+            logger.info("Successfully created %d MajorPlotPoint event nodes", len(plot_points), extra={"chapter": self.chapter_number})
 
             return True
 
@@ -520,11 +501,7 @@ class GlobalOutlineParser:
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
 
-            logger.info(
-                "Successfully created %d Location nodes",
-                len(locations),
-                extra={"chapter": self.chapter_number}
-            )
+            logger.info("Successfully created %d Location nodes", len(locations), extra={"chapter": self.chapter_number})
 
             return True
 
@@ -580,11 +557,7 @@ class GlobalOutlineParser:
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
 
-            logger.info(
-                "Successfully created %d Item nodes",
-                len(items),
-                extra={"chapter": self.chapter_number}
-            )
+            logger.info("Successfully created %d Item nodes", len(items), extra={"chapter": self.chapter_number})
 
             return True
 
@@ -627,11 +600,7 @@ class GlobalOutlineParser:
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
 
-            logger.info(
-                "Successfully enriched %d Character nodes with arc properties",
-                len(character_arcs),
-                extra={"chapter": self.chapter_number}
-            )
+            logger.info("Successfully enriched %d Character nodes with arc properties", len(character_arcs), extra={"chapter": self.chapter_number})
 
             return True
 
@@ -653,9 +622,7 @@ class GlobalOutlineParser:
             logger.error("Error fetching character names: %s", str(e), exc_info=True)
             return []
 
-    async def _extract_item_possessions(
-        self, global_outline_data: dict[str, Any], characters: list[str], items: list[WorldItem]
-    ) -> dict[str, str]:
+    async def _extract_item_possessions(self, global_outline_data: dict[str, Any], characters: list[str], items: list[WorldItem]) -> dict[str, str]:
         """Extract Character-Item possession relationships using LLM.
 
         Args:
@@ -711,19 +678,12 @@ class GlobalOutlineParser:
 
             except (json.JSONDecodeError, ValueError) as e:
                 if attempt == 2:
-                    logger.warning(
-                        "Failed to extract item possessions after %d attempts: %s",
-                        attempt,
-                        str(e),
-                        exc_info=True
-                    )
+                    logger.warning("Failed to extract item possessions after %d attempts: %s", attempt, str(e), exc_info=True)
                     return {}
 
         return {}
 
-    async def create_item_possession_relationships(
-        self, possessions: dict[str, str]
-    ) -> bool:
+    async def create_item_possession_relationships(self, possessions: dict[str, str]) -> bool:
         """Create Character -[POSSESSES]-> Item relationships in Neo4j.
 
         Args:
@@ -756,11 +716,7 @@ class GlobalOutlineParser:
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
 
-            logger.info(
-                "Successfully created %d POSSESSES relationships",
-                len(possessions),
-                extra={"chapter": self.chapter_number}
-            )
+            logger.info("Successfully created %d POSSESSES relationships", len(possessions), extra={"chapter": self.chapter_number})
 
             return True
 
@@ -878,7 +834,7 @@ class GlobalOutlineParser:
                 f"{len(locations)} Locations, "
                 f"{len(items)} Items, "
                 f"{len(character_arcs)} Character arcs, and "
-                f"{len(possessions)} Character-Item POSSESSES relationships"
+                f"{len(possessions)} Character-Item POSSESSES relationships",
             )
 
         except Exception as e:

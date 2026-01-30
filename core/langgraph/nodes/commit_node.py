@@ -51,6 +51,206 @@ from utils.text_processing import validate_and_filter_traits
 logger = structlog.get_logger(__name__)
 
 
+async def _validate_entities_before_commit(
+    extracted_entities: dict[str, list[ExtractedEntity]],
+    extracted_relationships: list[ExtractedRelationship],
+    chapter: int,
+) -> tuple[bool, list[str]]:
+    """Validate entities and relationships before committing to Neo4j.
+
+    This function performs pre-commit validation to catch issues before
+    writing to the database. It checks for:
+    - Invalid entity types
+    - Invalid relationship types
+    - Missing required fields
+    - Semantic validation issues
+
+    Args:
+        extracted_entities: Dictionary of extracted entities by type
+        extracted_relationships: List of extracted relationships
+        chapter: Current chapter number
+
+    Returns:
+        Tuple of (is_valid, errors) where is_valid is True if validation passes,
+        and errors is a list of error messages.
+    """
+    errors: list[str] = []
+
+    # Validate extracted entities
+    for entity_type, entities in extracted_entities.items():
+        if not isinstance(entities, list):
+            errors.append(f"Invalid {entity_type} entities: expected list, got {type(entities)}")
+            continue
+
+        for i, entity in enumerate(entities):
+            if not isinstance(entity, (dict, ExtractedEntity)):
+                errors.append(f"Invalid {entity_type} entity at index {i}: expected ExtractedEntity or dict, got {type(entity)}")
+                continue
+
+            # Convert to ExtractedEntity if needed for consistent validation
+            if isinstance(entity, dict):
+                entity = ExtractedEntity(**entity)
+
+            # Check required fields
+            if not entity.name or not isinstance(entity.name, str):
+                errors.append(f"Entity {entity_type} at index {i} is missing valid name")
+
+            if not entity.type or not isinstance(entity.type, str):
+                errors.append(f"Entity {entity_type} '{entity.name}' is missing valid type")
+
+    # Validate extracted relationships
+    for i, relationship in enumerate(extracted_relationships):
+        if not isinstance(relationship, (dict, ExtractedRelationship)):
+            errors.append(f"Invalid relationship at index {i}: expected ExtractedRelationship or dict, got {type(relationship)}")
+            continue
+
+        # Convert to ExtractedRelationship if needed
+        if isinstance(relationship, dict):
+            relationship = ExtractedRelationship(**relationship)
+
+        # Check required fields
+        if not relationship.source_name or not isinstance(relationship.source_name, str):
+            errors.append(f"Relationship at index {i} is missing valid source_name")
+
+        if not relationship.target_name or not isinstance(relationship.target_name, str):
+            errors.append(f"Relationship at index {i} is missing valid target_name")
+
+        if not relationship.relationship_type or not isinstance(relationship.relationship_type, str):
+            errors.append(f"Relationship between {relationship.source_name} and {relationship.target_name} is missing valid relationship_type")
+
+    # Validate relationship semantics
+    if extracted_relationships:
+        try:
+            from core.relationship_validation import get_relationship_validator
+
+            validator = get_relationship_validator()
+
+            # Build entity type lookup
+            entity_type_map: dict[str, str] = {}
+            for entities in extracted_entities.values():
+                for entity in entities:
+                    if isinstance(entity, dict):
+                        name = entity.get("name")
+                        entity_type = entity.get("type")
+                    else:
+                        name = getattr(entity, "name", None)
+                        entity_type = getattr(entity, "type", None)
+
+                    if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
+                        entity_type_map[name] = entity_type
+
+            # Validate each relationship
+            for i, rel in enumerate(extracted_relationships):
+                if isinstance(rel, dict):
+                    relationship_type = rel.get("relationship_type")
+                    source_name = rel.get("source_name")
+                    target_name = rel.get("target_name")
+                else:
+                    relationship_type = getattr(rel, "relationship_type", None)
+                    source_name = getattr(rel, "source_name", None)
+                    target_name = getattr(rel, "target_name", None)
+
+                if not (isinstance(relationship_type, str) and relationship_type):
+                    continue
+                if not (isinstance(source_name, str) and source_name):
+                    continue
+                if not (isinstance(target_name, str) and target_name):
+                    continue
+
+                source_type = entity_type_map.get(source_name, "Character")
+                target_type = entity_type_map.get(target_name, "Character")
+
+                # Validate relationship (permissive mode - log warnings but don't fail)
+                is_valid, errors_list, info_warnings = validator.validate(
+                    relationship_type=relationship_type,
+                    source_name=source_name,
+                    source_type=source_type,
+                    target_name=target_name,
+                    target_type=target_type,
+                    severity_mode="flexible",
+                )
+
+                # Log warnings but don't fail validation
+                if info_warnings:
+                    logger.warning(
+                        "pre_commit_validation: relationship validation warnings",
+                        relationship=f"{source_name}({source_type}) -{relationship_type}-> {target_name}({target_type})",
+                        warnings=info_warnings,
+                        chapter=chapter,
+                    )
+        except Exception as e:
+            logger.warning(
+                "pre_commit_validation: relationship validation failed",
+                error=str(e),
+                chapter=chapter,
+            )
+
+    return (len(errors) == 0, errors)
+
+
+async def _rollback_commit(chapter: int) -> bool:
+    """Rollback the commit for the specified chapter.
+
+    This function removes all data committed for a specific chapter,
+    including entities, relationships, and chapter nodes created in that commit.
+
+    Args:
+        chapter: Chapter number to rollback
+
+    Returns:
+        True if rollback was successful, False otherwise.
+    """
+    try:
+        from core.db_manager import neo4j_manager
+
+        # Build rollback statements
+        statements = []
+
+        # 1. Delete relationships added in this chapter
+        delete_rels_query = """
+        MATCH ()-[r]->()
+        WHERE coalesce(r.chapter_added, -1) = $chapter
+        DELETE r
+        """
+        statements.append((delete_rels_query, {"chapter": chapter}))
+
+        # 2. Delete entities created in this chapter (that aren't referenced by other chapters)
+        # Only delete if created_chapter equals chapter and no other relationships exist
+        delete_entities_query = """
+        MATCH (n)
+        WHERE n.created_chapter = $chapter
+        AND NOT (n)--()
+        DELETE n
+        """
+        statements.append((delete_entities_query, {"chapter": chapter}))
+
+        # 3. Delete chapter node
+        delete_chapter_query = """
+        MATCH (c:Chapter {chapter_number: $chapter})
+        DELETE c
+        """
+        statements.append((delete_chapter_query, {"chapter": chapter}))
+
+        # Execute rollback in a transaction
+        await neo4j_manager.execute_cypher_batch(statements)
+
+        logger.info(
+            "_rollback_commit: successfully rolled back chapter",
+            chapter=chapter,
+        )
+
+        return True
+
+    except Exception as e:
+        logger.error(
+            "_rollback_commit: rollback failed",
+            error=str(e),
+            chapter=chapter,
+            exc_info=True,
+        )
+        return False
+
+
 async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     """Deduplicate extracted entities and commit the chapter to Neo4j.
 
@@ -76,6 +276,8 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
           [`neo4j_manager.execute_cypher_batch()`](core/db_manager.py:310).
         - After successful writes it clears `data_access` read caches to prevent
           stale reads within the same process.
+        - If validation fails after commit, the node will attempt to rollback
+          the changes.
     """
     # Initialize content manager to read externalized content
     content_manager = ContentManager(require_project_dir(state))
@@ -101,6 +303,37 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
         world_items=len(world_entities),
         relationships=len(relationships),
     )
+
+    # Step 0: Pre-commit validation
+    # Validate entities and relationships before committing to database
+    chapter = state.get("current_chapter", 1)
+    extracted_entities_dict = {
+        "characters": char_entities,
+        "world_items": world_entities,
+    }
+
+    is_valid, validation_errors = await _validate_entities_before_commit(
+        extracted_entities_dict,
+        relationships,
+        chapter,
+    )
+
+    if not is_valid:
+        error_msg = f"Pre-commit validation failed: {', '.join(validation_errors[:5])}"
+        if len(validation_errors) > 5:
+            error_msg += f" (and {len(validation_errors) - 5} more errors)"
+        logger.error(
+            "commit_to_graph: pre-commit validation failed",
+            error=error_msg,
+            chapter=chapter,
+            error_count=len(validation_errors),
+        )
+        return {
+            "current_node": "commit_to_graph",
+            "last_error": error_msg,
+            "has_fatal_error": True,
+            "error_node": "commit",
+        }
 
     # Track mappings for deduplication (kept for backward compatibility)
     char_mappings: dict[str, str] = {}  # new_name -> existing_name (or same)
@@ -284,6 +517,22 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             chapter=state.get("current_chapter", 1),
             exc_info=True,
         )
+
+        # Attempt rollback on commit failure
+        chapter = state.get("current_chapter", 1)
+        rollback_success = await _rollback_commit(chapter)
+
+        if rollback_success:
+            logger.info(
+                "commit_to_graph: rollback successful after commit failure",
+                chapter=chapter,
+            )
+        else:
+            logger.warning(
+                "commit_to_graph: rollback failed after commit failure",
+                chapter=chapter,
+            )
+
         return {
             "current_node": "commit_to_graph",
             "last_error": f"Commit to graph failed: {e}",
@@ -312,15 +561,15 @@ def _filter_invalid_relationships(
     import re
 
     invalid_patterns = [
-        r'^(the|a|an)\s',  # Articles: "the bloom", "a secret"
-        r'\s+and\s+',      # Pairs: "Elias and Caleb"
-        r'^to\s',          # Goals: "to understand"
-        r'(truth|knowledge|secrets?|understanding|consequences)',  # Abstract concepts
-        r'(unknown|mysterious)\s',  # Descriptive adjectives
-        r"('s|')\s",       # Possessives: "Elias's decision"
+        r"^(the|a|an)\s",  # Articles: "the bloom", "a secret"
+        r"\s+and\s+",  # Pairs: "Elias and Caleb"
+        r"^to\s",  # Goals: "to understand"
+        r"(truth|knowledge|secrets?|understanding|consequences)",  # Abstract concepts
+        r"(unknown|mysterious)\s",  # Descriptive adjectives
+        r"('s|')\s",  # Possessives: "Elias's decision"
     ]
 
-    combined_pattern = '|'.join(f'({p})' for p in invalid_patterns)
+    combined_pattern = "|".join(f"({p})" for p in invalid_patterns)
     pattern = re.compile(combined_pattern, re.IGNORECASE)
 
     valid = []
@@ -353,7 +602,7 @@ def _filter_invalid_relationships(
             continue
 
         # Reject single-word lowercase concepts (except proper names)
-        if ' ' not in target and target.islower() and target not in ['bayou', 'plantation']:
+        if " " not in target and target.islower() and target not in ["bayou", "plantation"]:
             logger.debug(
                 "_filter_invalid_relationships: rejected lowercase concept",
                 target=target,
@@ -406,9 +655,6 @@ def _deduplicate_entity_list(entities: list[ExtractedEntity]) -> list[ExtractedE
         )
 
     return unique_entities
-
-
-
 
 
 def _convert_to_character_profiles(
@@ -1192,9 +1438,6 @@ def _build_chapter_node_statement(
     )
 
     return (query, parameters)
-
-
-
 
 
 def _aggregate_scene_embeddings_to_chapter(scene_embeddings: list[list[float]] | dict[str, list[float]]) -> list[float]:

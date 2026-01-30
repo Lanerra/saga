@@ -175,19 +175,16 @@ def _parse_character_sheet_response(response: str, character_name: str) -> dict[
         for target, data in relationships_value.items():
             if not isinstance(target, str):
                 continue
-            
+
             # Handle new format: {"type": "FAMILY_OF", "description": "..."}
             if isinstance(data, dict):
-                 structured_relationships[target] = {
-                    "type": data.get("type", ""),
-                    "description": data.get("description", "")
-                }
+                structured_relationships[target] = {"type": data.get("type", ""), "description": data.get("description", "")}
             # Handle old format: "Childhood friend"
             elif isinstance(data, str):
                 structured_relationships[target] = {
                     "description": data,
                 }
-                
+
         parsed["relationships"] = structured_relationships
 
     # Double check that we are using a valid type (should be 'Character')
@@ -486,7 +483,7 @@ async def _generate_character_sheet(
         existing_traits_hint = f"\n\nExisting traits in the story (consider reusing to create interconnectedness): " f"{', '.join(traits_sample)}"
 
     from models.kg_constants import RELATIONSHIP_TYPES
-    
+
     prompt = render_prompt(
         "initialization/generate_character_sheet.j2",
         {

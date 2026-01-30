@@ -10,8 +10,8 @@ from jinja2 import (
     UndefinedError,
 )
 
-from models.kg_constants import RELATIONSHIP_TYPES
 import prompts.prompt_renderer as pr
+from models.kg_constants import RELATIONSHIP_TYPES
 
 
 def test_narrative_system_prompt_allows_json_only_when_explicitly_requested() -> None:
@@ -256,7 +256,10 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
         ("knowledge_agent/extract_characters.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
         ("knowledge_agent/extract_locations.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
         ("knowledge_agent/extract_events.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text"}),
-        ("knowledge_agent/extract_relationships.j2", {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text", "canonical_relationship_types": sorted(RELATIONSHIP_TYPES)}),
+        (
+            "knowledge_agent/extract_relationships.j2",
+            {"novel_title": "Test", "novel_genre": "Fantasy", "protagonist": "Hero", "chapter_number": 1, "chapter_text": "Text", "canonical_relationship_types": sorted(RELATIONSHIP_TYPES)},
+        ),
         ("knowledge_agent/chapter_summary.j2", {"chapter_number": 1, "chapter_text": "Text"}),
         ("knowledge_agent/extract_character_structured_lines.j2", {"name": "Hero", "description": "A hero"}),
         ("knowledge_agent/extract_world_items_lines.j2", {"setting": "Fantasy world", "outline_text": "Outline"}),
@@ -301,7 +304,17 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
         ),
         (
             "initialization/generate_character_sheet.j2",
-            {"title": "Test", "genre": "Fantasy", "theme": "Adventure", "setting": "World", "character_name": "Hero", "is_protagonist": True, "other_characters": [], "existing_traits_hint": "", "relationship_types": ["FRIEND_OF", "LOVES", "RIVALS_WITH"]},
+            {
+                "title": "Test",
+                "genre": "Fantasy",
+                "theme": "Adventure",
+                "setting": "World",
+                "character_name": "Hero",
+                "is_protagonist": True,
+                "other_characters": [],
+                "existing_traits_hint": "",
+                "relationship_types": ["FRIEND_OF", "LOVES", "RIVALS_WITH"],
+            },
         ),
         ("initialization/generate_character_list.j2", {"title": "Test", "genre": "Fantasy", "theme": "Adventure", "setting": "World", "protagonist_name": "Hero"}),
         (
@@ -334,26 +347,26 @@ def test_all_json_templates_have_standardized_output_requirements() -> None:
         # Check for any output contract header (templates use different formats)
         # Some templates have implicit JSON requirements without explicit headers
         has_output_contract = (
-            "Output contract:" in rendered or
-            "Output shape:" in rendered or
-            "CRITICAL OUTPUT CONTRACT:" in rendered or
-            "Output contract (STRICT JSON" in rendered or  # extract_character_structured_lines.j2 format
-            "Output requirements:" in rendered or  # enrich_node_from_context.j2 format
-            "## Output contract" in rendered or  # evaluate_quality.j2 format
-            "Return a single JSON object" in rendered  # generate_character_sheet.j2 format (implicit)
+            "Output contract:" in rendered
+            or "Output shape:" in rendered
+            or "CRITICAL OUTPUT CONTRACT:" in rendered
+            or "Output contract (STRICT JSON" in rendered  # extract_character_structured_lines.j2 format
+            or "Output requirements:" in rendered  # enrich_node_from_context.j2 format
+            or "## Output contract" in rendered  # evaluate_quality.j2 format
+            or "Return a single JSON object" in rendered  # generate_character_sheet.j2 format (implicit)
         )
         assert has_output_contract, f"{template_path} missing output contract header"
 
         # Check for JSON-only requirement (adapted to actual template content)
         # Different templates use different phrasing
         has_json_only = (
-            "valid JSON only" in rendered or
-            "Return ONLY valid JSON" in rendered or
-            "Output **valid JSON only**" in rendered or
-            "Return valid JSON only" in rendered or
-            "Output must be valid JSON" in rendered or  # enrich_node_from_context.j2 format
-            "Return a single JSON object" in rendered or  # generate_character_sheet.j2 format (implicit)
-            "Return a single JSON array" in rendered  # generate_character_list.j2 format (implicit)
+            "valid JSON only" in rendered
+            or "Return ONLY valid JSON" in rendered
+            or "Output **valid JSON only**" in rendered
+            or "Return valid JSON only" in rendered
+            or "Output must be valid JSON" in rendered  # enrich_node_from_context.j2 format
+            or "Return a single JSON object" in rendered  # generate_character_sheet.j2 format (implicit)
+            or "Return a single JSON array" in rendered  # generate_character_list.j2 format (implicit)
         )
         assert has_json_only, f"{template_path} missing JSON-only requirement"
 

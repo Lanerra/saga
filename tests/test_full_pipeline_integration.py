@@ -14,16 +14,16 @@ Based on: docs/schema-design.md - Stage-by-Stage Construction
 import json
 import os
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from core.parsers.character_sheet_parser import CharacterSheetParser
-from core.parsers.global_outline_parser import GlobalOutlineParser
 from core.parsers.act_outline_parser import ActOutlineParser
 from core.parsers.chapter_outline_parser import ChapterOutlineParser
+from core.parsers.character_sheet_parser import CharacterSheetParser
+from core.parsers.global_outline_parser import GlobalOutlineParser
 from core.parsers.narrative_enrichment_parser import NarrativeEnrichmentParser
-from models.kg_models import CharacterProfile, Chapter
+from models.kg_models import Chapter, CharacterProfile
 
 
 @pytest.fixture
@@ -117,13 +117,9 @@ def stage3_act_outline():
                 "sequence_in_act": 1,
                 "cause": "Creature infiltrates camp",
                 "effect": "Eleanor begins search",
-                "character_involvements": [
-                    {"character_name": "Eleanor Whitaker", "role": "protagonist"}
-                ],
+                "character_involvements": [{"character_name": "Eleanor Whitaker", "role": "protagonist"}],
                 "location": {"name": "Refugee Camp", "description": "Settlement"},
-                "items": [
-                    {"item_name": "Bloodstained doll", "role": "clue"}
-                ],
+                "items": [{"item_name": "Bloodstained doll", "role": "clue"}],
             }
         ],
         "chapter_count": 3,
@@ -186,14 +182,14 @@ class TestFullPipelineIntegration:
 
     async def test_stage1_character_initialization(self, stage1_character_sheets):
         """Test Stage 1: Character Initialization."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage1_character_sheets, f)
             temp_file = f.name
 
         try:
             parser = CharacterSheetParser(character_sheets_path=temp_file)
 
-            with patch('core.db_manager.neo4j_manager.execute_write_query', new_callable=AsyncMock) as mock_write:
+            with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
                 mock_write.return_value = []
 
                 result = await parser.parse_and_persist()
@@ -214,14 +210,14 @@ class TestFullPipelineIntegration:
 
     async def test_stage2_global_outline(self, stage2_global_outline):
         """Test Stage 2: Global Outline."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage2_global_outline, f)
             temp_file = f.name
 
         try:
             parser = GlobalOutlineParser(global_outline_path=temp_file)
 
-            with patch('core.db_manager.neo4j_manager.execute_write_query', new_callable=AsyncMock) as mock_write:
+            with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
                 mock_write.return_value = []
 
                 result = await parser.parse_and_persist()
@@ -245,15 +241,17 @@ class TestFullPipelineIntegration:
 
     async def test_stage3_act_outline(self, stage3_act_outline):
         """Test Stage 3: Act Outline."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage3_act_outline, f)
             temp_file = f.name
 
         try:
             parser = ActOutlineParser(act_outline_path=temp_file, act_number=1)
 
-            with patch('core.db_manager.neo4j_manager.execute_write_query', new_callable=AsyncMock) as mock_write, \
-                 patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_read:
+            with (
+                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
+                patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+            ):
                 mock_write.return_value = []
                 mock_read.return_value = []
 
@@ -276,16 +274,18 @@ class TestFullPipelineIntegration:
 
     async def test_stage4_chapter_outline(self, stage4_chapter_outline):
         """Test Stage 4: Chapter Outline."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(stage4_chapter_outline, f)
             temp_file = f.name
 
         try:
             parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
 
-            with patch('core.db_manager.neo4j_manager.execute_write_query', new_callable=AsyncMock) as mock_write, \
-                 patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_read, \
-                 patch('data_access.character_queries.get_all_character_names', new_callable=AsyncMock) as mock_chars:
+            with (
+                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
+                patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+                patch("data_access.character_queries.get_all_character_names", new_callable=AsyncMock) as mock_chars,
+            ):
                 mock_write.return_value = []
                 mock_read.return_value = []
                 mock_chars.return_value = ["Eleanor Whitaker"]
@@ -316,11 +316,12 @@ class TestFullPipelineIntegration:
             chapter_number=1,
         )
 
-        with patch('core.db_manager.neo4j_manager.execute_write_query', new_callable=AsyncMock) as mock_write, \
-             patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_read, \
-             patch('data_access.character_queries.get_character_profiles', new_callable=AsyncMock) as mock_chars, \
-             patch('data_access.chapter_queries.get_chapter_data_from_db', new_callable=AsyncMock) as mock_chapter:
-
+        with (
+            patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
+            patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+            patch("data_access.character_queries.get_character_profiles", new_callable=AsyncMock) as mock_chars,
+            patch("data_access.chapter_queries.get_chapter_data_from_db", new_callable=AsyncMock) as mock_chapter,
+        ):
             mock_write.return_value = []
             mock_read.return_value = []
             mock_chars.return_value = [
@@ -361,10 +362,10 @@ class TestFullPipelineIntegration:
         stage5_narrative_text,
     ):
         """Test full pipeline Stages 1-5 sequentially."""
-        stage1_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-        stage2_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-        stage3_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-        stage4_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+        stage1_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        stage2_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        stage3_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        stage4_file = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
 
         try:
             json.dump(stage1_character_sheets, stage1_file)
@@ -376,12 +377,13 @@ class TestFullPipelineIntegration:
             json.dump(stage4_chapter_outline, stage4_file)
             stage4_file.flush()
 
-            with patch('core.db_manager.neo4j_manager.execute_write_query', new_callable=AsyncMock) as mock_write, \
-                 patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_read, \
-                 patch('data_access.character_queries.get_character_profiles', new_callable=AsyncMock) as mock_chars, \
-                 patch('data_access.character_queries.get_all_character_names', new_callable=AsyncMock) as mock_char_names, \
-                 patch('data_access.chapter_queries.get_chapter_data_from_db', new_callable=AsyncMock) as mock_chapter:
-
+            with (
+                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
+                patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+                patch("data_access.character_queries.get_character_profiles", new_callable=AsyncMock) as mock_chars,
+                patch("data_access.character_queries.get_all_character_names", new_callable=AsyncMock) as mock_char_names,
+                patch("data_access.chapter_queries.get_chapter_data_from_db", new_callable=AsyncMock) as mock_chapter,
+            ):
                 mock_write.return_value = []
                 mock_read.return_value = []
                 mock_chars.return_value = [

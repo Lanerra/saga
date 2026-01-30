@@ -20,19 +20,16 @@ import json
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field
 
 from core.db_manager import neo4j_manager
-from core.exceptions import DatabaseError
-from models.kg_models import Chapter, Scene, SceneEvent, Location
-from utils.common import try_load_json_from_response
+from models.kg_models import Chapter, Location, Scene, SceneEvent
 
 logger = structlog.get_logger(__name__)
 
 
 class ChapterOutlineParser:
     """Parse chapter outlines and create Stage 4 knowledge graph entities.
-    
+
     This parser handles Stage 4 of the knowledge graph construction:
     - Chapter node creation (1 per chapter)
     - Scene node creation (3-5 per chapter)
@@ -40,7 +37,7 @@ class ChapterOutlineParser:
     - Location node creation (scene-specific locations)
     - Relationship creation between all entities
     - Persistence to Neo4j
-    
+
     Attributes:
         chapter_outline_path: Path to chapter outline JSON file
         chapter_number: Chapter number for provenance
@@ -48,7 +45,7 @@ class ChapterOutlineParser:
 
     def __init__(self, chapter_outline_path: str = "chapter_outlines/chapter_{N}_v1.json", chapter_number: int = 0):
         """Initialize the ChapterOutlineParser.
-        
+
         Args:
             chapter_outline_path: Path to chapter outline JSON file
             chapter_number: Chapter number for provenance
@@ -58,17 +55,17 @@ class ChapterOutlineParser:
 
     async def parse_chapter_outline(self) -> dict[str, Any]:
         """Parse chapter outline from JSON file.
-        
+
         Returns:
             Dictionary containing parsed chapter outline data
-            
+
         Raises:
             ValueError: If chapter outline file cannot be read or parsed
             DatabaseError: If there are issues persisting to Neo4j
         """
         try:
             # Read the chapter outline JSON file
-            with open(self.chapter_outline_path, 'r', encoding='utf-8') as f:
+            with open(self.chapter_outline_path, encoding="utf-8") as f:
                 chapter_outline_data = json.load(f)
         except FileNotFoundError as e:
             logger.error(f"Chapter outline file not found: {self.chapter_outline_path}", exc_info=True)
@@ -81,19 +78,19 @@ class ChapterOutlineParser:
 
     def _generate_id(self, entity_type: str, chapter_number: int, scene_index: int = 0, event_index: int = 0) -> str:
         """Generate a stable ID for an entity.
-        
+
         Args:
             entity_type: Type of entity (Chapter, Scene, Event, Location)
             chapter_number: Chapter number
             scene_index: Scene index (for scenes and events)
             event_index: Event index (for events)
-            
+
         Returns:
             Generated entity ID
         """
         # Use SHA256 hash for stable ID generation
         hash_input = f"{entity_type}_{chapter_number}_{scene_index}_{event_index}"
-        hash_obj = hashlib.sha256(hash_input.encode('utf-8'))
+        hash_obj = hashlib.sha256(hash_input.encode("utf-8"))
         hash_hex = hash_obj.hexdigest()[:16]  # Use first 16 chars for brevity
         return f"{entity_type}_{hash_hex}"
 
@@ -203,13 +200,13 @@ class ChapterOutlineParser:
                 # Check if word is a proper noun (starts with capital letter and is not a common article)
                 if len(word) > 1 and word[0].isupper() and word[1].islower():
                     # Filter out common words that are not names
-                    common_words = {'the', 'a', 'an', 'and', 'but', 'or', 'for', 'nor', 'so', 'yet'}
+                    common_words = {"the", "a", "an", "and", "but", "or", "for", "nor", "so", "yet"}
                     if word.lower() not in common_words:
                         # Try to extend to multi-word name if the next word also starts with capital
                         if i + 1 < len(words) and words[i + 1][0].isupper():
                             full_name = f"{word} {words[i + 1]}"
                             # Validate it's not just a common two-word phrase
-                            if full_name.lower() not in {'the end', 'the end of', 'the beginning', 'the start of', 'the story begins', 'the story ends'}:
+                            if full_name.lower() not in {"the end", "the end of", "the beginning", "the start of", "the story begins", "the story ends"}:
                                 return full_name
                         return word
 
@@ -277,17 +274,17 @@ class ChapterOutlineParser:
 
     async def create_chapter_nodes(self, chapters: list[Chapter]) -> bool:
         """Create Chapter nodes in Neo4j.
-        
+
         Args:
             chapters: List of Chapter instances to create
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             # Build Cypher query for creating chapter nodes
             cypher_queries = []
-            
+
             for chapter in chapters:
                 query = """
                 MERGE (c:Chapter {number: $number})
@@ -309,7 +306,7 @@ class ChapterOutlineParser:
                     c.is_provisional = $is_provisional,
                     c.updated_ts = timestamp()
                 """
-                
+
                 params = {
                     "id": chapter.id,
                     "number": chapter.number,
@@ -319,38 +316,34 @@ class ChapterOutlineParser:
                     "created_chapter": chapter.created_chapter,
                     "is_provisional": chapter.is_provisional,
                 }
-                
+
                 cypher_queries.append((query, params))
-            
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
-            
-            logger.info(
-                "Successfully created %d Chapter nodes",
-                len(chapters),
-                extra={"chapter": self.chapter_number}
-            )
-            
+
+            logger.info("Successfully created %d Chapter nodes", len(chapters), extra={"chapter": self.chapter_number})
+
             return True
-            
+
         except Exception as e:
             logger.error("Error creating Chapter nodes: %s", str(e), exc_info=True)
             return False
 
     async def create_scene_nodes(self, scenes: list[Scene]) -> bool:
         """Create Scene nodes in Neo4j.
-        
+
         Args:
             scenes: List of Scene instances to create
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             # Build Cypher query for creating scene nodes
             cypher_queries = []
-            
+
             for scene in scenes:
                 query = """
                 MERGE (s:Scene {id: $id})
@@ -382,7 +375,7 @@ class ChapterOutlineParser:
                     s.is_provisional = $is_provisional,
                     s.updated_ts = timestamp()
                 """
-                
+
                 params = {
                     "id": scene.id,
                     "chapter_number": scene.chapter_number,
@@ -397,38 +390,34 @@ class ChapterOutlineParser:
                     "created_chapter": scene.created_chapter,
                     "is_provisional": scene.is_provisional,
                 }
-                
+
                 cypher_queries.append((query, params))
-            
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
-            
-            logger.info(
-                "Successfully created %d Scene nodes",
-                len(scenes),
-                extra={"chapter": self.chapter_number}
-            )
-            
+
+            logger.info("Successfully created %d Scene nodes", len(scenes), extra={"chapter": self.chapter_number})
+
             return True
-            
+
         except Exception as e:
             logger.error("Error creating Scene nodes: %s", str(e), exc_info=True)
             return False
 
     async def create_scene_event_nodes(self, events: list[SceneEvent]) -> bool:
         """Create SceneEvent nodes in Neo4j.
-        
+
         Args:
             events: List of SceneEvent instances to create
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             # Build Cypher query for creating event nodes
             cypher_queries = []
-            
+
             for event in events:
                 query = """
                 MERGE (e:Event {name: $name})
@@ -460,7 +449,7 @@ class ChapterOutlineParser:
                     e.is_provisional = $is_provisional,
                     e.updated_ts = timestamp()
                 """
-                
+
                 params = {
                     "id": event.id,
                     "name": event.name,
@@ -475,38 +464,34 @@ class ChapterOutlineParser:
                     "created_chapter": event.created_chapter,
                     "is_provisional": event.is_provisional,
                 }
-                
+
                 cypher_queries.append((query, params))
-            
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
-            
-            logger.info(
-                "Successfully created %d SceneEvent nodes",
-                len(events),
-                extra={"chapter": self.chapter_number}
-            )
-            
+
+            logger.info("Successfully created %d SceneEvent nodes", len(events), extra={"chapter": self.chapter_number})
+
             return True
-            
+
         except Exception as e:
             logger.error("Error creating SceneEvent nodes: %s", str(e), exc_info=True)
             return False
 
     async def create_location_nodes(self, locations: list[Location]) -> bool:
         """Create Location nodes in Neo4j.
-        
+
         Args:
             locations: List of Location instances to create
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             # Build Cypher query for creating location nodes
             cypher_queries = []
-            
+
             for location in locations:
                 query = """
                 MERGE (l:Location {id: $id})
@@ -526,7 +511,7 @@ class ChapterOutlineParser:
                     l.is_provisional = $is_provisional,
                     l.updated_ts = timestamp()
                 """
-                
+
                 params = {
                     "id": location.id,
                     "name": location.name,
@@ -535,41 +520,37 @@ class ChapterOutlineParser:
                     "created_chapter": location.created_chapter,
                     "is_provisional": location.is_provisional,
                 }
-                
+
                 cypher_queries.append((query, params))
-            
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
-            
-            logger.info(
-                "Successfully created %d Location nodes",
-                len(locations),
-                extra={"chapter": self.chapter_number}
-            )
-            
+
+            logger.info("Successfully created %d Location nodes", len(locations), extra={"chapter": self.chapter_number})
+
             return True
-            
+
         except Exception as e:
             logger.error("Error creating Location nodes: %s", str(e), exc_info=True)
             return False
 
     async def create_relationships(self, chapters: list[Chapter], scenes: list[Scene], events: list[SceneEvent], locations: list[Location]) -> bool:
         """Create relationships between all entities.
-        
+
         Args:
             chapters: List of Chapter instances
             scenes: List of Scene instances
             events: List of SceneEvent instances
             locations: List of Location instances
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             # Build Cypher queries for relationship creation
             cypher_queries = []
-            
+
             # Create Scene -[PART_OF]-> Chapter relationships
             for scene in scenes:
                 for chapter in chapters:
@@ -581,21 +562,21 @@ class ChapterOutlineParser:
                         SET r.created_ts = timestamp(),
                             r.updated_ts = timestamp()
                         """
-                        
+
                         params = {
                             "scene_id": scene.id,
                             "chapter_id": chapter.id,
                         }
-                        
+
                         cypher_queries.append((query, params))
-            
+
             # Create Scene -[FOLLOWS]-> Scene relationships
             # Sort scenes by scene_index to create proper sequence
             sorted_scenes = sorted(scenes, key=lambda s: s.scene_index)
             for i in range(len(sorted_scenes) - 1):
                 current_scene = sorted_scenes[i]
                 next_scene = sorted_scenes[i + 1]
-                
+
                 if current_scene.chapter_number == next_scene.chapter_number:
                     query = """
                     MATCH (current:Scene {id: $current_id})
@@ -604,14 +585,14 @@ class ChapterOutlineParser:
                     SET r.created_ts = timestamp(),
                         r.updated_ts = timestamp()
                     """
-                    
+
                     params = {
                         "current_id": current_scene.id,
                         "next_id": next_scene.id,
                     }
-                    
+
                     cypher_queries.append((query, params))
-            
+
             # Create Scene -[FEATURES_CHARACTER]-> Character relationships
             for scene in scenes:
                 if not scene.pov_character:
@@ -631,7 +612,7 @@ class ChapterOutlineParser:
                         "character_name": scene.pov_character,
                     }
                     cypher_queries.append((query, params))
-            
+
             # Create Scene -[OCCURS_AT]-> Location relationships
             for scene in scenes:
                 for location in locations:
@@ -644,19 +625,18 @@ class ChapterOutlineParser:
                         SET r.created_ts = timestamp(),
                             r.updated_ts = timestamp()
                         """
-                        
+
                         params = {
                             "scene_id": scene.id,
                             "location_id": location.id,
                         }
-                        
+
                         cypher_queries.append((query, params))
-            
+
             # Create SceneEvent -[OCCURS_IN_SCENE]-> Scene relationships
             for event in events:
                 for scene in scenes:
-                    if (event.chapter_number == scene.chapter_number and 
-                        event.scene_index == scene.scene_index):
+                    if event.chapter_number == scene.chapter_number and event.scene_index == scene.scene_index:
                         query = """
                         MATCH (e:Event {id: $event_id})
                         MATCH (s:Scene {id: $scene_id})
@@ -664,14 +644,14 @@ class ChapterOutlineParser:
                         SET r.created_ts = timestamp(),
                             r.updated_ts = timestamp()
                         """
-                        
+
                         params = {
                             "event_id": event.id,
                             "scene_id": scene.id,
                         }
-                        
+
                         cypher_queries.append((query, params))
-            
+
             # Create Event -[INVOLVES]-> Character relationships
             for event in events:
                 if not event.pov_character:
@@ -691,12 +671,12 @@ class ChapterOutlineParser:
                         "character_name": event.pov_character,
                     }
                     cypher_queries.append((query, params))
-            
+
             # Create SceneEvent -[PART_OF]-> ActKeyEvent relationships
             for event in events:
                 # Lookup ActKeyEvent for this act and scene
                 act_key_event = await self._get_act_key_event(event.act_number, event.scene_index)
-                
+
                 if act_key_event:
                     query = """
                     MATCH (e:Event {id: $event_id})
@@ -710,19 +690,15 @@ class ChapterOutlineParser:
                         "ake_id": act_key_event.get("id"),
                     }
                     cypher_queries.append((query, params))
-            
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
-            
-            logger.info(
-                "Successfully created %d relationships",
-                len(cypher_queries),
-                extra={"chapter": self.chapter_number}
-            )
-            
+
+            logger.info("Successfully created %d relationships", len(cypher_queries), extra={"chapter": self.chapter_number})
+
             return True
-            
+
         except Exception as e:
             logger.error("Error creating relationships: %s", str(e), exc_info=True)
             return False
@@ -741,7 +717,7 @@ class ChapterOutlineParser:
             logger.error("Error fetching character names: %s", str(e), exc_info=True)
             return []
 
-    async def _get_character_by_name(self, character_name: str) -> "CharacterProfile | None":
+    async def _get_character_by_name(self, character_name: str) -> CharacterProfile | None:
         """Query Neo4j for a character by name.
 
         Args:
@@ -751,15 +727,16 @@ class ChapterOutlineParser:
             CharacterProfile if found, None otherwise
         """
         from data_access.character_queries import get_character_profile_by_name
+
         return await get_character_profile_by_name(character_name)
 
     async def _get_act_key_event(self, act_number: int, sequence_in_act: int) -> dict | None:
         """Query Neo4j for an ActKeyEvent by act_number and sequence_in_act.
-        
+
         Args:
             act_number: Act number (1, 2, or 3)
             sequence_in_act: Position within act
-            
+
         Returns:
             Event dict if found, None otherwise
         """
@@ -767,10 +744,7 @@ class ChapterOutlineParser:
         MATCH (e:Event {event_type: "ActKeyEvent", act_number: $act_number, sequence_in_act: $sequence_in_act})
         RETURN e
         """
-        results = await neo4j_manager.execute_read_query(query, {
-            "act_number": act_number,
-            "sequence_in_act": sequence_in_act
-        })
+        results = await neo4j_manager.execute_read_query(query, {"act_number": act_number, "sequence_in_act": sequence_in_act})
         return results[0] if results else None
 
     async def parse_and_persist(self) -> tuple[bool, str]:
@@ -829,10 +803,7 @@ class ChapterOutlineParser:
                 locations = self._parse_locations(chapter_outline_data)
 
                 if not locations:
-                    logger.debug(
-                        "No explicit locations in chapter outline; using locations from earlier stages",
-                        extra={"chapter": chapter.number}
-                    )
+                    logger.debug("No explicit locations in chapter outline; using locations from earlier stages", extra={"chapter": chapter.number})
 
                 logger.info("Parsed %d locations", len(locations), extra={"chapter": chapter.number})
 
@@ -881,7 +852,7 @@ class ChapterOutlineParser:
                 f"{len(all_scenes)} Scenes, "
                 f"{len(all_events)} SceneEvents, "
                 f"{len(all_locations)} Locations, and "
-                f"{len(all_scenes) + len(all_events) + len(all_locations)} relationships"
+                f"{len(all_scenes) + len(all_events) + len(all_locations)} relationships",
             )
 
         except Exception as e:

@@ -18,7 +18,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
-    import spacy
+    pass
 
 ABSTRACT_CONCEPTS = {
     "fear",
@@ -106,6 +106,7 @@ class SpacyService:
         else:
             try:
                 import config
+
                 selected_model = getattr(config.settings, "SPACY_MODEL", None)
             except Exception:
                 selected_model = None
@@ -119,10 +120,9 @@ class SpacyService:
             self._nlp = spacy.load(selected_model)
             logger.info("SpacyService: spaCy model '%s' loaded successfully", selected_model)
             return True
-        except OSError as e:
+        except OSError:
             logger.error(
-                "spaCy model '%s' not found. Install with: python -m spacy download %s. "
-                "spaCy-dependent features will be disabled.",
+                "spaCy model '%s' not found. Install with: python -m spacy download %s. " "spaCy-dependent features will be disabled.",
                 selected_model,
                 selected_model,
             )
@@ -210,7 +210,7 @@ class SpacyService:
             if doc.ents:
                 for ent in doc.ents:
                     if ent.label_ == "PERSON":
-                        return True, f"spaCy NER: PERSON entity"
+                        return True, "spaCy NER: PERSON entity"
 
             has_proper_noun = any(token.pos_ == "PROPN" for token in doc)
             if has_proper_noun:
@@ -262,10 +262,7 @@ class SpacyService:
 
             # Identify significant tokens in the entity name
             # Exclude stopwords, punctuation, and common titles
-            common_titles = {
-                "mr", "mr.", "mrs", "mrs.", "ms", "ms.", "dr", "dr.",
-                "prof", "prof.", "sir", "lady", "lord", "captain", "cpt", "cpt."
-            }
+            common_titles = {"mr", "mr.", "mrs", "mrs.", "ms", "ms.", "dr", "dr.", "prof", "prof.", "sir", "lady", "lord", "captain", "cpt", "cpt."}
 
             sig_entity_tokens = set()
             for token in entity_doc:
@@ -288,9 +285,9 @@ class SpacyService:
             # Check lemmatized forms of significant tokens
             sig_entity_lemmas = set()
             for token in entity_doc:
-                 txt = token.text.lower()
-                 if not token.is_stop and not token.is_punct and txt not in common_titles:
-                     sig_entity_lemmas.add(token.lemma_.lower())
+                txt = token.text.lower()
+                if not token.is_stop and not token.is_punct and txt not in common_titles:
+                    sig_entity_lemmas.add(token.lemma_.lower())
 
             text_lemmas = {token.lemma_.lower() for token in doc}
 
@@ -322,6 +319,7 @@ class SpacyService:
             logger.warning("normalize_entity_name: spaCy model not loaded, using fallback")
             # Fallback to simple normalization
             import re
+
             name = name.strip().lower()
             name = re.sub(r"^[\s'\"()]*", "", name)
             name = re.sub(r"[\s'\"()]*$", "", name)
@@ -347,6 +345,7 @@ class SpacyService:
             logger.error("normalize_entity_name failed: %s", e, exc_info=True)
             # Fallback to simple normalization on error
             import re
+
             name = name.strip().lower()
             name = re.sub(r"^[\s'\"()]*", "", name)
             name = re.sub(r"[\s'\"()]*$", "", name)
@@ -374,9 +373,10 @@ class SpacyService:
             logger.warning("clean_text: spaCy model not loaded, using fallback")
             # Fallback to simple regex-based cleaning
             import re
+
             cleaned = text.strip()
-            cleaned = re.sub(r'\s+', ' ', cleaned)
-            cleaned = re.sub(r'[\t\r\f\v]', ' ', cleaned)
+            cleaned = re.sub(r"\s+", " ", cleaned)
+            cleaned = re.sub(r"[\t\r\f\v]", " ", cleaned)
             return cleaned
 
         if not text or not isinstance(text, str):
@@ -402,36 +402,38 @@ class SpacyService:
                         # Add space before non-punctuation tokens if we have content already
                         # and the previous token didn't end with a newline
                         if cleaned_parts and not token.is_punct:
-                            if not cleaned_parts[-1].endswith('\n') and not cleaned_parts[-1].endswith(' '):
-                                cleaned_parts.append(' ')
+                            if not cleaned_parts[-1].endswith("\n") and not cleaned_parts[-1].endswith(" "):
+                                cleaned_parts.append(" ")
                         cleaned_parts.append(token.text)
-                    elif '\n' in token.text:
-                         # Preserve newlines (normalize multiple newlines to max 2)
-                        newlines = token.text.count('\n')
+                    elif "\n" in token.text:
+                        # Preserve newlines (normalize multiple newlines to max 2)
+                        newlines = token.text.count("\n")
                         if newlines >= 2:
-                            cleaned_parts.append('\n\n')
+                            cleaned_parts.append("\n\n")
                         else:
-                            cleaned_parts.append('\n')
-                    elif cleaned_parts and not cleaned_parts[-1].endswith(' ') and not cleaned_parts[-1].endswith('\n'):
+                            cleaned_parts.append("\n")
+                    elif cleaned_parts and not cleaned_parts[-1].endswith(" ") and not cleaned_parts[-1].endswith("\n"):
                         # Add single space for other whitespace tokens if needed
-                        cleaned_parts.append(' ')
-                
+                        cleaned_parts.append(" ")
+
                 cleaned = "".join(cleaned_parts)
-                
+
                 # Normalize common punctuation patterns but preserve newlines
                 import re
-                cleaned = re.sub(r'[\t\r\f\v]', ' ', cleaned)
+
+                cleaned = re.sub(r"[\t\r\f\v]", " ", cleaned)
                 # Collapse multiple spaces but keep newlines
-                cleaned = re.sub(r'[ ]+', ' ', cleaned).strip()
+                cleaned = re.sub(r"[ ]+", " ", cleaned).strip()
 
             return cleaned
         except Exception as e:
             logger.error("clean_text failed: %s", e, exc_info=True)
             # Fallback to simple cleaning on error
             import re
+
             cleaned = text.strip()
-            cleaned = re.sub(r'\s+', ' ', cleaned)
-            cleaned = re.sub(r'[\t\r\f\v]', ' ', cleaned)
+            cleaned = re.sub(r"\s+", " ", cleaned)
+            cleaned = re.sub(r"[\t\r\f\v]", " ", cleaned)
             return cleaned
 
     def extract_sentences(self, text: str) -> list[str]:
@@ -447,8 +449,9 @@ class SpacyService:
             logger.warning("extract_sentences: spaCy model not loaded, using fallback")
             # Fallback to simple regex-based sentence splitting
             import re
+
             sentences = []
-            for match in re.finditer(r'([^\.!?]+(?:[\.!?]|$))', text):
+            for match in re.finditer(r"([^\.!?]+(?:[\.!?]|$))", text):
                 sent_text = match.group(1).strip()
                 if sent_text:
                     sentences.append(sent_text)
@@ -464,8 +467,9 @@ class SpacyService:
             logger.error("extract_sentences failed: %s", e, exc_info=True)
             # Fallback to simple sentence splitting
             import re
+
             sentences = []
-            for match in re.finditer(r'([^\.!?]+(?:[\.!?]|$))', text):
+            for match in re.finditer(r"([^\.!?]+(?:[\.!?]|$))", text):
                 sent_text = match.group(1).strip()
                 if sent_text:
                     sentences.append(sent_text)

@@ -5,7 +5,7 @@ These tests verify that the new query functions for scene-related
 context retrieval work correctly.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 

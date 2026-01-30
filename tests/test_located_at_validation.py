@@ -1,8 +1,6 @@
 """Tests for LOCATED_AT relationship semantic validation and type inference."""
 
-import pytest
-
-from core.langgraph.state import ExtractedEntity, ExtractedRelationship
+from core.langgraph.state import ExtractedRelationship
 from core.relationship_validation import (
     infer_entity_type_from_relationship,
     validate_relationship_semantics_strict,

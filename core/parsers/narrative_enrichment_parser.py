@@ -13,36 +13,27 @@ Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
-from typing import Any
 
 import numpy as np
 import structlog
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 import config
-from core.db_manager import neo4j_manager
 from core.entity_embedding_service import (
     compute_entity_embedding_text,
     compute_entity_embedding_text_hash,
-)
-from core.exceptions import DatabaseError
-from data_access.cache_coordinator import clear_character_read_caches
-from data_access.character_queries import (
-    get_character_profiles,
-    get_character_profile_by_name,
-    rebuild_character_name_map,
-    sync_characters,
 )
 from data_access.chapter_queries import (
     get_chapter_data_from_db,
     save_chapter_data_to_db,
 )
-from models.kg_models import CharacterProfile, Chapter
-from utils.common import try_load_json_from_response
-from utils.text_processing import validate_and_filter_traits
+from data_access.character_queries import (
+    get_character_profile_by_name,
+    get_character_profiles,
+    sync_characters,
+)
+from models.kg_models import Chapter, CharacterProfile
 
 logger = structlog.get_logger(__name__)
 
@@ -69,14 +60,14 @@ class ChapterEmbeddingExtractionResult(BaseModel):
 
 class NarrativeEnrichmentParser:
     """Parse narrative text and extract enrichment data for Stage 5.
-    
+
     This parser handles Stage 5 of the knowledge graph construction:
     - Extract physical descriptions from narrative text
     - Update Character nodes with physical_description property
     - Extract chapter embeddings from narrative text
     - Update Chapter nodes with embedding property
     - Validate that enrichments don't contradict existing properties
-    
+
     Attributes:
         narrative_text: The narrative text to parse
         chapter_number: Chapter number for provenance
@@ -90,7 +81,7 @@ class NarrativeEnrichmentParser:
         extraction_model: str = "gpt-4",
     ):
         """Initialize the NarrativeEnrichmentParser.
-        
+
         Args:
             narrative_text: The narrative text to parse
             chapter_number: Chapter number for provenance (0 for initialization)
@@ -102,16 +93,16 @@ class NarrativeEnrichmentParser:
 
     async def extract_physical_descriptions(self) -> list[PhysicalDescriptionExtractionResult]:
         """Extract physical descriptions from narrative text.
-        
+
         This method uses regex patterns to extract physical descriptions from the narrative text.
         It looks for patterns like:
         - "Physical Description: ..."
         - "Appearance: ..."
         - Character names followed by descriptions
-        
+
         Returns:
             List of PhysicalDescriptionExtractionResult objects
-            
+
         Raises:
             ValueError: If narrative text cannot be parsed
             DatabaseError: If there are issues accessing the database
@@ -120,7 +111,7 @@ class NarrativeEnrichmentParser:
         if not config.ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION:
             logger.info("Physical description extraction is disabled by configuration")
             return []
-            
+
         if not self.narrative_text:
             logger.warning("No narrative text provided for physical description extraction")
             return []
@@ -148,7 +139,7 @@ class NarrativeEnrichmentParser:
 
             # Try to extract character name from context
             # Look backwards for a character name
-            context = self.narrative_text[:self.narrative_text.find(match[0])]
+            context = self.narrative_text[: self.narrative_text.find(match[0])]
             last_character_name = self._extract_last_mentioned_character(context, character_map)
 
             if last_character_name:
@@ -164,7 +155,7 @@ class NarrativeEnrichmentParser:
         # Pattern 2: Look for character names followed by descriptions
         # This is more complex and may require LLM assistance
         # For now, we'll use a simpler pattern
-        
+
         # Extract all unique character names from the narrative
         mentioned_characters = self._extract_mentioned_characters(self.narrative_text, character_map)
 
@@ -189,11 +180,11 @@ class NarrativeEnrichmentParser:
 
     def _extract_last_mentioned_character(self, text: str, character_map: dict[str, CharacterProfile]) -> str | None:
         """Extract the last mentioned character from text.
-        
+
         Args:
             text: The text to search
             character_map: Mapping of character names to profiles
-            
+
         Returns:
             The name of the last mentioned character, or None if not found
         """
@@ -209,19 +200,19 @@ class NarrativeEnrichmentParser:
 
     def _extract_mentioned_characters(self, text: str, character_map: dict[str, CharacterProfile]) -> list[str]:
         """Extract all mentioned character names from text.
-        
+
         Args:
             text: The text to search
             character_map: Mapping of character names to profiles
-            
+
         Returns:
             List of character names found in the text
         """
         mentioned = []
-        
+
         # Simple approach: look for capitalized words that match character names
         words = re.findall(r"\b[A-Z][a-zA-Z']*\b", text)
-        
+
         for word in words:
             if word in character_map and word not in mentioned:
                 mentioned.append(word)
@@ -230,24 +221,24 @@ class NarrativeEnrichmentParser:
 
     def _extract_character_description(self, character_name: str, text: str) -> str | None:
         """Extract description for a specific character from text.
-        
+
         Args:
             character_name: Name of the character
             text: The text to search
-            
+
         Returns:
             Extracted description text, or None if not found
         """
         # Look for patterns like "[character_name] was [description]"
         # or "[character_name]'s [description]"
-        
+
         patterns = [
             rf"{character_name}\s+was\s+([^.!?]+)",
             rf"{character_name}\s+'s\s+([^.!?]+)",
             rf"{character_name}\s+had\s+([^.!?]+)",
             rf"{character_name}\s+looked\s+([^.!?]+)",
         ]
-        
+
         for pattern in patterns:
             matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
             if matches:
@@ -257,12 +248,12 @@ class NarrativeEnrichmentParser:
 
     async def extract_chapter_embeddings(self) -> list[ChapterEmbeddingExtractionResult]:
         """Extract chapter embeddings from narrative text.
-        
+
         This method uses the entity embedding service to extract embeddings from the narrative text.
-        
+
         Returns:
             List of ChapterEmbeddingExtractionResult objects
-            
+
         Raises:
             ValueError: If narrative text cannot be parsed
             DatabaseError: If there are issues accessing the database
@@ -271,7 +262,7 @@ class NarrativeEnrichmentParser:
         if not config.ENABLE_CHAPTER_EMBEDDING_EXTRACTION:
             logger.info("Chapter embedding extraction is disabled by configuration")
             return []
-            
+
         if not self.narrative_text:
             logger.warning("No narrative text provided for chapter embedding extraction")
             return []
@@ -281,7 +272,7 @@ class NarrativeEnrichmentParser:
         if not chapter_data:
             logger.warning(f"No chapter found with number {self.chapter_number}")
             return []
-        
+
         # Convert dict to Chapter model
         chapter = Chapter(**chapter_data)
 
@@ -319,10 +310,10 @@ class NarrativeEnrichmentParser:
 
     async def _generate_embedding_vector(self, text: str) -> list[float] | None:
         """Generate embedding vector from text using the embedding service.
-        
+
         Args:
             text: The text to embed
-            
+
         Returns:
             List of floats representing the embedding vector, or None if generation fails
         """
@@ -332,13 +323,13 @@ class NarrativeEnrichmentParser:
                 text,
                 model=self.extraction_model,
             )
-            
+
             if embedding and len(embedding) > 0:
                 return embedding
             else:
                 logger.warning(f"Empty embedding vector generated for text: {text[:100]}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error generating embedding vector: {str(e)}", exc_info=True)
             return None
@@ -349,11 +340,11 @@ class NarrativeEnrichmentParser:
         new_physical_description: str,
     ) -> bool:
         """Validate that the new physical description doesn't contradict existing properties.
-        
+
         Args:
             character_name: Name of the character to validate
             new_physical_description: New physical description to validate
-            
+
         Returns:
             True if validation passes, False otherwise
         """
@@ -361,28 +352,28 @@ class NarrativeEnrichmentParser:
         if not config.ENABLE_PHYSICAL_DESCRIPTION_VALIDATION:
             logger.info("Physical description validation is disabled by configuration")
             return True
-            
+
         try:
             # Get the character profile
             character = await get_character_profile_by_name(character_name)
-            
+
             if not character:
                 logger.warning(f"Character {character_name} not found in database")
                 return False
-            
+
             # Check if the new description contradicts existing traits
             # For example, if the character has "tall" trait but description says "short"
-            
+
             # Check for contradictions in the description
             contradictions = self._check_for_contradictions(character, new_physical_description)
-            
+
             if contradictions:
                 logger.warning(
                     f"Contradictions found in physical description for {character_name}: {contradictions}",
                     extra={"character": character_name, "contradictions": contradictions},
                 )
                 return False
-            
+
             return True
 
         except Exception as e:
@@ -395,34 +386,34 @@ class NarrativeEnrichmentParser:
         new_description: str,
     ) -> list[str]:
         """Check for contradictions between existing character properties and new description.
-        
+
         Args:
             character: Character profile to check
             new_description: New physical description to validate
-            
+
         Returns:
             List of contradiction messages
         """
         contradictions = []
-        
+
         # Check for height contradictions
         if "tall" in character.traits and "short" in new_description.lower():
             contradictions.append("Description mentions 'short' but character has 'tall' trait")
-        
+
         if "short" in character.traits and "tall" in new_description.lower():
             contradictions.append("Description mentions 'tall' but character has 'short' trait")
-        
+
         # Check for age contradictions
         if "young" in character.traits and "old" in new_description.lower():
             contradictions.append("Description mentions 'old' but character has 'young' trait")
-        
+
         if "old" in character.traits and "young" in new_description.lower():
             contradictions.append("Description mentions 'young' but character has 'old' trait")
-        
+
         # Check for status contradictions
         if character.status == "Dead" and "alive" in new_description.lower():
             contradictions.append("Description mentions 'alive' but character status is 'Dead'")
-        
+
         return contradictions
 
     async def update_character_physical_descriptions(
@@ -430,10 +421,10 @@ class NarrativeEnrichmentParser:
         extraction_results: list[PhysicalDescriptionExtractionResult],
     ) -> bool:
         """Update character nodes with physical descriptions.
-        
+
         Args:
             extraction_results: List of PhysicalDescriptionExtractionResult objects
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -454,29 +445,29 @@ class NarrativeEnrichmentParser:
             # Update each character with the new physical description
             for result in extraction_results:
                 character_name = result.character_name
-                
+
                 if character_name not in character_map:
                     logger.warning(f"Character {character_name} not found in database")
                     continue
-                
+
                 # Validate the enrichment before applying
                 is_valid = await self.validate_character_enrichment(character_name, result.extracted_description)
-                
+
                 if not is_valid:
                     logger.warning(
                         f"Validation failed for physical description of {character_name}. Skipping update.",
                         extra={"character": character_name},
                     )
                     continue
-                
+
                 # Update the character profile
                 character = character_map[character_name]
-                
+
                 # Only update if the new description is different from the existing one
                 if character.physical_description != result.extracted_description:
                     character.physical_description = result.extracted_description
                     character.updated_ts = None  # Will be set by Neo4j
-                    
+
                     logger.info(
                         f"Updating physical description for {character_name}",
                         extra={"character": character_name, "description": result.extracted_description[:50]},
@@ -484,16 +475,16 @@ class NarrativeEnrichmentParser:
 
             # Sync the updated characters to the database
             success = await sync_characters(list(character_map.values()), self.chapter_number)
-            
+
             if not success:
                 logger.error("Failed to sync character updates to database")
                 return False
-            
+
             logger.info(
                 f"Successfully updated {len(extraction_results)} character physical descriptions",
                 extra={"chapter": self.chapter_number},
             )
-            
+
             return True
 
         except Exception as e:
@@ -505,10 +496,10 @@ class NarrativeEnrichmentParser:
         extraction_results: list[ChapterEmbeddingExtractionResult],
     ) -> bool:
         """Update chapter nodes with embeddings.
-        
+
         Args:
             extraction_results: List of ChapterEmbeddingExtractionResult objects
-            
+
         Returns:
             True if successful, False otherwise
         """
@@ -521,13 +512,13 @@ class NarrativeEnrichmentParser:
             for result in extraction_results:
                 chapter_number = result.chapter_number
                 embedding_vector = result.embedding_vector
-                
+
                 # Sync the embedding to the database using save_chapter_data_to_db
                 await save_chapter_data_to_db(
                     chapter_number=chapter_number,
                     embedding_array=np.array(embedding_vector, dtype=np.float32),
                 )
-                
+
                 logger.info(
                     f"Successfully updated embedding for chapter {chapter_number}",
                     extra={"chapter": chapter_number, "embedding_dim": len(embedding_vector)},
@@ -541,7 +532,7 @@ class NarrativeEnrichmentParser:
 
     async def parse_and_persist(self) -> tuple[bool, str]:
         """Parse narrative text and persist enrichment data to Neo4j.
-        
+
         Returns:
             Tuple of (success: bool, message: str)
         """
@@ -550,10 +541,10 @@ class NarrativeEnrichmentParser:
             if config.ENABLE_PHYSICAL_DESCRIPTION_EXTRACTION:
                 logger.info("Extracting physical descriptions from narrative text")
                 physical_descriptions = await self.extract_physical_descriptions()
-                
+
                 if not physical_descriptions:
                     logger.warning("No physical descriptions extracted from narrative text")
-                
+
                 logger.info(
                     f"Extracted {len(physical_descriptions)} physical descriptions from narrative text",
                     extra={"chapter": self.chapter_number},
@@ -566,10 +557,10 @@ class NarrativeEnrichmentParser:
             if config.ENABLE_CHAPTER_EMBEDDING_EXTRACTION:
                 logger.info("Extracting chapter embeddings from narrative text")
                 chapter_embeddings = await self.extract_chapter_embeddings()
-                
+
                 if not chapter_embeddings:
                     logger.warning("No chapter embeddings extracted from narrative text")
-                
+
                 logger.info(
                     f"Extracted {len(chapter_embeddings)} chapter embeddings from narrative text",
                     extra={"chapter": self.chapter_number},
@@ -582,7 +573,7 @@ class NarrativeEnrichmentParser:
             if physical_descriptions:
                 logger.info("Updating character physical descriptions in Neo4j")
                 char_success = await self.update_character_physical_descriptions(physical_descriptions)
-                
+
                 if not char_success:
                     return False, "Failed to update character physical descriptions"
 
@@ -590,7 +581,7 @@ class NarrativeEnrichmentParser:
             if chapter_embeddings:
                 logger.info("Updating chapter embeddings in Neo4j")
                 chapter_success = await self.update_chapter_embeddings(chapter_embeddings)
-                
+
                 if not chapter_success:
                     return False, "Failed to update chapter embeddings"
 
@@ -600,10 +591,10 @@ class NarrativeEnrichmentParser:
                 message_parts.append(f"{len(physical_descriptions)} character physical descriptions")
             if chapter_embeddings:
                 message_parts.append(f"{len(chapter_embeddings)} chapter embeddings")
-            
+
             if not message_parts:
                 return True, "No enrichment data found in narrative text"
-            
+
             return True, f"Successfully parsed and persisted {', '.join(message_parts)}"
 
         except Exception as e:

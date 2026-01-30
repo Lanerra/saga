@@ -11,10 +11,11 @@ This test file verifies that narrative generation uses graph context properly:
 Based on: docs/schema-design.md - Phase 5: Testing
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from models.kg_models import CharacterProfile, Scene, Chapter
+import pytest
+
+from models.kg_models import CharacterProfile, Scene
 
 
 @pytest.fixture
@@ -70,8 +71,7 @@ class TestNarrativeWithCharacterContext:
         personality_keywords = ["protecting", "sense danger", "heart raced"]
 
         for keyword in personality_keywords:
-            assert keyword.lower() in narrative.lower(), \
-                f"Personality keyword '{keyword}' not found in narrative"
+            assert keyword.lower() in narrative.lower(), f"Personality keyword '{keyword}' not found in narrative"
 
     async def test_character_traits_in_dialogue(self, mock_character_with_context):
         """Test that character traits influence dialogue."""
@@ -101,8 +101,7 @@ class TestNarrativeWithCharacterContext:
         physical_keywords = ["tall", "dark hair", "eyes"]
 
         for keyword in physical_keywords:
-            assert keyword.lower() in narrative.lower(), \
-                f"Physical description '{keyword}' not found in narrative"
+            assert keyword.lower() in narrative.lower(), f"Physical description '{keyword}' not found in narrative"
 
 
 @pytest.mark.asyncio
@@ -111,7 +110,7 @@ class TestNarrativeWithRelationshipContext:
 
     async def test_relationship_influences_interaction(self):
         """Test that relationships from graph influence character interactions."""
-        with patch('data_access.character_queries.get_character_relationships', new_callable=AsyncMock) as mock_rels:
+        with patch("data_access.character_queries.get_character_relationships", new_callable=AsyncMock) as mock_rels:
             mock_rels.return_value = [
                 {
                     "type": "LOVES",
@@ -150,7 +149,7 @@ class TestNarrativeWithEventContext:
 
     async def test_event_referenced_in_narrative(self):
         """Test that events from graph are referenced in narrative."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "e": {
@@ -195,8 +194,7 @@ class TestNarrativeWithEventContext:
         ]
 
         for indicator, event_type in sequence_indicators:
-            assert indicator.lower() in narrative.lower(), \
-                f"Event '{event_type}' not found in narrative"
+            assert indicator.lower() in narrative.lower(), f"Event '{event_type}' not found in narrative"
 
 
 @pytest.mark.asyncio
@@ -205,7 +203,7 @@ class TestNarrativeWithLocationContext:
 
     async def test_location_description_consistent(self):
         """Test that location descriptions are consistent with graph."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "loc": {
@@ -247,7 +245,7 @@ class TestNarrativeWithItemContext:
 
     async def test_item_appears_in_narrative(self):
         """Test that items from graph appear in narrative."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "i": {
@@ -322,7 +320,7 @@ class TestNarrativeConsistencyWithGraph:
 
     async def test_provisional_entities_not_featured(self):
         """Test that provisional entities are not prominently featured."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "c": {
@@ -337,8 +335,7 @@ class TestNarrativeConsistencyWithGraph:
             seen Sarah. Most shook their heads, their faces etched with worry.
             """
 
-            assert "Unnamed Character" not in narrative, \
-                "Provisional character should not be named in narrative"
+            assert "Unnamed Character" not in narrative, "Provisional character should not be named in narrative"
 
 
 if __name__ == "__main__":

@@ -353,9 +353,7 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
 
     result = await neo4j_manager.execute_write_query(query, {"novel_id": novel_id, "desc": description, "prev_id": prev_id})
     if not result or not result[0] or not result[0].get("id"):
-        raise handle_database_error("append plot point",
-                                   Exception("No ID returned from plot point creation"),
-                                   novel_id=novel_id, description=description)
+        raise handle_database_error("append plot point", Exception("No ID returned from plot point creation"), novel_id=novel_id, description=description)
 
     from data_access.cache_coordinator import clear_plot_read_caches
 

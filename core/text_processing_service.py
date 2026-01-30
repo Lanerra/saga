@@ -280,10 +280,7 @@ class ResponseCleaningService:
             r"\s*\[END SYSTEM OUTPUT\]\s*$",
         ]
 
-        patterns["common_phrases"] = [
-            re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE)
-            for pattern_str in phrase_patterns
-        ]
+        patterns["common_phrases"] = [re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE) for pattern_str in phrase_patterns]
 
         return patterns
 
@@ -478,6 +475,7 @@ def clean_text_with_spacy(text: str, aggressive: bool = False) -> str:
         Cleaned text. Falls back to regex-based cleaning if spaCy not available.
     """
     from core.spacy_service import SpacyService
+
     spacy_service = SpacyService()
     return spacy_service.clean_text(text, aggressive)
 
@@ -492,5 +490,6 @@ def extract_sentences_with_spacy(text: str) -> list[str]:
         List of sentences. Falls back to regex-based splitting if spaCy not available.
     """
     from core.spacy_service import SpacyService
+
     spacy_service = SpacyService()
     return spacy_service.extract_sentences(text)

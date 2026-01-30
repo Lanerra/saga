@@ -90,9 +90,7 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
 
             if enriched_outline:
                 updated_outlines = {**existing_outlines, chapter_number: enriched_outline}
-                outlines_for_storage: dict[str, Any] = {
-                    str(chapter): outline for chapter, outline in updated_outlines.items()
-                }
+                outlines_for_storage: dict[str, Any] = {str(chapter): outline for chapter, outline in updated_outlines.items()}
 
                 chapter_outlines_ref = content_manager.save_json(
                     outlines_for_storage,
@@ -488,16 +486,10 @@ async def _enrich_skeleton_outline(
 
     character_context = _build_character_summary(character_sheets)
 
-    previous_context = (
-        "\n".join(previous_summaries[-3:])
-        if previous_summaries
-        else "This is the beginning of the story."
-    )
+    previous_context = "\n".join(previous_summaries[-3:]) if previous_summaries else "This is the beginning of the story."
 
     total_chapters = state.get("total_chapters", 20)
-    act_ranges = choose_act_ranges(
-        global_outline=global_outline, total_chapters=total_chapters
-    )
+    act_ranges = choose_act_ranges(global_outline=global_outline, total_chapters=total_chapters)
     act_range = act_ranges.get(act_number)
 
     if act_range and act_range.contains(chapter_number):

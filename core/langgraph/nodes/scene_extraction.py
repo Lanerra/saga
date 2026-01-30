@@ -46,10 +46,8 @@ def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
         return True
 
     try:
-        is_present = text_processing_service.spacy_service.verify_entity_presence(
-            scene_text, entity_name, threshold=0.7
-        )
-        
+        is_present = text_processing_service.spacy_service.verify_entity_presence(scene_text, entity_name, threshold=0.7)
+
         if not is_present:
             logger.warning(
                 "_validate_entity_with_spacy: entity not found in text",
@@ -57,7 +55,7 @@ def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
                 entity_length=len(entity_name),
                 scene_text_length=len(scene_text),
             )
-        
+
         return is_present
     except Exception as e:
         logger.error("_validate_entity_with_spacy: validation failed, using fallback", error=str(e))
@@ -79,7 +77,7 @@ def _get_normalized_entity_key(name: str) -> str:
             return text_processing_service.spacy_service.normalize_entity_name(name)
         except Exception as e:
             logger.warning("_get_normalized_entity_key: spaCy normalization failed, using fallback", error=str(e))
-    
+
     # Fallback to simple case-insensitive normalization
     return name.lower()
 
@@ -186,12 +184,14 @@ async def extract_from_scene(
     # Check configuration settings to prevent extraction of structural entities
     # According to schema design, Stage 5 should only extract physical descriptions and embeddings
     # It should NOT create new structural entities (Characters, Events, Locations, Items)
-    
-    if (config.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE or 
-        config.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE or 
-        config.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE or 
-        config.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE or 
-        config.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE):
+
+    if (
+        config.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE
+        or config.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE
+        or config.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE
+        or config.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE
+        or config.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE
+    ):
         logger.warning(
             "Structural entity extraction is enabled. This violates Stage 5 schema design principles.",
             extra={
@@ -200,9 +200,9 @@ async def extract_from_scene(
                 "event_extraction": config.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE,
                 "item_extraction": config.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE,
                 "relationship_extraction": config.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE,
-            }
+            },
         )
-    
+
     logger.info(
         "extract_from_scene: starting",
         scene_index=scene_index,
@@ -489,7 +489,7 @@ async def _extract_locations_from_scene(
 
             # Validate entity presence using spaCy
             is_validated = _validate_entity_with_spacy(scene_text, str(name))
-            
+
             if not is_validated:
                 logger.warning(
                     "_extract_locations_from_scene: skipping invalid location",
@@ -613,7 +613,7 @@ async def _extract_events_from_scene(
 
             # Validate entity presence using spaCy
             is_validated = _validate_entity_with_spacy(scene_text, str(name))
-            
+
             if not is_validated:
                 logger.warning(
                     "_extract_events_from_scene: skipping invalid event",
@@ -832,31 +832,31 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
 
     if not scene_drafts:
         logger.warning("extract_from_scenes: no scene drafts found, creating empty externalized content")
-        
+
         # Even with no scenes, create empty externalized content for consistency
         chapter_number = state.get("current_chapter", 1)
         current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
-        
+
         extracted_entities_ref = content_manager.save_json(
             {"characters": [], "world_items": []},
             "extracted_entities",
             f"chapter_{chapter_number}",
             current_version,
         )
-        
+
         extracted_relationships_ref = content_manager.save_json(
             [],
             "extracted_relationships",
             f"chapter_{chapter_number}",
             current_version,
         )
-        
+
         logger.info(
             "extract_from_scenes: empty content externalized",
             chapter=chapter_number,
             version=current_version,
         )
-        
+
         return {
             "extracted_entities_ref": extracted_entities_ref,
             "extracted_relationships_ref": extracted_relationships_ref,

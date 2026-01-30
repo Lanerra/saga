@@ -1,26 +1,26 @@
 # tests/test_text_cleanup_with_spacy.py
 """Tests for spaCy-based text cleanup functionality."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from core.spacy_service import SpacyService
 from core.text_processing_service import (
-    clean_text_with_spacy,
-    extract_sentences_with_spacy,
     TextProcessingService,
 )
 
 
 class MockToken:
     """Mock spaCy token for testing."""
+
     def __init__(self, text, lemma="", is_stop=False, is_punct=False, is_space=False):
         self.text = text
         self.lemma_ = lemma or text.lower()
         self.is_stop = is_stop
         self.is_punct = is_punct
         self.is_space = is_space
-    
+
     def endswith(self, suffix):
         """Mock endswith method."""
         return self.text.endswith(suffix)
@@ -28,12 +28,14 @@ class MockToken:
 
 class MockSent:
     """Mock spaCy sentence for testing."""
+
     def __init__(self, text):
         self.text = text
 
 
 class MockDoc:
     """Mock spaCy document for testing."""
+
     def __init__(self, text, tokens=None, sentences=None):
         self.text = text
         self._tokens = tokens or []
@@ -80,7 +82,7 @@ def test_clean_text_conservative_with_spacy(spacy_service):
     spacy_service._nlp = mock_nlp
 
     result = spacy_service.clean_text("Hello, world!  This is a test...")
-    
+
     # Conservative cleaning should preserve content but normalize spaces
     # Note: the ellipsis at the end is treated as punctuation and preserved
     assert result == "Hello, world! This is a test."
@@ -107,7 +109,7 @@ def test_clean_text_aggressive_with_spacy(spacy_service):
     spacy_service._nlp = mock_nlp
 
     result = spacy_service.clean_text("Hello, world!  This is a test...", aggressive=True)
-    
+
     # Aggressive cleaning should remove stop words and punctuation, lemmatize
     assert result == "hello world test"
 
@@ -115,7 +117,7 @@ def test_clean_text_aggressive_with_spacy(spacy_service):
 def test_clean_text_fallback(spacy_service):
     """Test text cleaning fallback when spaCy not loaded."""
     result = spacy_service.clean_text("  Hello   world!  ")
-    
+
     # Should use regex-based fallback
     assert result == "Hello world!"
 
@@ -142,15 +144,12 @@ def test_extract_sentences_with_spacy(spacy_service):
     """Test sentence extraction with spaCy."""
     mock_nlp = MagicMock()
     mock_doc = MockDoc("Hello world. This is a test.")
-    mock_doc._sents = [
-        MockSent("Hello world."),
-        MockSent("This is a test.")
-    ]
+    mock_doc._sents = [MockSent("Hello world."), MockSent("This is a test.")]
     mock_nlp.return_value = mock_doc
     spacy_service._nlp = mock_nlp
 
     result = spacy_service.extract_sentences("Hello world. This is a test.")
-    
+
     assert len(result) == 2
     assert "Hello world." in result
     assert "This is a test." in result
@@ -159,7 +158,7 @@ def test_extract_sentences_with_spacy(spacy_service):
 def test_extract_sentences_fallback(spacy_service):
     """Test sentence extraction fallback when spaCy not loaded."""
     result = spacy_service.extract_sentences("Hello world. This is a test.")
-    
+
     # Should use regex-based fallback
     assert len(result) == 2
     assert "Hello world." in result
@@ -186,22 +185,22 @@ def test_extract_sentences_invalid_input(spacy_service):
 
 def test_text_processing_service_clean_text(text_processing_service):
     """Test TextProcessingService clean_text_with_spacy method."""
-    with patch.object(text_processing_service.spacy_service, 'clean_text') as mock_clean:
+    with patch.object(text_processing_service.spacy_service, "clean_text") as mock_clean:
         mock_clean.return_value = "cleaned text"
-        
+
         result = text_processing_service.clean_text_with_spacy("dirty text")
-        
+
         assert result == "cleaned text"
         mock_clean.assert_called_once_with("dirty text", False)
 
 
 def test_text_processing_service_extract_sentences(text_processing_service):
     """Test TextProcessingService extract_sentences_with_spacy method."""
-    with patch.object(text_processing_service.spacy_service, 'extract_sentences') as mock_extract:
+    with patch.object(text_processing_service.spacy_service, "extract_sentences") as mock_extract:
         mock_extract.return_value = ["sentence 1", "sentence 2"]
-        
+
         result = text_processing_service.extract_sentences_with_spacy("text with sentences")
-        
+
         assert result == ["sentence 1", "sentence 2"]
         mock_extract.assert_called_once_with("text with sentences")
 
@@ -209,17 +208,17 @@ def test_text_processing_service_extract_sentences(text_processing_service):
 def test_module_level_clean_text():
     """Test module-level clean_text_with_spacy function."""
     # Patch the import that happens INSIDE the function
-    with patch('core.spacy_service.SpacyService') as mock_service_class:
+    with patch("core.spacy_service.SpacyService") as mock_service_class:
         mock_service = MagicMock()
         mock_service.clean_text.return_value = "cleaned text"
         mock_service.is_loaded.return_value = True
         mock_service_class.return_value = mock_service
-        
+
         # Import the function
         from core.text_processing_service import clean_text_with_spacy
-        
+
         result = clean_text_with_spacy("dirty text")
-        
+
         assert result == "cleaned text"
         mock_service.clean_text.assert_called_once_with("dirty text", False)
 
@@ -227,17 +226,17 @@ def test_module_level_clean_text():
 def test_module_level_extract_sentences():
     """Test module-level extract_sentences_with_spacy function."""
     # Patch the import that happens INSIDE the function
-    with patch('core.spacy_service.SpacyService') as mock_service_class:
+    with patch("core.spacy_service.SpacyService") as mock_service_class:
         mock_service = MagicMock()
         mock_service.extract_sentences.return_value = ["sentence 1", "sentence 2"]
         mock_service.is_loaded.return_value = True
         mock_service_class.return_value = mock_service
-        
+
         # Import the function
         from core.text_processing_service import extract_sentences_with_spacy
-        
+
         result = extract_sentences_with_spacy("text with sentences")
-        
+
         assert result == ["sentence 1", "sentence 2"]
         mock_service.extract_sentences.assert_called_once_with("text with sentences")
 
@@ -260,7 +259,7 @@ def test_clean_text_with_special_characters(spacy_service):
     spacy_service._nlp = mock_nlp
 
     result = spacy_service.clean_text("Hello\tworld\r\nwith\t\ttabs")
-    
+
     # Should normalize whitespace but preserve content
     assert "\t" not in result
     assert "\r" not in result
@@ -277,13 +276,13 @@ def test_clean_text_aggressive_with_punctuation(spacy_service):
         MockToken("Hello", lemma="hello"),
         MockToken(",", is_punct=True),
         MockToken("world", lemma="world"),
-        MockToken("!" , is_punct=True),
-        MockToken("'" , is_punct=True),
+        MockToken("!", is_punct=True),
+        MockToken("'", is_punct=True),
     ]
     mock_nlp.return_value = mock_doc
     spacy_service._nlp = mock_nlp
 
     result = spacy_service.clean_text("'Hello, world!'", aggressive=True)
-    
+
     # Aggressive cleaning should remove all punctuation
     assert result == "hello world"

@@ -50,7 +50,7 @@ class RelationshipNormalizationService:
 
         Returns:
             Tuple of `(canonical_type, was_normalized, similarity_score, is_property)`.
-            
+
             - `canonical_type`: The canonical relationship type, or None if rejected.
             - `was_normalized`: True if the input was normalized to a different type.
             - `similarity_score`: Cosine similarity when semantic matching was used, 1.0 for exact matches.
@@ -60,7 +60,7 @@ class RelationshipNormalizationService:
             This method enforces strict canonicalization and rejects unknown types
             when STRICT_CANONICAL_MODE is enabled.
         """
-        from models.kg_constants import RELATIONSHIP_TYPES, STATIC_RELATIONSHIP_MAP, PROPERTY_RELATIONSHIPS
+        from models.kg_constants import PROPERTY_RELATIONSHIPS, RELATIONSHIP_TYPES, STATIC_RELATIONSHIP_MAP
 
         # 0. Check rejection cache
         if rel_type in self.rejected_cache:
@@ -89,22 +89,22 @@ class RelationshipNormalizationService:
 
         await self._ensure_canonical_embeddings()
         incoming_embedding = await self._get_embedding(canonical_input)
-        
+
         if incoming_embedding is None:
             self.rejected_cache.add(rel_type)
             return None, False, 0.0, False
-            
+
         best_match = None
         best_similarity = 0.0
-        
+
         for canonical_type, canonical_emb in self.canonical_embeddings.items():
             sim = numpy_cosine_similarity(incoming_embedding, canonical_emb)
             if sim > best_similarity:
                 best_similarity = sim
                 best_match = canonical_type
-                
+
         threshold = self._get_threshold(category_hint)
-        
+
         if best_similarity > threshold:
             return best_match, True, best_similarity, False
         else:
@@ -149,7 +149,7 @@ class RelationshipNormalizationService:
         # Use strict canonical mode if enabled
         if config.REL_NORM_STRICT_CANONICAL_MODE:
             canonical_type, was_normalized, similarity, is_property = await self.map_to_canonical(rel_type)
-            
+
             if canonical_type is None:
                 if is_property:
                     logger.info(
@@ -164,7 +164,7 @@ class RelationshipNormalizationService:
                     )
                 # Return original type but mark as normalized to False
                 return rel_type, False, 0.0
-            
+
             logger.info(
                 "Strict canonical normalization",
                 original=rel_type,

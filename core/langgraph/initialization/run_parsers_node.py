@@ -51,9 +51,7 @@ async def run_initialization_parsers(state: NarrativeState) -> NarrativeState:
         failed_parsers = [name for name, (success, _) in results.items() if not success]
 
         if failed_parsers:
-            error_messages = [
-                f"{name}: {msg}" for name, (success, msg) in results.items() if not success
-            ]
+            error_messages = [f"{name}: {msg}" for name, (success, msg) in results.items() if not success]
             error_msg = f"Parser failures: {', '.join(error_messages)}"
             logger.error(
                 "run_initialization_parsers: parser failures detected",

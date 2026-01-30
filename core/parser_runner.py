@@ -37,6 +37,7 @@ class ParserRunner:
         """
         self.project_dir = project_dir
         from core.langgraph.content_manager import ContentManager
+
         self.content_manager = ContentManager(str(project_dir))
 
     async def run_all_parsers(self) -> dict[str, tuple[bool, str]]:
@@ -144,9 +145,7 @@ class ParserRunner:
             raise ValueError(f"Unsupported parser class: {parser_class}")
 
 
-async def run_parser_command(
-    project_dir: str | None, parser_name: str | None
-) -> dict[str, tuple[bool, str]]:
+async def run_parser_command(project_dir: str | None, parser_name: str | None) -> dict[str, tuple[bool, str]]:
     """Run the parser command with the given arguments.
 
     Args:
@@ -178,9 +177,7 @@ async def run_parser_command(
 
 def main() -> None:
     """Main entry point for the parser runner CLI."""
-    parser = argparse.ArgumentParser(
-        description="Run SAGA parsers independently for testing and debugging purposes"
-    )
+    parser = argparse.ArgumentParser(description="Run SAGA parsers independently for testing and debugging purposes")
     parser.add_argument(
         "--project-dir",
         "-p",

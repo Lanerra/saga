@@ -18,13 +18,11 @@ import json
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field
 
 import config
 from core.db_manager import neo4j_manager
-from core.exceptions import DatabaseError
 from core.llm_interface_refactored import llm_service
-from models.kg_models import ActKeyEvent, Location, MajorPlotPoint
+from models.kg_models import ActKeyEvent
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 
@@ -33,13 +31,13 @@ logger = structlog.get_logger(__name__)
 
 class ActOutlineParser:
     """Parse act outlines and create Stage 3 knowledge graph entities.
-    
+
     This parser handles Stage 3 of the knowledge graph construction:
     - ActKeyEvent Event node creation (2-5 per act)
     - Location node enrichment with names
     - Relationship creation between events, characters, and locations
     - Persistence to Neo4j
-    
+
     Attributes:
         act_outline_path: Path to act outlines JSON file
         chapter_number: Chapter number for provenance (0 for initialization)
@@ -47,7 +45,7 @@ class ActOutlineParser:
 
     def __init__(self, act_outline_path: str = "act_outlines/all_v1.json", chapter_number: int = 0):
         """Initialize the ActOutlineParser.
-        
+
         Args:
             act_outline_path: Path to act outlines JSON file
             chapter_number: Chapter number for provenance (0 for initialization)
@@ -57,17 +55,17 @@ class ActOutlineParser:
 
     async def parse_act_outline(self) -> dict[str, Any]:
         """Parse act outline from JSON file.
-        
+
         Returns:
             Dictionary containing parsed act outline data
-            
+
         Raises:
             ValueError: If act outline file cannot be read or parsed
             DatabaseError: If there are issues persisting to Neo4j
         """
         try:
             # Read the act outline JSON file
-            with open(self.act_outline_path, 'r', encoding='utf-8') as f:
+            with open(self.act_outline_path, encoding="utf-8") as f:
                 act_outline_data = json.load(f)
         except FileNotFoundError as e:
             logger.error(f"Act outline file not found: {self.act_outline_path}", exc_info=True)
@@ -80,54 +78,54 @@ class ActOutlineParser:
 
     def _generate_event_id(self, event_name: str, act_number: int, sequence: int) -> str:
         """Generate a stable ID for an event.
-        
+
         Args:
             event_name: Name of the event
             act_number: Act number
             sequence: Sequence within act
-            
+
         Returns:
             Generated event ID
         """
         # Use SHA256 hash of event name + act number + sequence for stable ID
         hash_input = f"{event_name}_{act_number}_{sequence}"
-        hash_obj = hashlib.sha256(hash_input.encode('utf-8'))
+        hash_obj = hashlib.sha256(hash_input.encode("utf-8"))
         hash_hex = hash_obj.hexdigest()[:16]  # Use first 16 chars for brevity
         return f"event_{hash_hex}"
 
     def _parse_act_key_events(self, act_outline_data: dict[str, Any]) -> list[ActKeyEvent]:
         """Parse act key events from act outline data.
-        
+
         Args:
             act_outline_data: Parsed act outline data
-            
+
         Returns:
             List of ActKeyEvent instances
-            
+
         Raises:
             ValueError: If required act key events are missing or invalid
         """
         act_key_events = []
-        
+
         # Check if acts are in the act outline
         if "acts" not in act_outline_data:
             logger.warning("No acts found in act outline data")
             return act_key_events
-        
+
         # Process each act
         for act_data in act_outline_data["acts"]:
             act_number = act_data.get("act_number", 0)
-            
+
             if "sections" not in act_data:
                 logger.warning(f"No sections found in act {act_number}")
                 continue
-            
+
             sections = act_data["sections"]
-            
+
             if "key_events" not in sections:
                 logger.warning(f"No key events found in act {act_number}")
                 continue
-            
+
             # Process each key event in the act
             for key_event in sections["key_events"]:
                 event_name = key_event.get("event", "")
@@ -135,10 +133,10 @@ class ActOutlineParser:
                 sequence_in_act = key_event.get("sequence", 0)
                 cause = key_event.get("cause", "")
                 effect = key_event.get("effect", "")
-                
+
                 # Generate a stable ID for this event
                 event_id = self._generate_event_id(event_name, act_number, sequence_in_act)
-                
+
                 # Create ActKeyEvent
                 act_event = ActKeyEvent(
                     id=event_id,
@@ -154,43 +152,43 @@ class ActOutlineParser:
                     created_ts=act_data.get("created_ts"),
                     updated_ts=act_data.get("updated_ts"),
                 )
-                
+
                 act_key_events.append(act_event)
-        
+
         return act_key_events
 
     def _parse_location_enrichment(self, act_outline_data: dict[str, Any]) -> dict[str, str]:
         """Parse location name enrichment from act outline data.
-        
+
         Args:
             act_outline_data: Parsed act outline data
-            
+
         Returns:
             Dictionary mapping location descriptions to names
         """
         location_names = {}
-        
+
         # Check if acts are in the act outline
         if "acts" not in act_outline_data:
             logger.warning("No acts found in act outline data")
             return location_names
-        
+
         # Process each act
         for act_data in act_outline_data["acts"]:
             if "sections" not in act_data:
                 continue
-            
+
             sections = act_data["sections"]
-            
+
             # Check for location data in various sections
             if "locations" in sections:
                 for location in sections["locations"]:
                     location_name = location.get("name", "")
                     location_description = location.get("description", "")
-                    
+
                     if location_name and location_description:
                         location_names[location_description] = location_name
-            
+
             # Also check key events for location mentions
             if "key_events" in sections:
                 for key_event in sections["key_events"]:
@@ -201,7 +199,7 @@ class ActOutlineParser:
                         # Extract potential location name (simplified for now)
                         # In production, use NLP to identify proper nouns
                         pass
-        
+
         return location_names
 
     async def _parse_character_involvements(self, act_events: list[ActKeyEvent]) -> dict[str, list[tuple[str, str | None]]]:
@@ -221,40 +219,19 @@ class ActOutlineParser:
         known_characters = await self._get_all_character_names()
 
         for act_event in act_events:
-            characters = await self._extract_character_names(
-                act_event.name,
-                act_event.name,
-                act_event.cause,
-                act_event.effect,
-                known_characters
-            )
+            characters = await self._extract_character_names(act_event.name, act_event.name, act_event.cause, act_event.effect, known_characters)
 
             if characters:
                 character_involvements[act_event.id] = characters
                 logger.debug(
-                    "Extracted character involvements for event",
-                    event_id=act_event.id,
-                    event_name=act_event.name,
-                    characters=[c[0] for c in characters],
-                    extra={"chapter": self.chapter_number}
+                    "Extracted character involvements for event", event_id=act_event.id, event_name=act_event.name, characters=[c[0] for c in characters], extra={"chapter": self.chapter_number}
                 )
 
-        logger.info(
-            "Parsed character involvements for %d events",
-            len(character_involvements),
-            extra={"chapter": self.chapter_number}
-        )
+        logger.info("Parsed character involvements for %d events", len(character_involvements), extra={"chapter": self.chapter_number})
 
         return character_involvements
 
-    async def _extract_character_names(
-        self,
-        event_name: str,
-        event_description: str,
-        event_cause: str,
-        event_effect: str,
-        known_characters: list[str]
-    ) -> list[tuple[str, str | None]]:
+    async def _extract_character_names(self, event_name: str, event_description: str, event_cause: str, event_effect: str, known_characters: list[str]) -> list[tuple[str, str | None]]:
         """Extract character names from event text using LLM.
 
         Args:
@@ -295,10 +272,7 @@ class ActOutlineParser:
             data, _, parse_errors = try_load_json_from_response(response)
 
             if data is None:
-                logger.warning(
-                    "Failed to parse character extraction response: %s",
-                    parse_errors
-                )
+                logger.warning("Failed to parse character extraction response: %s", parse_errors)
                 return []
 
             if not isinstance(data, list):
@@ -316,11 +290,7 @@ class ActOutlineParser:
             return results
 
         except Exception as e:
-            logger.warning(
-                "Error extracting characters from event: %s",
-                str(e),
-                exc_info=True
-            )
+            logger.warning("Error extracting characters from event: %s", str(e), exc_info=True)
             return []
 
     async def _parse_location_involvements(self, act_events: list[ActKeyEvent]) -> dict[str, str]:
@@ -339,40 +309,17 @@ class ActOutlineParser:
         known_locations = await self._get_all_locations()
 
         for act_event in act_events:
-            location = await self._extract_event_location(
-                act_event.name,
-                act_event.name,
-                act_event.cause,
-                act_event.effect,
-                known_locations
-            )
+            location = await self._extract_event_location(act_event.name, act_event.name, act_event.cause, act_event.effect, known_locations)
 
             if location:
                 location_involvements[act_event.id] = location
-                logger.debug(
-                    "Extracted location for event",
-                    event_id=act_event.id,
-                    event_name=act_event.name,
-                    location=location,
-                    extra={"chapter": self.chapter_number}
-                )
+                logger.debug("Extracted location for event", event_id=act_event.id, event_name=act_event.name, location=location, extra={"chapter": self.chapter_number})
 
-        logger.info(
-            "Parsed location involvements for %d events",
-            len(location_involvements),
-            extra={"chapter": self.chapter_number}
-        )
+        logger.info("Parsed location involvements for %d events", len(location_involvements), extra={"chapter": self.chapter_number})
 
         return location_involvements
 
-    async def _extract_event_location(
-        self,
-        event_name: str,
-        event_description: str,
-        event_cause: str,
-        event_effect: str,
-        known_locations: list[dict[str, str]]
-    ) -> str | None:
+    async def _extract_event_location(self, event_name: str, event_description: str, event_cause: str, event_effect: str, known_locations: list[dict[str, str]]) -> str | None:
         """Extract location where event occurs using LLM.
 
         Args:
@@ -413,10 +360,7 @@ class ActOutlineParser:
             data, _, parse_errors = try_load_json_from_response(response)
 
             if data is None:
-                logger.warning(
-                    "Failed to parse location extraction response: %s",
-                    parse_errors
-                )
+                logger.warning("Failed to parse location extraction response: %s", parse_errors)
                 return None
 
             if not isinstance(data, dict) or "location" not in data:
@@ -430,11 +374,7 @@ class ActOutlineParser:
             return None
 
         except Exception as e:
-            logger.warning(
-                "Error extracting location from event: %s",
-                str(e),
-                exc_info=True
-            )
+            logger.warning("Error extracting location from event: %s", str(e), exc_info=True)
             return None
 
     async def _get_all_character_names(self) -> list[str]:
@@ -460,11 +400,7 @@ class ActOutlineParser:
         try:
             query = "MATCH (l:Location) RETURN l.name as name, l.description as description ORDER BY l.name"
             result = await neo4j_manager.execute_read_query(query, {})
-            return [
-                {"name": record.get("name"), "description": record["description"]}
-                for record in result
-                if record.get("description")
-            ]
+            return [{"name": record.get("name"), "description": record["description"]} for record in result if record.get("description")]
         except Exception as e:
             logger.error("Error fetching locations: %s", str(e), exc_info=True)
             return []
@@ -478,18 +414,12 @@ class ActOutlineParser:
         try:
             query = "MATCH (i:Item) RETURN i.name as name, i.description as description ORDER BY i.name"
             result = await neo4j_manager.execute_read_query(query, {})
-            return [
-                {"name": record["name"], "description": record["description"]}
-                for record in result
-                if record.get("name")
-            ]
+            return [{"name": record["name"], "description": record["description"]} for record in result if record.get("name")]
         except Exception as e:
             logger.error("Error fetching items: %s", str(e), exc_info=True)
             return []
 
-    async def _extract_event_item_involvements(
-        self, act_events: list[ActKeyEvent], items: list[dict[str, str]]
-    ) -> dict[str, list[tuple[str, str]]]:
+    async def _extract_event_item_involvements(self, act_events: list[ActKeyEvent], items: list[dict[str, str]]) -> dict[str, list[tuple[str, str]]]:
         """Extract which items are featured in which events using LLM.
 
         Args:
@@ -545,34 +475,24 @@ class ActOutlineParser:
 
                 except (json.JSONDecodeError, ValueError) as e:
                     if attempt == 2:
-                        logger.warning(
-                            "Failed to extract item involvement for event %s after %d attempts: %s",
-                            event.id,
-                            attempt,
-                            str(e),
-                            exc_info=True
-                        )
+                        logger.warning("Failed to extract item involvement for event %s after %d attempts: %s", event.id, attempt, str(e), exc_info=True)
 
-        logger.info(
-            "Parsed item involvements for %d events",
-            len(item_involvements),
-            extra={"chapter": 0}
-        )
+        logger.info("Parsed item involvements for %d events", len(item_involvements), extra={"chapter": 0})
         return item_involvements
 
     async def create_act_key_event_nodes(self, act_events: list[ActKeyEvent]) -> bool:
         """Create ActKeyEvent Event nodes in Neo4j.
-        
+
         Args:
             act_events: List of ActKeyEvent instances to create
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             # Build Cypher query for creating event nodes
             cypher_queries = []
-            
+
             for act_event in act_events:
                 query = """
                 MERGE (e:Event {id: $id})
@@ -600,7 +520,7 @@ class ActOutlineParser:
                     e.is_provisional = $is_provisional,
                     e.updated_ts = timestamp()
                 """
-                
+
                 params = {
                     "id": act_event.id,
                     "name": act_event.name,
@@ -613,64 +533,56 @@ class ActOutlineParser:
                     "created_chapter": act_event.created_chapter,
                     "is_provisional": act_event.is_provisional,
                 }
-                
+
                 cypher_queries.append((query, params))
-            
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
-            
-            logger.info(
-                "Successfully created %d ActKeyEvent event nodes",
-                len(act_events),
-                extra={"chapter": self.chapter_number}
-            )
-            
+
+            logger.info("Successfully created %d ActKeyEvent event nodes", len(act_events), extra={"chapter": self.chapter_number})
+
             return True
-            
+
         except Exception as e:
             logger.error("Error creating ActKeyEvent nodes: %s", str(e), exc_info=True)
             return False
 
     async def enrich_location_names(self, location_names: dict[str, str]) -> bool:
         """Enrich Location nodes with names from act outlines.
-        
+
         Args:
             location_names: Dictionary mapping location descriptions to names
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
             # Build Cypher query for updating location names
             cypher_queries = []
-            
+
             for description, name in location_names.items():
                 query = """
                 MATCH (l:Location {description: $description})
                 SET l.name = $name,
                     l.updated_ts = timestamp()
                 """
-                
+
                 params = {
                     "description": description,
                     "name": name,
                 }
-                
+
                 cypher_queries.append((query, params))
-            
+
             # Execute all queries
             for query, params in cypher_queries:
                 await neo4j_manager.execute_write_query(query, params)
-            
-            logger.info(
-                "Successfully enriched %d Location nodes with names",
-                len(location_names),
-                extra={"chapter": self.chapter_number}
-            )
-            
+
+            logger.info("Successfully enriched %d Location nodes with names", len(location_names), extra={"chapter": self.chapter_number})
+
             return True
-            
+
         except Exception as e:
             logger.error("Error enriching Location names: %s", str(e), exc_info=True)
             return False
@@ -827,7 +739,7 @@ class ActOutlineParser:
                 involves_count,
                 occurs_at_count,
                 features_item_count,
-                extra={"chapter": self.chapter_number}
+                extra={"chapter": self.chapter_number},
             )
 
             return True
@@ -909,12 +821,7 @@ class ActOutlineParser:
 
             # Step 10: Create event relationships
             logger.info("Creating event relationships in Neo4j")
-            relationships_success = await self.create_event_relationships(
-                act_events,
-                character_involvements,
-                location_involvements,
-                item_involvements
-            )
+            relationships_success = await self.create_event_relationships(act_events, character_involvements, location_involvements, item_involvements)
 
             if not relationships_success:
                 return False, "Failed to create event relationships"
@@ -930,7 +837,7 @@ class ActOutlineParser:
                 f"{len(location_names)} Location name enrichments, "
                 f"{involves_count} INVOLVES relationships, "
                 f"{occurs_at_count} OCCURS_AT relationships, and "
-                f"{features_item_count} FEATURES_ITEM relationships"
+                f"{features_item_count} FEATURES_ITEM relationships",
             )
 
         except Exception as e:

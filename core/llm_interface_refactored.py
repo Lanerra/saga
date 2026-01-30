@@ -390,7 +390,7 @@ class CompletionService:
 
             if auto_clean_response:
                 content = self._text_processor.response_cleaner.clean_response(content)
-                
+
             if spacy_cleanup:
                 content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
 
@@ -454,7 +454,7 @@ class CompletionService:
 
                     if auto_clean_response:
                         content = self._text_processor.response_cleaner.clean_response(content)
-                        
+
                     if spacy_cleanup:
                         content = self._text_processor.clean_text_with_spacy(content, aggressive=False)
 

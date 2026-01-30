@@ -3,7 +3,6 @@ from typing import Any
 
 import numpy as np
 import structlog
-from async_lru import alru_cache  # type: ignore[import-untyped]
 from neo4j.exceptions import Neo4jError
 
 import config
@@ -416,8 +415,7 @@ async def find_semantic_context_native(
 
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native semantic context search: {e}", exc_info=True)
-        raise handle_database_error("find semantic context", e, 
-                                   current_chapter_number=current_chapter_number, limit=limit)
+        raise handle_database_error("find semantic context", e, current_chapter_number=current_chapter_number, limit=limit)
 
 
 async def get_chapter_content_batch_native(
@@ -469,5 +467,4 @@ async def get_chapter_content_batch_native(
 
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native chapter batch retrieval: {e}", exc_info=True)
-        raise handle_database_error("get chapter content batch", e, 
-                                   chapter_numbers=chapter_numbers)
+        raise handle_database_error("get chapter content batch", e, chapter_numbers=chapter_numbers)

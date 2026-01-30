@@ -13,8 +13,9 @@ matches the requirements from docs/schema-design.md:
 Based on: docs/schema-design.md - Stage-by-Stage Construction
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 
 @pytest.mark.asyncio
@@ -23,7 +24,7 @@ class TestStage1GraphStructure:
 
     async def test_character_nodes_have_required_properties(self):
         """Test that Character nodes have all required Stage 1 properties."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "c": {
@@ -61,7 +62,7 @@ class TestStage1GraphStructure:
 
     async def test_character_relationships_exist(self):
         """Test that Character-Character relationships exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "source": {"name": "Character A"},
@@ -92,7 +93,7 @@ class TestStage2GraphStructure:
 
     async def test_major_plot_points_exist(self):
         """Test that exactly 4 MajorPlotPoint events exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {"e": {"id": "event_001", "event_type": "MajorPlotPoint", "sequence_order": 1}},
                 {"e": {"id": "event_002", "event_type": "MajorPlotPoint", "sequence_order": 2}},
@@ -113,7 +114,7 @@ class TestStage2GraphStructure:
 
     async def test_location_nodes_exist(self):
         """Test that Location nodes exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "loc": {
@@ -144,7 +145,7 @@ class TestStage2GraphStructure:
 
     async def test_item_nodes_exist(self):
         """Test that Item nodes exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "i": {
@@ -176,7 +177,7 @@ class TestStage2GraphStructure:
 
     async def test_character_arcs_enriched(self):
         """Test that Character nodes have arc properties after Stage 2."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "c": {
@@ -209,7 +210,7 @@ class TestStage3GraphStructure:
 
     async def test_act_key_events_exist(self):
         """Test that ActKeyEvent nodes exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "e": {
@@ -243,7 +244,7 @@ class TestStage3GraphStructure:
 
     async def test_act_key_events_link_to_major_plot_points(self):
         """Test that ActKeyEvents have PART_OF relationships to MajorPlotPoints."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "ake": {"id": "event_101", "event_type": "ActKeyEvent"},
@@ -261,7 +262,7 @@ class TestStage3GraphStructure:
 
     async def test_locations_have_names_after_stage3(self):
         """Test that Location nodes have names after Stage 3."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "loc": {
@@ -291,7 +292,7 @@ class TestStage4GraphStructure:
 
     async def test_chapter_nodes_exist(self):
         """Test that Chapter nodes exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "ch": {
@@ -323,7 +324,7 @@ class TestStage4GraphStructure:
 
     async def test_scene_nodes_exist(self):
         """Test that Scene nodes exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "s": {
@@ -359,7 +360,7 @@ class TestStage4GraphStructure:
 
     async def test_scene_events_exist(self):
         """Test that SceneEvent nodes exist."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "e": {
@@ -393,7 +394,7 @@ class TestStage4GraphStructure:
 
     async def test_scene_part_of_chapter(self):
         """Test that Scenes have PART_OF relationships to Chapters."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "s": {"id": "scene_001", "scene_index": 0},
@@ -416,7 +417,7 @@ class TestStage5GraphStructure:
 
     async def test_characters_have_physical_descriptions(self):
         """Test that Character nodes have physical_description after Stage 5."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "c": {
@@ -440,7 +441,7 @@ class TestStage5GraphStructure:
 
     async def test_chapters_have_embeddings(self):
         """Test that Chapter nodes have embeddings after Stage 5."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "ch": {
@@ -465,7 +466,7 @@ class TestStage5GraphStructure:
 
     async def test_no_new_structural_entities_in_stage5(self):
         """Test that Stage 5 doesn't create new structural entities."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {
                     "structural_count": 0,
@@ -491,7 +492,7 @@ class TestGraphStructureConstraints:
 
     async def test_character_names_are_unique(self):
         """Test that Character names are unique."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = []
 
             query = """
@@ -506,7 +507,7 @@ class TestGraphStructureConstraints:
 
     async def test_no_orphaned_scenes(self):
         """Test that all Scenes have PART_OF relationships to Chapters."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = []
 
             query = """
@@ -520,7 +521,7 @@ class TestGraphStructureConstraints:
 
     async def test_scene_indices_are_contiguous(self):
         """Test that scene indices are contiguous within chapters."""
-        with patch('core.db_manager.neo4j_manager.execute_read_query', new_callable=AsyncMock) as mock_query:
+        with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = [
                 {"chapter_number": 1, "scene_indices": [0, 1, 2]},
             ]

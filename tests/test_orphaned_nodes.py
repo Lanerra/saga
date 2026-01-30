@@ -12,10 +12,11 @@ This test file covers:
 Based on: docs/schema-design.md - Stage 5: Testing
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, patch
+
 from core.db_manager import neo4j_manager
-from models.kg_models import CharacterProfile, MajorPlotPoint, ActKeyEvent, SceneEvent, Location, WorldItem, Scene, Chapter
 
 
 @pytest.mark.asyncio
@@ -31,10 +32,10 @@ class TestOrphanedNodeDetection:
                 {"id": "char_001", "name": "Alice", "relationships": []},
                 {"id": "char_002", "name": "Bob", "relationships": []},
             ]
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_characters()
-            
+
             # Verify results
             assert len(result) == 2
             assert result[0]["name"] == "Alice"
@@ -49,10 +50,10 @@ class TestOrphanedNodeDetection:
                 {"id": "event_001", "name": "Inciting Incident", "relationships": []},
                 {"id": "event_002", "name": "Midpoint", "relationships": []},
             ]
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_events()
-            
+
             # Verify results
             assert len(result) == 2
             assert result[0]["name"] == "Inciting Incident"
@@ -67,10 +68,10 @@ class TestOrphanedNodeDetection:
                 {"id": "loc_001", "name": "Castle", "relationships": []},
                 {"id": "loc_002", "name": "Forest", "relationships": []},
             ]
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_locations()
-            
+
             # Verify results
             assert len(result) == 2
             assert result[0]["name"] == "Castle"
@@ -85,10 +86,10 @@ class TestOrphanedNodeDetection:
                 {"id": "item_001", "name": "Sword", "relationships": []},
                 {"id": "item_002", "name": "Shield", "relationships": []},
             ]
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_items()
-            
+
             # Verify results
             assert len(result) == 2
             assert result[0]["name"] == "Sword"
@@ -103,10 +104,10 @@ class TestOrphanedNodeDetection:
                 {"id": "scene_001", "title": "Scene 1", "relationships": []},
                 {"id": "scene_002", "title": "Scene 2", "relationships": []},
             ]
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_scenes()
-            
+
             # Verify results
             assert len(result) == 2
             assert result[0]["title"] == "Scene 1"
@@ -121,10 +122,10 @@ class TestOrphanedNodeDetection:
                 {"id": "chapter_001", "title": "Chapter 1", "relationships": []},
                 {"id": "chapter_002", "title": "Chapter 2", "relationships": []},
             ]
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_chapters()
-            
+
             # Verify results
             assert len(result) == 2
             assert result[0]["title"] == "Chapter 1"
@@ -144,10 +145,10 @@ class TestOrphanedNodeCleanup:
                 {"id": "char_001", "name": "Alice", "relationships": []},
                 {"id": "char_002", "name": "Bob", "relationships": []},
             ]
-            
+
             # Call the cleanup function
             result = await neo4j_manager.cleanup_orphaned_characters()
-            
+
             # Verify results
             assert result == 2
 
@@ -160,10 +161,10 @@ class TestOrphanedNodeCleanup:
                 {"id": "event_001", "name": "Inciting Incident", "relationships": []},
                 {"id": "event_002", "name": "Midpoint", "relationships": []},
             ]
-            
+
             # Call the cleanup function
             result = await neo4j_manager.cleanup_orphaned_events()
-            
+
             # Verify results
             assert result == 2
 
@@ -176,10 +177,10 @@ class TestOrphanedNodeCleanup:
                 {"id": "loc_001", "name": "Castle", "relationships": []},
                 {"id": "loc_002", "name": "Forest", "relationships": []},
             ]
-            
+
             # Call the cleanup function
             result = await neo4j_manager.cleanup_orphaned_locations()
-            
+
             # Verify results
             assert result == 2
 
@@ -192,10 +193,10 @@ class TestOrphanedNodeCleanup:
                 {"id": "item_001", "name": "Sword", "relationships": []},
                 {"id": "item_002", "name": "Shield", "relationships": []},
             ]
-            
+
             # Call the cleanup function
             result = await neo4j_manager.cleanup_orphaned_items()
-            
+
             # Verify results
             assert result == 2
 
@@ -208,10 +209,10 @@ class TestOrphanedNodeCleanup:
                 {"id": "scene_001", "title": "Scene 1", "relationships": []},
                 {"id": "scene_002", "title": "Scene 2", "relationships": []},
             ]
-            
+
             # Call the cleanup function
             result = await neo4j_manager.cleanup_orphaned_scenes()
-            
+
             # Verify results
             assert result == 2
 
@@ -224,10 +225,10 @@ class TestOrphanedNodeCleanup:
                 {"id": "chapter_001", "title": "Chapter 1", "relationships": []},
                 {"id": "chapter_002", "title": "Chapter 2", "relationships": []},
             ]
-            
+
             # Call the cleanup function
             result = await neo4j_manager.cleanup_orphaned_chapters()
-            
+
             # Verify results
             assert result == 2
 
@@ -242,10 +243,10 @@ class TestOrphanedNodeEdgeCases:
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
             # Mock query to return no orphaned nodes
             mock_query.return_value = []
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_characters()
-            
+
             # Verify results
             assert len(result) == 0
 
@@ -258,10 +259,10 @@ class TestOrphanedNodeEdgeCases:
                 {"id": "char_001", "name": "Alice", "relationships": ["FRIENDS_WITH"]},
                 {"id": "char_002", "name": "Bob", "relationships": ["FRIENDS_WITH"]},
             ]
-            
+
             # Call the detection function
             result = await neo4j_manager.detect_orphaned_characters()
-            
+
             # Verify results - should return nodes with relationships
             assert len(result) == 2
             assert result[0]["id"] == "char_001"
@@ -273,11 +274,11 @@ class TestOrphanedNodeEdgeCases:
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
             # Mock query to raise an error
             mock_query.side_effect = Exception("Database error")
-            
+
             # Call the detection function
             with pytest.raises(Exception) as excinfo:
                 await neo4j_manager.detect_orphaned_characters()
-            
+
             # Verify error message
             assert "Database error" in str(excinfo.value)
 

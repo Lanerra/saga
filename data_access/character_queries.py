@@ -326,6 +326,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
     # Collect all relationships, grouping by target_name to preserve multiple relationship
     # types to the same target (matching get_character_profile_by_name behavior)
     from collections import defaultdict
+
     rels_by_target: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     for rel_rec in record["relationships"]:
@@ -335,11 +336,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
         rel_props_full = rel_rec.get("rel_props", {})
         rel_props_cleaned = {}
         if isinstance(rel_props_full, dict):
-            rel_props_cleaned = {
-                k: v
-                for k, v in rel_props_full.items()
-                if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]
-            }
+            rel_props_cleaned = {k: v for k, v in rel_props_full.items() if k not in ["created_ts", "updated_ts", "source_profile_managed", "chapter_added"]}
         # P1.7: Canonical relationship typing = type(r) from Cypher (`rel_type`).
         # Fall back to legacy property-based typing if present.
         rel_type = rel_rec.get("rel_type")
@@ -350,7 +347,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
         if "chapter_added" in rel_props_full:
             rel_props_cleaned["chapter_added"] = rel_props_full["chapter_added"]
-        
+
         rels_by_target[target_name].append(rel_props_cleaned)
 
     # Build final relationships dict with consistent shape:

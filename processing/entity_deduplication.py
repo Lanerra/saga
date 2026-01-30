@@ -14,7 +14,6 @@ Only the generate_entity_id() function is kept for backward compatibility.
 
 import hashlib
 import re
-from typing import Any
 
 import structlog
 

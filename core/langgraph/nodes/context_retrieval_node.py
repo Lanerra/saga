@@ -777,12 +777,12 @@ async def _get_scene_events_context(
         events_text = "**Scene Events:**\n"
         for event in events:
             events_text += f"\n- **{event.get('name', 'Unnamed Event')}**: {event.get('description', '')}"
-            if event.get('conflict'):
+            if event.get("conflict"):
                 events_text += f"\n  - Conflict: {event['conflict']}"
-            if event.get('outcome'):
+            if event.get("outcome"):
                 events_text += f"\n  - Outcome: {event['outcome']}"
-            if event.get('characters_involved'):
-                chars = ", ".join(event['characters_involved'])
+            if event.get("characters_involved"):
+                chars = ", ".join(event["characters_involved"])
                 events_text += f"\n  - Characters: {chars}"
 
         return events_text
@@ -821,10 +821,10 @@ async def _get_character_relationships_context(
 
         relationships_text = "**Character Relationships:**\n"
         for rel in relationships:
-            rel_type = rel.get('relationship_type', '').replace('_', ' ').lower()
-            source = rel.get('source', '')
-            target = rel.get('target', '')
-            description = rel.get('description', '')
+            rel_type = rel.get("relationship_type", "").replace("_", " ").lower()
+            source = rel.get("source", "")
+            target = rel.get("target", "")
+            description = rel.get("description", "")
 
             relationships_text += f"\n- {source} {rel_type} {target}"
             if description:
@@ -866,7 +866,7 @@ async def _get_character_items_context(
         items_text = "**Character Possessions:**\n"
         by_character: dict[str, list[dict]] = {}
         for item in items:
-            char_name = item.get('character_name', '')
+            char_name = item.get("character_name", "")
             if char_name not in by_character:
                 by_character[char_name] = []
             by_character[char_name].append(item)
@@ -874,8 +874,8 @@ async def _get_character_items_context(
         for char_name, char_items in by_character.items():
             items_text += f"\n- {char_name}:"
             for item in char_items:
-                item_name = item.get('item_name', '')
-                item_desc = item.get('item_description', '')
+                item_name = item.get("item_name", "")
+                item_desc = item.get("item_description", "")
                 items_text += f"\n  - {item_name}"
                 if item_desc:
                     items_text += f": {item_desc}"
@@ -915,8 +915,8 @@ async def _get_scene_items_context(
 
         items_text = "**Items Featured in Scene:**\n"
         for item in items:
-            item_name = item.get('item_name', '')
-            item_desc = item.get('item_description', '')
+            item_name = item.get("item_name", "")
+            item_desc = item.get("item_description", "")
             items_text += f"\n- {item_name}"
             if item_desc:
                 items_text += f": {item_desc}"
@@ -947,8 +947,8 @@ async def _get_act_events_context(
     try:
         events_data = await scene_queries.get_act_events(act_number=act_number)
 
-        major_points = events_data.get('major_plot_points', [])
-        act_events = events_data.get('act_key_events', [])
+        major_points = events_data.get("major_plot_points", [])
+        act_events = events_data.get("act_key_events", [])
 
         if not major_points and not act_events:
             return None
@@ -957,16 +957,16 @@ async def _get_act_events_context(
 
         if major_points:
             context_text += "\nMajor Plot Points:\n"
-            for point in sorted(major_points, key=lambda x: x.get('sequence_order', 0)):
+            for point in sorted(major_points, key=lambda x: x.get("sequence_order", 0)):
                 context_text += f"- {point.get('name', '')}: {point.get('description', '')}\n"
 
         if act_events:
             context_text += f"\nKey Events in Act {act_number}:\n"
-            for event in sorted(act_events, key=lambda x: x.get('sequence_in_act', 0)):
+            for event in sorted(act_events, key=lambda x: x.get("sequence_in_act", 0)):
                 context_text += f"- {event.get('name', '')}: {event.get('description', '')}\n"
-                if event.get('cause'):
+                if event.get("cause"):
                     context_text += f"  - Cause: {event['cause']}\n"
-                if event.get('effect'):
+                if event.get("effect"):
                     context_text += f"  - Effect: {event['effect']}\n"
 
         return context_text
