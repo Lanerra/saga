@@ -60,6 +60,10 @@ class CharacterProfile(BaseModel):
     last_updated: int | None = None  # Deprecated, use updated_ts
     created_chapter: int = 0
     is_provisional: bool = False
+    # Phase 1: Add id property for stable identifiers
+    id: str = ""
+    # Phase 1: Add chapter_last_updated for query patterns
+    chapter_last_updated: int | None = None
     updates: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod

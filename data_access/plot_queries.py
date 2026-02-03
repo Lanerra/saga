@@ -115,7 +115,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
                 f"Failed to retrieve existing PlotPoint IDs for novel {novel_id}: {e}",
                 exc_info=True,
             )
-            raise handle_database_error("retrieve existing PlotPoint IDs", e, novel_id=novel_id)
+            raise handle_database_error("retrieve existing PlotPoint IDs", e, novel_id=novel_id) from e
 
         pp_to_delete = existing_db_pp_ids - all_input_pp_ids
         if pp_to_delete:
@@ -218,7 +218,7 @@ async def save_plot_outline_to_db(plot_data: dict[str, Any]) -> bool:
             f"Error synchronizing plot outline for novel '{novel_id}': {e}",
             exc_info=True,
         )
-        raise handle_database_error("synchronize plot outline", e, novel_id=novel_id)
+        raise handle_database_error("synchronize plot outline", e, novel_id=novel_id) from e
 
 
 @alru_cache(maxsize=128)

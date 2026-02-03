@@ -22,7 +22,7 @@ from typing import Any
 import structlog
 
 from core.db_manager import neo4j_manager
-from models.kg_models import Chapter, Location, Scene, SceneEvent
+from models.kg_models import Chapter, CharacterProfile, Location, Scene, SceneEvent
 
 logger = structlog.get_logger(__name__)
 

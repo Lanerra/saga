@@ -95,17 +95,17 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
         current_version = content_manager.get_latest_version("extracted_entities", f"chapter_{chapter_number}") + 1
 
         entities_ref = save_extracted_entities(
-            extracted_entities,
             content_manager,
-            chapter_number=chapter_number,
-            version=current_version,
+            extracted_entities,
+            chapter_number,
+            current_version,
         )
 
         relationships_ref = save_extracted_relationships(
-            extracted_relationships,
             content_manager,
-            chapter_number=chapter_number,
-            version=current_version,
+            extracted_relationships,
+            chapter_number,
+            current_version,
         )
 
         logger.info(

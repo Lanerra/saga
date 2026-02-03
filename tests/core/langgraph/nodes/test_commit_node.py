@@ -44,20 +44,13 @@ class TestCommitNodeEntityPersistence:
             with patch("core.langgraph.nodes.commit_node.generate_entity_id") as mock_generate_id:
                 mock_generate_id.side_effect = lambda name, category, chapter: f"id_{name}_{chapter}"
 
-                # Mock similarity checks to return no matches (so generate_entity_id is called)
-                with patch("core.langgraph.nodes.commit_node.check_entity_similarity") as mock_similarity:
-                    mock_similarity.return_value = None  # No similar entity found
+                with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
+                    await commit_to_graph(mock_state)  # type: ignore[arg-type]
 
-                    with patch("core.langgraph.nodes.commit_node.should_merge_entities") as mock_should_merge:
-                        mock_should_merge.return_value = False  # Should not merge
-
-                        with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
-                            await commit_to_graph(mock_state)  # type: ignore[arg-type]
-
-                            # Verify generate_entity_id was called for world items only
-                            # Characters use their names as identifiers, world items get stable IDs
-                            # 1 world item = 1 call
-                            assert mock_generate_id.call_count == 1
+                    # Verify generate_entity_id was called for world items only
+                    # Characters use their names as identifiers, world items get stable IDs
+                    # 1 world item = 1 call
+                    assert mock_generate_id.call_count == 1
 
     @pytest.mark.asyncio
     async def test_commit_to_graph_handles_empty_extractions(self) -> None:

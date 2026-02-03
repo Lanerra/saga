@@ -83,7 +83,7 @@ async def _validate_entities_before_commit(
             continue
 
         for i, entity in enumerate(entities):
-            if not isinstance(entity, (dict, ExtractedEntity)):
+            if not isinstance(entity, dict | ExtractedEntity):
                 errors.append(f"Invalid {entity_type} entity at index {i}: expected ExtractedEntity or dict, got {type(entity)}")
                 continue
 
@@ -100,7 +100,7 @@ async def _validate_entities_before_commit(
 
     # Validate extracted relationships
     for i, relationship in enumerate(extracted_relationships):
-        if not isinstance(relationship, (dict, ExtractedRelationship)):
+        if not isinstance(relationship, dict | ExtractedRelationship):
             errors.append(f"Invalid relationship at index {i}: expected ExtractedRelationship or dict, got {type(relationship)}")
             continue
 
@@ -140,7 +140,7 @@ async def _validate_entities_before_commit(
                         entity_type_map[name] = entity_type
 
             # Validate each relationship
-            for i, rel in enumerate(extracted_relationships):
+            for _, rel in enumerate(extracted_relationships):
                 if isinstance(rel, dict):
                     relationship_type = rel.get("relationship_type")
                     source_name = rel.get("source_name")

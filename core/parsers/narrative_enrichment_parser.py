@@ -38,6 +38,14 @@ from models.kg_models import Chapter, CharacterProfile
 logger = structlog.get_logger(__name__)
 
 
+# Import llm_service for embedding generation
+try:
+    from core.llm_interface_refactored import llm_service
+except ImportError:
+    # Fallback if llm_service is not available
+    llm_service = None  # type: ignore
+
+
 class PhysicalDescriptionExtractionResult(BaseModel):
     """Result of physical description extraction from narrative text."""
 
@@ -285,8 +293,8 @@ class NarrativeEnrichmentParser:
                 category=f"Chapter {chapter.number}",
             )
 
-            # Compute the embedding text hash for change detection
-            text_hash = compute_entity_embedding_text_hash(embedding_text)
+            # Compute the embedding text hash for change detection (used for validation)
+            _ = compute_entity_embedding_text_hash(embedding_text)
 
             # Generate the embedding vector
             embedding_vector = await self._generate_embedding_vector(embedding_text)

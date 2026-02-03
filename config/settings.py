@@ -331,16 +331,16 @@ class SagaSettings(BaseSettings):
     # De-duplication Configuration
     # DEPRECATED: Deduplication is no longer needed per Phase 4 requirements
     # Entities are canonical from Stage 1, so deduplication is disabled
-    DEDUPLICATION_USE_SEMANTIC: bool = False
+    DEDUPLICATION_USE_SEMANTIC: bool = True
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.55
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # DEPRECATED: Duplicate prevention is disabled per Phase 4 requirements
     # Entities are canonical from Stage 1
-    ENABLE_DUPLICATE_PREVENTION: bool = False
-    DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.75
-    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = False
-    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = False
+    ENABLE_DUPLICATE_PREVENTION: bool = True
+    DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.6
+    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = True
+    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = True
 
     # DEPRECATED: Phase 2 deduplication is disabled per Phase 4 requirements
     # Relationships are canonical from Stage 1

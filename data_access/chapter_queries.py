@@ -122,7 +122,7 @@ async def load_chapter_count_from_db() -> int:
         return count
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Failed to load chapter count from Neo4j: {e}", exc_info=True)
-        raise handle_database_error("load chapter count", e)
+        raise handle_database_error("load chapter count", e) from e
 
 
 async def save_chapter_data_to_db(
@@ -182,7 +182,7 @@ async def save_chapter_data_to_db(
             f"Neo4j: Error saving chapter data for chapter {chapter_number}: {e}",
             exc_info=True,
         )
-        raise handle_database_error("save chapter data", e, chapter_number=chapter_number)
+        raise handle_database_error("save chapter data", e, chapter_number=chapter_number) from e
 
 
 async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None:
@@ -415,7 +415,7 @@ async def find_semantic_context_native(
 
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native semantic context search: {e}", exc_info=True)
-        raise handle_database_error("find semantic context", e, current_chapter_number=current_chapter_number, limit=limit)
+        raise handle_database_error("find semantic context", e, current_chapter_number=current_chapter_number, limit=limit) from e
 
 
 async def get_chapter_content_batch_native(
@@ -467,4 +467,4 @@ async def get_chapter_content_batch_native(
 
     except (Neo4jError, KeyError, ValueError) as e:
         logger.error(f"Error in native chapter batch retrieval: {e}", exc_info=True)
-        raise handle_database_error("get chapter content batch", e, chapter_numbers=chapter_numbers)
+        raise handle_database_error("get chapter content batch", e, chapter_numbers=chapter_numbers) from e

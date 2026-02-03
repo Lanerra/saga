@@ -137,7 +137,7 @@ def user_story_to_objects(
         plot_outline["protagonist_name"] = main_char_model.name
 
         cp = CharacterProfile(name=main_char_model.name)
-        cp.description = main_char_model.description or ""
+        cp.personality_description = main_char_model.description or ""
         cp.traits = main_char_model.traits
         cp.relationships = {rel_key: rel.model_dump(exclude_none=True) for rel_key, rel in main_char_model.relationships.items()}
         cp.status = "As described"
@@ -150,7 +150,7 @@ def user_story_to_objects(
         antagonist_model = model.characters.antagonist
     if antagonist_model:
         ant_cp = CharacterProfile(name=antagonist_model.name)
-        ant_cp.description = antagonist_model.description or ""
+        ant_cp.personality_description = antagonist_model.description or ""
         ant_cp.traits = antagonist_model.traits
         ant_cp.relationships = {rel_key: rel.model_dump(exclude_none=True) for rel_key, rel in antagonist_model.relationships.items()}
         ant_cp.status = "As described"
@@ -160,7 +160,7 @@ def user_story_to_objects(
     if model.other_key_characters:
         for _name, info in model.other_key_characters.items():
             cp = CharacterProfile(name=info.name)
-            cp.description = info.description or ""
+            cp.personality_description = info.description or ""
             cp.traits = info.traits
             cp.updates["role"] = "other_key_character"
             characters[cp.name] = cp
@@ -168,7 +168,7 @@ def user_story_to_objects(
     if model.characters and model.characters.supporting_characters:
         for info in model.characters.supporting_characters:
             cp = CharacterProfile(name=info.name)
-            cp.description = info.description or ""
+            cp.personality_description = info.description or ""
             cp.traits = info.traits
             cp.updates["role"] = info.role or "supporting_character"
             characters[cp.name] = cp

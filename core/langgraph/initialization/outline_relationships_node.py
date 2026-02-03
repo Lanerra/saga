@@ -90,7 +90,7 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
             **state,
             "outline_relationships_ref": None,
             "current_node": "outline_relationships",
-        }  # type: ignore[return-value]
+        }
 
     logger.info(
         "extract_outline_relationships: extracted relationships",
