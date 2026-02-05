@@ -45,8 +45,7 @@ from data_access.kg_queries import (
     validate_relationship_type_for_cypher_interpolation,
 )
 from models.kg_models import CharacterProfile, WorldItem
-from processing.entity_deduplication import generate_entity_id
-from utils.text_processing import validate_and_filter_traits
+from utils.text_processing import generate_entity_id, validate_and_filter_traits
 
 logger = structlog.get_logger(__name__)
 

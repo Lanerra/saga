@@ -551,7 +551,7 @@ async def add_kg_triples_batch_to_db(
         subject_id: str | None = None
         if subject_type == "Character":
             try:
-                from processing.entity_deduplication import generate_entity_id
+                from utils.text_processing import generate_entity_id
 
                 subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
             except (ImportError, ValueError, TypeError, AttributeError):
@@ -650,7 +650,7 @@ async def add_kg_triples_batch_to_db(
             object_id: str | None = None
             if object_type == "Character":
                 try:
-                    from processing.entity_deduplication import generate_entity_id
+                    from utils.text_processing import generate_entity_id
 
                     object_id = generate_entity_id(object_name, "character", int(chapter_number))
                 except (ImportError, ValueError, TypeError, AttributeError):
@@ -1223,23 +1223,6 @@ async def find_contradictory_trait_characters(
     return all_findings
 
 
-async def find_post_mortem_activity() -> list[dict[str, Any]]:
-    """DEPRECATED: Find characters with relationship activity after an `IS_DEAD` chapter.
-
-    Returns:
-        An empty list. This function is deprecated because IS_DEAD relationships are no
-        longer used. Character status (including death) is now stored as a property on
-        Character nodes.
-
-    Notes:
-        This function was a diagnostic query that relied on IS_DEAD relationships which
-        have been removed from the schema. The function is retained for backward
-        compatibility but always returns an empty list.
-    """
-    logger.debug("find_post_mortem_activity() is deprecated and returns empty. " "IS_DEAD relationships are no longer used; status is a node property.")
-    return []
-
-
 async def find_candidate_duplicate_entities(
     similarity_threshold: float = 0.51,
     limit: int = 50,
@@ -1547,26 +1530,6 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
         },
     )
     return bool(results and results[0] and results[0].get("id"))
-
-
-async def promote_dynamic_relationships() -> int:
-    """
-    Deprecated entrypoint: use ``normalize_and_deduplicate_relationships`` instead
-    This function historically performed:
-    - validation/correction of ``DYNAMIC_REL.type`` strings, then
-    - promotion of ``DYNAMIC_REL`` -> typed relationships.
-
-    To prevent drift, it is now a thin wrapper around the canonical pipeline.
-    Return value is preserved for backwards compatibility: the number of relationships
-    processed for validation + promotion (not including consolidation/deduplication).
-    """
-    counts = await normalize_and_deduplicate_relationships(
-        run_validation=True,
-        run_type_consolidation=False,
-        run_deduplication=False,
-        run_dynamic_promotion=True,
-    )
-    return int(counts.get("validated", 0) + counts.get("promoted", 0))
 
 
 async def _validate_and_correct_relationship_types() -> int:

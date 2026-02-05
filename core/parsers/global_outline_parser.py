@@ -25,7 +25,7 @@ import config
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
 from models.kg_models import Location, WorldItem
-from processing.entity_deduplication import generate_entity_id
+from utils.text_processing import generate_entity_id
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 

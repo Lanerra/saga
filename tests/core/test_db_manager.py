@@ -961,55 +961,6 @@ class TestSyncSchemaOperations:
         mock_tx.rollback.assert_called_once()
 
 
-@pytest.mark.asyncio
-class TestDatabaseMaintenance:
-    """Database maintenance operations"""
-
-    async def test_cleanup_orphaned_traits_found(self, monkeypatch):
-        """Cleanup is deprecated and always returns 0"""
-        manager = Neo4jManagerSingleton()
-
-        count = await manager.cleanup_orphaned_traits()
-
-        assert count == 0
-
-    async def test_cleanup_orphaned_traits_none_found(self, monkeypatch):
-        """Cleanup returns zero when no orphaned traits"""
-        manager = Neo4jManagerSingleton()
-
-        mock_result = [{"deleted_count": 0}]
-
-        async def mock_write(query):
-            return mock_result
-
-        monkeypatch.setattr(manager, "execute_write_query", mock_write)
-
-        count = await manager.cleanup_orphaned_traits()
-
-        assert count == 0
-
-    async def test_cleanup_orphaned_traits_empty_result(self, monkeypatch):
-        """Cleanup handles empty result"""
-        manager = Neo4jManagerSingleton()
-
-        async def mock_write(query):
-            return []
-
-        monkeypatch.setattr(manager, "execute_write_query", mock_write)
-
-        count = await manager.cleanup_orphaned_traits()
-
-        assert count == 0
-
-    async def test_cleanup_orphaned_traits_error(self, monkeypatch):
-        """Cleanup is deprecated and does not raise errors"""
-        manager = Neo4jManagerSingleton()
-
-        count = await manager.cleanup_orphaned_traits()
-
-        assert count == 0
-
-
 class TestEmbeddingConversion:
     """Embedding conversion utilities"""
 

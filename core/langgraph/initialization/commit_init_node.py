@@ -502,7 +502,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
     allowed_categories = {"location", "object"}
 
-    from processing.entity_deduplication import generate_entity_id
+    from utils.text_processing import generate_entity_id
 
     for index, item in enumerate(data):
         if not isinstance(item, dict):

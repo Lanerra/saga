@@ -23,7 +23,6 @@ from data_access.kg_queries import (
     consolidate_similar_relationships,
     deduplicate_relationships,
     find_contradictory_trait_characters,
-    find_post_mortem_activity,
 )
 
 logger = structlog.get_logger(__name__)
@@ -91,7 +90,6 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
 
     qa_results: dict[str, Any] = {
         "contradictory_traits": [],
-        "post_mortem_activities": [],
         "relationships_deduplicated": relationships_deduplicated,
         "relationships_consolidated": relationships_consolidated,
         "issues_found": issues_found,
@@ -113,26 +111,6 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
         except Exception as e:
             logger.error(
                 "check_quality: Error checking contradictory traits",
-                error=str(e),
-                exc_info=True,
-            )
-
-    if config.settings.QA_CHECK_POST_MORTEM_ACTIVITY:
-        try:
-            post_mortem = await find_post_mortem_activity()
-            qa_results["post_mortem_activities"] = post_mortem
-            issues_found += len(post_mortem)
-
-            if post_mortem:
-                logger.warning(
-                    "check_quality: Found post-mortem character activity",
-                    count=len(post_mortem),
-                    examples=[f"{a['character_name']} (died ch. {a['death_chapter']})" for a in post_mortem[:3]],
-                )
-
-        except Exception as e:
-            logger.error(
-                "check_quality: Error checking post-mortem activity",
                 error=str(e),
                 exc_info=True,
             )

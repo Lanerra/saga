@@ -198,7 +198,12 @@ class ActOutlineParser:
                     if "location" in event_description.lower() or "place" in event_description.lower():
                         # Extract potential location name (simplified for now)
                         # In production, use NLP to identify proper nouns
-                        pass
+                        logger.debug(
+                            "_parse_location_enrichment: potential location mention in key event",
+                            event_description=event_description,
+                        )
+                        # Note: Full NLP-based extraction would require spaCy or similar
+                        # For now, we log the potential location mention for manual review
 
         return location_names
 

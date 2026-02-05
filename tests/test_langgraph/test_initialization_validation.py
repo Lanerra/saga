@@ -132,8 +132,7 @@ async def test_load_or_create_state_logs_missing_initialization_artifacts(
     if not warnings:
         print(f"DEBUG: Captured logs: {[r.getMessage() for r in caplog.records]}")
 
-    # assert warnings, f"Expected warning about incomplete initialization artifacts. Captured: {[r.getMessage() for r in caplog.records]}"
-    pass
+    assert warnings, f"Expected warning about incomplete initialization artifacts. Captured: {[r.getMessage() for r in caplog.records]}"
 
 
 @pytest.mark.asyncio

@@ -80,28 +80,24 @@ class TestCommitToGraph:
                 mock_neo4j.execute_cypher_batch = AsyncMock()
 
                 with patch("core.langgraph.nodes.commit_node.kg_queries", mock_kg_queries):
-                    with patch(
-                        "core.langgraph.nodes.commit_node.check_entity_similarity",
-                        new=AsyncMock(return_value=None),
+                    # P0: post-write cache invalidation after KG writes
+                    with (
+                        patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
+                        patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
+                        patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
                     ):
-                        # P0: post-write cache invalidation after KG writes
-                        with (
-                            patch("data_access.cache_coordinator.clear_character_read_caches") as mock_clear_chars,
-                            patch("data_access.cache_coordinator.clear_world_read_caches") as mock_clear_world,
-                            patch("data_access.cache_coordinator.clear_kg_read_caches") as mock_clear_kg,
-                        ):
-                            result = await commit_to_graph(state)
+                        result = await commit_to_graph(state)
 
-                        assert result["current_node"] == "commit_to_graph"
-                        assert result["last_error"] is None
+                    assert result["current_node"] == "commit_to_graph"
+                    assert result["last_error"] is None
 
-                        # Verify Neo4j execution
-                        assert mock_neo4j.execute_cypher_batch.called
+                    # Verify Neo4j execution
+                    assert mock_neo4j.execute_cypher_batch.called
 
-                        # Verify caches are invalidated after write
-                        assert mock_clear_chars.called
-                        assert mock_clear_world.called
-                        assert mock_clear_kg.called
+                    # Verify caches are invalidated after write
+                    assert mock_clear_chars.called
+                    assert mock_clear_world.called
+                    assert mock_clear_kg.called
 
     async def test_extraction_normalization_commit_reads_normalized_ref(self, tmp_path):
         """
@@ -226,49 +222,44 @@ class TestCommitToGraph:
         ]
 
         # Step 3: Commit reads from extracted_relationships_ref (single source of truth) and uses WORKS_WITH.
-        with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
-            with patch(
-                "core.langgraph.nodes.commit_node._run_phase2_deduplication",
-                new=AsyncMock(return_value={"characters": 0, "world_items": 0}),
-            ):
-                # Avoid relying on real chapter query builder in this focused test.
-                with patch(
-                    "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
-                    return_value=(
-                        "CHAPTER_UPSERT",
-                        {
-                            "chapter_number_param": 1,
-                            "chapter_id_param": "chapter_1",
-                            "summary_param": None,
-                            "embedding_vector_param": None,
-                            "is_provisional_param": False,
-                        },
-                    ),
-                ):
-                    with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-                        mock_builder = mock_builder_class.return_value
-                        mock_builder.character_upsert_cypher.return_value = ("CHAR_UPSERT", {})
-                        mock_builder.world_item_upsert_cypher.return_value = ("WORLD_UPSERT", {})
+        # Avoid relying on real chapter query builder in this focused test.
+        with patch(
+            "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
+            return_value=(
+                "CHAPTER_UPSERT",
+                {
+                    "chapter_number_param": 1,
+                    "chapter_id_param": "chapter_1",
+                    "summary_param": None,
+                    "embedding_vector_param": None,
+                    "is_provisional_param": False,
+                },
+            ),
+        ):
+            with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
+                mock_builder = mock_builder_class.return_value
+                mock_builder.character_upsert_cypher.return_value = ("CHAR_UPSERT", {})
+                mock_builder.world_item_upsert_cypher.return_value = ("WORLD_UPSERT", {})
 
-                        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
-                            mock_neo4j.execute_cypher_batch = AsyncMock()
+                with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                    mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                            result = await commit_to_graph(state)
-                            assert result["last_error"] is None
+                    result = await commit_to_graph(state)
+                    assert result["last_error"] is None
 
-                            assert mock_neo4j.execute_cypher_batch.called
-                            args, _kwargs = mock_neo4j.execute_cypher_batch.call_args
-                            statements = args[0]
+                    assert mock_neo4j.execute_cypher_batch.called
+                    args, _kwargs = mock_neo4j.execute_cypher_batch.call_args
+                    statements = args[0]
 
-                            # Find relationship statements and assert predicate type is normalized.
-                            rel_statements = [(q, p) for (q, p) in statements if isinstance(q, str) and "CALL apoc.merge.relationship" in q]
+                    # Find relationship statements and assert predicate type is normalized.
+                    rel_statements = [(q, p) for (q, p) in statements if isinstance(q, str) and "CALL apoc.merge.relationship" in q]
 
-                            assert rel_statements, "Expected at least one relationship statement"
+                    assert rel_statements, "Expected at least one relationship statement"
 
-                            # Contract: relationship type is passed as a parameter (not interpolated into the query string).
-                            assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
-                            assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
-                            assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
+                    # Contract: relationship type is passed as a parameter (not interpolated into the query string).
+                    assert any(p.get("predicate_clean") == "WORKS_WITH" for (_q, p) in rel_statements)
+                    assert all(p.get("predicate_clean") != "COLLABORATES_WITH" for (_q, p) in rel_statements)
+                    assert all(p.get("predicate_clean") != "SHOULD_NOT_SEE" for (_q, p) in rel_statements)
 
     async def test_commit_handles_errors_gracefully(
         self,
@@ -282,15 +273,11 @@ class TestCommitToGraph:
             mock_builder = mock_builder_class.return_value
             mock_builder.character_upsert_cypher.side_effect = Exception("Database error")
 
-            with patch(
-                "core.langgraph.nodes.commit_node.check_entity_similarity",
-                new=AsyncMock(return_value=None),
-            ):
-                result = await commit_to_graph(state)
+            result = await commit_to_graph(state)
 
-                assert result["current_node"] == "commit_to_graph"
-                assert result["last_error"] is not None
-                assert "Database error" in result["last_error"]
+            assert result["current_node"] == "commit_to_graph"
+            assert result["last_error"] is not None
+            assert "Database error" in result["last_error"]
 
     async def test_commit_with_embedding_from_ref(
         self,
@@ -319,14 +306,10 @@ class TestCommitToGraph:
                     mock_builder.character_upsert_cypher.return_value = ("query", {})
                     mock_builder.world_item_upsert_cypher.return_value = ("query", {})
 
-                    with patch(
-                        "core.langgraph.nodes.commit_node.check_entity_similarity",
-                        new=AsyncMock(return_value=None),
-                    ):
-                        result = await commit_to_graph(state)
+                    result = await commit_to_graph(state)
 
-                        assert result["last_error"] is None
-                        assert mock_load.called
+                    assert result["last_error"] is None
+                    assert mock_load.called
 
     async def test_commit_with_embedding_load_failure(
         self,
@@ -355,13 +338,9 @@ class TestCommitToGraph:
                     mock_builder.character_upsert_cypher.return_value = ("query", {})
                     mock_builder.world_item_upsert_cypher.return_value = ("query", {})
 
-                    with patch(
-                        "core.langgraph.nodes.commit_node.check_entity_similarity",
-                        new=AsyncMock(return_value=None),
-                    ):
-                        result = await commit_to_graph(state)
+                    result = await commit_to_graph(state)
 
-                        assert result["last_error"] is None
+                    assert result["last_error"] is None
 
     async def test_commit_with_fallback_embedding(
         self,
@@ -381,13 +360,9 @@ class TestCommitToGraph:
                 mock_builder.character_upsert_cypher.return_value = ("query", {})
                 mock_builder.world_item_upsert_cypher.return_value = ("query", {})
 
-                with patch(
-                    "core.langgraph.nodes.commit_node.check_entity_similarity",
-                    new=AsyncMock(return_value=None),
-                ):
-                    result = await commit_to_graph(state)
+                result = await commit_to_graph(state)
 
-                    assert result["last_error"] is None
+                assert result["last_error"] is None
 
     async def test_commit_with_duplicate_world_items_in_batch(
         self,
@@ -425,16 +400,12 @@ class TestCommitToGraph:
                 mock_builder.world_item_upsert_cypher.return_value = ("query", {})
 
                 with patch(
-                    "core.langgraph.nodes.commit_node.check_entity_similarity",
-                    new=AsyncMock(return_value=None),
+                    "core.langgraph.nodes.commit_node.generate_entity_id",
+                    return_value="castle_001",
                 ):
-                    with patch(
-                        "core.langgraph.nodes.commit_node.generate_entity_id",
-                        return_value="castle_001",
-                    ):
-                        result = await commit_to_graph(state)
+                    result = await commit_to_graph(state)
 
-                        assert result["last_error"] is None
+                    assert result["last_error"] is None
 
 
 class TestConvertToCharacterProfiles:
@@ -590,62 +561,6 @@ class TestConvertToWorldItems:
         assert items == []
 
 
-@pytest.mark.asyncio
-class TestDeduplication:
-    """Tests for deduplication logic in commit node."""
-
-    async def test_character_deduplication_no_duplicates(
-        self,
-        sample_state_with_extraction,
-        mock_knowledge_graph_service,
-        mock_chapter_queries,
-    ):
-        """Test character deduplication when no duplicates found."""
-        state = sample_state_with_extraction
-
-        with patch("core.langgraph.nodes.commit_node.check_entity_similarity") as mock_check:
-            mock_check.return_value = None
-
-            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
-                mock_neo4j.execute_cypher_batch = AsyncMock()
-
-                with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-                    mock_builder = mock_builder_class.return_value
-                    mock_builder.character_upsert_cypher.return_value = ("query", {})
-                    mock_builder.world_item_upsert_cypher.return_value = ("query", {})
-
-                    with patch("core.langgraph.nodes.commit_node.kg_queries"):
-                        result = await commit_to_graph(state)
-
-                        assert result["last_error"] is None
-                        assert mock_check.called
-
-    async def test_world_item_deduplication(
-        self,
-        sample_state_with_extraction,
-        mock_knowledge_graph_service,
-        mock_chapter_queries,
-    ):
-        """Test world item deduplication."""
-        state = sample_state_with_extraction
-
-        with patch("core.langgraph.nodes.commit_node.check_entity_similarity") as mock_check:
-            mock_check.return_value = None
-
-            with patch("core.db_manager.neo4j_manager") as mock_neo4j:
-                mock_neo4j.execute_cypher_batch = AsyncMock()
-
-                with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-                    mock_builder = mock_builder_class.return_value
-                    mock_builder.character_upsert_cypher.return_value = ("query", {})
-                    mock_builder.world_item_upsert_cypher.return_value = ("query", {})
-
-                    with patch("core.langgraph.nodes.commit_node.kg_queries"):
-                        result = await commit_to_graph(state)
-
-                        assert result["last_error"] is None
-
-
 class TestDeduplicateEntityList:
     """Tests for _deduplicate_entity_list function."""
 
@@ -714,124 +629,6 @@ class TestDeduplicateEntityList:
 
         result = _deduplicate_entity_list(entities)
         assert len(result) == 2
-
-
-@pytest.mark.asyncio
-class TestDeduplicateCharacter:
-    """Tests for _deduplicate_character function."""
-
-    async def test_no_similar_entity_found(self):
-        """Test when no similar entity exists."""
-        from core.langgraph.nodes.commit_node import _deduplicate_character
-
-        with patch(
-            "core.langgraph.nodes.commit_node.check_entity_similarity",
-            new=AsyncMock(return_value=None),
-        ):
-            result = await _deduplicate_character("Alice", "A brave warrior", 1)
-            assert result == "Alice"
-
-    async def test_similar_entity_but_no_merge(self):
-        """Test when similar entity found but shouldn't merge."""
-        from core.langgraph.nodes.commit_node import _deduplicate_character
-
-        with patch(
-            "core.langgraph.nodes.commit_node.check_entity_similarity",
-            new=AsyncMock(
-                return_value={
-                    "existing_name": "Alicia",
-                    "similarity": 0.7,
-                }
-            ),
-        ):
-            with patch(
-                "core.langgraph.nodes.commit_node.should_merge_entities",
-                new=AsyncMock(return_value=False),
-            ):
-                result = await _deduplicate_character("Alice", "A brave warrior", 1)
-                assert result == "Alice"
-
-    async def test_similar_entity_and_merge(self):
-        """Test when similar entity found and should merge."""
-        from core.langgraph.nodes.commit_node import _deduplicate_character
-
-        with patch(
-            "core.langgraph.nodes.commit_node.check_entity_similarity",
-            new=AsyncMock(
-                return_value={
-                    "existing_name": "Alicia",
-                    "similarity": 0.9,
-                }
-            ),
-        ):
-            with patch(
-                "core.langgraph.nodes.commit_node.should_merge_entities",
-                new=AsyncMock(return_value=True),
-            ):
-                result = await _deduplicate_character("Alice", "A brave warrior", 1)
-                assert result == "Alicia"
-
-    async def test_duplicate_prevention_disabled(self):
-        """Test when duplicate prevention is disabled."""
-        from core.langgraph.nodes.commit_node import _deduplicate_character
-
-        with patch("core.langgraph.nodes.commit_node.config") as mock_config:
-            mock_config.ENABLE_DUPLICATE_PREVENTION = False
-            result = await _deduplicate_character("Alice", "A brave warrior", 1)
-            assert result == "Alice"
-
-
-@pytest.mark.asyncio
-class TestDeduplicateWorldItem:
-    """Tests for _deduplicate_world_item function."""
-
-    async def test_no_similar_entity_found(self):
-        """Test when no similar world item exists."""
-        from core.langgraph.nodes.commit_node import _deduplicate_world_item
-
-        with patch(
-            "core.langgraph.nodes.commit_node.check_entity_similarity",
-            new=AsyncMock(return_value=None),
-        ):
-            with patch(
-                "core.langgraph.nodes.commit_node.generate_entity_id",
-                return_value="new_id_123",
-            ):
-                result = await _deduplicate_world_item("Magic Sword", "artifact", "A legendary blade", 1)
-                assert result == "new_id_123"
-
-    async def test_similar_entity_and_merge(self):
-        """Test when similar world item found and should merge."""
-        from core.langgraph.nodes.commit_node import _deduplicate_world_item
-
-        with patch(
-            "core.langgraph.nodes.commit_node.check_entity_similarity",
-            new=AsyncMock(
-                return_value={
-                    "existing_id": "existing_sword_id",
-                    "similarity": 0.9,
-                }
-            ),
-        ):
-            with patch(
-                "core.langgraph.nodes.commit_node.should_merge_entities",
-                new=AsyncMock(return_value=True),
-            ):
-                result = await _deduplicate_world_item("Magic Sword", "artifact", "A legendary blade", 1)
-                assert result == "existing_sword_id"
-
-    async def test_duplicate_prevention_disabled(self):
-        """Test when duplicate prevention is disabled for world items."""
-        from core.langgraph.nodes.commit_node import _deduplicate_world_item
-
-        with patch("core.langgraph.nodes.commit_node.config") as mock_config:
-            mock_config.ENABLE_DUPLICATE_PREVENTION = False
-            with patch(
-                "core.langgraph.nodes.commit_node.generate_entity_id",
-                return_value="new_id_456",
-            ):
-                result = await _deduplicate_world_item("Castle", "structure", "A grand castle", 1)
-                assert result == "new_id_456"
 
 
 @pytest.mark.asyncio
@@ -1198,43 +995,38 @@ class TestBuildRelationshipStatements:
             ],
         }
 
-        with patch("core.langgraph.nodes.commit_node.check_entity_similarity", new=AsyncMock(return_value=None)):
-            with patch(
-                "core.langgraph.nodes.commit_node._run_phase2_deduplication",
-                new=AsyncMock(return_value={"characters": 0, "world_items": 0}),
-            ):
-                # Avoid relying on real chapter query builder in this focused test.
-                with patch(
-                    "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
-                    return_value=(
-                        "CHAPTER_UPSERT",
-                        {
-                            "chapter_number_param": 1,
-                            "chapter_id_param": "chapter_1",
-                            "summary_param": None,
-                            "embedding_vector_param": None,
-                            "is_provisional_param": False,
-                        },
-                    ),
-                ):
-                    with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
-                        mock_builder = mock_builder_class.return_value
-                        mock_builder.character_upsert_cypher.return_value = ("CHAR_UPSERT", {})
-                        mock_builder.world_item_upsert_cypher.return_value = ("WORLD_UPSERT", {})
+        # Avoid relying on real chapter query builder in this focused test.
+        with patch(
+            "core.langgraph.nodes.commit_node.chapter_queries.build_chapter_upsert_statement",
+            return_value=(
+                "CHAPTER_UPSERT",
+                {
+                    "chapter_number_param": 1,
+                    "chapter_id_param": "chapter_1",
+                    "summary_param": None,
+                    "embedding_vector_param": None,
+                    "is_provisional_param": False,
+                },
+            ),
+        ):
+            with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
+                mock_builder = mock_builder_class.return_value
+                mock_builder.character_upsert_cypher.return_value = ("CHAR_UPSERT", {})
+                mock_builder.world_item_upsert_cypher.return_value = ("WORLD_UPSERT", {})
 
-                        with patch("core.db_manager.neo4j_manager") as mock_neo4j:
-                            mock_neo4j.execute_cypher_batch = AsyncMock()
+                with patch("core.db_manager.neo4j_manager") as mock_neo4j:
+                    mock_neo4j.execute_cypher_batch = AsyncMock()
 
-                            result = await commit_to_graph(state)
+                    result = await commit_to_graph(state)
 
-                            assert result["has_fatal_error"] is True
-                            assert result["last_error"] is not None
-                            # CORE-011: fail fast with an actionable, deterministic message.
-                            assert "Invalid entity type" in result["last_error"]
-                            assert "persistence boundary" in result["last_error"]
+                    assert result["has_fatal_error"] is True
+                    assert result["last_error"] is not None
+                    # CORE-011: fail fast with an actionable, deterministic message.
+                    assert "Invalid entity type" in result["last_error"]
+                    assert "persistence boundary" in result["last_error"]
 
-                            # Ensure we fail before issuing writes.
-                            assert mock_neo4j.execute_cypher_batch.called is False
+                    # Ensure we fail before issuing writes.
+                    assert mock_neo4j.execute_cypher_batch.called is False
 
 
 class TestBuildChapterNodeStatement:
@@ -1282,108 +1074,6 @@ class TestBuildChapterNodeStatement:
         # When summary is omitted, it should remain NULL in params (meaning "do not update")
         assert params["summary_param"] is None
         assert params["embedding_vector_param"] is None
-
-
-@pytest.mark.asyncio
-class TestPhase2Deduplication:
-    """Tests for _run_phase2_deduplication function."""
-
-    async def test_phase2_disabled(self):
-        """Test when Phase 2 deduplication is disabled."""
-        from core.langgraph.nodes.commit_node import _run_phase2_deduplication
-
-        with patch("core.langgraph.nodes.commit_node.config") as mock_config:
-            mock_config.ENABLE_PHASE2_DEDUPLICATION = False
-
-            result = await _run_phase2_deduplication(1)
-
-            assert result["characters"] == 0
-            assert result["world_items"] == 0
-
-    async def test_phase2_no_duplicates_found(self):
-        """Test when no duplicates are found in Phase 2."""
-        from core.langgraph.nodes.commit_node import _run_phase2_deduplication
-
-        with patch("core.langgraph.nodes.commit_node.config") as mock_config:
-            mock_config.ENABLE_PHASE2_DEDUPLICATION = True
-            mock_config.PHASE2_NAME_SIMILARITY_THRESHOLD = 0.6
-            mock_config.PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD = 0.7
-
-            with patch(
-                "processing.entity_deduplication.find_relationship_based_duplicates",
-                new=AsyncMock(return_value=[]),
-            ):
-                result = await _run_phase2_deduplication(1)
-
-                assert result["characters"] == 0
-                assert result["world_items"] == 0
-
-    async def test_phase2_merges_character_duplicates(self):
-        """Test when Phase 2 finds and merges character duplicates."""
-        from core.langgraph.nodes.commit_node import _run_phase2_deduplication
-
-        with patch("core.langgraph.nodes.commit_node.config") as mock_config:
-            mock_config.ENABLE_PHASE2_DEDUPLICATION = True
-            mock_config.PHASE2_NAME_SIMILARITY_THRESHOLD = 0.6
-            mock_config.PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD = 0.7
-
-            char_duplicates = [
-                ("Alice", "Alicia", 0.8, 0.9),
-            ]
-
-            with patch(
-                "processing.entity_deduplication.find_relationship_based_duplicates",
-                new=AsyncMock(side_effect=[char_duplicates, []]),
-            ):
-                with patch(
-                    "processing.entity_deduplication.merge_duplicate_entities",
-                    new=AsyncMock(return_value=True),
-                ):
-                    result = await _run_phase2_deduplication(1)
-
-                    assert result["characters"] == 1
-                    assert result["world_items"] == 0
-
-    async def test_phase2_handles_merge_failure(self):
-        """Test when Phase 2 merge fails."""
-        from core.langgraph.nodes.commit_node import _run_phase2_deduplication
-
-        with patch("core.langgraph.nodes.commit_node.config") as mock_config:
-            mock_config.ENABLE_PHASE2_DEDUPLICATION = True
-            mock_config.PHASE2_NAME_SIMILARITY_THRESHOLD = 0.6
-            mock_config.PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD = 0.7
-
-            char_duplicates = [
-                ("Alice", "Alicia", 0.8, 0.9),
-            ]
-
-            with patch(
-                "processing.entity_deduplication.find_relationship_based_duplicates",
-                new=AsyncMock(side_effect=[char_duplicates, []]),
-            ):
-                with patch(
-                    "processing.entity_deduplication.merge_duplicate_entities",
-                    new=AsyncMock(return_value=False),
-                ):
-                    result = await _run_phase2_deduplication(1)
-
-                    assert result["characters"] == 0
-
-    async def test_phase2_handles_exceptions_gracefully(self):
-        """Test that Phase 2 handles exceptions without failing."""
-        from core.langgraph.nodes.commit_node import _run_phase2_deduplication
-
-        with patch("core.langgraph.nodes.commit_node.config") as mock_config:
-            mock_config.ENABLE_PHASE2_DEDUPLICATION = True
-
-            with patch(
-                "processing.entity_deduplication.find_relationship_based_duplicates",
-                new=AsyncMock(side_effect=Exception("Database error")),
-            ):
-                result = await _run_phase2_deduplication(1)
-
-                assert result["characters"] == 0
-                assert result["world_items"] == 0
 
 
 class TestConversionEdgeCases:

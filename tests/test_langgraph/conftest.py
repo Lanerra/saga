@@ -248,14 +248,6 @@ def mock_kg_queries() -> Generator[MagicMock, None, None]:
 
 
 @pytest.fixture
-def mock_entity_deduplication() -> Generator[MagicMock, None, None]:
-    """Mock entity deduplication functions."""
-    with patch("processing.entity_deduplication.check_entity_similarity") as mock_check:
-        mock_check.return_value = AsyncMock(return_value=None)
-        yield mock_check
-
-
-@pytest.fixture
 def sample_llm_extraction_response() -> str:
     """Sample LLM extraction response in JSON format."""
     return """{

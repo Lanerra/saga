@@ -443,7 +443,7 @@ def test_parse_world_items_extraction():
         '{"name":"Dark Forest","category":"location","description":"A dangerous place"}]'
     )
 
-    with patch("processing.entity_deduplication.generate_entity_id") as mock_id:
+    with patch("utils.text_processing.generate_entity_id") as mock_id:
         mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
 
         result = _parse_world_items_extraction(response)

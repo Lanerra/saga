@@ -706,19 +706,6 @@ class Neo4jManagerSingleton:
     # Database maintenance methods
     # -------------------------------------------------------------------------
 
-    async def cleanup_orphaned_traits(self) -> int:
-        """Clean up orphaned trait nodes.
-
-        NOTE: This method is deprecated. Traits are no longer stored as separate
-        entities in the graph. They are now stored as properties on Character nodes.
-        This method is kept for backward compatibility and always returns 0.
-
-        Returns:
-            Always returns 0 (no orphaned traits to clean up).
-        """
-        self.logger.warning("cleanup_orphaned_traits is deprecated: traits are now stored as " "properties on Character nodes, not as separate entities.")
-        return 0
-
     # -------------------------------------------------------------------------
     # Orphaned Node Detection Methods
     # -------------------------------------------------------------------------

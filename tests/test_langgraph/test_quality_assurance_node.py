@@ -35,16 +35,11 @@ async def test_check_quality_appends_parseable_iso8601_timestamp(
 
     # Enable all sub-checks, but patch the I/O functions so the test remains hermetic.
     monkeypatch.setattr(config.settings, "QA_CHECK_CONTRADICTORY_TRAITS", True)
-    monkeypatch.setattr(config.settings, "QA_CHECK_POST_MORTEM_ACTIVITY", True)
     monkeypatch.setattr(config.settings, "QA_DEDUPLICATE_RELATIONSHIPS", True)
     monkeypatch.setattr(config.settings, "QA_CONSOLIDATE_RELATIONSHIPS", True)
 
     monkeypatch.setattr(
         "core.langgraph.nodes.quality_assurance_node.find_contradictory_trait_characters",
-        AsyncMock(return_value=[]),
-    )
-    monkeypatch.setattr(
-        "core.langgraph.nodes.quality_assurance_node.find_post_mortem_activity",
         AsyncMock(return_value=[]),
     )
     monkeypatch.setattr(

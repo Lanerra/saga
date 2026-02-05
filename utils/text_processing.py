@@ -1,4 +1,5 @@
 # utils/text_processing.py
+import hashlib
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -50,6 +51,32 @@ def _normalize_for_id(text: str) -> str:
     text = re.sub(r"\s+", "_", text)
     text = re.sub(r"[^a-z0-9_]", "", text)
     return text
+
+
+def generate_entity_id(name: str, category: str, chapter: int) -> str:
+    """Generate a deterministic entity ID.
+
+    Args:
+        name: Entity name.
+        category: Entity category (for world items) or `"character"` for characters.
+        chapter: Chapter number associated with the entity.
+
+    Returns:
+        A stable identifier derived from a normalized form of `name` and `category`.
+    """
+    if not isinstance(name, str):
+        raise TypeError("name must be a string")
+    if not isinstance(category, str):
+        raise TypeError("category must be a string")
+    if not isinstance(chapter, int) or isinstance(chapter, bool):
+        raise TypeError("chapter must be an int")
+
+    normalized_name = re.sub(r"[^\w\s]", "", name.lower().strip())
+    normalized_name = re.sub(r"\s+", "_", normalized_name)
+
+    content_hash = hashlib.md5(f"{normalized_name}_{category}".encode()).hexdigest()[:12]
+
+    return f"entity_{content_hash}"
 
 
 async def get_context_snippet_for_patch(original_text: str, problem: dict[str, Any], max_chars: int) -> str:

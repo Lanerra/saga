@@ -12,8 +12,16 @@ workflow. This node:
 Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 """
 
+from typing import Any
+
 import structlog
 
+from core.langgraph.content_manager import (
+    ContentManager,
+    get_draft_text,
+    require_project_dir,
+)
+from core.langgraph.state import NarrativeState
 from core.parsers.narrative_enrichment_parser import (
     NarrativeEnrichmentParser,
 )
@@ -337,16 +345,103 @@ class NarrativeEnrichmentNode:
         self,
         existing_embedding: list[float],
         new_embedding: list[float],
+        tolerance: float = 0.1,
     ) -> bool:
         """Validate that new embedding is not significantly different from existing one.
 
         Args:
             existing_embedding: Existing embedding vector
             new_embedding: New embedding vector to validate
+            tolerance: Maximum allowed cosine distance between embeddings
 
         Returns:
-            bool: True if valid, False if significantly different
+            bool: True if valid (embeddings are similar), False if significantly different
+
+        Notes:
+            Uses cosine similarity to compare embeddings. Embeddings are considered
+            "significantly different" if their cosine similarity is below (1 - tolerance).
         """
-        # Simple validation: check if embeddings are similar
-        # This is a placeholder for more sophisticated validation
-        return True
+        import numpy as np
+
+        if len(existing_embedding) != len(new_embedding):
+            logger.error(
+                "_validate_embedding: embedding dimension mismatch",
+                existing_dim=len(existing_embedding),
+                new_dim=len(new_embedding),
+            )
+            return False
+
+        # Convert to numpy arrays for efficient computation
+        existing_array = np.array(existing_embedding, dtype=np.float64)
+        new_array = np.array(new_embedding, dtype=np.float64)
+
+        # Compute cosine similarity
+        existing_norm = np.linalg.norm(existing_array)
+        new_norm = np.linalg.norm(new_array)
+
+        if existing_norm == 0 or new_norm == 0:
+            logger.warning(
+                "_validate_embedding: zero-norm embedding detected",
+                existing_norm=existing_norm,
+                new_norm=new_norm,
+            )
+            return False
+
+        cosine_similarity = np.dot(existing_array, new_array) / (existing_norm * new_norm)
+
+        # Convert to cosine distance
+        cosine_distance = 1.0 - cosine_similarity
+
+        is_similar = cosine_distance < tolerance
+
+        if not is_similar:
+            logger.warning(
+                "_validate_embedding: embeddings significantly different",
+                cosine_distance=cosine_distance,
+                tolerance=tolerance,
+            )
+
+        return is_similar
+
+
+async def enrich_narrative(state: NarrativeState) -> dict[str, Any]:
+    """Run narrative enrichment for the current chapter draft.
+
+    Args:
+        state: Workflow state.
+
+    Returns:
+        Partial state update with:
+        - current_node: "narrative_enrichment"
+        - last_error: Optional error string when enrichment fails
+    """
+    chapter_number = state.get("current_chapter", 1)
+    if not isinstance(chapter_number, int) or isinstance(chapter_number, bool) or chapter_number <= 0:
+        raise ValueError("narrative_enrichment expected current_chapter to be a positive int")
+
+    if not state.get("draft_ref"):
+        return {
+            "current_node": "narrative_enrichment",
+            "last_error": "Narrative enrichment skipped: draft_ref is missing",
+        }
+
+    project_dir = require_project_dir(state)
+    content_manager = ContentManager(project_dir)
+    draft_text = get_draft_text(state, content_manager)
+
+    node = NarrativeEnrichmentNode()
+    result = await node.process(draft_text, chapter_number)
+
+    if result.startswith("Failed"):
+        return {
+            "current_node": "narrative_enrichment",
+            "last_error": result,
+        }
+
+    return {
+        "current_node": "narrative_enrichment",
+        "last_error": None,
+    }
+
+
+__all__ = ["NarrativeEnrichmentNode", "enrich_narrative"]

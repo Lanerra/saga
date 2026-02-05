@@ -28,6 +28,7 @@ from .text_processing import (
     _normalize_text_for_matching,
     classify_category_label,
     find_quote_and_sentence_offsets_with_spacy,
+    generate_entity_id,
     get_context_snippet_for_patch,
     get_text_segments,
     load_spacy_model_if_needed,
@@ -140,4 +141,5 @@ __all__ = [
     "remove_spans_from_text",
     "classify_category_label",
     "validate_world_item_fields",
+    "generate_entity_id",
 ]

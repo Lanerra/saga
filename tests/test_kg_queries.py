@@ -322,16 +322,6 @@ class TestQualityAssuranceQueries:
         assert isinstance(result, list)
         assert mock_read.call_count == 2
 
-    async def test_find_post_mortem_activity(self, monkeypatch):
-        """Test finding post-mortem activity."""
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
-
-        result = await kg_queries.find_post_mortem_activity()
-        assert isinstance(result, list)
-        mock_read.assert_called_once()
-
-
 @pytest.mark.asyncio
 class TestEntityDeduplication:
     """Tests for entity deduplication."""
@@ -406,29 +396,6 @@ class TestRelationshipMaintenance:
 
         mock_read.assert_called_once()
         mock_write.assert_not_called()
-
-
-@pytest.mark.asyncio
-class TestDynamicRelationships:
-    """Tests for dynamic relationship operations."""
-
-    async def test_promote_dynamic_relationships(self, monkeypatch):
-        """Test promoting dynamic relationships."""
-        # promote_dynamic_relationships() is now a thin wrapper around the canonical
-        # relationship maintenance pipeline. It performs:
-        # - _validate_and_correct_relationship_types(): execute_read_query (+ optional write updates)
-        # - promotion: execute_write_query
-        mock_read = AsyncMock(return_value=[])
-        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
-
-        mock_write = AsyncMock(return_value=[{"promoted": 0}])
-        monkeypatch.setattr(kg_queries.neo4j_manager, "execute_write_query", mock_write)
-
-        result = await kg_queries.promote_dynamic_relationships()
-        assert result == 0
-
-        mock_read.assert_called_once()
-        mock_write.assert_called_once()
 
 
 @pytest.mark.asyncio

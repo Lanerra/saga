@@ -16,7 +16,7 @@ Notes:
 from typing import TYPE_CHECKING, Any
 
 from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS
-from processing.entity_deduplication import generate_entity_id
+from utils.text_processing import generate_entity_id
 from utils import classify_category_label
 from utils.common import flatten_dict
 
