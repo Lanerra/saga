@@ -276,13 +276,10 @@ class NarrativeEnrichmentParser:
             return []
 
         # Get the chapter to update
-        chapter_data = await get_chapter_data_from_db(self.chapter_number)
-        if not chapter_data:
+        chapter = await get_chapter_data_from_db(self.chapter_number)
+        if not chapter:
             logger.warning(f"No chapter found with number {self.chapter_number}")
             return []
-
-        # Convert dict to Chapter model
-        chapter = Chapter(**chapter_data)
 
         # Extract embedding using the embedding service
         try:

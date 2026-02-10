@@ -127,7 +127,6 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             error_msg = "LLM returned empty global outline"
             logger.error("generate_global_outline: empty response")
             return {
-                **state,
                 "last_error": error_msg,
                 "current_node": "global_outline",
                 "initialization_step": "global_outline_failed",
@@ -156,7 +155,6 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "global_outline_ref": global_outline_ref,
             "current_node": "global_outline",
             "last_error": None,
@@ -171,7 +169,6 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "global_outline",
             "initialization_step": "global_outline_failed",

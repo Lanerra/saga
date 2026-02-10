@@ -99,7 +99,6 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
     if not draft_text:
         logger.warning("evaluate_quality: no draft text to evaluate")
         return {
-            **state,
             "coherence_score": None,
             "prose_quality_score": None,
             "plot_advancement_score": None,
@@ -157,18 +156,18 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         # Add quality-based revision trigger
         current_contradictions = state.get("contradictions", [])
         if avg_quality < min_quality_threshold:
-            current_contradictions.append(
+            current_contradictions = [
+                *current_contradictions,
                 Contradiction(
                     type="quality_issue",
                     description=f"Overall quality score ({avg_quality:.2f}) below threshold ({min_quality_threshold})",
                     conflicting_chapters=[state.get("current_chapter", 1)],
                     severity="major",
                     suggested_fix=scores.get("feedback", "Improve prose quality and coherence"),
-                )
-            )
+                ),
+            ]
 
         return {
-            **state,
             "coherence_score": scores.get("coherence_score"),
             "prose_quality_score": scores.get("prose_quality_score"),
             "plot_advancement_score": scores.get("plot_advancement_score"),
@@ -186,7 +185,6 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
         )
         # Return state with no scores on error
         return {
-            **state,
             "coherence_score": None,
             "prose_quality_score": None,
             "plot_advancement_score": None,
@@ -494,10 +492,16 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
         current_chapter,
         validation_data.get("relationships", {}),
     )
-    contradictions.extend(relationship_issues)
+    contradictions = [
+        *contradictions,
+        *relationship_issues,
+    ]
 
     scene_duplication_issues = _check_scene_duplication(state, content_manager)
-    contradictions.extend(scene_duplication_issues)
+    contradictions = [
+        *contradictions,
+        *scene_duplication_issues,
+    ]
 
     logger.info(
         "detect_contradictions: contradiction detection complete",
@@ -524,7 +528,6 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
             major_issues=len(major_issues),
         )
         return {
-            **state,
             "has_fatal_error": True,
             "last_error": error_msg,
             "error_node": "validate",
@@ -536,7 +539,6 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     needs_revision = has_issues and not force_continue
 
     return {
-        **state,
         "contradictions": contradictions,
         "needs_revision": needs_revision,
         "current_node": "detect_contradictions",

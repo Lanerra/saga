@@ -137,16 +137,18 @@ async def test_extract_chapter_embeddings(sample_narrative_text, sample_chapter_
 
     # Mock the get_chapter_data_from_db function
     with patch("core.parsers.narrative_enrichment_parser.get_chapter_data_from_db") as mock_get_chapter:
-        mock_get_chapter.return_value = {
-            "id": "chapter_1",
-            "number": 1,
-            "title": "Test Chapter",
-            "summary": "Test summary",
-            "act_number": 1,
-            "embedding": None,
-            "created_chapter": 1,
-            "is_provisional": False,
-        }
+        from models.kg_models import Chapter
+
+        mock_get_chapter.return_value = Chapter(
+            id="chapter_1",
+            number=1,
+            title="Test Chapter",
+            summary="Test summary",
+            act_number=1,
+            embedding=None,
+            created_chapter=1,
+            is_provisional=False,
+        )
 
         # Mock the _generate_embedding_vector method
         with patch.object(parser, "_generate_embedding_vector", new_callable=AsyncMock) as mock_generate_embedding:

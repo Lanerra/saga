@@ -59,7 +59,6 @@ async def run_initialization_parsers(state: NarrativeState) -> NarrativeState:
                 error=error_msg,
             )
             return {
-                **state,
                 "current_node": "run_parsers",
                 "last_error": error_msg,
                 "has_fatal_error": True,
@@ -73,7 +72,6 @@ async def run_initialization_parsers(state: NarrativeState) -> NarrativeState:
         )
 
         return {
-            **state,
             "current_node": "run_parsers",
             "last_error": None,
             "initialization_step": "parsers_complete",
@@ -87,7 +85,6 @@ async def run_initialization_parsers(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "current_node": "run_parsers",
             "last_error": error_msg,
             "has_fatal_error": True,

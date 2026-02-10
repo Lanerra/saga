@@ -149,6 +149,7 @@ class NarrativeState(TypedDict, total=False):
     # Externalized content references
     draft_ref: ContentRef | None  # Reference to externalized draft text
     embedding_ref: ContentRef | None  # Reference to externalized embedding
+    generated_embedding: ContentRef | None  # Reference to generated text embedding
     scene_embeddings_ref: ContentRef | None  # Reference to externalized scene embeddings (per chapter)
 
     # =========================================================================
@@ -371,6 +372,7 @@ def create_initial_state(
         # Externalized content references
         "draft_ref": None,
         "embedding_ref": None,
+        "generated_embedding": None,
         "scene_embeddings_ref": None,
         "summaries_ref": None,
         "scene_drafts_ref": None,

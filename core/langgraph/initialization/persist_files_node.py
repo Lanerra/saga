@@ -170,7 +170,6 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
                 missing=missing,
             )
             return {
-                **state,
                 "current_node": "persist_files",
                 "last_error": error_msg,
                 "has_fatal_error": True,
@@ -181,7 +180,6 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         logger.info("persist_initialization_files: initialization artifacts validation passed")
 
         return {
-            **state,
             "current_node": "persist_files",
             "last_error": None,
             "initialization_step": "files_persisted",
@@ -195,7 +193,6 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
             exc_info=True,
         )
         return {
-            **state,
             "current_node": "persist_files",
             "last_error": error_msg,
             "initialization_step": "file_persistence_failed",

@@ -1,5 +1,5 @@
 # data_access/chapter_queries.py
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
@@ -8,6 +8,9 @@ from neo4j.exceptions import Neo4jError
 import config
 from core.db_manager import neo4j_manager
 from core.exceptions import handle_database_error
+
+if TYPE_CHECKING:
+    from models.kg_models import Chapter
 
 logger = structlog.get_logger(__name__)
 
@@ -185,17 +188,14 @@ async def save_chapter_data_to_db(
         raise handle_database_error("save chapter data", e, chapter_number=chapter_number) from e
 
 
-async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None:
-    """Return chapter summary metadata for a single chapter.
+async def get_chapter_data_from_db(chapter_number: int) -> "Chapter | None":
+    """Return complete chapter data for a single chapter.
 
     Args:
         chapter_number: Chapter number to fetch.
 
     Returns:
-        A dict with keys:
-        - `summary`
-        - `is_provisional`
-
+        A Chapter object with all fields populated from the database.
         Returns None when `chapter_number` is invalid or when no chapter exists.
 
     Raises:
@@ -206,16 +206,35 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
         return None
     query = """
     MATCH (c:Chapter {number: $chapter_number_param})
-    RETURN c.summary AS summary, c.is_provisional AS is_provisional
+    RETURN c.id AS id,
+           c.number AS number,
+           c.title AS title,
+           c.summary AS summary,
+           c.act_number AS act_number,
+           c.embedding_vector AS embedding,
+           c.created_chapter AS created_chapter,
+           c.is_provisional AS is_provisional,
+           c.created_ts AS created_ts,
+           c.updated_ts AS updated_ts
     """
     try:
         result = await neo4j_manager.execute_read_query(query, {"chapter_number_param": chapter_number})
         if result and result[0]:
             logger.debug(f"Neo4j: Data found for chapter {chapter_number}.")
-            return {
-                "summary": result[0].get("summary"),
-                "is_provisional": result[0].get("is_provisional", False),
-            }
+            from models.kg_models import Chapter
+
+            return Chapter(
+                id=result[0].get("id", compute_chapter_id(chapter_number)),
+                number=result[0].get("number", chapter_number),
+                title=result[0].get("title", f"Chapter {chapter_number}"),
+                summary=result[0].get("summary", ""),
+                act_number=result[0].get("act_number", 1),
+                embedding=result[0].get("embedding"),
+                created_chapter=result[0].get("created_chapter", 0),
+                is_provisional=result[0].get("is_provisional", False),
+                created_ts=result[0].get("created_ts"),
+                updated_ts=result[0].get("updated_ts"),
+            )
         logger.debug(f"Neo4j: No data found for chapter {chapter_number}.")
         return None
     except (Neo4jError, KeyError, ValueError) as e:
@@ -223,9 +242,6 @@ async def get_chapter_data_from_db(chapter_number: int) -> dict[str, Any] | None
             f"Neo4j: Error getting chapter data for {chapter_number}: {e}",
             exc_info=True,
         )
-        # P1.9: Standardize error handling.
-        # Returning None is reserved for "not found" / invalid inputs; DB/runtime errors should
-        # be raised so callers can distinguish operational failures from missing data.
         raise handle_database_error(
             "get_chapter_data_from_db",
             e,

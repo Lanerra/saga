@@ -58,7 +58,7 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
         logger.error("draft_scene: invalid scene index", index=scene_index)
         return {"current_node": "draft_scene"}
 
-    current_scene = chapter_plan[scene_index]
+    current_scene = dict(chapter_plan[scene_index])  # Make a copy to avoid mutation
 
     # Inject scene_number for template access (scenes are 1-indexed)
     current_scene["scene_number"] = scene_index + 1

@@ -106,7 +106,6 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
                 )
 
                 return {
-                    **state,
                     "chapter_outlines_ref": chapter_outlines_ref,
                     "current_node": "chapter_outline",
                     "last_error": None,
@@ -119,7 +118,6 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
             version=outline_version,
         )
         return {
-            **state,
             "current_node": "chapter_outline",
             "initialization_step": f"chapter_outline_{chapter_number}_exists",
         }
@@ -152,7 +150,6 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
             chapter=chapter_number,
         )
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "chapter_outline",
             "initialization_step": f"chapter_outline_{chapter_number}_failed",
@@ -189,7 +186,6 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "chapter_outlines_ref": chapter_outlines_ref,
         "current_node": "chapter_outline",
         "last_error": None,

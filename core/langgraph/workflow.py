@@ -164,7 +164,7 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
             (`last_error`, `error_node`).
 
     Returns:
-        Updated state with `current_node="error_handler"`.
+        Partial state update with `current_node="error_handler"`.
     """
     logger.error(
         "handle_fatal_error: workflow terminated due to fatal error",
@@ -176,10 +176,7 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
     # Could write error to file for debugging in the future
     # error_file = Path(state["project_dir"]) / ".saga" / "last_error.json"
 
-    return {
-        **state,
-        "current_node": "error_handler",
-    }
+    return {"current_node": "error_handler"}
 
 
 @asynccontextmanager
@@ -267,7 +264,7 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
         state: Current workflow state.
 
     Returns:
-        Updated state with `current_chapter` incremented and flags reset.
+        Partial state update with `current_chapter` incremented and flags reset.
     """
     next_chapter = state.get("current_chapter", 1) + 1
 
@@ -278,7 +275,6 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "current_chapter": next_chapter,
         "iteration_count": 0,
         "force_continue": False,
@@ -380,7 +376,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
             step=step,
         )
         return {
-            **state,
             "has_fatal_error": True,
             "last_error": f"Initialization failed at step {step}: {error}",
         }
@@ -407,7 +402,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
             has_act_outlines_ref=bool(state.get("act_outlines_ref")),
         )
         return {
-            **state,
             "initialization_complete": True,
             "initialization_step": "complete",
         }

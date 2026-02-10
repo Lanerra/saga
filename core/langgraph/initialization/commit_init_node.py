@@ -150,7 +150,6 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         # Step 4: Update active_characters with committed profiles
         # This makes characters immediately available to the generation loop
         updated_state: NarrativeState = {
-            **state,
             "active_characters": character_profiles[:3],  # Top 5 for initial context
             "world_items": world_items,
             "current_node": "commit_initialization",
@@ -168,7 +167,6 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             exc_info=True,
         )
         return {
-            **state,
             "current_node": "commit_initialization",
             "last_error": error_msg,
             "has_fatal_error": True,

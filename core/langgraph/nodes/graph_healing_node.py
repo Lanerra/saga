@@ -65,11 +65,6 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
                 chapter=current_chapter,
                 apoc_available=results.get("apoc_available"),
             )
-            state["last_healing_warnings"] = healing_warnings
-
-        # Update healing history
-        healing_history = state.get("healing_history", [])
-        healing_history.append(results)
 
         # Calculate running totals
         total_graduated = state.get("nodes_graduated", 0) + results["nodes_graduated"]
@@ -85,23 +80,31 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
 
         # Extract merge candidates for potential user review.
         # `merge_candidates` must be populated consistently (was previously always empty).
-        merge_candidates: list[dict[str, object]] = []
-        pending_merges: list[dict[str, object]] = []
-        auto_approved_merges: list[dict[str, object]] = []
+        merge_candidates: list[dict[str, object]] = [
+            {
+                "primary": action.get("primary"),
+                "duplicate": action.get("duplicate"),
+                "similarity": action.get("similarity"),
+            }
+            for action in results.get("actions", [])
+            if action.get("type") == "merge"
+        ]
+        pending_merges: list[dict[str, object]] = [
+            merge_info
+            for merge_info in merge_candidates
+            if not merge_info.get("auto_approved")
+        ]
+        auto_approved_merges: list[dict[str, object]] = [
+            merge_info
+            for merge_info in merge_candidates
+            if merge_info.get("auto_approved")
+        ]
 
-        for action in results.get("actions", []):
-            if action.get("type") == "merge":
-                merge_info = {
-                    "primary": action.get("primary"),
-                    "duplicate": action.get("duplicate"),
-                    "similarity": action.get("similarity"),
-                }
-                merge_candidates.append(merge_info)
-
-                if action.get("auto_approved"):
-                    auto_approved_merges.append(merge_info)
-                else:
-                    pending_merges.append(merge_info)
+        # Update healing history with new results
+        healing_history = [
+            *state.get("healing_history", []),
+            results,
+        ]
 
         logger.info(
             "heal_graph: Graph healing complete",

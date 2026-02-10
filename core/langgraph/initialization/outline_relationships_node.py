@@ -45,7 +45,6 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
     if not global_outline and not act_outlines:
         logger.warning("extract_outline_relationships: no outlines found, skipping")
         return {
-            **state,
             "outline_relationships_ref": None,
             "current_node": "outline_relationships",
         }  # type: ignore[return-value]
@@ -87,7 +86,6 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
     if not relationships:
         logger.info("extract_outline_relationships: no relationships extracted")
         return {
-            **state,
             "outline_relationships_ref": None,
             "current_node": "outline_relationships",
         }
@@ -111,7 +109,6 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
     )
 
     result: NarrativeState = {
-        **state,
         "outline_relationships_ref": outline_relationships_ref,
         "current_node": "outline_relationships",
         "initialization_step": "outline_relationships_extracted",

@@ -167,7 +167,6 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         error_msg = "No global outline available for act outline generation"
         logger.error("generate_act_outlines: missing global outline")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "act_outlines",
             "initialization_step": "act_outlines_failed",
@@ -234,7 +233,6 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
         error_msg = "Failed to generate any act outlines"
         logger.error("generate_act_outlines: no outlines generated")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "act_outlines",
             "initialization_step": "act_outlines_failed",
@@ -277,7 +275,6 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "act_outlines_ref": act_outlines_ref,
         "current_node": "act_outlines",
         "last_error": None,

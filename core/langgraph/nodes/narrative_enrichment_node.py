@@ -153,57 +153,47 @@ class NarrativeEnrichmentNode:
             # Update chapter embeddings
             if chapter_embeddings:
                 for embedding in chapter_embeddings:
-                    chapter_number = embedding.chapter_number
                     embedding_vector = embedding.embedding_vector
 
-                    # Find chapter by number
-                    chapter = next((c for c in [chapter_data] if c.number == chapter_number), None)
-
-                    if not chapter:
-                        logger.error("NarrativeEnrichmentNode: Chapter not found", chapter_number=chapter_number)
-                        return f"Failed to enrich narrative: Chapter {chapter_number} not found"
-
                     # Check if embedding already exists
-                    if chapter.embedding:
+                    if chapter_data.embedding:
                         # Validate that new embedding is not significantly different
                         if self._validate_embedding(
-                            chapter.embedding,
+                            chapter_data.embedding,
                             embedding_vector,
                         ):
                             # Update chapter with new embedding
-                            chapter.embedding = embedding_vector
                             await save_chapter_data_to_db(
-                                chapter_number=chapter.number,
-                                title=chapter.title,
-                                act_number=chapter.act_number,
-                                summary=chapter.summary,
+                                chapter_number=chapter_data.number,
+                                title=chapter_data.title,
+                                act_number=chapter_data.act_number,
+                                summary=chapter_data.summary,
                                 embedding_array=embedding_vector,
-                                is_provisional=chapter.is_provisional,
+                                is_provisional=chapter_data.is_provisional,
                             )
                             logger.info(
                                 "NarrativeEnrichmentNode: Updated chapter embedding",
-                                chapter_number=chapter_number,
+                                chapter_number=chapter_data.number,
                             )
                         else:
                             logger.error(
                                 "NarrativeEnrichmentNode: Invalid embedding",
-                                chapter_number=chapter_number,
+                                chapter_number=chapter_data.number,
                             )
-                            return f"Failed to enrich narrative: Invalid embedding for chapter {chapter_number}"
+                            return f"Failed to enrich narrative: Invalid embedding for chapter {chapter_data.number}"
                     else:
                         # Add embedding to chapter
-                        chapter.embedding = embedding_vector
                         await save_chapter_data_to_db(
-                            chapter_number=chapter.number,
-                            title=chapter.title,
-                            act_number=chapter.act_number,
-                            summary=chapter.summary,
+                            chapter_number=chapter_data.number,
+                            title=chapter_data.title,
+                            act_number=chapter_data.act_number,
+                            summary=chapter_data.summary,
                             embedding_array=embedding_vector,
-                            is_provisional=chapter.is_provisional,
+                            is_provisional=chapter_data.is_provisional,
                         )
                         logger.info(
                             "NarrativeEnrichmentNode: Added chapter embedding",
-                            chapter_number=chapter_number,
+                            chapter_number=chapter_data.number,
                         )
 
             return "Successfully enriched narrative"

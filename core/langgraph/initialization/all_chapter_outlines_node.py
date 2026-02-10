@@ -54,7 +54,6 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
     if not settings.GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT:
         logger.info("generate_all_chapter_outlines: skipping (disabled by config), " "will generate on-demand")
         return {
-            **state,
             "initialization_step": "all_chapter_outlines_skipped",
         }
 
@@ -101,7 +100,6 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
         error_msg = "Failed to generate any chapter outlines"
         logger.error("generate_all_chapter_outlines: no outlines generated")
         return {
-            **state,
             "last_error": error_msg,
             "initialization_step": "all_chapter_outlines_failed",
         }
@@ -124,7 +122,6 @@ async def generate_all_chapter_outlines(state: NarrativeState) -> NarrativeState
     )
 
     return {
-        **state,
         "chapter_outlines_ref": chapter_outlines_ref,
         "last_error": None,
         "initialization_step": "all_chapter_outlines_complete",

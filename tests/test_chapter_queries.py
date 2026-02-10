@@ -110,8 +110,16 @@ class TestGetChapterData:
         mock_read = AsyncMock(
             return_value=[
                 {
+                    "id": "chapter_001",
+                    "number": 1,
+                    "title": "Test Chapter",
                     "summary": "Chapter summary",
+                    "act_number": 1,
+                    "embedding": None,
+                    "created_chapter": 1,
                     "is_provisional": False,
+                    "created_ts": 1234567890,
+                    "updated_ts": 1234567890,
                 }
             ]
         )
@@ -119,8 +127,8 @@ class TestGetChapterData:
 
         result = await chapter_queries.get_chapter_data_from_db(1)
         assert result is not None
-        assert result["summary"] == "Chapter summary"
-        assert result["is_provisional"] is False
+        assert result.summary == "Chapter summary"
+        assert result.is_provisional is False
 
     async def test_get_chapter_data_not_found(self, monkeypatch):
         """Test getting chapter data when not found."""

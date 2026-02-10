@@ -223,7 +223,6 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
         error_msg = "Missing required fields: title and genre"
         logger.error("generate_character_sheets: validation failed", error=error_msg)
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "character_sheets",
             "initialization_step": "character_sheets_failed",
@@ -241,7 +240,6 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
         error_msg = "Failed to generate character list"
         logger.error("generate_character_sheets: character list generation failed")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "character_sheets",
             "initialization_step": "character_sheets_failed",
@@ -274,7 +272,6 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
         error_msg = "Failed to generate any character sheets"
         logger.error("generate_character_sheets: no sheets generated")
         return {
-            **state,
             "last_error": error_msg,
             "current_node": "character_sheets",
             "initialization_step": "character_sheets_failed",
@@ -303,7 +300,6 @@ async def generate_character_sheets(state: NarrativeState) -> NarrativeState:
     )
 
     return {
-        **state,
         "character_sheets_ref": character_sheets_ref,
         "current_node": "character_sheets",
         "last_error": None,
