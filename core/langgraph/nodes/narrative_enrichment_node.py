@@ -14,6 +14,7 @@ Based on: docs/schema-design.md - Stage 5: Narrative Generation & Enrichment
 
 from typing import Any
 
+import numpy as np
 import structlog
 
 from core.langgraph.content_manager import (
@@ -154,6 +155,7 @@ class NarrativeEnrichmentNode:
             if chapter_embeddings:
                 for embedding in chapter_embeddings:
                     embedding_vector = embedding.embedding_vector
+                    embedding_array = np.array(embedding_vector) if isinstance(embedding_vector, list) else embedding_vector
 
                     # Check if embedding already exists
                     if chapter_data.embedding:
@@ -168,7 +170,7 @@ class NarrativeEnrichmentNode:
                                 title=chapter_data.title,
                                 act_number=chapter_data.act_number,
                                 summary=chapter_data.summary,
-                                embedding_array=embedding_vector,
+                                embedding_array=embedding_array,
                                 is_provisional=chapter_data.is_provisional,
                             )
                             logger.info(
@@ -188,7 +190,7 @@ class NarrativeEnrichmentNode:
                             title=chapter_data.title,
                             act_number=chapter_data.act_number,
                             summary=chapter_data.summary,
-                            embedding_array=embedding_vector,
+                            embedding_array=embedding_array,
                             is_provisional=chapter_data.is_provisional,
                         )
                         logger.info(

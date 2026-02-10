@@ -323,14 +323,10 @@ class NarrativeEnrichmentParser:
             List of floats representing the embedding vector, or None if generation fails
         """
         try:
-            # Use the embedding service to generate the embedding
-            embedding = await llm_service.generate_embedding(
-                text,
-                model=self.extraction_model,
-            )
+            embedding = await llm_service.async_get_embedding(text)
 
-            if embedding and len(embedding) > 0:
-                return embedding
+            if embedding is not None and len(embedding) > 0:
+                return embedding.tolist() if isinstance(embedding, np.ndarray) else list(embedding)
             else:
                 logger.warning(f"Empty embedding vector generated for text: {text[:100]}")
                 return None
