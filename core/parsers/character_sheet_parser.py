@@ -107,11 +107,12 @@ class CharacterSheetParser:
         if not character_data.get("status"):
             character_data["status"] = "Active"
 
-        # Validate status is one of the allowed values
         allowed_statuses = ["Active", "Dead", "Injured", "Unknown", "Missing"]
         if character_data["status"] not in allowed_statuses:
-            logger.warning(f"Invalid status '{character_data['status']}' for character {character_name}. Using 'Active' as default.")
-            character_data["status"] = "Active"
+            raise ValueError(
+                f"Invalid status {character_data['status']!r} for character {character_name!r}. "
+                f"Allowed values: {allowed_statuses}"
+            )
 
         # Validate and filter traits to ensure single-word format
         raw_traits = character_data.get("traits", [])

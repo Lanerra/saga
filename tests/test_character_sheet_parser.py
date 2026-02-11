@@ -84,19 +84,13 @@ class TestCharacterSheetParser:
             parser._parse_character_sheet("Test", {"name": "Test"})
 
     async def test_parse_character_sheet_invalid_status(self):
-        """Test parsing of character sheet with invalid status."""
+        """Invalid character status raises ValueError."""
         parser = CharacterSheetParser()
 
-        # Test invalid status (should default to Active)
         character_data = {"name": "Test", "description": "Test character", "traits": ["test"], "status": "InvalidStatus"}
 
-        with patch("core.parsers.character_sheet_parser.logger") as mock_logger:
-            result = parser._parse_character_sheet("Test", character_data)
-
-            # Check that warning was logged
-            assert mock_logger.warning.called
-            # Check that status was set to Active
-            assert result.status == "Active"
+        with pytest.raises(ValueError, match="Invalid status 'InvalidStatus'"):
+            parser._parse_character_sheet("Test", character_data)
 
     async def test_parse_relationships(self, sample_character_sheets):
         """Test parsing of relationships from character sheets."""

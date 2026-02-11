@@ -144,31 +144,13 @@ async def _ensure_scene_characters_exist(
         This function performs Neo4j I/O and is best-effort. Failures are logged and
         do not raise, because the workflow can still proceed without stubs.
     """
-    # Extract all unique character names from scene plans
-    scene_characters = set()
+    scene_characters: set[str] = set()
     for scene in chapter_plan:
-        # Check various possible field names for character lists
-        for field in ["characters", "characters_involved", "character_list", "cast"]:
-            chars = scene.get(field)
-            if chars:
-                if isinstance(chars, list):
-                    for char in chars:
-                        if isinstance(char, str) and char.strip():
-                            clean_name = normalize_entity_name(char)
-                            if clean_name:
-                                scene_characters.add(clean_name)
-                        elif isinstance(char, dict) and char.get("name"):
-                            clean_name = normalize_entity_name(char["name"])
-                            if clean_name:
-                                scene_characters.add(clean_name)
-                elif isinstance(chars, str):
-                    # Comma-separated list
-                    for c in chars.split(","):
-                        if c.strip():
-                            clean_name = normalize_entity_name(c)
-                            if clean_name:
-                                scene_characters.add(clean_name)
-                break
+        chars = scene["characters"]
+        for char in chars:
+            clean_name = normalize_entity_name(char)
+            if clean_name:
+                scene_characters.add(clean_name)
 
     if not scene_characters:
         logger.debug("_ensure_scene_characters_exist: no characters found in scene plans")

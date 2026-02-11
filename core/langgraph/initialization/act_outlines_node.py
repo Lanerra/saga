@@ -172,14 +172,17 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
             "initialization_step": "act_outlines_failed",
         }
 
-    act_count_raw = global_outline.get("act_count", 3)
-    act_count = act_count_raw if isinstance(act_count_raw, int) and not isinstance(act_count_raw, bool) else 3
-    if act_count <= 0:
-        act_count = 3
+    act_count = global_outline.get("act_count")
+    if not isinstance(act_count, int) or isinstance(act_count, bool) or act_count <= 0:
+        raise ValueError(
+            f"global_outline.act_count must be a positive integer, got {act_count!r}"
+        )
 
-    total_chapters = state.get("total_chapters", 20)
-    if not isinstance(total_chapters, int) or isinstance(total_chapters, bool) or total_chapters < 0:
-        total_chapters = 20
+    total_chapters = state.get("total_chapters")
+    if not isinstance(total_chapters, int) or isinstance(total_chapters, bool) or total_chapters is None or total_chapters <= 0:
+        raise ValueError(
+            f"state.total_chapters must be a positive integer, got {total_chapters!r}"
+        )
 
     # Prefer explicit act ranges from global outline when present; otherwise compute
     # balanced ranges that cover all chapters exactly once and distribute remainder.

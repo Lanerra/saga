@@ -319,41 +319,23 @@ async def _get_scene_character_context(
 
 
 def _extract_scene_characters(scene: dict) -> list[str]:
-    """
-    Extract character names from a scene definition.
-
-    Handles multiple possible field names for character lists.
+    """Extract character names from a validated scene definition.
 
     Args:
-        scene: Scene dictionary
+        scene: Scene dictionary with a `characters` key containing a list of strings.
 
     Returns:
-        List of character names
+        Deduplicated list of character names preserving order.
     """
-    characters = []
+    chars = scene.get("characters", [])
 
-    # Check various possible field names
-    for field in ["characters", "characters_involved", "character_list", "cast"]:
-        scene_chars = scene.get(field)
-        if scene_chars:
-            if isinstance(scene_chars, list):
-                for char in scene_chars:
-                    if isinstance(char, str) and char.strip():
-                        characters.append(char.strip())
-                    elif isinstance(char, dict) and char.get("name"):
-                        characters.append(char["name"].strip())
-            elif isinstance(scene_chars, str):
-                # Comma-separated list
-                characters.extend([c.strip() for c in scene_chars.split(",") if c.strip()])
-            break
-
-    # Deduplicate while preserving order
-    seen = set()
-    unique_characters = []
-    for char in characters:
-        if char not in seen:
-            seen.add(char)
-            unique_characters.append(char)
+    seen: set[str] = set()
+    unique_characters: list[str] = []
+    for char in chars:
+        stripped = char.strip()
+        if stripped and stripped not in seen:
+            seen.add(stripped)
+            unique_characters.append(stripped)
 
     return unique_characters
 

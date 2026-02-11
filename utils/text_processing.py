@@ -103,30 +103,26 @@ async def get_context_snippet_for_patch(original_text: str, problem: dict[str, A
 
 
 def validate_world_item_fields(category: str, name: str, item_id: str, allow_empty_name: bool = False) -> tuple[str, str, str]:
-    """Validate and normalize WorldItem core fields, providing defaults for missing values."""
-    # Validate category
-    if not category or not isinstance(category, str) or not category.strip():
-        category = "other"
+    """Validate and normalize WorldItem core fields.
 
-    # Validate name
-    # Only set default name if allow_empty_name is False and name is actually missing/empty
-    if (not allow_empty_name) and (not name or not isinstance(name, str) or not name.strip()):
-        name = "unnamed_element"
+    Raises:
+        ValueError: If category is missing/empty, or if name is missing/empty
+            (when allow_empty_name is False).
+    """
+    if not isinstance(category, str) or not category.strip():
+        raise ValueError(f"WorldItem category must be a non-empty string, got {category!r}")
 
-    # Validate ID: ensure deterministic, human-readable if possible
+    if not allow_empty_name and (not isinstance(name, str) or not name.strip()):
+        raise ValueError(f"WorldItem name must be a non-empty string, got {name!r}")
+
     if not item_id or not isinstance(item_id, str) or not item_id.strip():
         import hashlib
 
-        norm_cat = _normalize_for_id(category) or "other"
-        norm_name = _normalize_for_id(name) or "unnamed"
-        base = f"{norm_cat}_{norm_name}"
-        # If either part is too short or generic, append a stable hash for uniqueness
-        # Use 12-character hash to reduce collision probability (2^48 space)
-        if norm_name in {"", "unnamed"} or norm_cat in {"", "other"}:
-            suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:12]
-            item_id = f"{base}_{suffix}"
-        else:
-            item_id = base
+        norm_cat = _normalize_for_id(category)
+        norm_name = _normalize_for_id(name) if name else ""
+        base = f"{norm_cat}_{norm_name}" if norm_name else norm_cat
+        suffix = hashlib.sha1(f"{category}:{name}".encode()).hexdigest()[:12]
+        item_id = f"{base}_{suffix}"
 
     return category, name, item_id
 

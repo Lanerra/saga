@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from core.exceptions import ValidationError
 from data_access import world_queries
 from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
 
@@ -13,12 +14,12 @@ from models.kg_constants import KG_IS_PROVISIONAL, KG_NODE_CREATED_CHAPTER
 class TestGetWorldItemByIdExtended:
     """Extended tests for get_world_item_by_id."""
 
-    async def test_get_world_item_by_id_missing_fields(self, monkeypatch):
-        """Test handling of world item with missing core fields in DB."""
+    async def test_get_world_item_by_id_missing_fields_raises(self, monkeypatch):
+        """Missing category/name in DB record raises ValidationError."""
+        world_queries.get_world_item_by_id.cache_clear()
 
         mock_node = {
             "id": "loc_missing",
-            # Missing name and category
             "description": "Incomplete",
         }
 
@@ -29,14 +30,8 @@ class TestGetWorldItemByIdExtended:
 
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", AsyncMock(side_effect=mock_read))
 
-        # Should log warning but try to fix it
-        # utils.validate_world_item_fields handles corrections:
-        # If category missing -> "other", name -> "unnamed_element"
-
-        result = await world_queries.get_world_item_by_id("loc_missing")
-        assert result is not None
-        assert result.category == "other"
-        assert result.name == "unnamed_element"
+        with pytest.raises(ValidationError):
+            await world_queries.get_world_item_by_id("loc_missing")
 
     async def test_get_world_item_by_id_with_complex_props(self, monkeypatch):
         """Test retrieving item with list properties and elaborations."""
