@@ -311,30 +311,17 @@ class CharacterSheetParser:
 
         return relationships
 
-    async def create_character_nodes(self, characters: list[CharacterProfile]) -> bool:
+    async def create_character_nodes(self, characters: list[CharacterProfile]) -> None:
         """Create Character nodes in Neo4j.
 
         Args:
             characters: List of CharacterProfile objects to create
 
-        Returns:
-            True if successful, False otherwise
+        Raises:
+            Neo4jError: If the database write fails.
         """
-        try:
-            # Use the existing sync_characters function to persist characters
-            success = await sync_characters(characters, self.chapter_number)
-
-            if not success:
-                logger.error("Failed to persist character nodes to Neo4j")
-                return False
-
-            logger.info("Successfully created %d character nodes", len(characters), extra={"chapter": self.chapter_number})
-
-            return True
-
-        except Exception as e:
-            logger.error("Error creating character nodes: %s", str(e), exc_info=True)
-            return False
+        await sync_characters(characters, self.chapter_number)
+        logger.info("Successfully created %d character nodes", len(characters), extra={"chapter": self.chapter_number})
 
     async def create_relationships(self, relationships: dict[str, dict[str, Any]]) -> bool:
         """Create Character-Character relationships in Neo4j.
@@ -415,10 +402,7 @@ class CharacterSheetParser:
 
             # Step 3: Create character nodes
             logger.info("Creating character nodes in Neo4j")
-            nodes_success = await self.create_character_nodes(characters)
-
-            if not nodes_success:
-                return False, "Failed to create character nodes"
+            await self.create_character_nodes(characters)
 
             # Step 4: Create relationships
             logger.info("Creating relationships in Neo4j")

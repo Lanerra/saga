@@ -476,12 +476,7 @@ class NarrativeEnrichmentParser:
                         extra={"character": character_name, "description": result.extracted_description[:50]},
                     )
 
-            # Sync the updated characters to the database
-            success = await sync_characters(list(character_map.values()), self.chapter_number)
-
-            if not success:
-                logger.error("Failed to sync character updates to database")
-                return False
+            await sync_characters(list(character_map.values()), self.chapter_number)
 
             logger.info(
                 f"Successfully updated {len(extraction_results)} character physical descriptions",

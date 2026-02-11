@@ -901,7 +901,10 @@ async def get_most_recent_value_from_db(
     Returns:
         The object value for the most recent matching relationship. The value may be a string
         or a best-effort conversion to `int`/`float`/`bool` when the stored value is a string.
-        Returns None when inputs are invalid or when no matching value exists.
+        Returns None when no matching value exists.
+
+    Raises:
+        Neo4jError: If the database query fails.
 
     Notes:
         Security:
@@ -940,30 +943,23 @@ async def get_most_recent_value_from_db(
     limit_clause_str = " LIMIT 1"
 
     full_query = match_clause + where_clause + return_clause + order_clause + limit_clause_str
-    try:
-        results = await neo4j_manager.execute_read_query(full_query, parameters)
-        if results and results[0] and "object" in results[0]:
-            value = results[0]["object"]
-            # Attempt to convert to number if it looks like one, as ValueNode.value stores as string from current triple parsing
-            if isinstance(value, str):
-                if re.match(r"^-?\d+$", value):
-                    value = int(value)
-                elif re.match(r"^-?\d*\.\d+$", value):
-                    value = float(value)
-                elif value.lower() == "true":
-                    value = True
-                elif value.lower() == "false":
-                    value = False
+    results = await neo4j_manager.execute_read_query(full_query, parameters)
+    if results and results[0] and "object" in results[0]:
+        value = results[0]["object"]
+        if isinstance(value, str):
+            if re.match(r"^-?\d+$", value):
+                value = int(value)
+            elif re.match(r"^-?\d*\.\d+$", value):
+                value = float(value)
+            elif value.lower() == "true":
+                value = True
+            elif value.lower() == "false":
+                value = False
 
-            logger.debug(
-                f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
-            )
-            return value
-    except (Neo4jError, KeyError, ValueError, TypeError) as e:
-        logger.error(
-            f"Neo4j: Error querying KG. Query: '{full_query[:200]}...', Params: {parameters}, Error: {e}",
-            exc_info=True,
+        logger.debug(
+            f"Neo4j: Found most recent value for ('{subject}', '{predicate}'): '{value}' (type: {type(value)}) from Ch {results[0].get(KG_REL_CHAPTER_ADDED, 'N/A')}, Prov: {results[0].get(KG_IS_PROVISIONAL)}"
         )
+        return value
     logger.debug(f"Neo4j: No value found for ({subject}, {predicate}) up to Ch {chapter_limit}, include_provisional={include_provisional}.")
     return None
 

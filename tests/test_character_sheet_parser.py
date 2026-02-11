@@ -123,29 +123,27 @@ class TestCharacterSheetParser:
         assert "Alice" in relationships["Bob"]
 
     async def test_create_character_nodes(self, sample_character_sheets):
-        """Test creation of character nodes in Neo4j."""
+        """Character node creation delegates to sync_characters."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
         with patch("core.parsers.character_sheet_parser.sync_characters") as mock_sync:
-            mock_sync.return_value = True
+            mock_sync.return_value = None
 
             characters = await parser.parse_character_sheets()
-            result = await parser.create_character_nodes(characters)
+            await parser.create_character_nodes(characters)
 
-            assert result is True
             mock_sync.assert_called_once()
 
     async def test_create_character_nodes_failure(self, sample_character_sheets):
-        """Test handling of character node creation failure."""
+        """Character node creation propagates database errors."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
         with patch("core.parsers.character_sheet_parser.sync_characters") as mock_sync:
-            mock_sync.return_value = False
+            mock_sync.side_effect = RuntimeError("DB write failed")
 
             characters = await parser.parse_character_sheets()
-            result = await parser.create_character_nodes(characters)
-
-            assert result is False
+            with pytest.raises(RuntimeError, match="DB write failed"):
+                await parser.create_character_nodes(characters)
 
     async def test_create_relationships(self, sample_character_sheets):
         """Test creation of relationships in Neo4j."""
@@ -177,18 +175,18 @@ class TestCharacterSheetParser:
                 assert "Successfully parsed and persisted" in message
 
     async def test_parse_and_persist_failure(self, sample_character_sheets):
-        """Test handling of parse and persist failure."""
+        """Database failure during character sync surfaces as (False, error_message)."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)
 
         with patch("core.parsers.character_sheet_parser.sync_characters") as mock_sync:
             with patch("core.parsers.character_sheet_parser.neo4j_manager") as mock_manager:
-                mock_sync.return_value = False
+                mock_sync.side_effect = RuntimeError("DB write failed")
                 mock_manager.execute_write_query = AsyncMock(return_value=None)
 
                 result, message = await parser.parse_and_persist()
 
                 assert result is False
-                assert "Failed to create character nodes" in message
+                assert "DB write failed" in message
 
 
 if __name__ == "__main__":

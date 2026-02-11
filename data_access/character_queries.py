@@ -36,22 +36,30 @@ def clear_character_name_map() -> None:
 
 
 def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
-    """Rebuild the character name canonicalization map from a list of profiles.
+    """Rebuild the character name canonicalization map from a complete list of profiles.
+
+    Clears all existing entries and rebuilds from scratch. Use this only when the provided
+    list represents the full set of characters (e.g. after fetching all from the database).
 
     Args:
-        characters: Character profiles to use as the authoritative source of canonical
-            display names.
-
-    Returns:
-        None.
-
-    Notes:
-        This clears existing entries to avoid stale accumulation across runs/tests. This is
-        an in-process cache and is populated as a side effect of:
-        - [`sync_characters()`](data_access/character_queries.py:484) (write path), and
-        - [`get_character_profiles()`](data_access/character_queries.py:543) (read path).
+        characters: The complete set of character profiles.
     """
     CHAR_NAME_TO_CANONICAL.clear()
+    for char in characters:
+        if isinstance(char, CharacterProfile) and char.name:
+            CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
+
+
+def update_character_name_map(characters: list["CharacterProfile"]) -> None:
+    """Add or update entries in the character name canonicalization map.
+
+    Unlike `rebuild_character_name_map`, this does not clear existing entries. Use this
+    when syncing a subset of characters to avoid losing mappings for characters not in
+    the current batch.
+
+    Args:
+        characters: Character profiles whose name mappings should be added or updated.
+    """
     for char in characters:
         if isinstance(char, CharacterProfile) and char.name:
             CHAR_NAME_TO_CANONICAL[utils._normalize_for_id(char.name)] = char.name
@@ -524,6 +532,9 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
     Returns:
         A list of dictionaries with at least `name` for up to 20 characters considered thin.
 
+    Raises:
+        Neo4jError: If the database query fails.
+
     Notes:
         This is a diagnostic discovery query intended to seed enrichment workflows. It is not
         a strict completeness guarantee.
@@ -536,27 +547,24 @@ async def find_thin_characters_for_enrichment() -> list[dict[str, Any]]:
     RETURN c.name AS name
     LIMIT 20 // Limit to avoid overwhelming the LLM in one cycle
     """
-    try:
-        results = await neo4j_manager.execute_read_query(query)
-        return results if results else []
-    except (Neo4jError, KeyError, ValueError, TypeError) as e:
-        logger.error(f"Error finding thin characters: {e}", exc_info=True)
-        return []
+    results = await neo4j_manager.execute_read_query(query)
+    return results if results else []
 
 
 # Native model functions for performance optimization
 async def sync_characters(
     characters: list[CharacterProfile],
     chapter_number: int,
-) -> bool:
+) -> None:
     """Persist character profiles to Neo4j using the native Cypher builder.
 
     Args:
         characters: Character profiles to upsert.
         chapter_number: Chapter number used for provenance and update tracking.
 
-    Returns:
-        True when the batch write completed successfully. False when a write error occurred.
+    Raises:
+        Neo4jError: If the database write fails.
+        ValueError: If Cypher builder encounters invalid data.
 
     Notes:
         Cache semantics:
@@ -564,51 +572,35 @@ async def sync_characters(
             [`clear_character_read_caches()`](data_access/cache_coordinator.py:31).
 
         In-memory name resolution:
-            On success it rebuilds the canonical display-name mapping used by
+            On success it updates the canonical display-name mapping used by
             [`resolve_character_name()`](data_access/character_queries.py:43).
     """
     if not characters:
         logger.info("No characters to sync")
-        return True
+        return
 
-    # Validate all characters before syncing
     for char in characters:
         errors = validate_kg_object(char)
         if errors:
             logger.warning(f"Invalid CharacterProfile for '{char.name}': {errors}")
 
-    try:
-        cypher_builder = NativeCypherBuilder()
-        statements = cypher_builder.batch_character_upsert_cypher(characters, chapter_number)
+    cypher_builder = NativeCypherBuilder()
+    statements = cypher_builder.batch_character_upsert_cypher(characters, chapter_number)
 
-        if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
+    if statements:
+        await neo4j_manager.execute_cypher_batch(statements)
 
-        logger.info(
-            "Persisted %d character updates for chapter %d using native models.",
-            len(characters),
-            chapter_number,
-        )
+    logger.info(
+        "Persisted %d character updates for chapter %d using native models.",
+        len(characters),
+        chapter_number,
+    )
 
-        # Update canonical name mapping deterministically (avoid stale accumulation).
-        rebuild_character_name_map(characters)
+    update_character_name_map(characters)
 
-        # P1.6: Post-write cache invalidation
-        # Local import avoids circular import / eager import side effects.
-        from data_access.cache_coordinator import clear_character_read_caches
+    from data_access.cache_coordinator import clear_character_read_caches
 
-        clear_character_read_caches()
-
-        return True
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(
-            "Error persisting character updates for chapter %d: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return False
+    clear_character_read_caches()
 
 
 async def get_character_profiles() -> list[CharacterProfile]:

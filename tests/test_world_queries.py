@@ -81,16 +81,15 @@ class TestSyncWorldItems:
     """Tests for syncing world items to database."""
 
     async def test_sync_world_items_empty(self, monkeypatch):
-        """Test syncing empty world items list."""
+        """Syncing an empty world items list completes without error."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         world_queries.WORLD_NAME_TO_ID.clear()
-        result = await world_queries.sync_world_items([], 1)
-        assert result is True
+        await world_queries.sync_world_items([], 1)
 
     async def test_sync_world_items_single_item(self, monkeypatch):
-        """Test syncing single world item."""
+        """Syncing a single world item persists and updates name map."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
@@ -102,13 +101,12 @@ class TestSyncWorldItems:
 
         world_queries.WORLD_NAME_TO_ID.clear()
         item = WorldItem.from_dict("Locations", "Castle", {"description": "A castle"})
-        result = await world_queries.sync_world_items([item], 1)
+        await world_queries.sync_world_items([item], 1)
 
-        assert result is True
         assert utils._normalize_for_id("Castle") in world_queries.WORLD_NAME_TO_ID
 
     async def test_sync_world_items_multiple(self, monkeypatch):
-        """Test syncing multiple world items."""
+        """Syncing multiple world items persists and updates name map."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
@@ -126,9 +124,8 @@ class TestSyncWorldItems:
             WorldItem.from_dict("Locations", "Castle", {"description": "A castle"}),
             WorldItem.from_dict("Items", "Sword", {"description": "A sword"}),
         ]
-        result = await world_queries.sync_world_items(items, 1)
+        await world_queries.sync_world_items(items, 1)
 
-        assert result is True
         assert len(world_queries.WORLD_NAME_TO_ID) == 2
 
 

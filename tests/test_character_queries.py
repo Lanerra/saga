@@ -176,43 +176,40 @@ class TestSyncCharacters:
     """Tests for syncing characters."""
 
     async def test_sync_characters_empty(self, monkeypatch):
-        """Test syncing empty character list."""
+        """Syncing an empty list completes without calling the database."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
-        result = await character_queries.sync_characters([], 1)
-        assert result is True
+        await character_queries.sync_characters([], 1)
+        mock_execute.assert_not_called()
 
     async def test_sync_characters_single(self, monkeypatch):
-        """Test syncing single character."""
+        """Syncing a single character persists without error."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
         profile = CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]})
-        result = await character_queries.sync_characters([profile], 1)
-        assert result is True
+        await character_queries.sync_characters([profile], 1)
 
-    async def test_sync_characters_rebuilds_name_map(self, monkeypatch):
-        """P1: sync should deterministically rebuild the canonical-name map (no stale accumulation)."""
+    async def test_sync_characters_updates_name_map(self, monkeypatch):
+        """Sync updates the canonical-name map without clearing unrelated entries."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
-        # Seed stale state
         character_queries.CHAR_NAME_TO_CANONICAL.clear()
-        character_queries.CHAR_NAME_TO_CANONICAL["stale"] = "Stale"
+        character_queries.CHAR_NAME_TO_CANONICAL["existing"] = "Existing"
 
         profiles = [
             CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]}),
         ]
-        result = await character_queries.sync_characters(profiles, 1)
-        assert result is True
+        await character_queries.sync_characters(profiles, 1)
 
-        # Map should be cleared and rebuilt from the passed profiles.
-        assert "stale" not in character_queries.CHAR_NAME_TO_CANONICAL
+        # Existing entries are preserved; new entries are added.
+        assert character_queries.CHAR_NAME_TO_CANONICAL["existing"] == "Existing"
         assert character_queries.CHAR_NAME_TO_CANONICAL.get(utils._normalize_for_id("Alice")) == "Alice"
 
     async def test_sync_characters_multiple(self, monkeypatch):
-        """Test syncing multiple characters."""
+        """Syncing multiple characters persists without error."""
         mock_execute = AsyncMock(return_value=None)
         monkeypatch.setattr(character_queries.neo4j_manager, "execute_cypher_batch", mock_execute)
 
@@ -220,8 +217,7 @@ class TestSyncCharacters:
             CharacterProfile.from_dict("Alice", {"description": "A hero", "traits": ["brave"]}),
             CharacterProfile.from_dict("Bob", {"description": "A friend", "traits": ["loyal"]}),
         ]
-        result = await character_queries.sync_characters(profiles, 1)
-        assert result is True
+        await character_queries.sync_characters(profiles, 1)
 
 
 @pytest.mark.asyncio

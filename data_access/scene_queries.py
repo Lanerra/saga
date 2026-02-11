@@ -103,70 +103,55 @@ async def get_act_events(
     Raises:
         DatabaseError: If there's an error querying Neo4j
     """
-    query = """
-    // Get MajorPlotPoints
+    major_query = """
     MATCH (major:Event {event_type: "MajorPlotPoint"})
-    OPTIONAL MATCH (major)-[:INVOLVES]->(c1:Character)
-    WITH major, collect(DISTINCT c1.name) as major_characters
+    OPTIONAL MATCH (major)-[:INVOLVES]->(c:Character)
+    WITH major, collect(DISTINCT c.name) as characters_involved
     ORDER BY major.sequence_order
+    RETURN collect({
+        name: major.name,
+        description: major.description,
+        sequence_order: major.sequence_order
+    }) as major_points
+    """
 
-    // Get ActKeyEvents for this act
+    act_query = """
     MATCH (act:Event {event_type: "ActKeyEvent", act_number: $act_number})
-    OPTIONAL MATCH (act)-[:INVOLVES]->(c2:Character)
+    OPTIONAL MATCH (act)-[:INVOLVES]->(c:Character)
     OPTIONAL MATCH (act)-[:OCCURS_AT]->(loc:Location)
     OPTIONAL MATCH (act)-[:PART_OF]->(parent:Event)
-    WITH
-        collect(DISTINCT {
-            name: major.name,
-            description: major.description,
-            sequence_order: major.sequence_order
-        }) as major_points,
-        act,
-        collect(DISTINCT c2.name) as act_characters,
-        loc.name as location,
-        parent.name as parent_event
+    WITH act, collect(DISTINCT c.name) as act_characters, loc.name as location, parent.name as parent_event
     ORDER BY act.sequence_in_act
-
-    RETURN
-        major_points,
-        collect({
-            name: act.name,
-            description: act.description,
-            sequence_in_act: act.sequence_in_act,
-            cause: act.cause,
-            effect: act.effect,
-            characters_involved: act_characters,
-            location: location,
-            part_of: parent_event
-        }) as act_events
+    RETURN collect({
+        name: act.name,
+        description: act.description,
+        sequence_in_act: act.sequence_in_act,
+        cause: act.cause,
+        effect: act.effect,
+        characters_involved: act_characters,
+        location: location,
+        part_of: parent_event
+    }) as act_events
     """
 
     try:
         params = {"act_number": act_number}
-        records = await neo4j_manager.execute_read_query(query, params)
+        major_records = await neo4j_manager.execute_read_query(major_query)
+        act_records = await neo4j_manager.execute_read_query(act_query, params)
 
-        if not records:
-            logger.debug(
-                "get_act_events: no events found for act",
-                act_number=act_number,
-            )
-            return {
-                "major_plot_points": [],
-                "act_key_events": [],
-            }
-
-        record = records[0]
+        major_points = major_records[0].get("major_points", []) if major_records else []
+        act_events = act_records[0].get("act_events", []) if act_records else []
 
         logger.debug(
             "get_act_events: fetched events",
             act_number=act_number,
-            major_points=len(record.get("major_points", [])),
-            act_events=len(record.get("act_events", [])),
+            major_points=len(major_points),
+            act_events=len(act_events),
         )
 
         return {
-            "major_plot_points": record.get("major_points", []),
-            "act_key_events": record.get("act_events", []),
+            "major_plot_points": major_points,
+            "act_key_events": act_events,
         }
 
     except Exception as e:

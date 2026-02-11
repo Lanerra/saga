@@ -195,21 +195,11 @@ async def _ensure_scene_characters_exist(
         )
         stub_profiles.append(stub)
 
-    try:
-        success = await sync_characters(stub_profiles, chapter_number)
-        if success:
-            logger.info(
-                "_ensure_scene_characters_exist: successfully created stub profiles",
-                count=len(stub_profiles),
-            )
-        else:
-            logger.warning("_ensure_scene_characters_exist: failed to persist stub profiles")
-    except Exception as e:
-        logger.error(
-            "_ensure_scene_characters_exist: error persisting stub profiles",
-            error=str(e),
-            exc_info=True,
-        )
+    await sync_characters(stub_profiles, chapter_number)
+    logger.info(
+        "_ensure_scene_characters_exist: successfully created stub profiles",
+        count=len(stub_profiles),
+    )
 
 
 async def plan_scenes(state: NarrativeState) -> NarrativeState:

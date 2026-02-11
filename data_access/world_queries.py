@@ -45,21 +45,30 @@ def clear_world_name_map() -> None:
 
 
 def rebuild_world_name_map(world_items: list["WorldItem"]) -> None:
-    """Rebuild the world name-to-id map from a list of world items.
+    """Rebuild the world name-to-id map from a complete list of world items.
+
+    Clears all existing entries and rebuilds from scratch. Use this only when the provided
+    list represents the full set of world items (e.g. after fetching all from the database).
 
     Args:
-        world_items: World items to use as the authoritative mapping source.
-
-    Returns:
-        None.
-
-    Notes:
-        This clears existing entries to avoid stale accumulation across runs/tests. This is
-        an in-process cache and is populated as a side effect of:
-        - [`sync_world_items()`](data_access/world_queries.py:291) (write path), and
-        - [`get_world_building()`](data_access/world_queries.py:338) (read path).
+        world_items: The complete set of world items.
     """
     WORLD_NAME_TO_ID.clear()
+    for item in world_items:
+        if isinstance(item, WorldItem) and item.name and item.id:
+            WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
+
+
+def update_world_name_map(world_items: list["WorldItem"]) -> None:
+    """Add or update entries in the world name-to-id map.
+
+    Unlike `rebuild_world_name_map`, this does not clear existing entries. Use this
+    when syncing a subset of world items to avoid losing mappings for items not in
+    the current batch.
+
+    Args:
+        world_items: World items whose name mappings should be added or updated.
+    """
     for item in world_items:
         if isinstance(item, WorldItem) and item.name and item.id:
             WORLD_NAME_TO_ID[utils._normalize_for_id(item.name)] = item.id
@@ -393,15 +402,16 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
 async def sync_world_items(
     world_items: list[WorldItem],
     chapter_number: int,
-) -> bool:
+) -> None:
     """Persist world items to Neo4j using the native Cypher builder.
 
     Args:
         world_items: World items to upsert.
         chapter_number: Chapter number used for provenance and update tracking.
 
-    Returns:
-        True when the batch write completed successfully. False when a write error occurred.
+    Raises:
+        Neo4jError: If the database write fails.
+        ValueError: If Cypher builder encounters invalid data.
 
     Notes:
         Cache semantics:
@@ -409,48 +419,32 @@ async def sync_world_items(
             [`clear_world_read_caches()`](data_access/cache_coordinator.py:42).
 
         In-memory name resolution:
-            This call rebuilds the mapping used by [`resolve_world_name()`](data_access/world_queries.py:53).
+            This call updates the mapping used by [`resolve_world_name()`](data_access/world_queries.py:53).
     """
 
-    # Validate all world items before syncing
     for item in world_items:
         if isinstance(item, WorldItem):
             errors = validate_kg_object(item)
             if errors:
                 logger.warning(f"Invalid WorldItem '{item.name}': {errors}")
 
-    # Update name mapping deterministically (avoid stale accumulation).
-    rebuild_world_name_map(world_items)
+    cypher_builder = NativeCypherBuilder()
+    statements = cypher_builder.batch_world_item_upsert_cypher(world_items, chapter_number)
 
-    try:
-        cypher_builder = NativeCypherBuilder()
-        statements = cypher_builder.batch_world_item_upsert_cypher(world_items, chapter_number)
+    if statements:
+        await neo4j_manager.execute_cypher_batch(statements)
 
-        if statements:
-            await neo4j_manager.execute_cypher_batch(statements)
+    logger.info(
+        "Persisted %d world item updates for chapter %d using native models.",
+        len(world_items),
+        chapter_number,
+    )
 
-        logger.info(
-            "Persisted %d world item updates for chapter %d using native models.",
-            len(world_items),
-            chapter_number,
-        )
+    update_world_name_map(world_items)
 
-        # P1.6: Post-write cache invalidation
-        # Local import avoids circular import / eager import side effects.
-        from data_access.cache_coordinator import clear_world_read_caches
+    from data_access.cache_coordinator import clear_world_read_caches
 
-        clear_world_read_caches()
-
-        return True
-
-    except (Neo4jError, KeyError, ValueError) as exc:
-        logger.error(
-            "Error persisting world item updates for chapter %d: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return False
+    clear_world_read_caches()
 
 
 async def get_world_building(*, include_provisional: bool = False) -> list[WorldItem]:

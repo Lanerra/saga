@@ -526,6 +526,8 @@ class Neo4jManagerSingleton:
             "CREATE CONSTRAINT location_name_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.name IS UNIQUE",
             "CREATE CONSTRAINT event_name_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.name IS UNIQUE",
             "CREATE CONSTRAINT item_name_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.name IS UNIQUE",
+            # Scene composite key constraint (matched on chapter_number + scene_index)
+            "CREATE CONSTRAINT scene_chapter_scene_unique IF NOT EXISTS FOR (s:Scene) REQUIRE (s.chapter_number, s.scene_index) IS UNIQUE",
             # Support constraints (internal infrastructure labels)
             "CREATE CONSTRAINT novelInfo_id_unique IF NOT EXISTS FOR (n:NovelInfo) REQUIRE n.id IS UNIQUE",
             "CREATE CONSTRAINT worldContainer_id_unique IF NOT EXISTS FOR (wc:WorldContainer) REQUIRE wc.id IS UNIQUE",
@@ -534,7 +536,7 @@ class Neo4jManagerSingleton:
 
         # Generate indexes for common properties across all valid entity types
         index_queries = []
-        for label in ["Character", "Chapter", "Location", "Event", "Item", "Trait"]:
+        for label in ["Character", "Chapter", "Location", "Event", "Item", "Scene"]:
             index_queries.extend(
                 [
                     f"CREATE INDEX {label.lower()}_name_idx IF NOT EXISTS FOR (n:{label}) ON (n.name)",
