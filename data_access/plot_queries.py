@@ -343,9 +343,10 @@ async def append_plot_point(description: str, prev_plot_point_id: str) -> str:
     MERGE (ni)-[:HAS_PLOT_POINT]->(pp)
     WITH ni, pp, pp_id
     OPTIONAL MATCH (ni)-[:HAS_PLOT_POINT]->(prev:PlotPoint {id: $prev_id})
-    FOREACH (_ IN CASE WHEN prev IS NULL THEN [] ELSE [1] END |
-        OPTIONAL MATCH (prev)-[r:NEXT_PLOT_POINT]->(:PlotPoint)
-        DELETE r
+    OPTIONAL MATCH (prev)-[old_rel:NEXT_PLOT_POINT]->(:PlotPoint)
+    DELETE old_rel
+    WITH prev, pp, pp_id
+    FOREACH (_ IN CASE WHEN prev IS NOT NULL THEN [1] ELSE [] END |
         MERGE (prev)-[:NEXT_PLOT_POINT]->(pp)
     )
     RETURN pp_id AS id
