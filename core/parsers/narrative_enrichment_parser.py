@@ -240,11 +240,12 @@ class NarrativeEnrichmentParser:
         # Look for patterns like "[character_name] was [description]"
         # or "[character_name]'s [description]"
 
+        escaped_name = re.escape(character_name)
         patterns = [
-            rf"{character_name}\s+was\s+([^.!?]+)",
-            rf"{character_name}\s+'s\s+([^.!?]+)",
-            rf"{character_name}\s+had\s+([^.!?]+)",
-            rf"{character_name}\s+looked\s+([^.!?]+)",
+            rf"{escaped_name}\s+was\s+([^.!?]+)",
+            rf"{escaped_name}\s+'s\s+([^.!?]+)",
+            rf"{escaped_name}\s+had\s+([^.!?]+)",
+            rf"{escaped_name}\s+looked\s+([^.!?]+)",
         ]
 
         for pattern in patterns:

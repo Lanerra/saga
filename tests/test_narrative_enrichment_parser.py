@@ -353,5 +353,58 @@ async def test_invalid_character_name():
         assert is_valid is False
 
 
+class TestExtractCharacterDescription:
+    """Verify _extract_character_description handles regex-special characters in names."""
+
+    def test_plain_name_matches_was_pattern(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        text = "John was a tall man with dark hair"
+        result = parser._extract_character_description("John", text)
+        assert result == "a tall man with dark hair"
+
+    def test_plain_name_matches_had_pattern(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        text = "Mary had bright red hair"
+        result = parser._extract_character_description("Mary", text)
+        assert result == "bright red hair"
+
+    def test_plain_name_matches_looked_pattern(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        text = "Mary looked exhausted and pale"
+        result = parser._extract_character_description("Mary", text)
+        assert result == "exhausted and pale"
+
+    def test_name_with_period_is_escaped(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        text = "R.J. MacReady was a grizzled helicopter pilot"
+        result = parser._extract_character_description("R.J. MacReady", text)
+        assert result == "a grizzled helicopter pilot"
+
+    def test_period_in_name_does_not_match_arbitrary_characters(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        # Without re.escape(), "R.J." would match "RXJ!" via the dot metacharacter
+        text = "RXJ! MacReady was a grizzled helicopter pilot"
+        result = parser._extract_character_description("R.J. MacReady", text)
+        assert result is None
+
+    def test_name_with_parentheses_is_escaped(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        text = "O'Brien (Scientist) was hunched over the microscope"
+        result = parser._extract_character_description("O'Brien (Scientist)", text)
+        assert result == "hunched over the microscope"
+
+    def test_name_with_plus_is_escaped(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        text = "K+ had a mechanical gait and cold eyes"
+        result = parser._extract_character_description("K+", text)
+        assert result == "a mechanical gait and cold eyes"
+
+    def test_no_match_returns_none(self):
+        parser = NarrativeEnrichmentParser("unused", chapter_number=1)
+        text = "The sun set over the mountains"
+        result = parser._extract_character_description("John", text)
+        assert result is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
