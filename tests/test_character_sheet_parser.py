@@ -92,6 +92,21 @@ class TestCharacterSheetParser:
         with pytest.raises(ValueError, match="Invalid status 'InvalidStatus'"):
             parser._parse_character_sheet("Test", character_data)
 
+    async def test_parse_character_sheet_string_relationship_raises(self):
+        """String-format relationships raise ValueError."""
+        parser = CharacterSheetParser()
+
+        character_data = {
+            "name": "Test",
+            "description": "Test character",
+            "traits": ["brave"],
+            "status": "Active",
+            "relationships": {"Bob": "trusted ally"},
+        }
+
+        with pytest.raises(ValueError, match="must be a dict"):
+            parser._parse_character_sheet("Test", character_data)
+
     async def test_parse_relationships(self, sample_character_sheets):
         """Test parsing of relationships from character sheets."""
         parser = CharacterSheetParser(character_sheets_path=sample_character_sheets)

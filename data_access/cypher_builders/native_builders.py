@@ -117,19 +117,16 @@ class NativeCypherBuilder:
         # Process relationships for batch operations
         relationship_data = []
         for target_name, rel_info in char.relationships.items():
-            if isinstance(rel_info, dict):
-                rel_type_raw = rel_info.get("type", "")
-                rel_desc = rel_info.get("description", "")
-            else:
-                rel_type_raw = ""
-                rel_desc = str(rel_info) if rel_info else ""
+            if not isinstance(rel_info, dict):
+                raise ValueError(
+                    f"Relationship data for {char.name} -> {target_name} must be a dict "
+                    f"with 'type' and 'description' keys, got {type(rel_info).__name__}"
+                )
+            rel_type_raw = rel_info.get("type", "")
+            rel_desc = rel_info.get("description", "")
 
-            # P1.7: Normalize relationship type for consistent storage and querying.
-            # Canonical representation is the Neo4j relationship type itself.
             rel_type = str(rel_type_raw).strip().upper().replace(" ", "_") if rel_type_raw else ""
             if not rel_type:
-                # If no relationship type is provided, do not create a relationship.
-                # This is a change from previous behavior which defaulted to "KNOWS".
                 continue
 
             relationship_data.append(

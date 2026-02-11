@@ -29,6 +29,11 @@ Output shape:
 - "character_updates" maps character_name -> character_details_object
 - If no characters are present, return: {"character_updates": {}}
 
+Canonical relationship types (use ONLY these):
+{% for relationship_type in canonical_relationship_types %}
+- {{ relationship_type }}
+{% endfor %}
+
 Example:
 {
   "character_updates": {
@@ -36,7 +41,7 @@ Example:
       "description": "A skilled tracker haunted by past failures",
       "traits": ["brave", "haunted"],
       "status": "Active protagonist",
-      "relationships": {"Marcus": "trusted ally", "The Queen": "sworn enemy"}
+      "relationships": {"Marcus": {"type": "ALLIES_WITH", "description": "trusted ally"}, "The Queen": {"type": "CONFLICTS_WITH", "description": "sworn enemy"}}
     }
   }
 }
@@ -45,7 +50,9 @@ Per-character entry requirements:
 - "description" (string): One sentence summary
 - "traits" (array): Single-word descriptors only
 - "status" (string): Current state or role
-- "relationships" (object): Maps character names to relationship descriptions
+- "relationships" (object): Maps character names to {"type": string, "description": string}
+  - "type": MUST be one of the canonical relationship types listed above
+  - "description": <= 180 chars
 
 Extraction rules:
 - Use proper names as keys

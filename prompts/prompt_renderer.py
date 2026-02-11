@@ -20,8 +20,7 @@ System prompt loading:
 - System prompts are read from `prompts/<agent_name>/system.md`.
 - Reads are cached in-process via `functools.lru_cache`. Cache invalidation is
   manual (e.g., via `get_system_prompt.cache_clear()`).
-- Failures to read the system prompt file are treated as best-effort and return
-  an empty string.
+- A missing or unreadable system prompt file raises ``FileNotFoundError``.
 """
 
 from functools import lru_cache
@@ -74,27 +73,24 @@ def render_prompt(template_name: str, context: dict[str, Any]) -> str:
 
 @lru_cache(maxsize=16)
 def get_system_prompt(agent_name: str) -> str:
-    """Load a per-agent system prompt, returning an empty string when unavailable.
+    """Load a per-agent system prompt.
 
     Args:
         agent_name: Agent directory name under `PROMPTS_PATH` that contains
-            `system.md`.
+            ``system.md``.
 
     Returns:
-        The stripped contents of `prompts/<agent_name>/system.md` if the file
-        exists and can be read. Returns an empty string when the file is missing
-        or cannot be read.
+        The stripped contents of ``prompts/<agent_name>/system.md``.
+
+    Raises:
+        FileNotFoundError: If the system prompt file does not exist.
 
     Notes:
-        Results are cached in-process (LRU, `maxsize=16`). Call
-        `get_system_prompt.cache_clear()` to invalidate the cache if prompt files
-        change during the process lifetime.
+        Results are cached in-process (LRU, ``maxsize=16``). Call
+        ``get_system_prompt.cache_clear()`` to invalidate the cache if prompt
+        files change during the process lifetime.
     """
     system_path = PROMPTS_PATH / agent_name / "system.md"
-    try:
-        if system_path.exists():
-            return system_path.read_text(encoding="utf-8").strip()
-    except Exception:
-        # Fail open: return empty string if read fails
-        return ""
-    return ""
+    if not system_path.exists():
+        raise FileNotFoundError(f"System prompt not found: {system_path}")
+    return system_path.read_text(encoding="utf-8").strip()

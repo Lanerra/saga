@@ -138,11 +138,12 @@ class CharacterSheetParser:
         relationships = {}
         if "relationships" in character_data:
             for target_name, rel_data in character_data["relationships"].items():
-                if isinstance(rel_data, dict):
-                    relationships[target_name] = rel_data
-                elif isinstance(rel_data, str):
-                    # Handle old format where relationship is just a string description
-                    relationships[target_name] = {"type": "RELATED_TO", "description": rel_data}
+                if not isinstance(rel_data, dict):
+                    raise ValueError(
+                        f"Relationship data for {character_name} -> {target_name} must be a dict "
+                        f"with 'type' and 'description' keys, got {type(rel_data).__name__}"
+                    )
+                relationships[target_name] = rel_data
 
         # Create CharacterProfile
         character_profile = CharacterProfile(

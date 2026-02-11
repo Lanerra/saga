@@ -28,7 +28,6 @@ class ProjectBootstrapper:
             {
                 "user_input": user_prompt.strip(),
                 "default_narrative_style": config.DEFAULT_NARRATIVE_STYLE,
-                "target_plot_points": config.TARGET_PLOT_POINTS_INITIAL_GENERATION,
                 "total_chapters": config.TOTAL_CHAPTERS,
             },
         )

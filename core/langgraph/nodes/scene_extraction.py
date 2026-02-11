@@ -324,6 +324,7 @@ async def _extract_characters_from_scene(
             "novel_title": novel_title,
             "novel_genre": novel_genre,
             "chapter_text": scene_text,
+            "canonical_relationship_types": sorted(RELATIONSHIP_TYPES),
         },
     )
 
