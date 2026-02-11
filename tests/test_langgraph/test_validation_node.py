@@ -232,14 +232,35 @@ class TestIsPlotStagnant:
 
         assert _is_plot_stagnant(state) is True
 
-    def test_stagnant_no_elements(self, sample_initial_state):
-        """Test that no new elements or relationships is stagnant."""
+    def test_stagnant_no_elements_with_extraction_enabled(self, sample_initial_state):
+        """When extraction is enabled but yields nothing, flag as stagnant."""
         state = sample_initial_state
-        state["draft_word_count"] = 2000  # Above threshold
-        state["extracted_entities"] = {}  # No entities
-        state["extracted_relationships"] = []  # No relationships
+        state["draft_word_count"] = 2000
+        state["extracted_entities"] = {}
+        state["extracted_relationships"] = []
 
-        assert _is_plot_stagnant(state) is True
+        with patch("core.langgraph.nodes.validation_node.settings") as patched_settings:
+            patched_settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE = True
+            patched_settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE = False
+            patched_settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE = False
+            patched_settings.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE = False
+            patched_settings.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE = False
+            assert _is_plot_stagnant(state) is True
+
+    def test_not_stagnant_when_extraction_disabled(self, sample_initial_state):
+        """When all extraction is disabled, empty data does not indicate stagnation."""
+        state = sample_initial_state
+        state["draft_word_count"] = 2000
+        state["extracted_entities"] = {}
+        state["extracted_relationships"] = []
+
+        with patch("core.langgraph.nodes.validation_node.settings") as patched_settings:
+            patched_settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE = False
+            patched_settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE = False
+            patched_settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE = False
+            patched_settings.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE = False
+            patched_settings.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE = False
+            assert _is_plot_stagnant(state) is False
 
     def test_not_stagnant_with_content(self, sample_state_with_extraction):
         """Test that chapter with content is not stagnant."""

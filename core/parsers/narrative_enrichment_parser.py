@@ -382,6 +382,11 @@ class NarrativeEnrichmentParser:
             logger.error(f"Error validating character enrichment: {str(e)}", exc_info=True)
             return False
 
+    @staticmethod
+    def _word_in_text(word: str, text: str) -> bool:
+        """Check if a whole word appears in text using word-boundary matching."""
+        return bool(re.search(rf"\b{re.escape(word)}\b", text, re.IGNORECASE))
+
     def _check_for_contradictions(
         self,
         character: CharacterProfile,
@@ -398,22 +403,18 @@ class NarrativeEnrichmentParser:
         """
         contradictions = []
 
-        # Check for height contradictions
-        if "tall" in character.traits and "short" in new_description.lower():
-            contradictions.append("Description mentions 'short' but character has 'tall' trait")
+        _CONTRADICTORY_DESCRIPTION_PAIRS = [
+            ("tall", "short"),
+            ("young", "old"),
+        ]
 
-        if "short" in character.traits and "tall" in new_description.lower():
-            contradictions.append("Description mentions 'tall' but character has 'short' trait")
+        for trait_a, trait_b in _CONTRADICTORY_DESCRIPTION_PAIRS:
+            if trait_a in character.traits and self._word_in_text(trait_b, new_description):
+                contradictions.append(f"Description mentions '{trait_b}' but character has '{trait_a}' trait")
+            if trait_b in character.traits and self._word_in_text(trait_a, new_description):
+                contradictions.append(f"Description mentions '{trait_a}' but character has '{trait_b}' trait")
 
-        # Check for age contradictions
-        if "young" in character.traits and "old" in new_description.lower():
-            contradictions.append("Description mentions 'old' but character has 'young' trait")
-
-        if "old" in character.traits and "young" in new_description.lower():
-            contradictions.append("Description mentions 'young' but character has 'old' trait")
-
-        # Check for status contradictions
-        if character.status == "Dead" and "alive" in new_description.lower():
+        if character.status == "Dead" and self._word_in_text("alive", new_description):
             contradictions.append("Description mentions 'alive' but character status is 'Dead'")
 
         return contradictions

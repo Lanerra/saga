@@ -24,21 +24,9 @@ from data_access.kg_queries import (
     deduplicate_relationships,
     find_contradictory_trait_characters,
 )
+from models.kg_constants import CONTRADICTORY_TRAIT_PAIRS
 
 logger = structlog.get_logger(__name__)
-
-CONTRADICTORY_TRAIT_PAIRS = [
-    ("Brave", "Cowardly"),
-    ("Honest", "Deceitful"),
-    ("Kind", "Cruel"),
-    ("Loyal", "Treacherous"),
-    ("Optimistic", "Pessimistic"),
-    ("Calm", "Anxious"),
-    ("Confident", "Insecure"),
-    ("Generous", "Selfish"),
-    ("Patient", "Impatient"),
-    ("Humble", "Arrogant"),
-]
 
 
 async def check_quality(state: NarrativeState) -> NarrativeState:

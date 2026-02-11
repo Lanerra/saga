@@ -14,7 +14,7 @@ Notes:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -338,7 +338,7 @@ def _write_chapter_summary_file(
         body = body.replace("\\n", "\n")
 
     # Build YAML front matter
-    generated_at = datetime.utcnow().isoformat()
+    generated_at = datetime.now(UTC).isoformat()
     front_matter_lines = [
         "---",
         f"chapter: {int(chapter_number)}",

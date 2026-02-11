@@ -23,41 +23,9 @@ import structlog
 from config.settings import settings
 from core.db_manager import neo4j_manager
 from core.langgraph.state import Contradiction, NarrativeState
+from models.kg_constants import CONTRADICTORY_TRAIT_PAIRS
 
 logger = structlog.get_logger(__name__)
-
-CONTRADICTORY_TRAIT_PAIRS: list[tuple[str, str]] = [
-    ("introverted", "extroverted"),
-    ("brave", "cowardly"),
-    ("honest", "deceitful"),
-    ("kind", "cruel"),
-    ("optimistic", "pessimistic"),
-    ("calm", "anxious"),
-    ("trusting", "suspicious"),
-    ("generous", "selfish"),
-    ("patient", "impatient"),
-    ("humble", "arrogant"),
-    ("selfish", "altruistic"),
-    ("lazy", "industrious"),
-    ("timid", "bold"),
-    ("cynical", "idealistic"),
-    ("merciful", "merciless"),
-    ("loyal", "treacherous"),
-    ("gentle", "aggressive"),
-    ("forgiving", "vengeful"),
-    ("cheerful", "gloomy"),
-    ("confident", "insecure"),
-    ("stoic", "emotional"),
-    ("rational", "impulsive"),
-    ("cautious", "reckless"),
-    ("modest", "vain"),
-    ("compassionate", "callous"),
-    ("honest", "deceptive"),
-    ("reliable", "unreliable"),
-    ("disciplined", "undisciplined"),
-    ("empathetic", "apathetic"),
-    ("trusting", "paranoid"),
-]
 
 
 def _normalize_trait(value: Any) -> str | None:
@@ -645,7 +613,21 @@ def _is_plot_stagnant(
     total_new_elements = len(characters) + len(non_event_world_items) + len(extracted_events)
     total_relationships = len(relationships) if relationships is not None else 0
 
-    # If we have no new elements AND no relationships, the plot is stagnant
+    # When entity/relationship extraction is disabled, the entity heuristic has no
+    # signal to work with and would incorrectly flag every chapter as stagnant.
+    any_extraction_enabled = (
+        settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE
+        or settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE
+        or settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE
+        or settings.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE
+        or settings.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE
+    )
+    if not any_extraction_enabled:
+        logger.debug(
+            "_is_plot_stagnant: entity/relationship extraction is disabled, skipping element heuristic",
+        )
+        return False
+
     if total_new_elements == 0 and total_relationships == 0:
         logger.debug(
             "_is_plot_stagnant: no new elements or relationships",
@@ -656,8 +638,7 @@ def _is_plot_stagnant(
         )
         return True
 
-    # If we made it here, the chapter seems to be making progress
     return False
 
 
-__all__ = ["validate_consistency", "CONTRADICTORY_TRAIT_PAIRS"]
+__all__ = ["validate_consistency"]

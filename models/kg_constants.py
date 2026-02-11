@@ -223,6 +223,41 @@ SUGGESTED_CATEGORIES = {
     ],
 }
 
+# ⚖️ Contradictory trait pairs for character consistency validation.
+# Canonical lowercase pairs used by both validation and QA nodes.
+CONTRADICTORY_TRAIT_PAIRS: list[tuple[str, str]] = [
+    ("introverted", "extroverted"),
+    ("brave", "cowardly"),
+    ("honest", "deceitful"),
+    ("kind", "cruel"),
+    ("optimistic", "pessimistic"),
+    ("calm", "anxious"),
+    ("trusting", "suspicious"),
+    ("generous", "selfish"),
+    ("patient", "impatient"),
+    ("humble", "arrogant"),
+    ("selfish", "altruistic"),
+    ("lazy", "industrious"),
+    ("timid", "bold"),
+    ("cynical", "idealistic"),
+    ("merciful", "merciless"),
+    ("loyal", "treacherous"),
+    ("gentle", "aggressive"),
+    ("forgiving", "vengeful"),
+    ("cheerful", "gloomy"),
+    ("confident", "insecure"),
+    ("stoic", "emotional"),
+    ("rational", "impulsive"),
+    ("cautious", "reckless"),
+    ("modest", "vain"),
+    ("compassionate", "callous"),
+    ("honest", "deceptive"),
+    ("reliable", "unreliable"),
+    ("disciplined", "undisciplined"),
+    ("empathetic", "apathetic"),
+    ("trusting", "paranoid"),
+]
+
 # Character Social Relationships
 CHARACTER_SOCIAL_RELATIONSHIPS = {
     "ALLIES_WITH",

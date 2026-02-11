@@ -128,17 +128,6 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
         contradictions=len(state.get("contradictions", [])),
     )
 
-    # Rollback committed data before regenerating
-    try:
-        await _rollback_chapter_data(chapter_number)
-    except Exception as exc:
-        logger.warning(
-            "revise_chapter: rollback failed, continuing with revision",
-            chapter=chapter_number,
-            error=str(exc),
-            exc_info=True,
-        )
-
     if state.get("iteration_count", 0) >= state.get("max_iterations", 3):
         error_msg = f"Max revision attempts ({state.get('max_iterations', 3)}) reached"
         logger.error(
@@ -153,6 +142,16 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
             "needs_revision": False,
             "current_node": "revise_failed",
         }
+
+    try:
+        await _rollback_chapter_data(chapter_number)
+    except Exception as exc:
+        logger.warning(
+            "revise_chapter: rollback failed, continuing with revision",
+            chapter=chapter_number,
+            error=str(exc),
+            exc_info=True,
+        )
 
     content_manager = ContentManager(require_project_dir(state))
 

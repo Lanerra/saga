@@ -226,18 +226,13 @@ async def _save_chapter_to_filesystem(
         text: Finalized chapter prose.
         project_dir: Base project directory containing the `chapters/` folder.
     """
-    from datetime import datetime
+    from datetime import UTC, datetime
 
-    # Create chapters directory if it doesn't exist (handled implicitly by helpers,
-    # but we keep the directory Path for clarity and logging).
     chapters_dir = Path(project_dir) / "chapters"
 
-    # Compute metadata
     word_count = len(text.split())
-    # NOTE: Title/pov_character are intentionally not sourced from state here to
-    # avoid tight coupling; they can be injected in a future refactor.
     title = f"Chapter {chapter_number}"
-    generated_at = datetime.utcnow().isoformat()
+    generated_at = datetime.now(UTC).isoformat()
     version = 1
 
     # Build Markdown with YAML front matter

@@ -1197,7 +1197,8 @@ async def find_contradictory_trait_characters(
     for trait1, trait2 in contradictory_trait_pairs:
         query = """
         MATCH (c:Character)
-        WHERE $trait1_param IN c.traits AND $trait2_param IN c.traits
+        WHERE ANY(t IN c.traits WHERE toLower(t) = toLower($trait1_param))
+          AND ANY(t IN c.traits WHERE toLower(t) = toLower($trait2_param))
         RETURN c.name AS character_name, $trait1_param AS trait1, $trait2_param AS trait2
         """
         params = {"trait1_param": trait1, "trait2_param": trait2}
