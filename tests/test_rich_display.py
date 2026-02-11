@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import time
 from collections.abc import Generator
 from unittest.mock import patch
 
 import pytest
 from rich.console import Console
-from rich.text import Text
 
 from ui.rich_display import RichDisplayManager
 
@@ -62,9 +60,7 @@ class TestUpdateStatusText:
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
     def test_update_novel_title(self, fake_llm_service: object) -> None:
-        fake_llm_service.get_combined_statistics.return_value = {
-            "completion_service": {"completions_requested": 0}
-        }
+        fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         manager.run_start_time = time.time()
         manager.update(novel_title="The Great Story")
@@ -74,9 +70,7 @@ class TestUpdateStatusText:
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
     def test_update_chapter_number(self, fake_llm_service: object) -> None:
-        fake_llm_service.get_combined_statistics.return_value = {
-            "completion_service": {"completions_requested": 0}
-        }
+        fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         manager.run_start_time = time.time()
         manager.update(chapter_num=5)
@@ -86,9 +80,7 @@ class TestUpdateStatusText:
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
     def test_update_step(self, fake_llm_service: object) -> None:
-        fake_llm_service.get_combined_statistics.return_value = {
-            "completion_service": {"completions_requested": 0}
-        }
+        fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         manager.run_start_time = time.time()
         manager.update(step="Generating")
@@ -98,9 +90,7 @@ class TestUpdateStatusText:
     @patch("config.ENABLE_RICH_PROGRESS", True)
     @patch("ui.rich_display.RICH_AVAILABLE", True)
     def test_elapsed_time_formatted_as_hhmmss(self, fake_llm_service: object) -> None:
-        fake_llm_service.get_combined_statistics.return_value = {
-            "completion_service": {"completions_requested": 0}
-        }
+        fake_llm_service.get_combined_statistics.return_value = {"completion_service": {"completions_requested": 0}}
         manager = RichDisplayManager()
         # 3723 seconds = 1 hour, 2 minutes, 3 seconds
         manager.update(run_start_time=time.time() - 3723)

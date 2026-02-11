@@ -27,6 +27,7 @@ class TestParserRunnerInputValidation:
         runner = _make_runner()
         with pytest.raises(ValueError, match="Unknown parser: nonexistent"):
             import asyncio
+
             asyncio.run(runner.run_parser("nonexistent"))
 
     def test_unsupported_parser_class_raises_value_error(self) -> None:
@@ -41,9 +42,7 @@ class TestParserRunnerInputValidation:
 
 class TestRunParser:
     @patch("core.parser_runner.CharacterSheetParser")
-    async def test_run_parser_character_sheets_calls_correct_class(
-        self, FakeCharacterSheetParser: MagicMock
-    ) -> None:
+    async def test_run_parser_character_sheets_calls_correct_class(self, FakeCharacterSheetParser: MagicMock) -> None:
         fake_parser = _make_fake_parser()
         FakeCharacterSheetParser.return_value = fake_parser
         runner = _make_runner()
@@ -53,9 +52,7 @@ class TestRunParser:
         fake_parser.parse_and_persist.assert_awaited_once()
 
     @patch("core.parser_runner.CharacterSheetParser")
-    async def test_parser_success_returns_true_and_message(
-        self, FakeCharacterSheetParser: MagicMock
-    ) -> None:
+    async def test_parser_success_returns_true_and_message(self, FakeCharacterSheetParser: MagicMock) -> None:
         fake_parser = _make_fake_parser(success=True, message="All characters parsed")
         FakeCharacterSheetParser.return_value = fake_parser
         runner = _make_runner()
@@ -65,9 +62,7 @@ class TestRunParser:
         assert result == (True, "All characters parsed")
 
     @patch("core.parser_runner.CharacterSheetParser")
-    async def test_parser_exception_returns_false_and_error_message(
-        self, FakeCharacterSheetParser: MagicMock
-    ) -> None:
+    async def test_parser_exception_returns_false_and_error_message(self, FakeCharacterSheetParser: MagicMock) -> None:
         failing_parser = MagicMock()
         failing_parser.parse_and_persist = AsyncMock(side_effect=RuntimeError("Neo4j connection lost"))
         FakeCharacterSheetParser.return_value = failing_parser
@@ -105,9 +100,7 @@ class TestRunAllParsers:
                 call_order.append(parser_name)
                 return (True, f"{parser_name} done")
 
-            fake_instance.parse_and_persist = AsyncMock(
-                side_effect=lambda n=captured_name: make_side_effect(n)
-            )
+            fake_instance.parse_and_persist = AsyncMock(side_effect=lambda n=captured_name: make_side_effect(n))
             fake_class.return_value = fake_instance
 
         runner = _make_runner()

@@ -9,7 +9,7 @@ from core.entity_embedding_service import (
     compute_entity_embedding_text,
     compute_entity_embedding_text_hash,
 )
-from models.kg_models import CharacterProfile, WorldItem
+from models.kg_models import WorldItem
 
 
 class TestComputeEntityEmbeddingText:
@@ -91,9 +91,7 @@ class TestComputeEntityEmbeddingTextHash:
 
 class TestBuildEntityEmbeddingUpdateStatements:
     @pytest.mark.asyncio
-    async def test_returns_empty_when_persistence_disabled(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_returns_empty_when_persistence_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
 
         fake_character = SimpleNamespace(name="Alice", description="A brave warrior")
@@ -106,9 +104,7 @@ class TestBuildEntityEmbeddingUpdateStatements:
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_raises_when_config_properties_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_raises_when_config_properties_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
         monkeypatch.setattr("config.ENTITY_EMBEDDING_VECTOR_PROPERTY", "")
         monkeypatch.setattr("config.ENTITY_EMBEDDING_TEXT_HASH_PROPERTY", "")
@@ -121,9 +117,7 @@ class TestBuildEntityEmbeddingUpdateStatements:
             )
 
     @pytest.mark.asyncio
-    async def test_skips_entities_with_unchanged_hashes(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_skips_entities_with_unchanged_hashes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", True)
         monkeypatch.setattr("config.ENTITY_EMBEDDING_VECTOR_PROPERTY", "entity_embedding_vector")
         monkeypatch.setattr("config.ENTITY_EMBEDDING_TEXT_HASH_PROPERTY", "entity_embedding_text_hash")
@@ -131,15 +125,11 @@ class TestBuildEntityEmbeddingUpdateStatements:
         monkeypatch.setattr("config.EMBEDDING_MODEL", "fake-model")
 
         fake_character = SimpleNamespace(name="Alice", description="A brave warrior")
-        character_embedding_text = compute_entity_embedding_text(
-            name="Alice", category="", description="A brave warrior"
-        )
+        character_embedding_text = compute_entity_embedding_text(name="Alice", category="", description="A brave warrior")
         character_hash = compute_entity_embedding_text_hash(character_embedding_text)
 
         fake_world_item = WorldItem.from_dict("Location", "Castle", {"description": "A big castle"})
-        world_embedding_text = compute_entity_embedding_text(
-            name="Castle", category="Location", description="A big castle"
-        )
+        world_embedding_text = compute_entity_embedding_text(name="Castle", category="Location", description="A big castle")
         world_hash = compute_entity_embedding_text_hash(world_embedding_text)
 
         async def fake_execute_read_query(query: str, params: dict) -> list[dict]:

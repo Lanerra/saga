@@ -63,40 +63,26 @@ class TestValidNodeLabels:
 class TestLabelNormalizationMap:
     def test_all_targets_are_valid_node_labels(self):
         for source, target in LABEL_NORMALIZATION_MAP.items():
-            assert target in VALID_NODE_LABELS, (
-                f"Normalization target '{target}' (from '{source}') "
-                f"is not in VALID_NODE_LABELS"
-            )
+            assert target in VALID_NODE_LABELS, f"Normalization target '{target}' (from '{source}') " f"is not in VALID_NODE_LABELS"
 
     def test_no_canonical_label_maps_to_itself(self):
         for key in LABEL_NORMALIZATION_MAP:
-            assert key not in VALID_NODE_LABELS, (
-                f"Canonical label '{key}' should not appear as a "
-                f"normalization key"
-            )
+            assert key not in VALID_NODE_LABELS, f"Canonical label '{key}' should not appear as a " f"normalization key"
 
 
 class TestWorldItemLabels:
     def test_canonical_labels_are_valid_node_labels(self):
         for label in WORLD_ITEM_CANONICAL_LABELS:
-            assert label in VALID_NODE_LABELS, (
-                f"Canonical world-item label '{label}' "
-                f"is not in VALID_NODE_LABELS"
-            )
+            assert label in VALID_NODE_LABELS, f"Canonical world-item label '{label}' " f"is not in VALID_NODE_LABELS"
 
     def test_legacy_labels_are_in_normalization_map(self):
         for label in WORLD_ITEM_LEGACY_LABELS:
-            assert label in LABEL_NORMALIZATION_MAP, (
-                f"Legacy label '{label}' is not in LABEL_NORMALIZATION_MAP"
-            )
+            assert label in LABEL_NORMALIZATION_MAP, f"Legacy label '{label}' is not in LABEL_NORMALIZATION_MAP"
 
     def test_legacy_labels_normalize_to_canonical(self):
         for label in WORLD_ITEM_LEGACY_LABELS:
             target = LABEL_NORMALIZATION_MAP[label]
-            assert target in WORLD_ITEM_CANONICAL_LABELS, (
-                f"Legacy label '{label}' normalizes to '{target}', "
-                f"which is not a canonical world-item label"
-            )
+            assert target in WORLD_ITEM_CANONICAL_LABELS, f"Legacy label '{label}' normalizes to '{target}', " f"which is not a canonical world-item label"
 
 
 class TestSuggestedCategories:
@@ -105,29 +91,19 @@ class TestSuggestedCategories:
 
     def test_each_value_is_nonempty_list(self):
         for label, categories in SUGGESTED_CATEGORIES.items():
-            assert isinstance(categories, list), (
-                f"SUGGESTED_CATEGORIES['{label}'] should be a list"
-            )
-            assert len(categories) > 0, (
-                f"SUGGESTED_CATEGORIES['{label}'] should not be empty"
-            )
+            assert isinstance(categories, list), f"SUGGESTED_CATEGORIES['{label}'] should be a list"
+            assert len(categories) > 0, f"SUGGESTED_CATEGORIES['{label}'] should not be empty"
 
 
 class TestContradictoryTraitPairs:
     def test_all_lowercase(self):
         for first, second in CONTRADICTORY_TRAIT_PAIRS:
-            assert first == first.lower(), (
-                f"Trait '{first}' is not lowercase"
-            )
-            assert second == second.lower(), (
-                f"Trait '{second}' is not lowercase"
-            )
+            assert first == first.lower(), f"Trait '{first}' is not lowercase"
+            assert second == second.lower(), f"Trait '{second}' is not lowercase"
 
     def test_no_self_contradictions(self):
         for first, second in CONTRADICTORY_TRAIT_PAIRS:
-            assert first != second, (
-                f"Self-contradictory pair found: ('{first}', '{second}')"
-            )
+            assert first != second, f"Self-contradictory pair found: ('{first}', '{second}')"
 
     def test_all_pairs_are_two_element_tuples(self):
         for pair in CONTRADICTORY_TRAIT_PAIRS:
@@ -142,10 +118,7 @@ class TestRelationshipCategories:
     def test_all_category_values_exist_in_relationship_types(self):
         for category_name, category_set in RELATIONSHIP_CATEGORIES.items():
             for relationship_type in category_set:
-                assert relationship_type in RELATIONSHIP_TYPES, (
-                    f"'{relationship_type}' from category "
-                    f"'{category_name}' is not in RELATIONSHIP_TYPES"
-                )
+                assert relationship_type in RELATIONSHIP_TYPES, f"'{relationship_type}' from category " f"'{category_name}' is not in RELATIONSHIP_TYPES"
 
     def test_relationship_types_is_exact_union(self):
         expected_union = set()
@@ -185,11 +158,7 @@ class TestRelationshipCategoryOverlaps:
             for relationship_type in category_set:
                 seen.setdefault(relationship_type, []).append(category_name)
 
-        overlapping = {
-            relationship_type: categories
-            for relationship_type, categories in seen.items()
-            if len(categories) > 1
-        }
+        overlapping = {relationship_type: categories for relationship_type, categories in seen.items() if len(categories) > 1}
 
         expected_overlapping_types = {
             "SEEKS",
@@ -204,17 +173,11 @@ class TestRelationshipCategoryOverlaps:
 class TestStaticRelationshipMap:
     def test_all_targets_exist_in_relationship_types(self):
         for synonym, canonical in STATIC_RELATIONSHIP_MAP.items():
-            assert canonical in RELATIONSHIP_TYPES, (
-                f"STATIC_RELATIONSHIP_MAP target '{canonical}' "
-                f"(from '{synonym}') is not in RELATIONSHIP_TYPES"
-            )
+            assert canonical in RELATIONSHIP_TYPES, f"STATIC_RELATIONSHIP_MAP target '{canonical}' " f"(from '{synonym}') is not in RELATIONSHIP_TYPES"
 
     def test_no_source_is_already_canonical(self):
         for synonym in STATIC_RELATIONSHIP_MAP:
-            assert synonym not in RELATIONSHIP_TYPES, (
-                f"Synonym '{synonym}' is already in RELATIONSHIP_TYPES; "
-                f"mapping is redundant"
-            )
+            assert synonym not in RELATIONSHIP_TYPES, f"Synonym '{synonym}' is already in RELATIONSHIP_TYPES; " f"mapping is redundant"
 
 
 class TestNovelInfoAllowedPropertyKeys:
@@ -222,20 +185,18 @@ class TestNovelInfoAllowedPropertyKeys:
         assert isinstance(NOVEL_INFO_ALLOWED_PROPERTY_KEYS, frozenset)
 
     def test_expected_keys(self):
-        assert NOVEL_INFO_ALLOWED_PROPERTY_KEYS == frozenset({
-            "title",
-            "genre",
-            "setting",
-            "theme",
-            "central_conflict",
-            "thematic_progression",
-        })
+        assert NOVEL_INFO_ALLOWED_PROPERTY_KEYS == frozenset(
+            {
+                "title",
+                "genre",
+                "setting",
+                "theme",
+                "central_conflict",
+                "thematic_progression",
+            }
+        )
 
     def test_all_keys_are_lowercase_snake_case(self):
         for key in NOVEL_INFO_ALLOWED_PROPERTY_KEYS:
-            assert key == key.lower(), (
-                f"Property key '{key}' is not lowercase"
-            )
-            assert " " not in key, (
-                f"Property key '{key}' contains spaces"
-            )
+            assert key == key.lower(), f"Property key '{key}' is not lowercase"
+            assert " " not in key, f"Property key '{key}' contains spaces"

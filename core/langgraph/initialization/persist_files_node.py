@@ -20,7 +20,6 @@ import structlog
 import yaml
 
 import config
-
 from core.langgraph.content_manager import (
     ContentManager,
     get_act_outlines,

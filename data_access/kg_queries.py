@@ -1677,9 +1677,7 @@ async def get_shortest_path_length_between_entities(name1: str, name2: str, max_
         return None
 
     if max_depth > _MAX_SHORTEST_PATH_DEPTH:
-        raise ValueError(
-            f"max_depth={max_depth} exceeds safety cap of {_MAX_SHORTEST_PATH_DEPTH}"
-        )
+        raise ValueError(f"max_depth={max_depth} exceeds safety cap of {_MAX_SHORTEST_PATH_DEPTH}")
 
     safe_depth = int(max_depth)
     query = f"""

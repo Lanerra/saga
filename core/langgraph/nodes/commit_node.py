@@ -36,7 +36,7 @@ from core.langgraph.content_manager import (
 )
 from core.langgraph.state import ExtractedEntity, ExtractedRelationship, NarrativeState
 from core.schema_validator import canonicalize_entity_type_for_persistence
-from data_access import chapter_queries, kg_queries
+from data_access import chapter_queries
 from data_access.kg_queries import (
     _get_cypher_labels as _get_cypher_labels,
 )

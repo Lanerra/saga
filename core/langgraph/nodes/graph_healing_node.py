@@ -90,16 +90,8 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
             for action in results.get("actions", [])
             if action.get("type") == "merge"
         ]
-        pending_merges: list[dict[str, object]] = [
-            merge_info
-            for merge_info in merge_candidates
-            if not merge_info.get("auto_approved")
-        ]
-        auto_approved_merges: list[dict[str, object]] = [
-            merge_info
-            for merge_info in merge_candidates
-            if merge_info.get("auto_approved")
-        ]
+        pending_merges: list[dict[str, object]] = [merge_info for merge_info in merge_candidates if not merge_info.get("auto_approved")]
+        auto_approved_merges: list[dict[str, object]] = [merge_info for merge_info in merge_candidates if merge_info.get("auto_approved")]
 
         # Update healing history with new results
         healing_history = [

@@ -169,8 +169,7 @@ class TestSemanticComparisonDisabled:
             ("Unique paragraph alpha.", 0, 23),
             ("Unique paragraph beta.", 25, 47),
         ]
-        with patch("processing.text_deduplicator.utils") as fake_utils, \
-             patch("processing.text_deduplicator.llm_service") as fake_llm:
+        with patch("processing.text_deduplicator.utils") as fake_utils, patch("processing.text_deduplicator.llm_service") as fake_llm:
             fake_utils.get_text_segments.return_value = segments
             fake_utils._normalize_text_for_matching.side_effect = lambda s: s.lower().strip()
             await deduplicator.deduplicate(original)

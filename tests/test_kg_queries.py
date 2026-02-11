@@ -322,6 +322,7 @@ class TestQualityAssuranceQueries:
         assert isinstance(result, list)
         assert mock_read.call_count == 2
 
+
 @pytest.mark.asyncio
 class TestEntityDeduplication:
     """Tests for entity deduplication."""

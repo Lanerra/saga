@@ -218,10 +218,7 @@ class TestFullPipelineIntegration:
                 all_queries = [call[0][0] for call in mock_write.call_args_list]
                 all_params = [call[0][1] if len(call[0]) > 1 else {} for call in mock_write.call_args_list]
 
-                major_plot_point = any(
-                    "Event" in q and p.get("event_type") == "MajorPlotPoint"
-                    for q, p in zip(all_queries, all_params)
-                )
+                major_plot_point = any("Event" in q and p.get("event_type") == "MajorPlotPoint" for q, p in zip(all_queries, all_params, strict=False))
                 location_creation = any("Location" in q and "MERGE" in q for q in all_queries)
                 item_creation = any("Item" in q and "MERGE" in q for q in all_queries)
 
@@ -247,9 +244,7 @@ class TestFullPipelineIntegration:
                     return [{"name": "Eleanor Whitaker"}]
                 return []
 
-            llm_character_response = json.dumps([
-                {"name": "Eleanor Whitaker", "role": "protagonist"}
-            ])
+            llm_character_response = json.dumps([{"name": "Eleanor Whitaker", "role": "protagonist"}])
 
             with (
                 patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
@@ -268,10 +263,7 @@ class TestFullPipelineIntegration:
                 all_queries = [call[0][0] for call in mock_write.call_args_list]
                 all_params = [call[0][1] if len(call[0]) > 1 else {} for call in mock_write.call_args_list]
 
-                act_key_event = any(
-                    "Event" in q and p.get("event_type") == "ActKeyEvent"
-                    for q, p in zip(all_queries, all_params)
-                )
+                act_key_event = any("Event" in q and p.get("event_type") == "ActKeyEvent" for q, p in zip(all_queries, all_params, strict=False))
                 involves_relationship = any("INVOLVES" in q for q in all_queries)
 
                 assert act_key_event, "ActKeyEvent creation not found"
@@ -389,9 +381,7 @@ class TestFullPipelineIntegration:
                     return [{"name": "Eleanor Whitaker"}, {"name": "Sarah Whitaker"}]
                 return []
 
-            llm_character_response = json.dumps([
-                {"name": "Eleanor Whitaker", "role": "protagonist"}
-            ])
+            llm_character_response = json.dumps([{"name": "Eleanor Whitaker", "role": "protagonist"}])
 
             with (
                 patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,

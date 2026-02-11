@@ -1,11 +1,9 @@
 """Tests for models/user_input_models.py - user story input parsing and conversion."""
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
-from models.kg_models import CharacterProfile, WorldItem
+from models.kg_models import WorldItem
 from models.user_input_models import (
     CharacterGroupModel,
     KeyLocationModel,
@@ -20,7 +18,6 @@ from models.user_input_models import (
 
 
 class TestNovelConceptModel:
-
     def test_title_is_required(self) -> None:
         with pytest.raises(ValidationError):
             NovelConceptModel()
@@ -50,7 +47,6 @@ class TestNovelConceptModel:
 
 
 class TestProtagonistModel:
-
     def test_name_is_required(self) -> None:
         with pytest.raises(ValidationError):
             ProtagonistModel()
@@ -89,7 +85,6 @@ class TestProtagonistModel:
 
 
 class TestUserStoryInputModel:
-
     def test_allows_extra_fields(self) -> None:
         model = UserStoryInputModel(**{"custom_section": {"key": "value"}})
         assert model.model_extra == {"custom_section": {"key": "value"}}
@@ -186,7 +181,6 @@ def _build_full_input() -> UserStoryInputModel:
 
 
 class TestUserStoryToObjectsPlotOutline:
-
     def test_novel_concept_fields_in_plot_outline(self) -> None:
         model = _build_full_input()
         plot_outline, _, _ = user_story_to_objects(model)
@@ -224,7 +218,6 @@ class TestUserStoryToObjectsPlotOutline:
 
 
 class TestUserStoryToObjectsProtagonist:
-
     def test_protagonist_role_in_updates(self) -> None:
         model = _build_full_input()
         _, characters, _ = user_story_to_objects(model)
@@ -270,7 +263,6 @@ class TestUserStoryToObjectsProtagonist:
 
 
 class TestUserStoryToObjectsAntagonist:
-
     def test_antagonist_role_in_updates(self) -> None:
         model = _build_full_input()
         _, characters, _ = user_story_to_objects(model)
@@ -300,7 +292,6 @@ class TestUserStoryToObjectsAntagonist:
 
 
 class TestUserStoryToObjectsSupportingCharacters:
-
     def test_supporting_characters_with_explicit_role(self) -> None:
         model = _build_full_input()
         _, characters, _ = user_story_to_objects(model)
@@ -325,7 +316,6 @@ class TestUserStoryToObjectsSupportingCharacters:
 
 
 class TestUserStoryToObjectsSetting:
-
     def test_setting_creates_overview_world_item(self) -> None:
         model = _build_full_input()
         _, _, world_items = user_story_to_objects(model)
@@ -358,7 +348,6 @@ class TestUserStoryToObjectsSetting:
 
 
 class TestUserStoryToObjectsWorldDetails:
-
     def test_world_details_creates_world_items(self) -> None:
         model = _build_full_input()
         _, _, world_items = user_story_to_objects(model)
@@ -375,7 +364,6 @@ class TestUserStoryToObjectsWorldDetails:
 
 
 class TestUserStoryToObjectsCharactersFallback:
-
     def test_protagonist_from_characters_group(self) -> None:
         model = UserStoryInputModel(
             characters=CharacterGroupModel(
@@ -425,7 +413,6 @@ class TestUserStoryToObjectsCharactersFallback:
 
 
 class TestUserStoryToObjectsEmpty:
-
     def test_empty_model_returns_empty_outputs(self) -> None:
         model = UserStoryInputModel()
         plot_outline, characters, world_items = user_story_to_objects(model)

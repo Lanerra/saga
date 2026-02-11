@@ -702,7 +702,6 @@ class Neo4jManagerSingleton:
             except Exception as individual_e:
                 self.logger.warning(f"Fallback: Failed to apply schema operation '{query_text[:100]}...': {individual_e}")
 
-
     # -------------------------------------------------------------------------
     # Helper methods for embeddings – unchanged
     # -------------------------------------------------------------------------

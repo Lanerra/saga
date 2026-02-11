@@ -33,7 +33,7 @@ from data_access.character_queries import (
     get_character_profiles,
     sync_characters,
 )
-from models.kg_models import Chapter, CharacterProfile
+from models.kg_models import CharacterProfile
 
 logger = structlog.get_logger(__name__)
 

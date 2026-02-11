@@ -163,9 +163,7 @@ class TestCharacterProfilesConsistency:
         matching_character_profiles: dict[str, CharacterProfile],
         matching_plot_outline: dict[str, Any],
     ) -> None:
-        errors = validator.validate_character_profiles_consistency(
-            matching_character_profiles, matching_plot_outline
-        )
+        errors = validator.validate_character_profiles_consistency(matching_character_profiles, matching_plot_outline)
         assert errors == []
 
     def test_protagonist_missing(
@@ -177,9 +175,7 @@ class TestCharacterProfilesConsistency:
         profiles: dict[str, CharacterProfile] = {
             "Someone Else": CharacterProfile(name="Someone Else"),
         }
-        errors = validator.validate_character_profiles_consistency(
-            profiles, matching_plot_outline
-        )
+        errors = validator.validate_character_profiles_consistency(profiles, matching_plot_outline)
 
         assert len(errors) == 1
         assert errors[0].field == "protagonist_name"
@@ -197,9 +193,7 @@ class TestCharacterProfilesConsistency:
         profiles: dict[str, CharacterProfile] = {
             PROTAGONIST: wrong_name_profile,
         }
-        errors = validator.validate_character_profiles_consistency(
-            profiles, matching_plot_outline
-        )
+        errors = validator.validate_character_profiles_consistency(profiles, matching_plot_outline)
 
         assert len(errors) == 1
         assert errors[0].field == "protagonist_name"
@@ -217,9 +211,7 @@ class TestWorldBuildingConsistency:
         matching_world_building: dict[str, dict[str, WorldItem]],
         matching_plot_outline: dict[str, Any],
     ) -> None:
-        errors = validator.validate_world_building_consistency(
-            matching_world_building, matching_plot_outline
-        )
+        errors = validator.validate_world_building_consistency(matching_world_building, matching_plot_outline)
         assert errors == []
 
     def test_overview_mismatch(
@@ -228,15 +220,9 @@ class TestWorldBuildingConsistency:
         validator: BootstrapContentValidator,
         matching_plot_outline: dict[str, Any],
     ) -> None:
-        mismatched_overview = WorldItem.from_dict(
-            "_overview_", "_overview_", {"description": "a tropical island"}
-        )
-        world_building: dict[str, dict[str, WorldItem]] = {
-            "_overview_": {"_overview_": mismatched_overview}
-        }
-        errors = validator.validate_world_building_consistency(
-            world_building, matching_plot_outline
-        )
+        mismatched_overview = WorldItem.from_dict("_overview_", "_overview_", {"description": "a tropical island"})
+        world_building: dict[str, dict[str, WorldItem]] = {"_overview_": {"_overview_": mismatched_overview}}
+        errors = validator.validate_world_building_consistency(world_building, matching_plot_outline)
 
         assert len(errors) == 1
         assert errors[0].field == "setting_description"
@@ -249,14 +235,8 @@ class TestWorldBuildingConsistency:
         validator: BootstrapContentValidator,
         matching_plot_outline: dict[str, Any],
     ) -> None:
-        world_building: dict[str, dict[str, WorldItem]] = {
-            "locations": {
-                "city": WorldItem.from_dict("locations", "city", {"description": "a big city"})
-            }
-        }
-        errors = validator.validate_world_building_consistency(
-            world_building, matching_plot_outline
-        )
+        world_building: dict[str, dict[str, WorldItem]] = {"locations": {"city": WorldItem.from_dict("locations", "city", {"description": "a big city"})}}
+        errors = validator.validate_world_building_consistency(world_building, matching_plot_outline)
         assert errors == []
 
 
@@ -290,16 +270,10 @@ class TestValidateAllComponents:
             "theme": "wrong theme",
         }
         empty_profiles: dict[str, CharacterProfile] = {}
-        mismatched_overview = WorldItem.from_dict(
-            "_overview_", "_overview_", {"description": "wrong setting"}
-        )
-        bad_world: dict[str, dict[str, WorldItem]] = {
-            "_overview_": {"_overview_": mismatched_overview}
-        }
+        mismatched_overview = WorldItem.from_dict("_overview_", "_overview_", {"description": "wrong setting"})
+        bad_world: dict[str, dict[str, WorldItem]] = {"_overview_": {"_overview_": mismatched_overview}}
 
-        is_valid, errors = validator.validate_all_components(
-            bad_plot, empty_profiles, bad_world
-        )
+        is_valid, errors = validator.validate_all_components(bad_plot, empty_profiles, bad_world)
 
         assert is_valid is False
         fields = [e.field for e in errors]

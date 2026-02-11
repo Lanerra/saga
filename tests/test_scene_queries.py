@@ -13,7 +13,6 @@ from data_access.scene_queries import (
 
 @pytest.mark.asyncio
 class TestSceneQueries:
-
     async def test_get_scene_events_returns_events(self):
         expected_records = [
             {

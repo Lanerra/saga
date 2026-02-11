@@ -405,6 +405,7 @@ class TestGraphHealingServiceOrphanCleanup:
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_read:
             with patch("core.db_manager.neo4j_manager.execute_write_query") as mock_write:
+
                 def mock_query_side_effect(query, params=None):
                     if params and params.get("cutoff_chapter") == 2:
                         return [

@@ -20,7 +20,6 @@ def _make_world_item(category: str, name: str, description: str) -> WorldItem:
 
 @pytest.mark.asyncio
 class TestPersistEntitiesEmptyInput:
-
     async def test_returns_true_without_calling_neo4j(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
             fake_neo4j.execute_cypher_batch = AsyncMock()
@@ -36,9 +35,7 @@ class TestPersistEntitiesEmptyInput:
             fake_neo4j.execute_cypher_batch = AsyncMock()
             service = KnowledgeGraphService(cypher_builder=NativeCypherBuilder())
 
-            result = await service.persist_entities(
-                characters=[], world_items=[], extra_statements=[]
-            )
+            result = await service.persist_entities(characters=[], world_items=[], extra_statements=[])
 
             assert result is True
             fake_neo4j.execute_cypher_batch.assert_not_called()
@@ -46,7 +43,6 @@ class TestPersistEntitiesEmptyInput:
 
 @pytest.mark.asyncio
 class TestPersistEntitiesCharacters:
-
     async def test_single_character_upsert(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
             fake_neo4j.execute_cypher_batch = AsyncMock()
@@ -65,9 +61,7 @@ class TestPersistEntitiesCharacters:
             fake_neo4j.execute_cypher_batch = AsyncMock()
             service = KnowledgeGraphService(cypher_builder=NativeCypherBuilder())
 
-            result = await service.persist_entities(
-                characters=[_make_character("Alice"), _make_character("Bob")]
-            )
+            result = await service.persist_entities(characters=[_make_character("Alice"), _make_character("Bob")])
 
             assert result is True
             statements = fake_neo4j.execute_cypher_batch.call_args[0][0]
@@ -78,7 +72,6 @@ class TestPersistEntitiesCharacters:
 
 @pytest.mark.asyncio
 class TestPersistEntitiesWorldItems:
-
     async def test_single_world_item_upsert(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
             fake_neo4j.execute_cypher_batch = AsyncMock()
@@ -114,7 +107,6 @@ class TestPersistEntitiesWorldItems:
 
 @pytest.mark.asyncio
 class TestPersistEntitiesExtraStatements:
-
     async def test_extra_statements_included(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
             fake_neo4j.execute_cypher_batch = AsyncMock()
@@ -132,7 +124,6 @@ class TestPersistEntitiesExtraStatements:
 
 @pytest.mark.asyncio
 class TestPersistEntitiesMixedInputs:
-
     async def test_characters_world_items_and_extra_statements(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
             fake_neo4j.execute_cypher_batch = AsyncMock()
@@ -158,12 +149,9 @@ class TestPersistEntitiesMixedInputs:
 
 @pytest.mark.asyncio
 class TestPersistEntitiesStrictFailure:
-
     async def test_raises_persistence_error_on_neo4j_failure(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
-            fake_neo4j.execute_cypher_batch = AsyncMock(
-                side_effect=RuntimeError("connection lost")
-            )
+            fake_neo4j.execute_cypher_batch = AsyncMock(side_effect=RuntimeError("connection lost"))
             service = KnowledgeGraphService(cypher_builder=NativeCypherBuilder())
 
             with pytest.raises(KnowledgeGraphPersistenceError):
@@ -171,29 +159,22 @@ class TestPersistEntitiesStrictFailure:
 
     async def test_non_strict_returns_false_on_neo4j_failure(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
-            fake_neo4j.execute_cypher_batch = AsyncMock(
-                side_effect=RuntimeError("connection lost")
-            )
+            fake_neo4j.execute_cypher_batch = AsyncMock(side_effect=RuntimeError("connection lost"))
             service = KnowledgeGraphService(cypher_builder=NativeCypherBuilder())
 
-            result = await service.persist_entities(
-                characters=[_make_character("Alice")], strict=False
-            )
+            result = await service.persist_entities(characters=[_make_character("Alice")], strict=False)
 
             assert result is False
 
 
 @pytest.mark.asyncio
 class TestPersistEntitiesChapterNumber:
-
     async def test_chapter_number_passed_to_character_builder(self) -> None:
         with patch("core.knowledge_graph_service.neo4j_manager") as fake_neo4j:
             fake_neo4j.execute_cypher_batch = AsyncMock()
             service = KnowledgeGraphService(cypher_builder=NativeCypherBuilder())
 
-            await service.persist_entities(
-                characters=[_make_character("Alice")], chapter_number=7
-            )
+            await service.persist_entities(characters=[_make_character("Alice")], chapter_number=7)
 
             statements = fake_neo4j.execute_cypher_batch.call_args[0][0]
             assert statements[0][1]["chapter_number"] == 7

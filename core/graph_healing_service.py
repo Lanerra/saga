@@ -434,9 +434,7 @@ class GraphHealingService:
                         embedding_by_id[str(node_id)] = embedding_vector
 
             # Batch-resolve all candidate entity IDs to element IDs in a single query
-            all_candidate_ids = sorted(
-                {c["id1"] for c in kg_candidates} | {c["id2"] for c in kg_candidates}
-            )
+            all_candidate_ids = sorted({c["id1"] for c in kg_candidates} | {c["id2"] for c in kg_candidates})
             element_id_map: dict[str, str] = {}
             if all_candidate_ids:
                 element_id_query = """
@@ -444,9 +442,7 @@ class GraphHealingService:
                     WHERE n.id IN $ids
                     RETURN n.id AS entity_id, elementId(n) AS element_id
                 """
-                element_id_rows = await neo4j_manager.execute_read_query(
-                    element_id_query, {"ids": all_candidate_ids}
-                )
+                element_id_rows = await neo4j_manager.execute_read_query(element_id_query, {"ids": all_candidate_ids})
                 for row in element_id_rows:
                     entity_id = row.get("entity_id")
                     element_id = row.get("element_id")
@@ -806,9 +802,7 @@ class GraphHealingService:
             RETURN count(n) AS deleted_count
         """
         try:
-            delete_results = await neo4j_manager.execute_write_query(
-                batch_delete_query, {"element_ids": element_ids}
-            )
+            delete_results = await neo4j_manager.execute_write_query(batch_delete_query, {"element_ids": element_ids})
             deleted_count = delete_results[0]["deleted_count"] if delete_results else 0
             results["nodes_removed"] = deleted_count
 

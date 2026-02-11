@@ -54,15 +54,11 @@ def _use_temp_projects_root(tmp_path: Path) -> Generator[None, None, None]:
 
 
 class TestGenerateMetadataInputValidation:
-    async def test_empty_string_raises_value_error(
-        self, bootstrapper: ProjectBootstrapper
-    ) -> None:
+    async def test_empty_string_raises_value_error(self, bootstrapper: ProjectBootstrapper) -> None:
         with pytest.raises(ValueError, match="non-empty string"):
             await bootstrapper.generate_metadata("")
 
-    async def test_whitespace_only_raises_value_error(
-        self, bootstrapper: ProjectBootstrapper
-    ) -> None:
+    async def test_whitespace_only_raises_value_error(self, bootstrapper: ProjectBootstrapper) -> None:
         with pytest.raises(ValueError, match="non-empty string"):
             await bootstrapper.generate_metadata("   \n\t  ")
 

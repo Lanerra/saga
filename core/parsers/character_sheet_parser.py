@@ -109,10 +109,7 @@ class CharacterSheetParser:
 
         allowed_statuses = ["Active", "Dead", "Injured", "Unknown", "Missing"]
         if character_data["status"] not in allowed_statuses:
-            raise ValueError(
-                f"Invalid status {character_data['status']!r} for character {character_name!r}. "
-                f"Allowed values: {allowed_statuses}"
-            )
+            raise ValueError(f"Invalid status {character_data['status']!r} for character {character_name!r}. " f"Allowed values: {allowed_statuses}")
 
         # Validate and filter traits to ensure single-word format
         raw_traits = character_data.get("traits", [])
@@ -139,10 +136,7 @@ class CharacterSheetParser:
         if "relationships" in character_data:
             for target_name, rel_data in character_data["relationships"].items():
                 if not isinstance(rel_data, dict):
-                    raise ValueError(
-                        f"Relationship data for {character_name} -> {target_name} must be a dict "
-                        f"with 'type' and 'description' keys, got {type(rel_data).__name__}"
-                    )
+                    raise ValueError(f"Relationship data for {character_name} -> {target_name} must be a dict " f"with 'type' and 'description' keys, got {type(rel_data).__name__}")
                 relationships[target_name] = rel_data
 
         # Create CharacterProfile

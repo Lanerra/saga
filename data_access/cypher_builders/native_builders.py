@@ -16,9 +16,9 @@ Notes:
 from typing import TYPE_CHECKING, Any
 
 from models.kg_constants import WORLD_ITEM_CANONICAL_LABELS
-from utils.text_processing import generate_entity_id
 from utils import classify_category_label
 from utils.common import flatten_dict
+from utils.text_processing import generate_entity_id
 
 if TYPE_CHECKING:
     from models.kg_models import CharacterProfile, WorldItem
@@ -118,10 +118,7 @@ class NativeCypherBuilder:
         relationship_data = []
         for target_name, rel_info in char.relationships.items():
             if not isinstance(rel_info, dict):
-                raise ValueError(
-                    f"Relationship data for {char.name} -> {target_name} must be a dict "
-                    f"with 'type' and 'description' keys, got {type(rel_info).__name__}"
-                )
+                raise ValueError(f"Relationship data for {char.name} -> {target_name} must be a dict " f"with 'type' and 'description' keys, got {type(rel_info).__name__}")
             rel_type_raw = rel_info.get("type", "")
             rel_desc = rel_info.get("description", "")
 

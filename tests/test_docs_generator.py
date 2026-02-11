@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from config.docs_generator import _format_default, generate_docs
 
 
@@ -53,9 +51,7 @@ class TestGenerateDocs:
         generate_docs(output_path=output)
         lines = output.read_text(encoding="utf-8").splitlines()
         separator_index = lines.index("|---------|------|---------|-------------|")
-        field_rows = [
-            line for line in lines[separator_index + 1:] if line.startswith("|")
-        ]
+        field_rows = [line for line in lines[separator_index + 1 :] if line.startswith("|")]
         assert len(field_rows) >= 1
 
     def test_parent_directories_created_automatically(self, tmp_path: Path) -> None:
@@ -68,7 +64,7 @@ class TestGenerateDocs:
         generate_docs(output_path=output)
         lines = output.read_text(encoding="utf-8").splitlines()
         separator_index = lines.index("|---------|------|---------|-------------|")
-        field_rows = lines[separator_index + 1:]
+        field_rows = lines[separator_index + 1 :]
         for row in field_rows:
             if not row.startswith("|"):
                 continue
