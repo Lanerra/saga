@@ -1032,8 +1032,6 @@ class TestBuildChapterNodeStatement:
         """Test building statement with all fields (must include Chapter.id)."""
         query, params = _build_chapter_node_statement(
             chapter_number=1,
-            text="Chapter text",
-            word_count=100,
             summary="Chapter summary",
             embedding=[0.1, 0.2, 0.3],
         )
@@ -1057,8 +1055,6 @@ class TestBuildChapterNodeStatement:
         """Test building statement without summary and embedding (must still include Chapter.id)."""
         query, params = _build_chapter_node_statement(
             chapter_number=2,
-            text="Chapter text",
-            word_count=200,
             summary=None,
             embedding=None,
         )

@@ -57,151 +57,109 @@ class NarrativeEnrichmentNode:
         self,
         narrative_text: str,
         chapter_number: int,
-    ) -> str:
+    ) -> None:
         """Process narrative text and extract enrichment data.
 
         Args:
             narrative_text: The narrative text to parse
             chapter_number: Chapter number for provenance
 
-        Returns:
-            str: Success or failure message
-
         Raises:
-            ValueError: If narrative_text is empty or chapter_number is invalid
-            DatabaseError: If database operations fail
+            ValueError: If inputs are invalid or enrichment encounters contradictions
         """
-        # Validate inputs
         if not narrative_text or len(narrative_text.strip()) == 0:
-            logger.error("NarrativeEnrichmentNode: Empty narrative text provided")
-            return "Failed to enrich narrative: Empty narrative text provided"
+            raise ValueError("Empty narrative text provided")
 
         if chapter_number <= 0:
-            logger.error("NarrativeEnrichmentNode: Invalid chapter number", chapter_number=chapter_number)
-            return f"Failed to enrich narrative: Invalid chapter number {chapter_number}"
+            raise ValueError(f"Invalid chapter number {chapter_number}")
 
-        try:
-            # Get character profiles from database
-            character_profiles = await get_character_profiles()
-            if not character_profiles:
-                logger.error("NarrativeEnrichmentNode: No character profiles found")
-                return "Failed to enrich narrative: No character profiles found"
+        character_profiles = await get_character_profiles()
+        if not character_profiles:
+            raise ValueError("No character profiles found")
 
-            # Get chapter data from database
-            chapter_data = await get_chapter_data_from_db(chapter_number)
-            if not chapter_data:
-                logger.error("NarrativeEnrichmentNode: No chapter data found", chapter_number=chapter_number)
-                return f"Failed to enrich narrative: No chapter data found for chapter {chapter_number}"
+        chapter_data = await get_chapter_data_from_db(chapter_number)
+        if not chapter_data:
+            raise ValueError(f"No chapter data found for chapter {chapter_number}")
 
-            # Initialize parser
-            parser = NarrativeEnrichmentParser(
-                narrative_text=narrative_text,
-                chapter_number=chapter_number,
-            )
+        parser = NarrativeEnrichmentParser(
+            narrative_text=narrative_text,
+            chapter_number=chapter_number,
+        )
 
-            # Extract physical descriptions
-            physical_descriptions = await parser.extract_physical_descriptions()
-            if not physical_descriptions:
-                logger.warning("NarrativeEnrichmentNode: No physical descriptions extracted")
+        physical_descriptions = await parser.extract_physical_descriptions()
+        if not physical_descriptions:
+            logger.warning("NarrativeEnrichmentNode: No physical descriptions extracted")
 
-            # Extract chapter embeddings
-            chapter_embeddings = await parser.extract_chapter_embeddings()
-            if not chapter_embeddings:
-                logger.warning("NarrativeEnrichmentNode: No chapter embeddings extracted")
+        chapter_embeddings = await parser.extract_chapter_embeddings()
+        if not chapter_embeddings:
+            logger.warning("NarrativeEnrichmentNode: No chapter embeddings extracted")
 
-            # Update character physical descriptions
-            if physical_descriptions:
-                for desc in physical_descriptions:
-                    character_name = desc.character_name
-                    extracted_description = desc.extracted_description
+        if physical_descriptions:
+            for desc in physical_descriptions:
+                character_name = desc.character_name
+                extracted_description = desc.extracted_description
 
-                    # Find character by name
-                    character = next((c for c in character_profiles if c.name == character_name), None)
+                character = next((c for c in character_profiles if c.name == character_name), None)
 
-                    if not character:
-                        logger.error("NarrativeEnrichmentNode: Character not found", character_name=character_name)
-                        return f"Failed to enrich narrative: Character {character_name} not found"
+                if not character:
+                    raise ValueError(f"Character {character_name} not found")
 
-                    # Check if physical description already exists
-                    if character.physical_description:
-                        # Validate that new description doesn't contradict existing one
-                        if self._validate_physical_description(
-                            character.physical_description,
-                            extracted_description,
-                        ):
-                            # Update character with new physical description
-                            character.physical_description = extracted_description
-                            await sync_characters([character], chapter_number)
-                            logger.info(
-                                "NarrativeEnrichmentNode: Updated character physical description",
-                                character_name=character_name,
-                            )
-                        else:
-                            logger.error(
-                                "NarrativeEnrichmentNode: Contradictory physical description",
-                                character_name=character_name,
-                            )
-                            return f"Failed to enrich narrative: Contradictory physical description for {character_name}"
-                    else:
-                        character.physical_description = extracted_description
-                        await sync_characters([character], chapter_number)
-                        logger.info(
-                            "NarrativeEnrichmentNode: Added character physical description",
-                            character_name=character_name,
-                        )
+                if character.physical_description:
+                    if not self._validate_physical_description(
+                        character.physical_description,
+                        extracted_description,
+                    ):
+                        raise ValueError(f"Contradictory physical description for {character_name}")
+                    character.physical_description = extracted_description
+                    await sync_characters([character], chapter_number)
+                    logger.info(
+                        "NarrativeEnrichmentNode: Updated character physical description",
+                        character_name=character_name,
+                    )
+                else:
+                    character.physical_description = extracted_description
+                    await sync_characters([character], chapter_number)
+                    logger.info(
+                        "NarrativeEnrichmentNode: Added character physical description",
+                        character_name=character_name,
+                    )
 
-            # Update chapter embeddings
-            if chapter_embeddings:
-                for embedding in chapter_embeddings:
-                    embedding_vector = embedding.embedding_vector
-                    embedding_array = np.array(embedding_vector) if isinstance(embedding_vector, list) else embedding_vector
+        if chapter_embeddings:
+            for embedding in chapter_embeddings:
+                embedding_vector = embedding.embedding_vector
+                embedding_array = np.array(embedding_vector) if isinstance(embedding_vector, list) else embedding_vector
 
-                    # Check if embedding already exists
-                    if chapter_data.embedding:
-                        # Validate that new embedding is not significantly different
-                        if self._validate_embedding(
-                            chapter_data.embedding,
-                            embedding_vector,
-                        ):
-                            # Update chapter with new embedding
-                            await save_chapter_data_to_db(
-                                chapter_number=chapter_data.number,
-                                title=chapter_data.title,
-                                act_number=chapter_data.act_number,
-                                summary=chapter_data.summary,
-                                embedding_array=embedding_array,
-                                is_provisional=chapter_data.is_provisional,
-                            )
-                            logger.info(
-                                "NarrativeEnrichmentNode: Updated chapter embedding",
-                                chapter_number=chapter_data.number,
-                            )
-                        else:
-                            logger.error(
-                                "NarrativeEnrichmentNode: Invalid embedding",
-                                chapter_number=chapter_data.number,
-                            )
-                            return f"Failed to enrich narrative: Invalid embedding for chapter {chapter_data.number}"
-                    else:
-                        # Add embedding to chapter
-                        await save_chapter_data_to_db(
-                            chapter_number=chapter_data.number,
-                            title=chapter_data.title,
-                            act_number=chapter_data.act_number,
-                            summary=chapter_data.summary,
-                            embedding_array=embedding_array,
-                            is_provisional=chapter_data.is_provisional,
-                        )
-                        logger.info(
-                            "NarrativeEnrichmentNode: Added chapter embedding",
-                            chapter_number=chapter_data.number,
-                        )
-
-            return "Successfully enriched narrative"
-
-        except Exception as e:
-            logger.error("NarrativeEnrichmentNode: Error during enrichment", error=str(e))
-            return f"Failed to enrich narrative: {str(e)}"
+                if chapter_data.embedding:
+                    if not self._validate_embedding(
+                        chapter_data.embedding,
+                        embedding_vector,
+                    ):
+                        raise ValueError(f"Invalid embedding for chapter {chapter_data.number}")
+                    await save_chapter_data_to_db(
+                        chapter_number=chapter_data.number,
+                        title=chapter_data.title,
+                        act_number=chapter_data.act_number,
+                        summary=chapter_data.summary,
+                        embedding_array=embedding_array,
+                        is_provisional=chapter_data.is_provisional,
+                    )
+                    logger.info(
+                        "NarrativeEnrichmentNode: Updated chapter embedding",
+                        chapter_number=chapter_data.number,
+                    )
+                else:
+                    await save_chapter_data_to_db(
+                        chapter_number=chapter_data.number,
+                        title=chapter_data.title,
+                        act_number=chapter_data.act_number,
+                        summary=chapter_data.summary,
+                        embedding_array=embedding_array,
+                        is_provisional=chapter_data.is_provisional,
+                    )
+                    logger.info(
+                        "NarrativeEnrichmentNode: Added chapter embedding",
+                        chapter_number=chapter_data.number,
+                    )
 
     def _validate_physical_description(
         self,
@@ -217,120 +175,144 @@ class NarrativeEnrichmentNode:
         Returns:
             bool: True if valid, False if contradictory
         """
-        # Normalize descriptions to lowercase for comparison
         existing_lower = existing_description.lower()
         new_lower = new_description.lower()
 
-        # Check for contradictory height descriptors
-        height_keywords = {"short", "tall", "petite", "lanky", "statuesque", "average", "medium", "small", "large", "big", "little", "tiny", "giant", "huge"}
+        if self._has_contradictory_height(existing_lower, new_lower):
+            logger.error(
+                "NarrativeEnrichmentNode: Contradictory height in physical description",
+                existing=existing_description,
+                new=new_description,
+            )
+            return False
 
-        # Extract height-related words from both descriptions
-        existing_heights = [word for word in existing_lower.split() if word in height_keywords]
-        new_heights = [word for word in new_lower.split() if word in height_keywords]
+        if self._has_contradictory_attribute(existing_lower, new_lower, "hair"):
+            logger.error(
+                "NarrativeEnrichmentNode: Contradictory hair color in physical description",
+                existing=existing_description,
+                new=new_description,
+            )
+            return False
 
-        # If both have height descriptors, check if they contradict
-        if existing_heights and new_heights:
-            # Simple opposition check - this can be enhanced with more sophisticated logic
-            if ("short" in existing_heights and "tall" in new_heights) or ("tall" in existing_heights and "short" in new_heights):
-                logger.error(
-                    "NarrativeEnrichmentNode: Contradictory height in physical description",
-                    existing=existing_description,
-                    new=new_description,
-                )
-                return False
+        if self._has_contradictory_attribute(existing_lower, new_lower, "eye"):
+            logger.error(
+                "NarrativeEnrichmentNode: Contradictory eye color in physical description",
+                existing=existing_description,
+                new=new_description,
+            )
+            return False
 
-        # Check for contradictory hair color descriptors
-        hair_color_keywords = {
-            "blonde",
-            "blond",
-            "brown",
-            "black",
-            "red",
-            "auburn",
-            "gray",
-            "grey",
-            "white",
-            "silver",
-            "platinum",
-            "strawberry",
-            "dirty",
-            "dishwater",
-            "sandy",
-            "carrot",
-            "chestnut",
-            "raven",
-            "ebony",
-            "golden",
-            "copper",
-            "bronze",
-            "ash",
-            "pepper",
-            "salt",
-        }
-
-        # Extract hair color-related words from both descriptions
-        existing_hair_colors = [word for word in existing_lower.split() if word in hair_color_keywords]
-        new_hair_colors = [word for word in new_lower.split() if word in hair_color_keywords]
-
-        # If both have hair color descriptors, check if they contradict
-        # Only check if both descriptions mention hair color
-        if existing_hair_colors and new_hair_colors:
-            # Check if the hair colors are different
-            # We need to compare the actual color words, not just check if they're different
-            # For now, we'll only flag if they're explicitly contradictory (e.g., brown vs blonde)
-            # This is a simplified check that can be enhanced later
-            if existing_hair_colors and new_hair_colors:
-                # Only flag if they're explicitly different and not just additional info
-                # For example, "brown" and "long brown" should not be flagged
-                # But "brown" and "blonde" should be flagged
-                if existing_hair_colors != new_hair_colors:
-                    # Check if the descriptions are actually contradictory
-                    # If one is a subset of the other (e.g., "brown" vs "long brown"), it's not a contradiction
-                    # We'll use a simple heuristic: if the color words are different, it's a contradiction
-                    # unless they're the same color described differently (e.g., "brown" vs "dark brown")
-                    # For now, we'll only flag if they're completely different
-                    if not any(color in new_hair_colors for color in existing_hair_colors):
-                        logger.error(
-                            "NarrativeEnrichmentNode: Contradictory hair color in physical description",
-                            existing=existing_description,
-                            new=new_description,
-                        )
-                        return False
-
-        # Check for contradictory eye color descriptors
-        eye_color_keywords = {"blue", "green", "brown", "hazel", "gray", "grey", "amber", "violet", "purple", "pink", "red", "black", "white", "gold", "silver"}
-
-        # Extract eye color-related words from both descriptions
-        existing_eye_colors = [word for word in existing_lower.split() if word in eye_color_keywords]
-        new_eye_colors = [word for word in new_lower.split() if word in eye_color_keywords]
-
-        # If both have eye color descriptors, check if they contradict
-        # Only check if both descriptions mention eye color
-        if existing_eye_colors and new_eye_colors:
-            # Check if the eye colors are different
-            # We need to compare the actual color words, not just check if they're different
-            # For now, we'll only flag if they're explicitly contradictory (e.g., brown vs blue)
-            # This is a simplified check that can be enhanced later
-            if existing_eye_colors and new_eye_colors:
-                # Only flag if they're explicitly different and not just additional info
-                # For example, "brown" and "long brown" should not be flagged
-                # But "brown" and "blonde" should be flagged
-                if existing_eye_colors != new_eye_colors:
-                    # Check if the descriptions are actually contradictory
-                    # If one is a subset of the other (e.g., "brown" vs "dark brown"), it's not a contradiction
-                    # We'll use a simple heuristic: if the color words are different, it's a contradiction
-                    # unless they're the same color described differently (e.g., "brown" vs "dark brown")
-                    # For now, we'll only flag if they're completely different
-                    if not any(color in new_eye_colors for color in existing_eye_colors):
-                        logger.error(
-                            "NarrativeEnrichmentNode: Contradictory eye color in physical description",
-                            existing=existing_description,
-                            new=new_description,
-                        )
-                        return False
-
-        # If no contradictions found, return True
         return True
+
+    @staticmethod
+    def _extract_words(text: str) -> list[str]:
+        """Extract words using word boundaries, handling punctuation and hyphens."""
+        import re
+        return re.findall(r"\b[a-z]+\b", text)
+
+    @staticmethod
+    def _has_contradictory_height(existing: str, new: str) -> bool:
+        """Check for contradictory height descriptors between two descriptions."""
+        height_keywords = {
+            "short", "tall", "petite", "lanky", "statuesque",
+            "average", "medium", "small", "large", "big",
+            "little", "tiny", "giant", "huge",
+        }
+        existing_heights = {w for w in NarrativeEnrichmentNode._extract_words(existing) if w in height_keywords}
+        new_heights = {w for w in NarrativeEnrichmentNode._extract_words(new) if w in height_keywords}
+
+        if not existing_heights or not new_heights:
+            return False
+
+        opposites = [
+            ({"short", "petite", "small", "little", "tiny"}, {"tall", "lanky", "statuesque", "giant", "huge", "large", "big"}),
+        ]
+        for group_a, group_b in opposites:
+            if (existing_heights & group_a and new_heights & group_b) or (existing_heights & group_b and new_heights & group_a):
+                return True
+        return False
+
+    @staticmethod
+    def _extract_color_near_context(text: str, context_words: set[str], color_keywords: set[str], compound_phrases: list[str]) -> set[str]:
+        """Extract color descriptors that appear near context words (e.g., 'hair', 'eyes').
+
+        Handles compound phrases like 'salt-and-pepper' or 'dirty blonde' as single units.
+        Only extracts colors within a 4-word window of a context word to avoid matching
+        'brown jacket' when looking for hair color.
+        """
+        import re
+        normalized = re.sub(r"[–—]", "-", text)
+
+        found_colors: set[str] = set()
+
+        for phrase in compound_phrases:
+            if phrase in normalized:
+                found_colors.add(phrase)
+                normalized = normalized.replace(phrase, "")
+
+        words = NarrativeEnrichmentNode._extract_words(normalized)
+
+        context_indices = [i for i, w in enumerate(words) if w in context_words]
+        if not context_indices:
+            return set()
+
+        for index in context_indices:
+            window_start = max(0, index - 4)
+            window_end = min(len(words), index + 5)
+            for i in range(window_start, window_end):
+                if words[i] in color_keywords:
+                    found_colors.add(words[i])
+
+        return found_colors
+
+    @staticmethod
+    def _has_contradictory_attribute(existing: str, new: str, attribute: str) -> bool:
+        """Check for contradictory color attributes between two descriptions.
+
+        Args:
+            existing: Lowercased existing description
+            new: Lowercased new description
+            attribute: 'hair' or 'eye'
+        """
+        if attribute == "hair":
+            context_words = {"hair", "haired", "locks", "tresses", "mane", "curls"}
+            color_keywords = {
+                "blonde", "blond", "brown", "black", "red", "auburn",
+                "gray", "grey", "white", "silver", "platinum",
+                "strawberry", "sandy", "chestnut", "raven", "ebony",
+                "golden", "copper", "bronze",
+            }
+            compound_phrases = [
+                "salt-and-pepper", "salt and pepper",
+                "dirty blonde", "dirty blond",
+                "dishwater blonde", "dishwater blond",
+                "strawberry blonde", "strawberry blond",
+                "ash blonde", "ash blond",
+                "platinum blonde", "platinum blond",
+            ]
+        else:
+            context_words = {"eye", "eyes", "eyed", "gaze", "irises"}
+            color_keywords = {
+                "blue", "green", "brown", "hazel", "gray", "grey",
+                "amber", "violet", "purple", "black", "gold", "silver",
+            }
+            compound_phrases = [
+                "steel grey", "steel gray",
+                "ice blue",
+                "dark brown",
+            ]
+
+        existing_colors = NarrativeEnrichmentNode._extract_color_near_context(
+            existing, context_words, color_keywords, compound_phrases,
+        )
+        new_colors = NarrativeEnrichmentNode._extract_color_near_context(
+            new, context_words, color_keywords, compound_phrases,
+        )
+
+        if not existing_colors or not new_colors:
+            return False
+
+        return not existing_colors & new_colors
 
     def _validate_embedding(
         self,
@@ -421,12 +403,13 @@ async def enrich_narrative(state: NarrativeState) -> dict[str, Any]:
     draft_text = get_draft_text(state, content_manager)
 
     node = NarrativeEnrichmentNode()
-    result = await node.process(draft_text, chapter_number)
-
-    if result.startswith("Failed"):
+    try:
+        await node.process(draft_text, chapter_number)
+    except (ValueError, Exception) as error:
+        logger.error("enrich_narrative: enrichment failed", error=str(error))
         return {
             "current_node": "narrative_enrichment",
-            "last_error": result,
+            "last_error": str(error),
         }
 
     return {

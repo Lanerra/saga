@@ -23,8 +23,15 @@ from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 
-# Global text processing service instance for entity validation
-text_processing_service = TextProcessingService()
+_text_processing_service: TextProcessingService | None = None
+
+
+def _get_text_processing_service() -> TextProcessingService:
+    """Lazily initialize the TextProcessingService to avoid loading spaCy at import time."""
+    global _text_processing_service
+    if _text_processing_service is None:
+        _text_processing_service = TextProcessingService()
+    return _text_processing_service
 
 
 def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
@@ -41,12 +48,12 @@ def _validate_entity_with_spacy(scene_text: str, entity_name: str) -> bool:
         logger.debug("_validate_entity_with_spacy: entity validation disabled by config")
         return True
 
-    if not text_processing_service.spacy_service.is_loaded():
+    if not _get_text_processing_service().spacy_service.is_loaded():
         logger.warning("_validate_entity_with_spacy: spaCy model not loaded, skipping validation")
         return True
 
     try:
-        is_present = text_processing_service.spacy_service.verify_entity_presence(scene_text, entity_name, threshold=0.7)
+        is_present = _get_text_processing_service().spacy_service.verify_entity_presence(scene_text, entity_name, threshold=0.7)
 
         if not is_present:
             logger.warning(
@@ -72,9 +79,9 @@ def _get_normalized_entity_key(name: str) -> str:
     Returns:
         Normalized key for deduplication.
     """
-    if config.settings.ENABLE_ENTITY_VALIDATION and text_processing_service.spacy_service.is_loaded():
+    if config.settings.ENABLE_ENTITY_VALIDATION and _get_text_processing_service().spacy_service.is_loaded():
         try:
-            return text_processing_service.spacy_service.normalize_entity_name(name)
+            return _get_text_processing_service().spacy_service.normalize_entity_name(name)
         except Exception as e:
             logger.warning("_get_normalized_entity_key: spaCy normalization failed, using fallback", error=str(e))
 
@@ -212,7 +219,7 @@ async def extract_from_scene(
 
     # Clean input text with spaCy if entity validation is enabled
     if config.settings.ENABLE_ENTITY_VALIDATION:
-        scene_text = text_processing_service.clean_text_with_spacy(scene_text, aggressive=False)
+        scene_text = _get_text_processing_service().clean_text_with_spacy(scene_text, aggressive=False)
 
     # Extract characters only if enabled (should be False in Stage 5)
     if config.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE:
@@ -355,7 +362,7 @@ async def _extract_characters_from_scene(
 
             character_name = str(name)
 
-            should_classify, classification_reason = text_processing_service.spacy_service.should_classify_as_character(character_name)
+            should_classify, classification_reason = _get_text_processing_service().spacy_service.should_classify_as_character(character_name)
 
             if not should_classify:
                 logger.debug(
@@ -873,7 +880,7 @@ async def extract_from_scenes(state: NarrativeState) -> dict[str, Any]:
     # Load spaCy model for entity validation if enabled
     if config.settings.ENABLE_ENTITY_VALIDATION:
         logger.info("extract_from_scenes: loading spaCy model for entity validation")
-        text_processing_service.load_spacy_model()
+        _get_text_processing_service().load_spacy_model()
 
     logger.info(
         "extract_from_scenes: processing scenes",

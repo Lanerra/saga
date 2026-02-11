@@ -240,6 +240,7 @@ class TestIsPlotStagnant:
         state["extracted_relationships"] = []
 
         with patch("core.langgraph.nodes.validation_node.settings") as patched_settings:
+            patched_settings.PLOT_STAGNATION_MIN_WORD_COUNT = 1500
             patched_settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE = True
             patched_settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE = False
             patched_settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE = False
@@ -255,6 +256,7 @@ class TestIsPlotStagnant:
         state["extracted_relationships"] = []
 
         with patch("core.langgraph.nodes.validation_node.settings") as patched_settings:
+            patched_settings.PLOT_STAGNATION_MIN_WORD_COUNT = 1500
             patched_settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE = False
             patched_settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE = False
             patched_settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE = False

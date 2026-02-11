@@ -455,8 +455,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
 
         chapter_statement = _build_chapter_node_statement(
             chapter_number=state.get("current_chapter", 1),
-            text=draft_text,
-            word_count=state.get("draft_word_count", 0),
             summary=None,
             embedding=embedding,
         )
@@ -600,7 +598,7 @@ def _filter_invalid_relationships(
             continue
 
         # Reject single-word lowercase concepts (except proper names)
-        if " " not in target and target.islower() and target not in ["bayou", "plantation"]:
+        if " " not in target and target.islower() and target not in config.settings.RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST:
             logger.debug(
                 "_filter_invalid_relationships: rejected lowercase concept",
                 target=target,
@@ -1238,8 +1236,6 @@ async def _build_relationship_statements(
 
 def _build_chapter_node_statement(
     chapter_number: int,
-    text: str,
-    word_count: int,
     summary: str | None,
     embedding: list[float] | None = None,
 ) -> tuple[str, dict]:
@@ -1253,8 +1249,6 @@ def _build_chapter_node_statement(
 
     Args:
         chapter_number: Chapter number
-        text: Chapter text content
-        word_count: Word count for metadata
         summary: Optional chapter summary
         embedding: Optional embedding vector
 

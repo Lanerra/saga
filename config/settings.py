@@ -311,6 +311,7 @@ class SagaSettings(BaseSettings):
     # Revision and Validation
     REVISION_EVALUATION_THRESHOLD: float = 0.85
     MIN_QUALITY_THRESHOLD: float = 0.7
+    PLOT_STAGNATION_MIN_WORD_COUNT: int = 1500
     TARGET_WORD_COUNT: int = 80000
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
     MAX_SUMMARY_TOKENS: int = 16384
@@ -328,6 +329,7 @@ class SagaSettings(BaseSettings):
     # Knowledge Graph Entity Filtering (Proper Noun Preference)
     ENTITY_MENTION_THRESHOLD_PROPER_NOUN: int = 1
     ENTITY_MENTION_THRESHOLD_COMMON_NOUN: int = 3
+    RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST: list[str] = ["bayou", "plantation"]
 
     # Narrative Agent Configuration
     KG_PREPOPULATION_CHAPTER_NUM: int = 0

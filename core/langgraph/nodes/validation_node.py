@@ -555,7 +555,7 @@ def _is_plot_stagnant(
 
     This function checks multiple heuristics to determine if the chapter
     is making sufficient progress:
-    - Minimum word count (1500 words)
+    - Minimum word count (configurable via PLOT_STAGNATION_MIN_WORD_COUNT)
     - Presence of new events
     - Presence of new relationships
 
@@ -569,11 +569,12 @@ def _is_plot_stagnant(
     """
     # Check 1: Minimum word count
     word_count = state.get("draft_word_count", 0)
-    if word_count < 1500:
+    minimum = settings.PLOT_STAGNATION_MIN_WORD_COUNT
+    if word_count < minimum:
         logger.debug(
             "_is_plot_stagnant: insufficient word count",
             word_count=word_count,
-            minimum=1500,
+            minimum=minimum,
         )
         return True
 

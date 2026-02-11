@@ -102,24 +102,22 @@ class TestNarrativeEnrichmentNode:
             result = await node.process(sample_narrative_text, 1)
 
             # Verify success
-            assert result == "Successfully enriched narrative"
+            assert result is None
 
     async def test_process_empty_narrative_text(self):
         """Test error handling when narrative text is empty."""
         node = NarrativeEnrichmentNode()
 
-        result = await node.process("", 1)
-
-        assert "Failed to enrich narrative: Empty narrative text provided" in result
+        with pytest.raises(ValueError, match="Empty narrative text provided"):
+            await node.process("", 1)
 
     async def test_process_invalid_chapter_number(self):
         """Test error handling when chapter number is invalid."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 
-        result = await node.process(narrative_text, 0)
-
-        assert "Failed to enrich narrative: Invalid chapter number 0" in result
+        with pytest.raises(ValueError, match="Invalid chapter number 0"):
+            await node.process(narrative_text, 0)
 
     async def test_process_no_character_profiles(self):
         """Test error handling when no character profiles are found."""
@@ -129,9 +127,8 @@ class TestNarrativeEnrichmentNode:
         with patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars:
             mock_get_chars.return_value = []
 
-            result = await node.process(narrative_text, 1)
-
-            assert "Failed to enrich narrative: No character profiles found" in result
+            with pytest.raises(ValueError, match="No character profiles found"):
+                await node.process(narrative_text, 1)
 
     async def test_process_no_chapter_data(self):
         """Test error handling when no chapter data is found."""
@@ -149,9 +146,8 @@ class TestNarrativeEnrichmentNode:
             ]
             mock_get_chapter.return_value = None
 
-            result = await node.process(narrative_text, 1)
-
-            assert "Failed to enrich narrative: No chapter data found for chapter 1" in result
+            with pytest.raises(ValueError, match="No chapter data found for chapter 1"):
+                await node.process(narrative_text, 1)
 
     async def test_validate_physical_description(self):
         """Test validation of physical descriptions."""
@@ -208,7 +204,7 @@ class TestNarrativeEnrichmentNode:
                 result = await node.process(sample_narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_chapter_embedding_extraction(self, sample_narrative_text):
         """Test extraction of chapter embeddings from narrative text."""
@@ -246,7 +242,7 @@ class TestNarrativeEnrichmentNode:
                 result = await node.process(sample_narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_character_enrichment_with_physical_description(self, sample_narrative_text):
         """Test enrichment of character with physical description."""
@@ -284,7 +280,7 @@ class TestNarrativeEnrichmentNode:
                 result = await node.process(sample_narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_chapter_enrichment_with_embedding(self, sample_narrative_text):
         """Test enrichment of chapter with embedding."""
@@ -322,7 +318,7 @@ class TestNarrativeEnrichmentNode:
                 result = await node.process(sample_narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_validation_no_new_structural_entities(self):
         """Test that no new structural entities are created during enrichment."""
@@ -359,7 +355,7 @@ class TestNarrativeEnrichmentNode:
                 result = await node.process(narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_validation_character_name_matching(self):
         """Test that character names match canonical names."""
@@ -398,7 +394,7 @@ class TestNarrativeEnrichmentNode:
                 result = await node.process(narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_validation_no_contradictions_in_enrichment(self):
         """Test that enrichments don't contradict existing properties."""
@@ -442,11 +438,8 @@ class TestNarrativeEnrichmentNode:
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
-                # Call the process method
-                result = await node.process(narrative_text, 1)
-
-                # Verify failure due to contradiction
-                assert "Failed to enrich narrative: Contradictory physical description for Alice" in result
+                with pytest.raises(ValueError, match="Contradictory physical description for Alice"):
+                    await node.process(narrative_text, 1)
 
 
 @pytest.mark.asyncio
@@ -502,7 +495,7 @@ class TestNarrativeEnrichmentNodeIntegration:
                 result = await node.process(narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_error_handling_in_pipeline(self):
         """Test error handling in the full pipeline."""
@@ -535,11 +528,8 @@ class TestNarrativeEnrichmentNodeIntegration:
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
-                # Call the process method
-                result = await node.process(narrative_text, 1)
-
-                # Verify failure
-                assert "Failed to enrich narrative: Test error" in result
+                with pytest.raises(Exception, match="Test error"):
+                    await node.process(narrative_text, 1)
 
 
 @pytest.mark.asyncio
@@ -550,35 +540,31 @@ class TestNarrativeEnrichmentNodeEdgeCases:
         """Test with empty narrative text."""
         node = NarrativeEnrichmentNode()
 
-        result = await node.process("", 1)
-
-        assert "Failed to enrich narrative: Empty narrative text provided" in result
+        with pytest.raises(ValueError, match="Empty narrative text provided"):
+            await node.process("", 1)
 
     async def test_whitespace_only_narrative_text(self):
         """Test with whitespace-only narrative text."""
         node = NarrativeEnrichmentNode()
 
-        result = await node.process("   ", 1)
-
-        assert "Failed to enrich narrative: Empty narrative text provided" in result
+        with pytest.raises(ValueError, match="Empty narrative text provided"):
+            await node.process("   ", 1)
 
     async def test_invalid_chapter_number_zero(self):
         """Test with chapter number 0."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 
-        result = await node.process(narrative_text, 0)
-
-        assert "Failed to enrich narrative: Invalid chapter number 0" in result
+        with pytest.raises(ValueError, match="Invalid chapter number 0"):
+            await node.process(narrative_text, 0)
 
     async def test_invalid_chapter_number_negative(self):
         """Test with negative chapter number."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 
-        result = await node.process(narrative_text, -1)
-
-        assert "Failed to enrich narrative: Invalid chapter number -1" in result
+        with pytest.raises(ValueError, match="Invalid chapter number -1"):
+            await node.process(narrative_text, -1)
 
     async def test_character_not_found(self):
         """Test when character is not found in database."""
@@ -613,11 +599,8 @@ class TestNarrativeEnrichmentNodeEdgeCases:
                 mock_sync_chars.return_value = True
                 mock_save_chapter.return_value = True
 
-                # Call the process method
-                result = await node.process(narrative_text, 1)
-
-                # Verify failure
-                assert "Failed to enrich narrative: Character UnknownCharacter not found" in result
+                with pytest.raises(ValueError, match="Character UnknownCharacter not found"):
+                    await node.process(narrative_text, 1)
 
     async def test_chapter_not_found(self):
         """Test when no chapter data is returned from database."""
@@ -635,9 +618,8 @@ class TestNarrativeEnrichmentNodeEdgeCases:
             ]
             mock_get_chapter.return_value = None
 
-            result = await node.process(narrative_text, 1)
-
-            assert "Failed to enrich narrative: No chapter data found for chapter 1" in result
+            with pytest.raises(ValueError, match="No chapter data found for chapter 1"):
+                await node.process(narrative_text, 1)
 
 
 @pytest.mark.asyncio
@@ -679,7 +661,7 @@ class TestNarrativeEnrichmentNodePerformance:
                 result = await node.process(narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
     async def test_many_character_profiles(self):
         """Test with many character profiles."""
@@ -729,7 +711,7 @@ class TestNarrativeEnrichmentNodePerformance:
                 result = await node.process(narrative_text, 1)
 
                 # Verify success
-                assert result == "Successfully enriched narrative"
+                assert result is None
 
 
 @pytest.mark.asyncio

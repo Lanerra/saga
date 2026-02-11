@@ -15,7 +15,8 @@ from core.langgraph.nodes.scene_extraction import (
 @pytest.fixture
 def mock_text_processing_service():
     """Create a mock text processing service."""
-    with patch("core.langgraph.nodes.scene_extraction.text_processing_service") as mock_service:
+    with patch("core.langgraph.nodes.scene_extraction._get_text_processing_service") as mock_getter:
+        mock_service = MagicMock()
         mock_spacy = MagicMock()
         mock_spacy.is_loaded.return_value = True
         mock_spacy.verify_entity_presence.return_value = True
@@ -35,6 +36,7 @@ def mock_text_processing_service():
 
         mock_spacy.normalize_entity_name.side_effect = normalize_side_effect
         mock_service.spacy_service = mock_spacy
+        mock_getter.return_value = mock_service
         yield mock_service
 
 
