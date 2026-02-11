@@ -133,7 +133,7 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
                 DISTINCT CASE
                     WHEN coalesce(r.source_profile_managed, false) = true
                      AND (
-                          $include_provisional = false
+                          $include_provisional = TRUE
                           OR coalesce(r.is_provisional, FALSE) = FALSE
                      )
                     THEN {
@@ -287,7 +287,7 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
                 DISTINCT CASE
                     WHEN coalesce(r.source_profile_managed, false) = true
                      AND (
-                          $include_provisional = false
+                          $include_provisional = TRUE
                           OR coalesce(r.is_provisional, FALSE) = FALSE
                      )
                     THEN {

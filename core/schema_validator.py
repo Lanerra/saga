@@ -275,6 +275,7 @@ def validate_node_labels(labels: list[str]) -> list[str]:
     for label in labels:
         if not isinstance(label, str) or not label.strip():
             errors.append("Node labels must be non-empty strings")
+            continue
 
         # Apply schema validation
         is_valid, _, err = schema_validator.validate_entity_type(label)

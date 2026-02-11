@@ -419,12 +419,7 @@ async def _generate_character_list(state: NarrativeState) -> list[str]:
 
             placeholder_names = [name for name in validated_names if re.fullmatch(r"Name (One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)", name)]
             if placeholder_names:
-                logger.error(
-                    "_generate_character_list: placeholder names detected",
-                    prompt_sha1=prompt_sha1,
-                    placeholders=placeholder_names,
-                    names=validated_names,
-                )
+                raise ValueError(f"Placeholder character names detected: {placeholder_names}")
 
             logger.info(
                 "_generate_character_list: generated list",

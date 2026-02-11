@@ -69,11 +69,10 @@ async def extract_outline_relationships(state: NarrativeState) -> NarrativeState
         combined_length=len(combined_outline_text),
     )
 
-    story_metadata = state.get("story_metadata", {})
-    novel_title = story_metadata.get("title", "Unknown")
-    novel_genre = story_metadata.get("genre", "Unknown")
-    protagonist = story_metadata.get("protagonist", "Unknown")
-    setting = story_metadata.get("setting", "")
+    novel_title = state.get("title", "Unknown")
+    novel_genre = state.get("genre", "Unknown")
+    protagonist = state.get("protagonist_name", "Unknown")
+    setting = state.get("setting", "")
 
     relationships = await _extract_relationships_from_outline(
         outline_text=combined_outline_text,

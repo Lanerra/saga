@@ -179,9 +179,7 @@ ENABLE_PHASE2_DEDUPLICATION = settings.ENABLE_PHASE2_DEDUPLICATION
 PHASE2_NAME_SIMILARITY_THRESHOLD = settings.PHASE2_NAME_SIMILARITY_THRESHOLD
 PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD = settings.PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD
 ENABLE_STATUS_IS_ALIAS = settings.ENABLE_STATUS_IS_ALIAS
-# REVISION_EVALUATION_THRESHOLD is defined directly in settings.py as a module-level variable
-# and is already available via the automatic globals() loop in settings.py
-REVISION_EVALUATION_THRESHOLD = 0.85
+REVISION_EVALUATION_THRESHOLD = settings.REVISION_EVALUATION_THRESHOLD
 
 # DEPRECATED: Relationship normalization is disabled per Phase 4 requirements
 # Relationships are canonical from Stage 1 and should not be normalized

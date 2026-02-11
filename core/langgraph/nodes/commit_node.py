@@ -225,7 +225,7 @@ async def _rollback_commit(chapter: int) -> bool:
 
         # 3. Delete chapter node
         delete_chapter_query = """
-        MATCH (c:Chapter {chapter_number: $chapter})
+        MATCH (c:Chapter {number: $chapter})
         DELETE c
         """
         statements.append((delete_chapter_query, {"chapter": chapter}))

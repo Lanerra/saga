@@ -359,10 +359,10 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
     workflow = StateGraph(NarrativeState)
 
     # Add routing node for conditional entry
-    def route_entry(state: NarrativeState) -> NarrativeState:
+    def route_entry(state: NarrativeState) -> dict[str, str]:
         """Pass-through routing node for conditional entry."""
         logger.info("route_entry: determining workflow path")
-        return state
+        return {"current_node": "route"}
 
     workflow.add_node("route", route_entry)
 

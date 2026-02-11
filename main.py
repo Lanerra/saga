@@ -123,8 +123,7 @@ def main() -> None:
             if not all_successful:
                 exit(1)
         elif arguments.command:
-            # Handle case where command is a prompt for quick mode
-            asyncio.run(run_quick_mode(arguments.command))
+            parser.error(f"Unknown command: {arguments.command}")
         else:
             # Default to generate mode
             asyncio.run(run_generation_mode(from_candidate=False))

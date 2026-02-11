@@ -448,8 +448,8 @@ class TestDetectContradictions:
 
             assert result["needs_revision"] is False
 
-    async def test_detect_contradictions_at_max_iterations_with_issues_triggers_fatal_error(self, sample_validation_state):
-        """Validation failure on final iteration triggers fatal error instead of committing."""
+    async def test_detect_contradictions_at_max_iterations_accepts_best_effort(self, sample_validation_state):
+        """At max iterations with remaining issues, accept best-effort draft instead of fatal error."""
         state = sample_validation_state.copy()
         state["iteration_count"] = 3
         state["max_iterations"] = 3
@@ -474,9 +474,9 @@ class TestDetectContradictions:
 
             result = await detect_contradictions(state)
 
-            assert result["has_fatal_error"] is True
+            assert "has_fatal_error" not in result
             assert result["needs_revision"] is False
-            assert result["error_node"] == "validate"
+            assert result["contradictions"] == [critical_contradiction]
 
 
 @pytest.mark.asyncio

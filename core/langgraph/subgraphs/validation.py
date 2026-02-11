@@ -145,9 +145,9 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
 
         min_quality_threshold = config.MIN_QUALITY_THRESHOLD
         quality_scores = [
-            scores.get("coherence_score", 1.0),
-            scores.get("prose_quality_score", 1.0),
-            scores.get("plot_advancement_score", 1.0),
+            scores.get("coherence_score", 0.0),
+            scores.get("prose_quality_score", 0.0),
+            scores.get("plot_advancement_score", 0.0),
         ]
 
         avg_quality = sum(quality_scores) / len(quality_scores)
@@ -518,18 +518,14 @@ async def detect_contradictions(state: NarrativeState) -> NarrativeState:
     max_iterations = state.get("max_iterations", 3)
 
     if iteration_count >= max_iterations and has_issues and not force_continue:
-        error_msg = f"Validation failed after {max_iterations} iterations. " f"Found {len(critical_issues)} critical and {len(major_issues)} major issues."
-        logger.error(
-            "detect_contradictions: validation failed on final iteration",
+        logger.warning(
+            "detect_contradictions: max iterations reached, accepting best-effort draft",
             iteration_count=iteration_count,
             max_iterations=max_iterations,
             critical_issues=len(critical_issues),
             major_issues=len(major_issues),
         )
         return {
-            "has_fatal_error": True,
-            "last_error": error_msg,
-            "error_node": "validate",
             "needs_revision": False,
             "contradictions": contradictions,
             "current_node": "detect_contradictions",

@@ -161,7 +161,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     query = (
         f"MATCH (we {{id: $id}}) WHERE {label_predicate}"
         " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)"
-        " AND ($include_provisional = FALSE OR coalesce(we.is_provisional, FALSE) = FALSE)"
+        " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)"
         " RETURN we"
     )
 

@@ -427,7 +427,7 @@ async def _validate_relationships(
             # but we keep this for strict mode compatibility
             logger.warning(
                 "relationship_validation_strict_mode_violation",
-                relationship=f"{rel.source_name}({source_type}) -{rel.relationship_type}-> {rel.target_name}({target_type})",
+                relationship=f"{source_name}({source_type}) -{relationship_type}-> {target_name}({target_type})",
                 errors=errors,
             )
             # Don't add to contradictions in permissive mode

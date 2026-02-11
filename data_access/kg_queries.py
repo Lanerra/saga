@@ -1526,7 +1526,6 @@ async def _execute_atomic_merge(source_id: str, target_id: str, reason: str) -> 
 
 async def _validate_and_correct_relationship_types() -> int:
     """Validate and correct existing relationship types."""
-    # Find all DYNAMIC_REL relationships with type properties
     validation_query = """
     MATCH (s)-[r:DYNAMIC_REL]->(o)
     WHERE r.type IS NOT NULL
@@ -1540,29 +1539,30 @@ async def _validate_and_correct_relationship_types() -> int:
         if not results:
             return 0
 
-        corrected_count = 0
-
+        corrections: list[dict[str, str]] = []
         for record in results:
             current_type = record["current_type"]
             validated_type = validate_relationship_type(current_type)
-
             if validated_type != current_type:
-                # Update to validated type
-                update_query = """
-                MATCH ()-[r:DYNAMIC_REL]->()
-                WHERE elementId(r) = $rel_id
-                SET r.type = $new_type
-                RETURN count(*) as updated
-                """
+                corrections.append({"rel_id": record["rel_id"], "new_type": validated_type})
 
-                await neo4j_manager.execute_write_query(
-                    update_query,
-                    {"rel_id": record["rel_id"], "new_type": validated_type},
-                )
-                corrected_count += 1
-                logger.debug(f"Corrected relationship type: '{current_type}' -> '{validated_type}'")
+        if not corrections:
+            return 0
 
-        return corrected_count
+        batch_update_query = """
+        UNWIND $corrections AS correction
+        MATCH ()-[r:DYNAMIC_REL]->()
+        WHERE elementId(r) = correction.rel_id
+        SET r.type = correction.new_type
+        RETURN count(*) as updated
+        """
+        await neo4j_manager.execute_write_query(batch_update_query, {"corrections": corrections})
+
+        logger.debug(
+            "_validate_and_correct_relationship_types: batch corrected",
+            count=len(corrections),
+        )
+        return len(corrections)
 
     except (Neo4jError, KeyError, ValueError, TypeError) as exc:
         logger.error(f"Failed to validate relationship types: {exc}", exc_info=True)

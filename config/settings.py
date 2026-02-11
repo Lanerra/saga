@@ -309,6 +309,7 @@ class SagaSettings(BaseSettings):
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
+    REVISION_EVALUATION_THRESHOLD: float = 0.85
     MIN_QUALITY_THRESHOLD: float = 0.7
     TARGET_WORD_COUNT: int = 80000
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
@@ -719,5 +720,3 @@ handler.setFormatter(simple_formatter)
 root_logger = stdlib_logging.getLogger()
 root_logger.addHandler(handler)
 root_logger.setLevel(settings.LOG_LEVEL_STR)
-
-REVISION_EVALUATION_THRESHOLD = 0.85

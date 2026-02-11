@@ -19,6 +19,7 @@ import structlog
 
 from core.db_manager import neo4j_manager
 from data_access.character_queries import sync_characters
+from data_access.kg_queries import validate_relationship_type_for_cypher_interpolation
 from models.kg_models import CharacterProfile
 from utils.text_processing import validate_and_filter_traits
 
@@ -350,11 +351,10 @@ class CharacterSheetParser:
 
             for source_name, targets in relationships.items():
                 for target_name, rel_data in targets.items():
-                    rel_type = rel_data["type"]
+                    rel_type = validate_relationship_type_for_cypher_interpolation(rel_data["type"])
                     description = rel_data.get("description", "")
                     chapter_added = rel_data.get("chapter_added", 0)
 
-                    # Create relationship query
                     query = f"""
                     MATCH (source:Character {{name: $source_name}})
                     MATCH (target:Character {{name: $target_name}})

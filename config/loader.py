@@ -101,21 +101,38 @@ def reload_settings() -> bool:
 # -------------------------------------------------------------------------
 
 
+_sighup_reload_pending = False
+
+
+def is_reload_pending() -> bool:
+    """Check whether a SIGHUP-triggered reload is pending.
+
+    Returns:
+        `True` when a SIGHUP was received and the caller should invoke
+        [`reload_settings()`](config/loader.py:54) from a safe (non-signal) context.
+    """
+    return _sighup_reload_pending
+
+
+def clear_reload_pending() -> None:
+    """Clear the pending-reload flag after a successful reload."""
+    global _sighup_reload_pending  # noqa: PLW0603
+    _sighup_reload_pending = False
+
+
 def _handle_sighup(signum: int, _frame: Any) -> None:  # pragma: no cover
-    """Handle `SIGHUP` by reloading configuration.
+    """Handle `SIGHUP` by setting a flag for deferred reload.
+
+    `importlib.reload()` acquires the import lock, which is unsafe from signal
+    handler context. Instead, we set a flag so the main loop can perform the
+    reload at a safe point.
 
     Args:
         signum: Signal number (unused but required by signal handler signature).
         _frame: Current stack frame (unused but required by signal handler signature).
-
-    Side effects:
-        Writes a success/failure message to stdout.
     """
-    success = reload_settings()
-    if success:
-        print("[config] Configuration reloaded via SIGHUP")
-    else:
-        print("[config] Failed to reload configuration via SIGHUP")
+    global _sighup_reload_pending  # noqa: PLW0603
+    _sighup_reload_pending = True
 
 
 # Register the handler when the module is imported.

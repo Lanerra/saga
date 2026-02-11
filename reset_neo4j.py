@@ -192,13 +192,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--uri",
         default=None,
-        help=f"Neo4j connection URI (default: {config.NEO4J_URI})",
+        help="Neo4j connection URI (from config)",
     )
-    parser.add_argument("--user", default=None, help=f"Neo4j username (default: {config.NEO4J_USER})")
+    parser.add_argument("--user", default=None, help="Neo4j username (from config)")
     parser.add_argument(
         "--password",
         default=None,
-        help=f"Neo4j password (default: {config.NEO4J_PASSWORD})",
+        help="Neo4j password (from config)",
     )
     parser.add_argument("--force", action="store_true", help="Skip confirmation prompt")
 

@@ -39,7 +39,7 @@ def _iter_chapter_files(chapters_dir: Path) -> Iterable[Path]:
 def _strip_bom(text: str) -> str:
     """Remove a UTF-8 BOM if present."""
     if text.startswith("\ufeff"):
-        return text.lstrip("\ufeff")
+        return text[1:]
     return text
 
 
