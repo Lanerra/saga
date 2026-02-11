@@ -23,7 +23,6 @@ from .common import (
 )
 from .similarity import find_semantically_closest_segment, numpy_cosine_similarity
 from .text_processing import (
-    SpaCyModelManager,
     _normalize_for_id,
     _normalize_text_for_matching,
     classify_category_label,
@@ -31,9 +30,7 @@ from .text_processing import (
     generate_entity_id,
     get_context_snippet_for_patch,
     get_text_segments,
-    load_spacy_model_if_needed,
     normalize_trait_name,
-    spacy_manager,
     validate_world_item_fields,
 )
 
@@ -116,8 +113,6 @@ def remove_spans_from_text(text: str, spans: list[tuple[int, int]]) -> str:
 __all__ = [
     "_normalize_for_id",
     "normalize_trait_name",
-    "SpaCyModelManager",
-    "spacy_manager",
     "_is_fill_in",
     "extract_json_from_text",
     "extract_json_candidates_from_response",
@@ -130,7 +125,6 @@ __all__ = [
     "load_yaml_file",
     "normalize_keys_recursive",
     "split_text_into_chapters",
-    "load_spacy_model_if_needed",
     "_normalize_text_for_matching",
     "get_context_snippet_for_patch",
     "find_quote_and_sentence_offsets_with_spacy",

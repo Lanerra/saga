@@ -475,6 +475,11 @@ class SpacyService:
                     sentences.append(sent_text)
             return sentences
 
+    @property
+    def nlp(self) -> Any | None:
+        """Return the underlying spaCy Language model, or None if not loaded."""
+        return self._nlp
+
     def get_model_name(self) -> str | None:
         """Get the name of the loaded model.
 
@@ -482,3 +487,18 @@ class SpacyService:
             Model name if loaded, None otherwise.
         """
         return self._model_name
+
+
+_singleton: SpacyService | None = None
+
+
+def get_spacy_service() -> SpacyService:
+    """Return the singleton SpacyService instance, creating it on first call.
+
+    This ensures the ~400MB spaCy model is loaded at most once across the
+    entire application lifetime.
+    """
+    global _singleton
+    if _singleton is None:
+        _singleton = SpacyService()
+    return _singleton

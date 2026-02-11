@@ -19,7 +19,7 @@ import structlog
 import tiktoken
 
 import config
-from core.spacy_service import SpacyService
+from core.spacy_service import get_spacy_service
 
 logger = structlog.get_logger(__name__)
 
@@ -391,7 +391,7 @@ class TextProcessingService:
         """Initialize the text processing service with all sub-services."""
         self.tokenizer = TokenizerService()
         self.response_cleaner = ResponseCleaningService()
-        self.spacy_service = SpacyService()
+        self.spacy_service = get_spacy_service()
 
         logger.info("TextProcessingService initialized with all sub-services")
 
@@ -474,10 +474,7 @@ def clean_text_with_spacy(text: str, aggressive: bool = False) -> str:
     Returns:
         Cleaned text. Falls back to regex-based cleaning if spaCy not available.
     """
-    from core.spacy_service import SpacyService
-
-    spacy_service = SpacyService()
-    return spacy_service.clean_text(text, aggressive)
+    return get_spacy_service().clean_text(text, aggressive)
 
 
 def extract_sentences_with_spacy(text: str) -> list[str]:
@@ -489,7 +486,4 @@ def extract_sentences_with_spacy(text: str) -> list[str]:
     Returns:
         List of sentences. Falls back to regex-based splitting if spaCy not available.
     """
-    from core.spacy_service import SpacyService
-
-    spacy_service = SpacyService()
-    return spacy_service.extract_sentences(text)
+    return get_spacy_service().extract_sentences(text)

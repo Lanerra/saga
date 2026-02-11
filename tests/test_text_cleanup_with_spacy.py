@@ -6,9 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.spacy_service import SpacyService
-from core.text_processing_service import (
-    TextProcessingService,
-)
+from core.text_processing_service import TextProcessingService
 
 
 class MockToken:
@@ -207,38 +205,30 @@ def test_text_processing_service_extract_sentences(text_processing_service):
 
 def test_module_level_clean_text():
     """Test module-level clean_text_with_spacy function."""
-    # Patch the import that happens INSIDE the function
-    with patch("core.spacy_service.SpacyService") as mock_service_class:
-        mock_service = MagicMock()
-        mock_service.clean_text.return_value = "cleaned text"
-        mock_service.is_loaded.return_value = True
-        mock_service_class.return_value = mock_service
+    fake_service = MagicMock()
+    fake_service.clean_text.return_value = "cleaned text"
 
-        # Import the function
+    with patch("core.spacy_service._singleton", fake_service):
         from core.text_processing_service import clean_text_with_spacy
 
         result = clean_text_with_spacy("dirty text")
 
         assert result == "cleaned text"
-        mock_service.clean_text.assert_called_once_with("dirty text", False)
+        fake_service.clean_text.assert_called_once_with("dirty text", False)
 
 
 def test_module_level_extract_sentences():
     """Test module-level extract_sentences_with_spacy function."""
-    # Patch the import that happens INSIDE the function
-    with patch("core.spacy_service.SpacyService") as mock_service_class:
-        mock_service = MagicMock()
-        mock_service.extract_sentences.return_value = ["sentence 1", "sentence 2"]
-        mock_service.is_loaded.return_value = True
-        mock_service_class.return_value = mock_service
+    fake_service = MagicMock()
+    fake_service.extract_sentences.return_value = ["sentence 1", "sentence 2"]
 
-        # Import the function
+    with patch("core.spacy_service._singleton", fake_service):
         from core.text_processing_service import extract_sentences_with_spacy
 
         result = extract_sentences_with_spacy("text with sentences")
 
         assert result == ["sentence 1", "sentence 2"]
-        mock_service.extract_sentences.assert_called_once_with("text with sentences")
+        fake_service.extract_sentences.assert_called_once_with("text with sentences")
 
 
 def test_clean_text_with_special_characters(spacy_service):

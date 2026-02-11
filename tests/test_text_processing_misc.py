@@ -30,7 +30,10 @@ def test_is_fill_in_and_normalization_helpers() -> None:
 
 
 def test_get_text_segments_paragraph(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(text_processing.spacy_manager, "_nlp", None)
+    from core import spacy_service
+
+    monkeypatch.setattr(spacy_service, "_singleton", None)
+    monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: None)
     text = "Para one.\n\nPara two."  # two paragraphs
     segments = text_processing.get_text_segments(text, "paragraph")
     assert len(segments) == 2
@@ -41,7 +44,7 @@ def test_get_text_segments_paragraph(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_get_text_segments_sentence_without_spacy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(text_processing.spacy_manager, "_nlp", None)
+    monkeypatch.setattr(text_processing, "_get_spacy_nlp", lambda: None)
     text = "First. Second?"
     segments = text_processing.get_text_segments(text, "sentence")
     assert [s[0] for s in segments] == ["First.", "Second?"]
