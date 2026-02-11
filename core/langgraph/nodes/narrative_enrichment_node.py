@@ -131,7 +131,7 @@ class NarrativeEnrichmentNode:
                         ):
                             # Update character with new physical description
                             character.physical_description = extracted_description
-                            await sync_characters([character])
+                            await sync_characters([character], chapter_number)
                             logger.info(
                                 "NarrativeEnrichmentNode: Updated character physical description",
                                 character_name=character_name,
@@ -143,9 +143,8 @@ class NarrativeEnrichmentNode:
                             )
                             return f"Failed to enrich narrative: Contradictory physical description for {character_name}"
                     else:
-                        # Add physical description to character
                         character.physical_description = extracted_description
-                        await sync_characters([character])
+                        await sync_characters([character], chapter_number)
                         logger.info(
                             "NarrativeEnrichmentNode: Added character physical description",
                             character_name=character_name,
