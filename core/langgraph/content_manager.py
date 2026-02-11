@@ -15,6 +15,7 @@ Notes:
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, NoReturn, TypedDict, cast
@@ -326,6 +327,8 @@ class ContentManager:
         temp_path = path.with_suffix(".tmp")
         with temp_path.open("wb") as f:
             f.write(data_bytes)
+            f.flush()
+            os.fsync(f.fileno())
         temp_path.replace(path)
 
     def save_binary(

@@ -19,6 +19,8 @@ from typing import Any
 import structlog
 import yaml
 
+import config
+
 from core.langgraph.content_manager import (
     ContentManager,
     get_act_outlines,
@@ -315,7 +317,7 @@ def _write_outline_files(
         "theme": state.get("theme", ""),
         "setting": state.get("setting", ""),
         "total_chapters": state.get("total_chapters", 20),
-        "target_word_count": state.get("target_word_count", 80000),
+        "target_word_count": state.get("target_word_count", config.TARGET_WORD_COUNT),
         "generated_at": datetime.now().isoformat(),
     }
 

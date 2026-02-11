@@ -119,7 +119,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
 
     try:
         # Call LLM for quality evaluation
-        model_name = state.get("extraction_model", config.NARRATIVE_MODEL)
+        model_name = state.get("medium_model", config.MEDIUM_MODEL)
 
         response, usage = await llm_service.async_call_llm(
             model_name=model_name,
@@ -143,8 +143,7 @@ async def evaluate_quality(state: NarrativeState) -> NarrativeState:
             tone=scores.get("tone_consistency_score"),
         )
 
-        # Check if quality is too low and needs revision
-        min_quality_threshold = 0.7
+        min_quality_threshold = config.MIN_QUALITY_THRESHOLD
         quality_scores = [
             scores.get("coherence_score", 1.0),
             scores.get("prose_quality_score", 1.0),

@@ -263,7 +263,7 @@ class SagaSettings(BaseSettings):
     # LLM Call Settings & Fallbacks
     LLM_RETRY_ATTEMPTS: int = 3
     LLM_RETRY_DELAY_SECONDS: float = 3.0
-    HTTPX_TIMEOUT: float = 600.0
+    HTTPX_TIMEOUT: float = 120.0
     ENABLE_LLM_NO_THINK_DIRECTIVE: bool = False
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
@@ -277,6 +277,7 @@ class SagaSettings(BaseSettings):
     PRESENCE_PENALTY_DRAFTING: float = 0.0
 
     # Output and File Paths
+    PROJECTS_ROOT: str = "projects"
     BASE_OUTPUT_DIR: str = "output"
     PLOT_OUTLINE_FILE: str = "plot_outline.json"
     CHARACTER_PROFILES_FILE: str = "character_profiles.json"
@@ -308,6 +309,8 @@ class SagaSettings(BaseSettings):
     TARGET_SCENES_MAX: int = 6
 
     # Revision and Validation
+    MIN_QUALITY_THRESHOLD: float = 0.7
+    TARGET_WORD_COUNT: int = 80000
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
     MAX_SUMMARY_TOKENS: int = 16384
     MAX_KG_TRIPLE_TOKENS: int = 16384
@@ -331,16 +334,16 @@ class SagaSettings(BaseSettings):
     # De-duplication Configuration
     # DEPRECATED: Deduplication is no longer needed per Phase 4 requirements
     # Entities are canonical from Stage 1, so deduplication is disabled
-    DEDUPLICATION_USE_SEMANTIC: bool = True
+    DEDUPLICATION_USE_SEMANTIC: bool = False
     DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.55
     DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
 
     # DEPRECATED: Duplicate prevention is disabled per Phase 4 requirements
     # Entities are canonical from Stage 1
-    ENABLE_DUPLICATE_PREVENTION: bool = True
+    ENABLE_DUPLICATE_PREVENTION: bool = False
     DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.6
-    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = True
-    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = True
+    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = False
+    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = False
 
     # DEPRECATED: Phase 2 deduplication is disabled per Phase 4 requirements
     # Relationships are canonical from Stage 1

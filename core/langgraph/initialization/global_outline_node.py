@@ -104,7 +104,7 @@ async def generate_global_outline(state: NarrativeState) -> NarrativeState:
             "genre": state.get("genre", ""),
             "theme": state.get("theme", ""),
             "setting": state.get("setting", ""),
-            "target_word_count": state.get("target_word_count", 80000),
+            "target_word_count": state.get("target_word_count", config.TARGET_WORD_COUNT),
             "total_chapters": state.get("total_chapters", 20),
             "protagonist_name": state.get("protagonist_name", ""),
             "character_context": character_context,

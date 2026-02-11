@@ -11,7 +11,6 @@ Notes:
     be treated as an approximation.
 """
 
-import functools
 import re
 from typing import Any
 
@@ -37,7 +36,6 @@ class TokenizerService:
             "fallback_used": 0,
         }
 
-    @functools.lru_cache(maxsize=config.TOKENIZER_CACHE_SIZE)  # noqa: B019
     def get_tokenizer(self, model_name: str) -> tiktoken.Encoding | None:
         """Return a cached `tiktoken` encoder for a model name.
 

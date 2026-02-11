@@ -10,7 +10,7 @@ from core.project_config import NarrativeProjectConfig
 
 
 class ProjectManager:
-    projects_root = Path("projects")
+    projects_root = Path(config.PROJECTS_ROOT).resolve()
 
     @classmethod
     def ensure_projects_root(class_type) -> Path:
