@@ -381,8 +381,7 @@ class TestGraphHealingServiceOrphanCleanup:
         service = GraphHealingService()
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_query:
-            with patch("core.db_manager.neo4j_manager.execute_write_query"):
-                # Mock orphaned nodes (created in chapter 1, current is 5)
+            with patch("core.db_manager.neo4j_manager.execute_write_query") as mock_write:
                 mock_query.return_value = [
                     {
                         "element_id": "neo4j-element-1",
@@ -391,6 +390,7 @@ class TestGraphHealingServiceOrphanCleanup:
                         "created_chapter": 1,
                     }
                 ]
+                mock_write.return_value = [{"deleted_count": 1}]
 
                 result = await service.cleanup_orphaned_nodes(current_chapter=5)
 
@@ -404,11 +404,9 @@ class TestGraphHealingServiceOrphanCleanup:
         service = GraphHealingService()
 
         with patch("core.db_manager.neo4j_manager.execute_read_query") as mock_read:
-            with patch("core.db_manager.neo4j_manager.execute_write_query"):
-                # Mock the query to return nodes created in chapter 1 (cutoff is 5-3=2, so 1 <= 2 means removed)
+            with patch("core.db_manager.neo4j_manager.execute_write_query") as mock_write:
                 def mock_query_side_effect(query, params=None):
                     if params and params.get("cutoff_chapter") == 2:
-                        # Return nodes that are OLD ENOUGH to be removed (created in chapter 1)
                         return [
                             {
                                 "element_id": "neo4j-element-1",
@@ -420,11 +418,11 @@ class TestGraphHealingServiceOrphanCleanup:
                     return []
 
                 mock_read.side_effect = mock_query_side_effect
+                mock_write.return_value = [{"deleted_count": 1}]
 
                 result = await service.cleanup_orphaned_nodes(current_chapter=5)
 
                 assert isinstance(result, dict)
-                # Node created in chapter 1 should be removed (1 <= 2)
                 assert result["nodes_removed"] == 1
                 assert result["nodes_checked"] == 1
 

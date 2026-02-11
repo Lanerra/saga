@@ -1626,7 +1626,7 @@ async def consolidate_similar_relationships() -> int:
 
             consolidate_query = """
             CALL apoc.periodic.iterate(
-                "MATCH (s)-[r]-(o) WHERE type(r) = $current_type RETURN s, r, o",
+                "MATCH (s)-[r]->(o) WHERE type(r) = $current_type RETURN s, r, o",
                 "WITH s, r, o CALL apoc.create.relationship(s, $canonical_type, properties(r), o) YIELD rel DELETE r RETURN count(*) AS changed",
                 {batchSize: 1000, parallel: false, params: {current_type: $current_type, canonical_type: $canonical_type}}
             ) YIELD total
@@ -1654,26 +1654,36 @@ async def consolidate_similar_relationships() -> int:
         return 0
 
 
+_MAX_SHORTEST_PATH_DEPTH = 10
+
+
 async def get_shortest_path_length_between_entities(name1: str, name2: str, max_depth: int = 4) -> int | None:
     """Return the shortest path length between two entities if it exists.
 
     Args:
         name1: First entity name
         name2: Second entity name
-        max_depth: Maximum path depth to search
+        max_depth: Maximum path depth to search (capped at 10)
 
     Returns:
         Path length or None if no path exists
 
     Raises:
+        ValueError: If max_depth exceeds the safety cap.
         DatabaseError: On database errors
     """
     if max_depth <= 0:
         return None
 
+    if max_depth > _MAX_SHORTEST_PATH_DEPTH:
+        raise ValueError(
+            f"max_depth={max_depth} exceeds safety cap of {_MAX_SHORTEST_PATH_DEPTH}"
+        )
+
+    safe_depth = int(max_depth)
     query = f"""
     MATCH (a {{name: $name1}}), (b {{name: $name2}})
-    MATCH p = shortestPath((a)-[*..{max_depth}]-(b))
+    MATCH p = shortestPath((a)-[*..{safe_depth}]-(b))
     RETURN length(p) AS len
     """
     try:

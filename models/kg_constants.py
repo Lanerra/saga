@@ -132,8 +132,7 @@ LABEL_NORMALIZATION_MAP: dict[str, str] = {
     # ----------------------------
     # Event-like subtypes
     # ----------------------------
-    "Scene": "Event",
-    "scene": "Event",
+    # NOTE: "Scene" is intentionally excluded — it is a canonical label in VALID_NODE_LABELS.
     "Moment": "Event",
     "moment": "Event",
     "Incident": "Event",
@@ -161,6 +160,11 @@ SUGGESTED_CATEGORIES = {
         "Minor",
         "Background",
         "Historical",
+        "Personality",
+        "Physical",
+        "Skill",
+        "Supernatural",
+        "Status",
     ],
     # Subtypes are stored in `category` and are intentionally open-ended.
     # This list is advisory (soft validation) and should match what prompts
@@ -216,14 +220,6 @@ SUGGESTED_CATEGORIES = {
         "Vehicle",
         "Resource",
         "Magical",
-    ],
-    "Trait": [
-        "Personality",
-        "Physical",
-        "Skill",
-        "Supernatural",
-        "Status",
-        "Background",
     ],
 }
 

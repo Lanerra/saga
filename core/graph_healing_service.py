@@ -91,18 +91,18 @@ class GraphHealingService:
         """
         element_id = node["element_id"]
 
-        # Evidence 1: Relationship connectivity (proxy for importance/mentions)
-        # Count both incoming and outgoing relationships
-        rel_query = """
-            MATCH (n)-[r]-()
+        # Fetch relationship count and status in a single query
+        combined_query = """
+            MATCH (n)
             WHERE elementId(n) = $element_id
-            RETURN count(r) AS rel_count
+            OPTIONAL MATCH (n)-[r]-()
+            RETURN count(r) AS rel_count, n.status AS status
         """
-        results = await neo4j_manager.execute_read_query(rel_query, {"element_id": element_id})
+        results = await neo4j_manager.execute_read_query(combined_query, {"element_id": element_id})
         record = results[0] if results else None
         rel_count = record["rel_count"] if record else 0
 
-        # Normalize: 3 relationships = max score (lowered from 5)
+        # Normalize: 3 relationships = max score
         connectivity_score = min(rel_count / 3, 1.0) * 0.4
 
         # Evidence 2: Attribute completeness
@@ -117,16 +117,9 @@ class GraphHealingService:
         if node.get("traits") and len(node["traits"]) > 0:
             completeness_score += 0.1
 
-        # Check for additional attributes based on node type
-        if node["type"] == "Character":
-            status_query = """
-                MATCH (n)
-                WHERE elementId(n) = $element_id
-                RETURN n.status AS status
-            """
-            results = await neo4j_manager.execute_read_query(status_query, {"element_id": element_id})
-            record = results[0] if results else None
-            if record and record.get("status") and record["status"] != "Unknown":
+        if node["type"] == "Character" and record:
+            status = record.get("status")
+            if status and status != "Unknown":
                 completeness_score += 0.1
 
         # Evidence 3: Age bonus - nodes that survive multiple chapters are likely important
@@ -135,9 +128,9 @@ class GraphHealingService:
         if current_chapter > 0 and created_chapter is not None:
             age = current_chapter - created_chapter
             if age >= self.AGE_GRADUATION_CHAPTERS:
-                age_score = 0.2  # Full bonus for surviving 3+ chapters
+                age_score = 0.2
             elif age >= 1:
-                age_score = 0.1  # Partial bonus for surviving 1-2 chapters
+                age_score = 0.1
 
         total_confidence = completeness_score + connectivity_score + age_score
 
@@ -440,20 +433,32 @@ class GraphHealingService:
                     if node_id and embedding_vector:
                         embedding_by_id[str(node_id)] = embedding_vector
 
-            # Convert to our format and map id fields to element IDs
+            # Batch-resolve all candidate entity IDs to element IDs in a single query
+            all_candidate_ids = sorted(
+                {c["id1"] for c in kg_candidates} | {c["id2"] for c in kg_candidates}
+            )
+            element_id_map: dict[str, str] = {}
+            if all_candidate_ids:
+                element_id_query = """
+                    MATCH (n)
+                    WHERE n.id IN $ids
+                    RETURN n.id AS entity_id, elementId(n) AS element_id
+                """
+                element_id_rows = await neo4j_manager.execute_read_query(
+                    element_id_query, {"ids": all_candidate_ids}
+                )
+                for row in element_id_rows:
+                    entity_id = row.get("entity_id")
+                    element_id = row.get("element_id")
+                    if entity_id and element_id:
+                        element_id_map[str(entity_id)] = element_id
+
             candidates = []
             for c in kg_candidates:
-                # Get element IDs from entity IDs
-                get_element_id_query = """
-                    MATCH (n)
-                    WHERE n.id = $entity_id
-                    RETURN elementId(n) AS element_id
-                """
+                primary_element_id = element_id_map.get(str(c["id1"]))
+                duplicate_element_id = element_id_map.get(str(c["id2"]))
 
-                primary_results = await neo4j_manager.execute_read_query(get_element_id_query, {"entity_id": c["id1"]})
-                duplicate_results = await neo4j_manager.execute_read_query(get_element_id_query, {"entity_id": c["id2"]})
-
-                if not primary_results or not duplicate_results:
+                if not primary_element_id or not duplicate_element_id:
                     continue
 
                 name_similarity = float(c["similarity"])
@@ -472,9 +477,9 @@ class GraphHealingService:
 
                 candidates.append(
                     {
-                        "primary_id": primary_results[0]["element_id"],
+                        "primary_id": primary_element_id,
                         "primary_name": c["name1"],
-                        "duplicate_id": duplicate_results[0]["element_id"],
+                        "duplicate_id": duplicate_element_id,
                         "duplicate_name": c["name2"],
                         "type": c["labels1"][0] if c.get("labels1") else "Unknown",
                         "similarity": combined_similarity,
@@ -792,16 +797,22 @@ class GraphHealingService:
         if not orphaned_nodes:
             return results
 
-        # Remove orphaned nodes
-        for node in orphaned_nodes:
-            delete_query = """
-                MATCH (n)
-                WHERE elementId(n) = $element_id
-                DELETE n
-            """
-            try:
-                await neo4j_manager.execute_write_query(delete_query, {"element_id": node["element_id"]})
-                results["nodes_removed"] += 1
+        element_ids = [node["element_id"] for node in orphaned_nodes]
+        batch_delete_query = """
+            MATCH (n)
+            WHERE elementId(n) IN $element_ids
+            AND NOT (n)-[]-()
+            DELETE n
+            RETURN count(n) AS deleted_count
+        """
+        try:
+            delete_results = await neo4j_manager.execute_write_query(
+                batch_delete_query, {"element_ids": element_ids}
+            )
+            deleted_count = delete_results[0]["deleted_count"] if delete_results else 0
+            results["nodes_removed"] = deleted_count
+
+            for node in orphaned_nodes:
                 logger.info(
                     "Removed orphaned provisional node",
                     name=node["name"],
@@ -809,12 +820,12 @@ class GraphHealingService:
                     created_chapter=node["created_chapter"],
                     current_chapter=current_chapter,
                 )
-            except Exception as e:
-                logger.warning(
-                    "Failed to remove orphaned node",
-                    name=node["name"],
-                    error=str(e),
-                )
+        except Exception as e:
+            logger.warning(
+                "Failed to batch-remove orphaned nodes",
+                count=len(element_ids),
+                error=str(e),
+            )
 
         return results
 
