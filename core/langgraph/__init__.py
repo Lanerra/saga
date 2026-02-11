@@ -32,7 +32,6 @@ from core.langgraph.visualization import (
 from core.langgraph.workflow import (
     create_checkpointer,
     create_full_workflow_graph,
-    should_revise_or_continue,
 )
 
 __all__ = [
@@ -57,7 +56,6 @@ __all__ = [
     # Workflow
     "create_checkpointer",
     "create_full_workflow_graph",
-    "should_revise_or_continue",
     # Visualization
     "visualize_workflow",
     "print_workflow_summary",

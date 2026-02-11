@@ -59,14 +59,17 @@ class TestClearGenerationArtifacts:
             "generated_embedding": None,
             "scene_drafts_ref": None,
             "current_scene_index": 0,
+            "chapter_plan_scene_count": 0,
         }
 
     def test_key_count_and_types(self) -> None:
-        """Contains exactly 6 keys with correct value types."""
+        """Contains exactly 7 keys with correct value types."""
         result = clear_generation_artifacts()
-        assert len(result) == 6
+        assert len(result) == 7
         assert result["current_scene_index"] == 0
         assert isinstance(result["current_scene_index"], int)
+        assert result["chapter_plan_scene_count"] == 0
+        assert isinstance(result["chapter_plan_scene_count"], int)
         for key in ("draft_ref", "embedding_ref", "scene_embeddings_ref", "generated_embedding", "scene_drafts_ref"):
             assert result[key] is None
 

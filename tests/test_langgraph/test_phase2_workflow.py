@@ -20,7 +20,6 @@ from core.langgraph.workflow import (
     create_full_workflow_graph,
     handle_fatal_error,
     should_handle_error,
-    should_revise_or_continue,
     should_revise_or_handle_error,
 )
 
@@ -237,72 +236,6 @@ def mock_all_nodes() -> Any:
             "heal_graph": mock_heal_node,
             "check_quality": mock_quality_node,
         }
-
-
-class TestShouldReviseOrContinue:
-    """Tests for should_revise_or_continue routing function."""
-
-    def test_route_to_summarize_when_no_revision_needed(self) -> None:
-        """Test routing to summarize when needs_revision is False."""
-        # Using type ignore or creating partial dict because create_initial_state creates full structure
-        # but here we test with minimal required fields for the function
-        state: Any = {
-            "needs_revision": False,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "summarize"
-
-    def test_route_to_revise_when_revision_needed(self) -> None:
-        """Test routing to revise when needs_revision is True."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "revise"
-
-    def test_route_to_summarize_when_max_iterations_reached(self) -> None:
-        """Test routing to summarize when max iterations reached."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 3,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "summarize"
-
-    def test_route_to_summarize_when_force_continue(self) -> None:
-        """Test routing to summarize when force_continue is enabled."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": True,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "summarize"
-
-    def test_route_to_revise_under_max_iterations(self) -> None:
-        """Test routing to revise when under max iterations."""
-        state: Any = {
-            "needs_revision": True,
-            "iteration_count": 1,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-
-        result = should_revise_or_continue(state)
-        assert result == "revise"
 
 
 @pytest.mark.asyncio

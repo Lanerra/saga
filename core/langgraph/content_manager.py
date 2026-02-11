@@ -779,9 +779,11 @@ def load_scene_embeddings(manager: ContentManager, ref: ContentRef | str) -> lis
 
         vector: list[float] = []
         for value_index, value in enumerate(embedding):
-            if not isinstance(value, float):
-                raise ValueError("scene embedding values must be float; " f"scene_index={embedding_index}, value_index={value_index}, got {type(value)}")
-            vector.append(value)
+            if isinstance(value, bool):
+                raise ValueError("scene embedding values must be numeric (bool is not allowed); " f"scene_index={embedding_index}, value_index={value_index}")
+            if not isinstance(value, int | float):
+                raise ValueError("scene embedding values must be numeric; " f"scene_index={embedding_index}, value_index={value_index}, got {type(value)}")
+            vector.append(float(value))
 
         embeddings.append(vector)
 

@@ -37,6 +37,7 @@ def clear_generation_artifacts() -> dict:
         "generated_embedding": None,
         "scene_drafts_ref": None,
         "current_scene_index": 0,
+        "chapter_plan_scene_count": 0,
     }
 
 

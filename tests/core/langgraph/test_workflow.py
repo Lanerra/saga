@@ -8,56 +8,7 @@ import pytest
 from core.langgraph.workflow import (
     create_checkpointer,
     create_full_workflow_graph,
-    should_revise_or_continue,
 )
-
-
-class TestWorkflowRouting:
-    """Test routing decisions in the workflow graph."""
-
-    def test_should_revise_or_continue_revision_needed(self) -> None:
-        """Test routing to revision when validation requests it."""
-        state = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "revise"
-
-    def test_should_revise_or_continue_no_revision_needed(self) -> None:
-        """Test routing to summarization when no revision is needed."""
-        state = {
-            "needs_revision": False,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "summarize"
-
-    def test_should_revise_or_continue_force_continue(self) -> None:
-        """Test that force_continue bypasses revision."""
-        state = {
-            "needs_revision": True,
-            "iteration_count": 0,
-            "max_iterations": 3,
-            "force_continue": True,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "summarize"
-
-    def test_should_revise_or_continue_max_iterations(self) -> None:
-        """Test routing to summarization when max iterations reached."""
-        state = {
-            "needs_revision": True,
-            "iteration_count": 3,
-            "max_iterations": 3,
-            "force_continue": False,
-        }
-        result = should_revise_or_continue(state)  # type: ignore[arg-type]
-        assert result == "summarize"
 
 
 class TestWorkflowGraphConstruction:

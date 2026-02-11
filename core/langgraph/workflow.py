@@ -36,58 +36,6 @@ from core.langgraph.state_helpers import (
 logger = structlog.get_logger(__name__)
 
 
-def should_revise_or_continue(
-    state: NarrativeState,
-) -> Literal["revise", "summarize"]:
-    """Route to revision or summarization for the Phase 2 graph.
-
-    Args:
-        state: Workflow state. Uses the following keys:
-            - needs_revision: Whether the validation phase requested revision.
-            - iteration_count: Number of revision cycles already attempted.
-            - max_iterations: Upper bound on revision cycles.
-            - force_continue: If true, skip revision regardless of validation.
-
-    Returns:
-        "revise" or "summarize".
-    """
-    needs_revision = state.get("needs_revision", False)
-    iteration_count = state.get("iteration_count", 0)
-    max_iterations = state.get("max_iterations", 3)
-    force_continue = state.get("force_continue", False)
-
-    logger.info(
-        "should_revise_or_continue: routing decision",
-        needs_revision=needs_revision,
-        iteration=iteration_count,
-        max_iterations=max_iterations,
-        force_continue=force_continue,
-    )
-
-    # If force_continue is set, skip revision and go to summary
-    if force_continue:
-        logger.info("should_revise_or_continue: force_continue enabled, routing to summarize")
-        return "summarize"
-
-    # If we've hit max iterations, go to summary
-    if iteration_count >= max_iterations:
-        logger.warning(
-            "should_revise_or_continue: max iterations reached, routing to summarize",
-            iteration_count=iteration_count,
-            max_iterations=max_iterations,
-        )
-        return "summarize"
-
-    # If needs revision and under max iterations, revise
-    if needs_revision:
-        logger.info("should_revise_or_continue: revision needed, routing to revise node")
-        return "revise"
-
-    # Otherwise, proceed to summary
-    logger.info("should_revise_or_continue: no revision needed, routing to summarize")
-    return "summarize"
-
-
 def should_handle_error(state: NarrativeState) -> Literal["error", "continue"]:
     """Route to the error handler when the workflow is in a fatal error state.
 
@@ -280,6 +228,13 @@ def advance_chapter(state: NarrativeState) -> NarrativeState:
         "iteration_count": 0,
         "force_continue": False,
         "chapter_plan_ref": None,
+        "draft_word_count": 0,
+        "coherence_score": None,
+        "prose_quality_score": None,
+        "plot_advancement_score": None,
+        "pacing_score": None,
+        "tone_consistency_score": None,
+        "quality_feedback": None,
         **clear_generation_artifacts(),
         **clear_validation_state(),
         **clear_error_state(),
@@ -672,7 +627,6 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
 __all__ = [
     "create_checkpointer",
     "create_full_workflow_graph",
-    "should_revise_or_continue",
     "should_initialize",
     "should_handle_error",
     "should_revise_or_handle_error",
