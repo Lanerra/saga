@@ -241,51 +241,6 @@ def _validate_chapter_allocations(outline: GlobalOutlineSchema, total_chapters: 
     return errors
 
 
-def _extract_json_from_response(response: str) -> str:
-    """Extract a JSON payload from an LLM response.
-
-    This is a lightweight compatibility helper for tests that expect a raw JSON
-    string, optionally wrapped in markdown code fences or surrounded by other
-    text.
-
-    Args:
-        response: Raw LLM response text.
-
-    Returns:
-        JSON string content, without code fences and without surrounding text when
-        possible.
-
-    Raises:
-        ValueError: When no JSON object boundaries can be detected.
-    """
-    if "```" in response:
-        lines = response.strip().splitlines()
-        if not lines:
-            raise ValueError("Response is empty")
-
-        if lines[0].lstrip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].lstrip().startswith("```"):
-            lines = lines[:-1]
-
-        extracted = "\n".join(lines).strip()
-        if extracted:
-            return extracted
-
-    stripped = response.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        if response == stripped:
-            return response
-        return stripped
-
-    start_index = response.find("{")
-    end_index = response.rfind("}")
-    if start_index == -1 or end_index == -1 or end_index <= start_index:
-        raise ValueError("No JSON object found in response")
-
-    return response[start_index : end_index + 1].strip()
-
-
 def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, Any]:
     """Parse and validate a global outline response.
 

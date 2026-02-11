@@ -8,7 +8,6 @@ from core.langgraph.initialization.global_outline_node import (
     ActOutline,
     GlobalOutlineSchema,
     _build_character_context_from_sheets,
-    _extract_json_from_response,
     _fallback_parse_outline,
     _parse_global_outline,
     _validate_chapter_allocations,
@@ -203,46 +202,6 @@ def test_build_character_context_empty():
     result = _build_character_context_from_sheets({})
 
     assert result == "No characters defined yet."
-
-
-def test_extract_json_from_response_with_code_blocks():
-    """Verify JSON extraction from markdown code blocks."""
-    response = """```json
-{
-    "key": "value"
-}
-```"""
-
-    result = _extract_json_from_response(response)
-
-    assert "key" in result
-    assert "value" in result
-    assert "```" not in result
-
-
-def test_extract_json_from_response_raw_json():
-    """Verify extraction of raw JSON without code blocks."""
-    response = '{"key": "value", "number": 42}'
-
-    result = _extract_json_from_response(response)
-
-    assert result == response
-
-
-def test_extract_json_from_response_mixed_content():
-    """Verify JSON extraction from mixed content."""
-    response = """Here is the outline:
-
-{
-    "key": "value"
-}
-
-That's the outline."""
-
-    result = _extract_json_from_response(response)
-
-    assert "{" in result
-    assert "key" in result
 
 
 def test_validate_chapter_allocations_valid():
