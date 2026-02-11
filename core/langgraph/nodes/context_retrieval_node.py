@@ -232,7 +232,7 @@ async def retrieve_context(state: NarrativeState) -> NarrativeState:
     # 11. Semantic Context (Vector Search)
     # =========================================================================
     # Generate query from current scene description
-    scene_query = f"{current_scene.get('title', '')} {current_scene.get('summary', '')} {current_scene.get('plot_point', '')}"
+    scene_query = f"{current_scene.get('title', '')} {current_scene.get('plot_point', '')} {current_scene.get('conflict', '')} {current_scene.get('setting', '')}"
     semantic_context = await _get_semantic_context(
         query_text=scene_query,
         chapter_number=chapter_number,

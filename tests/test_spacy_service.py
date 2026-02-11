@@ -45,37 +45,26 @@ def spacy_service():
     return SpacyService()
 
 
-def test_load_model_success(spacy_service):
-    """Test successful model loading."""
-    # Model is already loaded in __init__, so just verify it's loaded
-    assert spacy_service.is_loaded() is True
-    assert spacy_service.get_model_name() == "en_core_web_lg"
+def test_not_loaded_before_first_use(spacy_service):
+    """SpacyService does not load the model at construction time."""
+    assert spacy_service.is_loaded() is False
+    assert spacy_service.get_model_name() is None
 
-    # Test that calling load_model again returns True (already loaded)
+
+def test_load_model_explicit(spacy_service):
+    """Explicitly calling load_model loads the model."""
+    result = spacy_service.load_model()
+    assert result is True
+    assert spacy_service.is_loaded() is True
+
+
+def test_load_model_idempotent(spacy_service):
+    """Calling load_model twice returns True and keeps the original model."""
+    spacy_service.load_model()
+    original_model_name = spacy_service.get_model_name()
     result = spacy_service.load_model("en_core_web_sm")
     assert result is True
-
-
-def test_load_model_failure(spacy_service):
-    """Test model loading failure."""
-    # Model is already loaded in __init__, so we can't test failure there
-    # This test now verifies that the service gracefully handles being already loaded
-    assert spacy_service.is_loaded() is True
-
-    # Test that calling load_model again returns True (already loaded)
-    result = spacy_service.load_model("nonexistent_model")
-    assert result is True  # Already loaded from __init__
-
-
-def test_load_model_import_error(spacy_service):
-    """Test when spaCy is not installed."""
-    # Model is already loaded in __init__, so we can't test import error there
-    # This test now verifies that the service handles being already loaded
-    assert spacy_service.is_loaded() is True
-
-    # Test that calling load_model again returns True (already loaded)
-    result = spacy_service.load_model("en_core_web_sm")
-    assert result is True  # Already loaded from __init__
+    assert spacy_service.get_model_name() == original_model_name
 
 
 def test_extract_entities_success(spacy_service):

@@ -329,7 +329,7 @@ class SagaSettings(BaseSettings):
     # Knowledge Graph Entity Filtering (Proper Noun Preference)
     ENTITY_MENTION_THRESHOLD_PROPER_NOUN: int = 1
     ENTITY_MENTION_THRESHOLD_COMMON_NOUN: int = 3
-    RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST: list[str] = ["bayou", "plantation"]
+    RELATIONSHIP_LOWERCASE_TARGET_ALLOWLIST: list[str] = []
 
     # Narrative Agent Configuration
     KG_PREPOPULATION_CHAPTER_NUM: int = 0

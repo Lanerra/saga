@@ -76,11 +76,12 @@ class SpacyService:
     """Centralized service for spaCy-based NLP operations."""
 
     def __init__(self) -> None:
-        """Initialize the SpacyService with eager model loading."""
+        """Initialize the SpacyService without loading the model.
+
+        The spaCy model (~400MB) is loaded lazily on first use via _ensure_loaded().
+        """
         self._nlp: Any | None = None
         self._model_name: str | None = None
-        # Load model eagerly to ensure it's available when needed
-        self.load_model()
 
     def load_model(self, model_name: str | None = None) -> bool:
         """Load the spaCy model if not already loaded.
@@ -139,6 +140,11 @@ class SpacyService:
         """
         return self._nlp is not None
 
+    def _ensure_loaded(self) -> None:
+        """Trigger lazy loading of the spaCy model if not yet loaded."""
+        if self._nlp is None:
+            self.load_model()
+
     def extract_entities(self, text: str) -> list[tuple[str, str]]:
         """Extract named entities from text.
 
@@ -148,6 +154,7 @@ class SpacyService:
         Returns:
             List of (entity_text, entity_label) tuples. Empty list if model not loaded or text is empty.
         """
+        self._ensure_loaded()
         if not self.is_loaded():
             logger.warning("extract_entities: spaCy model not loaded")
             return []
@@ -197,6 +204,7 @@ class SpacyService:
         if entity_lower in ABSTRACT_CONCEPTS:
             return False, f"Abstract concept: {entity_lower}"
 
+        self._ensure_loaded()
         if not self.is_loaded():
             logger.warning("should_classify_as_character: spaCy model not loaded, using fallback")
             is_capitalized_multiword = all(word[0].isupper() for word in entity_name_stripped.split() if word)
@@ -244,9 +252,9 @@ class SpacyService:
         Returns:
             True if entity is likely present, False otherwise.
         """
+        self._ensure_loaded()
         if not self.is_loaded():
             logger.warning("verify_entity_presence: spaCy model not loaded, using fallback")
-            # Fallback to simple substring matching
             return entity_name.lower() in text.lower()
 
         if not text or not isinstance(text, str) or not entity_name or not isinstance(entity_name, str):
@@ -315,9 +323,9 @@ class SpacyService:
         Returns:
             Normalized canonical form of the name.
         """
+        self._ensure_loaded()
         if not self.is_loaded():
             logger.warning("normalize_entity_name: spaCy model not loaded, using fallback")
-            # Fallback to simple normalization
             import re
 
             name = name.strip().lower()
@@ -369,9 +377,9 @@ class SpacyService:
         Returns:
             Cleaned text. Returns original text on error or if model not loaded.
         """
+        self._ensure_loaded()
         if not self.is_loaded():
             logger.warning("clean_text: spaCy model not loaded, using fallback")
-            # Fallback to simple regex-based cleaning
             import re
 
             cleaned = text.strip()
@@ -445,9 +453,9 @@ class SpacyService:
         Returns:
             List of sentences. Empty list on error or if model not loaded.
         """
+        self._ensure_loaded()
         if not self.is_loaded():
             logger.warning("extract_sentences: spaCy model not loaded, using fallback")
-            # Fallback to simple regex-based sentence splitting
             import re
 
             sentences = []
@@ -478,6 +486,7 @@ class SpacyService:
     @property
     def nlp(self) -> Any | None:
         """Return the underlying spaCy Language model, or None if not loaded."""
+        self._ensure_loaded()
         return self._nlp
 
     def get_model_name(self) -> str | None:

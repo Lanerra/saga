@@ -237,8 +237,9 @@ class NarrativeEnrichmentNode:
         """Extract color descriptors that appear near context words (e.g., 'hair', 'eyes').
 
         Handles compound phrases like 'salt-and-pepper' or 'dirty blonde' as single units.
-        Only extracts colors within a 4-word window of a context word to avoid matching
-        'brown jacket' when looking for hair color.
+        Splits text into sentences first to prevent cross-sentence false positives
+        (e.g., 'brown jacket' in one sentence matching 'hair' in another).
+        Within each sentence, only extracts colors within a 4-word window of a context word.
         """
         import re
         normalized = re.sub(r"[–—]", "-", text)
@@ -250,18 +251,21 @@ class NarrativeEnrichmentNode:
                 found_colors.add(phrase)
                 normalized = normalized.replace(phrase, "")
 
-        words = NarrativeEnrichmentNode._extract_words(normalized)
+        sentences = re.split(r"(?<=[.!?;])\s+", normalized)
 
-        context_indices = [i for i, w in enumerate(words) if w in context_words]
-        if not context_indices:
-            return set()
+        for sentence in sentences:
+            words = NarrativeEnrichmentNode._extract_words(sentence)
 
-        for index in context_indices:
-            window_start = max(0, index - 4)
-            window_end = min(len(words), index + 5)
-            for i in range(window_start, window_end):
-                if words[i] in color_keywords:
-                    found_colors.add(words[i])
+            context_indices = [i for i, w in enumerate(words) if w in context_words]
+            if not context_indices:
+                continue
+
+            for index in context_indices:
+                window_start = max(0, index - 4)
+                window_end = min(len(words), index + 5)
+                for i in range(window_start, window_end):
+                    if words[i] in color_keywords:
+                        found_colors.add(words[i])
 
         return found_colors
 
@@ -405,7 +409,7 @@ async def enrich_narrative(state: NarrativeState) -> dict[str, Any]:
     node = NarrativeEnrichmentNode()
     try:
         await node.process(draft_text, chapter_number)
-    except (ValueError, Exception) as error:
+    except Exception as error:
         logger.error("enrich_narrative: enrichment failed", error=str(error))
         return {
             "current_node": "narrative_enrichment",
