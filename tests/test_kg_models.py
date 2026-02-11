@@ -13,12 +13,12 @@ class TestCharacterProfile:
 
     def test_from_dict_basic(self):
         """Test creating character from dictionary with known fields."""
-        data = {"description": "Protagonist", "traits": ["brave", "intelligent"], "status": "Active", "created_chapter": 1, "is_provisional": False}
+        data = {"personality_description": "Protagonist", "traits": ["brave", "intelligent"], "status": "Active", "created_chapter": 1, "is_provisional": False}
 
         result = CharacterProfile.from_dict("Alice", data)
 
         assert result.name == "Alice"
-        assert result.description == "Protagonist"
+        assert result.personality_description == "Protagonist"
         assert result.traits == ["brave", "intelligent"]
         assert result.status == "Active"
         assert result.created_chapter == 1
@@ -27,12 +27,12 @@ class TestCharacterProfile:
 
     def test_from_dict_with_extra_fields(self):
         """Test that extra fields are stored in updates."""
-        data = {"description": "Side character", "age": 30, "occupation": "Farmer", "extra_field": "value"}
+        data = {"personality_description": "Side character", "age": 30, "occupation": "Farmer", "extra_field": "value"}
 
         result = CharacterProfile.from_dict("Bob", data)
 
         assert result.name == "Bob"
-        assert result.description == "Side character"
+        assert result.personality_description == "Side character"
         # Extra fields are accessible via updates dict
         assert result.updates["age"] == 30
         assert result.updates["occupation"] == "Farmer"
@@ -43,7 +43,7 @@ class TestCharacterProfile:
 
     def test_from_dict_with_updates_field(self):
         """Test merging updates field with extra fields."""
-        data = {"description": "Mysterious", "updates": {"age": 25, "secret": "hidden"}, "extra_field": "value"}
+        data = {"personality_description": "Mysterious", "updates": {"age": 25, "secret": "hidden"}, "extra_field": "value"}
 
         result = CharacterProfile.from_dict("Charlie", data)
 
@@ -57,12 +57,12 @@ class TestCharacterProfile:
     def test_to_dict(self):
         """Test converting character to flat dictionary."""
         profile = CharacterProfile(
-            name="Diana", description="Hero", traits=["strong", "compassionate"], status="Active", created_chapter=2, is_provisional=False, updates={"age": 28, "power_level": "high"}
+            name="Diana", personality_description="Hero", traits=["strong", "compassionate"], status="Active", created_chapter=2, is_provisional=False, updates={"age": 28, "power_level": "high"}
         )
 
         result = profile.to_dict()
 
-        assert result["description"] == "Hero"
+        assert result["personality_description"] == "Hero"
         assert result["traits"] == ["strong", "compassionate"]
         assert result["status"] == "Active"
         assert result["created_chapter"] == 2
@@ -74,7 +74,7 @@ class TestCharacterProfile:
     def test_from_dict_record_with_relationships(self):
         """Test creating character from query record with relationships."""
         record = {
-            "c": {"name": "Eve", "description": "Spy", "status": "Active", "created_chapter": 3, "is_provisional": False},
+            "c": {"name": "Eve", "personality_description": "Spy", "status": "Active", "created_chapter": 3, "is_provisional": False},
             "relationships": [{"target_name": "Alice", "type": "FRIENDS_WITH", "description": "Childhood friends"}, {"target_name": "Bob", "type": "WORKS_WITH", "description": "Colleagues"}],
             "traits": ["stealthy", "observant"],
         }
@@ -82,7 +82,7 @@ class TestCharacterProfile:
         result = CharacterProfile.from_dict_record(record)
 
         assert result.name == "Eve"
-        assert result.description == "Spy"
+        assert result.personality_description == "Spy"
         assert result.traits == ["stealthy", "observant"]
         assert result.status == "Active"
         assert len(result.relationships) == 2
@@ -92,18 +92,18 @@ class TestCharacterProfile:
 
     def test_from_dict_record_without_relationships(self):
         """Test creating character from query record without relationships."""
-        record = {"c": {"name": "Frank", "description": "Lone wolf", "status": "Unknown", "created_chapter": 0, "is_provisional": True}}
+        record = {"c": {"name": "Frank", "personality_description": "Lone wolf", "status": "Unknown", "created_chapter": 0, "is_provisional": True}}
 
         result = CharacterProfile.from_dict_record(record)
 
         assert result.name == "Frank"
-        assert result.description == "Lone wolf"
+        assert result.personality_description == "Lone wolf"
         assert result.relationships == {}
         assert result.is_provisional is True
 
     def test_from_dict_record_with_traits_in_node(self):
         """Test creating character with traits stored in node property."""
-        record = {"c": {"name": "Grace", "description": "Leader", "traits": ["charismatic", "decisive"], "status": "Active"}}
+        record = {"c": {"name": "Grace", "personality_description": "Leader", "traits": ["charismatic", "decisive"], "status": "Active"}}
 
         result = CharacterProfile.from_dict_record(record)
 
@@ -114,21 +114,21 @@ class TestCharacterProfile:
         """Test creating character from Neo4j record."""
         # Mock Neo4j record
         mock_record = MagicMock()
-        mock_record.__getitem__ = lambda self, key: {"c": {"name": "Heidi", "description": "Explorer", "status": "Active"}}[key]
+        mock_record.__getitem__ = lambda self, key: {"c": {"name": "Heidi", "personality_description": "Explorer", "status": "Active"}}[key]
 
         result = CharacterProfile.from_db_record(mock_record)
 
         assert result.name == "Heidi"
-        assert result.description == "Explorer"
+        assert result.personality_description == "Explorer"
 
     def test_from_db_node_with_dict(self):
         """Test creating character from dictionary node."""
-        node_dict = {"name": "Ivan", "description": "Scholar", "traits": ["wise", "patient"], "status": "Active", "created_chapter": 4, "is_provisional": False}
+        node_dict = {"name": "Ivan", "personality_description": "Scholar", "traits": ["wise", "patient"], "status": "Active", "created_chapter": 4, "is_provisional": False}
 
         result = CharacterProfile.from_db_node(node_dict)
 
         assert result.name == "Ivan"
-        assert result.description == "Scholar"
+        assert result.personality_description == "Scholar"
         assert result.traits == ["wise", "patient"]
         assert result.relationships == {}  # Should be empty for from_db_node
 
@@ -138,24 +138,24 @@ class TestCharacterProfile:
         # Create a proper dict-like object that behaves like a Neo4j node
         class MockNode:
             def __iter__(self):
-                return iter([("name", "Judy"), ("description", "Detective"), ("traits", ["observant", "logical"]), ("status", "Active")])
+                return iter([("name", "Judy"), ("personality_description", "Detective"), ("traits", ["observant", "logical"]), ("status", "Active")])
 
         mock_node = MockNode()
 
         result = CharacterProfile.from_db_node(mock_node)
 
         assert result.name == "Judy"
-        assert result.description == "Detective"
+        assert result.personality_description == "Detective"
         assert result.traits == ["observant", "logical"]
 
     def test_to_cypher_params(self):
         """Test building Cypher parameter dictionary."""
-        profile = CharacterProfile(name="Kevin", description="Engineer", traits=["technical", "creative"], status="Active", created_chapter=5, is_provisional=False, updates={"age": 35})
+        profile = CharacterProfile(name="Kevin", personality_description="Engineer", traits=["technical", "creative"], status="Active", created_chapter=5, is_provisional=False, updates={"age": 35})
 
         result = profile.to_cypher_params()
 
         assert result["name"] == "Kevin"
-        assert result["description"] == "Engineer"
+        assert result["personality_description"] == "Engineer"
         assert result["traits"] == ["technical", "creative"]
         assert result["status"] == "Active"
         assert result["created_chapter"] == 5

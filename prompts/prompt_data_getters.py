@@ -710,8 +710,8 @@ async def get_character_state_snippet_for_prompt(
             neo4j_char_data = await _cached_character_info(char_name, current_chapter_num_for_filtering)
 
             profile_lines = []
-            if char_profile.description:
-                profile_lines.append(f"Description: {char_profile.description}")
+            if char_profile.personality_description:
+                profile_lines.append(f"Description: {char_profile.personality_description}")
             if char_profile.traits:
                 traits_str = ", ".join(char_profile.traits[:3])  # Limit to 3 traits
                 profile_lines.append(f"Traits: {traits_str}")

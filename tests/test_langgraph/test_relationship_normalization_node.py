@@ -27,7 +27,7 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
         {
             "source_name": "Bob",
             "target_name": "Charlie",
-            "relationship_type": "works_with",  # case variant of WORKS_WITH
+            "relationship_type": "allies_with",  # case variant of ALLIES_WITH
             "description": "Colleagues",
             "chapter": 1,
             "confidence": 0.8,
@@ -35,7 +35,7 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
         {
             "source_name": "Alice",
             "target_name": "Bob",
-            "relationship_type": "WORKS_WITH",  # already canonical
+            "relationship_type": "ALLIES_WITH",  # already canonical
             "description": "Work partners",
             "chapter": 1,
             "confidence": 0.9,
@@ -43,8 +43,8 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
     ]
 
     vocabulary = {
-        "WORKS_WITH": {
-            "canonical_type": "WORKS_WITH",
+        "ALLIES_WITH": {
+            "canonical_type": "ALLIES_WITH",
             "usage_count": 5,
             "first_used_chapter": 0,
             "example_descriptions": [],
@@ -84,8 +84,8 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
             normalized_rels = args[1]
 
             assert len(normalized_rels) == 2
-            assert normalized_rels[0].relationship_type == "WORKS_WITH"
-            assert normalized_rels[1].relationship_type == "WORKS_WITH"
+            assert normalized_rels[0].relationship_type == "ALLIES_WITH"
+            assert normalized_rels[1].relationship_type == "ALLIES_WITH"
 
             assert new_state["relationships_normalized_this_chapter"] == 1
             assert new_state["relationships_novel_this_chapter"] == 0

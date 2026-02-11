@@ -137,16 +137,16 @@ def mock_all_nodes() -> Any:
         "current_node": "chapter_outline",
     }
 
+    mock_narrative_enrichment_node = MagicMock()
+    mock_narrative_enrichment_node.side_effect = lambda state: {
+        **state,
+        "current_node": "narrative_enrichment",
+    }
+
     mock_commit_node = MagicMock()
     mock_commit_node.side_effect = lambda state: {
         **state,
         "current_node": "commit",
-    }
-
-    mock_normalize_node = MagicMock()
-    mock_normalize_node.side_effect = lambda state: {
-        **state,
-        "current_node": "normalize_relationships",
     }
 
     mock_revise_node = MagicMock()
@@ -214,8 +214,8 @@ def mock_all_nodes() -> Any:
             "core.langgraph.initialization.generate_chapter_outline",
             side_effect=mock_chapter_outline_node,
         ),
+        patch("core.langgraph.workflow.enrich_narrative", side_effect=mock_narrative_enrichment_node),
         patch("core.langgraph.workflow.commit_to_graph", side_effect=mock_commit_node),
-        patch("core.langgraph.workflow.normalize_relationships", side_effect=mock_normalize_node),
         patch("core.langgraph.workflow.revise_chapter", side_effect=mock_revise_node),
         patch("core.langgraph.workflow.summarize_chapter", side_effect=mock_summarize_node),
         patch("core.langgraph.workflow.finalize_chapter", side_effect=mock_finalize_node),
@@ -228,7 +228,7 @@ def mock_all_nodes() -> Any:
             "extract": mock_extract_node,
             "gen_scene_embeddings": mock_scene_embeddings_node,
             "assemble_chapter": mock_assemble_chapter_node,
-            "normalize_relationships": mock_normalize_node,
+            "narrative_enrichment": mock_narrative_enrichment_node,
             "commit": mock_commit_node,
             "validate": mock_validate_node,
             "revise": mock_revise_node,
@@ -321,7 +321,6 @@ class TestPhase2Workflow:
         mock_all_nodes["chapter_outline"].assert_called_once()
         mock_all_nodes["gen_scene_embeddings"].assert_called_once()
         mock_all_nodes["assemble_chapter"].assert_called_once()
-        mock_all_nodes["normalize_relationships"].assert_called_once()
         mock_all_nodes["validate"].assert_called_once()
         mock_all_nodes["commit"].assert_called_once()
         mock_all_nodes["summarize"].assert_called_once()
@@ -329,7 +328,6 @@ class TestPhase2Workflow:
         mock_all_nodes["heal_graph"].assert_called_once()
         mock_all_nodes["check_quality"].assert_called_once()
 
-        # Revision should not be called (no contradictions)
         mock_all_nodes["revise"].assert_not_called()
 
     async def test_workflow_with_single_revision(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
@@ -384,7 +382,6 @@ class TestPhase2Workflow:
         # Validation should be called twice (revise then accept)
         assert validate_call_count == 2
 
-        # Commit should happen twice: once from normalize_relationships, once after validation accepts
         assert mock_all_nodes["commit"].call_count == 2
 
     async def test_workflow_max_iterations_enforcement(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
@@ -449,15 +446,11 @@ class TestPhase2Workflow:
         # Execute workflow
         await graph.ainvoke(sample_generation_state)
 
-        # Check call order of some key nodes
-        # Chapter outline -> Generate -> Extract -> Scene Embeddings -> Assemble -> Normalize -> Validate -> Commit -> Summarize -> Finalize -> Heal -> Quality
-
         mock_all_nodes["chapter_outline"].assert_called_once()
         mock_all_nodes["generate"].assert_called_once()
         mock_all_nodes["extract"].assert_called_once()
         mock_all_nodes["gen_scene_embeddings"].assert_called_once()
         mock_all_nodes["assemble_chapter"].assert_called_once()
-        mock_all_nodes["normalize_relationships"].assert_called_once()
         mock_all_nodes["commit"].assert_called()
         mock_all_nodes["validate"].assert_called_once()
         mock_all_nodes["summarize"].assert_called_once()
@@ -609,7 +602,7 @@ class TestPhase2Integration:
             "extract",
             "gen_scene_embeddings",
             "assemble_chapter",
-            "normalize_relationships",
+            "narrative_enrichment",
             "commit",
             "validate",
             "revise",
@@ -629,11 +622,8 @@ class TestPhase2Integration:
 
         edges = {(edge.source, edge.target) for edge in graph_obj.edges}
 
-        # Relationship persistence happens before validation
-        assert ("normalize_relationships", "commit") in edges
-        # Validation happens after relationship commit
+        assert ("narrative_enrichment", "commit") in edges
         assert ("commit", "validate") in edges
-        # If validation passes, continue to summarize
         assert ("validate", "summarize") in edges
 
     def test_workflow_revision_loop_routes_to_generate(self) -> None:
@@ -723,10 +713,7 @@ class TestErrorRoutingFunctions:
 
         result = handle_fatal_error(state)
 
-        assert result["current_node"] == "error_handler"
-        assert result["has_fatal_error"] is True
-        assert result["last_error"] == "Test fatal error"
-        assert result["error_node"] == "generate"
+        assert result == {"current_node": "error_handler"}
 
 
 @pytest.mark.asyncio
@@ -820,7 +807,6 @@ class TestWorkflowErrorHandling:
 
         assert result["current_node"] == "error_handler"
         mock_all_nodes["assemble_chapter"].assert_not_called()
-        mock_all_nodes["normalize_relationships"].assert_not_called()
 
     async def test_workflow_multi_chapter_loop(self, sample_generation_state: NarrativeState, mock_all_nodes: Any) -> None:
         """Test that workflow loops back for multiple chapters."""

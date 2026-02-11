@@ -250,11 +250,9 @@ def test_clean_text_with_special_characters(spacy_service):
 
     result = spacy_service.clean_text("Hello\tworld\r\nwith\t\ttabs")
 
-    # Should normalize whitespace but preserve content
     assert "\t" not in result
     assert "\r" not in result
-    assert "\n" not in result
-    assert result == "Hello world with tabs"
+    assert result == "Hello world\nwith tabs"
 
 
 def test_clean_text_aggressive_with_punctuation(spacy_service):

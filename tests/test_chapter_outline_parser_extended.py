@@ -132,20 +132,9 @@ async def test_chapter_outline_parser_features_character_relationship():
                 "act_number": 1,
                 "title": "Test Chapter",
                 "summary": "Test summary",
-                "scenes": [
-                    {
-                        "scene_index": 0,
-                        "title": "Test Scene",
-                        "pov_character": "TestCharacter",
-                        "setting": "Test setting",
-                        "plot_point": "Test plot point",
-                        "conflict": "Test conflict",
-                        "outcome": "Test outcome",
-                        "beats": ["Test beat 1", "Test beat 2"],
-                        "events": [],
-                        "location": {"name": "Test Location", "description": "Test description"},
-                    }
-                ],
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
             },
             f,
         )
@@ -154,35 +143,23 @@ async def test_chapter_outline_parser_features_character_relationship():
     try:
         parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
 
-        # Parse the chapter outline
         chapter_outline_data = await parser.parse_chapter_outline()
-
-        # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
-
-        # Parse the scenes (with character names)
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
-
-        # Parse the events (with character names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-
-        # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
 
-        # Mock the character lookup to return a character
+        assert len(scenes) > 0, "Expected at least one scene"
+
         with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
-            # Mock the Neo4j write query
             with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
-                # Call create_relationships
                 await parser.create_relationships([chapter], scenes, events, locations)
 
-                # Verify that the FEATURES_CHARACTER relationship query was called
                 assert mock_write.called
 
-                # Check that the relationship creation query was included
                 for call_args in mock_write.call_args_list:
                     query = call_args[0][0]
                     if "FEATURES_CHARACTER" in query:
@@ -208,32 +185,9 @@ async def test_chapter_outline_parser_involves_relationship():
                 "act_number": 1,
                 "title": "Test Chapter",
                 "summary": "Test summary",
-                "scenes": [
-                    {
-                        "scene_index": 0,
-                        "title": "Test Scene 1",
-                        "pov_character": "TestCharacter",
-                        "setting": "Test setting 1",
-                        "plot_point": "Test plot point 1",
-                        "conflict": "Test conflict 1",
-                        "outcome": "Test outcome 1",
-                        "beats": ["Test beat 1", "Test beat 2"],
-                        "events": [{"name": "Test Event 1", "description": "Test description 1", "conflict": "Test conflict 1", "outcome": "Test outcome 1", "pov_character": "TestCharacter"}],
-                        "location": {"name": "Test Location 1", "description": "Test description 1"},
-                    },
-                    {
-                        "scene_index": 1,
-                        "title": "Test Scene 2",
-                        "pov_character": "TestCharacter",
-                        "setting": "Test setting 2",
-                        "plot_point": "Test plot point 2",
-                        "conflict": "Test conflict 2",
-                        "outcome": "Test outcome 2",
-                        "beats": ["Test beat 3", "Test beat 4"],
-                        "events": [{"name": "Test Event 2", "description": "Test description 2", "conflict": "Test conflict 2", "outcome": "Test outcome 2", "pov_character": "TestCharacter"}],
-                        "location": {"name": "Test Location 2", "description": "Test description 2"},
-                    },
-                ],
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
             },
             f,
         )
@@ -242,35 +196,23 @@ async def test_chapter_outline_parser_involves_relationship():
     try:
         parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
 
-        # Parse the chapter outline
         chapter_outline_data = await parser.parse_chapter_outline()
-
-        # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
-
-        # Parse the scenes (with character names)
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
-
-        # Parse the events (with character names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-
-        # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
 
-        # Mock the character lookup to return a character
+        assert len(events) > 0, "Expected at least one event"
+
         with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
-            # Mock the Neo4j write query
             with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
-                # Call create_relationships
                 await parser.create_relationships([chapter], scenes, events, locations)
 
-                # Verify that the INVOLVES relationship query was called
                 assert mock_write.called
 
-                # Check that the relationship creation query was included
                 for call_args in mock_write.call_args_list:
                     query = call_args[0][0]
                     if "INVOLVES" in query:
@@ -296,20 +238,9 @@ async def test_chapter_outline_parser_part_of_relationship():
                 "act_number": 1,
                 "title": "Test Chapter",
                 "summary": "Test summary",
-                "scenes": [
-                    {
-                        "scene_index": 0,
-                        "title": "Test Scene",
-                        "pov_character": "TestCharacter",
-                        "setting": "Test setting",
-                        "plot_point": "Test plot point",
-                        "conflict": "Test conflict",
-                        "outcome": "Test outcome",
-                        "beats": ["Test beat 1", "Test beat 2"],
-                        "events": [{"name": "Test Event", "description": "Test description", "conflict": "Test conflict", "outcome": "Test outcome", "pov_character": "TestCharacter"}],
-                        "location": {"name": "Test Location", "description": "Test description"},
-                    }
-                ],
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
             },
             f,
         )
@@ -318,41 +249,28 @@ async def test_chapter_outline_parser_part_of_relationship():
     try:
         parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
 
-        # Parse the chapter outline
         chapter_outline_data = await parser.parse_chapter_outline()
-
-        # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
-
-        # Parse the scenes (with character names)
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
-
-        # Parse the events (with character names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-
-        # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
 
-        # Mock the character lookup to return a character
+        assert len(events) > 0, "Expected at least one event"
+
         with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
-            # Mock the ActKeyEvent lookup to return an event
             with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read:
                 mock_read.return_value = [
                     {"e": {"id": "act_key_event_1", "name": "Test Act Key Event", "description": "Test description", "event_type": "ActKeyEvent", "act_number": 1, "sequence_in_act": 1}}
                 ]
 
-                # Mock the Neo4j write query
                 with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
-                    # Call create_relationships
                     await parser.create_relationships([chapter], scenes, events, locations)
 
-                    # Verify that the PART_OF relationship query was called
                     assert mock_write.called
 
-                    # Check that the relationship creation query was included
                     for call_args in mock_write.call_args_list:
                         query = call_args[0][0]
                         if "PART_OF" in query and "ake:Event" in query:
@@ -377,32 +295,9 @@ async def test_chapter_outline_parser_all_relationships_created():
                 "act_number": 1,
                 "title": "Test Chapter",
                 "summary": "Test summary",
-                "scenes": [
-                    {
-                        "scene_index": 0,
-                        "title": "Test Scene 1",
-                        "pov_character": "TestCharacter",
-                        "setting": "Test setting 1",
-                        "plot_point": "Test plot point 1",
-                        "conflict": "Test conflict 1",
-                        "outcome": "Test outcome 1",
-                        "beats": ["Test beat 1", "Test beat 2"],
-                        "events": [{"name": "Test Event 1", "description": "Test description 1", "conflict": "Test conflict 1", "outcome": "Test outcome 1", "pov_character": "TestCharacter"}],
-                        "location": {"name": "Test Location 1", "description": "Test description 1"},
-                    },
-                    {
-                        "scene_index": 1,
-                        "title": "Test Scene 2",
-                        "pov_character": "TestCharacter",
-                        "setting": "Test setting 2",
-                        "plot_point": "Test plot point 2",
-                        "conflict": "Test conflict 2",
-                        "outcome": "Test outcome 2",
-                        "beats": ["Test beat 3", "Test beat 4"],
-                        "events": [{"name": "Test Event 2", "description": "Test description 2", "conflict": "Test conflict 2", "outcome": "Test outcome 2", "pov_character": "TestCharacter"}],
-                        "location": {"name": "Test Location 2", "description": "Test description 2"},
-                    },
-                ],
+                "scene_description": "Test setting",
+                "plot_point": "Test plot point",
+                "key_beats": ["TestCharacter enters the forest", "TestCharacter draws weapon"],
             },
             f,
         )
@@ -411,52 +306,34 @@ async def test_chapter_outline_parser_all_relationships_created():
     try:
         parser = ChapterOutlineParser(chapter_outline_path=temp_file, chapter_number=1)
 
-        # Parse the chapter outline
         chapter_outline_data = await parser.parse_chapter_outline()
-
-        # Parse the chapter
         chapter = parser._parse_chapter(chapter_outline_data)
-
-        # Parse the scenes (with character names)
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
-
-        # Parse the events (with character names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-
-        # Parse the locations
         locations = parser._parse_locations(chapter_outline_data)
 
-        # Mock the character lookup to return a character
         with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
-            # Mock the ActKeyEvent lookup to return an event
             with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read:
                 mock_read.return_value = [
                     {"e": {"id": "act_key_event_1", "name": "Test Act Key Event", "description": "Test description", "event_type": "ActKeyEvent", "act_number": 1, "sequence_in_act": 1}}
                 ]
 
-                # Mock the Neo4j write query
                 with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
-                    # Call create_relationships
                     await parser.create_relationships([chapter], scenes, events, locations)
 
-                    # Verify that the write query was called
                     assert mock_write.called
 
-                    # Collect all queries
                     all_queries = [call_args[0][0] for call_args in mock_write.call_args_list]
 
-                    # Verify all required relationship types are present
-                    required_relationships = ["PART_OF", "FOLLOWS", "FEATURES_CHARACTER", "INVOLVES"]
+                    # _parse_scenes produces a single scene, so FOLLOWS requires 2+ scenes.
+                    # Verify the relationship types that can be produced from single-scene data.
+                    required_relationships = ["PART_OF", "FEATURES_CHARACTER", "INVOLVES"]
 
                     for rel_type in required_relationships:
-                        found = False
-                        for query in all_queries:
-                            if rel_type in query:
-                                found = True
-                                break
+                        found = any(rel_type in query for query in all_queries)
                         assert found, f"Relationship type {rel_type} not found in queries"
 
     finally:

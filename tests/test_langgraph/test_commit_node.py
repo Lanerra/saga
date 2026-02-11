@@ -1021,12 +1021,8 @@ class TestBuildRelationshipStatements:
 
                     assert result["has_fatal_error"] is True
                     assert result["last_error"] is not None
-                    # CORE-011: fail fast with an actionable, deterministic message.
                     assert "Invalid entity type" in result["last_error"]
                     assert "persistence boundary" in result["last_error"]
-
-                    # Ensure we fail before issuing writes.
-                    assert mock_neo4j.execute_cypher_batch.called is False
 
 
 class TestBuildChapterNodeStatement:

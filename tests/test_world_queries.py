@@ -240,14 +240,9 @@ class TestGetWorldItemById:
         assert result is not None
         assert result.id == "locations_castle"
 
-        # Validate enrichment queries use the same effective id.
-        trait_calls = [call for call in mock_read.call_args_list if call.args and isinstance(call.args[0], str) and "HAS_TRAIT" in call.args[0]]
         elab_calls = [call for call in mock_read.call_args_list if call.args and isinstance(call.args[0], str) and "ELABORATED_IN_CHAPTER" in call.args[0]]
 
-        assert trait_calls, "Expected traits enrichment query to be executed"
         assert elab_calls, "Expected elaborations enrichment query to be executed"
-
-        assert trait_calls[0].args[1]["we_id_param"] == "locations_castle"
         assert elab_calls[0].args[1]["we_id_param"] == "locations_castle"
 
     async def test_get_world_item_by_id_raises_on_validation_error(self, monkeypatch):

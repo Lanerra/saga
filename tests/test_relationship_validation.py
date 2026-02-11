@@ -335,14 +335,13 @@ class TestRelationshipValidator:
     def test_validate_ability_trait_invalid(self) -> None:
         """Test validation of an invalid ability/trait relationship."""
         validator = RelationshipValidator(enable_strict_mode=True)
-        # Locations can't have character traits
         is_valid, errors, warnings = validator.validate(
             relationship_type="HAS_TRAIT",
             source_name="The Tower",
             source_type="Structure",
             target_name="Courage",
             target_type="Trait",
-            severity_mode="flexible",
+            severity_mode="strict",
         )
         assert is_valid is False
         assert len(errors) > 0

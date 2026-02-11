@@ -65,7 +65,6 @@ class TestCommitNodeIdempotency:
             patch("data_access.cache_coordinator.clear_kg_read_caches"),
             patch("data_access.cache_coordinator.clear_character_read_caches"),
             patch("data_access.cache_coordinator.clear_world_read_caches"),
-            patch("core.langgraph.nodes.commit_node._run_phase2_deduplication", return_value={}),
             patch("core.db_manager.neo4j_manager.execute_cypher_batch") as mock_batch,
         ):
             mock_get_rels.return_value = state["extracted_relationships"]

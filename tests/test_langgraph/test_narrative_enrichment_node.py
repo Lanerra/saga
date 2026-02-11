@@ -65,10 +65,16 @@ def sample_character_profiles():
 @pytest.fixture
 def sample_chapter_data():
     """Sample chapter data for testing."""
-    return {
-        "summary": "Introduction of hero and world",
-        "is_provisional": False,
-    }
+    return Chapter(
+        id="chapter_001",
+        number=1,
+        title="The Beginning",
+        summary="Introduction of hero and world",
+        act_number=1,
+        is_provisional=False,
+        created_ts=1234567890,
+        updated_ts=1234567890,
+    )
 
 
 @pytest.mark.asyncio
@@ -159,9 +165,8 @@ class TestNarrativeEnrichmentNode:
         """Test validation of embeddings."""
         node = NarrativeEnrichmentNode()
 
-        # Test with similar embeddings
         result = node._validate_embedding([0.1, 0.2, 0.3], [0.11, 0.21, 0.31])
-        assert result is True
+        assert result == True
 
     async def test_physical_description_extraction(self, sample_narrative_text):
         """Test extraction of physical descriptions from narrative text."""
@@ -615,43 +620,24 @@ class TestNarrativeEnrichmentNodeEdgeCases:
                 assert "Failed to enrich narrative: Character UnknownCharacter not found" in result
 
     async def test_chapter_not_found(self):
-        """Test when chapter is not found in database."""
+        """Test when no chapter data is returned from database."""
         node = NarrativeEnrichmentNode()
         narrative_text = "Sample narrative text"
 
-        # Mock the parser to return chapter that doesn't exist
-        with patch("core.langgraph.nodes.narrative_enrichment_node.NarrativeEnrichmentParser") as mock_parser_class:
-            mock_parser = AsyncMock()
-            mock_parser.extract_physical_descriptions.return_value = []
-            mock_parser.extract_chapter_embeddings.return_value = [
-                MagicMock(chapter_number=999, embedding_vector=[0.1, 0.2, 0.3]),
+        with (
+            patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
+            patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
+        ):
+            mock_get_chars.return_value = [
+                CharacterProfile(
+                    id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
+                ),
             ]
-            mock_parser_class.return_value = mock_parser
+            mock_get_chapter.return_value = None
 
-            # Mock the database operations
-            with (
-                patch("core.langgraph.nodes.narrative_enrichment_node.get_character_profiles") as mock_get_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.get_chapter_data_from_db") as mock_get_chapter,
-                patch("core.langgraph.nodes.narrative_enrichment_node.sync_characters") as mock_sync_chars,
-                patch("core.langgraph.nodes.narrative_enrichment_node.save_chapter_data_to_db") as mock_save_chapter,
-            ):
-                # Set up mocks to return sample data without the chapter
-                mock_get_chars.return_value = [
-                    CharacterProfile(
-                        id="char_001", name="Alice", personality_description="Test", traits=[], status="Active", created_chapter=0, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
-                    ),
-                ]
-                mock_get_chapter.return_value = Chapter(
-                    id="chapter_001", number=1, title="Test", summary="Test", act_number=1, created_chapter=1, is_provisional=False, created_ts=1234567890, updated_ts=1234567890
-                )
-                mock_sync_chars.return_value = True
-                mock_save_chapter.return_value = True
+            result = await node.process(narrative_text, 1)
 
-                # Call the process method
-                result = await node.process(narrative_text, 1)
-
-                # Verify failure
-                assert "Failed to enrich narrative: Chapter 999 not found" in result
+            assert "Failed to enrich narrative: No chapter data found for chapter 1" in result
 
 
 @pytest.mark.asyncio
@@ -764,25 +750,21 @@ class TestNarrativeEnrichmentNodeValidation:
         """Test validation of significantly different embeddings."""
         node = NarrativeEnrichmentNode()
 
-        # Test with significantly different embeddings
         result = node._validate_embedding(
             [0.1, 0.2, 0.3],
-            [0.9, 0.8, 0.7],  # Very different
+            [0.9, 0.8, 0.7],
         )
-        # This should return False if validation is implemented
-        # For now, it returns True as a placeholder
-        assert result is True
+        assert result == False
 
     async def test_validate_embedding_similar(self):
         """Test validation of similar embeddings."""
         node = NarrativeEnrichmentNode()
 
-        # Test with similar embeddings
         result = node._validate_embedding(
             [0.1, 0.2, 0.3],
-            [0.11, 0.21, 0.31],  # Similar
+            [0.11, 0.21, 0.31],
         )
-        assert result is True
+        assert result == True
 
     async def test_validate_physical_description_consistency(self):
         """Test validation of consistent physical descriptions."""

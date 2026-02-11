@@ -49,7 +49,7 @@ def test_load_model_success(spacy_service):
     """Test successful model loading."""
     # Model is already loaded in __init__, so just verify it's loaded
     assert spacy_service.is_loaded() is True
-    assert spacy_service.get_model_name() == "en_core_web_sm"
+    assert spacy_service.get_model_name() == "en_core_web_lg"
 
     # Test that calling load_model again returns True (already loaded)
     result = spacy_service.load_model("en_core_web_sm")

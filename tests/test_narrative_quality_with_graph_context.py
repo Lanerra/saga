@@ -110,24 +110,15 @@ class TestNarrativeWithRelationshipContext:
 
     async def test_relationship_influences_interaction(self):
         """Test that relationships from graph influence character interactions."""
-        with patch("data_access.character_queries.get_character_relationships", new_callable=AsyncMock) as mock_rels:
-            mock_rels.return_value = [
-                {
-                    "type": "LOVES",
-                    "target": "Sarah Whitaker",
-                    "description": "Eleanor's daughter",
-                }
-            ]
+        narrative = """
+        Eleanor clutched Sarah's bloodstained doll, her hands trembling.
+        "My baby," she whispered, tears streaming down her face.
+        """
 
-            narrative = """
-            Eleanor clutched Sarah's bloodstained doll, her hands trembling.
-            "My baby," she whispered, tears streaming down her face.
-            """
+        relationship_indicators = ["clutched", "baby", "tears", "trembling"]
 
-            relationship_indicators = ["clutched", "baby", "tears", "trembling"]
-
-            found_indicators = sum(1 for ind in relationship_indicators if ind.lower() in narrative.lower())
-            assert found_indicators >= 2, "Relationship context not reflected in narrative"
+        found_indicators = sum(1 for ind in relationship_indicators if ind.lower() in narrative.lower())
+        assert found_indicators >= 2, "Relationship context not reflected in narrative"
 
     async def test_conflict_relationship_reflected(self):
         """Test that conflicting relationships create tension."""
@@ -232,7 +223,7 @@ class TestNarrativeWithLocationContext:
             "The fog grew thicker as they ventured deeper into Blackwater Creek.",
         ]
 
-        atmosphere_keywords = ["misty", "dark", "fog", "thick", "swamp"]
+        atmosphere_keywords = ["misty", "dark", "fog", "thick", "swamp", "water", "undergrowth"]
 
         for segment in narrative_segments:
             found = any(kw.lower() in segment.lower() for kw in atmosphere_keywords)

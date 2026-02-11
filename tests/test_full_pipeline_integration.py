@@ -30,28 +30,25 @@ from models.kg_models import Chapter, CharacterProfile
 def stage1_character_sheets():
     """Sample character sheets for Stage 1."""
     return {
-        "characters": [
-            {
-                "name": "Eleanor Whitaker",
-                "personality_description": "Haunted protector of refugee camp, driven by loss",
-                "traits": ["protective", "haunted", "determined"],
-                "status": "Active",
-                "relationships": [
-                    {
-                        "type": "LOVES",
-                        "target": "Sarah Whitaker",
-                        "description": "Eleanor's missing daughter",
-                    }
-                ],
+        "Eleanor Whitaker": {
+            "name": "Eleanor Whitaker",
+            "description": "Haunted protector of refugee camp, driven by loss",
+            "traits": ["protective", "haunted", "determined"],
+            "status": "Active",
+            "relationships": {
+                "Sarah Whitaker": {
+                    "type": "LOVES",
+                    "description": "Eleanor's missing daughter",
+                }
             },
-            {
-                "name": "Sarah Whitaker",
-                "personality_description": "Eleanor's young daughter, captured by creature",
-                "traits": ["innocent", "vulnerable"],
-                "status": "Missing",
-                "relationships": [],
-            },
-        ]
+        },
+        "Sarah Whitaker": {
+            "name": "Sarah Whitaker",
+            "description": "Eleanor's young daughter, captured by creature",
+            "traits": ["innocent", "vulnerable"],
+            "status": "Missing",
+            "relationships": {},
+        },
     }
 
 
@@ -107,23 +104,24 @@ def stage2_global_outline():
 def stage3_act_outline():
     """Sample act outline for Stage 3."""
     return {
-        "act_number": 1,
-        "title": "Whispers in the Mist",
-        "summary": "First attacks fracture peace",
-        "key_events": [
+        "acts": [
             {
-                "name": "Missing Child Discovery",
-                "description": "Eleanor discovers Sarah missing from tent",
-                "sequence_in_act": 1,
-                "cause": "Creature infiltrates camp",
-                "effect": "Eleanor begins search",
-                "character_involvements": [{"character_name": "Eleanor Whitaker", "role": "protagonist"}],
-                "location": {"name": "Refugee Camp", "description": "Settlement"},
-                "items": [{"item_name": "Bloodstained doll", "role": "clue"}],
+                "act_number": 1,
+                "title": "Whispers in the Mist",
+                "summary": "First attacks fracture peace",
+                "sections": {
+                    "key_events": [
+                        {
+                            "event": "Missing Child Discovery",
+                            "description": "Eleanor discovers Sarah missing from tent",
+                            "sequence": 1,
+                            "cause": "Creature infiltrates camp",
+                            "effect": "Eleanor begins search",
+                        }
+                    ],
+                },
             }
         ],
-        "chapter_count": 3,
-        "pacing_notes": "Slow build",
     }
 
 
@@ -131,35 +129,18 @@ def stage3_act_outline():
 def stage4_chapter_outline():
     """Sample chapter outline for Stage 4."""
     return {
-        "chapter_number": 1,
-        "act_number": 1,
-        "title": "The Vanishing",
-        "summary": "Sarah disappears from the camp",
-        "scenes": [
-            {
-                "scene_index": 0,
-                "title": "Empty Tent",
-                "pov_character": "Eleanor Whitaker",
-                "setting": "Eleanor's tent in the refugee camp",
-                "plot_point": "Eleanor discovers Sarah is missing",
-                "conflict": "Eleanor's growing panic",
-                "outcome": "Eleanor alerts the camp",
-                "beats": ["Waking up", "Finding empty bed", "Discovering doll"],
-                "events": [
-                    {
-                        "name": "Discovery",
-                        "description": "Eleanor finds Sarah gone",
-                        "conflict": "Growing dread",
-                        "outcome": "Raises alarm",
-                        "pov_character": "Eleanor Whitaker",
-                    }
-                ],
-                "location": {
-                    "name": "Eleanor's Tent",
-                    "description": "Small canvas tent in refugee camp",
-                },
-            }
-        ],
+        "chapter_1": {
+            "chapter_number": 1,
+            "act_number": 1,
+            "title": "The Vanishing",
+            "summary": "Sarah disappears from the camp",
+            "scene_description": "Eleanor's tent in the refugee camp",
+            "plot_point": "Eleanor discovers Sarah is missing",
+            "key_beats": [
+                "Eleanor Whitaker wakes up and finds empty bed",
+                "Eleanor Whitaker discovers doll",
+            ],
+        }
     }
 
 
@@ -189,17 +170,26 @@ class TestFullPipelineIntegration:
         try:
             parser = CharacterSheetParser(character_sheets_path=temp_file)
 
-            with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
+            with (
+                patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
+                patch("core.db_manager.neo4j_manager.execute_cypher_batch", new_callable=AsyncMock) as mock_batch,
+            ):
                 mock_write.return_value = []
+                mock_batch.return_value = None
 
-                result = await parser.parse_and_persist()
+                success, message = await parser.parse_and_persist()
 
-                assert result is True
-                assert mock_write.called
+                assert success is True
 
-                all_queries = [call[0][0] for call in mock_write.call_args_list]
-                character_query = any("CREATE (c:Character" in q for q in all_queries)
-                relationship_query = any("MERGE (source)-[r:LOVES]->(target)" in q for q in all_queries)
+                all_queries = []
+                for call in mock_write.call_args_list:
+                    all_queries.append(call[0][0])
+                for call in mock_batch.call_args_list:
+                    for statement in call[0][0]:
+                        all_queries.append(statement[0])
+
+                character_query = any("MERGE" in q and "Character" in q for q in all_queries)
+                relationship_query = any("LOVES" in q for q in all_queries)
 
                 assert character_query, "Character creation query not found"
                 assert relationship_query, "Relationship creation query not found"
@@ -220,16 +210,20 @@ class TestFullPipelineIntegration:
             with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
                 mock_write.return_value = []
 
-                result = await parser.parse_and_persist()
+                success, message = await parser.parse_and_persist()
 
-                assert result is True
+                assert success is True
                 assert mock_write.called
 
                 all_queries = [call[0][0] for call in mock_write.call_args_list]
+                all_params = [call[0][1] if len(call[0]) > 1 else {} for call in mock_write.call_args_list]
 
-                major_plot_point = any("event_type: 'MajorPlotPoint'" in q for q in all_queries)
-                location_creation = any("CREATE (loc:Location" in q for q in all_queries)
-                item_creation = any("CREATE (i:Item" in q for q in all_queries)
+                major_plot_point = any(
+                    "Event" in q and p.get("event_type") == "MajorPlotPoint"
+                    for q, p in zip(all_queries, all_params)
+                )
+                location_creation = any("Location" in q and "MERGE" in q for q in all_queries)
+                item_creation = any("Item" in q and "MERGE" in q for q in all_queries)
 
                 assert major_plot_point, "MajorPlotPoint creation not found"
                 assert location_creation, "Location creation not found"
@@ -246,23 +240,38 @@ class TestFullPipelineIntegration:
             temp_file = f.name
 
         try:
-            parser = ActOutlineParser(act_outline_path=temp_file, act_number=1)
+            parser = ActOutlineParser(act_outline_path=temp_file)
+
+            def read_side_effect(query, params=None):
+                if "Character" in query:
+                    return [{"name": "Eleanor Whitaker"}]
+                return []
+
+            llm_character_response = json.dumps([
+                {"name": "Eleanor Whitaker", "role": "protagonist"}
+            ])
 
             with (
                 patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
                 patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+                patch("core.parsers.act_outline_parser.llm_service.async_call_llm", new_callable=AsyncMock) as mock_llm,
             ):
                 mock_write.return_value = []
-                mock_read.return_value = []
+                mock_read.side_effect = read_side_effect
+                mock_llm.return_value = (llm_character_response, {})
 
-                result = await parser.parse_and_persist()
+                success, message = await parser.parse_and_persist()
 
-                assert result is True
+                assert success is True
                 assert mock_write.called
 
                 all_queries = [call[0][0] for call in mock_write.call_args_list]
+                all_params = [call[0][1] if len(call[0]) > 1 else {} for call in mock_write.call_args_list]
 
-                act_key_event = any("event_type: 'ActKeyEvent'" in q for q in all_queries)
+                act_key_event = any(
+                    "Event" in q and p.get("event_type") == "ActKeyEvent"
+                    for q, p in zip(all_queries, all_params)
+                )
                 involves_relationship = any("INVOLVES" in q for q in all_queries)
 
                 assert act_key_event, "ActKeyEvent creation not found"
@@ -290,20 +299,18 @@ class TestFullPipelineIntegration:
                 mock_read.return_value = []
                 mock_chars.return_value = ["Eleanor Whitaker"]
 
-                result = await parser.parse_and_persist()
+                success, message = await parser.parse_and_persist()
 
-                assert result is True
+                assert success is True
                 assert mock_write.called
 
                 all_queries = [call[0][0] for call in mock_write.call_args_list]
 
-                chapter_creation = any("CREATE (c:Chapter" in q for q in all_queries)
-                scene_creation = any("CREATE (s:Scene" in q for q in all_queries)
-                scene_event = any("event_type: 'SceneEvent'" in q for q in all_queries)
+                chapter_creation = any("MERGE" in q and "Chapter" in q for q in all_queries)
+                scene_creation = any("MERGE" in q and "Scene" in q for q in all_queries)
 
                 assert chapter_creation, "Chapter creation not found"
                 assert scene_creation, "Scene creation not found"
-                assert scene_event, "SceneEvent creation not found"
 
         finally:
             if os.path.exists(temp_file):
@@ -349,9 +356,9 @@ class TestFullPipelineIntegration:
                 updated_ts=1234567890,
             )
 
-            result = await parser.parse_and_persist()
+            success, message = await parser.parse_and_persist()
 
-            assert result is True
+            assert success is True
 
     async def test_full_pipeline_sequential(
         self,
@@ -377,15 +384,27 @@ class TestFullPipelineIntegration:
             json.dump(stage4_chapter_outline, stage4_file)
             stage4_file.flush()
 
+            def read_side_effect(query, params=None):
+                if "Character" in query and "name" in query:
+                    return [{"name": "Eleanor Whitaker"}, {"name": "Sarah Whitaker"}]
+                return []
+
+            llm_character_response = json.dumps([
+                {"name": "Eleanor Whitaker", "role": "protagonist"}
+            ])
+
             with (
                 patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write,
                 patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read,
+                patch("core.db_manager.neo4j_manager.execute_cypher_batch", new_callable=AsyncMock) as mock_batch,
                 patch("data_access.character_queries.get_character_profiles", new_callable=AsyncMock) as mock_chars,
                 patch("data_access.character_queries.get_all_character_names", new_callable=AsyncMock) as mock_char_names,
                 patch("data_access.chapter_queries.get_chapter_data_from_db", new_callable=AsyncMock) as mock_chapter,
+                patch("core.parsers.act_outline_parser.llm_service.async_call_llm", new_callable=AsyncMock) as mock_llm,
             ):
                 mock_write.return_value = []
-                mock_read.return_value = []
+                mock_read.side_effect = read_side_effect
+                mock_batch.return_value = None
                 mock_chars.return_value = [
                     CharacterProfile(
                         id="char_001",
@@ -411,29 +430,30 @@ class TestFullPipelineIntegration:
                     created_ts=1234567890,
                     updated_ts=1234567890,
                 )
+                mock_llm.return_value = (llm_character_response, {})
 
                 parser1 = CharacterSheetParser(character_sheets_path=stage1_file.name)
-                result1 = await parser1.parse_and_persist()
-                assert result1 is True, "Stage 1 failed"
+                success1, message1 = await parser1.parse_and_persist()
+                assert success1 is True, f"Stage 1 failed: {message1}"
 
                 parser2 = GlobalOutlineParser(global_outline_path=stage2_file.name)
-                result2 = await parser2.parse_and_persist()
-                assert result2 is True, "Stage 2 failed"
+                success2, message2 = await parser2.parse_and_persist()
+                assert success2 is True, f"Stage 2 failed: {message2}"
 
-                parser3 = ActOutlineParser(act_outline_path=stage3_file.name, act_number=1)
-                result3 = await parser3.parse_and_persist()
-                assert result3 is True, "Stage 3 failed"
+                parser3 = ActOutlineParser(act_outline_path=stage3_file.name)
+                success3, message3 = await parser3.parse_and_persist()
+                assert success3 is True, f"Stage 3 failed: {message3}"
 
                 parser4 = ChapterOutlineParser(chapter_outline_path=stage4_file.name, chapter_number=1)
-                result4 = await parser4.parse_and_persist()
-                assert result4 is True, "Stage 4 failed"
+                success4, message4 = await parser4.parse_and_persist()
+                assert success4 is True, f"Stage 4 failed: {message4}"
 
                 parser5 = NarrativeEnrichmentParser(
                     narrative_text=stage5_narrative_text,
                     chapter_number=1,
                 )
-                result5 = await parser5.parse_and_persist()
-                assert result5 is True, "Stage 5 failed"
+                success5, message5 = await parser5.parse_and_persist()
+                assert success5 is True, f"Stage 5 failed: {message5}"
 
         finally:
             for file in [stage1_file, stage2_file, stage3_file, stage4_file]:

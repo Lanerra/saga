@@ -77,16 +77,15 @@ class TestValidateConsistency:
                 "core.langgraph.nodes.validation_node._check_character_traits",
                 return_value=[],
             ):
-                result = await validate_consistency(state)
+                with patch("core.langgraph.nodes.validation_node.settings.validation.ENABLE_VALIDATION", True):
+                    result = await validate_consistency(state)
 
-                # Should detect plot stagnation
-                stagnation_contradictions = [c for c in result["contradictions"] if c.type == "plot_stagnation"]
-                assert len(stagnation_contradictions) > 0
+                    stagnation_contradictions = [c for c in result["contradictions"] if c.type == "plot_stagnation"]
+                    assert len(stagnation_contradictions) > 0
 
     async def test_validate_force_continue_bypasses_revision(self, sample_state_with_extraction, mock_neo4j_manager):
         """Test that force_continue bypasses revision."""
         state = sample_state_with_extraction
-        # Create a condition that would normally trigger revision (e.g. stagnation)
         state["draft_word_count"] = 500
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
@@ -97,12 +96,11 @@ class TestValidateConsistency:
                 "core.langgraph.nodes.validation_node._check_character_traits",
                 return_value=[],
             ):
-                result = await validate_consistency(state)
+                with patch("core.langgraph.nodes.validation_node.settings.validation.ENABLE_VALIDATION", True):
+                    result = await validate_consistency(state)
 
-                # Should have contradictions (stagnation)
-                assert len(result["contradictions"]) > 0
-                # But should not need revision due to force_continue
-                assert result["needs_revision"] is False
+                    assert len(result["contradictions"]) > 0
+                    assert result["needs_revision"] is False
 
 
 @pytest.mark.asyncio

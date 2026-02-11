@@ -62,8 +62,13 @@ _LLM_SERVICE_PATCH_MODULES: tuple[str, ...] = (
     "core.langgraph.initialization.act_outlines_node",
     "core.langgraph.initialization.chapter_outline_node",
     "core.langgraph.initialization.commit_init_node",
+    "core.langgraph.initialization.outline_relationships_node",
     # Validation subgraph (LLM-based quality eval + world rule checks)
     "core.langgraph.subgraphs.validation",
+    # Parsers that import llm_service at module level
+    "core.parsers.act_outline_parser",
+    "core.parsers.global_outline_parser",
+    "core.parsers.narrative_enrichment_parser",
     # Services invoked by workflow nodes that also import `llm_service`
     "core.entity_embedding_service",
     "core.graph_healing_service",

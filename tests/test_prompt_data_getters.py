@@ -1,5 +1,5 @@
 # tests/test_prompt_data_getters.py
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -439,7 +439,7 @@ class TestGetCharacterProfilesDictWithNotes:
     async def test_fetches_and_processes_character_profiles(self):
         mock_profile = CharacterProfile(
             name="Alice",
-            description="Test character",
+            personality_description="Test character",
             traits=["brave"],
             status="alive",
             created_chapter=1,
@@ -451,7 +451,7 @@ class TestGetCharacterProfilesDictWithNotes:
             result = await prompt_data_getters._get_character_profiles_dict_with_notes(["Alice"], up_to_chapter_inclusive=5)
 
             assert "Alice" in result
-            assert result["Alice"]["description"] == "Test character"
+            assert result["Alice"]["personality_description"] == "Test character"
 
     @pytest.mark.asyncio
     async def test_handles_missing_character(self):
@@ -473,8 +473,8 @@ class TestGetCharacterProfilesDictWithNotes:
 
     @pytest.mark.asyncio
     async def test_processes_multiple_characters(self):
-        mock_alice = CharacterProfile(name="Alice", description="Alice desc", created_chapter=1)
-        mock_bob = CharacterProfile(name="Bob", description="Bob desc", created_chapter=1)
+        mock_alice = CharacterProfile(name="Alice", personality_description="Alice desc", created_chapter=1)
+        mock_bob = CharacterProfile(name="Bob", personality_description="Bob desc", created_chapter=1)
 
         with patch("data_access.character_queries.get_character_profile_by_name") as mock_get:
             mock_get.side_effect = [mock_alice, mock_bob]
@@ -1024,190 +1024,208 @@ class TestGatherCharacterFacts:
 
     @pytest.mark.asyncio
     async def test_limits_to_three_characters(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock1:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock2:
-                mock1.return_value = None
-                mock2.return_value = []
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock1:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock2:
+                    mock_info.return_value = None
+                    mock1.return_value = None
+                    mock2.return_value = []
 
-                characters = {"Alice", "Bob", "Charlie", "David"}
-                facts = []
+                    characters = {"Alice", "Bob", "Charlie", "David"}
+                    facts = []
 
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest=characters,
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=2,
-                    max_total_facts=20,
-                    protagonist_name="Alice",
-                )
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest=characters,
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=2,
+                        max_total_facts=20,
+                        protagonist_name="Alice",
+                    )
 
-                call_count = mock1.call_count + mock2.call_count
-                assert call_count == 9
+                    call_count = mock_info.call_count + mock1.call_count + mock2.call_count
+                    assert call_count == 9
 
     @pytest.mark.asyncio
     async def test_gathers_character_status(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_status:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_status.side_effect = ["alive", None]
-                mock_rel.return_value = []
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_location:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.return_value = {"current_status": "alive"}
+                    mock_location.return_value = None
+                    mock_rel.return_value = []
 
-                facts = []
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=3,
-                    max_total_facts=10,
-                    protagonist_name="Alice",
-                )
+                    facts = []
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=3,
+                        max_total_facts=10,
+                        protagonist_name="Alice",
+                    )
 
-                assert any("status" in fact.lower() for fact in facts)
-                assert any("alive" in fact for fact in facts)
+                    assert any("status" in fact.lower() for fact in facts)
+                    assert any("alive" in fact for fact in facts)
 
     @pytest.mark.asyncio
     async def test_gathers_character_location(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_location:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_location.side_effect = [None, "Castle"]
-                mock_rel.return_value = []
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_location:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.return_value = None
+                    mock_location.return_value = "Castle"
+                    mock_rel.return_value = []
 
-                facts = []
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=3,
-                    max_total_facts=10,
-                    protagonist_name="Alice",
-                )
+                    facts = []
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=3,
+                        max_total_facts=10,
+                        protagonist_name="Alice",
+                    )
 
-                assert any("located in" in fact.lower() for fact in facts)
-                assert any("Castle" in fact for fact in facts)
+                    assert any("located in" in fact.lower() for fact in facts)
+                    assert any("Castle" in fact for fact in facts)
 
     @pytest.mark.asyncio
     async def test_gathers_character_relationships(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_value.return_value = None
-                mock_rel.return_value = [
-                    {"predicate": "ally_of", "object": "Bob"},
-                    {"predicate": "enemy_of", "object": "Charlie"},
-                ]
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.return_value = None
+                    mock_value.return_value = None
+                    mock_rel.return_value = [
+                        {"predicate": "ally_of", "object": "Bob"},
+                        {"predicate": "enemy_of", "object": "Charlie"},
+                    ]
 
-                facts = []
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=3,
-                    max_total_facts=10,
-                    protagonist_name="Alice",
-                )
+                    facts = []
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=3,
+                        max_total_facts=10,
+                        protagonist_name="Alice",
+                    )
 
-                assert any("relationship" in fact.lower() for fact in facts)
-                assert any("Bob" in fact for fact in facts)
+                    assert any("relationship" in fact.lower() for fact in facts)
+                    assert any("Bob" in fact for fact in facts)
 
     @pytest.mark.asyncio
     async def test_respects_max_facts_per_char(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_value.side_effect = ["alive", "Castle"]
-                mock_rel.return_value = [
-                    {"predicate": "ally_of", "object": "Bob"},
-                    {"predicate": "enemy_of", "object": "Charlie"},
-                ]
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.return_value = {"current_status": "alive"}
+                    mock_value.return_value = "Castle"
+                    mock_rel.return_value = [
+                        {"predicate": "ally_of", "object": "Bob"},
+                        {"predicate": "enemy_of", "object": "Charlie"},
+                    ]
 
-                facts = []
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=2,
-                    max_total_facts=10,
-                    protagonist_name="Alice",
-                )
+                    facts = []
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=2,
+                        max_total_facts=10,
+                        protagonist_name="Alice",
+                    )
 
-                assert len(facts) == 2
+                    assert len(facts) == 2
 
     @pytest.mark.asyncio
     async def test_respects_max_total_facts(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_value.return_value = "alive"
-                mock_rel.return_value = []
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.return_value = {"current_status": "alive"}
+                    mock_value.return_value = None
+                    mock_rel.return_value = []
 
-                facts = ["fact1", "fact2", "fact3"]
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice", "Bob"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=3,
-                    max_total_facts=3,
-                    protagonist_name="Alice",
-                )
+                    facts = ["fact1", "fact2", "fact3"]
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice", "Bob"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=3,
+                        max_total_facts=3,
+                        protagonist_name="Alice",
+                    )
 
-                assert len(facts) == 3
+                    assert len(facts) == 3
 
     @pytest.mark.asyncio
     async def test_filters_relationship_types(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_value.return_value = None
-                mock_rel.return_value = [
-                    {"predicate": "uninteresting_rel", "object": "Bob"},
-                    {"predicate": "ally_of", "object": "Charlie"},
-                ]
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.return_value = None
+                    mock_value.return_value = None
+                    mock_rel.return_value = [
+                        {"predicate": "uninteresting_rel", "object": "Bob"},
+                        {"predicate": "ally_of", "object": "Charlie"},
+                    ]
 
-                facts = []
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=3,
-                    max_total_facts=10,
-                    protagonist_name="Alice",
-                )
+                    facts = []
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=3,
+                        max_total_facts=10,
+                        protagonist_name="Alice",
+                    )
 
-                assert any("Charlie" in fact for fact in facts)
-                assert not any("Bob" in fact for fact in facts)
+                    assert any("Charlie" in fact for fact in facts)
+                    assert not any("Bob" in fact for fact in facts)
 
     @pytest.mark.asyncio
     async def test_handles_query_exceptions(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_value.side_effect = Exception("Query failed")
-                mock_rel.side_effect = Exception("Query failed")
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.side_effect = Exception("Query failed")
+                    mock_value.side_effect = Exception("Query failed")
+                    mock_rel.side_effect = Exception("Query failed")
 
-                facts = []
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=3,
-                    max_total_facts=10,
-                    protagonist_name="Alice",
-                )
+                    facts = []
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=3,
+                        max_total_facts=10,
+                        protagonist_name="Alice",
+                    )
 
-                assert len(facts) == 0
+                    assert len(facts) == 0
 
     @pytest.mark.asyncio
     async def test_avoids_duplicate_facts(self):
-        with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
-            with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
-                mock_value.side_effect = ["alive", None]
-                mock_rel.return_value = []
+        with patch("data_access.character_queries.get_character_info_for_snippet_from_db", new_callable=AsyncMock) as mock_info:
+            with patch("data_access.kg_queries.get_most_recent_value_from_db") as mock_value:
+                with patch("data_access.kg_queries.query_kg_from_db") as mock_rel:
+                    mock_info.return_value = {"current_status": "alive"}
+                    mock_value.return_value = None
+                    mock_rel.return_value = []
 
-                facts = ["- Alice's status is: alive."]
-                await prompt_data_getters._gather_character_facts(
-                    characters_of_interest={"Alice"},
-                    kg_chapter_limit=5,
-                    facts_list=facts,
-                    max_facts_per_char=3,
-                    max_total_facts=10,
-                    protagonist_name="Alice",
-                )
+                    facts = ["- Alice's status is: alive."]
+                    await prompt_data_getters._gather_character_facts(
+                        characters_of_interest={"Alice"},
+                        kg_chapter_limit=5,
+                        facts_list=facts,
+                        max_facts_per_char=3,
+                        max_total_facts=10,
+                        protagonist_name="Alice",
+                    )
 
-                assert len(facts) == 1
+                    assert len(facts) == 1
 
 
 class TestGetReliableKGFactsForDraftingPrompt:
@@ -1337,8 +1355,8 @@ class TestGetCharacterStateSnippet:
 
     @pytest.mark.asyncio
     async def test_prioritizes_protagonist(self):
-        alice = CharacterProfile(name="Alice", description="Alice desc", created_chapter=1)
-        bob = CharacterProfile(name="Bob", description="Bob desc", created_chapter=1)
+        alice = CharacterProfile(name="Alice", personality_description="Alice desc", created_chapter=1)
+        bob = CharacterProfile(name="Bob", personality_description="Bob desc", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
@@ -1366,7 +1384,7 @@ class TestGetCharacterStateSnippet:
 
     @pytest.mark.asyncio
     async def test_includes_character_description(self):
-        alice = CharacterProfile(name="Alice", description="A brave warrior", created_chapter=1)
+        alice = CharacterProfile(name="Alice", personality_description="A brave warrior", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
             mock_info.return_value = {}
@@ -1517,8 +1535,8 @@ class TestGetCharacterStateSnippet:
     @pytest.mark.asyncio
     async def test_uses_default_protagonist_when_none_provided(self):
         with patch.object(config, "DEFAULT_PROTAGONIST_NAME", "DefaultHero"):
-            alice = CharacterProfile(name="DefaultHero", description="Hero", created_chapter=1)
-            bob = CharacterProfile(name="Bob", description="Bob", created_chapter=1)
+            alice = CharacterProfile(name="DefaultHero", personality_description="Hero", created_chapter=1)
+            bob = CharacterProfile(name="Bob", personality_description="Bob", created_chapter=1)
 
             with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
                 mock_info.return_value = {}

@@ -46,6 +46,9 @@ class _DummyTextProcessor:
     def __init__(self) -> None:
         self.response_cleaner = self._Cleaner()
 
+    def clean_text_with_spacy(self, text: str, aggressive: bool = False) -> str:
+        return text
+
     def get_combined_statistics(self) -> dict[str, Any]:
         return {}
 

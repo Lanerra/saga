@@ -75,7 +75,6 @@ class TestWorkflowGraphConstruction:
             finalize_chapter=MagicMock(),
             heal_graph=MagicMock(),
             check_quality=MagicMock(),
-            normalize_relationships=MagicMock(),
             revise_chapter=MagicMock(),
             summarize_chapter=MagicMock(),
         ):
@@ -114,7 +113,6 @@ class TestWorkflowGraphStructure:
             finalize_chapter=MagicMock(return_value=lambda s: s),
             heal_graph=MagicMock(return_value=lambda s: s),
             check_quality=MagicMock(return_value=lambda s: s),
-            normalize_relationships=MagicMock(return_value=lambda s: s),
             revise_chapter=MagicMock(return_value=lambda s: s),
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
@@ -126,9 +124,9 @@ class TestWorkflowGraphStructure:
             # Check that key nodes are present
             nodes = list(graph_structure.nodes.keys())
             assert "assemble_chapter" in nodes
-            assert "commit" in nodes  # commit_to_graph is named "commit" in the workflow
+            assert "commit" in nodes
             assert "gen_scene_embeddings" in nodes
-            assert "finalize" in nodes  # finalize_chapter is named "finalize" in the workflow
+            assert "finalize" in nodes
 
     @pytest.mark.asyncio
     async def test_workflow_graph_has_expected_edges(self) -> None:
@@ -141,7 +139,6 @@ class TestWorkflowGraphStructure:
             finalize_chapter=MagicMock(return_value=lambda s: s),
             heal_graph=MagicMock(return_value=lambda s: s),
             check_quality=MagicMock(return_value=lambda s: s),
-            normalize_relationships=MagicMock(return_value=lambda s: s),
             revise_chapter=MagicMock(return_value=lambda s: s),
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
@@ -180,7 +177,6 @@ class TestWorkflowErrorHandling:
             finalize_chapter=MagicMock(return_value=lambda s: s),
             heal_graph=MagicMock(return_value=lambda s: s),
             check_quality=MagicMock(return_value=lambda s: s),
-            normalize_relationships=MagicMock(return_value=lambda s: s),
             revise_chapter=MagicMock(return_value=lambda s: s),
             summarize_chapter=MagicMock(return_value=lambda s: s),
         ):
@@ -207,7 +203,6 @@ class TestWorkflowStateManagement:
             finalize_chapter=mock_node,
             heal_graph=mock_node,
             check_quality=mock_node,
-            normalize_relationships=mock_node,
             revise_chapter=mock_node,
             summarize_chapter=mock_node,
         ):

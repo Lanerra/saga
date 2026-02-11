@@ -85,6 +85,7 @@ async def heal_graph(state: NarrativeState) -> NarrativeState:
                 "primary": action.get("primary"),
                 "duplicate": action.get("duplicate"),
                 "similarity": action.get("similarity"),
+                "auto_approved": action.get("auto_approved", False),
             }
             for action in results.get("actions", [])
             if action.get("type") == "merge"

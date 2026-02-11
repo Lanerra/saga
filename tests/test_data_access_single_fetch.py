@@ -13,7 +13,7 @@ from models.kg_constants import KG_NODE_CREATED_CHAPTER
 @pytest.mark.asyncio
 async def test_get_character_profile_by_name(monkeypatch):
     async def fake_read(query, params=None):
-        if "MATCH (c:Character" in query and "collect(DISTINCT t.name) AS traits" in query:
+        if "MATCH (c:Character" in query and "coalesce(c.traits, []) AS traits" in query:
             return [
                 {
                     "c": {
@@ -27,15 +27,7 @@ async def test_get_character_profile_by_name(monkeypatch):
                         {
                             "target_name": "Bob",
                             "rel_type": "KNOWS",
-                            # Note: rel_props may or may not include a `type` field; canonical type is rel_type.
                             "rel_props": {"source_profile_managed": True},
-                        }
-                    ],
-                    "dev_events": [
-                        {
-                            "summary": "growth",
-                            "chapter": 1,
-                            "is_provisional": False,
                         }
                     ],
                 }
@@ -51,9 +43,9 @@ async def test_get_character_profile_by_name(monkeypatch):
     profile = await character_queries.get_character_profile_by_name("Alice")
     assert profile
     assert profile.name == "Alice"
+    assert profile.personality_description == "hero"
     assert profile.traits == ["brave"]
     assert profile.relationships["Bob"]["type"] == "KNOWS"
-    assert profile.updates["development_in_chapter_1"] == "growth"
 
     clear_all_data_access_caches()
 

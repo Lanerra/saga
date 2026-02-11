@@ -79,7 +79,7 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
         ),
         patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
         patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),
-        patch("core.langgraph.workflow.normalize_relationships", MagicMock()),
+        patch("core.langgraph.workflow.enrich_narrative", MagicMock()),
         patch("core.langgraph.workflow.commit_to_graph", MagicMock()),
         patch("core.langgraph.subgraphs.validation.create_validation_subgraph", MagicMock()),
         patch("core.langgraph.workflow.revise_chapter", MagicMock()),
@@ -88,13 +88,10 @@ async def test_workflow_routes_to_error_handler_on_generation_failure(
         patch("core.langgraph.workflow.heal_graph", MagicMock()),
         patch("core.langgraph.workflow.check_quality", MagicMock()),
     ):
-        # Create workflow
         graph = create_full_workflow_graph()
 
-        # Execute workflow
         result = await graph.ainvoke(sample_generation_state)
 
-        # Verify routing
         assert result["has_fatal_error"] is True
         assert result["current_node"] == "error_handler"
         assert result["error_node"] == "generate"
@@ -119,7 +116,6 @@ async def test_workflow_routes_to_error_handler_on_validation_fatal_error(
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
     mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
     mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
-    mock_normalize = MagicMock(side_effect=lambda s: {**s, "current_node": "normalize_relationships"})
     mock_commit = MagicMock(side_effect=lambda s: {**s, "current_node": "commit"})
 
     # Validation node fails fatally
@@ -152,7 +148,7 @@ async def test_workflow_routes_to_error_handler_on_validation_fatal_error(
         ),
         patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
         patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),
-        patch("core.langgraph.workflow.normalize_relationships", mock_normalize),
+        patch("core.langgraph.workflow.enrich_narrative", MagicMock(side_effect=lambda s: {**s, "current_node": "narrative_enrichment"})),
         patch("core.langgraph.workflow.commit_to_graph", mock_commit),
         patch(
             "core.langgraph.subgraphs.validation.create_validation_subgraph",
@@ -164,10 +160,8 @@ async def test_workflow_routes_to_error_handler_on_validation_fatal_error(
         patch("core.langgraph.workflow.heal_graph", MagicMock()),
         patch("core.langgraph.workflow.check_quality", MagicMock()),
     ):
-        # Create workflow
         graph = create_full_workflow_graph()
 
-        # Execute workflow
         result = await graph.ainvoke(sample_generation_state)
 
         # Verify routing
@@ -192,7 +186,7 @@ async def test_workflow_continues_when_no_fatal_error(
     mock_extract = MagicMock(side_effect=lambda s: {**s, "current_node": "extract"})
     mock_gen_scene_embeddings = MagicMock(side_effect=lambda s: {**s, "current_node": "gen_scene_embeddings"})
     mock_assemble_chapter = MagicMock(side_effect=lambda s: {**s, "current_node": "assemble_chapter"})
-    mock_normalize = MagicMock(side_effect=lambda s: {**s, "current_node": "normalize_relationships"})
+    mock_narrative_enrichment = MagicMock(side_effect=lambda s: {**s, "current_node": "narrative_enrichment"})
     mock_commit = MagicMock(side_effect=lambda s: {**s, "current_node": "commit"})
     mock_validate = MagicMock(side_effect=lambda s: {**s, "current_node": "validate", "needs_revision": False})
     mock_summarize = MagicMock(side_effect=lambda s: {**s, "current_node": "summarize"})
@@ -215,7 +209,7 @@ async def test_workflow_continues_when_no_fatal_error(
         ),
         patch("core.langgraph.workflow.generate_scene_embeddings", mock_gen_scene_embeddings),
         patch("core.langgraph.workflow.assemble_chapter", mock_assemble_chapter),
-        patch("core.langgraph.workflow.normalize_relationships", mock_normalize),
+        patch("core.langgraph.workflow.enrich_narrative", mock_narrative_enrichment),
         patch("core.langgraph.workflow.commit_to_graph", mock_commit),
         patch(
             "core.langgraph.subgraphs.validation.create_validation_subgraph",
@@ -242,7 +236,6 @@ async def test_workflow_continues_when_no_fatal_error(
         mock_extract.assert_called_once()
         mock_gen_scene_embeddings.assert_called_once()
         mock_assemble_chapter.assert_called_once()
-        mock_normalize.assert_called_once()
         mock_commit.assert_called_once()
         mock_validate.assert_called_once()
         mock_summarize.assert_called_once()

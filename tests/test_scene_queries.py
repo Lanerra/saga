@@ -1,10 +1,3 @@
-# tests/test_scene_queries.py
-"""Tests for scene_queries module.
-
-These tests verify that the new query functions for scene-related
-context retrieval work correctly.
-"""
-
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,28 +13,21 @@ from data_access.scene_queries import (
 
 @pytest.mark.asyncio
 class TestSceneQueries:
-    """Tests for scene query functions."""
 
     async def test_get_scene_events_returns_events(self):
-        """Verify get_scene_events returns properly formatted event data."""
-        mock_session = AsyncMock()
-        mock_result = AsyncMock()
-        mock_result.data = AsyncMock(
-            return_value=[
-                {
-                    "name": "Test Event",
-                    "description": "Test description",
-                    "conflict": "Test conflict",
-                    "outcome": "Test outcome",
-                    "pov_character": "Test Character",
-                    "characters_involved": ["Character A", "Character B"],
-                }
-            ]
-        )
-        mock_session.run = AsyncMock(return_value=mock_result)
+        expected_records = [
+            {
+                "name": "Test Event",
+                "description": "Test description",
+                "conflict": "Test conflict",
+                "outcome": "Test outcome",
+                "pov_character": "Test Character",
+                "characters_involved": ["Character A", "Character B"],
+            }
+        ]
 
-        with patch("data_access.scene_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.get_session.return_value.__aenter__.return_value = mock_session
+        with patch("data_access.scene_queries.neo4j_manager") as fake_neo4j:
+            fake_neo4j.execute_read_query = AsyncMock(return_value=expected_records)
 
             events = await get_scene_events(chapter_number=1, scene_index=0)
 
@@ -50,41 +36,29 @@ class TestSceneQueries:
             assert events[0]["description"] == "Test description"
             assert events[0]["conflict"] == "Test conflict"
             assert events[0]["outcome"] == "Test outcome"
-            assert len(events[0]["characters_involved"]) == 2
+            assert events[0]["characters_involved"] == ["Character A", "Character B"]
 
     async def test_get_scene_events_empty_result(self):
-        """Verify get_scene_events handles empty results."""
-        mock_session = AsyncMock()
-        mock_result = AsyncMock()
-        mock_result.data = AsyncMock(return_value=[])
-        mock_session.run = AsyncMock(return_value=mock_result)
-
-        with patch("data_access.scene_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.get_session.return_value.__aenter__.return_value = mock_session
+        with patch("data_access.scene_queries.neo4j_manager") as fake_neo4j:
+            fake_neo4j.execute_read_query = AsyncMock(return_value=[])
 
             events = await get_scene_events(chapter_number=1, scene_index=0)
 
             assert events == []
 
     async def test_get_character_relationships_for_scene(self):
-        """Verify get_character_relationships_for_scene returns relationship data."""
-        mock_session = AsyncMock()
-        mock_result = AsyncMock()
-        mock_result.data = AsyncMock(
-            return_value=[
-                {
-                    "source": "Alice",
-                    "relationship_type": "FRIENDS_WITH",
-                    "target": "Bob",
-                    "description": "Close friends since childhood",
-                    "chapter_added": 0,
-                }
-            ]
-        )
-        mock_session.run = AsyncMock(return_value=mock_result)
+        expected_records = [
+            {
+                "source": "Alice",
+                "relationship_type": "FRIENDS_WITH",
+                "target": "Bob",
+                "description": "Close friends since childhood",
+                "chapter_added": 0,
+            }
+        ]
 
-        with patch("data_access.scene_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.get_session.return_value.__aenter__.return_value = mock_session
+        with patch("data_access.scene_queries.neo4j_manager") as fake_neo4j:
+            fake_neo4j.execute_read_query = AsyncMock(return_value=expected_records)
 
             relationships = await get_character_relationships_for_scene(
                 character_names=["Alice", "Bob"],
@@ -96,24 +70,18 @@ class TestSceneQueries:
             assert relationships[0]["target"] == "Bob"
 
     async def test_get_character_items(self):
-        """Verify get_character_items returns item possession data."""
-        mock_session = AsyncMock()
-        mock_result = AsyncMock()
-        mock_result.data = AsyncMock(
-            return_value=[
-                {
-                    "character_name": "Alice",
-                    "item_name": "Magic Sword",
-                    "item_description": "A legendary blade",
-                    "item_category": "Weapon",
-                    "acquired_chapter": 0,
-                }
-            ]
-        )
-        mock_session.run = AsyncMock(return_value=mock_result)
+        expected_records = [
+            {
+                "character_name": "Alice",
+                "item_name": "Magic Sword",
+                "item_description": "A legendary blade",
+                "item_category": "Weapon",
+                "acquired_chapter": 0,
+            }
+        ]
 
-        with patch("data_access.scene_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.get_session.return_value.__aenter__.return_value = mock_session
+        with patch("data_access.scene_queries.neo4j_manager") as fake_neo4j:
+            fake_neo4j.execute_read_query = AsyncMock(return_value=expected_records)
 
             items = await get_character_items(
                 character_names=["Alice"],
@@ -125,22 +93,16 @@ class TestSceneQueries:
             assert items[0]["item_name"] == "Magic Sword"
 
     async def test_get_scene_items(self):
-        """Verify get_scene_items returns items featured in a scene."""
-        mock_session = AsyncMock()
-        mock_result = AsyncMock()
-        mock_result.data = AsyncMock(
-            return_value=[
-                {
-                    "item_name": "Ancient Map",
-                    "item_description": "Shows hidden passages",
-                    "item_category": "Tool",
-                }
-            ]
-        )
-        mock_session.run = AsyncMock(return_value=mock_result)
+        expected_records = [
+            {
+                "item_name": "Ancient Map",
+                "item_description": "Shows hidden passages",
+                "item_category": "Tool",
+            }
+        ]
 
-        with patch("data_access.scene_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.get_session.return_value.__aenter__.return_value = mock_session
+        with patch("data_access.scene_queries.neo4j_manager") as fake_neo4j:
+            fake_neo4j.execute_read_query = AsyncMock(return_value=expected_records)
 
             items = await get_scene_items(chapter_number=1, scene_index=0)
 
@@ -148,38 +110,32 @@ class TestSceneQueries:
             assert items[0]["item_name"] == "Ancient Map"
 
     async def test_get_act_events(self):
-        """Verify get_act_events returns hierarchical event data."""
-        mock_session = AsyncMock()
-        mock_result = AsyncMock()
-        mock_result.data = AsyncMock(
-            return_value=[
-                {
-                    "major_points": [
-                        {
-                            "name": "Inciting Incident",
-                            "description": "The hero's journey begins",
-                            "sequence_order": 1,
-                        }
-                    ],
-                    "act_events": [
-                        {
-                            "name": "Meeting the Mentor",
-                            "description": "Hero meets wise guide",
-                            "sequence_in_act": 1,
-                            "cause": "Hero seeks guidance",
-                            "effect": "Hero gains confidence",
-                            "characters_involved": ["Hero", "Mentor"],
-                            "location": "Ancient Temple",
-                            "part_of": "Inciting Incident",
-                        }
-                    ],
-                }
-            ]
-        )
-        mock_session.run = AsyncMock(return_value=mock_result)
+        expected_records = [
+            {
+                "major_points": [
+                    {
+                        "name": "Inciting Incident",
+                        "description": "The hero's journey begins",
+                        "sequence_order": 1,
+                    }
+                ],
+                "act_events": [
+                    {
+                        "name": "Meeting the Mentor",
+                        "description": "Hero meets wise guide",
+                        "sequence_in_act": 1,
+                        "cause": "Hero seeks guidance",
+                        "effect": "Hero gains confidence",
+                        "characters_involved": ["Hero", "Mentor"],
+                        "location": "Ancient Temple",
+                        "part_of": "Inciting Incident",
+                    }
+                ],
+            }
+        ]
 
-        with patch("data_access.scene_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.get_session.return_value.__aenter__.return_value = mock_session
+        with patch("data_access.scene_queries.neo4j_manager") as fake_neo4j:
+            fake_neo4j.execute_read_query = AsyncMock(return_value=expected_records)
 
             events_data = await get_act_events(act_number=1)
 
@@ -191,14 +147,8 @@ class TestSceneQueries:
             assert events_data["act_key_events"][0]["name"] == "Meeting the Mentor"
 
     async def test_get_act_events_empty_result(self):
-        """Verify get_act_events handles empty results."""
-        mock_session = AsyncMock()
-        mock_result = AsyncMock()
-        mock_result.data = AsyncMock(return_value=[])
-        mock_session.run = AsyncMock(return_value=mock_result)
-
-        with patch("data_access.scene_queries.neo4j_manager") as mock_neo4j:
-            mock_neo4j.get_session.return_value.__aenter__.return_value = mock_session
+        with patch("data_access.scene_queries.neo4j_manager") as fake_neo4j:
+            fake_neo4j.execute_read_query = AsyncMock(return_value=[])
 
             events_data = await get_act_events(act_number=1)
 
