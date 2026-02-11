@@ -507,7 +507,7 @@ def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
 
     history_data: dict = {}
 
-    raw_events: list = []
+    raw_events: list = state.get("key_events") or []
 
     events: list = []
     if isinstance(raw_events, list):

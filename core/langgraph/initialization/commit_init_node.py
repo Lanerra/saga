@@ -558,6 +558,9 @@ async def _build_outline_relationship_statements(
     """
     import hashlib
 
+    apoc_available = await neo4j_manager.is_apoc_available()
+    assert apoc_available, "APOC procedures required for outline relationship persistence"
+
     statements: list[tuple[str, dict]] = []
 
     for rel in relationships:
@@ -581,9 +584,10 @@ async def _build_outline_relationship_statements(
 
         cypher = """
         MATCH (s {name: $source_name})
+        WHERE s:Character OR s:Location OR s:Event OR s:Item
         MATCH (t {name: $target_name})
+        WHERE t:Character OR t:Location OR t:Event OR t:Item
         WITH s, t
-        WHERE s IS NOT NULL AND t IS NOT NULL
         CALL apoc.merge.relationship(
             s,
             $relationship_type,

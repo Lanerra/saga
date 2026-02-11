@@ -577,7 +577,7 @@ Return the enriched outline in the same JSON format:
             error=str(e),
             exc_info=True,
         )
-        return skeleton_outline
+        return None
 
 
 __all__ = ["generate_chapter_outline"]
