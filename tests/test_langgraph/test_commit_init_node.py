@@ -444,7 +444,7 @@ def test_parse_world_items_extraction():
     )
 
     with patch("utils.text_processing.generate_entity_id") as mock_id:
-        mock_id.side_effect = lambda name, cat, chapter: f"{cat}_{name}_{chapter}"
+        mock_id.side_effect = lambda name, cat: f"{cat}_{name}"
 
         result = _parse_world_items_extraction(response)
 

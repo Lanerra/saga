@@ -526,7 +526,7 @@ def _parse_world_items_extraction(response: str) -> list[WorldItem]:
 
         items.append(
             WorldItem(
-                id=generate_entity_id(name.strip(), category, chapter=0),
+                id=generate_entity_id(name.strip(), category),
                 name=name.strip(),
                 description=description.strip(),
                 category=category,

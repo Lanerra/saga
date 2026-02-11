@@ -20,6 +20,7 @@ from models.kg_constants import (
     VALID_NODE_LABELS,
 )
 from utils import classify_category_label
+from utils.text_processing import generate_entity_id
 
 logger = structlog.get_logger(__name__)
 
@@ -550,12 +551,7 @@ async def add_kg_triples_batch_to_db(
 
         subject_id: str | None = None
         if subject_type == "Character":
-            try:
-                from utils.text_processing import generate_entity_id
-
-                subject_id = generate_entity_id(subject_name, "character", int(chapter_number))
-            except (ImportError, ValueError, TypeError, AttributeError):
-                subject_id = None
+            subject_id = generate_entity_id(subject_name, "character")
 
         params["subject_id_param"] = subject_id
 
@@ -649,12 +645,7 @@ async def add_kg_triples_batch_to_db(
 
             object_id: str | None = None
             if object_type == "Character":
-                try:
-                    from utils.text_processing import generate_entity_id
-
-                    object_id = generate_entity_id(object_name, "character", int(chapter_number))
-                except (ImportError, ValueError, TypeError, AttributeError):
-                    object_id = None
+                object_id = generate_entity_id(object_name, "character")
             params["object_id_param"] = object_id
 
             # Generate stable relationship ID WITHOUT chapter number to prevent duplicates

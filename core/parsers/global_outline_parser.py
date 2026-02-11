@@ -378,7 +378,7 @@ class GlobalOutlineParser:
 
             items.append(
                 WorldItem(
-                    id=generate_entity_id(name.strip(), category, chapter=0),
+                    id=generate_entity_id(name.strip(), category),
                     name=name.strip(),
                     description=description.strip(),
                     category=category,

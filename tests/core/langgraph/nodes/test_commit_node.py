@@ -42,7 +42,7 @@ class TestCommitNodeEntityPersistence:
             }
 
             with patch("core.langgraph.nodes.commit_node.generate_entity_id") as mock_generate_id:
-                mock_generate_id.side_effect = lambda name, category, chapter: f"id_{name}_{chapter}"
+                mock_generate_id.side_effect = lambda name, category: f"id_{name}"
 
                 with patch("core.db_manager.neo4j_manager.execute_cypher_batch"):
                     await commit_to_graph(mock_state)  # type: ignore[arg-type]

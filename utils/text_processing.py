@@ -53,13 +53,12 @@ def _normalize_for_id(text: str) -> str:
     return text
 
 
-def generate_entity_id(name: str, category: str, chapter: int) -> str:
+def generate_entity_id(name: str, category: str) -> str:
     """Generate a deterministic entity ID.
 
     Args:
         name: Entity name.
         category: Entity category (for world items) or `"character"` for characters.
-        chapter: Chapter number associated with the entity.
 
     Returns:
         A stable identifier derived from a normalized form of `name` and `category`.
@@ -68,8 +67,6 @@ def generate_entity_id(name: str, category: str, chapter: int) -> str:
         raise TypeError("name must be a string")
     if not isinstance(category, str):
         raise TypeError("category must be a string")
-    if not isinstance(chapter, int) or isinstance(chapter, bool):
-        raise TypeError("chapter must be an int")
 
     normalized_name = re.sub(r"[^\w\s]", "", name.lower().strip())
     normalized_name = re.sub(r"\s+", "_", normalized_name)

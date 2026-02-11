@@ -364,7 +364,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             deduplicated_id = generate_entity_id(
                 item.name,
                 item.attributes.get("category", ""),
-                state.get("current_chapter", 1),
             )
             world_mappings[item.name] = deduplicated_id
             seen_names[item.name] = deduplicated_id

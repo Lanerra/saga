@@ -152,7 +152,6 @@ class NativeCypherBuilder:
             "id": generate_entity_id(
                 char.name,
                 "character",
-                int(char.created_chapter or chapter_number),
             ),
             "created_chapter": char.created_chapter or chapter_number,
             "is_provisional": char.is_provisional,
