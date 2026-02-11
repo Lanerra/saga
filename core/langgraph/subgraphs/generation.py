@@ -21,17 +21,29 @@ from core.langgraph.state import NarrativeState
 logger = structlog.get_logger(__name__)
 
 
-def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end"]:
+def _should_continue_or_error(state: NarrativeState) -> Literal["continue", "error"]:
+    """Gate on has_fatal_error before proceeding to the next node."""
+    if state.get("has_fatal_error", False):
+        return "error"
+    return "continue"
+
+
+def should_continue_scenes(state: NarrativeState) -> Literal["continue", "end", "error"]:
     """Route within the generation subgraph based on scene progress.
 
     Args:
         state: Workflow state. This function reads:
+            - has_fatal_error: Whether a fatal error has occurred.
             - current_scene_index: Index of the next scene to draft.
             - chapter_plan_scene_count: Total number of scenes in the chapter plan.
 
     Returns:
-        "continue" to draft another scene, or "end" to end the subgraph.
+        "error" if a fatal error occurred, "continue" to draft another scene,
+        or "end" to end the subgraph.
     """
+    if state.get("has_fatal_error", False):
+        return "error"
+
     scene_count = state.get("chapter_plan_scene_count", 0)
     if isinstance(scene_count, bool) or not isinstance(scene_count, int):
         raise TypeError("chapter_plan_scene_count must be an int")
@@ -61,25 +73,27 @@ def create_generation_subgraph() -> StateGraph:
 
     workflow.set_entry_point("plan_scenes")
 
-    workflow.add_edge("plan_scenes", "retrieve_context")
-    workflow.add_edge("retrieve_context", "draft_scene")
+    workflow.add_conditional_edges(
+        "plan_scenes",
+        _should_continue_or_error,
+        {"continue": "retrieve_context", "error": END},
+    )
+    workflow.add_conditional_edges(
+        "retrieve_context",
+        _should_continue_or_error,
+        {"continue": "draft_scene", "error": END},
+    )
 
     workflow.add_conditional_edges(
         "draft_scene",
         should_continue_scenes,
-        {"continue": "retrieve_context", "end": END},
+        {"continue": "retrieve_context", "end": END, "error": END},
     )
 
     return workflow.compile()
 
 
-def generate_chapter() -> StateGraph:
-    """Return the compiled generation subgraph used by workflows."""
-    return create_generation_subgraph()
-
-
 __all__ = [
     "create_generation_subgraph",
-    "generate_chapter",
     "should_continue_scenes",
 ]

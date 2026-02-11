@@ -1,7 +1,7 @@
 # tests/test_langgraph/test_generation_node.py
 import pytest
 
-from core.langgraph.subgraphs.generation import generate_chapter, should_continue_scenes
+from core.langgraph.subgraphs.generation import create_generation_subgraph, should_continue_scenes
 
 
 def test_should_continue_scenes_routes_when_scene_count_positive() -> None:
@@ -30,7 +30,7 @@ def test_should_continue_scenes_does_not_infer_scene_count_from_chapter_plan() -
     assert should_continue_scenes(state) == "end"
 
 
-def test_generate_chapter_returns_compiled_graph() -> None:
-    graph = generate_chapter()
+def test_create_generation_subgraph_returns_compiled_graph() -> None:
+    graph = create_generation_subgraph()
     assert hasattr(graph, "ainvoke")
     assert hasattr(graph, "astream")

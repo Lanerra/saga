@@ -24,7 +24,7 @@ from core.langgraph.state import (
     State,
     create_initial_state,
 )
-from core.langgraph.subgraphs.generation import generate_chapter
+from core.langgraph.subgraphs.generation import create_generation_subgraph
 from core.langgraph.visualization import (
     print_workflow_summary,
     visualize_workflow,
@@ -47,7 +47,7 @@ __all__ = [
     "commit_to_graph",
     "validate_consistency",
     # Canonical generation API (scene-based subgraph)
-    "generate_chapter",
+    "create_generation_subgraph",
     "revise_chapter",
     "summarize_chapter",
     "finalize_chapter",

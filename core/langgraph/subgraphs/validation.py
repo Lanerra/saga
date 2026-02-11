@@ -18,7 +18,7 @@ Notes:
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
@@ -669,6 +669,13 @@ async def _check_relationship_evolution(
     return contradictions
 
 
+def _should_continue_or_error(state: NarrativeState) -> Literal["continue", "error"]:
+    """Gate on has_fatal_error before proceeding to the next node."""
+    if state.get("has_fatal_error", False):
+        return "error"
+    return "continue"
+
+
 def create_validation_subgraph() -> StateGraph:
     """Create and compile the validation subgraph.
 
@@ -688,8 +695,16 @@ def create_validation_subgraph() -> StateGraph:
 
     workflow.set_entry_point("validate_consistency")
 
-    workflow.add_edge("validate_consistency", "evaluate_quality")
-    workflow.add_edge("evaluate_quality", "detect_contradictions")
+    workflow.add_conditional_edges(
+        "validate_consistency",
+        _should_continue_or_error,
+        {"continue": "evaluate_quality", "error": END},
+    )
+    workflow.add_conditional_edges(
+        "evaluate_quality",
+        _should_continue_or_error,
+        {"continue": "detect_contradictions", "error": END},
+    )
     workflow.add_edge("detect_contradictions", END)
 
     return workflow.compile()

@@ -13,6 +13,7 @@ from typing import Any, Literal
 import structlog
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
 from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
+from langgraph.graph.state import CompiledStateGraph  # type: ignore[import-not-found]
 
 import config
 from core.langgraph.nodes.assemble_chapter_node import assemble_chapter
@@ -331,14 +332,14 @@ def should_continue_to_next_chapter(
     return "end"
 
 
-def create_full_workflow_graph(checkpointer: Any | None = None) -> StateGraph:
+def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledStateGraph:
     """Create the end-to-end workflow graph (initialization + chapter loop).
 
     Args:
         checkpointer: Optional LangGraph checkpointer instance.
 
     Returns:
-        Compiled LangGraph StateGraph ready for execution
+        Compiled LangGraph graph ready for execution.
     """
     logger.info("create_full_workflow_graph: building complete workflow")
 
