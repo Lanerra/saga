@@ -58,8 +58,7 @@ class SchemaEnforcementSettings(BaseSettings):
 
     LOG_SCHEMA_VIOLATIONS: bool = Field(default=True, description="Log detailed warnings when schema violations occur")
 
-    class Config:
-        env_prefix = "SAGA_SCHEMA_"
+    model_config = SettingsConfigDict(env_prefix="SAGA_SCHEMA_")
 
 
 class ValidationSettings(BaseSettings):
@@ -67,15 +66,11 @@ class ValidationSettings(BaseSettings):
 
     This settings group controls whether validation checks are performed
     during chapter generation.
-
-    Notes:
-        Environment variables use the `SAGA_VALIDATION_` prefix.
     """
 
     ENABLE_VALIDATION: bool = Field(default=True, description="Enable validation checks in the validation node")
 
-    class Config:
-        env_prefix = "DEBUG_"
+    model_config = SettingsConfigDict(env_prefix="SAGA_VALIDATION_")
 
 
 class RelationshipNormalizationSettings(BaseSettings):
@@ -173,8 +168,7 @@ class RelationshipNormalizationSettings(BaseSettings):
         description="Treat punctuation variations as identical (WORKS_WITH == WORKS-WITH)",
     )
 
-    class Config:
-        env_prefix = "SAGA_REL_NORM_"
+    model_config = SettingsConfigDict(env_prefix="SAGA_REL_NORM_")
 
 
 class SagaSettings(BaseSettings):

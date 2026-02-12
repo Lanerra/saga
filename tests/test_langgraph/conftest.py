@@ -183,8 +183,21 @@ def sample_state_with_extraction(tmp_path) -> NarrativeState:
 
 
 @pytest.fixture
+def fake_neo4j() -> Generator["FakeNeo4jManager", None, None]:
+    """Inject a FakeNeo4jManager into core.db_manager for the test duration."""
+    import core.db_manager
+    from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
+
+    original = core.db_manager.neo4j_manager
+    fake = FakeNeo4jManager()
+    core.db_manager.neo4j_manager = fake  # type: ignore[assignment]
+    yield fake
+    core.db_manager.neo4j_manager = original  # type: ignore[assignment]
+
+
+@pytest.fixture
 def mock_neo4j_manager() -> Generator[MagicMock, None, None]:
-    """Mock Neo4j manager for testing."""
+    """Mock Neo4j manager for testing (legacy — prefer fake_neo4j)."""
     with patch("core.db_manager.neo4j_manager") as mock:
         mock.execute_read_query = AsyncMock(return_value=[])
         mock.execute_write_query = AsyncMock(return_value=[])

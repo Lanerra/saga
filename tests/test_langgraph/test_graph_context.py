@@ -25,7 +25,7 @@ class TestBuildContextFromGraph:
 
     async def test_build_context_default_params(
         self,
-        mock_neo4j_manager,
+        fake_neo4j,
         mock_character_queries,
         mock_world_queries,
         mock_chapter_queries,
@@ -34,7 +34,7 @@ class TestBuildContextFromGraph:
         with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
             with patch("core.langgraph.graph_context.world_queries", mock_world_queries):
                 with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
-                    with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+                    with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
                         context = await build_context_from_graph(current_chapter=5)
 
                         assert "characters" in context
@@ -42,24 +42,23 @@ class TestBuildContextFromGraph:
                         assert "relationships" in context
                         assert "recent_summaries" in context
                         assert "location" in context
-                        assert context["location"] is None  # No location specified
+                        assert context["location"] is None
 
     async def test_build_context_with_character_names(
         self,
-        mock_neo4j_manager,
+        fake_neo4j,
         mock_character_queries,
         mock_world_queries,
         mock_chapter_queries,
         sample_character_profile,
     ):
         """Test building context with specific character names."""
-        # Mock character lookup
         mock_character_queries.get_character_profile_by_name = AsyncMock(return_value=sample_character_profile)
 
         with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
             with patch("core.langgraph.graph_context.world_queries", mock_world_queries):
                 with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
-                    with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+                    with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
                         context = await build_context_from_graph(
                             current_chapter=5,
                             active_character_names=["Test Hero"],
@@ -69,27 +68,29 @@ class TestBuildContextFromGraph:
 
     async def test_build_context_with_location(
         self,
-        mock_neo4j_manager,
+        fake_neo4j,
         mock_character_queries,
         mock_world_queries,
         mock_chapter_queries,
     ):
         """Test building context with location."""
-        # Mock location query
-        mock_neo4j_manager.execute_read_query.return_value = [
-            {
-                "id": "loc_001",
-                "name": "Castle",
-                "description": "A grand castle",
-                "rules": ["No magic"],
-                "category": "structure",
-            }
-        ]
+        fake_neo4j.configure_response(
+            r"loc_id",
+            [
+                {
+                    "id": "loc_001",
+                    "name": "Castle",
+                    "description": "A grand castle",
+                    "rules": ["No magic"],
+                    "category": "structure",
+                }
+            ],
+        )
 
         with patch("core.langgraph.graph_context.character_queries", mock_character_queries):
             with patch("core.langgraph.graph_context.world_queries", mock_world_queries):
                 with patch("core.langgraph.graph_context.chapter_queries", mock_chapter_queries):
-                    with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+                    with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
                         context = await build_context_from_graph(
                             current_chapter=5,
                             location_id="loc_001",
@@ -149,26 +150,29 @@ class TestGetCharactersByNames:
 class TestGetCharacterRelationships:
     """Tests for _get_character_relationships helper function."""
 
-    async def test_get_relationships(self, mock_neo4j_manager):
+    async def test_get_relationships(self, fake_neo4j):
         """Test getting character relationships."""
-        mock_neo4j_manager.execute_read_query.return_value = [
-            {
-                "source": "Alice",
-                "target": "Bob",
-                "rel_type": "FRIEND_OF",
-                "description": "Close friends",
-                "confidence": 0.9,
-            }
-        ]
+        fake_neo4j.configure_response(
+            r"MATCH.*Character.*Character",
+            [
+                {
+                    "source": "Alice",
+                    "target": "Bob",
+                    "rel_type": "FRIEND_OF",
+                    "description": "Close friends",
+                    "confidence": 0.9,
+                }
+            ],
+        )
 
-        with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+        with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
             relationships = await _get_character_relationships(["Alice", "Bob"])
 
             assert len(relationships) == 1
             assert relationships[0]["source"] == "Alice"
             assert relationships[0]["target"] == "Bob"
 
-    async def test_get_relationships_empty_list(self, mock_neo4j_manager):
+    async def test_get_relationships_empty_list(self):
         """Test with empty character list."""
         relationships = await _get_character_relationships([])
         assert relationships == []
@@ -203,30 +207,31 @@ class TestGetRecentSummaries:
 class TestGetLocationDetails:
     """Tests for _get_location_details helper function."""
 
-    async def test_get_existing_location(self, mock_neo4j_manager):
+    async def test_get_existing_location(self, fake_neo4j):
         """Test getting an existing location."""
-        mock_neo4j_manager.execute_read_query.return_value = [
-            {
-                "id": "loc_001",
-                "name": "Castle",
-                "description": "A grand castle",
-                "rules": ["No magic"],
-                "category": "structure",
-            }
-        ]
+        fake_neo4j.configure_response(
+            r"loc_id",
+            [
+                {
+                    "id": "loc_001",
+                    "name": "Castle",
+                    "description": "A grand castle",
+                    "rules": ["No magic"],
+                    "category": "structure",
+                }
+            ],
+        )
 
-        with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+        with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
             location = await _get_location_details("loc_001")
 
             assert location is not None
             assert location["name"] == "Castle"
             assert location["id"] == "loc_001"
 
-    async def test_get_nonexistent_location(self, mock_neo4j_manager):
+    async def test_get_nonexistent_location(self, fake_neo4j):
         """Test getting a nonexistent location."""
-        mock_neo4j_manager.execute_read_query.return_value = []
-
-        with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+        with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
             location = await _get_location_details("nonexistent")
 
             assert location is None
@@ -236,33 +241,34 @@ class TestGetLocationDetails:
 class TestGetKeyEvents:
     """Tests for get_key_events function."""
 
-    async def test_get_key_events(self, mock_neo4j_manager):
+    async def test_get_key_events(self, fake_neo4j):
         """Test getting key events."""
-        mock_neo4j_manager.execute_read_query.return_value = [
-            {
-                "description": "Battle at the bridge",
-                "importance": 0.9,
-                "chapter": 3,
-            },
-            {
-                "description": "Discovery of the artifact",
-                "importance": 0.8,
-                "chapter": 4,
-            },
-        ]
+        fake_neo4j.configure_response(
+            r"MATCH.*Event",
+            [
+                {
+                    "description": "Battle at the bridge",
+                    "importance": 0.9,
+                    "chapter": 3,
+                },
+                {
+                    "description": "Discovery of the artifact",
+                    "importance": 0.8,
+                    "chapter": 4,
+                },
+            ],
+        )
 
-        with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+        with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
             events = await get_key_events(current_chapter=5)
 
             assert len(events) == 2
             assert events[0]["description"] == "Battle at the bridge"
             assert events[0]["importance"] == 0.9
 
-    async def test_get_events_with_custom_params(self, mock_neo4j_manager):
+    async def test_get_events_with_custom_params(self, fake_neo4j):
         """Test getting events with custom parameters."""
-        mock_neo4j_manager.execute_read_query.return_value = []
-
-        with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
+        with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
             events = await get_key_events(
                 current_chapter=10,
                 lookback_chapters=5,

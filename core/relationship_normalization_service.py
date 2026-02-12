@@ -298,11 +298,14 @@ class RelationshipNormalizationService:
 
         from models.kg_constants import RELATIONSHIP_TYPES
 
-        for rel_type in RELATIONSHIP_TYPES:
-            if rel_type not in self.canonical_embeddings:
-                embedding = await self._get_embedding(rel_type)
-                if embedding is not None:
-                    self.canonical_embeddings[rel_type] = embedding
+        uncached_types = [rt for rt in RELATIONSHIP_TYPES if rt not in self.canonical_embeddings]
+        if not uncached_types:
+            return
+
+        embeddings = await llm_service.async_get_embeddings_batch(uncached_types)
+        for rel_type, embedding in zip(uncached_types, embeddings, strict=False):
+            if embedding is not None:
+                self.canonical_embeddings[rel_type] = embedding
 
     def _get_threshold(self, category: str) -> float:
         """Get the similarity threshold for a given category.
@@ -328,11 +331,18 @@ class RelationshipNormalizationService:
 
             If embeddings cannot be computed, returns `("", 0.0)`.
         """
-        # Get embedding for new type
+        uncached_types: list[str] = []
         if rel_type not in self.embedding_cache:
-            embedding = await self._get_embedding(rel_type)
-            if embedding is not None:
-                self._cache_embedding(rel_type, embedding)
+            uncached_types.append(rel_type)
+        for vocab_type in vocabulary_types:
+            if vocab_type not in self.embedding_cache:
+                uncached_types.append(vocab_type)
+
+        if uncached_types:
+            batch_embeddings = await llm_service.async_get_embeddings_batch(uncached_types)
+            for text, embedding in zip(uncached_types, batch_embeddings, strict=False):
+                if embedding is not None:
+                    self._cache_embedding(text, embedding)
 
         new_embedding = self.embedding_cache.get(rel_type)
         if new_embedding is None:
@@ -346,21 +356,10 @@ class RelationshipNormalizationService:
         best_similarity = 0.0
 
         for vocab_type in vocabulary_types:
-            # Get cached or compute embedding
-            if vocab_type not in self.embedding_cache:
-                embedding = await self._get_embedding(vocab_type)
-                if embedding is not None:
-                    self._cache_embedding(vocab_type, embedding)
-
             vocab_embedding = self.embedding_cache.get(vocab_type)
             if vocab_embedding is None:
-                logger.warning(
-                    "Failed to get embedding for vocabulary type",
-                    type=vocab_type,
-                )
                 continue
 
-            # Compute cosine similarity
             similarity = numpy_cosine_similarity(new_embedding, vocab_embedding)
 
             if similarity > best_similarity:

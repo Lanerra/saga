@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Import settings for model configuration
 from config.settings import settings
@@ -59,11 +59,7 @@ class ExtractedEntity(BaseModel):
 
         return self
 
-    class Config:
-        """Configure Pydantic validation behavior."""
-
-        frozen = False
-        validate_assignment = True
+    model_config = ConfigDict(frozen=False, validate_assignment=True)
 
 
 class ExtractedRelationship(BaseModel):
@@ -78,11 +74,7 @@ class ExtractedRelationship(BaseModel):
     source_type: str | None = None
     target_type: str | None = None
 
-    class Config:
-        """Configure Pydantic validation behavior."""
-
-        frozen = False
-        validate_assignment = True
+    model_config = ConfigDict(frozen=False, validate_assignment=True)
 
 
 class Contradiction(BaseModel):
@@ -94,11 +86,7 @@ class Contradiction(BaseModel):
     severity: Literal["minor", "major", "critical"]
     suggested_fix: str | None = None
 
-    class Config:
-        """Configure Pydantic validation behavior."""
-
-        frozen = False
-        validate_assignment = True
+    model_config = ConfigDict(frozen=False, validate_assignment=True)
 
 
 class NarrativeState(TypedDict, total=False):

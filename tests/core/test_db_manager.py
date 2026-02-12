@@ -1069,3 +1069,25 @@ class TestSingletonInstance:
         """neo4j_manager is same instance as newly created"""
         new_instance = Neo4jManagerSingleton()
         assert neo4j_manager is new_instance
+
+
+class TestMinimumVersionCheck:
+    """Runtime Neo4j version comparison logic."""
+
+    @pytest.mark.parametrize(
+        ("version_string", "minimum", "expected"),
+        [
+            ("5.15.0", "5.0.0", True),
+            ("5.0.0", "5.0.0", True),
+            ("5.28.2", "5.0.0", True),
+            ("4.4.0", "5.0.0", False),
+            ("4.99.99", "5.0.0", False),
+            ("5.0.1", "5.0.0", True),
+            ("5.15.0-enterprise", "5.0.0", True),
+            ("4.4.12-community", "5.0.0", False),
+            ("6.0.0", "5.0.0", True),
+            ("3.5.0", "5.0.0", False),
+        ],
+    )
+    def test_version_comparison(self, version_string: str, minimum: str, expected: bool) -> None:
+        assert Neo4jManagerSingleton._meets_minimum_version(version_string, minimum) == expected

@@ -32,6 +32,8 @@ logger = structlog.get_logger(__name__)
 class Neo4jManagerSingleton:
     """Provide a process-wide async façade over the Neo4j driver."""
 
+    MINIMUM_NEO4J_VERSION = "5.0.0"
+
     _instance: "Neo4jManagerSingleton" = None  # type: ignore
     _initialized_flag: bool
 
@@ -100,6 +102,13 @@ class Neo4jManagerSingleton:
                         neo4j_version=info.get("version"),
                         neo4j_edition=info.get("edition"),
                     )
+                    version_string = info.get("version", "")
+                    if version_string and not self._meets_minimum_version(version_string, self.MINIMUM_NEO4J_VERSION):
+                        self.logger.warning(
+                            "⚠ Neo4j server version is below minimum supported version",
+                            server_version=version_string,
+                            minimum_version=self.MINIMUM_NEO4J_VERSION,
+                        )
             except Exception as info_exc:  # pragma: no cover - diagnostics only
                 self.logger.debug(
                     "Could not determine Neo4j server version via dbms.components()",
@@ -176,6 +185,34 @@ class Neo4jManagerSingleton:
             if not rec:
                 return None
             return dict(rec)
+
+    @staticmethod
+    def _meets_minimum_version(version_string: str, minimum: str) -> bool:
+        """Compare a dot-separated version string against a minimum version.
+
+        Only compares the numeric prefix of each segment (e.g. "5.15.0-enterprise"
+        is parsed as [5, 15, 0]).
+        """
+        import re as _re
+
+        def _parse_version(version: str) -> list[int]:
+            segments = version.split(".")
+            result: list[int] = []
+            for segment in segments:
+                match = _re.match(r"(\d+)", segment)
+                if match:
+                    result.append(int(match.group(1)))
+            return result
+
+        actual = _parse_version(version_string)
+        required = _parse_version(minimum)
+
+        for actual_part, required_part in zip(actual, required, strict=False):
+            if actual_part > required_part:
+                return True
+            if actual_part < required_part:
+                return False
+        return len(actual) >= len(required)
 
     async def close(self) -> None:
         """Close the Neo4j driver."""

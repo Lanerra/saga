@@ -208,15 +208,27 @@ class NarrativeEnrichmentNode:
     def _extract_words(text: str) -> list[str]:
         """Extract words using word boundaries, handling punctuation and hyphens."""
         import re
+
         return re.findall(r"\b[a-z]+\b", text)
 
     @staticmethod
     def _has_contradictory_height(existing: str, new: str) -> bool:
         """Check for contradictory height descriptors between two descriptions."""
         height_keywords = {
-            "short", "tall", "petite", "lanky", "statuesque",
-            "average", "medium", "small", "large", "big",
-            "little", "tiny", "giant", "huge",
+            "short",
+            "tall",
+            "petite",
+            "lanky",
+            "statuesque",
+            "average",
+            "medium",
+            "small",
+            "large",
+            "big",
+            "little",
+            "tiny",
+            "giant",
+            "huge",
         }
         existing_heights = {w for w in NarrativeEnrichmentNode._extract_words(existing) if w in height_keywords}
         new_heights = {w for w in NarrativeEnrichmentNode._extract_words(new) if w in height_keywords}
@@ -242,6 +254,7 @@ class NarrativeEnrichmentNode:
         Within each sentence, only extracts colors within a 4-word window of a context word.
         """
         import re
+
         normalized = re.sub(r"[–—]", "-", text)
 
         found_colors: set[str] = set()
@@ -281,36 +294,74 @@ class NarrativeEnrichmentNode:
         if attribute == "hair":
             context_words = {"hair", "haired", "locks", "tresses", "mane", "curls"}
             color_keywords = {
-                "blonde", "blond", "brown", "black", "red", "auburn",
-                "gray", "grey", "white", "silver", "platinum",
-                "strawberry", "sandy", "chestnut", "raven", "ebony",
-                "golden", "copper", "bronze",
+                "blonde",
+                "blond",
+                "brown",
+                "black",
+                "red",
+                "auburn",
+                "gray",
+                "grey",
+                "white",
+                "silver",
+                "platinum",
+                "strawberry",
+                "sandy",
+                "chestnut",
+                "raven",
+                "ebony",
+                "golden",
+                "copper",
+                "bronze",
             }
             compound_phrases = [
-                "salt-and-pepper", "salt and pepper",
-                "dirty blonde", "dirty blond",
-                "dishwater blonde", "dishwater blond",
-                "strawberry blonde", "strawberry blond",
-                "ash blonde", "ash blond",
-                "platinum blonde", "platinum blond",
+                "salt-and-pepper",
+                "salt and pepper",
+                "dirty blonde",
+                "dirty blond",
+                "dishwater blonde",
+                "dishwater blond",
+                "strawberry blonde",
+                "strawberry blond",
+                "ash blonde",
+                "ash blond",
+                "platinum blonde",
+                "platinum blond",
             ]
         else:
             context_words = {"eye", "eyes", "eyed", "gaze", "irises"}
             color_keywords = {
-                "blue", "green", "brown", "hazel", "gray", "grey",
-                "amber", "violet", "purple", "black", "gold", "silver",
+                "blue",
+                "green",
+                "brown",
+                "hazel",
+                "gray",
+                "grey",
+                "amber",
+                "violet",
+                "purple",
+                "black",
+                "gold",
+                "silver",
             }
             compound_phrases = [
-                "steel grey", "steel gray",
+                "steel grey",
+                "steel gray",
                 "ice blue",
                 "dark brown",
             ]
 
         existing_colors = NarrativeEnrichmentNode._extract_color_near_context(
-            existing, context_words, color_keywords, compound_phrases,
+            existing,
+            context_words,
+            color_keywords,
+            compound_phrases,
         )
         new_colors = NarrativeEnrichmentNode._extract_color_near_context(
-            new, context_words, color_keywords, compound_phrases,
+            new,
+            context_words,
+            color_keywords,
+            compound_phrases,
         )
 
         if not existing_colors or not new_colors:

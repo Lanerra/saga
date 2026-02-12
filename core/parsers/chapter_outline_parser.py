@@ -897,7 +897,10 @@ class ChapterOutlineParser:
 
             logger.info("Creating relationships in Neo4j")
             relationships_success = await self.create_relationships(
-                all_chapters, all_scenes, all_events, all_referenced_locations,
+                all_chapters,
+                all_scenes,
+                all_events,
+                all_referenced_locations,
             )
 
             if not relationships_success:
