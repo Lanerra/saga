@@ -148,7 +148,7 @@ async def test_chapter_outline_parser_features_character_relationship():
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-        locations = parser._parse_locations(chapter_outline_data)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
 
         assert len(scenes) > 0, "Expected at least one scene"
 
@@ -201,7 +201,7 @@ async def test_chapter_outline_parser_involves_relationship():
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-        locations = parser._parse_locations(chapter_outline_data)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
 
         assert len(events) > 0, "Expected at least one event"
 
@@ -254,7 +254,7 @@ async def test_chapter_outline_parser_part_of_relationship():
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-        locations = parser._parse_locations(chapter_outline_data)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
 
         assert len(events) > 0, "Expected at least one event"
 
@@ -311,7 +311,7 @@ async def test_chapter_outline_parser_all_relationships_created():
         character_names = ["TestCharacter"]
         scenes = parser._parse_scenes(chapter_outline_data, character_names)
         events = parser._parse_scene_events(chapter_outline_data, character_names)
-        locations = parser._parse_locations(chapter_outline_data)
+        locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
 
         with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
             mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")

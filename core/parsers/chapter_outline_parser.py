@@ -259,18 +259,52 @@ class ChapterOutlineParser:
 
         return events
 
-    def _parse_locations(self, chapter_outline_data: dict[str, Any]) -> list[Location]:
-        """Parse locations from chapter outline data.
+    def _parse_locations(
+        self,
+        chapter_outline_data: dict[str, Any],
+        known_locations: list[dict[str, str]],
+        chapter_number: int,
+    ) -> list[Location]:
+        """Match known locations against chapter outline text.
+
+        Searches `scene_description` and `key_beats` for references to locations
+        that already exist in the knowledge graph (from Stage 3 act outlines).
 
         Args:
-            chapter_outline_data: Parsed chapter outline data (single chapter dict)
+            chapter_outline_data: Parsed chapter outline data (single chapter dict).
+            known_locations: Location dicts from Neo4j with 'id', 'name', 'description'.
+            chapter_number: Current chapter number, used to tag returned locations
+                for OCCURS_AT relationship matching.
 
         Returns:
-            List of Location instances
+            List of Location instances representing existing locations referenced
+            in this chapter's outline text.
         """
-        locations = []
+        if not known_locations:
+            return []
 
-        return locations
+        scene_description = chapter_outline_data.get("scene_description", "")
+        key_beats = chapter_outline_data.get("key_beats", [])
+        searchable_text = " ".join([scene_description] + key_beats).lower()
+
+        if not searchable_text.strip():
+            return []
+
+        matched: list[Location] = []
+        for location_data in known_locations:
+            location_name = location_data["name"]
+            if location_name.lower() in searchable_text:
+                matched.append(
+                    Location(
+                        id=location_data["id"],
+                        name=location_name,
+                        description=location_data.get("description", ""),
+                        category="Location",
+                        created_chapter=chapter_number,
+                    )
+                )
+
+        return matched
 
     async def create_chapter_nodes(self, chapters: list[Chapter]) -> bool:
         """Create Chapter nodes in Neo4j.
@@ -616,8 +650,7 @@ class ChapterOutlineParser:
             # Create Scene -[OCCURS_AT]-> Location relationships
             for scene in scenes:
                 for location in locations:
-                    # Simple heuristic: match scenes to locations based on chapter and scene index
-                    if scene.chapter_number == location.created_chapter and scene.scene_index == 0:
+                    if scene.chapter_number == location.created_chapter:
                         query = """
                         MATCH (s:Scene {id: $scene_id})
                         MATCH (l:Location {id: $location_id})
@@ -717,6 +750,29 @@ class ChapterOutlineParser:
             logger.error("Error fetching character names: %s", str(e), exc_info=True)
             return []
 
+    async def _get_all_locations(self) -> list[dict[str, str]]:
+        """Get all location names and IDs from Neo4j.
+
+        Returns:
+            List of dicts with 'id', 'name', and 'description' keys.
+        """
+        query = """
+        MATCH (l:Location)
+        WHERE l.name IS NOT NULL
+        RETURN l.id as id, l.name as name, l.description as description
+        ORDER BY l.name
+        """
+        result = await neo4j_manager.execute_read_query(query, {})
+        return [
+            {
+                "id": record["id"],
+                "name": record["name"],
+                "description": record.get("description", ""),
+            }
+            for record in result
+            if record.get("name")
+        ]
+
     async def _get_character_by_name(self, character_name: str) -> CharacterProfile | None:
         """Query Neo4j for a character by name.
 
@@ -765,10 +821,13 @@ class ChapterOutlineParser:
             logger.info("Fetching character names for POV extraction")
             character_names = await self._get_all_character_names()
 
+            logger.info("Fetching known locations for scene-location matching")
+            known_locations = await self._get_all_locations()
+
             all_chapters = []
             all_scenes = []
             all_events = []
-            all_locations = []
+            all_referenced_locations: list[Location] = []
 
             for chapter_key, chapter_outline_data in all_chapter_data.items():
                 if not isinstance(chapter_outline_data, dict):
@@ -799,18 +858,21 @@ class ChapterOutlineParser:
 
                 logger.info("Parsed %d scene events", len(events), extra={"chapter": chapter.number})
 
-                logger.info("Parsing locations from chapter outline")
-                locations = self._parse_locations(chapter_outline_data)
+                logger.info("Matching locations from chapter outline")
+                locations = self._parse_locations(chapter_outline_data, known_locations, chapter.number)
 
                 if not locations:
-                    logger.debug("No explicit locations in chapter outline; using locations from earlier stages", extra={"chapter": chapter.number})
+                    logger.debug(
+                        "No location references found in chapter outline",
+                        extra={"chapter": chapter.number},
+                    )
 
-                logger.info("Parsed %d locations", len(locations), extra={"chapter": chapter.number})
+                logger.info("Matched %d locations", len(locations), extra={"chapter": chapter.number})
 
                 all_chapters.append(chapter)
                 all_scenes.extend(scenes)
                 all_events.extend(events)
-                all_locations.extend(locations)
+                all_referenced_locations.extend(locations)
 
             if not all_chapters:
                 return False, "No chapters found in chapter outline"
@@ -833,14 +895,10 @@ class ChapterOutlineParser:
             if not events_success:
                 return False, "Failed to create SceneEvent nodes"
 
-            logger.info("Creating Location nodes in Neo4j")
-            locations_success = await self.create_location_nodes(all_locations)
-
-            if not locations_success:
-                return False, "Failed to create Location nodes"
-
             logger.info("Creating relationships in Neo4j")
-            relationships_success = await self.create_relationships(all_chapters, all_scenes, all_events, all_locations)
+            relationships_success = await self.create_relationships(
+                all_chapters, all_scenes, all_events, all_referenced_locations,
+            )
 
             if not relationships_success:
                 return False, "Failed to create relationships"
@@ -851,8 +909,8 @@ class ChapterOutlineParser:
                 f"{len(all_chapters)} Chapter, "
                 f"{len(all_scenes)} Scenes, "
                 f"{len(all_events)} SceneEvents, "
-                f"{len(all_locations)} Locations, and "
-                f"{len(all_scenes) + len(all_events) + len(all_locations)} relationships",
+                f"{len(all_referenced_locations)} location references, and "
+                f"{len(all_scenes) + len(all_events) + len(all_referenced_locations)} relationships",
             )
 
         except Exception as e:
