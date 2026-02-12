@@ -437,7 +437,7 @@ class SagaSettings(BaseSettings):
     # Legacy Degradation Flags
     ENABLE_STATUS_IS_ALIAS: bool = False
 
-    model_config = SettingsConfigDict(env_prefix="SAGA_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
 
 settings = SagaSettings()
