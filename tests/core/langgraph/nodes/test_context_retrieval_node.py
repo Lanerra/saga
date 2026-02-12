@@ -98,8 +98,8 @@ class TestSmartTruncateScene:
         assert len(parts) == 2
         head_words = parts[0].strip().split()
         tail_words = parts[1].strip().split()
-        assert len(head_words) > 0
-        assert len(tail_words) > 0
+        assert len(head_words) == 10
+        assert len(tail_words) == 80
         assert head_words[0] == "w0"
 
     def test_exact_budget_returns_unchanged(self) -> None:

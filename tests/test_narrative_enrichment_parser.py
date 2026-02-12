@@ -119,10 +119,8 @@ async def test_extract_physical_descriptions(sample_narrative_text, sample_chara
         # Verify that the method was called
         mock_get_chars.assert_called_once()
 
-        # Verify that results were returned
-        assert len(results) > 0
+        assert len(results) == 4
 
-        # Verify that the results contain the expected data
         for result in results:
             assert isinstance(result, PhysicalDescriptionExtractionResult)
             assert result.character_name in ["John", "Mary"]
@@ -161,10 +159,8 @@ async def test_extract_chapter_embeddings(sample_narrative_text, sample_chapter_
             mock_get_chapter.assert_called_once_with(1)
             mock_generate_embedding.assert_called_once()
 
-            # Verify that results were returned
-            assert len(results) > 0
+            assert len(results) == 1
 
-            # Verify that the results contain the expected data
             for result in results:
                 assert isinstance(result, ChapterEmbeddingExtractionResult)
                 assert result.chapter_number == 1

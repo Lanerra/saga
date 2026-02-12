@@ -448,7 +448,7 @@ class ActOutlineParser:
                 },
             )
 
-            for attempt in range(1, 3):
+            for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
                 try:
                     response, _ = await llm_service.async_call_llm(
                         model_name=config.NARRATIVE_MODEL,

@@ -58,7 +58,7 @@ async def test_check_relationship_evolution_uses_prefetched_data():
         result = await _check_relationship_evolution(extracted_relationships=extracted_relationships, current_chapter=2, existing_relationships=existing_relationships)
 
         assert mock_manager.execute_read_query.call_count == 0
-        assert len(result) > 0  # Should find a relationship shift
+        assert len(result) == 1
 
 
 @pytest.mark.asyncio

@@ -293,7 +293,7 @@ class TestNarrativeConsistencyWithGraph:
         if "protective" in character.traits and "no worries" in narrative_with_contradiction.lower():
             contradictions.append("Protective character shown as carefree")
 
-        assert len(contradictions) > 0, "Test should detect contradictions"
+        assert len(contradictions) == 2
 
     async def test_character_status_reflected(self, mock_character_with_context):
         """Test that character status from graph is reflected."""

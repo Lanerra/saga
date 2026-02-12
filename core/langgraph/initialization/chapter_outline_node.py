@@ -226,7 +226,7 @@ async def _generate_single_chapter_outline(
     act_outline_text = act_outline.get("raw_text", "")
 
     # Build character context
-    character_context = _build_character_summary(character_sheets)
+    character_context = build_character_summary(character_sheets, max_characters=3)
 
     # Build previous context
     previous_context = "\n".join(previous_summaries[-3:]) if previous_summaries else "This is the beginning of the story."
@@ -334,24 +334,38 @@ def _determine_act_for_chapter(state: NarrativeState, chapter_number: int) -> in
     )
 
 
-def _build_character_summary(character_sheets: dict[str, dict]) -> str:
-    """
-    Build a concise summary of characters for chapter outline generation.
+def build_character_summary(
+    character_sheets: dict[str, dict],
+    *,
+    max_characters: int = 0,
+    include_description: bool = False,
+) -> str:
+    """Build a concise summary of characters for outline generation.
 
     Args:
-        character_sheets: Dictionary of character sheets
+        character_sheets: Dictionary of character sheets.
+        max_characters: Limit output to this many characters. 0 means no limit.
+        include_description: Whether to append the character description.
 
     Returns:
-        Formatted string summarizing characters
+        Formatted string summarizing characters.
     """
     if not character_sheets:
         return "No characters defined."
 
+    items = list(character_sheets.items())
+    if max_characters > 0:
+        items = items[:max_characters]
+
     summaries = []
-    for name, sheet in list(character_sheets.items())[:3]:  # Top 3 characters
+    for name, sheet in items:
         is_protag = sheet.get("is_protagonist", False)
         role = "Protagonist" if is_protag else "Character"
-        summaries.append(f"- **{name}** ({role})")
+        if include_description:
+            desc = sheet.get("description", "")
+            summaries.append(f"- **{name}** ({role}): {desc}")
+        else:
+            summaries.append(f"- **{name}** ({role})")
 
     return "\n".join(summaries)
 
@@ -480,7 +494,7 @@ async def _enrich_skeleton_outline(
     act_outline = act_outlines.get(act_number, {})
     act_outline_text = act_outline.get("raw_text", "")
 
-    character_context = _build_character_summary(character_sheets)
+    character_context = build_character_summary(character_sheets, max_characters=3)
 
     previous_context = "\n".join(previous_summaries[-3:]) if previous_summaries else "This is the beginning of the story."
 

@@ -5,25 +5,6 @@ This module provides centralized functions for clearing different categories of
 state fields, ensuring consistency across the workflow and avoiding duplication.
 """
 
-from typing import Any
-
-
-def _safe_list_update(existing: list[Any], new_items: list[Any]) -> list[Any]:
-    """Create a new list by appending new items to existing list.
-
-    Returns a new list instead of mutating the existing one, ensuring LangGraph
-    state immutability requirements are met.
-
-    Args:
-        existing: Original list (will not be mutated).
-        new_items: Items to append.
-
-    Returns:
-        New list containing all items from existing plus new_items.
-    """
-    return list(existing) + new_items
-
-
 def clear_generation_artifacts() -> dict:
     """Clear all generation artifacts (drafts, embeddings, scenes).
 

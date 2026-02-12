@@ -168,7 +168,7 @@ class TestFindThinCharacters:
         monkeypatch.setattr(character_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await character_queries.find_thin_characters_for_enrichment()
-        assert len(result) > 0
+        assert len(result) == 1
 
 
 @pytest.mark.asyncio
@@ -323,7 +323,7 @@ class TestGetCharactersForChapterContext:
         )
 
         result = await character_queries.get_characters_for_chapter_context_native(chapter_number=1, limit=10)
-        assert len(result) > 0
+        assert len(result) == 1
         assert result[0].name == "Alice"
 
 

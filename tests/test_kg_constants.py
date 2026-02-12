@@ -92,7 +92,7 @@ class TestSuggestedCategories:
     def test_each_value_is_nonempty_list(self):
         for label, categories in SUGGESTED_CATEGORIES.items():
             assert isinstance(categories, list), f"SUGGESTED_CATEGORIES['{label}'] should be a list"
-            assert len(categories) > 0, f"SUGGESTED_CATEGORIES['{label}'] should not be empty"
+            assert len(categories) >= 8, f"SUGGESTED_CATEGORIES['{label}'] should have at least 8 entries"
 
 
 class TestContradictoryTraitPairs:

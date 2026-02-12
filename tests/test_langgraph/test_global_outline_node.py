@@ -257,7 +257,7 @@ def test_validate_chapter_allocations_no_acts():
 
     errors = _validate_chapter_allocations(outline, 20)
 
-    assert len(errors) > 0
+    assert len(errors) == 1
     assert "No acts defined" in errors[0]
 
 
@@ -477,5 +477,5 @@ def test_fallback_parse_outline_includes_validation_errors(base_state):
     result = _fallback_parse_outline(response, base_state)
 
     assert "validation_errors" in result
-    assert len(result["validation_errors"]) > 0
+    assert len(result["validation_errors"]) == 1
     assert "Fallback parsing used" in result["validation_errors"][0]

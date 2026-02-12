@@ -865,11 +865,7 @@ def get_draft_text(state: Mapping[str, Any], manager: ContentManager) -> str:
         FileNotFoundError: If `draft_ref` is present but the referenced file is missing.
         ContentIntegrityError: If `draft_ref` is a `ContentRef` and strict integrity validation fails.
     """
-    import structlog
-
     from core.exceptions import MissingDraftReferenceError
-
-    structlog.get_logger(__name__)
 
     draft_ref = state.get("draft_ref")
     if not draft_ref:

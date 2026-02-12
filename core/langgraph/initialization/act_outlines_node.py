@@ -19,6 +19,7 @@ from core.langgraph.content_manager import (
     require_project_dir,
 )
 from core.langgraph.initialization.chapter_allocation import choose_act_ranges
+from core.langgraph.initialization.chapter_outline_node import build_character_summary
 from core.langgraph.state import NarrativeState
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
@@ -310,7 +311,7 @@ async def _generate_single_act_outline(
     act_role = _get_act_role(act_number, total_acts)
 
     # Build context strings
-    character_context = _build_character_summary(character_sheets)
+    character_context = build_character_summary(character_sheets, include_description=True)
     global_outline_text = global_outline.get("raw_text", "")
 
     prompt = render_prompt(
@@ -412,30 +413,6 @@ def _get_act_role(act_number: int, total_acts: int) -> str:
         return "Development"
     else:
         return "Development"
-
-
-def _build_character_summary(character_sheets: dict[str, dict]) -> str:
-    """
-    Build a concise summary of characters for act outline generation.
-
-    Args:
-        character_sheets: Dictionary of character sheets
-
-    Returns:
-        Formatted string summarizing characters
-    """
-    if not character_sheets:
-        return "No characters defined."
-
-    summaries = []
-    for name, sheet in character_sheets.items():
-        is_protag = sheet.get("is_protagonist", False)
-        role = "Protagonist" if is_protag else "Character"
-        # Get first sentence or 100 chars of description
-        desc = sheet.get("description", "")
-        summaries.append(f"- **{name}** ({role}): {desc}")
-
-    return "\n".join(summaries)
 
 
 __all__ = ["generate_act_outlines"]

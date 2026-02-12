@@ -1449,7 +1449,7 @@ async def get_entity_context_for_resolution(
         ) from e
 
 
-async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = 3) -> bool:
+async def merge_entities(source_id: str, target_id: str, reason: str, max_retries: int = config.LLM_RETRY_ATTEMPTS) -> bool:
     """
     Merges one entity (source) into another (target) using atomic Neo4j operations with retry logic.
     The source node will be deleted after its relationships are moved.

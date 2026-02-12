@@ -103,7 +103,7 @@ class TestWorkflowGraphStructure:
             edges = [(u, v) for u, v, *_ in graph_structure.edges]
 
             # Verify the graph has edges connecting nodes
-            assert len(edges) > 0
+            assert len(edges) == 51
 
             # Verify some expected connections exist
             edge_strings = [f"{u}->{v}" for u, v in edges]

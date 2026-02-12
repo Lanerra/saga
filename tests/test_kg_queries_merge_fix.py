@@ -50,8 +50,7 @@ async def test_add_kg_triples_with_existing_entity_by_name():
         call_args = mock_manager.execute_cypher_batch.call_args
         statements_with_params = call_args[0][0]
 
-        # Verify we have statements
-        assert len(statements_with_params) > 0
+        assert len(statements_with_params) == 1
 
         # Get the query and params for the relationship creation
         query, params = statements_with_params[0]
@@ -101,7 +100,7 @@ async def test_add_kg_triples_with_literal_object():
         call_args = mock_manager.execute_cypher_batch.call_args
         statements_with_params = call_args[0][0]
 
-        assert len(statements_with_params) > 0
+        assert len(statements_with_params) == 1
 
         query, params = statements_with_params[0]
 

@@ -749,8 +749,8 @@ class TestSchemaCreation:
 
         await manager._create_constraints_and_indexes()
 
-        assert len(executed_queries) > 0
-        assert len(to_thread_calls) >= 1
+        assert len(executed_queries) == 47
+        assert len(to_thread_calls) == 1
         # Ensure the schema batch path uses asyncio.to_thread(...) rather than running directly on the loop.
         assert to_thread_calls[0][0] is manager._execute_schema_batch
 
@@ -776,7 +776,7 @@ class TestSchemaCreation:
 
         await manager._create_constraints_and_indexes()
 
-        assert len(individual_calls) > 0
+        assert len(individual_calls) == 1
 
     async def test_create_constraints_and_indexes_vector_index_error(self, monkeypatch):
         """Vector index creation error is logged but doesn't fail"""
@@ -826,7 +826,7 @@ class TestSchemaCreation:
 
         await manager._create_constraints_and_indexes()
 
-        assert len(tx_run_thread_ids) > 0
+        assert len(tx_run_thread_ids) == 47
         # The schema batch is offloaded via asyncio.to_thread, so tx.run must not run on the event loop thread.
         assert all(tid != event_loop_thread_id for tid in tx_run_thread_ids)
 
@@ -843,7 +843,7 @@ class TestSchemaCreation:
 
         await manager._create_type_placeholders()
 
-        assert len(executed) > 0
+        assert len(executed) == 69
 
     async def test_create_type_placeholders_fallback(self, monkeypatch):
         """Type placeholders fall back to individual execution"""
@@ -863,7 +863,7 @@ class TestSchemaCreation:
 
         await manager._create_type_placeholders()
 
-        assert len(individual_calls) > 0
+        assert len(individual_calls) == 69
 
     async def test_execute_schema_individually_success(self, monkeypatch):
         """Schema queries executed individually"""

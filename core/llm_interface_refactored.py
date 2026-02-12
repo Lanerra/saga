@@ -678,7 +678,7 @@ class RefactoredLLMService:
         *,
         system_prompt: str | None = None,
         strict: bool = True,
-        max_attempts: int = 2,
+        max_attempts: int = config.JSON_PARSE_RETRY_ATTEMPTS,
         **kwargs: Any,
     ) -> tuple[dict[str, Any], dict[str, int] | None]:
         """Call the LLM and parse the response as a JSON object.
@@ -783,7 +783,7 @@ class RefactoredLLMService:
         *,
         system_prompt: str | None = None,
         strict: bool = True,
-        max_attempts: int = 2,
+        max_attempts: int = config.JSON_PARSE_RETRY_ATTEMPTS,
         **kwargs: Any,
     ) -> tuple[list[Any], dict[str, int] | None]:
         """Call the LLM and parse the response as a JSON array.

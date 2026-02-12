@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from core.langgraph.initialization.act_outlines_node import (
-    _build_character_summary,
     _generate_single_act_outline,
     _get_act_role,
     generate_act_outlines,
 )
+from core.langgraph.initialization.chapter_outline_node import build_character_summary
 from core.langgraph.state import create_initial_state
 
 
@@ -463,8 +463,8 @@ def test_get_act_role_four_act_structure():
     assert _get_act_role(4, 4) == "Resolution/Climax"
 
 
-def test_build_character_summary_with_characters():
-    """Verify character summary with multiple characters."""
+def test_build_character_summary_with_descriptions():
+    """Verify character summary includes descriptions when requested."""
     character_sheets = {
         "Hero": {
             "description": "A brave warrior on a quest.",
@@ -476,7 +476,7 @@ def test_build_character_summary_with_characters():
         },
     }
 
-    result = _build_character_summary(character_sheets)
+    result = build_character_summary(character_sheets, include_description=True)
 
     assert "Hero" in result
     assert "Protagonist" in result
@@ -487,13 +487,13 @@ def test_build_character_summary_with_characters():
 
 def test_build_character_summary_empty():
     """Verify character summary with no characters."""
-    result = _build_character_summary({})
+    result = build_character_summary({})
 
     assert result == "No characters defined."
 
 
-def test_build_character_summary_includes_description():
-    """Verify character summary includes full description."""
+def test_build_character_summary_full_description():
+    """Verify character summary includes full description text."""
     character_sheets = {
         "Hero": {
             "description": "A very detailed description of the hero with backstory.",
@@ -501,7 +501,7 @@ def test_build_character_summary_includes_description():
         },
     }
 
-    result = _build_character_summary(character_sheets)
+    result = build_character_summary(character_sheets, include_description=True)
 
     assert "Hero" in result
     assert "A very detailed description" in result

@@ -47,7 +47,7 @@ class TestStage1GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             character = result[0]["c"]
 
             assert "id" in character
@@ -78,7 +78,7 @@ class TestStage1GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             relationship = result[0]
 
             assert "source" in relationship
@@ -133,7 +133,7 @@ class TestStage2GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             location = result[0]["loc"]
 
             assert "id" in location
@@ -165,7 +165,7 @@ class TestStage2GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             item = result[0]["i"]
 
             assert "id" in item
@@ -196,7 +196,7 @@ class TestStage2GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             character = result[0]["c"]
 
             assert "arc_start" in character
@@ -231,7 +231,7 @@ class TestStage3GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             event = result[0]["e"]
 
             assert "id" in event
@@ -258,7 +258,7 @@ class TestStage3GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
 
     async def test_locations_have_names_after_stage3(self):
         """Test that Location nodes have names after Stage 3."""
@@ -280,7 +280,7 @@ class TestStage3GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             location = result[0]["loc"]
 
             assert "name" in location
@@ -313,7 +313,7 @@ class TestStage4GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             chapter = result[0]["ch"]
 
             assert "id" in chapter
@@ -349,7 +349,7 @@ class TestStage4GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             scene = result[0]["s"]
 
             assert "id" in scene
@@ -383,7 +383,7 @@ class TestStage4GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             event = result[0]["e"]
 
             assert "id" in event
@@ -408,7 +408,7 @@ class TestStage4GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
 
 
 @pytest.mark.asyncio
@@ -434,7 +434,7 @@ class TestStage5GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             character = result[0]["c"]
 
             assert "physical_description" in character
@@ -458,7 +458,7 @@ class TestStage5GraphStructure:
             """
             result = await mock_query(query)
 
-            assert len(result) > 0
+            assert len(result) == 1
             chapter = result[0]["ch"]
 
             assert "embedding" in chapter
@@ -482,7 +482,7 @@ class TestStage5GraphStructure:
             params = {"chapter_number": 1}
             result = await mock_query(query, params)
 
-            assert len(result) > 0
+            assert len(result) == 1
             assert result[0]["structural_count"] == 0
 
 

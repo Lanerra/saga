@@ -161,7 +161,7 @@ async def _extract_relationships_from_outline(
 
     model = model_name or config.NARRATIVE_MODEL
 
-    for attempt in range(1, 3):
+    for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
         logger.info(
             "_extract_relationships_from_outline: calling LLM",
             attempt=attempt,

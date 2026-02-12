@@ -2,48 +2,11 @@
 """Tests for pure state-clearing helper functions."""
 
 from core.langgraph.state_helpers import (
-    _safe_list_update,
     clear_error_state,
     clear_extraction_state,
     clear_generation_artifacts,
     clear_validation_state,
 )
-
-
-class TestSafeListUpdate:
-    """Verify _safe_list_update produces new lists without mutation."""
-
-    def test_returns_combined_items(self) -> None:
-        """Both existing and new items appear in the result."""
-        result = _safe_list_update([1, 2], [3, 4])
-        assert result == [1, 2, 3, 4]
-
-    def test_does_not_mutate_original_list(self) -> None:
-        """The returned list is a distinct object from the input."""
-        existing = [1, 2]
-        new_items = [3]
-        result = _safe_list_update(existing, new_items)
-
-        assert result is not existing
-        assert existing == [1, 2]
-
-    def test_preserves_order(self) -> None:
-        """Existing items come first, then new items, in their original order."""
-        result = _safe_list_update(["a", "c"], ["b", "d"])
-        assert result == ["a", "c", "b", "d"]
-
-    def test_empty_existing_list(self) -> None:
-        """An empty existing list yields only the new items."""
-        result = _safe_list_update([], [10, 20])
-        assert result == [10, 20]
-
-    def test_empty_new_items(self) -> None:
-        """Empty new_items yields a copy of existing."""
-        existing = [5, 6]
-        result = _safe_list_update(existing, [])
-
-        assert result == [5, 6]
-        assert result is not existing
 
 
 class TestClearGenerationArtifacts:

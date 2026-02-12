@@ -258,7 +258,7 @@ class GraphHealingService:
         system_prompt = get_system_prompt("knowledge_agent")
 
         prompt = base_prompt
-        max_attempts = 2
+        max_attempts = config.JSON_PARSE_RETRY_ATTEMPTS
         for attempt in range(1, max_attempts + 1):
             response_text, _ = await llm_service.async_call_llm(
                 prompt=prompt,

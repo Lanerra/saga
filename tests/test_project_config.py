@@ -80,7 +80,7 @@ class TestMissingRequiredFields:
 
         errors = exception_info.value.errors()
         field_errors = [error for error in errors if field in error["loc"]]
-        assert len(field_errors) >= 1
+        assert len(field_errors) == 1
 
 
 class TestExtraFieldForbidden:
@@ -120,7 +120,7 @@ class TestEmptyStringRejected:
 
         errors = exception_info.value.errors()
         field_errors = [error for error in errors if field in error["loc"]]
-        assert len(field_errors) >= 1
+        assert len(field_errors) == 1
 
 
 class TestTotalChaptersConstraint:
@@ -169,7 +169,7 @@ class TestStrictTypeCoercion:
 
         errors = exception_info.value.errors()
         field_errors = [error for error in errors if "title" in error["loc"]]
-        assert len(field_errors) >= 1
+        assert len(field_errors) == 1
 
     def test_float_for_integer_field_raises_validation_error(self, valid_config_data: dict[str, str | int]) -> None:
         """Passing a float where a StrictInt is expected is rejected."""
@@ -180,7 +180,7 @@ class TestStrictTypeCoercion:
 
         errors = exception_info.value.errors()
         field_errors = [error for error in errors if "total_chapters" in error["loc"]]
-        assert len(field_errors) >= 1
+        assert len(field_errors) == 1
 
     def test_string_for_integer_field_raises_validation_error(self, valid_config_data: dict[str, str | int]) -> None:
         """Passing a string where a StrictInt is expected is rejected."""
@@ -191,7 +191,7 @@ class TestStrictTypeCoercion:
 
         errors = exception_info.value.errors()
         field_errors = [error for error in errors if "total_chapters" in error["loc"]]
-        assert len(field_errors) >= 1
+        assert len(field_errors) == 1
 
     def test_boolean_for_string_field_raises_validation_error(self, valid_config_data: dict[str, str | int]) -> None:
         """Passing a bool where a StrictStr is expected is rejected."""
@@ -202,7 +202,7 @@ class TestStrictTypeCoercion:
 
         errors = exception_info.value.errors()
         field_errors = [error for error in errors if "genre" in error["loc"]]
-        assert len(field_errors) >= 1
+        assert len(field_errors) == 1
 
 
 class TestModelRoundtrip:

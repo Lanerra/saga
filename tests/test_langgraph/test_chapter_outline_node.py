@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from core.langgraph.initialization.chapter_outline_node import (
-    _build_character_summary,
     _determine_act_for_chapter,
     _generate_single_chapter_outline,
     _parse_chapter_outline,
+    build_character_summary,
     generate_chapter_outline,
 )
 from core.langgraph.state import create_initial_state
@@ -345,7 +345,7 @@ def test_build_character_summary_with_characters():
         "Sidekick": {"is_protagonist": False},
     }
 
-    result = _build_character_summary(character_sheets)
+    result = build_character_summary(character_sheets, max_characters=3)
 
     assert "Hero" in result
     assert "Protagonist" in result
@@ -355,19 +355,45 @@ def test_build_character_summary_with_characters():
 
 def test_build_character_summary_empty():
     """Verify character summary with no characters."""
-    result = _build_character_summary({})
+    result = build_character_summary({})
 
     assert result == "No characters defined."
 
 
-def test_build_character_summary_max_five():
-    """Verify character summary limits to 5 characters."""
+def test_build_character_summary_respects_max_characters():
+    """Verify character summary respects max_characters limit."""
     character_sheets = {f"Character{i}": {"is_protagonist": i == 0} for i in range(10)}
 
-    result = _build_character_summary(character_sheets)
+    result = build_character_summary(character_sheets, max_characters=3)
 
     lines = [line for line in result.split("\n") if line.strip()]
-    assert len(lines) <= 5
+    assert len(lines) == 3
+
+
+def test_build_character_summary_includes_description():
+    """Verify character summary includes descriptions when requested."""
+    character_sheets = {
+        "Hero": {
+            "description": "A brave warrior on a quest.",
+            "is_protagonist": True,
+        },
+    }
+
+    result = build_character_summary(character_sheets, include_description=True)
+
+    assert "Hero" in result
+    assert "Protagonist" in result
+    assert "A brave warrior on a quest." in result
+
+
+def test_build_character_summary_no_limit_returns_all():
+    """Verify character summary returns all characters when max_characters is 0."""
+    character_sheets = {f"Character{i}": {"is_protagonist": i == 0} for i in range(10)}
+
+    result = build_character_summary(character_sheets)
+
+    lines = [line for line in result.split("\n") if line.strip()]
+    assert len(lines) == 10
 
 
 def test_parse_chapter_outline_valid_json():
@@ -423,7 +449,7 @@ Plot Point: The adventure begins"""
     assert result["chapter_number"] == 3
     assert result["act_number"] == 1
     assert result["raw_text"] == response
-    assert len(result["scene_description"]) > 0
+    assert result["scene_description"] == response
 
 
 def test_parse_chapter_outline_empty_response():
@@ -466,7 +492,7 @@ Plot Point: The journey begins"""
 
     result = _parse_chapter_outline(response, 1, 1)
 
-    assert len(result["key_beats"]) >= 1
+    assert len(result["key_beats"]) == 3
 
 
 def test_parse_chapter_outline_fallback_uses_full_text():

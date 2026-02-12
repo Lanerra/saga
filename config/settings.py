@@ -257,6 +257,7 @@ class SagaSettings(BaseSettings):
     # LLM Call Settings & Fallbacks
     LLM_RETRY_ATTEMPTS: int = 3
     LLM_RETRY_DELAY_SECONDS: float = 3.0
+    JSON_PARSE_RETRY_ATTEMPTS: int = 2
     HTTPX_TIMEOUT: float = 120.0
     ENABLE_LLM_NO_THINK_DIRECTIVE: bool = False
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"

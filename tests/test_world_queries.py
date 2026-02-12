@@ -346,7 +346,7 @@ class TestGetWorldElementsForSnippet:
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_elements_for_snippet_from_db("Locations", 10, 5)
-        assert len(result) > 0
+        assert len(result) == 1
 
     async def test_get_world_elements_for_snippet_raises_database_error_on_db_failure(self, monkeypatch):
         """P1.9: DB failures should raise standardized DatabaseError (not return [])."""
@@ -386,7 +386,7 @@ class TestFindThinWorldElements:
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.find_thin_world_elements_for_enrichment()
-        assert len(result) > 0
+        assert len(result) == 1
 
 
 @pytest.mark.asyncio
@@ -418,7 +418,7 @@ class TestGetWorldItemsForChapterContext:
         monkeypatch.setattr(world_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await world_queries.get_world_items_for_chapter_context_native(chapter_number=1, limit=10)
-        assert len(result) > 0
+        assert len(result) == 1
 
 
 @pytest.mark.asyncio

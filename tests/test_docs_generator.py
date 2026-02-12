@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from config.docs_generator import _format_default, generate_docs
+from config.settings import SagaSettings
 
 
 class TestFormatDefault:
@@ -52,7 +53,7 @@ class TestGenerateDocs:
         lines = output.read_text(encoding="utf-8").splitlines()
         separator_index = lines.index("|---------|------|---------|-------------|")
         field_rows = [line for line in lines[separator_index + 1 :] if line.startswith("|")]
-        assert len(field_rows) >= 1
+        assert len(field_rows) == len(SagaSettings.model_fields)
 
     def test_parent_directories_created_automatically(self, tmp_path: Path) -> None:
         output = tmp_path / "nested" / "deeply" / "schema.md"

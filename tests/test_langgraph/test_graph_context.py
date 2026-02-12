@@ -64,7 +64,7 @@ class TestBuildContextFromGraph:
                             active_character_names=["Test Hero"],
                         )
 
-                        assert len(context["characters"]) > 0
+                        assert len(context["characters"]) == 1
 
     async def test_build_context_with_location(
         self,

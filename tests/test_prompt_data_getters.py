@@ -229,7 +229,7 @@ class TestFormattingFunction:
 
         result = prompt_data_getters._format_dict_for_plain_text_prompt(data)
 
-        assert len(result) > 0
+        assert len(result) == 6
 
 
 class TestProvisionalNotesAndFiltering:
@@ -877,7 +877,7 @@ class TestApplyProtagonistProximityFiltering:
             )
 
             assert "Alice" in result
-            assert len(result) >= 1
+            assert len(result) == 4
 
     @pytest.mark.asyncio
     async def test_handles_none_path_length(self):
@@ -960,7 +960,7 @@ class TestGatherNovelInfoFacts:
             facts = []
             await prompt_data_getters._gather_novel_info_facts(facts_list=facts, max_total_facts=10)
 
-            assert len(facts) > 0
+            assert len(facts) == 2
             assert any("theme" in fact.lower() for fact in facts)
 
     @pytest.mark.asyncio

@@ -136,7 +136,7 @@ class TestKGQueries:
         monkeypatch.setattr(kg_queries.neo4j_manager, "execute_read_query", mock_read)
 
         result = await kg_queries.query_kg_from_db("Alice")
-        assert len(result) > 0
+        assert len(result) == 1
         mock_read.assert_called_once()
 
     async def test_query_kg_from_db_cached_result_is_defensive_copy(self, monkeypatch):

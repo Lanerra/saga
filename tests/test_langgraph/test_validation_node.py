@@ -81,7 +81,7 @@ class TestValidateConsistency:
                     result = await validate_consistency(state)
 
                     stagnation_contradictions = [c for c in result["contradictions"] if c.type == "plot_stagnation"]
-                    assert len(stagnation_contradictions) > 0
+                    assert len(stagnation_contradictions) == 1
 
     async def test_validate_force_continue_bypasses_revision(self, sample_state_with_extraction, mock_neo4j_manager):
         """Test that force_continue bypasses revision."""
@@ -99,7 +99,7 @@ class TestValidateConsistency:
                 with patch("core.langgraph.nodes.validation_node.settings.validation.ENABLE_VALIDATION", True):
                     result = await validate_consistency(state)
 
-                    assert len(result["contradictions"]) > 0
+                    assert len(result["contradictions"]) == 1
                     assert result["needs_revision"] is False
 
 
@@ -191,8 +191,7 @@ class TestCheckCharacterTraits:
         with patch("core.langgraph.nodes.validation_node.neo4j_manager", mock_neo4j_manager):
             contradictions = await _check_character_traits(characters, 5)
 
-            # Should detect brave/cowardly contradiction
-            assert len(contradictions) > 0
+            assert len(contradictions) == 1
             assert contradictions[0].type == "character_trait"
 
     async def test_check_empty_characters(self):

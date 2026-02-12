@@ -288,7 +288,7 @@ async def _extract_structured_character_data(name: str, description: str, model_
 
     model = model_name or config.NARRATIVE_MODEL
 
-    for attempt in range(1, 3):
+    for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
         response, _ = await llm_service.async_call_llm(
             model_name=model,
             prompt=prompt,
@@ -452,7 +452,7 @@ async def _extract_world_items_from_outline(global_outline: dict, setting: str, 
 
     model = model_name or config.NARRATIVE_MODEL
 
-    for attempt in range(1, 3):
+    for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
         response, _ = await llm_service.async_call_llm(
             model_name=model,
             prompt=prompt,

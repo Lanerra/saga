@@ -49,7 +49,7 @@ class TestCommitToGraph:
             assert result["current_node"] == "commit_to_graph"
             assert result["last_error"] is None
 
-            assert len(fake_neo4j.batch_statements) > 0
+            assert len(fake_neo4j.batch_statements) == 1
             assert mock_clear_chars.called
             assert mock_clear_world.called
             assert mock_clear_kg.called
@@ -77,7 +77,7 @@ class TestCommitToGraph:
             assert result["current_node"] == "commit_to_graph"
             assert result["last_error"] is None
 
-            assert len(fake_neo4j.batch_statements) > 0
+            assert len(fake_neo4j.batch_statements) == 1
 
             assert mock_clear_chars.called
             assert mock_clear_world.called
@@ -228,7 +228,7 @@ class TestCommitToGraph:
                 result = await commit_to_graph(state)
                 assert result["last_error"] is None
 
-                assert len(fake_neo4j.batch_statements) > 0
+                assert len(fake_neo4j.batch_statements) == 1
                 statements = fake_neo4j.batch_statements[0]
 
                 # Find relationship statements and assert predicate type is normalized.
