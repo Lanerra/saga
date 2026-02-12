@@ -287,31 +287,18 @@ def load_yaml_file(
     filepath: str,
     normalize_keys: bool = True,
     return_none_on_empty: bool = False,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     if not filepath.endswith((".yaml", ".yml")):
-        logger.error(f"File specified is not a YAML file: {filepath}")
-        return None
-    try:
-        with open(filepath, encoding="utf-8") as f:
-            content = yaml.safe_load(f)
-        if content is None:
-            return None if return_none_on_empty else {}
-        if not isinstance(content, dict):
-            logger.error(f"YAML file {filepath} must have a dictionary as its root element for this application.")
-            return None
-        return normalize_keys_recursive(content) if normalize_keys else content
-    except FileNotFoundError:
-        logger.info(f"YAML file '{filepath}' not found (optional).")
-        return None
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML file {filepath}: {e}", exc_info=True)
-        return None
-    except Exception as e:
-        logger.error(
-            f"An unexpected error occurred while loading YAML file {filepath}: {e}",
-            exc_info=True,
-        )
-        return None
+        raise ValueError(f"File specified is not a YAML file: {filepath}")
+    with open(filepath, encoding="utf-8") as f:
+        content = yaml.safe_load(f)
+    if content is None:
+        if return_none_on_empty:
+            return {}
+        return {}
+    if not isinstance(content, dict):
+        raise ValueError(f"YAML file {filepath} must have a dictionary as its root element")
+    return normalize_keys_recursive(content) if normalize_keys else content
 
 
 # --- ingestion_utils.py ---

@@ -2,12 +2,13 @@
 import os
 import unittest
 
-import yaml  # For creating test files
+import pytest
+import yaml
 
 from utils.common import (
     load_yaml_file,
     normalize_keys_recursive,
-)  # Assuming yaml_parser is in PYTHONPATH
+)
 
 
 class TestYamlParsing(unittest.TestCase):
@@ -25,15 +26,15 @@ class TestYamlParsing(unittest.TestCase):
 
         self.malformed_yaml_filepath = os.path.join(self.test_dir, "malformed.yaml")
         with open(self.malformed_yaml_filepath, "w", encoding="utf-8") as f:
-            f.write("Novel Concept: Title: Test Novel\nGenre: [Sci-Fi")  # Missing closing bracket
+            f.write("Novel Concept: Title: Test Novel\nGenre: [Sci-Fi")
 
         self.empty_yaml_filepath = os.path.join(self.test_dir, "empty.yaml")
         with open(self.empty_yaml_filepath, "w", encoding="utf-8") as f:
-            f.write("")  # Empty file
+            f.write("")
 
         self.non_dict_root_yaml_filepath = os.path.join(self.test_dir, "non_dict_root.yaml")
         with open(self.non_dict_root_yaml_filepath, "w", encoding="utf-8") as f:
-            f.write("- item1\n- item2")  # Root is a list
+            f.write("- item1\n- item2")
 
     def tearDown(self) -> None:
         if os.path.exists(self.valid_yaml_filepath):
@@ -49,37 +50,34 @@ class TestYamlParsing(unittest.TestCase):
 
     def test_load_valid_yaml_normalized_keys(self) -> None:
         data = load_yaml_file(self.valid_yaml_filepath, normalize_keys=True)
-        self.assertIsNotNone(data)
-        # Explicit check for mypy
-        assert data is not None
-        self.assertIn("novel_concept", data)
-        self.assertEqual(data["novel_concept"]["title"], "Test Novel")
-        self.assertEqual(data["protagonist_traits"], ["Brave", "Smart"])
+        assert "novel_concept" in data
+        assert data["novel_concept"]["title"] == "Test Novel"
+        assert data["protagonist_traits"] == ["Brave", "Smart"]
 
     def test_load_valid_yaml_raw_keys(self) -> None:
         data = load_yaml_file(self.valid_yaml_filepath, normalize_keys=False)
-        self.assertIsNotNone(data)
-        # Explicit check for mypy
-        assert data is not None
-        self.assertIn("Novel Concept", data)
-        self.assertEqual(data["Novel Concept"]["Title"], "Test Novel")
+        assert "Novel Concept" in data
+        assert data["Novel Concept"]["Title"] == "Test Novel"
 
-    def test_load_non_existent_file(self) -> None:
-        data = load_yaml_file("non_existent.yaml")
-        self.assertIsNone(data)
+    def test_load_non_existent_file_raises(self) -> None:
+        with pytest.raises(FileNotFoundError):
+            load_yaml_file("non_existent.yaml")
 
-    def test_load_malformed_yaml(self) -> None:
-        data = load_yaml_file(self.malformed_yaml_filepath)
-        self.assertIsNone(data)
+    def test_load_malformed_yaml_raises(self) -> None:
+        with pytest.raises(yaml.YAMLError):
+            load_yaml_file(self.malformed_yaml_filepath)
 
     def test_load_empty_yaml(self) -> None:
         data = load_yaml_file(self.empty_yaml_filepath)
-        self.assertEqual(data, {})  # Expecting an empty dictionary for an empty file
+        assert data == {}
 
-    def test_load_non_dict_root_yaml(self) -> None:
-        # Current implementation of load_yaml_file logs error and returns None if root is not dict
-        data = load_yaml_file(self.non_dict_root_yaml_filepath)
-        self.assertIsNone(data)
+    def test_load_non_dict_root_yaml_raises(self) -> None:
+        with pytest.raises(ValueError, match="must have a dictionary as its root element"):
+            load_yaml_file(self.non_dict_root_yaml_filepath)
+
+    def test_load_non_yaml_extension_raises(self) -> None:
+        with pytest.raises(ValueError, match="not a YAML file"):
+            load_yaml_file("some_file.txt")
 
     def test_normalize_keys_recursive(self) -> None:
         data = {
@@ -91,7 +89,7 @@ class TestYamlParsing(unittest.TestCase):
             "first_key": {"second_level_key": "value1"},
             "another_top_key": [{"list_key_one": 1}, {"list_key_two": 2}],
         }
-        self.assertEqual(normalized, expected)
+        assert normalized == expected
 
 
 if __name__ == "__main__":

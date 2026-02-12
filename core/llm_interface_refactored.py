@@ -70,7 +70,7 @@ async def async_llm_context(
 
     embedding_service = EmbeddingService(embedding_client)
     completion_service = CompletionService(completion_client, text_processor)
-    llm_service = RefactoredLLMService(completion_service, embedding_service, text_processor)
+    llm_service = RefactoredLLMService(completion_service, embedding_service, text_processor, http_client)
 
     # Cache size tracking not directly available via service attribute
     initial_cache_size = 0
@@ -591,6 +591,7 @@ class RefactoredLLMService:
         completion_service: CompletionService,
         embedding_service: EmbeddingService,
         text_processor: TextProcessingService,
+        http_client: "HTTPClientService | None" = None,
     ):
         """Initialize the service with explicit dependencies.
 
@@ -598,12 +599,19 @@ class RefactoredLLMService:
             completion_service: Completion provider wrapper.
             embedding_service: Embedding provider wrapper.
             text_processor: Text cleanup and tokenization utilities.
+            http_client: Underlying HTTP client for lifecycle management.
         """
         self._completion_service = completion_service
         self._embedding_service = embedding_service
         self._text_processor = text_processor
+        self._http_client = http_client
 
         logger.info("RefactoredLLMService initialized with separated components")
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client and release connection resources."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
 
     async def async_call_llm(
         self,
@@ -886,8 +894,13 @@ def create_llm_service() -> RefactoredLLMService:
 
     embedding_service = EmbeddingService(embedding_client)
     completion_service = CompletionService(completion_client, text_processor)
-    return RefactoredLLMService(completion_service, embedding_service, text_processor)
+    return RefactoredLLMService(completion_service, embedding_service, text_processor, http_client)
 
 
 # Module-level service instance
 llm_service = create_llm_service()
+
+
+async def close_llm_service() -> None:
+    """Close the module-level LLM service singleton and release HTTP resources."""
+    await llm_service.aclose()

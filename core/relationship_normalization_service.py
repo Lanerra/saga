@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import OrderedDict
 from typing import Any
 
 import numpy as np
@@ -35,11 +36,22 @@ class RelationshipNormalizationService:
     The primary entrypoint is [`core.relationship_normalization_service.RelationshipNormalizationService.normalize_relationship_type()`](core/relationship_normalization_service.py:33).
     """
 
+    EMBEDDING_CACHE_MAX_SIZE = 1024
+
     def __init__(self) -> None:
         """Initialize the service and in-memory embedding cache."""
-        self.embedding_cache: dict[str, np.ndarray] = {}
+        self.embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self.canonical_embeddings: dict[str, np.ndarray] = {}
         self.rejected_cache: set[str] = set()
+
+    def _cache_embedding(self, key: str, value: np.ndarray) -> None:
+        """Store an embedding in the LRU-bounded cache."""
+        if key in self.embedding_cache:
+            self.embedding_cache.move_to_end(key)
+        else:
+            if len(self.embedding_cache) >= self.EMBEDDING_CACHE_MAX_SIZE:
+                self.embedding_cache.popitem(last=False)
+            self.embedding_cache[key] = value
 
     async def map_to_canonical(self, rel_type: str, category_hint: str = "DEFAULT") -> tuple[str | None, bool, float, bool]:
         """Map a relationship type to its canonical form using strict enforcement.
@@ -320,7 +332,7 @@ class RelationshipNormalizationService:
         if rel_type not in self.embedding_cache:
             embedding = await self._get_embedding(rel_type)
             if embedding is not None:
-                self.embedding_cache[rel_type] = embedding
+                self._cache_embedding(rel_type, embedding)
 
         new_embedding = self.embedding_cache.get(rel_type)
         if new_embedding is None:
@@ -338,7 +350,7 @@ class RelationshipNormalizationService:
             if vocab_type not in self.embedding_cache:
                 embedding = await self._get_embedding(vocab_type)
                 if embedding is not None:
-                    self.embedding_cache[vocab_type] = embedding
+                    self._cache_embedding(vocab_type, embedding)
 
             vocab_embedding = self.embedding_cache.get(vocab_type)
             if vocab_embedding is None:

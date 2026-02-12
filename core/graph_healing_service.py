@@ -917,8 +917,26 @@ class GraphHealingService:
                     )
                     continue
 
-                enriched = await self.enrich_node_from_context(node, model)
-                applied = await self.apply_enrichment(node["element_id"], enriched)
+                try:
+                    enriched = await self.enrich_node_from_context(node, model)
+                    applied = await self.apply_enrichment(node["element_id"], enriched)
+                except Exception as enrichment_error:
+                    logger.warning(
+                        "Enrichment failed for node, skipping",
+                        name=node.get("name"),
+                        type=node.get("type"),
+                        element_id=node.get("element_id"),
+                        error=str(enrichment_error),
+                    )
+                    results["actions"].append(
+                        {
+                            "type": "enrich_error",
+                            "name": node.get("name"),
+                            "error": str(enrichment_error),
+                        }
+                    )
+                    continue
+
                 if not applied:
                     logger.debug(
                         "Enrichment not applied",
@@ -953,8 +971,6 @@ class GraphHealingService:
                 # `description`/`traits` reflect the applied enrichment.
                 updated_node = await self.get_node_by_element_id(node["element_id"])
                 if updated_node is None:
-                    # Defensive fallback: if reload fails, at least avoid crashing and
-                    # proceed with the original node dict.
                     updated_node = node
 
                 age = current_chapter - (updated_node.get("created_chapter") or current_chapter)

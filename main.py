@@ -1,6 +1,7 @@
 # main.py
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
 import structlog
@@ -134,6 +135,7 @@ def main() -> None:
             f"SAGA Orchestrator encountered an unhandled main exception: {main_error}",
             exc_info=True,
         )
+        sys.exit(1)
     finally:
         if neo4j_manager.driver is not None:
             logger.info("Ensuring Neo4j driver is closed from main entry point.")

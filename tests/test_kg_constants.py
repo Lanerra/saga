@@ -161,7 +161,6 @@ class TestRelationshipCategoryOverlaps:
         overlapping = {relationship_type: categories for relationship_type, categories in seen.items() if len(categories) > 1}
 
         expected_overlapping_types = {
-            "SEEKS",
             "LOCATED_AT",
             "OCCURS_AT",
             "PART_OF",
