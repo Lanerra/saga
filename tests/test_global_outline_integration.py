@@ -225,7 +225,7 @@ async def test_location_schema_compliance(mock_global_outline_file):
     """Test that Location nodes comply with schema requirements.
 
     Verifies:
-    - Locations are created without names in Stage 2
+    - Locations are created with non-empty names
     - Proper category ("Location")
     - Proper timestamps
     - created_chapter=0 for initialization
@@ -260,8 +260,8 @@ async def test_location_schema_compliance(mock_global_outline_file):
         assert loc.is_provisional == False, f"is_provisional should be False, got {loc.is_provisional}"
         assert loc.id, "Location should have an ID"
         assert loc.description, "Location should have a description"
-        # Stage 2: Names should be None (added in Stage 3)
-        assert loc.name is None, f"Stage 2 locations should have name=None, got {loc.name}"
+        assert isinstance(loc.name, str), f"Location name should be a string, got {type(loc.name)}"
+        assert len(loc.name) > 0, f"Location name should be non-empty, got {loc.name!r}"
 
 
 @pytest.mark.asyncio

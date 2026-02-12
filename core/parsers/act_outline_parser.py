@@ -22,9 +22,10 @@ import structlog
 import config
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
-from models.kg_models import ActKeyEvent
+from models.kg_models import ActKeyEvent, Location, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
+from utils.text_processing import generate_entity_id
 
 logger = structlog.get_logger(__name__)
 
@@ -424,6 +425,221 @@ class ActOutlineParser:
             logger.error("Error fetching items: %s", str(e), exc_info=True)
             return []
 
+    def _collect_act_narrative_text(self, act_outline_data: dict[str, Any]) -> str:
+        """Collect all narrative text from act outline for entity extraction.
+
+        Args:
+            act_outline_data: Parsed act outline data.
+
+        Returns:
+            Concatenated narrative text from all acts.
+        """
+        text_parts = []
+        if "acts" not in act_outline_data:
+            return ""
+
+        for act_data in act_outline_data["acts"]:
+            if "act_summary" in act_data:
+                text_parts.append(act_data["act_summary"])
+            sections = act_data.get("sections", {})
+            if "opening_situation" in sections:
+                text_parts.append(sections["opening_situation"])
+            if "act_ending_turn" in sections:
+                text_parts.append(sections["act_ending_turn"])
+            for key_event in sections.get("key_events", []):
+                for field in ("event", "description", "cause", "effect"):
+                    value = key_event.get(field, "")
+                    if value:
+                        text_parts.append(value)
+            if "character_development" in sections:
+                text_parts.append(str(sections["character_development"]))
+            if "stakes_tension" in sections:
+                text_parts.append(str(sections["stakes_tension"]))
+            if "thematic_threads" in sections:
+                text_parts.append(str(sections["thematic_threads"]))
+
+        return "\n".join(text_parts)
+
+    async def extract_new_world_items(self, act_outline_data: dict[str, Any]) -> tuple[list[Location], list[WorldItem]]:
+        """Extract new locations and items from act outline text that don't already exist.
+
+        Uses the world items extraction prompt to find entities in the act
+        narrative text, then deduplicates against existing Neo4j nodes.
+
+        Args:
+            act_outline_data: Parsed act outline data.
+
+        Returns:
+            Tuple of (new_locations, new_items) to be created.
+        """
+        narrative_text = self._collect_act_narrative_text(act_outline_data)
+        if not narrative_text:
+            return [], []
+
+        prompt = render_prompt(
+            "knowledge_agent/extract_world_items_lines.j2",
+            {
+                "setting": "",
+                "outline_text": narrative_text,
+            },
+        )
+
+        extracted_items: list[dict[str, str]] = []
+        for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
+            try:
+                response, _ = await llm_service.async_call_llm(
+                    model_name=config.NARRATIVE_MODEL,
+                    prompt=prompt,
+                    temperature=0.5,
+                    max_tokens=config.MAX_GENERATION_TOKENS,
+                    allow_fallback=True,
+                    auto_clean_response=True,
+                    system_prompt=get_system_prompt("knowledge_agent"),
+                )
+
+                data, _, _ = try_load_json_from_response(response)
+                if data and isinstance(data, list):
+                    extracted_items = [
+                        item for item in data
+                        if isinstance(item, dict) and all(k in item for k in ("name", "category", "description"))
+                    ]
+                    break
+            except (json.JSONDecodeError, ValueError) as parse_error:
+                if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
+                    logger.warning("Failed to extract world items from act outline: %s", str(parse_error))
+                    return [], []
+
+        if not extracted_items:
+            return [], []
+
+        existing_locations = await self._get_all_locations()
+        existing_items = await self._get_all_items()
+        existing_location_names = {loc["name"].lower() for loc in existing_locations if loc.get("name")}
+        existing_item_names = {item["name"].lower() for item in existing_items if item.get("name")}
+
+        new_locations: list[Location] = []
+        new_items: list[WorldItem] = []
+
+        for item in extracted_items:
+            name = str(item["name"]).strip()
+            category = str(item["category"]).strip()
+            description = str(item["description"]).strip()
+
+            if not name or not description:
+                continue
+
+            if category == "location" and name.lower() not in existing_location_names:
+                new_locations.append(Location(
+                    id=generate_entity_id(name, "location"),
+                    name=name,
+                    description=description,
+                    category="Location",
+                    created_chapter=0,
+                    is_provisional=False,
+                ))
+                existing_location_names.add(name.lower())
+
+            elif category == "object" and name.lower() not in existing_item_names:
+                new_items.append(WorldItem(
+                    id=generate_entity_id(name, "object"),
+                    name=name,
+                    description=description,
+                    category="object",
+                    created_chapter=0,
+                    is_provisional=False,
+                ))
+                existing_item_names.add(name.lower())
+
+        logger.info(
+            "extract_new_world_items: found new entities from act outlines",
+            new_locations=len(new_locations),
+            new_items=len(new_items),
+        )
+
+        return new_locations, new_items
+
+    async def create_new_location_nodes(self, locations: list[Location]) -> bool:
+        """Create new Location nodes in Neo4j.
+
+        Args:
+            locations: List of Location instances to create.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not locations:
+            return True
+
+        cypher_queries = []
+        for location in locations:
+            query = """
+            MERGE (l:Location {id: $id})
+            ON CREATE SET
+                l.name = $name,
+                l.description = $description,
+                l.category = $category,
+                l.created_chapter = $created_chapter,
+                l.is_provisional = $is_provisional,
+                l.created_ts = timestamp(),
+                l.updated_ts = timestamp()
+            """
+            params = {
+                "id": location.id,
+                "name": location.name,
+                "description": location.description,
+                "category": location.category,
+                "created_chapter": location.created_chapter,
+                "is_provisional": location.is_provisional,
+            }
+            cypher_queries.append((query, params))
+
+        for query, params in cypher_queries:
+            await neo4j_manager.execute_write_query(query, params)
+
+        logger.info("Created %d new Location nodes from act outlines", len(locations))
+        return True
+
+    async def create_new_item_nodes(self, items: list[WorldItem]) -> bool:
+        """Create new Item nodes in Neo4j.
+
+        Args:
+            items: List of WorldItem instances to create.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not items:
+            return True
+
+        cypher_queries = []
+        for item in items:
+            query = """
+            MERGE (i:Item {id: $id})
+            ON CREATE SET
+                i.name = $name,
+                i.description = $description,
+                i.category = $category,
+                i.created_chapter = $created_chapter,
+                i.is_provisional = $is_provisional,
+                i.created_ts = timestamp(),
+                i.updated_ts = timestamp()
+            """
+            params = {
+                "id": item.id,
+                "name": item.name,
+                "description": item.description,
+                "category": item.category,
+                "created_chapter": item.created_chapter,
+                "is_provisional": item.is_provisional,
+            }
+            cypher_queries.append((query, params))
+
+        for query, params in cypher_queries:
+            await neo4j_manager.execute_write_query(query, params)
+
+        logger.info("Created %d new Item nodes from act outlines", len(items))
+        return True
+
     async def _extract_event_item_involvements(self, act_events: list[ActKeyEvent], items: list[dict[str, str]]) -> dict[str, list[tuple[str, str]]]:
         """Extract which items are featured in which events using LLM.
 
@@ -801,6 +1017,15 @@ class ActOutlineParser:
             if not location_names_success:
                 return False, "Failed to enrich Location names"
 
+            # Step 5b: Extract new locations and items from act narrative text
+            logger.info("Extracting new world items from act outline text")
+            new_locations, new_items = await self.extract_new_world_items(act_outline_data)
+
+            if new_locations:
+                await self.create_new_location_nodes(new_locations)
+            if new_items:
+                await self.create_new_item_nodes(new_items)
+
             # Step 6: Extract character involvements
             logger.info("Extracting character involvements from events")
             character_involvements = await self._parse_character_involvements(act_events)
@@ -840,6 +1065,8 @@ class ActOutlineParser:
                 f"Successfully parsed and persisted "
                 f"{len(act_events)} ActKeyEvents, "
                 f"{len(location_names)} Location name enrichments, "
+                f"{len(new_locations)} new Locations, "
+                f"{len(new_items)} new Items, "
                 f"{involves_count} INVOLVES relationships, "
                 f"{occurs_at_count} OCCURS_AT relationships, and "
                 f"{features_item_count} FEATURES_ITEM relationships",

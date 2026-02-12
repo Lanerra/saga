@@ -265,10 +265,11 @@ class ChapterOutlineParser:
         known_locations: list[dict[str, str]],
         chapter_number: int,
     ) -> list[Location]:
-        """Match known locations against chapter outline text.
+        """Find the best matching location for a chapter's scene.
 
-        Searches `scene_description` and `key_beats` for references to locations
-        that already exist in the knowledge graph (from Stage 3 act outlines).
+        Scores each known location against the scene text and returns only
+        the single best match. If no known location matches, creates a
+        provisional Location from the scene_description.
 
         Args:
             chapter_outline_data: Parsed chapter outline data (single chapter dict).
@@ -277,12 +278,8 @@ class ChapterOutlineParser:
                 for OCCURS_AT relationship matching.
 
         Returns:
-            List of Location instances representing existing locations referenced
-            in this chapter's outline text.
+            List containing at most one Location (the best match or a new provisional one).
         """
-        if not known_locations:
-            return []
-
         scene_description = chapter_outline_data.get("scene_description", "")
         key_beats = chapter_outline_data.get("key_beats", [])
         searchable_text = " ".join([scene_description] + key_beats).lower()
@@ -290,21 +287,101 @@ class ChapterOutlineParser:
         if not searchable_text.strip():
             return []
 
-        matched: list[Location] = []
-        for location_data in known_locations:
-            location_name = location_data["name"]
-            if location_name.lower() in searchable_text:
-                matched.append(
-                    Location(
-                        id=location_data["id"],
-                        name=location_name,
-                        description=location_data.get("description", ""),
-                        category="Location",
-                        created_chapter=chapter_number,
-                    )
-                )
+        best_location = None
+        best_score = 0
 
-        return matched
+        for location_data in (known_locations or []):
+            location_name = location_data["name"]
+            score = self._score_location_match(location_name, searchable_text)
+            if score > best_score:
+                best_score = score
+                best_location = location_data
+
+        if best_location:
+            return [
+                Location(
+                    id=best_location["id"],
+                    name=best_location["name"],
+                    description=best_location.get("description", ""),
+                    category="Location",
+                    created_chapter=chapter_number,
+                )
+            ]
+
+        if scene_description.strip():
+            from utils.text_processing import generate_entity_id
+            location_name = self._derive_location_name(scene_description)
+            new_location = Location(
+                id=generate_entity_id(location_name, "location"),
+                name=location_name,
+                description=scene_description,
+                category="Location",
+                created_chapter=chapter_number,
+                is_provisional=True,
+            )
+            logger.info(
+                "Created new location from scene description",
+                location_name=location_name,
+                chapter=chapter_number,
+            )
+            return [new_location]
+
+        return []
+
+    def _score_location_match(self, location_name: str, searchable_text: str) -> int:
+        """Score how well a location name matches the searchable text.
+
+        Returns a positive score if the location is referenced, 0 otherwise.
+        Higher scores indicate stronger matches.
+
+        Args:
+            location_name: Canonical location name.
+            searchable_text: Lowercased text to search within.
+
+        Returns:
+            Match score (0 = no match, higher = better match).
+        """
+        name_lower = location_name.lower()
+
+        # Exact full name match is the strongest signal
+        if name_lower in searchable_text:
+            return 100 + len(name_lower)
+
+        # Multi-word name: all significant words must appear
+        name_words = name_lower.split()
+        if len(name_words) > 1:
+            significant_words = [
+                w for w in name_words
+                if w not in {"the", "a", "an", "of", "and", "in", "on", "at"}
+            ]
+            if len(significant_words) >= 2 and all(w in searchable_text for w in significant_words):
+                return 50 + len(significant_words)
+
+        return 0
+
+    def _derive_location_name(self, scene_description: str) -> str:
+        """Derive a short location name from a scene description.
+
+        Extracts the first meaningful phrase (up to ~6 words) from the
+        description to use as the location name.
+
+        Args:
+            scene_description: Full scene description text.
+
+        Returns:
+            A concise location name.
+        """
+        text = scene_description.strip()
+        for separator in (".", ",", ";", " - ", " — "):
+            if separator in text:
+                text = text.split(separator)[0].strip()
+                break
+
+        words = text.split()
+        if len(words) > 6:
+            text = " ".join(words[:6])
+
+        return text
 
     async def create_chapter_nodes(self, chapters: list[Chapter]) -> bool:
         """Create Chapter nodes in Neo4j.
@@ -454,9 +531,9 @@ class ChapterOutlineParser:
 
             for event in events:
                 query = """
-                MERGE (e:Event {name: $name})
+                MERGE (e:Event {id: $id})
                 ON CREATE SET
-                    e.id = $id,
+                    e.name = $name,
                     e.description = $description,
                     e.event_type = $event_type,
                     e.chapter_number = $chapter_number,
@@ -470,7 +547,7 @@ class ChapterOutlineParser:
                     e.created_ts = timestamp(),
                     e.updated_ts = timestamp()
                 ON MATCH SET
-                    e.id = $id,
+                    e.name = $name,
                     e.description = $description,
                     e.event_type = $event_type,
                     e.chapter_number = $chapter_number,
@@ -685,32 +762,43 @@ class ChapterOutlineParser:
 
                         cypher_queries.append((query, params))
 
-            # Create Event -[INVOLVES]-> Character relationships
+            # Create Event -[INVOLVES]-> Character relationships (all mentioned characters)
+            all_character_names = await self._get_all_character_names()
             for event in events:
-                if not event.pov_character:
-                    continue
-                character = await self._get_character_by_name(event.pov_character)
-                if character:
+                mentioned_characters = self._extract_characters_from_text(
+                    event.name, all_character_names
+                )
+                if event.pov_character and event.pov_character not in mentioned_characters:
+                    mentioned_characters.insert(0, event.pov_character)
+
+                for character_name in mentioned_characters:
+                    role = "protagonist" if character_name == event.pov_character else "participant"
                     query = """
                     MATCH (e:Event {id: $event_id})
                     MATCH (c:Character {name: $character_name})
                     MERGE (e)-[r:INVOLVES]->(c)
-                    SET r.role = "protagonist",
+                    SET r.role = $role,
                         r.created_ts = timestamp(),
                         r.updated_ts = timestamp()
                     """
                     params = {
                         "event_id": event.id,
-                        "character_name": event.pov_character,
+                        "character_name": character_name,
+                        "role": role,
                     }
                     cypher_queries.append((query, params))
 
             # Create SceneEvent -[PART_OF]-> ActKeyEvent relationships
-            for event in events:
-                # Lookup ActKeyEvent for this act and scene
-                act_key_event = await self._get_act_key_event(event.act_number, event.scene_index)
+            act_numbers = {event.act_number for event in events}
+            act_key_events_by_act: dict[int, list[dict]] = {}
+            for act_number in act_numbers:
+                act_key_events_by_act[act_number] = await self._get_act_key_events_for_act(act_number)
 
-                if act_key_event:
+            for event in events:
+                act_key_events_for_act = act_key_events_by_act.get(event.act_number, [])
+                matched_act_key_event = self._find_best_act_key_event(event, act_key_events_for_act)
+
+                if matched_act_key_event:
                     query = """
                     MATCH (e:Event {id: $event_id})
                     MATCH (ake:Event {id: $ake_id})
@@ -720,7 +808,71 @@ class ChapterOutlineParser:
                     """
                     params = {
                         "event_id": event.id,
-                        "ake_id": act_key_event.get("id"),
+                        "ake_id": matched_act_key_event["id"],
+                    }
+                    cypher_queries.append((query, params))
+
+            # Create SceneEvent -[OCCURS_AT]-> Location relationships
+            # Each SceneEvent inherits its scene's location
+            for event in events:
+                for scene in scenes:
+                    if event.chapter_number == scene.chapter_number and event.scene_index == scene.scene_index:
+                        for location in locations:
+                            if location.created_chapter == scene.chapter_number:
+                                query = """
+                                MATCH (e:Event {id: $event_id})
+                                MATCH (l:Location {id: $location_id})
+                                MERGE (e)-[r:OCCURS_AT]->(l)
+                                SET r.created_ts = timestamp(),
+                                    r.updated_ts = timestamp()
+                                """
+                                params = {
+                                    "event_id": event.id,
+                                    "location_id": location.id,
+                                }
+                                cypher_queries.append((query, params))
+
+            # Create Scene -[FEATURES_CHARACTER]-> Character for non-POV characters
+            for scene in scenes:
+                mentioned_characters = self._extract_characters_from_text(
+                    " ".join([scene.setting, scene.plot_point] + scene.beats),
+                    all_character_names,
+                )
+                for character_name in mentioned_characters:
+                    if character_name == scene.pov_character:
+                        continue
+                    query = """
+                    MATCH (s:Scene {id: $scene_id})
+                    MATCH (c:Character {name: $character_name})
+                    MERGE (s)-[r:FEATURES_CHARACTER]->(c)
+                    SET r.is_pov = false,
+                        r.created_ts = timestamp(),
+                        r.updated_ts = timestamp()
+                    """
+                    params = {
+                        "scene_id": scene.id,
+                        "character_name": character_name,
+                    }
+                    cypher_queries.append((query, params))
+
+            # Create Scene -[FEATURES_ITEM]-> Item relationships
+            all_items = await self._get_all_items()
+            for scene in scenes:
+                scene_text = " ".join([scene.setting, scene.plot_point] + scene.beats)
+                matched_items = self._match_items_in_text(
+                    scene_text, [item["name"] for item in all_items]
+                )
+                for item_name in matched_items:
+                    query = """
+                    MATCH (s:Scene {id: $scene_id})
+                    MATCH (i:Item {name: $item_name})
+                    MERGE (s)-[r:FEATURES_ITEM]->(i)
+                    SET r.created_ts = timestamp(),
+                        r.updated_ts = timestamp()
+                    """
+                    params = {
+                        "scene_id": scene.id,
+                        "item_name": item_name,
                     }
                     cypher_queries.append((query, params))
 
@@ -786,22 +938,115 @@ class ChapterOutlineParser:
 
         return await get_character_profile_by_name(character_name)
 
-    async def _get_act_key_event(self, act_number: int, sequence_in_act: int) -> dict | None:
-        """Query Neo4j for an ActKeyEvent by act_number and sequence_in_act.
+    async def _get_act_key_events_for_act(self, act_number: int) -> list[dict]:
+        """Query Neo4j for all ActKeyEvents in an act.
 
         Args:
             act_number: Act number (1, 2, or 3)
-            sequence_in_act: Position within act
 
         Returns:
-            Event dict if found, None otherwise
+            List of event dicts sorted by sequence_in_act.
         """
         query = """
-        MATCH (e:Event {event_type: "ActKeyEvent", act_number: $act_number, sequence_in_act: $sequence_in_act})
-        RETURN e
+        MATCH (e:Event {event_type: "ActKeyEvent", act_number: $act_number})
+        RETURN e.id as id, e.name as name, e.description as description,
+               e.sequence_in_act as sequence_in_act
+        ORDER BY e.sequence_in_act
         """
-        results = await neo4j_manager.execute_read_query(query, {"act_number": act_number, "sequence_in_act": sequence_in_act})
-        return results[0] if results else None
+        return await neo4j_manager.execute_read_query(query, {"act_number": act_number})
+
+    def _find_best_act_key_event(self, scene_event: SceneEvent, act_key_events: list[dict]) -> dict | None:
+        """Find the best-matching ActKeyEvent for a SceneEvent using text similarity.
+
+        Compares the scene event's name/description against each ActKeyEvent's
+        name/description and picks the one with the most word overlap.
+
+        Args:
+            scene_event: The SceneEvent to match.
+            act_key_events: Candidate ActKeyEvents from the same act.
+
+        Returns:
+            Best-matching ActKeyEvent dict, or None if no candidates exist.
+        """
+        if not act_key_events:
+            return None
+
+        event_words = set(scene_event.name.lower().split()) | set(scene_event.description.lower().split())
+
+        best_match = None
+        best_score = 0
+
+        for act_key_event in act_key_events:
+            ake_name = act_key_event.get("name", "")
+            ake_description = act_key_event.get("description", "")
+            ake_words = set(ake_name.lower().split()) | set(ake_description.lower().split())
+
+            overlap = len(event_words & ake_words)
+            if overlap > best_score:
+                best_score = overlap
+                best_match = act_key_event
+
+        return best_match
+
+    def _extract_characters_from_text(self, text: str, known_characters: list[str]) -> list[str]:
+        """Find all known character names mentioned in text.
+
+        Args:
+            text: Text to search for character references.
+            known_characters: List of known character names from Neo4j.
+
+        Returns:
+            List of character names found in the text (preserving original casing).
+        """
+        text_lower = text.lower()
+        found = []
+        for name in known_characters:
+            if name.lower() in text_lower:
+                found.append(name)
+        return found
+
+    def _match_items_in_text(self, text: str, item_names: list[str]) -> list[str]:
+        """Find item names mentioned in text using exact case-insensitive substring matching.
+
+        Requires the full item name to appear as a substring in the text.
+        This is intentionally strict to avoid false positives from partial
+        word matches.
+
+        Args:
+            text: Text to search.
+            item_names: List of item names to look for.
+
+        Returns:
+            List of matched item names (preserving original casing).
+        """
+        text_lower = text.lower()
+        found = []
+        for name in item_names:
+            if name.lower() in text_lower:
+                found.append(name)
+        return found
+
+    async def _get_all_items(self) -> list[dict[str, str]]:
+        """Get all item names from Neo4j.
+
+        Returns:
+            List of dicts with 'name' and 'description' keys.
+        """
+        query = """
+        MATCH (i:Item)
+        WHERE i.name IS NOT NULL
+        RETURN i.name as name, i.description as description
+        ORDER BY i.name
+        """
+        result = await neo4j_manager.execute_read_query(query, {})
+        return [
+            {
+                "name": record["name"],
+                "description": record.get("description", ""),
+            }
+            for record in result
+            if record.get("name")
+        ]
 
     async def parse_and_persist(self) -> tuple[bool, str]:
         """Parse chapter outline and persist to Neo4j.
@@ -894,6 +1139,11 @@ class ChapterOutlineParser:
 
             if not events_success:
                 return False, "Failed to create SceneEvent nodes"
+
+            provisional_locations = [loc for loc in all_referenced_locations if loc.is_provisional]
+            if provisional_locations:
+                logger.info("Creating %d provisional Location nodes", len(provisional_locations))
+                await self.create_location_nodes(provisional_locations)
 
             logger.info("Creating relationships in Neo4j")
             relationships_success = await self.create_relationships(

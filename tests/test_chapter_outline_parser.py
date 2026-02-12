@@ -149,10 +149,9 @@ async def test_parse_locations_matches_known_locations(temp_chapter_outline_file
 
     locations = parser._parse_locations(chapter_outline_data, known_locations, chapter_number=1)
 
-    matched_names = {location.name for location in locations}
-    assert matched_names == {"refugee camp", "Oconee River swamps"}
-    for location in locations:
-        assert location.created_chapter == 1
+    assert len(locations) == 1
+    assert locations[0].name in {"refugee camp", "Oconee River swamps"}
+    assert locations[0].created_chapter == 1
 
 
 @pytest.mark.asyncio
@@ -174,7 +173,7 @@ async def test_parse_locations_case_insensitive(temp_chapter_outline_file):
 
 @pytest.mark.asyncio
 async def test_parse_locations_no_matches(temp_chapter_outline_file):
-    """_parse_locations returns empty list when no known locations appear in text."""
+    """_parse_locations creates a provisional location from scene_description when no known locations match."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
     chapter_outline_data = await parser.parse_chapter_outline()
 
@@ -184,18 +183,30 @@ async def test_parse_locations_no_matches(temp_chapter_outline_file):
 
     locations = parser._parse_locations(chapter_outline_data, known_locations, chapter_number=1)
 
-    assert locations == []
+    assert len(locations) == 1
+    assert locations[0].is_provisional is True
+    assert locations[0].created_chapter == 1
+    assert locations[0].category == "Location"
+    assert isinstance(locations[0].name, str)
+    assert len(locations[0].name) > 0
+    assert locations[0].description == chapter_outline_data["scene_description"]
 
 
 @pytest.mark.asyncio
 async def test_parse_locations_empty_known_locations(temp_chapter_outline_file):
-    """_parse_locations returns empty list when no known locations are provided."""
+    """_parse_locations creates a provisional location from scene_description when known_locations is empty."""
     parser = ChapterOutlineParser(chapter_outline_path=temp_chapter_outline_file, chapter_number=1)
     chapter_outline_data = await parser.parse_chapter_outline()
 
     locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
 
-    assert locations == []
+    assert len(locations) == 1
+    assert locations[0].is_provisional is True
+    assert locations[0].created_chapter == 1
+    assert locations[0].category == "Location"
+    assert isinstance(locations[0].name, str)
+    assert len(locations[0].name) > 0
+    assert locations[0].description == chapter_outline_data["scene_description"]
 
 
 @pytest.mark.asyncio

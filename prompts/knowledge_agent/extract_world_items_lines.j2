@@ -1,18 +1,33 @@
-Extract key world-building elements from this story outline.
+Extract ALL world-building elements from this story outline. Be thorough and comprehensive.
 
 Setting: {{ setting }}
 
 Story Outline:
 {{ outline_text }}
 
-Identify and list:
-1) Important locations (cities, buildings, regions)
-2) Important objects (artifacts, items, technology)
+Identify and list EVERY location and object mentioned or implied in the outline:
+
+1) ALL locations — including but not limited to:
+   - Cities, towns, villages, settlements
+   - Buildings, rooms, structures (libraries, taverns, temples, palaces, homes)
+   - Natural features (forests, rivers, mountains, caves, fields)
+   - Regions, territories, kingdoms, realms
+   - Any named or described place where events occur
+
+2) ALL objects — including but not limited to:
+   - Artifacts, relics, magical items
+   - Weapons, tools, equipment
+   - Documents, books, letters, maps
+   - Technology, devices, machines
+   - Any named or described physical object relevant to the plot
+
+Aim for at least 8-15 locations and 5-10 objects for a typical novel outline.
+Extract everything mentioned, even if only briefly referenced.
 
 For each item, provide:
-- name (string)
+- name (string; use the proper name if given, otherwise create a descriptive name)
 - category (string; MUST be exactly one of: "location", "object")
-- description (string; 1 sentence)
+- description (string; 1 sentence describing its role or significance)
 
 Output contract (STRICT JSON, no exceptions):
 - Output MUST be valid JSON only.
@@ -24,5 +39,7 @@ Output contract (STRICT JSON, no exceptions):
 Example:
 [
   {"name":"Seattle Public Library Ruins","category":"location","description":"An abandoned library now home to a rogue AI."},
-  {"name":"Memory Implant","category":"object","description":"A device that allows an AI to implant false memories."}
+  {"name":"Memory Implant","category":"object","description":"A device that allows an AI to implant false memories."},
+  {"name":"Neon District","category":"location","description":"A sprawling underground market beneath the city center."},
+  {"name":"Quantum Cipher","category":"object","description":"An encrypted key needed to access the central mainframe."}
 ]

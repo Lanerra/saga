@@ -86,39 +86,73 @@ async def test_chapter_outline_parser_character_lookup_not_found():
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_act_key_event_lookup():
-    """Test that _get_act_key_event correctly queries ActKeyEvents."""
+async def test_chapter_outline_parser_act_key_events_for_act():
+    """_get_act_key_events_for_act returns all events sorted by sequence."""
     parser = ChapterOutlineParser()
 
-    # Mock the Neo4j query
     with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
-        mock_query.return_value = [{"e": {"id": "event_123", "name": "Test Event", "description": "Test description", "event_type": "ActKeyEvent", "act_number": 1, "sequence_in_act": 1}}]
+        mock_query.return_value = [
+            {"id": "event_1", "name": "First Event", "description": "First", "sequence_in_act": 1},
+            {"id": "event_2", "name": "Second Event", "description": "Second", "sequence_in_act": 2},
+        ]
 
-        # Test the ActKeyEvent lookup
-        result = await parser._get_act_key_event(1, 1)
+        result = await parser._get_act_key_events_for_act(1)
 
-        # Verify the query was called
         assert mock_query.called
-
-        # Verify the result
-        assert result is not None
-        assert result["e"]["id"] == "event_123"
+        assert len(result) == 2
+        assert result[0]["id"] == "event_1"
+        assert result[1]["id"] == "event_2"
 
 
 @pytest.mark.asyncio
-async def test_chapter_outline_parser_act_key_event_lookup_not_found():
-    """Test that _get_act_key_event returns None when event not found."""
+async def test_chapter_outline_parser_act_key_events_for_act_empty():
+    """_get_act_key_events_for_act returns empty list when no events found."""
     parser = ChapterOutlineParser()
 
-    # Mock the Neo4j query to return empty results
     with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = []
 
-        # Test the ActKeyEvent lookup
-        result = await parser._get_act_key_event(999, 999)
+        result = await parser._get_act_key_events_for_act(999)
 
-        # Verify the result is None
-        assert result is None
+        assert result == []
+
+
+def test_find_best_act_key_event_matches_by_word_overlap():
+    """_find_best_act_key_event selects the event with most word overlap."""
+    from models.kg_models import SceneEvent
+
+    parser = ChapterOutlineParser()
+
+    scene_event = SceneEvent(
+        id="se_1", name="The hero enters the dark forest", description="The hero enters the dark forest",
+        chapter_number=1, act_number=1, scene_index=0, conflict="", outcome="",
+        pov_character="Hero", created_chapter=1,
+    )
+
+    act_key_events = [
+        {"id": "ake_1", "name": "Hero arrives at castle", "description": "The hero reaches the castle gates", "sequence_in_act": 1},
+        {"id": "ake_2", "name": "Journey through dark forest", "description": "The hero enters the dark forest path", "sequence_in_act": 2},
+    ]
+
+    result = parser._find_best_act_key_event(scene_event, act_key_events)
+
+    assert result is not None
+    assert result["id"] == "ake_2"
+
+
+def test_find_best_act_key_event_returns_none_for_empty():
+    """_find_best_act_key_event returns None when no candidates exist."""
+    from models.kg_models import SceneEvent
+
+    parser = ChapterOutlineParser()
+
+    scene_event = SceneEvent(
+        id="se_1", name="test event", description="test",
+        chapter_number=1, act_number=1, scene_index=0, conflict="", outcome="",
+        pov_character="", created_chapter=1,
+    )
+
+    assert parser._find_best_act_key_event(scene_event, []) is None
 
 
 @pytest.mark.asyncio
@@ -152,22 +186,29 @@ async def test_chapter_outline_parser_features_character_relationship():
 
         assert len(scenes) == 1
 
-        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
-            mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
-            with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
-                await parser.create_relationships([chapter], scenes, events, locations)
+            with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read:
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [],
+                    [],
+                ]
 
-                assert mock_write.called
+                with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
+                    await parser.create_relationships([chapter], scenes, events, locations)
 
-                for call_args in mock_write.call_args_list:
-                    query = call_args[0][0]
-                    if "FEATURES_CHARACTER" in query:
-                        assert "is_pov = true" in query
-                        assert "MATCH (c:Character {name: $character_name})" in query
-                        break
-                else:
-                    pytest.fail("FEATURES_CHARACTER relationship query not found")
+                    assert mock_write.called
+
+                    for call_args in mock_write.call_args_list:
+                        query = call_args[0][0]
+                        if "FEATURES_CHARACTER" in query:
+                            assert "is_pov = true" in query or "is_pov = false" in query
+                            assert "MATCH (c:Character {name: $character_name})" in query
+                            break
+                    else:
+                        pytest.fail("FEATURES_CHARACTER relationship query not found")
 
     finally:
         if os.path.exists(temp_file):
@@ -205,22 +246,29 @@ async def test_chapter_outline_parser_involves_relationship():
 
         assert len(events) == 2
 
-        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
-            mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
-            with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
-                await parser.create_relationships([chapter], scenes, events, locations)
+            with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read:
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [],
+                    [],
+                ]
 
-                assert mock_write.called
+                with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
+                    await parser.create_relationships([chapter], scenes, events, locations)
 
-                for call_args in mock_write.call_args_list:
-                    query = call_args[0][0]
-                    if "INVOLVES" in query:
-                        assert 'role = "protagonist"' in query
-                        assert "MATCH (c:Character {name: $character_name})" in query
-                        break
-                else:
-                    pytest.fail("INVOLVES relationship query not found")
+                    assert mock_write.called
+
+                    for call_args in mock_write.call_args_list:
+                        query = call_args[0][0]
+                        if "INVOLVES" in query:
+                            assert "r.role = $role" in query
+                            assert "MATCH (c:Character {name: $character_name})" in query
+                            break
+                    else:
+                        pytest.fail("INVOLVES relationship query not found")
 
     finally:
         if os.path.exists(temp_file):
@@ -229,8 +277,7 @@ async def test_chapter_outline_parser_involves_relationship():
 
 @pytest.mark.asyncio
 async def test_chapter_outline_parser_part_of_relationship():
-    """Test that PART_OF relationships (SceneEvent → ActKeyEvent) are created correctly."""
-    # Create a temporary chapter outline file
+    """PART_OF relationships (SceneEvent -> ActKeyEvent) are created correctly."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(
             {
@@ -258,12 +305,17 @@ async def test_chapter_outline_parser_part_of_relationship():
 
         assert len(events) == 2
 
-        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
-            mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
             with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read:
-                mock_read.return_value = [
-                    {"e": {"id": "act_key_event_1", "name": "Test Act Key Event", "description": "Test description", "event_type": "ActKeyEvent", "act_number": 1, "sequence_in_act": 1}}
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [
+                        {"id": "act_key_event_1", "name": "TestCharacter enters the forest", "description": "The hero enters the forest", "sequence_in_act": 1},
+                        {"id": "act_key_event_2", "name": "TestCharacter draws weapon", "description": "Drawing the weapon", "sequence_in_act": 2},
+                    ],
+                    [],
                 ]
 
                 with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
@@ -313,12 +365,16 @@ async def test_chapter_outline_parser_all_relationships_created():
         events = parser._parse_scene_events(chapter_outline_data, character_names)
         locations = parser._parse_locations(chapter_outline_data, [], chapter_number=1)
 
-        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_query:
-            mock_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
+        with patch("data_access.character_queries.get_character_profile_by_name", new_callable=AsyncMock) as mock_char_query:
+            mock_char_query.return_value = CharacterProfile(name="TestCharacter", personality_description="Test description", traits=["brave"], status="Active")
 
             with patch("core.db_manager.neo4j_manager.execute_read_query", new_callable=AsyncMock) as mock_read:
-                mock_read.return_value = [
-                    {"e": {"id": "act_key_event_1", "name": "Test Act Key Event", "description": "Test description", "event_type": "ActKeyEvent", "act_number": 1, "sequence_in_act": 1}}
+                mock_read.side_effect = [
+                    [{"name": "TestCharacter"}],
+                    [
+                        {"id": "act_key_event_1", "name": "TestCharacter enters the forest", "description": "Entering forest", "sequence_in_act": 1},
+                    ],
+                    [],
                 ]
 
                 with patch("core.db_manager.neo4j_manager.execute_write_query", new_callable=AsyncMock) as mock_write:
@@ -328,8 +384,6 @@ async def test_chapter_outline_parser_all_relationships_created():
 
                     all_queries = [call_args[0][0] for call_args in mock_write.call_args_list]
 
-                    # _parse_scenes produces a single scene, so FOLLOWS requires 2+ scenes.
-                    # Verify the relationship types that can be produced from single-scene data.
                     required_relationships = ["PART_OF", "FEATURES_CHARACTER", "INVOLVES"]
 
                     for rel_type in required_relationships:
