@@ -32,26 +32,35 @@ try:
     RICH_AVAILABLE = True
 except Exception:  # pragma: no cover - fallback when Rich isn't installed
     RICH_AVAILABLE = False
+    logger.info("Rich library not available; terminal progress display disabled")
 
     class Live:  # type: ignore[no-redef]
+        """No-op fallback for rich.live.Live when Rich is not installed."""
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def start(self) -> None:  # pragma: no cover - noop fallback
+        def start(self) -> None:
             pass
 
-        def stop(self) -> None:  # pragma: no cover - noop fallback
+        def stop(self) -> None:
             pass
 
     class Text:  # type: ignore[no-redef]
+        """No-op fallback for rich.text.Text when Rich is not installed."""
+
         def __init__(self, initial_text: str = "") -> None:
             self.plain = initial_text
 
     class Group:  # type: ignore[no-redef]
+        """No-op fallback for rich.console.Group when Rich is not installed."""
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
     class Panel:  # type: ignore[no-redef]
+        """No-op fallback for rich.panel.Panel when Rich is not installed."""
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 

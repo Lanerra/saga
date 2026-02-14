@@ -153,8 +153,6 @@ WORLD_BUILDER_FILE = settings_mod.WORLD_BUILDER_FILE
 ENABLE_STATUS_IS_ALIAS = settings.ENABLE_STATUS_IS_ALIAS
 REVISION_EVALUATION_THRESHOLD = settings.REVISION_EVALUATION_THRESHOLD
 
-# DEPRECATED: Relationship normalization is disabled per Phase 4 requirements
-# Relationships are canonical from Stage 1 and should not be normalized
 ENABLE_RELATIONSHIP_NORMALIZATION = settings.relationship_normalization.ENABLE_RELATIONSHIP_NORMALIZATION
 REL_NORM_STRICT_CANONICAL_MODE = settings.relationship_normalization.STRICT_CANONICAL_MODE
 REL_NORM_STATIC_OVERRIDES_ENABLED = settings.relationship_normalization.STATIC_OVERRIDES_ENABLED

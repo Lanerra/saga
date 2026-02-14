@@ -415,32 +415,18 @@ class SagaSettings(BaseSettings):
 settings = SagaSettings()
 
 
-class TempsCompat:
-    INITIAL_SETUP: float
-    DRAFTING: float
-    REVISION: float
-    PLANNING: float
-    EVALUATION: float
-    CONSISTENCY_CHECK: float
-    KG_EXTRACTION: float
-    SUMMARY: float
-    PATCH: float
-    DEFAULT: float
-    OVERRIDE: float | None
-
-
-Temperatures = TempsCompat()
-Temperatures.INITIAL_SETUP = settings.TEMPERATURE_INITIAL_SETUP
-Temperatures.DRAFTING = settings.TEMPERATURE_DRAFTING
-Temperatures.REVISION = settings.TEMPERATURE_REVISION
-Temperatures.PLANNING = settings.TEMPERATURE_PLANNING
-Temperatures.EVALUATION = settings.TEMPERATURE_EVALUATION
-Temperatures.CONSISTENCY_CHECK = settings.TEMPERATURE_CONSISTENCY_CHECK
-Temperatures.KG_EXTRACTION = settings.TEMPERATURE_KG_EXTRACTION
-Temperatures.SUMMARY = settings.TEMPERATURE_SUMMARY
-Temperatures.PATCH = settings.TEMPERATURE_PATCH
-Temperatures.DEFAULT = 0.7  # Set default explicitly
-Temperatures.OVERRIDE = settings.TEMPERATURE_OVERRIDE
+class Temperatures:
+    INITIAL_SETUP: float = settings.TEMPERATURE_INITIAL_SETUP
+    DRAFTING: float = settings.TEMPERATURE_DRAFTING
+    REVISION: float = settings.TEMPERATURE_REVISION
+    PLANNING: float = settings.TEMPERATURE_PLANNING
+    EVALUATION: float = settings.TEMPERATURE_EVALUATION
+    CONSISTENCY_CHECK: float = settings.TEMPERATURE_CONSISTENCY_CHECK
+    KG_EXTRACTION: float = settings.TEMPERATURE_KG_EXTRACTION
+    SUMMARY: float = settings.TEMPERATURE_SUMMARY
+    PATCH: float = settings.TEMPERATURE_PATCH
+    DEFAULT: float = 0.7
+    OVERRIDE: float | None = settings.TEMPERATURE_OVERRIDE
 
 
 # Update module level variables for backward compatibility

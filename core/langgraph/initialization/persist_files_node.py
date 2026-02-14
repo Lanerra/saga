@@ -12,7 +12,7 @@ Notes:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -287,7 +287,7 @@ def _write_character_files(project_dir: Path, character_sheets: dict) -> None:
             "name": name,
             "role": "protagonist" if sheet.get("is_protagonist") else "character",
             **normalized_parsed,  # Merge parsed fields
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "source": "initialization",
         }
 
@@ -317,7 +317,7 @@ def _write_outline_files(
         "setting": state.get("setting", ""),
         "total_chapters": state.get("total_chapters", 20),
         "target_word_count": state.get("target_word_count", config.TARGET_WORD_COUNT),
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
 
     if global_outline:
@@ -353,7 +353,7 @@ def _write_outline_files(
     # Write beats.yaml with full outline text
     # Use literal block scalar for better markdown readability
     beats_data: dict[str, Any] = {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "source": "initialization",
     }
 
@@ -390,7 +390,7 @@ def _write_world_items_file(project_dir: Path, world_items: list[Any], setting: 
     items: list[dict[str, Any]] = []
     world_data: dict[str, Any] = {
         "setting": setting,
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "source": "initialization",
         "items": items,
     }

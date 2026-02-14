@@ -343,11 +343,12 @@ async def _extract_characters_from_scene(
         )
         return []
     except Exception as e:
-        logger.warning(
+        logger.error(
             "_extract_characters_from_scene: failed",
             scene_index=scene_index,
             chapter=chapter_number,
             error=str(e),
+            exc_info=True,
         )
         return []
 
@@ -467,11 +468,12 @@ async def _extract_locations_from_scene(
         )
         return []
     except Exception as e:
-        logger.warning(
+        logger.error(
             "_extract_locations_from_scene: failed",
             scene_index=scene_index,
             chapter=chapter_number,
             error=str(e),
+            exc_info=True,
         )
         return []
 
@@ -591,11 +593,12 @@ async def _extract_events_from_scene(
         )
         return []
     except Exception as e:
-        logger.warning(
+        logger.error(
             "_extract_events_from_scene: failed",
             scene_index=scene_index,
             chapter=chapter_number,
             error=str(e),
+            exc_info=True,
         )
         return []
 
@@ -720,11 +723,12 @@ async def _extract_relationships_from_scene(
         )
         return []
     except Exception as e:
-        logger.warning(
+        logger.error(
             "_extract_relationships_from_scene: failed",
             scene_index=scene_index,
             chapter=chapter_number,
             error=str(e),
+            exc_info=True,
         )
         return []
 

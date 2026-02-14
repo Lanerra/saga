@@ -37,12 +37,13 @@ class RelationshipNormalizationService:
     """
 
     EMBEDDING_CACHE_MAX_SIZE = 1024
+    REJECTED_CACHE_MAX_SIZE = 2048
 
     def __init__(self) -> None:
         """Initialize the service and in-memory embedding cache."""
         self.embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self.canonical_embeddings: dict[str, np.ndarray] = {}
-        self.rejected_cache: set[str] = set()
+        self.rejected_cache: OrderedDict[str, None] = OrderedDict()
 
     def _cache_embedding(self, key: str, value: np.ndarray) -> None:
         """Store an embedding in the LRU-bounded cache."""
@@ -52,6 +53,15 @@ class RelationshipNormalizationService:
             if len(self.embedding_cache) >= self.EMBEDDING_CACHE_MAX_SIZE:
                 self.embedding_cache.popitem(last=False)
             self.embedding_cache[key] = value
+
+    def _reject(self, rel_type: str) -> None:
+        """Record a rejected relationship type in the LRU-bounded cache."""
+        if rel_type in self.rejected_cache:
+            self.rejected_cache.move_to_end(rel_type)
+        else:
+            if len(self.rejected_cache) >= self.REJECTED_CACHE_MAX_SIZE:
+                self.rejected_cache.popitem(last=False)
+            self.rejected_cache[rel_type] = None
 
     async def map_to_canonical(self, rel_type: str, category_hint: str = "DEFAULT") -> tuple[str | None, bool, float, bool]:
         """Map a relationship type to its canonical form using strict enforcement.
@@ -96,14 +106,14 @@ class RelationshipNormalizationService:
 
         # 5. Semantic Match (only if not in strict mode)
         if config.REL_NORM_STRICT_CANONICAL_MODE:
-            self.rejected_cache.add(rel_type)
+            self._reject(rel_type)
             return None, False, 0.0, False
 
         await self._ensure_canonical_embeddings()
         incoming_embedding = await self._get_embedding(canonical_input)
 
         if incoming_embedding is None:
-            self.rejected_cache.add(rel_type)
+            self._reject(rel_type)
             return None, False, 0.0, False
 
         best_match = None
@@ -120,7 +130,7 @@ class RelationshipNormalizationService:
         if best_similarity > threshold:
             return best_match, True, best_similarity, False
         else:
-            self.rejected_cache.add(rel_type)
+            self._reject(rel_type)
             return None, False, best_similarity, False
 
     async def normalize_relationship_type(

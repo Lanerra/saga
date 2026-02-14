@@ -302,6 +302,7 @@ CHARACTER_ITEM_RELATIONSHIPS = {
     "SEEKS",
     "GUARDS",
     "CREATED",
+    "POSSESSES",
 }
 
 # Character ↔ Location Relationships (Extended)
@@ -370,6 +371,11 @@ SCENE_EVENT_RELATIONSHIPS = {
     "OCCURS_IN_SCENE",
 }
 
+# Scene ↔ Item Relationships
+SCENE_ITEM_RELATIONSHIPS = {
+    "FEATURES_ITEM",
+}
+
 # Scene ↔ Location Relationships
 SCENE_LOCATION_RELATIONSHIPS = {
     "OCCURS_AT",
@@ -391,6 +397,7 @@ RELATIONSHIP_CATEGORIES = {
     "scene_sequential": SCENE_SEQUENTIAL_RELATIONSHIPS,
     "scene_chapter": SCENE_CHAPTER_RELATIONSHIPS,
     "scene_event": SCENE_EVENT_RELATIONSHIPS,
+    "scene_item": SCENE_ITEM_RELATIONSHIPS,
     "scene_location": SCENE_LOCATION_RELATIONSHIPS,
 }
 

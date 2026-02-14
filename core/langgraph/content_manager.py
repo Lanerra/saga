@@ -140,16 +140,16 @@ class ContentManager:
         Returns:
             Absolute path to the content file on disk.
         """
-        # Sanitize identifier for filesystem
-        safe_id = str(identifier).replace("/", "_").replace("\\", "_")
+        safe_id = str(identifier).replace("/", "_").replace("\\", "_").replace("..", "_")
 
-        # Create subdirectory for content type
         type_dir = self.content_dir / content_type
         type_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate filename with version
         filename = f"{safe_id}_v{version}.{extension}"
-        return type_dir / filename
+        resolved = (type_dir / filename).resolve()
+        if not str(resolved).startswith(str(self.content_dir.resolve())):
+            raise ValueError(f"Path traversal detected: identifier '{identifier}' escapes content directory")
+        return resolved
 
     def _get_relative_path(self, absolute_path: Path) -> str:
         """Convert an absolute path to a project-relative path string."""

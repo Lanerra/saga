@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# from rdflib import Graph, URIRef, Literal, BNode # No longer needed for triples
-# from rdflib.namespace import RDF, RDFS # No longer needed for triples
 import structlog
 
 from models.kg_constants import VALID_NODE_LABELS
@@ -14,9 +12,6 @@ logger = structlog.get_logger(__name__)
 
 # Pre-compute normalized labels for case-insensitive matching
 _NORMALIZED_NODE_LABELS = {label.lower(): label for label in VALID_NODE_LABELS}
-
-# --- New RDF Triple Parsing using rdflib ---
-# Modified to be a custom plain-text triple parser
 
 
 def _get_entity_type_and_name_from_text(entity_text: str) -> dict[str, str | None]:

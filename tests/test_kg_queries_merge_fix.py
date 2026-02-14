@@ -69,10 +69,7 @@ async def test_add_kg_triples_with_existing_entity_by_name():
         assert "coalesce" in query and ("s.id = coalesce" in query or "s_found.id = coalesce" in query)
         assert "coalesce" in query and ("o.id = coalesce" in query or "o_found.id = coalesce" in query)
 
-        # Verify the relationship merge occurs
         assert "CALL apoc.merge.relationship" in query
-
-        print("✓ Test passed: Query correctly handles existing entities by name")
 
 
 @pytest.mark.asyncio
@@ -111,8 +108,6 @@ async def test_add_kg_triples_with_literal_object():
         assert "OPTIONAL MATCH" in query or "CALL apoc.merge.node" in query or "MERGE (s {" in query
         assert "YIELD node AS s" in query or "WITH value.s as s" in query or "MERGE (s {" in query
         assert "MERGE (o:ValueNode" in query
-
-        print("✓ Test passed: Literal object queries work correctly")
 
 
 if __name__ == "__main__":

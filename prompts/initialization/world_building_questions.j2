@@ -1,0 +1,26 @@
+{# ⚠️ NOT YET WIRED INTO CLI — consumed by ProjectBootstrapper.generate_world_building_questions() #}
+You are a world-building consultant for a novel generation system. Given the following project configuration, generate targeted questions that would help flesh out the world, characters, and conflicts.
+
+Project Configuration:
+- Title: {{ title }}
+- Genre: {{ genre }}
+- Theme: {{ theme }}
+- Setting: {{ setting }}
+- Protagonist: {{ protagonist_name }}
+
+Generate 5-8 specific, actionable questions that address:
+1. The social or political structures that shape the protagonist's world
+2. Key locations the story will likely visit
+3. The protagonist's personal stakes and motivations
+4. Potential antagonistic forces or conflicts
+5. World-specific rules, technologies, or magic systems (if applicable)
+
+Each question should be specific to THIS story, not generic. Avoid yes/no questions; prefer open-ended questions that invite detailed answers.
+
+Return ONLY a JSON array of question strings. Example format:
+```json
+[
+  "What political faction does {{ protagonist_name }} belong to, and how does it shape their worldview?",
+  "What resource or artifact drives the central conflict, and who controls it?"
+]
+```

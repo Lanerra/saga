@@ -843,7 +843,7 @@ class TestSchemaCreation:
 
         await manager._create_type_placeholders()
 
-        assert len(executed) == 69
+        assert len(executed) == 71
 
     async def test_create_type_placeholders_fallback(self, monkeypatch):
         """Type placeholders fall back to individual execution"""
@@ -863,7 +863,7 @@ class TestSchemaCreation:
 
         await manager._create_type_placeholders()
 
-        assert len(individual_calls) == 69
+        assert len(individual_calls) == 71
 
     async def test_execute_schema_individually_success(self, monkeypatch):
         """Schema queries executed individually"""

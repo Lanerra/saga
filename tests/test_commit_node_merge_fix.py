@@ -64,11 +64,8 @@ async def test_build_relationship_statements_with_existing_entity_by_name():
     assert "SET s.id = coalesce" in query
     assert "SET o.id = coalesce" in query
 
-    # Verify relationship merge and explicit end-of-query return
     assert "CALL apoc.merge.relationship" in query
     assert "RETURN rel" in query
-
-    print("✓ Test passed: Query correctly handles existing entities by name")
 
 
 @pytest.mark.asyncio
@@ -118,11 +115,8 @@ async def test_build_relationship_statements_with_new_entities():
     assert "SET s.id = coalesce" in query
     assert "SET o.id = coalesce" in query
 
-    # Verify relationship merge and explicit end-of-query return
     assert "CALL apoc.merge.relationship" in query
     assert "RETURN rel" in query
-
-    print("✓ Test passed: New entities are created correctly")
 
 
 if __name__ == "__main__":

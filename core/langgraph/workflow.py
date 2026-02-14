@@ -23,6 +23,7 @@ from core.langgraph.nodes.finalize_node import finalize_chapter
 from core.langgraph.nodes.graph_healing_node import heal_graph
 from core.langgraph.nodes.narrative_enrichment_node import enrich_narrative
 from core.langgraph.nodes.quality_assurance_node import check_quality
+from core.langgraph.nodes.relationship_normalization_node import normalize_relationships
 from core.langgraph.nodes.revision_node import revise_chapter
 from core.langgraph.nodes.summary_node import summarize_chapter
 from core.langgraph.state import NarrativeState
@@ -121,9 +122,6 @@ def handle_fatal_error(state: NarrativeState) -> NarrativeState:
         failed_node=state.get("error_node"),
         chapter=state.get("current_chapter"),
     )
-
-    # Could write error to file for debugging in the future
-    # error_file = Path(state["project_dir"]) / ".saga" / "last_error.json"
 
     return {"current_node": "error_handler"}
 
@@ -377,6 +375,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
     workflow.add_node("gen_scene_embeddings", generate_scene_embeddings)
     workflow.add_node("assemble_chapter", assemble_chapter)
     workflow.add_node("narrative_enrichment", enrich_narrative)
+    workflow.add_node("normalize_relationships", normalize_relationships)
     workflow.add_node("commit", commit_to_graph)
     workflow.add_node("validate", create_validation_subgraph())
     workflow.add_node("revise", revise_chapter)
@@ -483,9 +482,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
         },
     )
 
-    # Generation flow
-    # Mainline Phase 2 ordering:
-    # generate → extract → gen_scene_embeddings → assemble_chapter → normalize_relationships → commit → validate → summarize …
+    # generate → extract → gen_scene_embeddings → assemble_chapter → narrative_enrichment → normalize_relationships → commit → validate → summarize …
     workflow.add_conditional_edges(
         "generate",
         should_handle_error,
@@ -529,6 +526,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
     )
     workflow.add_conditional_edges(
         "narrative_enrichment",
+        should_handle_error,
+        {
+            "continue": "normalize_relationships",
+            "error": "error_handler",
+        },
+    )
+    workflow.add_conditional_edges(
+        "normalize_relationships",
         should_handle_error,
         {
             "continue": "commit",
@@ -609,7 +614,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=25,  # route + init_error + 7 init + 15 generation/QA nodes + error_handler
+        total_nodes=26,
         entry_point="route",
     )
 

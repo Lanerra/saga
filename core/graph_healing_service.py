@@ -16,7 +16,7 @@ Notes:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -842,7 +842,7 @@ class GraphHealingService:
         """
         results: dict[str, Any] = {
             "chapter": current_chapter,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "apoc_available": True,
             "nodes_enriched": 0,
             "nodes_graduated": 0,

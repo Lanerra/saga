@@ -18,6 +18,7 @@ from models.kg_constants import (
     RELATIONSHIP_TYPES,
     SCENE_CHAPTER_RELATIONSHIPS,
     SCENE_EVENT_RELATIONSHIPS,
+    SCENE_ITEM_RELATIONSHIPS,
     SCENE_LOCATION_RELATIONSHIPS,
     SCENE_SEQUENTIAL_RELATIONSHIPS,
     STATIC_RELATIONSHIP_MAP,
@@ -41,6 +42,7 @@ ALL_CATEGORY_SETS = [
     SCENE_SEQUENTIAL_RELATIONSHIPS,
     SCENE_CHAPTER_RELATIONSHIPS,
     SCENE_EVENT_RELATIONSHIPS,
+    SCENE_ITEM_RELATIONSHIPS,
     SCENE_LOCATION_RELATIONSHIPS,
 ]
 
@@ -126,8 +128,8 @@ class TestRelationshipCategories:
             expected_union.update(category_set)
         assert RELATIONSHIP_TYPES == expected_union
 
-    def test_fourteen_categories(self):
-        assert len(RELATIONSHIP_CATEGORIES) == 14
+    def test_fifteen_categories(self):
+        assert len(RELATIONSHIP_CATEGORIES) == 15
 
     def test_expected_category_names(self):
         assert set(RELATIONSHIP_CATEGORIES.keys()) == {
@@ -144,6 +146,7 @@ class TestRelationshipCategories:
             "scene_sequential",
             "scene_chapter",
             "scene_event",
+            "scene_item",
             "scene_location",
         }
 

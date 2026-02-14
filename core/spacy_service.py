@@ -11,14 +11,11 @@ This module provides a centralized SpacyService that:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 
 logger = structlog.get_logger(__name__)
-
-if TYPE_CHECKING:
-    pass
 
 ABSTRACT_CONCEPTS = {
     "fear",

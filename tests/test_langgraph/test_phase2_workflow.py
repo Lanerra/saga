@@ -555,7 +555,8 @@ class TestPhase2Integration:
 
         edges = {(edge.source, edge.target) for edge in graph_obj.edges}
 
-        assert ("narrative_enrichment", "commit") in edges
+        assert ("narrative_enrichment", "normalize_relationships") in edges
+        assert ("normalize_relationships", "commit") in edges
         assert ("commit", "validate") in edges
         assert ("validate", "summarize") in edges
 

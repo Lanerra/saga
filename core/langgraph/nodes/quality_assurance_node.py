@@ -76,11 +76,14 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
     relationships_deduplicated = 0
     relationships_consolidated = 0
 
+    qa_errors: list[str] = []
+
     qa_results: dict[str, Any] = {
         "contradictory_traits": [],
         "relationships_deduplicated": relationships_deduplicated,
         "relationships_consolidated": relationships_consolidated,
         "issues_found": issues_found,
+        "errors": qa_errors,
     }
 
     if config.settings.QA_CHECK_CONTRADICTORY_TRAITS:
@@ -102,6 +105,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 error=str(e),
                 exc_info=True,
             )
+            qa_errors.append(f"contradictory_traits: {e}")
 
     if config.settings.QA_DEDUPLICATE_RELATIONSHIPS:
         try:
@@ -120,6 +124,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 error=str(e),
                 exc_info=True,
             )
+            qa_errors.append(f"deduplicate_relationships: {e}")
 
     if config.settings.QA_CONSOLIDATE_RELATIONSHIPS:
         try:
@@ -138,6 +143,7 @@ async def check_quality(state: NarrativeState) -> NarrativeState:
                 error=str(e),
                 exc_info=True,
             )
+            qa_errors.append(f"consolidate_relationships: {e}")
 
     qa_results["issues_found"] = issues_found
     qa_results["relationships_deduplicated"] = relationships_deduplicated

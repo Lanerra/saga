@@ -31,6 +31,9 @@ from core.langgraph.initialization.persist_files_node import (
 from core.langgraph.initialization.run_parsers_node import (
     run_initialization_parsers,
 )
+from core.langgraph.initialization.validation import (
+    validate_initialization_artifacts,
+)
 
 __all__ = [
     "generate_character_sheets",
@@ -42,4 +45,5 @@ __all__ = [
     "commit_initialization_to_graph",
     "persist_initialization_files",
     "run_initialization_parsers",
+    "validate_initialization_artifacts",
 ]
