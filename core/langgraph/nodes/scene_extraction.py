@@ -188,28 +188,6 @@ async def extract_from_scene(
         - world_items: List of location and event entity dicts with scene_index.
         - relationships: List of relationship dicts with scene_index.
     """
-    # Check configuration settings to prevent extraction of structural entities
-    # According to schema design, Stage 5 should only extract physical descriptions and embeddings
-    # It should NOT create new structural entities (Characters, Events, Locations, Items)
-
-    if (
-        config.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE
-        or config.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE
-        or config.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE
-        or config.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE
-        or config.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE
-    ):
-        logger.warning(
-            "Structural entity extraction is enabled. This violates Stage 5 schema design principles.",
-            extra={
-                "character_extraction": config.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE,
-                "location_extraction": config.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE,
-                "event_extraction": config.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE,
-                "item_extraction": config.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE,
-                "relationship_extraction": config.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE,
-            },
-        )
-
     logger.info(
         "extract_from_scene: starting",
         scene_index=scene_index,
@@ -221,65 +199,12 @@ async def extract_from_scene(
     if config.settings.ENABLE_ENTITY_VALIDATION:
         scene_text = _get_text_processing_service().clean_text_with_spacy(scene_text, aggressive=False)
 
-    # Extract characters only if enabled (should be False in Stage 5)
-    if config.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE:
-        characters = await _extract_characters_from_scene(
-            scene_text=scene_text,
-            scene_index=scene_index,
-            chapter_number=chapter_number,
-            novel_title=novel_title,
-            novel_genre=novel_genre,
-            protagonist_name=protagonist_name,
-            model_name=model_name,
-        )
-    else:
-        characters = []
-        logger.info("Character extraction from narrative is disabled by configuration (Stage 5 compliance)")
-
-    # Extract locations only if enabled (should be False in Stage 5)
-    if config.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE:
-        locations = await _extract_locations_from_scene(
-            scene_text=scene_text,
-            scene_index=scene_index,
-            chapter_number=chapter_number,
-            novel_title=novel_title,
-            novel_genre=novel_genre,
-            protagonist_name=protagonist_name,
-            model_name=model_name,
-        )
-    else:
-        locations = []
-        logger.info("Location extraction from narrative is disabled by configuration (Stage 5 compliance)")
-
-    # Extract events only if enabled (should be False in Stage 5)
-    if config.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE:
-        events = await _extract_events_from_scene(
-            scene_text=scene_text,
-            scene_index=scene_index,
-            chapter_number=chapter_number,
-            novel_title=novel_title,
-            novel_genre=novel_genre,
-            protagonist_name=protagonist_name,
-            model_name=model_name,
-        )
-    else:
-        events = []
-        logger.info("Event extraction from narrative is disabled by configuration (Stage 5 compliance)")
-
-    # Extract relationships only if enabled (should be False in Stage 5)
-    if config.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE:
-        relationships = await _extract_relationships_from_scene(
-            scene_text=scene_text,
-            scene_index=scene_index,
-            chapter_number=chapter_number,
-            novel_title=novel_title,
-            novel_genre=novel_genre,
-            protagonist_name=protagonist_name,
-            model_name=model_name,
-        )
-    else:
-        relationships = []
-        logger.info("Relationship extraction from narrative is disabled by configuration (Stage 5 compliance)")
+    # Stage 5 does not extract structural entities (Characters, Events, Locations, Items)
+    # from narrative text. These are canonical from earlier stages.
+    characters: list[Any] = []
+    locations: list[Any] = []
+    events: list[Any] = []
+    relationships: list[Any] = []
 
     world_items = locations + events
 

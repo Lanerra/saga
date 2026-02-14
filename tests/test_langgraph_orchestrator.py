@@ -367,8 +367,8 @@ class TestRunChapterGenerationLoop:
         mock_graph = MagicMock()
 
         async def empty_stream(*args, **kwargs):
-            if False:
-                yield
+            return
+            yield
 
         mock_graph.astream = MagicMock(side_effect=empty_stream)
 
@@ -406,8 +406,7 @@ class TestRunChapterGenerationLoop:
 
         async def mock_stream_error(*args, **kwargs):
             raise Exception("Generation error")
-            if False:
-                yield
+            yield
 
         mock_graph.astream = mock_stream_error
 
@@ -443,8 +442,8 @@ class TestRunChapterGenerationLoop:
         mock_graph = MagicMock()
 
         async def empty_stream(*args, **kwargs):
-            if False:
-                yield
+            return
+            yield
 
         mock_graph.astream = empty_stream
 
@@ -742,10 +741,8 @@ class TestRunNovelGenerationLoop:
         with patch.object(orchestrator, "_ensure_neo4j_connection", new_callable=AsyncMock) as mock_neo4j:
             mock_neo4j.side_effect = Exception("Test error")
 
-            try:
+            with pytest.raises(Exception, match="Test error"):
                 await orchestrator.run_novel_generation_loop()
-            except Exception:
-                pass
 
             orchestrator.display.stop.assert_called_once()
 

@@ -49,9 +49,8 @@ class NarrativeEnrichmentNode:
         None
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the NarrativeEnrichmentNode."""
-        pass
 
     async def process(
         self,

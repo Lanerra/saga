@@ -21,6 +21,9 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
     """
     project_dir = str(tmp_path)
 
+    # Normalization is deprecated (disabled by default) but this test verifies
+    # the node logic when explicitly enabled.
+
     # Only include relationship types that will normalize via exact canonicalization,
     # so we don't invoke embedding similarity (and therefore don't require LLM mocks).
     rels = [
@@ -62,7 +65,8 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
         "extracted_relationships_ref": {"path": "dummy.json", "version": 1, "content_type": "extracted_relationships"},
     }
 
-    with patch("core.langgraph.nodes.relationship_normalization_node.get_extracted_relationships") as mock_get:
+    with patch("config.ENABLE_RELATIONSHIP_NORMALIZATION", True), \
+         patch("core.langgraph.nodes.relationship_normalization_node.get_extracted_relationships") as mock_get:
         mock_get.return_value = rels
 
         with patch("core.langgraph.nodes.relationship_normalization_node.set_extracted_relationships") as mock_set:

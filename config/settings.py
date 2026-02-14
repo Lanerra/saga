@@ -84,8 +84,8 @@ class RelationshipNormalizationSettings(BaseSettings):
         Environment variables use the `SAGA_REL_NORM_` prefix.
     """
 
-    # Master toggle
-    ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=True, description="Enable relationship normalization system")
+    # Master toggle (deprecated — disabled by default)
+    ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=False, description="Enable relationship normalization system")
 
     # Strict canonical mode
     STRICT_CANONICAL_MODE: bool = Field(
@@ -329,26 +329,6 @@ class SagaSettings(BaseSettings):
     # Narrative Agent Configuration
     KG_PREPOPULATION_CHAPTER_NUM: int = 0
 
-    # De-duplication Configuration
-    # DEPRECATED: Deduplication is no longer needed per Phase 4 requirements
-    # Entities are canonical from Stage 1, so deduplication is disabled
-    DEDUPLICATION_USE_SEMANTIC: bool = False
-    DEDUPLICATION_SEMANTIC_THRESHOLD: float = 0.55
-    DEDUPLICATION_MIN_SEGMENT_LENGTH: int = 150
-
-    # DEPRECATED: Duplicate prevention is disabled per Phase 4 requirements
-    # Entities are canonical from Stage 1
-    ENABLE_DUPLICATE_PREVENTION: bool = False
-    DUPLICATE_PREVENTION_SIMILARITY_THRESHOLD: float = 0.6
-    DUPLICATE_PREVENTION_CHARACTER_ENABLED: bool = False
-    DUPLICATE_PREVENTION_WORLD_ITEM_ENABLED: bool = False
-
-    # DEPRECATED: Phase 2 deduplication is disabled per Phase 4 requirements
-    # Relationships are canonical from Stage 1
-    ENABLE_PHASE2_DEDUPLICATION: bool = False
-    PHASE2_NAME_SIMILARITY_THRESHOLD: float = 0.5
-    PHASE2_RELATIONSHIP_SIMILARITY_THRESHOLD: float = 0.6
-
     # Chapter Generation Configuration
     MIN_CHAPTER_LENGTH_CHARS: int = 12000  # Approximately 2500-3000 words
     GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT: bool = True
@@ -381,17 +361,6 @@ class SagaSettings(BaseSettings):
     # Chapter embedding extraction settings
     ENABLE_CHAPTER_EMBEDDING_EXTRACTION: bool = True  # Extract chapter embeddings from narrative
 
-    # DEPRECATED: These settings are permanently disabled per Phase 4 requirements
-    # Stage 5 should NOT extract or create new structural entities
-    # These are kept for backward compatibility but should never be enabled
-    ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - characters created in Stage 1 only
-    ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - locations created in Stage 2/3 only
-    ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - events created in Stage 2/3/4 only
-    ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - items created in Stage 2 only
-
-    # DEPRECATED: Relationship extraction is permanently disabled
-    # Relationships are canonical from Stage 1 and should not be extracted from narrative
-    ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE: bool = False  # DEPRECATED - relationships created in Stage 1 only
 
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
@@ -413,11 +382,11 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
-    # DEPRECATED: Relationship normalization is disabled per Phase 4 requirements
-    # Relationships are canonical from Stage 1 and should not be normalized
+    # ⚠️ DEPRECATED: Relationship normalization is disabled per Phase 4 requirements.
+    # Relationships are canonical from Stage 1 and should not be normalized.
     relationship_normalization: RelationshipNormalizationSettings = Field(
         default_factory=lambda: RelationshipNormalizationSettings(
-            ENABLE_RELATIONSHIP_NORMALIZATION=True,
+            ENABLE_RELATIONSHIP_NORMALIZATION=False,
             STRICT_CANONICAL_MODE=True,
             STATIC_OVERRIDES_ENABLED=False,
         )
@@ -434,16 +403,16 @@ class SagaSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
+    def model_post_init(self, _context: Any) -> None:
+        if self.EXPECTED_EMBEDDING_DIM != self.NEO4J_VECTOR_DIMENSIONS:
+            logger.warning(
+                "⚠️ Vector dimension mismatch",
+                expected_embedding_dim=self.EXPECTED_EMBEDDING_DIM,
+                neo4j_vector_dimensions=self.NEO4J_VECTOR_DIMENSIONS,
+            )
+
 
 settings = SagaSettings()
-
-
-# --- Reconstruct objects for backward compatibility ---
-class ModelsCompat:
-    LARGE: str
-    MEDIUM: str
-    SMALL: str
-    NARRATOR: str
 
 
 class TempsCompat:
@@ -459,12 +428,6 @@ class TempsCompat:
     DEFAULT: float
     OVERRIDE: float | None
 
-
-Models = ModelsCompat()
-Models.LARGE = settings.LARGE_MODEL
-Models.MEDIUM = settings.MEDIUM_MODEL
-Models.SMALL = settings.SMALL_MODEL
-Models.NARRATOR = settings.NARRATIVE_MODEL
 
 Temperatures = TempsCompat()
 Temperatures.INITIAL_SETUP = settings.TEMPERATURE_INITIAL_SETUP

@@ -7,9 +7,6 @@ from processing.text_deduplicator import TextDeduplicator
 
 @pytest.fixture(autouse=True)
 def _configure_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("config.DEDUPLICATION_SEMANTIC_THRESHOLD", 0.85)
-    monkeypatch.setattr("config.DEDUPLICATION_USE_SEMANTIC", False)
-    monkeypatch.setattr("config.DEDUPLICATION_MIN_SEGMENT_LENGTH", 10)
     monkeypatch.setattr("config.MAX_CONCURRENT_LLM_CALLS", 5)
 
 

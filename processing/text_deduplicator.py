@@ -8,8 +8,8 @@ This module performs two-stage deduplication:
 Notes:
     - Fingerprints are computed as `md5(normalized_segment_text)` where normalization is delegated
       to `utils._normalize_text_for_matching()`.
-    - Semantic comparison is gated by `config.DEDUPLICATION_USE_SEMANTIC` and requires embedding
-      calls via the LLM embedding service. Those calls may be non-deterministic.
+    - Semantic comparison is gated by the `use_semantic_comparison` constructor parameter and
+      requires embedding calls via the LLM embedding service.
     - `min_segment_length_chars` currently suppresses fingerprint-based deduplication for short
       segments, but semantic comparison may still evaluate them.
     - When duplicates are removed, the output text is reconstructed by splicing out the selected
@@ -39,9 +39,9 @@ class TextDeduplicator:
 
     def __init__(
         self,
-        similarity_threshold: float = config.DEDUPLICATION_SEMANTIC_THRESHOLD,
-        use_semantic_comparison: bool = config.DEDUPLICATION_USE_SEMANTIC,
-        min_segment_length_chars: int = config.DEDUPLICATION_MIN_SEGMENT_LENGTH,
+        similarity_threshold: float = 0.55,
+        use_semantic_comparison: bool = False,
+        min_segment_length_chars: int = 150,
         prefer_newer: bool = False,
     ) -> None:
         self.similarity_threshold = similarity_threshold

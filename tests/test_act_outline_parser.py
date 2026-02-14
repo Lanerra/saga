@@ -254,32 +254,44 @@ async def test_parse_character_involvements(sample_act_outline):
 
 @pytest.mark.asyncio
 async def test_extract_character_names_with_characters():
-    """Test character name extraction with known characters in text."""
+    """Character name extraction returns matched characters from LLM response."""
     parser = ActOutlineParser()
 
-    # The method now requires 5 parameters instead of just text
-    # For testing purposes, we'll call it with the new signature
-    # Note: This test is currently skipped as the method signature changed
-    # In production, this would be called with actual event data
+    fake_llm_response = json.dumps([
+        {"name": "Hero", "role": "protagonist"},
+        {"name": "Mentor", "role": "guide"},
+    ])
 
-    # This test is currently not applicable due to signature change
-    # We'll skip it for now
-    pytest.skip("Method signature changed - requires 5 parameters instead of 1")
+    with patch(
+        "core.parsers.act_outline_parser.llm_service.async_call_llm",
+        new_callable=AsyncMock,
+        return_value=(fake_llm_response, {}),
+    ):
+        result = await parser._extract_character_names(
+            event_name="Hero meets mentor",
+            event_description="Hero meets mentor",
+            event_cause="Hero seeks guidance",
+            event_effect="Hero learns about threat",
+            known_characters=["Hero", "Mentor", "Villain"],
+        )
+
+    assert result == [("Hero", "protagonist"), ("Mentor", "guide")]
 
 
 @pytest.mark.asyncio
 async def test_extract_character_names_empty():
-    """Test character name extraction with no characters in text."""
+    """Character name extraction returns empty list when no known characters provided."""
     parser = ActOutlineParser()
 
-    # The method now requires 5 parameters instead of just text
-    # For testing purposes, we'll call it with the new signature
-    # Note: This test is currently skipped as the method signature changed
-    # In production, this would be called with actual event data
+    result = await parser._extract_character_names(
+        event_name="Hero meets mentor",
+        event_description="Hero meets mentor",
+        event_cause="Hero seeks guidance",
+        event_effect="Hero learns about threat",
+        known_characters=[],
+    )
 
-    # This test is currently not applicable due to signature change
-    # We'll skip it for now
-    pytest.skip("Method signature changed - requires 5 parameters instead of 1")
+    assert result == []
 
 
 @pytest.mark.asyncio
@@ -358,17 +370,18 @@ async def test_create_event_relationships_happens_before(sample_act_outline):
 
 @pytest.mark.asyncio
 async def test_parse_and_persist_with_new_relationships(mock_act_outline_file):
-    """Test parse_and_persist reflects new relationship types in message."""
+    """parse_and_persist returns success message mentioning persisted entities."""
     parser = ActOutlineParser(act_outline_path=mock_act_outline_file)
 
-    # The message should mention the new relationship types
-    # This is a mock test - in production, we'd verify the actual Cypher queries
+    with (
+        patch.object(parser, "create_act_key_event_nodes", new_callable=AsyncMock, return_value=True),
+        patch.object(parser, "enrich_location_names", new_callable=AsyncMock, return_value=True),
+        patch.object(parser, "create_event_relationships", new_callable=AsyncMock, return_value=True),
+    ):
+        success, message = await parser.parse_and_persist()
 
-    # Check that the parser's parse_and_persist method mentions these
-    # by examining the docstring or implementation
-    # Note: This test is currently skipped as the assertion is too specific
-    # We'll skip it for now and verify the actual behavior in integration tests
-    pytest.skip("Test assertion too specific - verify in integration tests instead")
+    assert success is True
+    assert "Successfully parsed and persisted" in message
 
 
 if __name__ == "__main__":

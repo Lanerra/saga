@@ -231,101 +231,11 @@ class TestIsPlotStagnant:
 
         assert _is_plot_stagnant(state) is True
 
-    def test_stagnant_no_elements_with_extraction_enabled(self, sample_initial_state):
-        """When extraction is enabled but yields nothing, flag as stagnant."""
+    def test_sufficient_word_count_is_not_stagnant(self, sample_initial_state):
+        """Sufficient word count with no entities is not stagnant."""
         state = sample_initial_state
         state["draft_word_count"] = 2000
         state["extracted_entities"] = {}
-        state["extracted_relationships"] = []
-
-        with patch("core.langgraph.nodes.validation_node.settings") as patched_settings:
-            patched_settings.PLOT_STAGNATION_MIN_WORD_COUNT = 1500
-            patched_settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE = True
-            patched_settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE = False
-            patched_settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE = False
-            patched_settings.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE = False
-            patched_settings.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE = False
-            assert _is_plot_stagnant(state) is True
-
-    def test_not_stagnant_when_extraction_disabled(self, sample_initial_state):
-        """When all extraction is disabled, empty data does not indicate stagnation."""
-        state = sample_initial_state
-        state["draft_word_count"] = 2000
-        state["extracted_entities"] = {}
-        state["extracted_relationships"] = []
-
-        with patch("core.langgraph.nodes.validation_node.settings") as patched_settings:
-            patched_settings.PLOT_STAGNATION_MIN_WORD_COUNT = 1500
-            patched_settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE = False
-            patched_settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE = False
-            patched_settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE = False
-            patched_settings.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE = False
-            patched_settings.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE = False
-            assert _is_plot_stagnant(state) is False
-
-    def test_not_stagnant_with_content(self, sample_state_with_extraction):
-        """Test that chapter with content is not stagnant."""
-        state = sample_state_with_extraction
-        state["draft_word_count"] = 2000
-
-        assert _is_plot_stagnant(state) is False
-
-    def test_not_stagnant_with_relationships(self, sample_initial_state):
-        """Test that chapter with relationships is not stagnant."""
-        state = sample_initial_state
-        state["draft_word_count"] = 2000
-        state["extracted_entities"] = {}
-        state["extracted_relationships"] = [
-            ExtractedRelationship(
-                source_name="Alice",
-                target_name="Bob",
-                relationship_type="FRIEND_OF",
-                description="Friends",
-                chapter=1,
-            )
-        ]
-
-        assert _is_plot_stagnant(state) is False
-
-    def test_not_stagnant_with_new_characters(self, sample_initial_state):
-        """Test that chapter with new characters is not stagnant."""
-        state = sample_initial_state
-        state["draft_word_count"] = 2000
-        state["extracted_entities"] = {
-            "characters": [
-                ExtractedEntity(
-                    name="NewChar",
-                    type="character",
-                    description="New",
-                    first_appearance_chapter=1,
-                    attributes={},
-                )
-            ],
-            "world_items": [],
-        }
-        state["extracted_relationships"] = []
-
-        assert _is_plot_stagnant(state) is False
-
-    def test_not_stagnant_with_world_items_event(self, sample_initial_state):
-        """
-        Regression test for LANGGRAPH-003: extraction stores events under world_items
-        with type == "Event" (no separate `events` bucket required).
-        """
-        state = sample_initial_state
-        state["draft_word_count"] = 2000
-        state["extracted_entities"] = {
-            "characters": [],
-            "world_items": [
-                ExtractedEntity(
-                    name="A Duel at Dawn",
-                    type="Event",
-                    description="Two rivals duel at sunrise.",
-                    first_appearance_chapter=1,
-                    attributes={},
-                )
-            ],
-        }
         state["extracted_relationships"] = []
 
         assert _is_plot_stagnant(state) is False

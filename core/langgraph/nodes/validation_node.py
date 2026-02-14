@@ -77,66 +77,6 @@ def _coerce_traits_list(raw: Any) -> list[str]:
     return out
 
 
-def get_extracted_events_for_validation(extracted_entities: dict[str, Any] | None) -> list[Any]:
-    """Derive event entities from extraction state.
-
-    State-shape contract:
-    - Canonical: events live in `extracted_entities["world_items"]` with `type == "Event"`
-      (case-insensitive).
-    - Legacy compatibility: if `extracted_entities["events"]` exists, it is also included.
-
-    Args:
-        extracted_entities: Extracted entities bucket from state.
-
-    Returns:
-        A de-duplicated list of event-like objects (dicts or `ExtractedEntity` instances)
-        suitable for downstream plot/timeline checks.
-    """
-    if not extracted_entities:
-        return []
-
-    world_items = extracted_entities.get("world_items", [])
-    legacy_events = extracted_entities.get("events", [])
-
-    candidates: list[Any] = []
-    if isinstance(world_items, list):
-        candidates.extend(world_items)
-    if isinstance(legacy_events, list):
-        candidates.extend(legacy_events)
-
-    # Filter by type == Event (supports ExtractedEntity objects or dicts)
-    filtered: list[Any] = []
-    for item in candidates:
-        item_type = None
-        if isinstance(item, dict):
-            item_type = item.get("type")
-        else:
-            item_type = getattr(item, "type", None)
-
-        if isinstance(item_type, str) and item_type.strip().lower() == "event":
-            filtered.append(item)
-
-    # Deduplicate by (name, description) when available; fall back to id(item)
-    seen: set[tuple[str, str] | int] = set()
-    deduped: list[Any] = []
-    for item in filtered:
-        name = ""
-        desc = ""
-        if isinstance(item, dict):
-            name = str(item.get("name") or "")
-            desc = str(item.get("description") or "")
-        else:
-            name = str(getattr(item, "name", "") or "")
-            desc = str(getattr(item, "description", "") or "")
-
-        key = (name, desc) if (name or desc) else id(item)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(item)
-
-    return deduped
-
 
 def _get_character_trait_values_for_validation(char: Any) -> set[str]:
     """Extract normalized trait values for a character.
@@ -592,53 +532,8 @@ def _is_plot_stagnant(
         else:
             relationships = relationships_raw
 
-    # Check 2: Get all extracted elements
-    characters = entities.get("characters", []) if entities else []
-    world_items = entities.get("world_items", []) if entities else []
-
-    # Canonical state-shape: events are stored in world_items with type == "Event".
-    # We also accept legacy `extracted_entities["events"]` if present.
-    extracted_events = get_extracted_events_for_validation(entities)
-
-    # Avoid double-counting: world_items includes events, but we still want to count
-    # events explicitly for readability and future heuristics.
-    non_event_world_items: list[Any] = []
-    if isinstance(world_items, list):
-        for item in world_items:
-            item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
-            if isinstance(item_type, str) and item_type.strip().lower() == "event":
-                continue
-            non_event_world_items.append(item)
-
-    # Check 3: Count total new content
-    total_new_elements = len(characters) + len(non_event_world_items) + len(extracted_events)
-    total_relationships = len(relationships) if relationships is not None else 0
-
-    # When entity/relationship extraction is disabled, the entity heuristic has no
-    # signal to work with and would incorrectly flag every chapter as stagnant.
-    any_extraction_enabled = (
-        settings.ENABLE_CHARACTER_EXTRACTION_FROM_NARRATIVE
-        or settings.ENABLE_LOCATION_EXTRACTION_FROM_NARRATIVE
-        or settings.ENABLE_EVENT_EXTRACTION_FROM_NARRATIVE
-        or settings.ENABLE_ITEM_EXTRACTION_FROM_NARRATIVE
-        or settings.ENABLE_RELATIONSHIP_EXTRACTION_FROM_NARRATIVE
-    )
-    if not any_extraction_enabled:
-        logger.debug(
-            "_is_plot_stagnant: entity/relationship extraction is disabled, skipping element heuristic",
-        )
-        return False
-
-    if total_new_elements == 0 and total_relationships == 0:
-        logger.debug(
-            "_is_plot_stagnant: no new elements or relationships",
-            characters=len(characters) if isinstance(characters, list) else None,
-            world_items=len(non_event_world_items),
-            events=len(extracted_events),
-            relationships=total_relationships,
-        )
-        return True
-
+    # Narrative entity extraction is permanently disabled (entities are canonical
+    # from earlier stages), so the element-count heuristic has no signal.
     return False
 
 

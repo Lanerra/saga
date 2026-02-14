@@ -1,7 +1,7 @@
 # utils/text_processing.py
 import hashlib
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 
@@ -12,9 +12,6 @@ except Exception:  # pragma: no cover - if rapidfuzz missing
     partial_ratio_alignment = None  # type: ignore[assignment]
 
 logger = structlog.get_logger(__name__)
-
-if TYPE_CHECKING:  # pragma: no cover - for type hints only
-    pass
 
 
 def normalize_entity_name(text: str) -> str:

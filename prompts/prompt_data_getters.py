@@ -539,9 +539,7 @@ async def get_filtered_world_data_for_prompt_plain_text(
             if item_lines:
                 output_lines_list.append("")
 
-        if output_lines_list and output_lines_list[-1] == "" and category_header_added:
-            pass
-        elif category_header_added:
+        if category_header_added and not (output_lines_list and output_lines_list[-1] == ""):
             output_lines_list.append("")
 
     if not output_lines_list:
@@ -599,12 +597,8 @@ async def get_reliable_kg_facts_for_drafting_prompt(
 
     # Snapshot fast-path: when a ContextSnapshot is provided and contains the
     # precomputed KG facts block, prefer returning it to avoid redundant reads.
-    try:
-        if snapshot is not None and getattr(snapshot, "kg_facts_block", None):
-            return snapshot.kg_facts_block
-    except Exception:
-        # Non-fatal; fall back to normal path
-        pass
+    if snapshot is not None and getattr(snapshot, "kg_facts_block", None):
+        return snapshot.kg_facts_block
 
     if chapter_number <= 0:
         return "No KG facts applicable for pre-first chapter."

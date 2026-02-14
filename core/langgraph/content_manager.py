@@ -988,11 +988,10 @@ def get_chapter_outlines(state: Mapping[str, Any], manager: ContentManager) -> d
     result = {}
     if isinstance(data, dict):
         for k, v in data.items():
-            try:
+            if isinstance(k, str) and k.isdigit():
                 result[int(k)] = v
-            except (ValueError, TypeError):
-                # Skip non-integer keys (e.g. metadata)
-                pass
+            elif isinstance(k, int):
+                result[k] = v
     return result
 
 

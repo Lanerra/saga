@@ -662,7 +662,13 @@ class Neo4jManagerSingleton:
                 )
 
     async def _create_type_placeholders(self) -> None:
-        """Create relationship type and node label placeholders in separate data transactions."""
+        """Register relationship types, node labels, and property keys with Neo4j.
+
+        Neo4j has no native command to pre-register types without creating data,
+        so this method creates ephemeral nodes/relationships and immediately
+        deletes them. This is the standard workaround for warming up the Neo4j
+        type system.
+        """
         self.logger.info("Phase 2: Creating type placeholders...")
 
         relationship_type_queries = []
