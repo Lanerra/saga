@@ -60,8 +60,7 @@ class TestWorldItemUpsertCypher:
 
         cypher, params = NativeCypherBuilder.world_item_upsert_cypher(item, 1)
 
-        # P0.2: world upserts must write one canonical world label (derived from category)
-        assert "MERGE (w:Location {id: $id})" in cypher
+        assert "MERGE (w:Location {name: $name})" in cypher
         assert "id" in params
         assert params["name"] == "Castle"
         assert params["category"] == "Locations"

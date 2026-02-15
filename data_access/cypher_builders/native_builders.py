@@ -193,11 +193,10 @@ class NativeCypherBuilder:
         # Build a safe labels clause. In Cypher, labels are colon-separated with no commas.
         # Removed implicit Entity label inheritance
 
-        # MERGE by ID to ensure we match existing entities even if renamed
         cypher = f"""
-        MERGE (w:{primary_label} {{id: $id}})
+        MERGE (w:{primary_label} {{name: $name}})
         ON CREATE SET
-            w.name = $name,
+            w.id = $id,
             w.category = $category,
             w.description = $description,
             w.goals = $goals,
@@ -209,7 +208,7 @@ class NativeCypherBuilder:
             w.updated_ts = timestamp(),
             w.created_at = timestamp()
         ON MATCH SET
-            w.name = $name,
+            w.id = CASE WHEN w.id IS NULL OR w.id = '' THEN $id ELSE w.id END,
             w.category = $category,
             w.description = $description,
             w.goals = $goals,
