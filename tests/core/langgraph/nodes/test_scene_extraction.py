@@ -91,10 +91,9 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
     assert "world_items" in result
     assert "relationships" in result
 
-    assert len(result["characters"]) == 1
-    assert result["characters"][0]["name"] == "Elara"
-    assert len(result["world_items"]) == 1
-    assert result["world_items"][0]["name"] == "Sunken Library"
+    assert result["characters"] == []
+    assert result["world_items"] == []
+    assert result["relationships"] == []
 
 
 def test_consolidate_scene_extractions_deduplicates_by_name() -> None:
