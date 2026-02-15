@@ -30,17 +30,13 @@ def _assert_json_serializable(value: Any) -> None:
 
 @pytest.mark.asyncio
 async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
-    """Test that extract_from_scene returns empty results when structural entity extraction is disabled.
-
-    This test verifies Stage 5 compliance: structural entities should not be extracted from narrative.
-    """
+    """Scene-level extraction produces characters, world items, and relationships."""
     from core.langgraph.nodes.scene_extraction import extract_from_scene
 
     scene_text = "Elara walked into the Sunken Library and found the ancient map."
     scene_index = 0
     chapter_number = 1
 
-    # Mock responses (not used due to Stage 5 compliance)
     mock_char_response = {
         "character_updates": {
             "Elara": {
@@ -91,16 +87,14 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
             model_name="test-model",
         )
 
-    # Verify Stage 5 compliance: no structural entities should be extracted
     assert "characters" in result
     assert "world_items" in result
     assert "relationships" in result
 
-    # Stage 5: Structural entity extraction is disabled by configuration
-    # Characters, locations, events, and relationships should NOT be extracted from narrative
-    assert len(result["characters"]) == 0, "Characters should not be extracted in Stage 5"
-    assert len(result["world_items"]) == 0, "World items should not be extracted in Stage 5"
-    assert len(result["relationships"]) == 0, "Relationships should not be extracted in Stage 5"
+    assert len(result["characters"]) == 1
+    assert result["characters"][0]["name"] == "Elara"
+    assert len(result["world_items"]) == 1
+    assert result["world_items"][0]["name"] == "Sunken Library"
 
 
 def test_consolidate_scene_extractions_deduplicates_by_name() -> None:

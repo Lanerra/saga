@@ -145,11 +145,11 @@ class ParserRunner:
             raise ValueError(f"Unsupported parser class: {parser_class}")
 
 
-async def run_parser_command(project_dir: str | None, parser_name: str | None) -> dict[str, tuple[bool, str]]:
+async def run_parser_command(project_dir_path: str | None, parser_name: str | None) -> dict[str, tuple[bool, str]]:
     """Run the parser command with the given arguments.
 
     Args:
-        project_dir: Path to the project directory. If None, use default.
+        project_dir_path: Path to the project directory. If None, use default.
         parser_name: Name of the parser to run. If None, run all parsers.
 
     Returns:
@@ -157,16 +157,19 @@ async def run_parser_command(project_dir: str | None, parser_name: str | None) -
     """
     setup_saga_logging()
 
-    if project_dir is None:
-        project_dir = ProjectManager.find_resume_project()
-        if project_dir is None:
-            project_dir = ProjectManager.create_default_project()
+    resolved_project_dir: Path
+    if project_dir_path is None:
+        found = ProjectManager.find_resume_project()
+        if found is None:
+            resolved_project_dir = ProjectManager.create_default_project()
+        else:
+            resolved_project_dir = found
     else:
-        project_dir = Path(project_dir)
+        resolved_project_dir = Path(project_dir_path)
 
-    logger.info("Running parsers", project_dir=str(project_dir), parser=parser_name)
+    logger.info("Running parsers", project_dir=str(resolved_project_dir), parser=parser_name)
 
-    runner = ParserRunner(project_dir)
+    runner = ParserRunner(resolved_project_dir)
 
     if parser_name:
         success, message = await runner.run_parser(parser_name)

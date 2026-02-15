@@ -109,10 +109,8 @@ class NarrativeEnrichmentNode:
                         extracted_description,
                     ):
                         raise ValueError(f"Contradictory physical description for {character_name}")
-                    character.physical_description = extracted_description
-                    await sync_characters([character], chapter_number)
                     logger.info(
-                        "NarrativeEnrichmentNode: Updated character physical description",
+                        "NarrativeEnrichmentNode: existing physical description is consistent, keeping it",
                         character_name=character_name,
                     )
                 else:

@@ -28,7 +28,7 @@ from core.langgraph.state_helpers import (
     clear_generation_artifacts,
 )
 from core.llm_interface_refactored import llm_service
-from prompts.prompt_renderer import get_system_prompt
+from prompts.prompt_renderer import get_system_prompt, render_prompt
 
 logger = structlog.get_logger(__name__)
 
@@ -193,34 +193,18 @@ async def revise_chapter(state: NarrativeState) -> NarrativeState:
 
         revision_reason = _format_contradictions_for_prompt(state.get("contradictions", []))
 
-        prompt = "\n\n".join(
-            [
-                "You are the revision coordinator for a scene-first drafting pipeline.",
-                "Your job is to produce concrete revision guidance for regenerating scenes.",
-                "",
-                "Hard rules:",
-                "- Do NOT rewrite any prose.",
-                "- Output ONLY revision guidance (bullet points). No headings. No code fences.",
-                "- Each bullet must be actionable and specific.",
-                "- When possible, reference scene numbers and scene titles from the plan.",
-                "",
-                f"Novel title: {state.get('title', '')}",
-                f"Genre: {state.get('genre', '')}",
-                f"Protagonist: {protagonist_name}",
-                f"Chapter: {chapter_number}",
-                f"Chapter focus (if any): {plot_point_focus}",
-                "",
-                "Canon context (story so far):",
-                hybrid_context or "",
-                "",
-                "Planned scenes:",
-                "\n".join(scene_lines),
-                "",
-                "Problems to fix (from validation):",
-                revision_reason,
-                "",
-                "Produce revision guidance now.",
-            ]
+        prompt = render_prompt(
+            "revision_agent/revision_guidance.j2",
+            {
+                "title": state.get("title", ""),
+                "genre": state.get("genre", ""),
+                "protagonist_name": protagonist_name,
+                "chapter_number": chapter_number,
+                "plot_point_focus": plot_point_focus,
+                "hybrid_context": hybrid_context or "",
+                "scene_lines": scene_lines,
+                "revision_reason": revision_reason,
+            },
         )
 
     except Exception as exc:

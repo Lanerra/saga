@@ -202,15 +202,6 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def __dir__() -> list[str]:
-    """Return module attributes for IDEs and introspection.
-
-    Returns:
-        A sorted list containing actual module globals plus lazy export/submodule names.
-    """
-    return sorted(set(list(globals().keys()) + list(_EXPORTS.keys()) + list(_SUBMODULES.keys())))
-
-
 __all__ = [
     "save_plot_outline_to_db",
     "get_plot_outline_from_db",

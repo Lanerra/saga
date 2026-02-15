@@ -170,7 +170,7 @@ async def test_parse_locations(sample_global_outline):
         locations = await parser._parse_locations(sample_global_outline)
 
         assert len(locations) == 1
-        assert locations[0].name is None
+        assert locations[0].name == "Blackwater Creek"
         assert locations[0].category == "Location"
         assert "Blackwater Creek" not in locations[0].description
 

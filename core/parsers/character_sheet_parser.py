@@ -275,7 +275,7 @@ class CharacterSheetParser:
         """
         character_map = {char.name: char for char in characters}
 
-        relationships = {}
+        relationships: dict[str, dict[str, Any]] = {}
 
         for character_name, character_data in character_map.items():
             if hasattr(character_data, "relationships") and character_data.relationships:

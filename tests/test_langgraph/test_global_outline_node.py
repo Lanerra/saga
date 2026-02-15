@@ -407,53 +407,44 @@ def test_parse_global_outline_with_markdown(base_state, sample_outline_json):
     assert len(result["acts"]) == 3
 
 
-def test_parse_global_outline_invalid_json_uses_fallback(base_state):
-    """Verify fallback parsing when JSON is invalid."""
+def test_parse_global_outline_invalid_json_raises(base_state):
+    """Invalid JSON with no parseable structure raises ValueError."""
     response = "This is not valid JSON but contains Act 1, Act 2, and Act 3"
 
-    result = _parse_global_outline(response, base_state)
-
-    assert result["act_count"] == 3
-    assert "Fallback parsing used" in result["validation_errors"][0]
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _parse_global_outline(response, base_state)
 
 
-def test_fallback_parse_outline_three_act(base_state):
-    """Verify fallback parser detects 3-act structure."""
+def test_fallback_parse_outline_raises_on_free_text(base_state):
+    """Fallback parser raises ValueError instead of producing near-empty structure."""
     response = "Act 1: Setup\nAct 2: Confrontation\nAct 3: Resolution"
 
-    result = _fallback_parse_outline(response, base_state)
-
-    assert result["act_count"] == 3
-    assert result["structure_type"] == "3-act"
-    assert result["raw_text"] == response
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
 
-def test_fallback_parse_outline_five_act(base_state):
-    """Verify fallback parser detects 5-act structure."""
+def test_fallback_parse_outline_raises_on_five_act(base_state):
+    """Fallback parser raises ValueError for free-text five-act structure."""
     response = "Act 1, Act 2, Act 3, Act 4, Act 5 structure"
 
-    result = _fallback_parse_outline(response, base_state)
-
-    assert result["act_count"] == 5
-    assert result["structure_type"] == "5-act"
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
 
-def test_fallback_parse_outline_default_three_act(base_state):
-    """Verify fallback parser defaults to 3-act."""
+def test_fallback_parse_outline_raises_on_plain_text(base_state):
+    """Fallback parser raises ValueError for plain text."""
     response = "Just some outline text without act mentions"
 
-    result = _fallback_parse_outline(response, base_state)
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
-    assert result["act_count"] == 3
 
-
-def test_fallback_parse_outline_roman_numerals(base_state):
-    """Verify fallback parser recognizes Roman numeral acts."""
+def test_fallback_parse_outline_raises_on_roman_numerals(base_state):
+    """Fallback parser raises ValueError for Roman numeral acts."""
     response = "Act I: Setup, Act II: Rising Action, Act III: Climax, Act IV: Falling Action, Act V: Resolution"
 
-    result = _fallback_parse_outline(response, base_state)
-
-    assert result["act_count"] == 5
+    with pytest.raises(ValueError, match="Cannot produce a usable outline"):
+        _fallback_parse_outline(response, base_state)
 
 
 def test_parse_global_outline_preserves_all_fields(base_state, sample_outline_json):
@@ -470,12 +461,9 @@ def test_parse_global_outline_preserves_all_fields(base_state, sample_outline_js
     assert len(result["character_arcs"]) == len(sample_outline_json["character_arcs"])
 
 
-def test_fallback_parse_outline_includes_validation_errors(base_state):
-    """Verify fallback parser includes validation errors."""
+def test_fallback_parse_outline_raises_with_descriptive_message(base_state):
+    """Fallback parser raises ValueError with response length details."""
     response = "Some outline text"
 
-    result = _fallback_parse_outline(response, base_state)
-
-    assert "validation_errors" in result
-    assert len(result["validation_errors"]) == 1
-    assert "Fallback parsing used" in result["validation_errors"][0]
+    with pytest.raises(ValueError, match="Response length: 17 chars"):
+        _fallback_parse_outline(response, base_state)

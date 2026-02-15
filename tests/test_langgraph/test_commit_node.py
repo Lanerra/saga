@@ -164,7 +164,7 @@ class TestCommitToGraph:
         }
 
         # Step 1: Consolidate extraction -> verifies externalized refs exist.
-        extraction_update = consolidate_extraction(state)
+        extraction_update = await consolidate_extraction(state)
         state = {**state, **extraction_update}
 
         assert state.get("extracted_relationships_ref"), "consolidate_extraction must set extracted_relationships_ref"

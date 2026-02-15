@@ -65,8 +65,7 @@ async def test_normalize_relationships_node_updates_ref(tmp_path: Path):
         "extracted_relationships_ref": {"path": "dummy.json", "version": 1, "content_type": "extracted_relationships"},
     }
 
-    with patch("config.ENABLE_RELATIONSHIP_NORMALIZATION", True), \
-         patch("core.langgraph.nodes.relationship_normalization_node.get_extracted_relationships") as mock_get:
+    with patch("config.ENABLE_RELATIONSHIP_NORMALIZATION", True), patch("core.langgraph.nodes.relationship_normalization_node.get_extracted_relationships") as mock_get:
         mock_get.return_value = rels
 
         with patch("core.langgraph.nodes.relationship_normalization_node.set_extracted_relationships") as mock_set:

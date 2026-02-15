@@ -14,7 +14,6 @@ from data_access.kg_queries import (
     add_kg_triples_batch_to_db,
     query_kg_from_db,
 )
-from models.kg_constants import KG_IS_PROVISIONAL, KG_REL_CHAPTER_ADDED
 
 
 # Test cases for _get_cypher_labels

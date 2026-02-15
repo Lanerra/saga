@@ -106,7 +106,7 @@ class ActOutlineParser:
         Raises:
             ValueError: If required act key events are missing or invalid
         """
-        act_key_events = []
+        act_key_events: list[ActKeyEvent] = []
 
         # Check if acts are in the act outline
         if "acts" not in act_outline_data:
@@ -167,7 +167,7 @@ class ActOutlineParser:
         Returns:
             Dictionary mapping location descriptions to names
         """
-        location_names = {}
+        location_names: dict[str, str] = {}
 
         # Check if acts are in the act outline
         if "acts" not in act_outline_data:
@@ -406,7 +406,7 @@ class ActOutlineParser:
         try:
             query = "MATCH (l:Location) RETURN l.name as name, l.description as description ORDER BY l.name"
             result = await neo4j_manager.execute_read_query(query, {})
-            return [{"name": record.get("name"), "description": record["description"]} for record in result if record.get("description")]
+            return [{"name": record["name"], "description": record["description"]} for record in result if record.get("name") and record.get("description")]
         except Exception as e:
             logger.error("Error fetching locations: %s", str(e), exc_info=True)
             return []
@@ -499,10 +499,7 @@ class ActOutlineParser:
 
                 data, _, _ = try_load_json_from_response(response)
                 if data and isinstance(data, list):
-                    extracted_items = [
-                        item for item in data
-                        if isinstance(item, dict) and all(k in item for k in ("name", "category", "description"))
-                    ]
+                    extracted_items = [item for item in data if isinstance(item, dict) and all(k in item for k in ("name", "category", "description"))]
                     break
             except (json.JSONDecodeError, ValueError) as parse_error:
                 if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
@@ -529,25 +526,29 @@ class ActOutlineParser:
                 continue
 
             if category == "location" and name.lower() not in existing_location_names:
-                new_locations.append(Location(
-                    id=generate_entity_id(name, "location"),
-                    name=name,
-                    description=description,
-                    category="Location",
-                    created_chapter=0,
-                    is_provisional=False,
-                ))
+                new_locations.append(
+                    Location(
+                        id=generate_entity_id(name, "location"),
+                        name=name,
+                        description=description,
+                        category="Location",
+                        created_chapter=0,
+                        is_provisional=False,
+                    )
+                )
                 existing_location_names.add(name.lower())
 
             elif category == "object" and name.lower() not in existing_item_names:
-                new_items.append(WorldItem(
-                    id=generate_entity_id(name, "object"),
-                    name=name,
-                    description=description,
-                    category="object",
-                    created_chapter=0,
-                    is_provisional=False,
-                ))
+                new_items.append(
+                    WorldItem(
+                        id=generate_entity_id(name, "object"),
+                        name=name,
+                        description=description,
+                        category="object",
+                        created_chapter=0,
+                        is_provisional=False,
+                    )
+                )
                 existing_item_names.add(name.lower())
 
         logger.info(
@@ -813,7 +814,7 @@ class ActOutlineParser:
         act_events: list[ActKeyEvent],
         character_involvements: dict[str, list[tuple[str, str | None]]],
         location_involvements: dict[str, str],
-        item_involvements: dict[str, list[tuple[str, str]]] = None,
+        item_involvements: dict[str, list[tuple[str, str]]] | None = None,
     ) -> bool:
         """Create relationships between events, characters, locations, and items.
 
@@ -901,7 +902,7 @@ class ActOutlineParser:
                     params = {
                         "event_id": event_id,
                         "character_name": character_name,
-                        "role": role,
+                        "role": role or "participant",
                     }
 
                     cypher_queries.append((query, params))

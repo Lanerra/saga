@@ -47,7 +47,8 @@ EXAMPLE_RELATIONSHIPS = [
 class TestConsolidateExtractionPreExternalized:
     """Pre-externalized path: refs already exist on disk."""
 
-    def test_returns_existing_refs_unchanged(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_returns_existing_refs_unchanged(self, tmp_path: Path) -> None:
         content_manager = ContentManager(str(tmp_path))
 
         entities_ref = save_extracted_entities(content_manager, EXAMPLE_ENTITIES, chapter=1, version=1)
@@ -60,19 +61,19 @@ class TestConsolidateExtractionPreExternalized:
             "extracted_relationships_ref": relationships_ref,
         }
 
-        result = consolidate_extraction(state)
+        result = await consolidate_extraction(state)
 
         assert result["extracted_entities_ref"] == entities_ref
         assert result["extracted_relationships_ref"] == relationships_ref
         assert result["current_node"] == "consolidate_extraction"
 
-    def test_entities_file_missing_raises(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_entities_file_missing_returns_fatal_error(self, tmp_path: Path) -> None:
         content_manager = ContentManager(str(tmp_path))
 
         entities_ref = save_extracted_entities(content_manager, EXAMPLE_ENTITIES, chapter=1, version=1)
         relationships_ref = save_extracted_relationships(content_manager, EXAMPLE_RELATIONSHIPS, chapter=1, version=1)
 
-        # Delete the entities file to simulate a missing file
         entities_path = tmp_path / entities_ref["path"]
         entities_path.unlink()
 
@@ -83,16 +84,19 @@ class TestConsolidateExtractionPreExternalized:
             "extracted_relationships_ref": relationships_ref,
         }
 
-        with pytest.raises(FileNotFoundError):
-            consolidate_extraction(state)
+        result = await consolidate_extraction(state)
 
-    def test_relationships_file_missing_raises(self, tmp_path: Path) -> None:
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "consolidate_extraction"
+        assert "not found" in result["last_error"]
+
+    @pytest.mark.asyncio
+    async def test_relationships_file_missing_returns_fatal_error(self, tmp_path: Path) -> None:
         content_manager = ContentManager(str(tmp_path))
 
         entities_ref = save_extracted_entities(content_manager, EXAMPLE_ENTITIES, chapter=1, version=1)
         relationships_ref = save_extracted_relationships(content_manager, EXAMPLE_RELATIONSHIPS, chapter=1, version=1)
 
-        # Delete the relationships file to simulate a missing file
         relationships_path = tmp_path / relationships_ref["path"]
         relationships_path.unlink()
 
@@ -103,14 +107,18 @@ class TestConsolidateExtractionPreExternalized:
             "extracted_relationships_ref": relationships_ref,
         }
 
-        with pytest.raises(FileNotFoundError):
-            consolidate_extraction(state)
+        result = await consolidate_extraction(state)
+
+        assert result["has_fatal_error"] is True
+        assert result["error_node"] == "consolidate_extraction"
+        assert "not found" in result["last_error"]
 
 
 class TestConsolidateExtractionBackwardCompatibility:
     """Backward-compatibility path: in-memory data gets externalized."""
 
-    def test_externalizes_in_memory_data(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_externalizes_in_memory_data(self, tmp_path: Path) -> None:
         state = {
             "project_dir": str(tmp_path),
             "current_chapter": 2,
@@ -120,7 +128,7 @@ class TestConsolidateExtractionBackwardCompatibility:
             "extracted_relationships": EXAMPLE_RELATIONSHIPS,
         }
 
-        result = consolidate_extraction(state)
+        result = await consolidate_extraction(state)
 
         assert result["current_node"] == "consolidate_extraction"
 
@@ -134,12 +142,12 @@ class TestConsolidateExtractionBackwardCompatibility:
         assert new_entities_ref["size_bytes"] > 0
         assert new_relationships_ref["size_bytes"] > 0
 
-        # Verify files exist on disk
         content_manager = ContentManager(str(tmp_path))
         assert content_manager.exists(new_entities_ref) is True
         assert content_manager.exists(new_relationships_ref) is True
 
-    def test_externalizes_empty_data(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_externalizes_empty_data(self, tmp_path: Path) -> None:
         state = {
             "project_dir": str(tmp_path),
             "current_chapter": 1,
@@ -149,7 +157,7 @@ class TestConsolidateExtractionBackwardCompatibility:
             "extracted_relationships": [],
         }
 
-        result = consolidate_extraction(state)
+        result = await consolidate_extraction(state)
 
         assert result["current_node"] == "consolidate_extraction"
         assert result["extracted_entities_ref"] is not None

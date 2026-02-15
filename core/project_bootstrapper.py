@@ -15,7 +15,7 @@ from utils.common import ensure_exact_keys, try_load_json_from_response
 
 logger = structlog.get_logger(__name__)
 
-# ⚠️ NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
+# NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
 GENRE_TEMPLATES: dict[str, dict[str, str]] = {
     "epic_fantasy": {
         "genre": "Epic Fantasy",
@@ -59,7 +59,7 @@ GENRE_TEMPLATES: dict[str, dict[str, str]] = {
     },
 }
 
-# ⚠️ NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
+# NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
 STORY_STRUCTURES: dict[str, dict[str, Any]] = {
     "three_act": {
         "name": "Three-Act Structure",
@@ -98,12 +98,12 @@ class ProjectBootstrapper:
     def __init__(self, language_model_service: RefactoredLLMService) -> None:
         self.language_model_service = language_model_service
 
-    # ⚠️ NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
+    # NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
     @staticmethod
     def get_genre_templates() -> dict[str, dict[str, str]]:
         return GENRE_TEMPLATES
 
-    # ⚠️ NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
+    # NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
     @staticmethod
     def get_story_structures() -> dict[str, dict[str, Any]]:
         return STORY_STRUCTURES
@@ -153,27 +153,19 @@ class ProjectBootstrapper:
             }
         )
 
-    # ⚠️ NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
+    # NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
     async def generate_metadata_from_template(
         self,
         template_name: str,
         user_prompt: str,
     ) -> NarrativeProjectConfig:
         if template_name not in GENRE_TEMPLATES:
-            raise ValueError(
-                f"Unknown genre template '{template_name}'. "
-                f"Available templates: {sorted(GENRE_TEMPLATES.keys())}"
-            )
+            raise ValueError(f"Unknown genre template '{template_name}'. " f"Available templates: {sorted(GENRE_TEMPLATES.keys())}")
         template = GENRE_TEMPLATES[template_name]
-        enriched_prompt = (
-            f"{user_prompt.strip()}\n\n"
-            f"Genre guidance: {template['genre']}\n"
-            f"Thematic direction: {template['theme']}\n"
-            f"Setting inspiration: {template['setting']}"
-        )
+        enriched_prompt = f"{user_prompt.strip()}\n\n" f"Genre guidance: {template['genre']}\n" f"Thematic direction: {template['theme']}\n" f"Setting inspiration: {template['setting']}"
         return await self.generate_metadata(enriched_prompt)
 
-    # ⚠️ NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
+    # NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
     @staticmethod
     def suggest_story_structure(genre: str) -> dict[str, Any]:
         genre_lower = genre.lower()
@@ -187,7 +179,7 @@ class ProjectBootstrapper:
             return STORY_STRUCTURES["five_act"]
         return STORY_STRUCTURES["three_act"]
 
-    # ⚠️ NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
+    # NOT YET WIRED INTO CLI — available for future interactive bootstrap flow
     # Uses prompts/initialization/world_building_questions.j2
     async def generate_world_building_questions(
         self,
@@ -210,9 +202,7 @@ class ProjectBootstrapper:
             temperature=config.TEMPERATURE_INITIAL_SETUP,
         )
 
-        parsed, _candidates, parse_errors = try_load_json_from_response(
-            response_text, expected_root=list
-        )
+        parsed, _candidates, parse_errors = try_load_json_from_response(response_text, expected_root=list)
         if parsed is None:
             raise ValueError(f"World-building response did not contain valid JSON: {parse_errors}")
 

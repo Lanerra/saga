@@ -9,7 +9,7 @@ global outline when present, otherwise a balanced fallback allocation is used.
 from __future__ import annotations
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 import config
 from core.langgraph.content_manager import (
@@ -207,7 +207,7 @@ async def generate_act_outlines(state: NarrativeState) -> NarrativeState:
                 total_acts=act_count,
                 chapters_in_act=chapters_in_act,
             )
-        except ValueError as error:
+        except (ValueError, ValidationError) as error:
             logger.warning(
                 "generate_act_outlines: act outline JSON/schema contract violated",
                 act_number=act_num,
@@ -374,7 +374,7 @@ async def _generate_single_act_outline(
 
         return act_outline
 
-    except ValueError:
+    except (ValueError, ValidationError):
         raise
     except Exception as e:
         logger.error(

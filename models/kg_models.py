@@ -515,9 +515,6 @@ class WorldItem(BaseModel):
         }
 
 
-from dataclasses import dataclass, field
-
-
 class Scene(BaseModel):
     """Represent a narrative scene within a chapter.
 
@@ -650,8 +647,7 @@ class Location(BaseModel):
         }
 
 
-@dataclass
-class RelationshipUsage:
+class RelationshipUsage(BaseModel):
     """Track narrative usage statistics for a relationship type.
 
     This is used by relationship normalization to keep vocabulary consistent while
@@ -663,19 +659,13 @@ class RelationshipUsage:
         - `embedding` may be populated to support similarity comparisons; it is optional.
     """
 
-    canonical_type: str  # The normalized form (e.g., "WORKS_WITH")
-    first_used_chapter: int  # When first introduced
-    usage_count: int  # How many times used across narrative
-    example_descriptions: list[str] = field(default_factory=list)  # Sample usage contexts
-    embedding: list[float] | None = None  # Cached embedding for fast comparison
-    synonyms: list[str] = field(default_factory=list)  # Variant forms normalized to this
-    last_used_chapter: int = 0  # Most recent usage
-
-    class Config:
-        """Configure dataclass validation behavior."""
-
-        frozen = False
-        validate_assignment = True
+    canonical_type: str
+    first_used_chapter: int
+    usage_count: int
+    example_descriptions: list[str] = Field(default_factory=list)
+    embedding: list[float] | None = None
+    synonyms: list[str] = Field(default_factory=list)
+    last_used_chapter: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert usage tracking to a JSON-serializable dictionary.
@@ -683,35 +673,19 @@ class RelationshipUsage:
         Returns:
             A dictionary with the tracked counters and metadata.
         """
-        return {
-            "canonical_type": self.canonical_type,
-            "first_used_chapter": self.first_used_chapter,
-            "usage_count": self.usage_count,
-            "example_descriptions": self.example_descriptions,
-            "embedding": self.embedding,
-            "synonyms": self.synonyms,
-            "last_used_chapter": self.last_used_chapter,
-        }
+        return self.model_dump()
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> RelationshipUsage:
         """Create usage tracking from a dictionary.
 
         Args:
-            data: Serialized representation produced by [`to_dict()`](models/kg_models.py:367).
+            data: Serialized representation.
 
         Returns:
             A relationship usage instance.
         """
-        return cls(
-            canonical_type=data["canonical_type"],
-            first_used_chapter=data["first_used_chapter"],
-            usage_count=data["usage_count"],
-            example_descriptions=data.get("example_descriptions", []),
-            embedding=data.get("embedding"),
-            synonyms=data.get("synonyms", []),
-            last_used_chapter=data.get("last_used_chapter", 0),
-        )
+        return cls.model_validate(data)
 
 
 class MajorPlotPoint(BaseModel):

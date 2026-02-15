@@ -61,14 +61,16 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
     global_outline = get_global_outline(state, content_manager)
 
     outline_relationships_ref = state.get("outline_relationships_ref")
-    outline_relationships = []
+    outline_relationships: list[Any] = []
     if outline_relationships_ref:
         logger.info(
             "commit_initialization_to_graph: loading outline relationships",
             ref=outline_relationships_ref,
         )
         try:
-            outline_relationships = content_manager.load_json(outline_relationships_ref)
+            loaded = content_manager.load_json(outline_relationships_ref)
+            assert isinstance(loaded, list), f"outline_relationships must be a JSON array, got {type(loaded).__name__}"
+            outline_relationships = loaded
             logger.info(
                 "commit_initialization_to_graph: loaded outline relationships",
                 count=len(outline_relationships),
@@ -150,7 +152,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
         # Step 4: Update active_characters with committed profiles
         # This makes characters immediately available to the generation loop
         updated_state: NarrativeState = {
-            "active_characters": character_profiles[:3],  # Top 5 for initial context
+            "active_characters": character_profiles[:3],
             "world_items": world_items,
             "current_node": "commit_initialization",
             "last_error": None,

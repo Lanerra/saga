@@ -25,16 +25,6 @@ from .cypher_builders.native_builders import NativeCypherBuilder
 CHAR_NAME_TO_CANONICAL: dict[str, str] = {}
 
 
-def clear_character_name_map() -> None:
-    """Clear the in-process character name canonicalization map.
-
-    Notes:
-        This only clears in-memory state used by [`resolve_character_name()`](data_access/character_queries.py:43).
-        It does not modify Neo4j.
-    """
-    CHAR_NAME_TO_CANONICAL.clear()
-
-
 def rebuild_character_name_map(characters: list["CharacterProfile"]) -> None:
     """Rebuild the character name canonicalization map from a complete list of profiles.
 
@@ -607,37 +597,29 @@ async def get_character_profiles() -> list[CharacterProfile]:
     """Return all character profiles.
 
     Returns:
-        A list of `CharacterProfile` instances. Returns an empty list on query failures.
+        A list of `CharacterProfile` instances.
 
     Notes:
         In-memory name resolution:
             This call rebuilds the canonical display-name mapping used by
             [`resolve_character_name()`](data_access/character_queries.py:43).
-
-        Error behavior:
-            This function logs exceptions and returns an empty list rather than raising.
     """
-    try:
-        cypher_builder = NativeCypherBuilder()
-        query, params = cypher_builder.character_fetch_cypher()
+    cypher_builder = NativeCypherBuilder()
+    query, params = cypher_builder.character_fetch_cypher()
 
-        results = await neo4j_manager.execute_read_query(query, params)
-        characters = []
+    results = await neo4j_manager.execute_read_query(query, params)
+    characters = []
 
-        for record in results:
-            if record and record.get("c"):
-                char = CharacterProfile.from_dict_record(record)
-                characters.append(char)
+    for record in results:
+        if record and record.get("c"):
+            char = CharacterProfile.from_dict_record(record)
+            characters.append(char)
 
-        # Populate canonical name map for best-effort resolve helpers.
-        rebuild_character_name_map(characters)
+    # Populate canonical name map for best-effort resolve helpers.
+    rebuild_character_name_map(characters)
 
-        logger.info("Fetched %d characters using native models", len(characters))
-        return characters
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(f"Error fetching character profiles: {exc}", exc_info=True)
-        return []
+    logger.info("Fetched %d characters using native models", len(characters))
+    return characters
 
 
 async def get_characters_for_chapter_context_native(chapter_number: int, limit: int = 5) -> list[CharacterProfile]:
@@ -649,52 +631,38 @@ async def get_characters_for_chapter_context_native(chapter_number: int, limit: 
 
     Returns:
         A list of `CharacterProfile` instances, ordered by most recent appearance.
-
-    Notes:
-        Error behavior:
-            This function logs exceptions and returns an empty list rather than raising.
     """
-    try:
-        query = """
-        MATCH (c:Character)-[:APPEARS_IN]->(ch:Chapter)
-        WHERE ch.number < $chapter_number
-        WITH c, max(ch.number) as last_appearance
-        ORDER BY last_appearance DESC
-        LIMIT $limit
+    query = """
+    MATCH (c:Character)-[:APPEARS_IN]->(ch:Chapter)
+    WHERE ch.number < $chapter_number
+    WITH c, max(ch.number) as last_appearance
+    ORDER BY last_appearance DESC
+    LIMIT $limit
 
-        OPTIONAL MATCH (c)-[r]->(other)
-        RETURN c,
-               collect({
-                   target_name: other.name,
-                   type: CASE
-                       WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r))
-                       ELSE type(r)
-                   END,
-                   description: r.description
-               }) as relationships
-        """
+    OPTIONAL MATCH (c)-[r]->(other)
+    RETURN c,
+           collect({
+               target_name: other.name,
+               type: CASE
+                   WHEN type(r) = 'RELATIONSHIP' THEN coalesce(r.type, type(r))
+                   ELSE type(r)
+               END,
+               description: r.description
+           }) as relationships
+    """
 
-        results = await neo4j_manager.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
+    results = await neo4j_manager.execute_read_query(query, {"chapter_number": chapter_number, "limit": limit})
 
-        characters = []
-        for record in results:
-            if record and record.get("c"):
-                char = CharacterProfile.from_dict_record(record)
-                characters.append(char)
+    characters = []
+    for record in results:
+        if record and record.get("c"):
+            char = CharacterProfile.from_dict_record(record)
+            characters.append(char)
 
-        logger.debug(
-            "Fetched %d characters for chapter %d context using native models",
-            len(characters),
-            chapter_number,
-        )
+    logger.debug(
+        "Fetched %d characters for chapter %d context using native models",
+        len(characters),
+        chapter_number,
+    )
 
-        return characters
-
-    except (Neo4jError, KeyError, ValueError, TypeError) as exc:
-        logger.error(
-            "Error fetching characters for chapter %d context: %s",
-            chapter_number,
-            exc,
-            exc_info=True,
-        )
-        return []
+    return characters

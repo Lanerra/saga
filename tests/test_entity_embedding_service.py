@@ -124,7 +124,7 @@ class TestBuildEntityEmbeddingUpdateStatements:
         monkeypatch.setattr("config.ENTITY_EMBEDDING_MODEL_PROPERTY", "entity_embedding_model")
         monkeypatch.setattr("config.EMBEDDING_MODEL", "fake-model")
 
-        fake_character = SimpleNamespace(name="Alice", description="A brave warrior")
+        fake_character = SimpleNamespace(name="Alice", personality_description="A brave warrior")
         character_embedding_text = compute_entity_embedding_text(name="Alice", category="", description="A brave warrior")
         character_hash = compute_entity_embedding_text_hash(character_embedding_text)
 

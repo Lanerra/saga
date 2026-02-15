@@ -19,7 +19,7 @@ from core.langgraph.state import NarrativeState
 logger = structlog.get_logger(__name__)
 
 
-def consolidate_extraction(state: NarrativeState) -> NarrativeState:
+async def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     """Externalize merged extraction results and mark extraction as complete.
 
     LangGraph reducers merge parallel extraction outputs into the in-memory state.
@@ -46,7 +46,6 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
     relationships_ref = state.get("extracted_relationships_ref")
 
     if entities_ref and relationships_ref:
-        # Data is already externalized, just verify it exists
         logger.info(
             "consolidate_extraction: using pre-externalized content",
             chapter=chapter_number,
@@ -55,10 +54,24 @@ def consolidate_extraction(state: NarrativeState) -> NarrativeState:
         )
 
         if not content_manager.exists(entities_ref):
-            raise FileNotFoundError(f"Externalized entities file not found: {entities_ref['path']}")
+            error_message = f"Externalized entities file not found: {entities_ref['path']}"
+            logger.error("consolidate_extraction: missing entities file", error=error_message)
+            return {
+                "last_error": error_message,
+                "has_fatal_error": True,
+                "error_node": "consolidate_extraction",
+                "current_node": "consolidate_extraction",
+            }
 
         if not content_manager.exists(relationships_ref):
-            raise FileNotFoundError(f"Externalized relationships file not found: {relationships_ref['path']}")
+            error_message = f"Externalized relationships file not found: {relationships_ref['path']}"
+            logger.error("consolidate_extraction: missing relationships file", error=error_message)
+            return {
+                "last_error": error_message,
+                "has_fatal_error": True,
+                "error_node": "consolidate_extraction",
+                "current_node": "consolidate_extraction",
+            }
 
         logger.info(
             "consolidate_extraction: content externalized",

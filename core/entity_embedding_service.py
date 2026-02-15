@@ -156,7 +156,7 @@ async def build_entity_embedding_update_statements(
 
     for char in characters:
         name = char.name
-        description = char.description or ""
+        description = char.personality_description or ""
         embedding_text = compute_entity_embedding_text(name=name, category="", description=description)
         embedding_hash = compute_entity_embedding_text_hash(embedding_text)
         existing_hash = character_existing_hash.get(name)

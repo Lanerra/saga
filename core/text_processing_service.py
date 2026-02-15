@@ -223,9 +223,11 @@ class ResponseCleaningService:
             "no_think",
         ]
 
-        self._compiled_patterns = self._compile_cleaning_patterns()
+        self._patterns: dict[str, re.Pattern[str]] = {}
+        self._phrase_patterns: list[re.Pattern[str]] = []
+        self._compile_cleaning_patterns()
 
-    def _compile_cleaning_patterns(self) -> dict[str, re.Pattern | list[re.Pattern]]:
+    def _compile_cleaning_patterns(self) -> None:
         """Compile regex patterns used for response cleaning.
 
         Optimization: Uses alternation to combine multiple tag patterns into single regexes,
@@ -233,7 +235,7 @@ class ResponseCleaningService:
         """
         tag_alternation = "|".join(re.escape(tag) for tag in self._think_tags)
 
-        patterns: dict[str, re.Pattern | list[re.Pattern]] = {
+        self._patterns = {
             "think_blocks": re.compile(
                 rf"<\s*(?:{tag_alternation})\s*>.*?<\s*/\s*(?:{tag_alternation})\s*>",
                 flags=re.DOTALL | re.IGNORECASE,
@@ -264,7 +266,7 @@ class ResponseCleaningService:
             ),
         }
 
-        phrase_patterns = [
+        phrase_pattern_strings = [
             r"^\s*(Okay,\s*)?(Sure,\s*)?(Here's|Here is)\s+(the|your)\s+[\w\s]+?:\s*",
             r"^\s*I've written the\s+[\w\s]+?\s+as requested:\s*",
             r"^\s*Certainly! Here is the text:\s*",
@@ -278,9 +280,7 @@ class ResponseCleaningService:
             r"\s*\[END SYSTEM OUTPUT\]\s*$",
         ]
 
-        patterns["common_phrases"] = [re.compile(pattern_str, flags=re.IGNORECASE | re.MULTILINE) for pattern_str in phrase_patterns]
-
-        return patterns
+        self._phrase_patterns = [re.compile(pattern_string, flags=re.IGNORECASE | re.MULTILINE) for pattern_string in phrase_pattern_strings]
 
     def clean_response(self, text: str) -> str:
         """Clean common artifacts from an LLM text response.
@@ -309,34 +309,31 @@ class ResponseCleaningService:
         text_before_think_removal = cleaned_text
 
         last_think_closing_tag_end_index = -1
-        think_boundary_pattern = self._compiled_patterns["think_boundary"]
-        for match in think_boundary_pattern.finditer(cleaned_text):
+        for match in self._patterns["think_boundary"].finditer(cleaned_text):
             last_think_closing_tag_end_index = match.end()
 
         if last_think_closing_tag_end_index != -1:
             cleaned_text = cleaned_text[last_think_closing_tag_end_index:]
 
-        cleaned_text = self._compiled_patterns["think_blocks"].sub("", cleaned_text)
-        cleaned_text = self._compiled_patterns["think_self_closing"].sub("", cleaned_text)
-        cleaned_text = self._compiled_patterns["think_opening"].sub("", cleaned_text)
-        cleaned_text = self._compiled_patterns["think_closing"].sub("", cleaned_text)
+        cleaned_text = self._patterns["think_blocks"].sub("", cleaned_text)
+        cleaned_text = self._patterns["think_self_closing"].sub("", cleaned_text)
+        cleaned_text = self._patterns["think_opening"].sub("", cleaned_text)
+        cleaned_text = self._patterns["think_closing"].sub("", cleaned_text)
 
         if len(cleaned_text) < len(text_before_think_removal):
             self._stats["think_tags_removed"] += 1
             logger.debug(f"clean_response: Removed think tag content. " f"Length before: {len(text_before_think_removal)}, after: {len(cleaned_text)}.")
 
         # Remove code blocks
-        code_blocks_pattern = self._compiled_patterns["code_blocks"]
-        if code_blocks_pattern.search(cleaned_text):
+        if self._patterns["code_blocks"].search(cleaned_text):
             self._stats["code_blocks_cleaned"] += 1
-        cleaned_text = code_blocks_pattern.sub(r"\1", cleaned_text)
+        cleaned_text = self._patterns["code_blocks"].sub(r"\1", cleaned_text)
 
         # Remove chapter headers
-        chapter_headers_pattern = self._compiled_patterns["chapter_headers"]
-        cleaned_text = chapter_headers_pattern.sub(r"\1", cleaned_text).strip()
+        cleaned_text = self._patterns["chapter_headers"].sub(r"\1", cleaned_text).strip()
 
         # Remove common phrases
-        for pattern in self._compiled_patterns["common_phrases"]:
+        for pattern in self._phrase_patterns:
             original_text = cleaned_text
             if pattern.pattern.startswith("^"):
                 # Apply repeatedly for patterns that should be removed from start

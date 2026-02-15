@@ -288,16 +288,3 @@ def validate_node_labels(labels: list[str]) -> list[str]:
             errors.append(f"Node label '{label}' should only contain alphanumeric characters")
 
     return errors
-
-
-def validate_world_item(item: WorldItem) -> list[str]:
-    """Validate a `WorldItem` instance.
-
-    Args:
-        item: World item to validate.
-
-    Returns:
-        Validation error strings. An empty list means the item is valid.
-    """
-    # Use centralized validation logic to eliminate code duplication
-    return validate_kg_object(item)

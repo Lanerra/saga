@@ -614,7 +614,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
 
     logger.info(
         "create_full_workflow_graph: graph built successfully",
-        total_nodes=26,
+        total_nodes=27,
         entry_point="route",
     )
 

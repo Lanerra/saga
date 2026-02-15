@@ -1,5 +1,4 @@
 # tests/test_yaml_parser.py
-import os
 
 import pytest
 import yaml

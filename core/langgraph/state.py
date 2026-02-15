@@ -168,9 +168,6 @@ class NarrativeState(TypedDict, total=False):
     # Used by finalize/persistence to store the latest summary string without re-loading.
     current_summary: str | None
 
-    # Phase 2 deduplication metadata (produced during commit).
-    phase2_deduplication_merges: dict[str, int]
-
     # Quality assurance (periodic KG checks).
     last_qa_chapter: int
     qa_results: dict[str, Any]
@@ -276,10 +273,7 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     provisional_count: int  # Number of provisional nodes in the graph
     last_healing_chapter: int  # Last chapter where healing was run
-    merge_candidates: list[dict[str, Any]]  # Potential merge pairs with scores
-    pending_merges: list[dict[str, Any]]  # Merges awaiting user approval
-    auto_approved_merges: list[dict[str, Any]]  # High-confidence auto-approved merges
-    healing_history: list[dict[str, Any]]  # Log of healing actions taken
+    healing_history: list[dict[str, Any]]
     nodes_graduated: int  # Count of nodes graduated from provisional status
     nodes_merged: int  # Count of nodes merged in this session
     nodes_enriched: int  # Count of nodes enriched in this session
@@ -382,7 +376,6 @@ def create_initial_state(
         "contradictions": [],
         "needs_revision": False,
         "current_summary": None,
-        "phase2_deduplication_merges": {},
         "last_qa_chapter": 0,
         "qa_results": {},
         "qa_history": [],
@@ -436,9 +429,6 @@ def create_initial_state(
         # Graph healing
         "provisional_count": 0,
         "last_healing_chapter": 0,
-        "merge_candidates": [],
-        "pending_merges": [],
-        "auto_approved_merges": [],
         "healing_history": [],
         "nodes_graduated": 0,
         "nodes_merged": 0,

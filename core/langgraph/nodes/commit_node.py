@@ -18,7 +18,7 @@ Notes:
 from __future__ import annotations
 
 import hashlib
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import structlog
@@ -129,14 +129,14 @@ async def _validate_entities_before_commit(
             for entities in extracted_entities.values():
                 for entity in entities:
                     if isinstance(entity, dict):
-                        name = entity.get("name")
-                        entity_type = entity.get("type")
+                        entity_name = entity.get("name")
+                        resolved_type = entity.get("type")
                     else:
-                        name = getattr(entity, "name", None)
-                        entity_type = getattr(entity, "type", None)
+                        entity_name = getattr(entity, "name", None)
+                        resolved_type = getattr(entity, "type", None)
 
-                    if isinstance(name, str) and name and isinstance(entity_type, str) and entity_type:
-                        entity_type_map[name] = entity_type
+                    if isinstance(entity_name, str) and entity_name and isinstance(resolved_type, str) and resolved_type:
+                        entity_type_map[entity_name] = resolved_type
 
             # Validate each relationship
             for _, rel in enumerate(extracted_relationships):
@@ -265,7 +265,6 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     Returns:
         Updated state with:
         - current_node: "commit_to_graph"
-        - phase2_deduplication_merges: Relationship-aware merge statistics
 
         On errors, returns a state with `has_fatal_error` set and `last_error`
         populated.
@@ -984,8 +983,12 @@ async def _build_relationship_statements(
 
         if not entity_type or not str(entity_type).strip():
             inferred_type = None
-            if relationship_type and role:
-                inferred_type = infer_entity_type_from_relationship(name, relationship_type, role)
+            if relationship_type and role in ("source", "target"):
+                inferred_type = infer_entity_type_from_relationship(
+                    name,
+                    relationship_type,
+                    cast(Literal["source", "target"], role),
+                )
 
             if inferred_type:
                 neo4j_type = inferred_type

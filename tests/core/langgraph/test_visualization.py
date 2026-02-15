@@ -15,6 +15,7 @@ from core.langgraph.visualization import print_workflow_summary, visualize_workf
 class FakeEdge:
     source: str
     target: str
+    conditional: bool = False
 
 
 @dataclass

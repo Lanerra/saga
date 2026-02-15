@@ -375,7 +375,7 @@ class LangGraphOrchestrator:
                 theme=config.CONFIGURED_THEME,
                 setting=config.CONFIGURED_SETTING_DESCRIPTION,
                 target_word_count=config.TARGET_WORD_COUNT,
-                total_chapters=config.TOTAL_CHAPTERS or 12,
+                total_chapters=config.TOTAL_CHAPTERS,
                 project_dir=str(self.project_dir),
                 protagonist_name=config.DEFAULT_PROTAGONIST_NAME,
                 narrative_style=config.DEFAULT_NARRATIVE_STYLE,
@@ -782,14 +782,6 @@ class LangGraphOrchestrator:
                 "Resume conflict: checkpoint current_chapter must be a positive integer",
                 details={"current_chapter": current_chapter},
             )
-
-        # Conflict: Neo4j indicates progress past checkpoint (chapters committed beyond checkpoint).
-        #
-        # Contract: if Neo4j chapter count is >= checkpoint current_chapter, then Neo4j contains
-        # a committed chapter at or beyond what the checkpoint believes is next/in-flight.
-        # That is treated as a hard conflict and must fail fast.
-        # Note: this method is sync; the DB call is async and is performed by the caller.
-        return None
 
     async def _validate_resume_state_or_raise_async(
         self,

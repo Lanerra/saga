@@ -160,8 +160,7 @@ def _export_ascii(graph: Any, output_path: Path, title: str | None) -> None:
         for edge in graph_obj.edges:
             source = edge.source
             target = edge.target
-            # Check if it's a conditional edge
-            if hasattr(edge, "conditional"):
+            if edge.conditional:
                 lines.append(f"  {source} --[conditional]--> {target}")
             else:
                 lines.append(f"  {source} --> {target}")

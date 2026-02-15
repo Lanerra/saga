@@ -55,8 +55,14 @@ async def draft_scene(state: NarrativeState) -> NarrativeState:
     chapter_plan = get_chapter_plan(state, content_manager)
 
     if not chapter_plan or scene_index >= len(chapter_plan):
-        logger.error("draft_scene: invalid scene index", index=scene_index)
-        return {"current_node": "draft_scene"}
+        error_message = f"Invalid scene index {scene_index} for chapter plan with {len(chapter_plan) if chapter_plan else 0} scenes"
+        logger.error("draft_scene: invalid scene index", index=scene_index, error=error_message)
+        return {
+            "last_error": error_message,
+            "has_fatal_error": True,
+            "error_node": "draft_scene",
+            "current_node": "draft_scene",
+        }
 
     current_scene = dict(chapter_plan[scene_index])  # Make a copy to avoid mutation
 

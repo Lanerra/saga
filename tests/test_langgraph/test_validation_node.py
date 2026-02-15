@@ -231,11 +231,24 @@ class TestIsPlotStagnant:
 
         assert _is_plot_stagnant(state) is True
 
-    def test_sufficient_word_count_is_not_stagnant(self, sample_initial_state):
-        """Sufficient word count with no entities is not stagnant."""
+    def test_sufficient_word_count_with_entities_is_not_stagnant(self, sample_initial_state):
+        """Sufficient word count with entities present is not stagnant."""
+        state = sample_initial_state
+        state["draft_word_count"] = 2000
+        state["extracted_entities"] = {
+            "characters": [{"name": "Hero"}],
+        }
+        state["extracted_relationships"] = [
+            {"source_name": "Hero", "target_name": "Villain", "relationship_type": "FIGHTS"},
+        ]
+
+        assert _is_plot_stagnant(state) is False
+
+    def test_sufficient_word_count_with_no_entities_is_stagnant(self, sample_initial_state):
+        """Sufficient word count but zero entities/relationships is stagnant."""
         state = sample_initial_state
         state["draft_word_count"] = 2000
         state["extracted_entities"] = {}
         state["extracted_relationships"] = []
 
-        assert _is_plot_stagnant(state) is False
+        assert _is_plot_stagnant(state) is True

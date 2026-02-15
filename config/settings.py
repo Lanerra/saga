@@ -124,13 +124,6 @@ class RelationshipNormalizationSettings(BaseSettings):
         description="Minimum similarity for ambiguous cases requiring LLM review",
     )
 
-    # Vocabulary management
-    MIN_USAGE_FOR_AUTHORITY: int = Field(
-        default=5,
-        ge=1,
-        description="Relationship must be used this many times before it's authoritative",
-    )
-
     PRUNE_SINGLE_USE_AFTER_CHAPTERS: int = Field(
         default=5,
         ge=1,
@@ -244,11 +237,8 @@ class SagaSettings(BaseSettings):
     TEMPERATURE_REVISION: float = 0.65
     TEMPERATURE_PLANNING: float = 0.6
     TEMPERATURE_EVALUATION: float = 0.3
-    TEMPERATURE_CONSISTENCY_CHECK: float = 0.2
     TEMPERATURE_KG_EXTRACTION: float = 0.1
     TEMPERATURE_SUMMARY: float = 0.3
-    TEMPERATURE_PATCH: float = 0.7
-
     # Global Temperature Override
     TEMPERATURE_OVERRIDE: float | None = None
 
@@ -307,6 +297,8 @@ class SagaSettings(BaseSettings):
     REVISION_EVALUATION_THRESHOLD: float = 0.85
     MIN_QUALITY_THRESHOLD: float = 0.7
     PLOT_STAGNATION_MIN_WORD_COUNT: int = 1500
+    PLOT_STAGNATION_MIN_ENTITIES: int = 1
+    PLOT_STAGNATION_MIN_RELATIONSHIPS: int = 1
     TARGET_WORD_COUNT: int = 80000
     MAX_REVISION_CYCLES_PER_CHAPTER: int = 2
     MAX_SUMMARY_TOKENS: int = 16384
@@ -317,7 +309,6 @@ class SagaSettings(BaseSettings):
     ENABLE_QA_CHECKS: bool = False
     QA_CHECK_FREQUENCY: int = 3
     QA_CHECK_CONTRADICTORY_TRAITS: bool = True
-    QA_CHECK_POST_MORTEM_ACTIVITY: bool = True
     QA_DEDUPLICATE_RELATIONSHIPS: bool = True
     QA_CONSOLIDATE_RELATIONSHIPS: bool = True
 
@@ -361,7 +352,6 @@ class SagaSettings(BaseSettings):
     # Chapter embedding extraction settings
     ENABLE_CHAPTER_EMBEDDING_EXTRACTION: bool = True  # Extract chapter embeddings from narrative
 
-
     # Novel Configuration (Defaults / Placeholders)
     CONFIGURED_GENRE: str = "grimdark science fiction"
     CONFIGURED_THEME: str = "the hubris of humanity"
@@ -382,11 +372,10 @@ class SagaSettings(BaseSettings):
     BOOTSTRAP_MIN_TRAITS_ANTAGONIST: int = 5
     BOOTSTRAP_MIN_TRAITS_SUPPORTING: int = 4
 
-    # ⚠️ DEPRECATED: Relationship normalization is disabled per Phase 4 requirements.
     # Relationships are canonical from Stage 1 and should not be normalized.
     relationship_normalization: RelationshipNormalizationSettings = Field(
         default_factory=lambda: RelationshipNormalizationSettings(
-            ENABLE_RELATIONSHIP_NORMALIZATION=False,
+            ENABLE_RELATIONSHIP_NORMALIZATION=True,
             STRICT_CANONICAL_MODE=True,
             STATIC_OVERRIDES_ENABLED=False,
         )
@@ -421,10 +410,8 @@ class Temperatures:
     REVISION: float = settings.TEMPERATURE_REVISION
     PLANNING: float = settings.TEMPERATURE_PLANNING
     EVALUATION: float = settings.TEMPERATURE_EVALUATION
-    CONSISTENCY_CHECK: float = settings.TEMPERATURE_CONSISTENCY_CHECK
     KG_EXTRACTION: float = settings.TEMPERATURE_KG_EXTRACTION
     SUMMARY: float = settings.TEMPERATURE_SUMMARY
-    PATCH: float = settings.TEMPERATURE_PATCH
     DEFAULT: float = 0.7
     OVERRIDE: float | None = settings.TEMPERATURE_OVERRIDE
 

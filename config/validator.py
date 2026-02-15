@@ -125,10 +125,8 @@ def validate_all() -> dict:
         "TEMPERATURE_REVISION",
         "TEMPERATURE_PLANNING",
         "TEMPERATURE_EVALUATION",
-        "TEMPERATURE_CONSISTENCY_CHECK",
         "TEMPERATURE_KG_EXTRACTION",
         "TEMPERATURE_SUMMARY",
-        "TEMPERATURE_PATCH",
     ]
     for name in temp_fields:
         value = getattr(current_settings, name)

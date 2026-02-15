@@ -257,10 +257,12 @@ async def test_extract_character_names_with_characters():
     """Character name extraction returns matched characters from LLM response."""
     parser = ActOutlineParser()
 
-    fake_llm_response = json.dumps([
-        {"name": "Hero", "role": "protagonist"},
-        {"name": "Mentor", "role": "guide"},
-    ])
+    fake_llm_response = json.dumps(
+        [
+            {"name": "Hero", "role": "protagonist"},
+            {"name": "Mentor", "role": "guide"},
+        ]
+    )
 
     with patch(
         "core.parsers.act_outline_parser.llm_service.async_call_llm",

@@ -5,6 +5,7 @@ This module provides centralized functions for clearing different categories of
 state fields, ensuring consistency across the workflow and avoiding duplication.
 """
 
+
 def clear_generation_artifacts() -> dict:
     """Clear all generation artifacts (drafts, embeddings, scenes).
 

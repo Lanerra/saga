@@ -199,12 +199,45 @@ async def extract_from_scene(
     if config.settings.ENABLE_ENTITY_VALIDATION:
         scene_text = _get_text_processing_service().clean_text_with_spacy(scene_text, aggressive=False)
 
-    # Stage 5 does not extract structural entities (Characters, Events, Locations, Items)
-    # from narrative text. These are canonical from earlier stages.
-    characters: list[Any] = []
-    locations: list[Any] = []
-    events: list[Any] = []
-    relationships: list[Any] = []
+    characters = await _extract_characters_from_scene(
+        scene_text=scene_text,
+        scene_index=scene_index,
+        chapter_number=chapter_number,
+        novel_title=novel_title,
+        novel_genre=novel_genre,
+        protagonist_name=protagonist_name,
+        model_name=model_name,
+    )
+
+    locations = await _extract_locations_from_scene(
+        scene_text=scene_text,
+        scene_index=scene_index,
+        chapter_number=chapter_number,
+        novel_title=novel_title,
+        novel_genre=novel_genre,
+        protagonist_name=protagonist_name,
+        model_name=model_name,
+    )
+
+    events = await _extract_events_from_scene(
+        scene_text=scene_text,
+        scene_index=scene_index,
+        chapter_number=chapter_number,
+        novel_title=novel_title,
+        novel_genre=novel_genre,
+        protagonist_name=protagonist_name,
+        model_name=model_name,
+    )
+
+    relationships = await _extract_relationships_from_scene(
+        scene_text=scene_text,
+        scene_index=scene_index,
+        chapter_number=chapter_number,
+        novel_title=novel_title,
+        novel_genre=novel_genre,
+        protagonist_name=protagonist_name,
+        model_name=model_name,
+    )
 
     world_items = locations + events
 

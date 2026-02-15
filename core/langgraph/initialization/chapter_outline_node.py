@@ -90,10 +90,10 @@ async def generate_chapter_outline(state: NarrativeState) -> NarrativeState:
 
             if enriched_outline:
                 updated_outlines = {**existing_outlines, chapter_number: enriched_outline}
-                outlines_for_storage: dict[str, Any] = {str(chapter): outline for chapter, outline in updated_outlines.items()}
+                enriched_outlines_for_storage: dict[str, Any] = {str(chapter): outline for chapter, outline in updated_outlines.items()}
 
                 chapter_outlines_ref = content_manager.save_json(
-                    outlines_for_storage,
+                    enriched_outlines_for_storage,
                     "chapter_outlines",
                     "all",
                     version=1,

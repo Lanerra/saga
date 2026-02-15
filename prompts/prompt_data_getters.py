@@ -937,7 +937,7 @@ async def _gather_character_facts(
         relationships_result = character_results[i * 3 + 2]
 
         # Process status from character info
-        if not isinstance(char_info_result, Exception) and char_info_result and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
+        if isinstance(char_info_result, dict) and facts_for_this_char < max_facts_per_char and len(facts_list) < max_total_facts:
             status_value = char_info_result.get("current_status")
             if status_value:
                 fact_text = f"- {char_name}'s status is: {status_value}."

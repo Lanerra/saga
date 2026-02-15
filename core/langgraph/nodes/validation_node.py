@@ -77,7 +77,6 @@ def _coerce_traits_list(raw: Any) -> list[str]:
     return out
 
 
-
 def _get_character_trait_values_for_validation(char: Any) -> set[str]:
     """Extract normalized trait values for a character.
 
@@ -532,8 +531,19 @@ def _is_plot_stagnant(
         else:
             relationships = relationships_raw
 
-    # Narrative entity extraction is permanently disabled (entities are canonical
-    # from earlier stages), so the element-count heuristic has no signal.
+    entity_count = len(entities.get("characters", [])) + len(entities.get("world_items", [])) + len(entities.get("events", []))
+    relationship_count = len(relationships)
+
+    if entity_count < settings.PLOT_STAGNATION_MIN_ENTITIES and relationship_count < settings.PLOT_STAGNATION_MIN_RELATIONSHIPS:
+        logger.debug(
+            "_is_plot_stagnant: insufficient entities and relationships",
+            entity_count=entity_count,
+            relationship_count=relationship_count,
+            minimum_entities=settings.PLOT_STAGNATION_MIN_ENTITIES,
+            minimum_relationships=settings.PLOT_STAGNATION_MIN_RELATIONSHIPS,
+        )
+        return True
+
     return False
 
 

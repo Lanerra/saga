@@ -143,16 +143,7 @@ def main() -> None:
             async def _close_driver_main() -> None:
                 await neo4j_manager.close()
 
-            try:
-                loop = asyncio.get_running_loop()
-                if not loop.is_closed():
-                    loop.create_task(_close_driver_main())
-            except RuntimeError:
-                asyncio.run(_close_driver_main())
-            except Exception as close_error:
-                logger.warning(
-                    f"Could not explicitly close driver from main: {close_error}",
-                )
+            asyncio.run(_close_driver_main())
 
 
 if __name__ == "__main__":

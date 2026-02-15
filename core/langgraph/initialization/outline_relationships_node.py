@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from config import settings as config
+import config
 from core.langgraph.content_manager import (
     ContentManager,
     get_act_outlines,

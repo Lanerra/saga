@@ -316,50 +316,19 @@ def _parse_global_outline(response: str, state: NarrativeState) -> dict[str, Any
 
 
 def _fallback_parse_outline(response: str, state: NarrativeState) -> dict[str, Any]:
-    """
-    Fallback parser for when JSON parsing fails.
+    """Fallback parser for when JSON/schema parsing fails.
 
-    Uses pattern matching to extract what structure we can from free-form text.
+    Raises ValueError so callers surface the failure rather than silently
+    degrading into an empty outline that starves downstream nodes.
 
     Args:
-        response: LLM-generated outline text
-        state: Current narrative state
+        response: LLM-generated outline text.
+        state: Current narrative state.
 
-    Returns:
-        Dictionary containing basic outline data
+    Raises:
+        ValueError: Always — callers should catch and treat as a generation failure.
     """
-    # Try to detect act structure from the response
-    act_count = 3  # Default three-act structure
-    if "act 1" in response.lower() or "act i" in response.lower():
-        if "act 5" in response.lower() or "act v" in response.lower():
-            act_count = 5
-        elif "act 4" in response.lower() or "act iv" in response.lower():
-            act_count = 4
-
-    global_outline = {
-        "raw_text": response,
-        "act_count": act_count,
-        "acts": [],  # Empty, will need manual parsing
-        "inciting_incident": "",
-        "midpoint": "",
-        "climax": "",
-        "resolution": "",
-        "character_arcs": [],
-        "thematic_progression": "",
-        "pacing_notes": "",
-        "total_chapters": state.get("total_chapters", 20),
-        "structure_type": f"{act_count}-act",
-        "generated_at": "initialization",
-        "validation_errors": ["Fallback parsing used - JSON parsing failed"],
-    }
-
-    logger.debug(
-        "_fallback_parse_outline: used fallback parsing",
-        act_count=act_count,
-        length=len(response),
-    )
-
-    return global_outline
+    raise ValueError(f"Global outline JSON/schema parsing failed. " f"Response length: {len(response)} chars. " f"Cannot produce a usable outline from free-form text.")
 
 
 __all__ = ["generate_global_outline"]

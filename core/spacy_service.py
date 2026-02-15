@@ -99,6 +99,7 @@ class SpacyService:
             return False
 
         # Determine model name
+        selected_model: str | None
         if model_name:
             selected_model = model_name
         else:
@@ -114,8 +115,9 @@ class SpacyService:
 
         self._model_name = selected_model
 
+        assert self._model_name is not None
         try:
-            self._nlp = spacy.load(selected_model)
+            self._nlp = spacy.load(self._model_name)
             logger.info("SpacyService: spaCy model '%s' loaded successfully", selected_model)
             return True
         except OSError:
@@ -159,6 +161,7 @@ class SpacyService:
         if not text or not isinstance(text, str):
             return []
 
+        assert self._nlp is not None
         try:
             doc = self._nlp(text)
             entities = []
@@ -209,6 +212,7 @@ class SpacyService:
                 return True, "Capitalized (fallback)"
             return False, "Not capitalized (fallback)"
 
+        assert self._nlp is not None
         try:
             doc = self._nlp(entity_name_stripped)
 
@@ -257,6 +261,7 @@ class SpacyService:
         if not text or not isinstance(text, str) or not entity_name or not isinstance(entity_name, str):
             return False
 
+        assert self._nlp is not None
         try:
             doc = self._nlp(text)
             entity_doc = self._nlp(entity_name)
@@ -334,6 +339,7 @@ class SpacyService:
         if not name or not isinstance(name, str):
             return ""
 
+        assert self._nlp is not None
         try:
             doc = self._nlp(name)
 
@@ -387,6 +393,7 @@ class SpacyService:
         if not text or not isinstance(text, str):
             return ""
 
+        assert self._nlp is not None
         try:
             doc = self._nlp(text)
 
@@ -401,7 +408,7 @@ class SpacyService:
             else:
                 # Conservative cleaning: normalize whitespace and basic punctuation
                 # Reconstruct text from tokens but preserve newlines
-                cleaned_parts = []
+                cleaned_parts: list[str] = []
                 for token in doc:
                     if not token.is_space:
                         # Add space before non-punctuation tokens if we have content already
@@ -465,6 +472,7 @@ class SpacyService:
         if not text or not isinstance(text, str):
             return []
 
+        assert self._nlp is not None
         try:
             doc = self._nlp(text)
             return [sent.text.strip() for sent in doc.sents if sent.text.strip()]

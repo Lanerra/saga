@@ -124,9 +124,16 @@ def test_find_best_act_key_event_matches_by_word_overlap():
     parser = ChapterOutlineParser()
 
     scene_event = SceneEvent(
-        id="se_1", name="The hero enters the dark forest", description="The hero enters the dark forest",
-        chapter_number=1, act_number=1, scene_index=0, conflict="", outcome="",
-        pov_character="Hero", created_chapter=1,
+        id="se_1",
+        name="The hero enters the dark forest",
+        description="The hero enters the dark forest",
+        chapter_number=1,
+        act_number=1,
+        scene_index=0,
+        conflict="",
+        outcome="",
+        pov_character="Hero",
+        created_chapter=1,
     )
 
     act_key_events = [
@@ -147,9 +154,16 @@ def test_find_best_act_key_event_returns_none_for_empty():
     parser = ChapterOutlineParser()
 
     scene_event = SceneEvent(
-        id="se_1", name="test event", description="test",
-        chapter_number=1, act_number=1, scene_index=0, conflict="", outcome="",
-        pov_character="", created_chapter=1,
+        id="se_1",
+        name="test event",
+        description="test",
+        chapter_number=1,
+        act_number=1,
+        scene_index=0,
+        conflict="",
+        outcome="",
+        pov_character="",
+        created_chapter=1,
     )
 
     assert parser._find_best_act_key_event(scene_event, []) is None

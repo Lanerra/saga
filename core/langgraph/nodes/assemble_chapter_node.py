@@ -14,7 +14,7 @@ from core.langgraph.state import NarrativeState
 logger = structlog.get_logger(__name__)
 
 
-def assemble_chapter(state: NarrativeState) -> NarrativeState:
+async def assemble_chapter(state: NarrativeState) -> NarrativeState:
     """Assemble the current chapter's drafted scenes into a single draft.
 
     Args:

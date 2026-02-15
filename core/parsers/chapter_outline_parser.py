@@ -135,7 +135,7 @@ class ChapterOutlineParser:
         Returns:
             List of Scene instances
         """
-        scenes = []
+        scenes: list[Scene] = []
 
         chapter_number = chapter_outline_data.get("chapter_number", 0)
         scene_description = chapter_outline_data.get("scene_description", "")
@@ -222,7 +222,7 @@ class ChapterOutlineParser:
         Returns:
             List of SceneEvent instances
         """
-        events = []
+        events: list[SceneEvent] = []
 
         chapter_number = chapter_outline_data.get("chapter_number", 0)
         act_number = chapter_outline_data.get("act_number", 0)
@@ -290,7 +290,7 @@ class ChapterOutlineParser:
         best_location = None
         best_score = 0
 
-        for location_data in (known_locations or []):
+        for location_data in known_locations or []:
             location_name = location_data["name"]
             score = self._score_location_match(location_name, searchable_text)
             if score > best_score:
@@ -310,6 +310,7 @@ class ChapterOutlineParser:
 
         if scene_description.strip():
             from utils.text_processing import generate_entity_id
+
             location_name = self._derive_location_name(scene_description)
             new_location = Location(
                 id=generate_entity_id(location_name, "location"),
@@ -350,10 +351,7 @@ class ChapterOutlineParser:
         # Multi-word name: all significant words must appear
         name_words = name_lower.split()
         if len(name_words) > 1:
-            significant_words = [
-                w for w in name_words
-                if w not in {"the", "a", "an", "of", "and", "in", "on", "at"}
-            ]
+            significant_words = [w for w in name_words if w not in {"the", "a", "an", "of", "and", "in", "on", "at"}]
             if len(significant_words) >= 2 and all(w in searchable_text for w in significant_words):
                 return 50 + len(significant_words)
 
@@ -765,9 +763,7 @@ class ChapterOutlineParser:
             # Create Event -[INVOLVES]-> Character relationships (all mentioned characters)
             all_character_names = await self._get_all_character_names()
             for event in events:
-                mentioned_characters = self._extract_characters_from_text(
-                    event.name, all_character_names
-                )
+                mentioned_characters = self._extract_characters_from_text(event.name, all_character_names)
                 if event.pov_character and event.pov_character not in mentioned_characters:
                     mentioned_characters.insert(0, event.pov_character)
 
@@ -859,9 +855,7 @@ class ChapterOutlineParser:
             all_items = await self._get_all_items()
             for scene in scenes:
                 scene_text = " ".join([scene.setting, scene.plot_point] + scene.beats)
-                matched_items = self._match_items_in_text(
-                    scene_text, [item["name"] for item in all_items]
-                )
+                matched_items = self._match_items_in_text(scene_text, [item["name"] for item in all_items])
                 for item_name in matched_items:
                     query = """
                     MATCH (s:Scene {id: $scene_id})

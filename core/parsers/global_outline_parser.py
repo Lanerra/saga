@@ -19,70 +19,16 @@ import json
 from typing import Any
 
 import structlog
-from pydantic import BaseModel
 
 import config
 from core.db_manager import neo4j_manager
 from core.llm_interface_refactored import llm_service
-from models.kg_models import Location, WorldItem
+from models.kg_models import Location, MajorPlotPoint, WorldItem
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
 from utils.text_processing import generate_entity_id
 
 logger = structlog.get_logger(__name__)
-
-
-class MajorPlotPoint(BaseModel):
-    """Represents a major plot point in the story (Stage 2)."""
-
-    id: str
-    name: str
-    description: str
-    event_type: str = "MajorPlotPoint"
-    sequence_order: int
-    created_chapter: int = 0
-    is_provisional: bool = False
-    created_ts: int | None = None
-    updated_ts: int | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> MajorPlotPoint:
-        """Create a MajorPlotPoint from a dictionary.
-
-        Args:
-            data: Dictionary containing plot point data
-
-        Returns:
-            MajorPlotPoint instance
-        """
-        return cls(
-            id=data.get("id", ""),
-            name=data.get("name", ""),
-            description=data.get("description", ""),
-            sequence_order=data.get("sequence_order", 0),
-            created_chapter=data.get("created_chapter", 0),
-            is_provisional=data.get("is_provisional", False),
-            created_ts=data.get("created_ts"),
-            updated_ts=data.get("updated_ts"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization.
-
-        Returns:
-            Dictionary representation
-        """
-        return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "event_type": self.event_type,
-            "sequence_order": self.sequence_order,
-            "created_chapter": self.created_chapter,
-            "is_provisional": self.is_provisional,
-            "created_ts": self.created_ts,
-            "updated_ts": self.updated_ts,
-        }
 
 
 class GlobalOutlineParser:

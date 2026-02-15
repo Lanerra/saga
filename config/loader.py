@@ -20,14 +20,11 @@ Side effects:
 - Mutates the process environment by loading `.env`.
 - Mutates module state in [`config`](config/__init__.py:1) by rebinding `settings` and
   updating module globals.
-- When SIGHUP handling is enabled, importing this module registers a signal handler.
 """
 
 from __future__ import annotations
 
 import importlib
-import os
-import signal
 from typing import Any
 
 from dotenv import load_dotenv
@@ -92,51 +89,3 @@ def reload_settings() -> bool:
     except Exception:  # pragma: no cover – defensive fallback
         # In a real system you would log this; for now we simply return False.
         return False
-
-
-# -------------------------------------------------------------------------
-# Optional signal handling – allow ``kill -HUP <pid>`` to trigger a reload.
-# This is a convenience for developers and can be disabled in production
-# by not importing this module.
-# -------------------------------------------------------------------------
-
-
-_sighup_reload_pending = False
-
-
-def is_reload_pending() -> bool:
-    """Check whether a SIGHUP-triggered reload is pending.
-
-    Returns:
-        `True` when a SIGHUP was received and the caller should invoke
-        [`reload_settings()`](config/loader.py:54) from a safe (non-signal) context.
-    """
-    return _sighup_reload_pending
-
-
-def clear_reload_pending() -> None:
-    """Clear the pending-reload flag after a successful reload."""
-    global _sighup_reload_pending  # noqa: PLW0603
-    _sighup_reload_pending = False
-
-
-def _handle_sighup(signum: int, _frame: Any) -> None:  # pragma: no cover
-    """Handle `SIGHUP` by setting a flag for deferred reload.
-
-    `importlib.reload()` acquires the import lock, which is unsafe from signal
-    handler context. Instead, we set a flag so the main loop can perform the
-    reload at a safe point.
-
-    Args:
-        signum: Signal number (unused but required by signal handler signature).
-        _frame: Current stack frame (unused but required by signal handler signature).
-    """
-    global _sighup_reload_pending  # noqa: PLW0603
-    _sighup_reload_pending = True
-
-
-# Register the handler when the module is imported.
-# If the environment variable ``CONFIG_DISABLE_SIGHUP`` is set to any value,
-# we skip registration (useful for containers where signals are managed externally).
-if not os.getenv("CONFIG_DISABLE_SIGHUP"):
-    signal.signal(signal.SIGHUP, _handle_sighup)
