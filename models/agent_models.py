@@ -37,8 +37,6 @@ class SceneDetail(TypedDict, total=False):
     contribution: str
     scene_type: str
     pacing: str
-    character_arc_focus: str | None
-    relationship_development: str | None
 
 
 class ProblemDetail(TypedDict, total=False):

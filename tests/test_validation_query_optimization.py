@@ -70,10 +70,9 @@ async def test_validation_subgraph_reduces_queries():
     # Mock state with extracted data
     mock_state = {
         "current_chapter": 3,
-        "extracted_events": [],  # No longer used
-        "extracted_world_rules": [],  # No longer used
+        "extracted_events": [],
+        "extracted_world_rules": [],
         "extracted_relationships": [type("Relationship", (), {"source_name": "Alice", "target_name": "Bob", "relationship_type": "LOVES"})()],
-        "current_world_rules": [],  # No longer used
     }
 
     # Mock Neo4j to return relationship data only

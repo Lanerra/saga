@@ -631,7 +631,10 @@ class TestBuildEntityPersistenceStatements:
             )
         ]
 
-        with patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class:
+        with (
+            patch("data_access.cypher_builders.native_builders.NativeCypherBuilder") as mock_builder_class,
+            patch("core.langgraph.nodes.commit_node.config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False),
+        ):
             mock_builder = mock_builder_class.return_value
             mock_builder.character_upsert_cypher.return_value = (
                 "CHARACTER QUERY",

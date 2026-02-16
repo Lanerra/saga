@@ -46,19 +46,14 @@ class BootstrapContentValidator:
     def __init__(self) -> None:
         self.logger = structlog.get_logger(__name__)
 
-    def validate_plot_outline_consistency(self, plot_outline: dict[str, Any], bootstrap_source: str = "bootstrap") -> list[ConfigurationValidationError]:
+    def validate_plot_outline_consistency(self, plot_outline: dict[str, Any]) -> list[ConfigurationValidationError]:
         """Validate that plot outline content matches runtime configuration.
 
         Args:
             plot_outline: Plot outline content to validate.
-            bootstrap_source: Identifier for the bootstrap source.
 
         Returns:
             A list of detected mismatches.
-
-        Notes:
-            `bootstrap_source` is currently unused by the implementation, but is kept to
-            support attribution/logging in call sites.
         """
         errors: list[ConfigurationValidationError] = []
 
@@ -115,7 +110,6 @@ class BootstrapContentValidator:
     def validate_character_profiles_consistency(
         self,
         character_profiles: dict[str, CharacterProfile],
-        plot_outline: dict[str, Any],
     ) -> list[ConfigurationValidationError]:
         """Validate that character profiles match configuration-derived expectations.
 
@@ -124,7 +118,6 @@ class BootstrapContentValidator:
 
         Args:
             character_profiles: Mapping of character name to character profile.
-            plot_outline: Plot outline context (currently unused by the implementation).
 
         Returns:
             A list of detected mismatches.
@@ -160,7 +153,6 @@ class BootstrapContentValidator:
     def validate_world_building_consistency(
         self,
         world_building: dict[str, dict[str, WorldItem]],
-        plot_outline: dict[str, Any],
     ) -> list[ConfigurationValidationError]:
         """Validate that world building content matches runtime configuration.
 
@@ -169,7 +161,6 @@ class BootstrapContentValidator:
 
         Args:
             world_building: Mapping of category to mapping of item name to world item.
-            plot_outline: Plot outline context (currently unused by the implementation).
 
         Returns:
             A list of detected mismatches.
@@ -198,7 +189,6 @@ class BootstrapContentValidator:
         plot_outline: dict[str, Any],
         character_profiles: dict[str, CharacterProfile],
         world_building: dict[str, dict[str, WorldItem]],
-        bootstrap_source: str = "bootstrap",
     ) -> tuple[bool, list[ConfigurationValidationError]]:
         """Validate all components for consistency.
 
@@ -206,7 +196,6 @@ class BootstrapContentValidator:
             plot_outline: Plot outline content to validate.
             character_profiles: Mapping of character name to character profile.
             world_building: Mapping of category to mapping of item name to world item.
-            bootstrap_source: Identifier for the bootstrap source.
 
         Returns:
             A tuple of `(is_valid, errors)` where `errors` contains all detected mismatches.
@@ -216,16 +205,13 @@ class BootstrapContentValidator:
         """
         all_errors: list[ConfigurationValidationError] = []
 
-        # Validate plot outline
-        plot_errors = self.validate_plot_outline_consistency(plot_outline, bootstrap_source)
+        plot_errors = self.validate_plot_outline_consistency(plot_outline)
         all_errors.extend(plot_errors)
 
-        # Validate character profiles
-        char_errors = self.validate_character_profiles_consistency(character_profiles, plot_outline)
+        char_errors = self.validate_character_profiles_consistency(character_profiles)
         all_errors.extend(char_errors)
 
-        # Validate world building
-        world_errors = self.validate_world_building_consistency(world_building, plot_outline)
+        world_errors = self.validate_world_building_consistency(world_building)
         all_errors.extend(world_errors)
 
         is_valid = len(all_errors) == 0

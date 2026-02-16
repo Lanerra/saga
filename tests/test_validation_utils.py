@@ -161,21 +161,19 @@ class TestCharacterProfilesConsistency:
         patched_config: None,
         validator: BootstrapContentValidator,
         matching_character_profiles: dict[str, CharacterProfile],
-        matching_plot_outline: dict[str, Any],
     ) -> None:
-        errors = validator.validate_character_profiles_consistency(matching_character_profiles, matching_plot_outline)
+        errors = validator.validate_character_profiles_consistency(matching_character_profiles)
         assert errors == []
 
     def test_protagonist_missing(
         self,
         patched_config: None,
         validator: BootstrapContentValidator,
-        matching_plot_outline: dict[str, Any],
     ) -> None:
         profiles: dict[str, CharacterProfile] = {
             "Someone Else": CharacterProfile(name="Someone Else"),
         }
-        errors = validator.validate_character_profiles_consistency(profiles, matching_plot_outline)
+        errors = validator.validate_character_profiles_consistency(profiles)
 
         assert len(errors) == 1
         assert errors[0].field == "protagonist_name"
@@ -186,14 +184,13 @@ class TestCharacterProfilesConsistency:
         self,
         patched_config: None,
         validator: BootstrapContentValidator,
-        matching_plot_outline: dict[str, Any],
     ) -> None:
         """Profile keyed correctly but internal .name differs."""
         wrong_name_profile = CharacterProfile(name="Wrong Name")
         profiles: dict[str, CharacterProfile] = {
             PROTAGONIST: wrong_name_profile,
         }
-        errors = validator.validate_character_profiles_consistency(profiles, matching_plot_outline)
+        errors = validator.validate_character_profiles_consistency(profiles)
 
         assert len(errors) == 1
         assert errors[0].field == "protagonist_name"
@@ -209,20 +206,18 @@ class TestWorldBuildingConsistency:
         patched_config: None,
         validator: BootstrapContentValidator,
         matching_world_building: dict[str, dict[str, WorldItem]],
-        matching_plot_outline: dict[str, Any],
     ) -> None:
-        errors = validator.validate_world_building_consistency(matching_world_building, matching_plot_outline)
+        errors = validator.validate_world_building_consistency(matching_world_building)
         assert errors == []
 
     def test_overview_mismatch(
         self,
         patched_config: None,
         validator: BootstrapContentValidator,
-        matching_plot_outline: dict[str, Any],
     ) -> None:
         mismatched_overview = WorldItem.from_dict("_overview_", "_overview_", {"description": "a tropical island"})
         world_building: dict[str, dict[str, WorldItem]] = {"_overview_": {"_overview_": mismatched_overview}}
-        errors = validator.validate_world_building_consistency(world_building, matching_plot_outline)
+        errors = validator.validate_world_building_consistency(world_building)
 
         assert len(errors) == 1
         assert errors[0].field == "setting_description"
@@ -233,10 +228,9 @@ class TestWorldBuildingConsistency:
         self,
         patched_config: None,
         validator: BootstrapContentValidator,
-        matching_plot_outline: dict[str, Any],
     ) -> None:
         world_building: dict[str, dict[str, WorldItem]] = {"locations": {"city": WorldItem.from_dict("locations", "city", {"description": "a big city"})}}
-        errors = validator.validate_world_building_consistency(world_building, matching_plot_outline)
+        errors = validator.validate_world_building_consistency(world_building)
         assert errors == []
 
 

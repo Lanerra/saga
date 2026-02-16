@@ -250,6 +250,23 @@ async def _rollback_commit(chapter: int) -> bool:
         return False
 
 
+async def _get_existing_entity_names() -> set[str]:
+    """Query Neo4j for names of all existing Character, Location, Event, and Item nodes.
+
+    Returns:
+        A set of lowercased entity names already persisted in the knowledge graph.
+    """
+    query = """
+    MATCH (n)
+    WHERE n:Character OR n:Location OR n:Event OR n:Item
+    RETURN DISTINCT toLower(n.name) AS name
+    """
+    from core.db_manager import neo4j_manager
+
+    results = await neo4j_manager.execute_read_query(query, {})
+    return {row["name"] for row in results if row.get("name")}
+
+
 async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     """Deduplicate extracted entities and commit the chapter to Neo4j.
 
@@ -333,9 +350,32 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             "error_node": "commit",
         }
 
-    # Track mappings for deduplication (kept for backward compatibility)
-    char_mappings: dict[str, str] = {}  # new_name -> existing_name (or same)
-    world_mappings: dict[str, str] = {}  # new_name -> existing_id (or new_id)
+    # KG deduplication: filter out entities that already exist in Neo4j.
+    # This prevents scene-level extraction from overwriting init-committed
+    # entities with lower-quality data. Relationships still get created.
+    existing_names = await _get_existing_entity_names()
+    if existing_names:
+        original_character_count = len(char_entities)
+        original_world_count = len(world_entities)
+
+        char_entities = [e for e in char_entities if e.name.lower() not in existing_names]
+        world_entities = [e for e in world_entities if e.name.lower() not in existing_names]
+
+        filtered_characters = original_character_count - len(char_entities)
+        filtered_world_items = original_world_count - len(world_entities)
+
+        if filtered_characters or filtered_world_items:
+            logger.info(
+                "commit_to_graph: filtered entities already in KG",
+                filtered_characters=filtered_characters,
+                filtered_world_items=filtered_world_items,
+                remaining_characters=len(char_entities),
+                remaining_world_items=len(world_entities),
+            )
+
+    # Track mappings for deduplication
+    char_mappings: dict[str, str] = {}
+    world_mappings: dict[str, str] = {}  # name -> deterministic id
 
     try:
         # Step 1: Deduplicate characters (READ operations)

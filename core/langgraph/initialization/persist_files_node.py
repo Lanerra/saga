@@ -134,16 +134,15 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
         if global_outline or act_outlines:
             _write_outline_files(project_dir, global_outline, act_outlines, state)
 
-        # Write world items file (always, even if empty)
-        world_items = state.get("world_items", [])
-        _write_world_items_file(project_dir, world_items, state.get("setting", ""))
+        # Write world items stub (canonical data lives in Neo4j)
+        _write_world_items_file(project_dir, [], state.get("setting", ""))
 
         # Write saga.yaml with top-level metadata and path references
         _write_saga_yaml(project_dir, state)
 
-        # Write world rules and history stubs/files
-        _write_world_rules_file(project_dir, state)
-        _write_world_history_file(project_dir, state)
+        # Write world rules and history stubs
+        _write_world_rules_stub(project_dir)
+        _write_world_history_stub(project_dir)
 
         _write_summaries_readme(project_dir)
 
@@ -151,7 +150,6 @@ async def persist_initialization_files(state: NarrativeState) -> NarrativeState:
             "persist_initialization_files: successfully wrote all files",
             characters=len(character_sheets),
             acts=len(act_outlines),
-            world_items=len(world_items),
         )
 
         # P0-2: Cache invalidation after file writes
@@ -453,104 +451,30 @@ def _write_saga_yaml(project_dir: Path, state: NarrativeState) -> None:
     )
 
 
-def _write_world_rules_file(project_dir: Path, state: NarrativeState) -> None:
-    """Write `world/rules.yaml` capturing world rules and constraints."""
-    world_dir = project_dir / "world"
-    rules_path = world_dir / "rules.yaml"
-
-    rules_data: dict = {}
-
-    # Prefer explicit structured rules if such a field is introduced later.
-    # Support both `world_rules` and existing `current_world_rules` list[str].
-    raw_rules = state.get("world_rules") or state.get("current_world_rules") or []
-
-    normalized_rules: list = []
-    if isinstance(raw_rules, list):
-        for idx, rule in enumerate(raw_rules, start=1):
-            if isinstance(rule, str):
-                normalized_rules.append(
-                    {
-                        "name": f"Rule {idx}",
-                        "description": _normalize_prose(rule),
-                    }
-                )
-            elif isinstance(rule, dict):
-                # Keep conservative: only map obvious fields.
-                name = rule.get("name") or rule.get("title") or f"Rule {idx}"
-                desc = rule.get("description") or rule.get("text") or ""
-                normalized_rules.append(
-                    {
-                        "name": str(name),
-                        "description": _normalize_prose(desc),
-                    }
-                )
-
-    if normalized_rules:
-        rules_data["rules"] = normalized_rules
-    else:
-        rules_data["rules"] = []
-        rules_data["note"] = "Add world rules, constraints, and systems here."
-
-    write_yaml_file(rules_path, rules_data)
-
-    logger.debug(
-        "_write_world_rules_file: wrote world rules file",
-        path=str(rules_path),
-        count=len(rules_data.get("rules", [])),
+def _write_world_rules_stub(project_dir: Path) -> None:
+    """Write `world/rules.yaml` placeholder for user-defined world rules."""
+    rules_path = project_dir / "world" / "rules.yaml"
+    write_yaml_file(
+        rules_path,
+        {
+            "rules": [],
+            "note": "Add world rules, constraints, and systems here.",
+        },
     )
+    logger.debug("_write_world_rules_stub: wrote rules stub", path=str(rules_path))
 
 
-def _write_world_history_file(project_dir: Path, state: NarrativeState) -> None:
-    """Write `world/history.yaml` capturing timeline/historical events."""
-    world_dir = project_dir / "world"
-    history_path = world_dir / "history.yaml"
-
-    history_data: dict = {}
-
-    raw_events: list = state.get("key_events") or []
-
-    events: list = []
-    if isinstance(raw_events, list):
-        for idx, ev in enumerate(raw_events, start=1):
-            if isinstance(ev, str):
-                events.append(
-                    {
-                        "id": f"event_{idx}",
-                        "description": _normalize_prose(ev),
-                    }
-                )
-            elif isinstance(ev, dict):
-                # Only surface obvious keys, keep schema minimal and extensible.
-                event_entry: dict = {}
-                event_entry["id"] = ev.get("id", f"event_{idx}")
-
-                if "description" in ev:
-                    event_entry["description"] = _normalize_prose(ev.get("description", ""))
-                elif "text" in ev:
-                    event_entry["description"] = _normalize_prose(ev.get("text", ""))
-                elif "summary" in ev:
-                    event_entry["description"] = _normalize_prose(ev.get("summary", ""))
-
-                # Optional known-lore fields if present.
-                for key in ("era", "age", "year", "location", "faction"):
-                    if key in ev:
-                        event_entry[key] = ev[key]
-
-                events.append(event_entry)
-
-    if events:
-        history_data["events"] = events
-    else:
-        history_data["events"] = []
-        history_data["note"] = "Add key historical events, eras, and background lore here."
-
-    write_yaml_file(history_path, history_data)
-
-    logger.debug(
-        "_write_world_history_file: wrote world history file",
-        path=str(history_path),
-        count=len(history_data.get("events", [])),
+def _write_world_history_stub(project_dir: Path) -> None:
+    """Write `world/history.yaml` placeholder for user-defined lore."""
+    history_path = project_dir / "world" / "history.yaml"
+    write_yaml_file(
+        history_path,
+        {
+            "events": [],
+            "note": "Add key historical events, eras, and background lore here.",
+        },
     )
+    logger.debug("_write_world_history_stub: wrote history stub", path=str(history_path))
 
 
 def _write_summaries_readme(project_dir: Path) -> None:

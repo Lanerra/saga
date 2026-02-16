@@ -157,12 +157,7 @@ async def get_world_item_by_id(item_id: str, *, include_provisional: bool = Fals
     world_item_labels = WORLD_ITEM_CANONICAL_LABELS
     label_predicate = "(" + " OR ".join([f"we:{label}" for label in world_item_labels]) + ")"
 
-    query = (
-        f"MATCH (we {{id: $id}}) WHERE {label_predicate}"
-        " AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)"
-        " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)"
-        " RETURN we"
-    )
+    query = f"MATCH (we {{id: $id}}) WHERE {label_predicate}" " AND ($include_provisional = TRUE OR coalesce(we.is_provisional, FALSE) = FALSE)" " RETURN we"
 
     results = await neo4j_manager.execute_read_query(query, {"id": requested_id, "include_provisional": include_provisional})
     if not results or not results[0].get("we"):
@@ -297,8 +292,7 @@ async def get_world_elements_for_snippet_from_db(category: str, chapter_limit: i
     query = f"""
     MATCH (we {{category: $category_param}})
     WHERE {label_predicate}
-      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
-      AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
+           AND (we.{KG_NODE_CREATED_CHAPTER} IS NULL OR we.{KG_NODE_CREATED_CHAPTER} <= $chapter_limit_param)
 
     OPTIONAL MATCH (we)-[:ELABORATED_IN_CHAPTER]->(elab:Event)
     WHERE elab.chapter <= $chapter_limit_param
@@ -374,8 +368,7 @@ async def find_thin_world_elements_for_enrichment() -> list[dict[str, Any]]:
     MATCH (we)
     WHERE {label_predicate}
       AND toString(we.description) = ''
-      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
-    RETURN we.id AS id, we.name AS name, we.category as category
+         RETURN we.id AS id, we.name AS name, we.category as category
     LIMIT 20
     """
     results = await neo4j_manager.execute_read_query(query)
@@ -482,7 +475,6 @@ async def get_world_items_for_chapter_context_native(chapter_number: int, limit:
     query = """
     MATCH (w)-[:REFERENCED_IN]->(ch:Chapter)
     WHERE ch.number < $chapter_number
-      AND (w.is_deleted IS NULL OR w.is_deleted = FALSE)
       AND ($include_provisional = TRUE OR coalesce(w.is_provisional, FALSE) = FALSE)
     WITH w, max(ch.number) as last_reference
     ORDER BY last_reference DESC
@@ -538,8 +530,7 @@ async def get_bootstrap_world_elements() -> list[WorldItem]:
     query = f"""
     MATCH (we)
     WHERE {label_predicate}
-      AND (we.is_deleted IS NULL OR we.is_deleted = FALSE)
-      AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
+           AND (toString(we.source) CONTAINS 'bootstrap' OR we.created_chapter = 0 OR we.created_chapter = $prepop_chapter)
       AND we.description IS NOT NULL
       AND trim(toString(we.description)) <> ''
       AND NOT (toString(we.description) CONTAINS $fill_in_marker)

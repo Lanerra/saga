@@ -310,12 +310,8 @@ class Neo4jManagerSingleton:
 
                 tx.commit()
                 self.logger.info(
-                    "Neo4j: Batch processed %d KG triple statements. Constraint validation stats: %d/%d accepted, %d corrected, %d rejected.",
+                    "Neo4j: Batch processed %d KG triple statements.",
                     len(cypher_statements_with_params),
-                    len(cypher_statements_with_params),
-                    len(cypher_statements_with_params),
-                    0,
-                    0,
                 )
             except Exception as e:
                 error_code = getattr(e, "code", "UNKNOWN")
@@ -580,7 +576,6 @@ class Neo4jManagerSingleton:
                     f"CREATE INDEX {label.lower()}_category_idx IF NOT EXISTS FOR (n:{label}) ON (n.category)",
                     f"CREATE INDEX {label.lower()}_type_idx IF NOT EXISTS FOR (n:{label}) ON (n.type)",
                     f"CREATE INDEX {label.lower()}_is_provisional_idx IF NOT EXISTS FOR (n:{label}) ON (n.is_provisional)",
-                    f"CREATE INDEX {label.lower()}_is_deleted_idx IF NOT EXISTS FOR (n:{label}) ON (n.is_deleted)",
                 ]
             )
 

@@ -224,7 +224,6 @@ class TestCreateInitialState:
 
         # Check defaults
         assert state["current_chapter"] == 1
-        assert state["active_characters"] == []
         assert state["draft_ref"] is None
         assert state["draft_word_count"] == 0
         assert state["contradictions"] == []
@@ -301,9 +300,7 @@ class TestCreateInitialState:
         assert "total_chapters" in state
 
         # Active context
-        assert "active_characters" in state
         assert "summaries_ref" in state
-        assert "key_events" in state
 
         # Generated content
         assert "draft_ref" in state

@@ -136,8 +136,6 @@ async def test_commit_initialization_to_graph_success(
     assert result["initialization_step"] == "committed_to_graph"
     assert result["current_node"] == "commit_initialization"
     assert result["last_error"] is None
-    assert "active_characters" in result
-    assert len(result["active_characters"]) <= 5
     assert mock_neo4j_manager.execute_cypher_batch.called
 
     # P0-1: write path must invalidate read caches so downstream reads aren't stale.
@@ -502,35 +500,3 @@ async def test_parse_character_sheets_multiple_characters():
 
     assert len(profiles) == 5
     assert sum(1 for p in profiles if p.updates.get("is_protagonist")) == 1
-
-
-@pytest.mark.asyncio
-async def test_commit_initialization_limits_active_characters(
-    base_state,
-    mock_content_manager,
-    mock_get_functions,
-    mock_knowledge_graph_service,
-):
-    """Verify active_characters is limited to top 5."""
-    character_sheets = {
-        f"Character{i}": {
-            "description": f"Description {i}",
-            "traits": ["trait"],
-            "status": "Active",
-            "motivations": "",
-            "background": "",
-            "skills": [],
-            "relationships": {},
-            "is_protagonist": False,
-            "internal_conflict": "",
-        }
-        for i in range(10)
-    }
-
-    mock_get_functions["chars"].return_value = character_sheets
-
-    state = {**base_state}
-
-    result = await commit_initialization_to_graph(state)
-
-    assert len(result["active_characters"]) <= 5

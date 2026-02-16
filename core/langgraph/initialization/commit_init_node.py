@@ -41,8 +41,6 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
 
     Returns:
         Updated state containing:
-        - active_characters: A small in-memory slice of committed character profiles.
-        - world_items: World items extracted from the outline.
         - initialization_step: `"committed_to_graph"` on success.
         - current_node: `"commit_initialization"`.
         - last_error: Cleared on success.
@@ -149,11 +147,7 @@ async def commit_initialization_to_graph(state: NarrativeState) -> NarrativeStat
             world_items=len(world_items),
         )
 
-        # Step 4: Update active_characters with committed profiles
-        # This makes characters immediately available to the generation loop
         updated_state: NarrativeState = {
-            "active_characters": character_profiles[:3],
-            "world_items": world_items,
             "current_node": "commit_initialization",
             "last_error": None,
             "initialization_step": "committed_to_graph",

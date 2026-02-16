@@ -120,7 +120,6 @@ async def get_character_profile_by_name(name: str, *, include_provisional: bool 
 
     query = """
         MATCH (c:Character {name: $name})
-        WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
@@ -274,7 +273,6 @@ async def get_character_profile_by_id(character_id: str, *, include_provisional:
 
     query = """
         MATCH (c:Character {id: $character_id})
-        WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
         // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
         OPTIONAL MATCH (c)-[r]->(target)
@@ -377,7 +375,7 @@ async def get_all_character_names() -> list[str]:
     Notes:
         This function does not currently filter provisional characters.
     """
-    query = "MATCH (c:Character) " "WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE " "RETURN c.name AS name ORDER BY c.name"
+    query = "MATCH (c:Character) RETURN c.name AS name ORDER BY c.name"
     results = await neo4j_manager.execute_read_query(query)
     return [record["name"] for record in results if record.get("name")]
 
@@ -456,7 +454,6 @@ async def get_character_info_for_snippet_from_db(
 
     query = """
     MATCH (c:Character {name: $char_name_param})
-    WHERE c.is_deleted IS NULL OR c.is_deleted = FALSE
 
     // Do NOT add a WHERE clause after OPTIONAL MATCH; it will null-drop the row.
     OPTIONAL MATCH (c)-[r]-()

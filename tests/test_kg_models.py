@@ -351,7 +351,7 @@ class TestWorldItem:
         assert result["name"] == "Amulet"
         assert result["category"] == "Artifact"
         assert result["goals"] == ["ward off evil"]
-        assert result["additional_props"]["weight"] == "10g"
+        assert result["additional_props.weight"] == "10g"
         # relationships should be excluded
         assert "relationships" not in result
 

@@ -25,8 +25,6 @@ def _make_state(tmp_path: Path) -> NarrativeState:
 
     act1_outline_text = "Act I sets up the world and characters.\\n" "Multiple beats are described here.\n" "Closes on an inciting incident."
 
-    world_item_description = "An ancient city hidden beneath the desert sands.\\n" "Legends speak of its cursed guardians.\n" "Explorers rarely return."
-
     content_manager = ContentManager(str(project_dir))
 
     # Save character sheets
@@ -58,7 +56,6 @@ def _make_state(tmp_path: Path) -> NarrativeState:
     }
     act_ref = content_manager.save_json(act_outlines, "act_outlines", "all", 1)
 
-    # Minimal state; only fields needed by persist_initialization_files
     state: NarrativeState = {
         "project_dir": str(project_dir),
         "title": "Test Novel",
@@ -70,18 +67,6 @@ def _make_state(tmp_path: Path) -> NarrativeState:
         "character_sheets_ref": char_ref,
         "global_outline_ref": global_ref,
         "act_outlines_ref": act_ref,
-        "world_items": [
-            type(
-                "WorldItemStub",
-                (),
-                {
-                    "id": "world-1",
-                    "name": "Ancient City",
-                    "category": "Location",
-                    "description": world_item_description,
-                },
-            )()
-        ],
     }
     return state
 
@@ -190,7 +175,7 @@ async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
     # Serialized beats YAML should use real newlines (no "\n" escapes) for prose sections
     assert "\\n" not in beats_yaml_text
 
-    # 4) world/items.yaml
+    # 4) world/items.yaml (stub with empty items list since canonical data lives in Neo4j)
     items_path = project_dir / "world" / "items.yaml"
     assert items_path.is_file(), "world/items.yaml not created"
 
@@ -199,17 +184,4 @@ async def test_persist_initialization_files_yaml_prose_formatting(tmp_path):
 
     assert items_data["setting"] == "Far future desert world"
     assert items_data["source"] == "initialization"
-
-    item = items_data["items"][0]
-    assert item["id"] == "world-1"
-    assert item["name"] == "Ancient City"
-    assert item["category"] == "Location"
-
-    description_text = item["description"]
-    assert isinstance(description_text, str)
-    # Description should contain real newlines and no literal "\n"
-    assert "\n" in description_text
-    assert "\\n" not in description_text
-
-    # Serialized YAML for world items should not contain "\n" escapes in description
-    assert "\\n" not in items_yaml_text
+    assert items_data["items"] == []

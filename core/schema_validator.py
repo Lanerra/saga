@@ -6,10 +6,31 @@ This module enforces SAGA's canonical node-label contract at key boundaries:
 - Persistence boundaries require canonical labels to prevent unsafe Cypher label
   interpolation.
 
-Notes:
-    This module avoids duplicating type-hint information in docstrings. When a
-    value is rejected, the error message is intended to be actionable for prompt
-    authors and pipeline maintainers.
+## Entity Type Validation Pipeline
+
+Four functions validate entity types at different layers. Each serves a
+distinct role in the pipeline:
+
+1. **Inference** — `kg_queries._infer_specific_node_type()`:
+   Converts free-form category hints to canonical labels. Used during
+   extraction when an entity's label has not yet been determined.
+   Lenient: falls back to "Item" for unknown inputs.
+
+2. **Validation** — `schema_validator.validate_entity_type()` (this module):
+   Validates and optionally normalizes a type string. Returns
+   (is_valid, normalized_name, error_message). Used by Pydantic model
+   validators and general-purpose checks.
+
+3. **Persistence** — `schema_validator.canonicalize_entity_type_for_persistence()`:
+   Strict pre-commit check. Raises `ValueError` if the label is not
+   canonical. Callers MUST use this before any Cypher parameter dict
+   preparation.
+
+4. **Cypher Interpolation** — `kg_queries._get_cypher_labels()`:
+   Final safety boundary before labels are interpolated into Cypher query
+   strings. Returns `":Label"` format. Rejects any label not in the
+   application allowlist. Labels are not parameterizable in Neo4j, so
+   this is the last line of defense against injection.
 """
 
 from typing import Any

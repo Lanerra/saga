@@ -23,10 +23,6 @@ from config.settings import settings
 from core.langgraph.content_manager import ContentRef
 from core.schema_validator import schema_validator
 
-# Import TypedDict structures for proper type annotations
-# Import existing SAGA models for compatibility
-from models.kg_models import CharacterProfile, WorldItem
-
 
 class ExtractedEntity(BaseModel):
     """Represent an entity extracted from draft text prior to graph commit.
@@ -123,8 +119,6 @@ class NarrativeState(TypedDict, total=False):
     # =========================================================================
     # Active Context (for prompt construction)
     # =========================================================================
-    active_characters: list[CharacterProfile]  # Reuses existing model
-    key_events: list[dict[str, Any]]
 
     # Externalized context references
     summaries_ref: ContentRef | None  # Reference to externalized summaries
@@ -235,12 +229,6 @@ class NarrativeState(TypedDict, total=False):
     chapter_plan_ref: ContentRef | None  # Reference to externalized chapter plan
 
     # =========================================================================
-    # World Building Context
-    # =========================================================================
-    world_items: list[WorldItem]  # Reuses existing model
-    current_world_rules: list[str]
-
-    # =========================================================================
     # Protagonist and Key Characters
     # =========================================================================
     protagonist_name: str
@@ -347,8 +335,6 @@ def create_initial_state(
         "total_chapters": total_chapters,
         "run_start_chapter": 1,
         # Active context (initially empty)
-        "active_characters": [],
-        "key_events": [],
         # Generated content
         "draft_word_count": 0,
         # Externalized content references
@@ -413,8 +399,6 @@ def create_initial_state(
         "current_scene_index": 0,
         "chapter_plan_scene_count": 0,
         # World building
-        "world_items": [],
-        "current_world_rules": [],
         # Protagonist
         "protagonist_name": protagonist_name,
         # Initialization phase

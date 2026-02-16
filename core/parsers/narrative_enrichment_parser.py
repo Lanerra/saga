@@ -38,12 +38,7 @@ from models.kg_models import CharacterProfile
 logger = structlog.get_logger(__name__)
 
 
-# Import llm_service for embedding generation
-try:
-    from core.llm_interface_refactored import llm_service
-except ImportError:
-    # Fallback if llm_service is not available
-    llm_service = None  # type: ignore
+from core.llm_interface_refactored import llm_service
 
 
 class PhysicalDescriptionExtractionResult(BaseModel):

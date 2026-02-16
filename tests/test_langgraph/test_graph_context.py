@@ -15,7 +15,6 @@ from core.langgraph.graph_context import (
     _get_location_details,
     _get_recent_summaries,
     build_context_from_graph,
-    get_key_events,
 )
 
 
@@ -235,53 +234,3 @@ class TestGetLocationDetails:
             location = await _get_location_details("nonexistent")
 
             assert location is None
-
-
-@pytest.mark.asyncio
-class TestGetKeyEvents:
-    """Tests for get_key_events function."""
-
-    async def test_get_key_events(self, fake_neo4j):
-        """Test getting key events."""
-        fake_neo4j.configure_response(
-            r"MATCH.*Event",
-            [
-                {
-                    "description": "Battle at the bridge",
-                    "importance": 0.9,
-                    "chapter": 3,
-                },
-                {
-                    "description": "Discovery of the artifact",
-                    "importance": 0.8,
-                    "chapter": 4,
-                },
-            ],
-        )
-
-        with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
-            events = await get_key_events(current_chapter=5)
-
-            assert len(events) == 2
-            assert events[0]["description"] == "Battle at the bridge"
-            assert events[0]["importance"] == 0.9
-
-    async def test_get_events_with_custom_params(self, fake_neo4j):
-        """Test getting events with custom parameters."""
-        with patch("core.langgraph.graph_context.neo4j_manager", fake_neo4j):
-            events = await get_key_events(
-                current_chapter=10,
-                lookback_chapters=5,
-                max_events=10,
-            )
-
-            assert events == []
-
-    async def test_get_events_handles_errors(self, mock_neo4j_manager):
-        """Test that get_key_events handles errors gracefully."""
-        mock_neo4j_manager.execute_read_query.side_effect = Exception("Query error")
-
-        with patch("core.langgraph.graph_context.neo4j_manager", mock_neo4j_manager):
-            events = await get_key_events(current_chapter=5)
-
-            assert events == []

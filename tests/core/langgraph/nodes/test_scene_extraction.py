@@ -91,8 +91,20 @@ async def test_extract_from_scene_returns_entities(tmp_path: Any) -> None:
     assert "world_items" in result
     assert "relationships" in result
 
-    assert result["characters"] == []
-    assert result["world_items"] == []
+    assert len(result["characters"]) == 1
+    character = result["characters"][0]
+    assert character["name"] == "Elara"
+    assert character["type"] == "Character"
+    assert character["description"] == "A brave explorer"
+    assert character["attributes"]["traits"] == ["brave"]
+    assert character["attributes"]["status"] == "active"
+
+    assert len(result["world_items"]) == 1
+    location = result["world_items"][0]
+    assert location["name"] == "Sunken Library"
+    assert location["type"] == "Location"
+    assert location["description"] == "An ancient library"
+
     assert result["relationships"] == []
 
 

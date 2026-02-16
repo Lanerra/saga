@@ -356,7 +356,7 @@ class NativeCypherBuilder:
                 Filter values are passed as parameters. This builder does not accept dynamic
                 labels or relationship types from `filters`.
         """
-        where_clauses = ["(c.is_deleted IS NULL OR c.is_deleted = FALSE)"]
+        where_clauses: list[str] = []
         params = {}
 
         if filters:
@@ -370,11 +370,11 @@ class NativeCypherBuilder:
                 where_clauses.append("c.is_provisional = $is_provisional")
                 params["is_provisional"] = filters["is_provisional"]
 
-        where_clause = " AND ".join(where_clauses)
+        where_line = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
         cypher = f"""
         MATCH (c:Character)
-        WHERE {where_clause}
+        {where_line}
 
         // Optionally collect relationships (use actual relationship type)
         OPTIONAL MATCH (c)-[r]->(other)
@@ -411,7 +411,7 @@ class NativeCypherBuilder:
                 label predicate derived from an application constant. It must not accept
                 arbitrary labels from callers.
         """
-        where_clauses = ["(w.is_deleted IS NULL OR w.is_deleted = FALSE)"]
+        where_clauses: list[str] = []
         params = {}
 
         if filters:
@@ -425,7 +425,7 @@ class NativeCypherBuilder:
                 params["min_chapter"] = filters["chapter_range"][0]
                 params["max_chapter"] = filters["chapter_range"][1]
 
-        where_clause = " AND ".join(where_clauses)
+        where_line = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
         # Canonical labeling contract:
         # - World item nodes are labeled with canonical world labels only
@@ -436,10 +436,12 @@ class NativeCypherBuilder:
         label_predicate = "(" + " OR ".join([f"w:{label}" for label in world_item_labels]) + ")"
 
         # Note: Character is handled by character_fetch_cypher
+        additional_filter = f"AND {' AND '.join(where_clauses)}" if where_clauses else ""
+
         cypher = f"""
         MATCH (w)
         WHERE {label_predicate}
-          AND {where_clause}
+          {additional_filter}
 
         RETURN w
         ORDER BY w.category, w.name

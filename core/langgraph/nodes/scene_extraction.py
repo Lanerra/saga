@@ -199,13 +199,42 @@ async def extract_from_scene(
     if config.settings.ENABLE_ENTITY_VALIDATION:
         scene_text = _get_text_processing_service().clean_text_with_spacy(scene_text, aggressive=False)
 
-    # ⚠️ Scene-level extraction disabled: produces orphan entities and
-    # duplicate locations that conflict with initialization-committed nodes.
-    # Re-enable once deduplication against existing KG nodes is implemented.
-    characters: list[dict[str, Any]] = []
-    locations: list[dict[str, Any]] = []
-    events: list[dict[str, Any]] = []
-    relationships: list[dict[str, Any]] = []
+    characters = await _extract_characters_from_scene(
+        scene_text,
+        scene_index,
+        chapter_number,
+        novel_title,
+        novel_genre,
+        protagonist_name,
+        model_name,
+    )
+    locations = await _extract_locations_from_scene(
+        scene_text,
+        scene_index,
+        chapter_number,
+        novel_title,
+        novel_genre,
+        protagonist_name,
+        model_name,
+    )
+    events = await _extract_events_from_scene(
+        scene_text,
+        scene_index,
+        chapter_number,
+        novel_title,
+        novel_genre,
+        protagonist_name,
+        model_name,
+    )
+    relationships = await _extract_relationships_from_scene(
+        scene_text,
+        scene_index,
+        chapter_number,
+        novel_title,
+        novel_genre,
+        protagonist_name,
+        model_name,
+    )
 
     world_items = locations + events
 

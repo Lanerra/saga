@@ -495,11 +495,15 @@ class WorldItem(BaseModel):
         """Build a parameter dictionary for Cypher writes.
 
         This excludes `relationships`, which are handled via separate write paths.
+        `additional_properties` are flattened into dot-notation keys since Neo4j
+        requires primitive property values.
 
         Returns:
             A dictionary suitable for use as a Cypher parameter map.
         """
-        return {
+        from utils.common import flatten_dict
+
+        params: dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "category": self.category,
@@ -510,9 +514,10 @@ class WorldItem(BaseModel):
             "traits": self.traits,
             "created_chapter": self.created_chapter,
             "is_provisional": self.is_provisional,
-            "additional_props": self.additional_properties,
-            # Note: relationships handled separately
         }
+        if self.additional_properties:
+            params.update(flatten_dict(self.additional_properties, parent_key="additional_props"))
+        return params
 
 
 class Scene(BaseModel):
@@ -710,6 +715,7 @@ class MajorPlotPoint(BaseModel):
     id: str
     name: str
     description: str
+    type: str = "Event"
     event_type: str = "MajorPlotPoint"
     sequence_order: int
     created_chapter: int = 0
@@ -778,6 +784,7 @@ class ActKeyEvent(BaseModel):
     id: str
     name: str
     description: str
+    type: str = "Event"
     event_type: str = "ActKeyEvent"
     act_number: int
     sequence_in_act: int
@@ -932,6 +939,7 @@ class SceneEvent(BaseModel):
     id: str
     name: str
     description: str
+    type: str = "Event"
     event_type: str = "SceneEvent"
     chapter_number: int
     act_number: int

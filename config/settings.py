@@ -84,8 +84,7 @@ class RelationshipNormalizationSettings(BaseSettings):
         Environment variables use the `SAGA_REL_NORM_` prefix.
     """
 
-    # Master toggle (deprecated — disabled by default)
-    ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=False, description="Enable relationship normalization system")
+    ENABLE_RELATIONSHIP_NORMALIZATION: bool = Field(default=True, description="Enable relationship normalization system")
 
     # Strict canonical mode
     STRICT_CANONICAL_MODE: bool = Field(
@@ -217,7 +216,7 @@ class SagaSettings(BaseSettings):
     # Default off to keep unit tests deterministic and to avoid introducing new
     # embedding-service dependencies into unrelated workflows. Enable explicitly
     # when you want entity-level semantic deduplication and merge scoring.
-    ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = False
+    ENABLE_ENTITY_EMBEDDING_PERSISTENCE: bool = True
     ENABLE_ENTITY_EMBEDDING_DEDUPLICATION: bool = True
     ENABLE_ENTITY_EMBEDDING_GRAPH_HEALING: bool = True
 
@@ -249,7 +248,6 @@ class SagaSettings(BaseSettings):
     LLM_RETRY_DELAY_SECONDS: float = 3.0
     JSON_PARSE_RETRY_ATTEMPTS: int = 2
     HTTPX_TIMEOUT: float = 120.0
-    ENABLE_LLM_NO_THINK_DIRECTIVE: bool = False
     TIKTOKEN_DEFAULT_ENCODING: str = "cl100k_base"
     FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
@@ -280,8 +278,6 @@ class SagaSettings(BaseSettings):
     CHAPTERS_PER_RUN: int = 3
     TOTAL_CHAPTERS: int = 15
     TARGET_PLOT_POINTS_INITIAL_GENERATION: int = 12
-    MAX_CONCURRENT_CHAPTERS: int = 1
-
     # Caching
     EMBEDDING_CACHE_SIZE: int = 128
     SUMMARY_CACHE_SIZE: int = 32
@@ -306,7 +302,7 @@ class SagaSettings(BaseSettings):
     MAX_PREPOP_KG_TOKENS: int = 16384
 
     # Quality Assurance Configuration
-    ENABLE_QA_CHECKS: bool = False
+    ENABLE_QA_CHECKS: bool = True
     QA_CHECK_FREQUENCY: int = 3
     QA_CHECK_CONTRADICTORY_TRAITS: bool = True
     QA_DEDUPLICATE_RELATIONSHIPS: bool = True
@@ -386,9 +382,6 @@ class SagaSettings(BaseSettings):
 
     # Validation Settings
     validation: ValidationSettings = Field(default_factory=lambda: ValidationSettings())
-
-    # Legacy Degradation Flags
-    ENABLE_STATUS_IS_ALIAS: bool = False
 
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
