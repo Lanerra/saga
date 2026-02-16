@@ -692,6 +692,12 @@ class Neo4jManagerSingleton:
                 "confidence: 1.0, is_provisional: false, source_profile_managed: true, type: '', description: ''}]->(b:__PropWarmupB) "
                 "WITH a,r,b DELETE r, a, b"
             ),
+            # Warm up entity embedding property keys (avoids UnknownPropertyKeyWarning on first read)
+            (
+                "CREATE (e:__PropWarmupEmbedding {"
+                "entity_embedding_vector: [], entity_embedding_text_hash: '', entity_embedding_model: ''"
+                "}) WITH e DELETE e"
+            ),
         ]
 
         data_operations = relationship_type_queries + node_label_queries + property_warmup_queries

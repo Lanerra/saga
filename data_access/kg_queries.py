@@ -904,8 +904,8 @@ async def get_chapter_context_for_entity(
     CALL (e) {{
       WITH e
       OPTIONAL MATCH (e)-[]->(event:Event)
-      WHERE event.chapter IS NOT NULL
-      WITH collect(DISTINCT event.chapter) AS chapters
+      WHERE event.created_chapter IS NOT NULL
+      WITH collect(DISTINCT event.created_chapter) AS chapters
       RETURN chapters[..$max_event_chapters] AS event_chapters
     }}
 
