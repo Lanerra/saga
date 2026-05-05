@@ -13,14 +13,9 @@ from core.langgraph.nodes.extraction_nodes import consolidate_extraction
 from core.langgraph.nodes.scene_extraction import extract_from_scenes
 from core.langgraph.state import NarrativeState
 
+from core.langgraph.subgraphs._shared import _should_continue_or_error
+
 logger = structlog.get_logger(__name__)
-
-
-def _should_continue_or_error(state: NarrativeState) -> Literal["continue", "error"]:
-    """Gate on has_fatal_error before proceeding to the next node."""
-    if state.get("has_fatal_error", False):
-        return "error"
-    return "continue"
 
 
 def create_scene_extraction_subgraph() -> StateGraph:

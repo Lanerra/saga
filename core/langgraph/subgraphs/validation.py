@@ -38,6 +38,7 @@ from core.langgraph.nodes.validation_node import (
     validate_consistency as original_validate_consistency,
 )
 from core.langgraph.state import Contradiction, NarrativeState
+from core.langgraph.subgraphs._shared import _should_continue_or_error
 from core.llm_interface_refactored import llm_service
 from prompts.prompt_renderer import get_system_prompt, render_prompt
 from utils.common import try_load_json_from_response
@@ -662,13 +663,6 @@ async def _check_relationship_evolution(
         )
 
     return contradictions
-
-
-def _should_continue_or_error(state: NarrativeState) -> Literal["continue", "error"]:
-    """Gate on has_fatal_error before proceeding to the next node."""
-    if state.get("has_fatal_error", False):
-        return "error"
-    return "continue"
 
 
 def create_validation_subgraph() -> StateGraph:
