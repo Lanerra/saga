@@ -46,7 +46,7 @@ class CharacterArc(BaseModel):
 class GlobalOutlineSchema(BaseModel):
     """Structured global story outline."""
 
-    act_count: int = Field(description="Number of acts (3 or 5)")
+    act_count: int = Field(description="Number of acts: 1 for one chapter, 2 for two, 3 for three or four, and 3 or 5 for five or more chapters")
     acts: list[ActOutline] = Field(description="List of act outlines")
     inciting_incident: str = Field(description="The event that starts the story")
     midpoint: str = Field(description="Major midpoint event or revelation")

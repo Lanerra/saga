@@ -397,6 +397,10 @@ def _get_act_role(act_number: int, total_acts: int) -> str:
     Returns:
         String describing the act's role in the story structure
     """
+    if total_acts == 1:
+        return "Setup/Confrontation/Climax/Resolution"
+    if total_acts == 2 and act_number == 1:
+        return "Setup/Rising Action"
     if act_number == 1:
         return "Setup/Introduction"
     elif act_number == total_acts:

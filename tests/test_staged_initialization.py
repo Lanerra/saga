@@ -1,5 +1,7 @@
 """Synthetic initialization admission and replay contracts."""
 
+import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -10,8 +12,14 @@ import pytest
 from core.graph_ownership import load_graph_project_id
 from core.langgraph.content_manager import ContentManager
 from core.langgraph.initialization import all_chapter_outlines_node, commit_init_node
+from core.langgraph.initialization.act_outlines_node import _get_act_role, generate_act_outlines
+from core.langgraph.initialization.chapter_allocation import choose_act_ranges, determine_act_for_chapter
+from core.langgraph.initialization.global_outline_node import _parse_global_outline, generate_global_outline
+from core.langgraph.initialization.snapshot import select_snapshot
 from core.langgraph.state import NarrativeState
+from core.project_config import NarrativeProjectConfig
 from core.service_context import get_services
+from prompts.prompt_renderer import render_prompt
 from utils.file_io import write_yaml_file
 
 
@@ -175,3 +183,170 @@ async def test_duplicate_json_keys_rejected(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_init_node.commit_initialization_to_graph(state)
     assert result.get("has_fatal_error") is True
+
+
+def rendered_global_prompt(total_chapters: int) -> str:
+    project = NarrativeProjectConfig(
+        title="Synthetic", genre="Adventure", theme="Courage", setting="Harbor",
+        protagonist_name="Ada", narrative_style="Direct", total_chapters=total_chapters,
+        target_word_count=1200,
+    )
+    return render_prompt("initialization/generate_global_outline.j2", {
+        **project.model_dump(), "character_context": "Ada: explorer", "character_names": ["Ada"],
+    })
+
+
+def state_with_global_outline(tmp_path: Path, total_chapters: int, outline: dict[str, Any]) -> NarrativeState:
+    state = example_state(tmp_path)
+    state["total_chapters"] = total_chapters
+    manager = ContentManager(str(tmp_path))
+    assert state["act_outlines_ref"] is not None
+    act_example = manager.load_json_strict(state["act_outlines_ref"])["acts"][0]
+    ranges = choose_act_ranges(outline, total_chapters)
+    acts = [{
+        **act_example, "act_number": number, "total_acts": outline["act_count"],
+        "act_role": _get_act_role(number, outline["act_count"]), "chapters_in_act": allocation.chapters_in_act,
+    } for number, allocation in ranges.items()]
+    chapters = {str(number): {
+        "chapter_number": number, "act_number": determine_act_for_chapter(outline, total_chapters, number),
+        "scene_description": "Ada explores", "key_beats": ["Ada chooses"], "plot_point": "Choice", "version": 0,
+    } for number in range(1, total_chapters + 1)}
+    state["global_outline_ref"] = manager.save_json(outline, "global_outline", "selected", version=1)
+    state["act_outlines_ref"] = manager.save_json({"format_version": 2, "acts": acts}, "act_outlines", "selected", version=1)
+    state["chapter_outlines_ref"] = manager.save_json(chapters, "chapter_outlines", "selected", version=0)
+    return state
+
+
+@pytest.mark.parametrize(("total_chapters", "allowed"), [(1, (1,)), (2, (2,)), (3, (3,)), (4, (3,)), (5, (3, 5)), (20, (3, 5))])
+def test_global_prompt_only_requests_feasible_act_counts(total_chapters: int, allowed: tuple[int, ...]) -> None:
+    prompt = rendered_global_prompt(total_chapters)
+    constraint = next(line for line in prompt.splitlines() if line.startswith("- act_count must be"))
+    assert tuple(int(value) for value in re.findall(r"\d+", constraint)) == allowed
+    assert all(number <= total_chapters for number in allowed)
+
+
+@pytest.mark.parametrize("total_chapters", [1, 2, 3, 4, 5, 20])
+def test_rendered_outline_example_passes_production_parser_and_admission(tmp_path: Path, total_chapters: int) -> None:
+    prompt = rendered_global_prompt(total_chapters)
+    response = prompt.split("```json\n", 1)[1].split("```", 1)[0]
+    outline = _parse_global_outline(response, {"total_chapters": total_chapters})
+    assert outline["validation_errors"] == []
+    snapshot = select_snapshot(state_with_global_outline(tmp_path, total_chapters, outline))
+    assert snapshot.total_chapters == total_chapters
+    assert snapshot.total_acts == min(total_chapters, 3)
+    assert [chapter.chapter_number for chapter in snapshot.chapters] == list(range(1, total_chapters + 1))
+    assert outline["structure_type"] == f"{snapshot.total_acts}-act"
+
+
+@pytest.mark.parametrize("total_chapters", [5, 20])
+def test_five_act_outline_still_passes_strict_admission(tmp_path: Path, total_chapters: int) -> None:
+    response = rendered_global_prompt(total_chapters).split("```json\n", 1)[1].split("```", 1)[0]
+    source = json.loads(response)
+    ranges = choose_act_ranges({"act_count": 5}, total_chapters)
+    source["act_count"] = 5
+    source["acts"] = [{
+        "act_number": number, "title": f"Act {number}", "summary": "Ada explores", "key_events": ["Ada chooses"],
+        "chapters_start": allocation.chapters_start, "chapters_end": allocation.chapters_end,
+    } for number, allocation in ranges.items()]
+    source["character_arcs"] = []
+    outline = _parse_global_outline(json.dumps(source), {"total_chapters": total_chapters})
+    assert outline["validation_errors"] == []
+    snapshot = select_snapshot(state_with_global_outline(tmp_path, total_chapters, outline))
+    assert snapshot.total_acts == 5
+    assert outline["structure_type"] == "5-act"
+
+
+@pytest.mark.parametrize(("case", "message"), [("overlap", "partition chapter topology"), ("empty", "Malformed global act range")])
+def test_selected_outline_invalid_partition_remains_rejected(tmp_path: Path, case: str, message: str) -> None:
+    state = example_state(tmp_path)
+    manager = ContentManager(str(tmp_path))
+    assert state["global_outline_ref"] is not None
+    outline = manager.load_json_strict(state["global_outline_ref"])
+    if case == "overlap":
+        outline["act_count"] = 2
+        outline["acts"].append({**outline["acts"][0], "act_number": 2})
+    else:
+        outline["acts"][0]["chapters_start"] = 2
+    state["global_outline_ref"] = manager.save_json(outline, "global_outline", "invalid", version=1)
+    with pytest.raises(ValueError, match=message):
+        select_snapshot(state)
+
+
+@pytest.mark.parametrize(("total_acts", "roles"), [
+    (1, ["Setup/Confrontation/Climax/Resolution"]),
+    (2, ["Setup/Rising Action", "Resolution/Climax"]),
+])
+def test_short_act_prompt_roles_cover_the_complete_story(total_acts: int, roles: list[str]) -> None:
+    for number, role in enumerate(roles, 1):
+        actual_role = _get_act_role(number, total_acts)
+        prompt = render_prompt("initialization/generate_act_outline.j2", {
+            "title": "Synthetic", "genre": "Adventure", "theme": "Courage", "setting": "Harbor", "protagonist_name": "Ada",
+            "act_number": number, "total_acts": total_acts, "act_role": actual_role, "chapters_in_act": 1,
+            "global_outline": "Ada leaves and returns.", "character_context": "Ada: explorer",
+        })
+        assert actual_role == role
+        assert f'"act_role" (str): MUST equal "{role}"' in prompt
+
+
+@pytest.mark.parametrize("total_chapters", [1, 2, 3, 4, 5, 20])
+async def test_generated_outline_nodes_reach_strict_admission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, total_chapters: int) -> None:
+    from config.settings import settings
+
+    seed = example_state(tmp_path / "seed")
+    seed_manager = ContentManager(seed["project_dir"])
+    assert seed["act_outlines_ref"] is not None
+    assert seed["character_sheets_ref"] is not None
+    sections = seed_manager.load_json_strict(seed["act_outlines_ref"])["acts"][0]["sections"]
+    manager = ContentManager(str(tmp_path / "generated"))
+    state: NarrativeState = {
+        "project_dir": str(tmp_path / "generated"), "graph_project_id": load_graph_project_id(tmp_path / "generated"),
+        "total_chapters": total_chapters, "title": "Synthetic", "protagonist_name": "Ada",
+        "character_sheets_ref": manager.save_json(seed_manager.load_json_strict(seed["character_sheets_ref"]), "character_sheets", "all", version=1),
+        "outline_relationships_ref": manager.save_json([], "outline_relationships", "all", version=1),
+    }
+    prompts: list[str] = []
+
+    async def text_response(*, prompt: str, **keywords: Any) -> tuple[str, dict[str, int]]:
+        prompts.append(prompt)
+        if "## Chapter\n" in prompt:
+            return json.dumps({"scene_description": "Ada explores", "key_beats": ["Ada chooses"], "plot_point": "Choice"}), {}
+        return prompt.split("```json\n", 1)[1].split("```", 1)[0], {}
+
+    async def act_response(*, prompt: str, **keywords: Any) -> tuple[dict[str, Any], dict[str, int]]:
+        prompts.append(prompt)
+        identity = re.search(r"Act: (\d+) of (\d+)", prompt)
+        allocation = re.search(r"Chapters in act: ~(\d+)", prompt)
+        role = re.search(r"Role in structure: (.+)", prompt)
+        assert identity and allocation and role
+        return {"act_number": int(identity[1]), "total_acts": int(identity[2]), "act_role": role[1], "chapters_in_act": int(allocation[1]), "sections": sections}, {}
+
+    monkeypatch.setattr(settings, "GENERATE_ALL_CHAPTER_OUTLINES_AT_INIT", True)
+    monkeypatch.setattr(get_services().language_model, "async_call_llm", text_response)
+    monkeypatch.setattr(get_services().language_model, "async_call_llm_json_object", act_response)
+    for node in (generate_global_outline, generate_act_outlines, all_chapter_outlines_node.generate_all_chapter_outlines):
+        update = await node(state)
+        assert update.get("last_error") is None
+        state = {**state, **update}
+    selected = select_snapshot(state)
+    assert selected.total_chapters == total_chapters
+    assert selected.total_acts == min(total_chapters, 3)
+    assert len(prompts) == 1 + selected.total_acts + total_chapters
+    chapter_prompts = [prompt for prompt in prompts if "## Chapter\n" in prompt]
+    assert len(chapter_prompts) == total_chapters
+    assert all("(Chapter 0 of this act)" not in prompt for prompt in chapter_prompts)
+
+
+@pytest.mark.parametrize("metadata", [
+    {"chapters_start": 1}, {"chapters_end": 1},
+    {"chapters_start": True, "chapters_end": 1}, {"chapters_start": 1, "chapters_end": 1.0},
+    {"chapters_start": 2, "chapters_end": 2}, {"chapters_start": 2, "chapters_end": 1},
+])
+def test_act_allocation_metadata_must_match_global_range(tmp_path: Path, metadata: dict[str, Any]) -> None:
+    state = example_state(tmp_path)
+    manager = ContentManager(str(tmp_path))
+    assert state["act_outlines_ref"] is not None
+    acts = manager.load_json_strict(state["act_outlines_ref"])
+    acts["acts"][0].update(metadata)
+    state["act_outlines_ref"] = manager.save_json(acts, "act_outlines", "invalid", version=1)
+    with pytest.raises(ValueError, match="Act range metadata mismatch"):
+        select_snapshot(state)

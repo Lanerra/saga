@@ -206,8 +206,11 @@ def select_snapshot(state: NarrativeState) -> InitializationSnapshot:
         covered.extend(range(start, end + 1))
     require(covered == list(range(1, total + 1)), "Global act ranges must partition chapter topology")
     require([act.get("act_number") for act in acts["acts"]] == list(range(1, total_acts + 1)), "Incomplete or duplicate act coverage")
-    for act in acts["acts"]:
-        structured = {key: value for key, value in act.items() if key not in {"raw_text", "generated_at"}}
+    for act, global_act in zip(acts["acts"], global_acts, strict=True):
+        range_fields = ("chapters_start", "chapters_end")
+        if any(key in act for key in range_fields):
+            require(all(type(act.get(key)) is int and act[key] == global_act[key] for key in range_fields), "Act range metadata mismatch")
+        structured = {key: value for key, value in act.items() if key not in {"raw_text", "generated_at", *range_fields}}
         parsed = ActOutlineSchema.model_validate(structured)
         require(parsed.total_acts == total_acts, "Act count mismatch")
         allocated = sum(determine_act_for_chapter_from_outline(global_outline=outline, total_chapters=total, chapter_number=number) == parsed.act_number for number in range(1, total + 1))
