@@ -342,6 +342,7 @@ class LangGraphOrchestrator:
         config_dict = {"configurable": {"thread_id": thread_id}, "recursion_limit": 500}
         last_node = None
         event_index = 0
+        interrupted = False
 
         try:
             # Use astream() for event-based progress tracking across all chapters.
@@ -352,6 +353,10 @@ class LangGraphOrchestrator:
                 workflow_input = None
             async for event in graph.astream(workflow_input, config=config_dict):
                 if not isinstance(event, dict) or not event:
+                    continue
+
+                if "__interrupt__" in event:
+                    interrupted = True
                     continue
 
                 node_name = list(event.keys())[0]
@@ -385,6 +390,14 @@ class LangGraphOrchestrator:
                             word_count=state.get("draft_word_count", 0),
                         )
 
+            native_end = False
+            if "lifecycle_version" in state:
+                snapshot = await graph.aget_state(config_dict)
+                if snapshot.created_at is not None and isinstance(snapshot.values, dict) and snapshot.values.get("project_id") == project_id:
+                    state = {**state, **snapshot.values}
+                    native_end = not snapshot.next and not snapshot.tasks
+                    interrupted = interrupted or bool(snapshot.interrupts)
+
             # Final summary of the run
             rollback_failure = state.get("revision_rollback_failure")
             if state.get("has_fatal_error") or rollback_failure is not None:
@@ -400,17 +413,30 @@ class LangGraphOrchestrator:
                     },
                 )
 
-            if last_node in ["finalize", "heal_graph", "check_quality", "init_complete"]:
-                logger.info(
-                    "Workflow stream finished successfully",
-                    final_chapter=state.get("current_chapter"),
-                    final_node=last_node,
+            final_node = last_node
+            if last_node is None and workflow_input is None and native_end:
+                final_node = state.get("current_node")
+            completed = final_node in {"finalize", "heal_graph", "check_quality", "init_complete"}
+            if native_end and final_node == "advance_chapter" and state.get("lifecycle_phase") == "advanced":
+                completed = True
+            if interrupted or ("lifecycle_version" in state and not native_end) or not completed:
+                outcome = "interrupted" if interrupted else "incomplete"
+                raise WorkflowExecutionError(
+                    f"Workflow {outcome}; no completion claimed",
+                    details={
+                        "outcome": outcome,
+                        "project_id": project_id,
+                        "current_chapter": state.get("current_chapter"),
+                        "last_error": state.get("last_error"),
+                        "final_node": final_node,
+                    },
                 )
-            else:
-                logger.warning(
-                    "Workflow stream finished at unexpected node",
-                    final_node=last_node,
-                )
+
+            logger.info(
+                "Workflow stream finished successfully",
+                final_chapter=state.get("current_chapter"),
+                final_node=final_node,
+            )
 
         except Exception as e:
             logger.error(

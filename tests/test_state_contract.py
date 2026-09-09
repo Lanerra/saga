@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import pytest
 
-from core.exceptions import CheckpointResumeConflictError
+from core.exceptions import CheckpointResumeConflictError, WorkflowExecutionError
 from core.graph_ownership import load_graph_project_id
 from core.langgraph import initialization
 from core.langgraph.content_manager import ContentManager
@@ -130,7 +130,9 @@ async def test_checkpoint_continues_with_retained_policy_and_telemetry(tmp_path:
         loaded = await orchestrator._load_state_for_run(graph=graph, requested_project_id="synthetic", thread_id="saga_synthetic", narrative_config=None)
         assert loaded == expected
         assert await saver.aget_tuple(configuration) == before
-        await orchestrator._run_chapter_generation_loop(graph, loaded)
+        with pytest.raises(WorkflowExecutionError) as caught:
+            await orchestrator._run_chapter_generation_loop(graph, loaded)
+        assert caught.value.details["outcome"] == "interrupted"
         snapshot = await graph.aget_state(configuration)
         assert calls == ["init_global_outline"]
         assert snapshot.next == ("init_act_outlines",)
@@ -215,7 +217,9 @@ async def test_generation_reopens_identified_artifact_and_drafts_with_retained_p
         )
         assert loaded == state
         assert await saver.aget_tuple(configuration) == before
-        await orchestrator._run_chapter_generation_loop(graph, loaded)
+        with pytest.raises(WorkflowExecutionError) as caught:
+            await orchestrator._run_chapter_generation_loop(graph, loaded)
+        assert caught.value.details["outcome"] == "incomplete"
         final = await graph.aget_state(configuration)
         assert final.next == ()
         assert final.values["current_scene_index"] == 1

@@ -2,6 +2,7 @@
 """Tests for data_access/chapter_queries.py"""
 
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import AsyncMock
 
 import numpy as np
@@ -106,6 +107,65 @@ class TestSaveChapterData:
         assert params["chapter_id_param"] == chapter_queries.compute_chapter_id(1)
         # Neo4j embedding conversion uses float32; allow minor float representation variance.
         assert params["embedding_vector_param"] == pytest.approx([0.1, 0.2, 0.3], rel=1e-6, abs=1e-6)
+
+
+@pytest.mark.parametrize("number", [None, True, False, "1", 1.0, 1.5, 0, -1])
+def test_chapter_identity_rejects_invalid_numbers(number: Any) -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        chapter_queries.compute_chapter_id(number)
+
+
+@pytest.mark.parametrize("number", [None, True, False, "1", 1.0, 1.5, 0, -1])
+def test_chapter_builder_rejects_invalid_numbers(number: Any) -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        chapter_queries.build_chapter_upsert_statement(chapter_number=number)
+
+
+@pytest.mark.parametrize("number", [None, True, False, "1", 1.0, 1.5, 0, -1])
+async def test_metadata_writer_rejects_invalid_numbers_without_writes(number: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    write = AsyncMock()
+    monkeypatch.setattr(get_services().database, "execute_write_query", write)
+    try:
+        with pytest.raises(ValueError, match="positive integer"):
+            await chapter_queries.save_chapter_data_to_db(chapter_number=number, title="Synthetic plan")
+    finally:
+        write.assert_not_called()
+
+
+@pytest.mark.parametrize("number", [1, 3, 120])
+@pytest.mark.parametrize("status", [None, "planned", "finalized"])
+def test_chapter_builder_preserves_valid_identity_and_metadata(number: int, status: str | None) -> None:
+    assert chapter_queries.compute_chapter_id(number) == f"chapter_{config.MAIN_NOVEL_INFO_NODE_ID}_{number}"
+    assert chapter_queries.compute_chapter_id(number, novel_id="synthetic") == f"chapter_synthetic_{number}"
+    query, parameters = chapter_queries.build_chapter_upsert_statement(
+        chapter_number=number, title="Synthetic plan", act_number=2, summary="Synthetic summary",
+        is_provisional=False, novel_id="synthetic", generation_status=status,
+    )
+    assert parameters == {
+        "chapter_number_param": number, "chapter_id_param": f"chapter_synthetic_{number}",
+        "title_param": "Synthetic plan", "act_number_param": 2, "summary_param": "Synthetic summary",
+        "is_provisional_param": False, "embedding_vector_param": None, "embedding_model_param": None,
+        "embedding_identity_param": None, "generation_status_param": status,
+    }
+    assert type(parameters["chapter_number_param"]) is int
+    assert "c.generation_status = 'staged'" in query
+    assert "CASE WHEN $generation_status_param IS NULL THEN [] ELSE [1] END" in query
+
+
+@pytest.mark.parametrize("number", [1, 3, 120])
+async def test_metadata_writer_preserves_valid_metadata_without_finalizing(number: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    write = AsyncMock()
+    monkeypatch.setattr(get_services().database, "execute_write_query", write)
+    await chapter_queries.save_chapter_data_to_db(
+        chapter_number=number, title="Synthetic plan", act_number=2, summary="Synthetic summary", is_provisional=True,
+    )
+    query, parameters = chapter_queries.build_chapter_upsert_statement(
+        chapter_number=number, title="Synthetic plan", act_number=2, summary="Synthetic summary", is_provisional=True,
+    )
+    write.assert_awaited_once_with(query, parameters)
+    assert parameters["generation_status_param"] is None
+    assert parameters["chapter_number_param"] == number
+    assert type(parameters["chapter_number_param"]) is int
 
 
 @pytest.mark.asyncio

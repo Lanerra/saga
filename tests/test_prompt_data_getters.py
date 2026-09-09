@@ -533,7 +533,7 @@ class TestGetFilteredCharacterProfilesPlainText:
             assert alice_index < bob_index < charlie_index
 
     @pytest.mark.asyncio
-    async def uses_prepopulation_chapter_for_chapter_0(self) -> None:
+    async def test_uses_prepopulation_chapter_for_chapter_0(self) -> None:
         with patch.object(config, "KG_PREPOPULATION_CHAPTER_NUM", 0):
             with patch("prompts.prompt_data_getters._get_character_profiles_dict_with_notes") as mock_get:
                 mock_get.return_value = {}
@@ -1279,7 +1279,7 @@ class TestGetReliableKGFactsForDraftingPrompt:
                         assert "No specific reliable KG facts" in result
 
     @pytest.mark.asyncio
-    async def uses_prepopulation_chapter_for_chapter_1(self) -> None:
+    async def test_uses_prepopulation_chapter_for_chapter_1(self) -> None:
         with patch.object(config, "KG_PREPOPULATION_CHAPTER_NUM", 0):
             with patch("prompts.prompt_data_getters._discover_characters_of_interest") as mock_discover:
                 with patch("prompts.prompt_data_getters._apply_protagonist_proximity_filtering") as mock_filter:
@@ -1455,7 +1455,7 @@ class TestGetCharacterStateSnippet:
             assert "mountains" in result
 
     @pytest.mark.asyncio
-    async def includes_neo4j_current_state(self) -> None:
+    async def test_includes_neo4j_current_state(self) -> None:
         alice = CharacterProfile(name="Alice", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
@@ -1467,7 +1467,7 @@ class TestGetCharacterStateSnippet:
             assert "artifact" in result
 
     @pytest.mark.asyncio
-    async def includes_neo4j_relationships(self) -> None:
+    async def test_includes_neo4j_relationships(self) -> None:
         alice = CharacterProfile(name="Alice", created_chapter=1)
 
         with patch("prompts.prompt_data_getters._cached_character_info") as mock_info:
@@ -1512,7 +1512,7 @@ class TestGetCharacterStateSnippet:
             assert rel_count <= 3
 
     @pytest.mark.asyncio
-    async def prefers_profile_personality_over_neo4j(self) -> None:
+    async def test_prefers_profile_personality_over_neo4j(self) -> None:
         alice = CharacterProfile(
             name="Alice",
             updates={"personality": "Profile personality"},

@@ -7,8 +7,10 @@ from typing import Any, cast
 import pytest
 from langgraph.constants import END
 from langgraph.graph.state import StateGraph
+from structlog.testing import capture_logs
 
 from core.db_manager import neo4j_manager
+from core.exceptions import WorkflowExecutionError
 from core.graph_ownership import OWNER_QUERY, load_graph_project_id
 from core.langgraph.chapter_lifecycle import ATTEMPT_QUERY, CHAPTER_QUERY, CREATE_ATTEMPT, UPDATE_ATTEMPT, ChapterLifecycle, extraction_binding
 from core.langgraph.content_manager import ContentManager
@@ -18,6 +20,7 @@ from core.langgraph.nodes.revision_node import _rollback_chapter_data
 from core.langgraph.state import NarrativeState
 from core.langgraph.workflow import advance_chapter, create_checkpointer
 from core.service_context import get_services
+from data_access import character_queries, kg_queries, world_queries
 from orchestration.langgraph_orchestrator import LangGraphOrchestrator
 from tests.fakes.quality import example_quality_state
 from tests.fakes.schema_catalog import schema_catalog
@@ -192,6 +195,49 @@ async def test_commit_reentry_reconciles_acknowledgement(lifecycle_example: tupl
     assert len(driver.receipts) == 1
     assert second["draft_ref"] is not None and state["draft_ref"] is not None
     assert second["draft_ref"]["path"] != state["draft_ref"]["path"]
+
+
+async def test_committed_replay_retries_cache_maintenance_without_graph_writes(
+    lifecycle_example: tuple[NarrativeState, DriverExample], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, driver = lifecycle_example
+    first = await commit_to_graph(state)
+    assert first["has_fatal_error"] is False
+    before = deepcopy((driver.receipts, driver.chapters, driver.writes))
+    calls: list[str] = []
+    world_clear = world_queries.get_world_item_by_id.cache_clear
+    graph_clear = cast(Any, kg_queries.query_kg_from_db).cache_clear
+
+    def fail_character() -> None:
+        calls.append("character")
+        raise RuntimeError("synthetic replay cache failure")
+
+    def clear_world() -> None:
+        calls.append("world")
+        world_clear()
+
+    def clear_graph() -> None:
+        calls.append("kg")
+        graph_clear()
+
+    with monkeypatch.context() as context:
+        context.setattr(character_queries.get_character_profile_by_name, "cache_clear", fail_character)
+        context.setattr(world_queries.get_world_item_by_id, "cache_clear", clear_world)
+        context.setattr(kg_queries.query_kg_from_db, "cache_clear", clear_graph)
+        with capture_logs() as logs:
+            replay = await commit_to_graph(state)
+        assert replay == first
+        assert calls == ["character", "world", "kg"]
+        assert [entry for entry in logs if entry["event"] == "commit_to_graph: postcommit cache invalidation failed"] == [{
+            "event": "commit_to_graph: postcommit cache invalidation failed", "chapter": 1, "cache": "character",
+            "error": "synthetic replay cache failure", "log_level": "warning",
+        }]
+
+    with capture_logs() as logs:
+        assert await commit_to_graph(state) == first
+    assert [entry["log_level"] for entry in logs if entry["event"] == "commit_to_graph: postcommit caches invalidated"] == ["info"]
+    assert (driver.receipts, driver.chapters, driver.writes) == before
+    assert driver.commits == 1
 
 
 @pytest.mark.parametrize("boundary", ["before_commit", "after_commit", ""])
@@ -467,8 +513,6 @@ async def test_pending_finalize_preserves_native_successors(lifecycle_example: t
 
 @pytest.mark.parametrize("total_chapters", [1, 2])
 async def test_physical_end_starts_only_nonterminal_next_chapter(lifecycle_example: tuple[NarrativeState, DriverExample], tmp_path: Path, total_chapters: int) -> None:
-    from core.langgraph.chapter_lifecycle import reconcile_checkpoint
-
     state, driver = lifecycle_example
     state = {**state, **await commit_to_graph(state), "total_chapters": total_chapters, "run_start_chapter": 1}
     state = {**state, **await finalize_chapter(state), "current_node": "check_quality"}
@@ -486,15 +530,65 @@ async def test_physical_end_starts_only_nonterminal_next_chapter(lifecycle_examp
     workflow.add_edge("check_quality", END)
     workflow.add_edge("advance_chapter", "chapter_outline")
     workflow.add_edge("chapter_outline", END)
-    configuration = {"configurable": {"thread_id": "physical-end"}}
+    configuration = {"configurable": {"thread_id": "saga_synthetic"}}
     async with create_checkpointer(str(tmp_path / "physical-end.db")) as saver:
         graph = workflow.compile(checkpointer=saver)
         saved_configuration = await graph.aupdate_state(configuration, state, as_node="check_quality")
         raw = await graph.aget_state(saved_configuration)
         assert raw.next == raw.tasks == ()
-        await reconcile_checkpoint(graph, raw.values, configuration)
-        result = await graph.ainvoke(None, configuration)
+    lifecycle = ChapterLifecycle(state).stage()
+    accepted = lifecycle.manuscripts.accepted(1)
+    writes = list(driver.writes)
+    async with create_checkpointer(str(tmp_path / "physical-end.db")) as saver:
+        graph = workflow.compile(checkpointer=saver)
+        orchestrator = LangGraphOrchestrator(project_dir=tmp_path)
+        orchestrator._resume_checkpoint = True
+        if total_chapters == 1:
+            for _ in range(2):
+                await orchestrator._run_chapter_generation_loop(graph, raw.values)
+                assert (await graph.aget_state(configuration)).config == saved_configuration
+        else:
+            with pytest.raises(WorkflowExecutionError, match="incomplete"):
+                await orchestrator._run_chapter_generation_loop(graph, raw.values)
+        result = (await graph.aget_state(configuration)).values
     assert result["current_chapter"] == total_chapters
     assert result["run_start_chapter"] == total_chapters
     assert visited == ([] if total_chapters == 1 else ["chapter_outline"])
+    assert driver.commits == 2
+    assert driver.writes == writes
+    assert lifecycle.manuscripts.accepted(1) == accepted
+
+
+@pytest.mark.parametrize("successful_pending_write", [False, True])
+async def test_accepted_advance_can_end_a_native_invocation(
+    lifecycle_example: tuple[NarrativeState, DriverExample], tmp_path: Path, successful_pending_write: bool,
+) -> None:
+    state, driver = lifecycle_example
+    state = {**state, **await commit_to_graph(state), "total_chapters": 2, "run_start_chapter": 1}
+    state = {**state, **await finalize_chapter(state)}
+    workflow = StateGraph(NarrativeState)
+    workflow.add_node("finalize", lambda value: value)
+    workflow.add_node("advance_chapter", advance_chapter)
+    workflow.set_entry_point("finalize")
+    workflow.add_edge("finalize", "advance_chapter")
+    workflow.add_edge("advance_chapter", END)
+    configuration = {"configurable": {"thread_id": "saga_synthetic"}}
+    checkpoint_path = str(tmp_path / "advance.db")
+    async with create_checkpointer(checkpoint_path) as saver:
+        graph = workflow.compile(checkpointer=saver)
+        saved = await graph.aupdate_state(configuration, state, as_node="finalize")
+        if successful_pending_write:
+            snapshot = await graph.aget_state(saved)
+            task, = snapshot.tasks
+            await saver.aput_writes(saved, list(advance_chapter(state).items()), task.id)
+    async with create_checkpointer(checkpoint_path) as saver:
+        graph = workflow.compile(checkpointer=saver)
+        orchestrator = LangGraphOrchestrator(project_dir=tmp_path)
+        orchestrator._resume_checkpoint = True
+        await orchestrator._run_chapter_generation_loop(graph, (await graph.aget_state(configuration)).values)
+        final = await graph.aget_state(configuration)
+        assert final.next == final.tasks == ()
+        assert final.values["current_chapter"] == 2
+        assert final.values["run_start_chapter"] == 1
+        assert final.values["lifecycle_phase"] == "advanced"
     assert driver.commits == 2

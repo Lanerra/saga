@@ -66,6 +66,11 @@ async def load_chapter_progress_from_db() -> ChapterProgress:
     return ChapterProgress(last_finalized_chapter, tuple(sorted(finalized)))
 
 
+def _validate_chapter_number(chapter_number: int) -> None:
+    if type(chapter_number) is not int or chapter_number <= 0:
+        raise ValueError("chapter_number must be a positive integer")
+
+
 def compute_chapter_id(chapter_number: int, *, novel_id: str | None = None) -> str:
     """Compute the canonical, deterministic `Chapter.id` value.
 
@@ -84,8 +89,9 @@ def compute_chapter_id(chapter_number: int, *, novel_id: str | None = None) -> s
         - The id must be stable so different persistence paths converge on the same identity
           semantics.
     """
+    _validate_chapter_number(chapter_number)
     novel_id_val = novel_id or config.MAIN_NOVEL_INFO_NODE_ID
-    return f"chapter_{novel_id_val}_{int(chapter_number)}"
+    return f"chapter_{novel_id_val}_{chapter_number}"
 
 
 def build_chapter_upsert_statement(
@@ -165,7 +171,7 @@ def build_chapter_upsert_statement(
     """
 
     parameters = {
-        "chapter_number_param": int(chapter_number),
+        "chapter_number_param": chapter_number,
         "chapter_id_param": chapter_id,
         "title_param": title,
         "act_number_param": act_number,
@@ -223,8 +229,6 @@ async def save_finalized_chapter_to_db(
     *, embedding_model: str = "",
 ) -> None:
     """Persist explicit finalization after the caller successfully saves chapter files."""
-    if type(chapter_number) is not int or chapter_number <= 0:
-        raise ValueError("Finalized chapter_number must be a positive integer")
     await _save_chapter_data_to_db(chapter_number, title, act_number, summary, embedding_array, is_provisional, generation_status="finalized", embedding_model=embedding_model)
 
 
@@ -257,12 +261,10 @@ async def _save_chapter_data_to_db(
         so all Chapter writes consistently satisfy schema constraints (including `Chapter.id`).
 
         Error behavior:
-            Invalid `chapter_number` returns early without raising. Neo4j write failures are
-            raised as DatabaseError.
+            Invalid `chapter_number` raises ValueError before any database write.
+            Neo4j write failures are raised as DatabaseError.
     """
-    if chapter_number <= 0:
-        logger.error(f"Neo4j: Cannot save chapter data for invalid chapter_number: {chapter_number}.")
-        return
+    _validate_chapter_number(chapter_number)
 
     embedding_list = validate_embedding(embedding_array, model=embedding_model).tolist() if embedding_array is not None else None
 

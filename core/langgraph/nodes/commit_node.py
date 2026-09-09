@@ -292,6 +292,38 @@ async def _prepare_explicit_entity_admission(
     return [(query, {"admission_entities": candidates})], protected
 
 
+def _invalidate_postcommit_caches(chapter: int) -> None:
+    """Attempt each cache group without changing the durable commit outcome."""
+    try:
+        from data_access.cache_coordinator import (
+            clear_character_read_caches,
+            clear_kg_read_caches,
+            clear_world_read_caches,
+        )
+    except Exception as error:
+        logger.warning("commit_to_graph: postcommit cache invalidation failed", chapter=chapter, error=str(error))
+        return
+
+    cleared: dict[str, dict[str, bool]] = {}
+    for name, invalidate in (
+        ("character", clear_character_read_caches),
+        ("world", clear_world_read_caches),
+        ("kg", clear_kg_read_caches),
+    ):
+        try:
+            result = invalidate()
+        except Exception as error:
+            logger.warning("commit_to_graph: postcommit cache invalidation failed", chapter=chapter, cache=name, error=str(error))
+            continue
+        if not all(result.values()):
+            logger.warning("commit_to_graph: postcommit cache invalidation failed", chapter=chapter, cache=name, cache_cleared=result)
+        else:
+            cleared[name] = result
+
+    if len(cleared) == 3:
+        logger.info("commit_to_graph: postcommit caches invalidated", chapter=chapter, cache_cleared=cleared)
+
+
 async def commit_to_graph(state: NarrativeState) -> NarrativeState:
     """Deduplicate extracted entities and commit the chapter to Neo4j.
 
@@ -333,6 +365,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
                 if receipt["phase"] != "committed":
                     raise ValueError("Attempt is not eligible for commit replay")
                 lifecycle.observe("committed")
+                _invalidate_postcommit_caches(lifecycle.chapter_number)
                 return {**lifecycle.state_update("committed"), "current_node": "commit_to_graph", "has_fatal_error": False, "last_error": None}
         except Exception as error:
             return {"current_node": "commit_to_graph", "last_error": str(error), "has_fatal_error": True, "error_node": "commit"}
@@ -562,27 +595,7 @@ async def commit_to_graph(state: NarrativeState) -> NarrativeState:
             "error_node": "commit",
         }
 
-    try:
-        from data_access.cache_coordinator import (
-            clear_character_read_caches,
-            clear_kg_read_caches,
-            clear_world_read_caches,
-        )
-
-        cleared_character = clear_character_read_caches()
-        cleared_world = clear_world_read_caches()
-        cleared_kg = clear_kg_read_caches()
-        logger.info(
-            "commit_to_graph: postcommit caches invalidated",
-            chapter=chapter,
-            cache_cleared={"character": cleared_character, "world": cleared_world, "kg": cleared_kg},
-        )
-    except Exception as error:
-        logger.warning(
-            "commit_to_graph: postcommit cache invalidation failed",
-            chapter=chapter,
-            error=str(error),
-        )
+    _invalidate_postcommit_caches(chapter)
 
     return {
         **(lifecycle.state_update("committed") if lifecycle is not None else {}),

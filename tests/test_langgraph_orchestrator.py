@@ -15,7 +15,7 @@ import pytest
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore
 from langgraph.graph import END, StateGraph  # type: ignore[import-not-found, attr-defined]
 
-from core.exceptions import CheckpointResumeConflictError
+from core.exceptions import CheckpointResumeConflictError, WorkflowExecutionError
 from core.langgraph.state import Contradiction, NarrativeState, create_initial_state
 from core.service_context import RunServices, get_services, inject_services
 from data_access.chapter_queries import ChapterProgress
@@ -407,7 +407,8 @@ class TestRunChapterGenerationLoop:
         mock_graph.astream = MagicMock(side_effect=empty_stream)
 
         state: NarrativeState = {"project_id": "custom_project"}
-        await orchestrator._run_chapter_generation_loop(mock_graph, state)
+        with pytest.raises(WorkflowExecutionError, match="incomplete"):
+            await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
         # Check astream call arguments
         # Need to find the call
@@ -469,7 +470,8 @@ class TestRunChapterGenerationLoop:
         }
 
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
-            await orchestrator._run_chapter_generation_loop(mock_graph, state)
+            with pytest.raises(WorkflowExecutionError, match="incomplete"):
+                await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
     async def test_run_chapter_generation_loop_handles_no_events(self, orchestrator: LangGraphOrchestrator) -> None:
         """Loop handles case where no events are received."""
@@ -484,7 +486,8 @@ class TestRunChapterGenerationLoop:
         state: NarrativeState = {"project_id": "test_proj", "current_chapter": 1, "total_chapters": 20}
 
         with patch.object(orchestrator, "_handle_workflow_event", new_callable=AsyncMock):
-            await orchestrator._run_chapter_generation_loop(mock_graph, state)
+            with pytest.raises(WorkflowExecutionError, match="incomplete"):
+                await orchestrator._run_chapter_generation_loop(mock_graph, state)
 
 
 @pytest.mark.asyncio

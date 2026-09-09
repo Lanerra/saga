@@ -17,6 +17,7 @@ from core.langgraph.content_manager import ContentManager
 from core.langgraph.nodes.commit_node import _build_entity_persistence_statements, commit_to_graph
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
+from data_access import character_queries, kg_queries, world_queries
 from data_access.cypher_builders.native_builders import NativeCypherBuilder, chapter_assertion_delete_statement
 from models.kg_models import CharacterProfile, WorldItem
 from tests.fakes.fake_neo4j_manager import FakeNeo4jManager
@@ -224,7 +225,26 @@ def chapter_state(directory: Path, chapter: int = 4) -> NarrativeState:
     }
 
 
-async def test_preparation_failure_preserves_prior_commit(tmp_path: Path, chapter_driver: ChapterDriver) -> None:
+@pytest.fixture
+def observed_cache_clears(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    calls: list[str] = []
+
+    def observe(group: str, clear: Callable[[], None]) -> Callable[[], None]:
+        def run() -> None:
+            calls.append(group)
+            clear()
+        return run
+
+    for group, reader in (
+        ("character", character_queries.get_character_profile_by_name),
+        ("world", world_queries.get_world_item_by_id),
+        ("kg", kg_queries.query_kg_from_db),
+    ):
+        monkeypatch.setattr(reader, "cache_clear", observe(group, cast(Any, reader).cache_clear))
+    return calls
+
+
+async def test_preparation_failure_preserves_prior_commit(tmp_path: Path, chapter_driver: ChapterDriver, observed_cache_clears: list[str]) -> None:
     state = chapter_state(tmp_path)
     reference = state["draft_ref"]
     assert reference is not None
@@ -237,6 +257,7 @@ async def test_preparation_failure_preserves_prior_commit(tmp_path: Path, chapte
 
         assert chapter_driver.graph == before
         assert chapter_driver.transactions == []
+        assert observed_cache_clears == []
         assert result["has_fatal_error"] is True
         assert result["error_node"] == "commit"
         assert result["current_node"] == "commit_to_graph"
@@ -244,7 +265,7 @@ async def test_preparation_failure_preserves_prior_commit(tmp_path: Path, chapte
 
 
 @pytest.mark.parametrize("failure", ["statement", "driver_rollback", "commit_before"])
-async def test_commit_reports_batch_failure_with_real_content(tmp_path: Path, chapter_driver: ChapterDriver, failure: str) -> None:
+async def test_commit_reports_batch_failure_with_real_content(tmp_path: Path, chapter_driver: ChapterDriver, failure: str, observed_cache_clears: list[str]) -> None:
     state = chapter_state(tmp_path)
     chapter_driver.failure = failure
     before = deepcopy(chapter_driver.graph)
@@ -256,6 +277,7 @@ async def test_commit_reports_batch_failure_with_real_content(tmp_path: Path, ch
 
         assert chapter_driver.graph == before
         assert [transaction.events for transaction in chapter_driver.transactions] == [expected_events] * (attempt + 1)
+        assert observed_cache_clears == []
         assert result == {
             "current_node": "commit_to_graph", "has_fatal_error": True, "error_node": "commit",
             "last_error": "Commit to graph failed: Batch Cypher execution failed (Details: "
@@ -272,7 +294,9 @@ async def test_commit_reports_batch_failure_with_real_content(tmp_path: Path, ch
 
 @pytest.mark.parametrize("chapter", [4, 5])
 @pytest.mark.parametrize("cache", ["character_queries.get_character_profile_by_name", "world_queries.get_world_item_by_id", "kg_queries.query_kg_from_db"])
-async def test_cache_failure_preserves_durable_commit(tmp_path: Path, chapter_driver: ChapterDriver, monkeypatch: pytest.MonkeyPatch, chapter: int, cache: str) -> None:
+async def test_cache_failure_preserves_durable_commit(
+    tmp_path: Path, chapter_driver: ChapterDriver, monkeypatch: pytest.MonkeyPatch, chapter: int, cache: str, observed_cache_clears: list[str],
+) -> None:
     state = chapter_state(tmp_path, chapter)
     expected = deepcopy(chapter_driver.graph)
     if chapter == 4:
@@ -280,7 +304,10 @@ async def test_cache_failure_preserves_durable_commit(tmp_path: Path, chapter_dr
     else:
         expected["chapters"][5] = {"number": 5, "id": "chapter_synthetic_novel_5", "is_provisional": False}
 
+    group = cache.split("_queries.")[0]
+
     def fail_cache_clear() -> None:
+        observed_cache_clears.append(group)
         raise RuntimeError("synthetic cache failure")
 
     with monkeypatch.context() as context:
@@ -291,11 +318,28 @@ async def test_cache_failure_preserves_durable_commit(tmp_path: Path, chapter_dr
         assert [transaction.events for transaction in chapter_driver.transactions] == [["run", "run", "commit"]]
         assert result == {"current_node": "commit_to_graph", "last_error": None, "has_fatal_error": False}
         warnings = [entry for entry in logs if entry["event"] == "commit_to_graph: postcommit cache invalidation failed"]
-        assert warnings == [{"event": "commit_to_graph: postcommit cache invalidation failed", "chapter": chapter, "error": "synthetic cache failure", "log_level": "warning"}]
+        assert observed_cache_clears == ["character", "world", "kg"]
+        assert warnings == [{"event": "commit_to_graph: postcommit cache invalidation failed", "chapter": chapter, "cache": group, "error": "synthetic cache failure", "log_level": "warning"}]
 
     assert await commit_to_graph(state) == {"current_node": "commit_to_graph", "last_error": None, "has_fatal_error": False}
     assert chapter_driver.graph == expected
     assert [transaction.events for transaction in chapter_driver.transactions] == [["run", "run", "commit"], ["run", "run", "commit"]]
+    assert observed_cache_clears == ["character", "world", "kg"] * 2
+
+
+async def test_unavailable_cache_clear_warns_without_failing_commit(
+    tmp_path: Path, chapter_driver: ChapterDriver, monkeypatch: pytest.MonkeyPatch, observed_cache_clears: list[str],
+) -> None:
+    monkeypatch.setattr(character_queries.get_character_profile_by_name, "cache_clear", None)
+    with capture_logs() as logs:
+        result = await commit_to_graph(chapter_state(tmp_path, 5))
+    assert result == {"current_node": "commit_to_graph", "last_error": None, "has_fatal_error": False}
+    assert observed_cache_clears == ["world", "kg"]
+    assert [transaction.events for transaction in chapter_driver.transactions] == [["run", "run", "commit"]]
+    assert [entry for entry in logs if entry["event"] == "commit_to_graph: postcommit cache invalidation failed"] == [{
+        "event": "commit_to_graph: postcommit cache invalidation failed", "chapter": 5, "cache": "character",
+        "cache_cleared": {"get_character_profile_by_name": False, "get_character_profile_by_id": True}, "log_level": "warning",
+    }]
 
 
 async def test_unknown_commit_acknowledgement_never_compensates(tmp_path: Path, chapter_driver: ChapterDriver) -> None:

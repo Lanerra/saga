@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from langgraph.graph import END, StateGraph  # type: ignore[attr-defined]
+from langgraph.types import interrupt
 
+from core.exceptions import WorkflowExecutionError
 from core.graph_ownership import load_graph_project_id
 from core.langgraph import initialization
 from core.langgraph.content_manager import ContentManager
@@ -71,10 +74,46 @@ async def test_loader_preserves_pending_initialization(tmp_path: Path, monkeypat
         loaded = await orchestrator._load_state_for_run(graph=graph, requested_project_id="synthetic", thread_id="saga_synthetic", narrative_config=None)
         assert loaded == effective.values
         assert loaded.get("character_sheets_ref") == (reference if successful_pending_write else None)
-        await orchestrator._run_chapter_generation_loop(graph, loaded)
+        with pytest.raises(WorkflowExecutionError) as caught:
+            await orchestrator._run_chapter_generation_loop(graph, loaded)
+        assert caught.value.details["outcome"] == "interrupted"
         final = await graph.aget_state(configuration)
         assert calls == (["init_global_outline"] if successful_pending_write else ["init_character_sheets", "init_global_outline"])
         assert final.next == ("init_act_outlines",)
         assert final.values["initialization_step"] == "global_outline"
         assert final.values["run_start_chapter"] == 1
         assert manager.load_json(reference) == {"Traveler": "Synthetic character"}
+
+
+async def test_dynamic_interrupt_never_becomes_completed_resume(tmp_path: Path) -> None:
+    def pause(state: NarrativeState) -> NarrativeState:
+        interrupt("Synthetic operator input required")
+        raise AssertionError("Interrupted work must not reach generation or publication")
+
+    workflow = StateGraph(NarrativeState)
+    workflow.add_node("finalize", lambda state: {"current_node": "finalize"})
+    workflow.add_node("pause", pause)
+    workflow.set_entry_point("finalize")
+    workflow.add_edge("finalize", "pause")
+    workflow.add_edge("pause", END)
+    state: NarrativeState = {
+        "project_id": "synthetic", "project_dir": str(tmp_path), "graph_project_id": load_graph_project_id(tmp_path),
+        "lifecycle_version": 1, "current_chapter": 1, "total_chapters": 1,
+    }
+    configuration = {"configurable": {"thread_id": "saga_synthetic"}}
+    for resume in (False, True):
+        async with create_checkpointer(str(tmp_path / "saga.db")) as saver:
+            graph = workflow.compile(checkpointer=saver)
+            orchestrator = LangGraphOrchestrator(project_dir=tmp_path)
+            orchestrator._resume_checkpoint = resume
+            if resume:
+                state = (await graph.aget_state(configuration)).values
+            with pytest.raises(WorkflowExecutionError) as caught:
+                await orchestrator._run_chapter_generation_loop(graph, state)
+            assert caught.value.details["outcome"] == "interrupted"
+            snapshot = await graph.aget_state(configuration)
+            assert snapshot.next == ("pause",)
+            assert snapshot.values["current_node"] == "finalize"
+            assert len(snapshot.interrupts) == 1
+            assert snapshot.interrupts[0].value == "Synthetic operator input required"
+    assert not (tmp_path / "chapters").exists()

@@ -323,6 +323,64 @@ def test_cli_boundary_restores_prior_singleton(tmp_path: Path, monkeypatch: pyte
         assert get_spacy_service()._nlp is original_pipeline
 
 
+@pytest.mark.parametrize("outcome", ["incomplete", "interrupted"])
+def test_cli_rejects_nonfatal_unfinished_native_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundaries: tuple[ProviderBoundary, FakeNeo4jManager], outcome: str, caplog: pytest.LogCaptureFixture,
+) -> None:
+    import orchestration.langgraph_orchestrator as orchestration
+    from core.graph_ownership import load_graph_project_id
+
+    provider, database = boundaries
+    monkeypatch.setattr(ProjectManager, "projects_root", tmp_path / "projects")
+    project = NarrativeProjectConfig(title="Synthetic", genre="Fantasy", theme="Discovery", setting="Room", protagonist_name="Hero", narrative_style="Third person", total_chapters=1)
+    directory = ProjectManager.save_config(project, review=False)
+    state = seeded_state(directory)
+    state.update({"lifecycle_version": 1, "graph_project_id": load_graph_project_id(directory), "current_node": "generate"})
+    configuration = {"configurable": {"thread_id": "saga_synthetic"}}
+    checkpoint_path = str(directory / "checkpoints/saga.db")
+
+    async def seed_checkpoint() -> None:
+        async with create_checkpointer(checkpoint_path) as saver:
+            graph = create_full_workflow_graph(saver)
+            await graph.aupdate_state(configuration, state, as_node="error_handler" if outcome == "incomplete" else "route")
+            snapshot = await graph.aget_state(configuration)
+            assert snapshot.next == (() if outcome == "incomplete" else ("chapter_outline",))
+
+    def workflow(checkpointer: Any) -> Any:
+        graph = create_full_workflow_graph(checkpointer)
+        graph.interrupt_after_nodes = ["chapter_outline"]
+        return graph
+
+    asyncio.run(seed_checkpoint())
+    monkeypatch.setattr(orchestration, "create_full_workflow_graph", workflow)
+    entrypoint = Path(__file__).resolve().parents[1] / "main.py"
+    assert Path(inspect.getfile(LangGraphOrchestrator)).resolve() == entrypoint.parent / "orchestration/langgraph_orchestrator.py"
+    monkeypatch.setattr(sys, "argv", [str(entrypoint), "generate", "--project-dir", str(directory)])
+    output, errors = StringIO(), StringIO()
+    with pytest.raises(SystemExit) as caught, redirect_stdout(output), redirect_stderr(errors):
+        runpy.run_path(str(entrypoint), run_name="__main__")
+    assert caught.value.code == 1
+    failure = caught.value.__context__
+    assert isinstance(failure, exceptions.WorkflowExecutionError)
+    assert failure.details["outcome"] == outcome
+    assert errors.getvalue() == f"SAGA generate failed: {failure}. No completion claimed; retained artifacts may include partial progress.\n"
+    assert "SAGA generation invocation succeeded:" not in output.getvalue()
+    assert "SAGA: LangGraph Generation Complete" not in caplog.text
+    assert "Multi-chapter generation stream complete." not in caplog.text
+    assert (provider.plan_calls, provider.draft_calls, provider.embedding_calls) == (0, 0, 0)
+    assert database.batch_statements == []
+    assert not (directory / "chapters").exists()
+
+    async def retained_checkpoint() -> None:
+        async with create_checkpointer(checkpoint_path) as saver:
+            snapshot = await create_full_workflow_graph(saver).aget_state(configuration)
+            assert snapshot.next == (() if outcome == "incomplete" else ("generate",))
+            assert snapshot.values["has_fatal_error"] is False
+            assert snapshot.values["current_node"] == ("generate" if outcome == "incomplete" else "chapter_outline")
+
+    asyncio.run(retained_checkpoint())
+
+
 @pytest.mark.parametrize("fatal", [False, True])
 async def test_terminal_node_name_cannot_override_fatal_state(tmp_path: Path, boundaries: tuple[ProviderBoundary, FakeNeo4jManager], fatal: bool) -> None:
     async def finish(state: NarrativeState) -> NarrativeState:
