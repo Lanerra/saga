@@ -821,6 +821,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 pending_result: Awaitable[object] = node.process(narrative_text, 1)
                 result = await pending_result
 
+                assert result is None
+
                 # Verify that sync_characters was called
                 mock_sync_chars.assert_called_once()
 
@@ -861,6 +863,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 pending_result: Awaitable[object] = node.process(narrative_text, 1)
                 result = await pending_result
 
+                assert result is None
+
                 # Verify that save_chapter_data_to_db was called
                 mock_save_chapter.assert_called_once()
 
@@ -899,6 +903,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 pending_result: Awaitable[object] = node.process(narrative_text, 1)
                 result = await pending_result
 
+                assert result is None
+
                 # Verify that get_character_profiles was called
                 mock_get_chars.assert_called_once()
 
@@ -936,6 +942,8 @@ class TestNarrativeEnrichmentNodeDatabaseOperations:
                 # Call the process method
                 pending_result: Awaitable[object] = node.process(narrative_text, 1)
                 result = await pending_result
+
+                assert result is None
 
                 # Verify that get_chapter_data_from_db was called
                 mock_get_chapter.assert_called_once_with(1)

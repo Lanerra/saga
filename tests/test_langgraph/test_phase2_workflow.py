@@ -505,10 +505,10 @@ def test_phase2_graph_check_quality_is_reachable() -> None:
     assert "check_quality" in visited
 
 
-@pytest.mark.asyncio
 class TestPhase2Integration:
     """Integration tests for Phase 2 workflow."""
 
+    @pytest.mark.asyncio
     async def test_complete_chapter_generation_workflow(self, sample_generation_state: NarrativeState, mock_all_nodes: Any, tmp_path: Any) -> None:
         """Test complete end-to-end chapter generation."""
         # Create workflow
@@ -521,7 +521,7 @@ class TestPhase2Integration:
         assert result["current_chapter"] == 1
         assert result["initialization_complete"] is True
 
-    async def test_workflow_graph_structure(self) -> None:
+    def test_workflow_graph_structure(self) -> None:
         """Test that Phase 2 graph has correct structure."""
         graph = create_full_workflow_graph()
         graph_obj = graph.get_graph()
