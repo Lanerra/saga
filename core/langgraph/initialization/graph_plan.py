@@ -37,6 +37,11 @@ class GraphEntity(FrozenPayload):
     payload: str
 
 
+class RelationshipDescription(FrozenPayload):
+    source: Literal["profile", "outline"]
+    description: str
+
+
 class InitializationGraphPlan(FrozenPayload):
     snapshot: InitializationSnapshot
     entities: tuple[GraphEntity, ...]
@@ -58,6 +63,8 @@ async def produce_plan(snapshot: InitializationSnapshot) -> InitializationGraphP
     names: dict[str, str] = {}
     identifiers: set[str] = set()
     edge_identities: dict[tuple[str, str, str], int] = {}
+    edge_properties: dict[tuple[str, str, str], dict[str, Any]] = {}
+    edge_descriptions: dict[tuple[str, str, str], set[RelationshipDescription]] = {}
 
     def statement(query: str, parameters: dict[str, Any]) -> None:
         statements.append(Statement(query=query, parameters=encoded(parameters)))
@@ -79,22 +86,37 @@ async def produce_plan(snapshot: InitializationSnapshot) -> InitializationGraphP
         entity(label, identity, properties)
         statement(f"CREATE (n:{label}) SET n = $properties, n.created_ts = timestamp(), n.updated_ts = timestamp()", {"properties": properties})
 
-    def edge(source: str, target: str, kind: str, properties: dict[str, Any]) -> None:
+    def edge(source: str, target: str, kind: str, properties: dict[str, Any], *, description: RelationshipDescription | None = None) -> None:
         if kind not in {"FEATURES_CHARACTER", "OCCURS_IN_SCENE", "INVOLVES", "PART_OF", "HAPPENS_BEFORE", "FEATURES_ITEM", "OCCURS_AT", "POSSESSES"}:
             Relationship(source_name=source, target_name=target, relationship_type=kind, description="")
         require(source in identifiers and target in identifiers, f"Unknown relationship endpoint: {source} → {target}")
+        require(not {"description", "description_assertions", "description_status"} & properties.keys(), "Descriptions require source attribution")
         key = (source, target, kind)
         properties = {"chapter_added": 0, "is_provisional": False, **properties}
         if key in edge_identities:
-            index = edge_identities[key]
-            previous = json.loads(statements[index].parameters)
-            existing = previous["properties"]
+            existing = edge_properties[key]
             require(all(existing[name] == properties[name] for name in existing.keys() & properties.keys() if name != "confidence"), f"Conflicting duplicate relationship: {key}")
-            # Compatible channels retain their metadata; repeated confidence uses the strongest assertion, not a sum.
+            # Structured metadata must agree; confidence is strongest assertion, not a sum.
             merged = {**existing, **properties}
             if "confidence" in existing and "confidence" in properties:
                 merged["confidence"] = max(existing["confidence"], properties["confidence"])
-            statements[index] = Statement(query=statements[index].query, parameters=encoded({**previous, "properties": merged}))
+            properties = merged
+        edge_properties[key] = properties
+        assertions = edge_descriptions.setdefault(key, set())
+        if description is not None:
+            assertions.add(description)
+        if assertions:
+            # Profile-first, then lexical display is not a semantic verdict. JSON strings are Neo4j-safe properties.
+            ordered = sorted(assertions, key=lambda assertion: (assertion.source != "profile", assertion.description))
+            properties = {
+                **properties,
+                "description": ordered[0].description,
+                "description_assertions": [encoded(assertion.model_dump()) for assertion in ordered],
+                "description_status": "unresolved" if len({assertion.description for assertion in ordered}) > 1 else "single_description",
+            }
+        if key in edge_identities:
+            index = edge_identities[key]
+            statements[index] = Statement(query=statements[index].query, parameters=encoded({"source": source, "target": target, "properties": properties}))
             return
         edge_identities[key] = len(statements)
         statement(
@@ -161,10 +183,12 @@ async def produce_plan(snapshot: InitializationSnapshot) -> InitializationGraphP
         for target, relationship in json.loads(sheet.relationships).items():
             require(target in character_names, f"Unknown character relationship: {target}")
             require(set(relationship) == {"type", "description"}, "Malformed character relationship")
-            edge(names[sheet.name], names[target], relationship["type"], {"description": relationship["description"], "type": relationship["type"], "source_profile_managed": True})
+            edge(names[sheet.name], names[target], relationship["type"], {"type": relationship["type"], "source_profile_managed": True},
+                 description=RelationshipDescription(source="profile", description=relationship["description"]))
     for relationship in snapshot.relationships:
         require(relationship.source_name in names and relationship.target_name in names, "Unknown outline relationship identity")
-        edge(names[relationship.source_name], names[relationship.target_name], relationship.relationship_type, {"description": relationship.description, "confidence": relationship.confidence})
+        edge(names[relationship.source_name], names[relationship.target_name], relationship.relationship_type, {"confidence": relationship.confidence},
+             description=RelationshipDescription(source="outline", description=relationship.description))
 
     if items:
         possessions = await extract("knowledge_agent/extract_item_possession.j2", {

@@ -4,7 +4,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -219,7 +219,14 @@ async def test_compatible_relationship_channels_coalesce(tmp_path: Path, monkeyp
     importer = InitializationImport(str(tmp_path))
     plan = importer.load()
     edges = [json.loads(statement.parameters) for statement in plan.statements if "relationship:FRIEND_OF" in statement.query]
-    properties: dict[str, Any] = {"description": "Trusted companions", "chapter_added": 0, "is_provisional": False}
+    properties: dict[str, Any] = {
+        "description": "Trusted companions", "chapter_added": 0, "is_provisional": False,
+        "description_status": "single_description",
+        "description_assertions": [
+            json.dumps({"source": source, "description": "Trusted companions"}, sort_keys=True, separators=(",", ":"))
+            for source in ("profile", "outline") if channels in {source, "both"}
+        ],
+    }
     if channels in {"profile", "both"}:
         properties.update(type="FRIEND_OF", source_profile_managed=True)
     if channels in {"outline", "both"}:
@@ -231,22 +238,152 @@ async def test_compatible_relationship_channels_coalesce(tmp_path: Path, monkeyp
     assert provider.await_count == calls
 
 
-@pytest.mark.parametrize("case", ["semantic_conflict", "unknown_endpoint"])
+@pytest.mark.parametrize("case", ["invalid_description", "unknown_endpoint", "unknown_type", "extra_authority"])
 async def test_incompatible_relationship_channels_reject(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
     state = example_relationship_state(tmp_path, "both", (0.8,))
     manager = ContentManager(str(tmp_path))
     assert state["outline_relationships_ref"] is not None
     relationships = manager.load_json_strict(state["outline_relationships_ref"])
-    if case == "semantic_conflict":
-        relationships[0]["description"] = "Bitter enemies"
-    else:
+    if case == "invalid_description":
+        relationships[0]["description"] = 3
+    elif case == "unknown_endpoint":
         relationships[0]["target_name"] = "Unknown"
+    elif case == "unknown_type":
+        relationships[0]["relationship_type"] = "NOT_A_RELATIONSHIP"
+    else:
+        relationships[0]["source_profile_managed"] = True
     state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(state)
     assert result["initialization_step"] == "commit_failed"
     assert result["has_fatal_error"] is True
+    assert not (tmp_path / ".saga/initialization/selected").exists()
+
+
+@pytest.mark.parametrize(("profile_description", "outline_description"), [
+    (
+        "Mara's husband, who supports her quietly but sometimes worries her fixation on the ledger keeps her from truly joining the community.",
+        "Mara is Tom's wife; they married into their shared life in the valley.",
+    ),
+    ("Trusted companions", "Bitter enemies"),
+    ("  Exact whitespace\n", "Exact whitespace"),
+])
+async def test_differing_relationship_prose_is_attributed_unresolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, profile_description: str, outline_description: str,
+) -> None:
+    from core.db_manager import Neo4jManagerSingleton
+    from core.langgraph.initialization.graph_plan import InitializationGraphPlan, produce_plan
+
+    state = example_relationship_state(tmp_path, "both", (0.6, 0.9, 0.6))
+    manager = ContentManager(str(tmp_path))
+    assert state["character_sheets_ref"] is not None
+    sheets = manager.load_json_strict(state["character_sheets_ref"])
+    sheets["Ada"]["relationships"]["Bea"] = {"type": "FAMILY_OF", "description": profile_description}
+    state["character_sheets_ref"] = manager.save_json(sheets, "character_sheets", "all", version=3)
+    assert state["outline_relationships_ref"] is not None
+    relationships = manager.load_json_strict(state["outline_relationships_ref"])
+    for relationship in relationships:
+        relationship.update(relationship_type="FAMILY_OF", description=outline_description)
+    state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
+    provider = AsyncMock(return_value=("[]", {}))
+    monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
+    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    importer = InitializationImport(str(tmp_path))
+    plan = await importer.prepare(state)
+    edges = [json.loads(statement.parameters) for statement in plan.statements if "relationship:FAMILY_OF" in statement.query]
+    assert len(edges) == 1
+    assert edges[0]["properties"] == {
+        "chapter_added": 0, "is_provisional": False, "type": "FAMILY_OF", "source_profile_managed": True,
+        "confidence": 0.9, "description": profile_description, "description_status": "unresolved",
+        "description_assertions": [
+            json.dumps({"source": source, "description": description}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            for source, description in [("profile", profile_description), ("outline", outline_description)]
+        ],
+    }
+    assert InitializationGraphPlan.model_validate_json(plan.model_dump_json()) == plan
+    assert importer.load() == plan
+    calls = provider.await_count
+    assert await importer.prepare({**state, "initialization_id": plan.identity}) == plan
+    assert provider.await_count == calls
+    forward = await produce_plan(plan.snapshot)
+    reverse = await produce_plan(plan.snapshot.model_copy(update={"relationships": tuple(reversed(plan.snapshot.relationships))}))
+    assert forward.statements == reverse.statements
+    with pytest.raises(ValueError, match="Initialization acceptance identity mismatch"):
+        await importer.accept("0" * 64)
+    written: list[tuple[str, dict[str, Any]]] = []
+
+    def run_statement(query: str, parameters: dict[str, Any] | None = None, **keywords: Any) -> MagicMock:
+        result = MagicMock()
+        if parameters is not None:
+            written.append((query, parameters))
+        elif "RETURN owner.initialization_plan AS identity" in query:
+            result.single.return_value = {"identity": None}
+        elif "WHERE NOT n:SagaGraphOwner" in query:
+            result.single.return_value = {"count": 0}
+        elif "RETURN count(n) AS count" in query:
+            assert keywords["identity"] in {entity.identity for entity in plan.entities}
+            result.single.return_value = {"count": 1}
+        else:
+            assert "SET owner.initialization_plan = $identity" in query
+            assert keywords == {"project_id": plan.snapshot.project_id, "identity": plan.identity}
+        return result
+
+    async def recording_transport(callback: Callable[[Any], None]) -> None:
+        callback(MagicMock(run=run_statement))
+
+    monkeypatch.setattr(Neo4jManagerSingleton, "_instance", None)
+    database = Neo4jManagerSingleton()
+    monkeypatch.setattr(get_services(), "database", database)
+    monkeypatch.setattr(database, "execute_in_transaction", recording_transport)
+    monkeypatch.setattr(database, "execute_read_query", AsyncMock(side_effect=[[{"identity": None}], [{"identity": plan.identity}], [{"identity": plan.identity}]]))
+    assert await importer.accept(plan.identity) == plan
+    assert written == [(statement.query, json.loads(statement.parameters)) for statement in plan.statements]
+    assert await importer.accept(plan.identity) == plan
+    assert len(written) == len(plan.statements)
+    assert provider.await_count == calls + len(forward.evidence) + len(reverse.evidence)
+    frozen = tmp_path / f".saga/initialization/{plan.identity}.json"
+    frozen.write_text(frozen.read_text().replace("unresolved", "coherent"))
+    with pytest.raises(ValueError, match="Frozen initialization checksum mismatch"):
+        importer.load()
+
+
+async def test_outline_only_description_order_does_not_choose_display(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.langgraph.initialization.graph_plan import produce_plan
+    from core.langgraph.initialization.snapshot import select_snapshot
+
+    state = example_relationship_state(tmp_path, "outline", (0.9, 0.6, 0.8))
+    manager = ContentManager(str(tmp_path))
+    assert state["outline_relationships_ref"] is not None
+    relationships = manager.load_json_strict(state["outline_relationships_ref"])
+    for relationship, description in zip(relationships, ["Zulu", "Alpha", "Zulu"], strict=True):
+        relationship["description"] = description
+    state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
+    monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
+    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    snapshot = select_snapshot(state)
+    forward = await produce_plan(snapshot)
+    reverse = await produce_plan(snapshot.model_copy(update={"relationships": tuple(reversed(snapshot.relationships))}))
+    assert forward.statements == reverse.statements
+    properties = next(json.loads(statement.parameters)["properties"] for statement in forward.statements if "relationship:FRIEND_OF" in statement.query)
+    assert properties["description"] == "Alpha"
+    assert properties["description_status"] == "unresolved"
+    assert properties["confidence"] == 0.9
+    assert [json.loads(assertion) for assertion in properties["description_assertions"]] == [
+        {"source": "outline", "description": "Alpha"}, {"source": "outline", "description": "Zulu"},
+    ]
+
+
+async def test_structured_relationship_conflict_still_rejects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def provider(**arguments: Any) -> tuple[str, dict[str, Any]]:
+        if arguments["prompt"].startswith("Extract character names"):
+            return json.dumps([{"name": "Ada", "role": "protagonist"}, {"name": "Ada", "role": "participant"}]), {}
+        return "[]", {}
+
+    monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
+    monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
+    with pytest.raises(ValueError, match="Conflicting duplicate relationship"):
+        await InitializationImport(str(tmp_path)).prepare(example_state(tmp_path))
     assert not (tmp_path / ".saga/initialization/selected").exists()
 
 
