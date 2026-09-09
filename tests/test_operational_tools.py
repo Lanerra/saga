@@ -9,6 +9,7 @@ import pytest
 
 import reset_neo4j
 import visualize_workflow as visualization_command
+from config.settings import SagaSettings
 from core.langgraph.visualization import visualize_workflow
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,31 @@ def test_current_guides_do_not_advertise_removed_paths_or_implicit_selection() -
         assert "expect(content)" not in guidance
         assert "core/knowledge_graph_service.py" not in guidance
         assert "core/langgraph/initialization/workflow.py" not in guidance
+
+
+@pytest.mark.parametrize("field", ["EXPECTED_EMBEDDING_DIM", "NEO4J_VECTOR_DIMENSIONS"])
+def test_readme_embedding_defaults_match_settings(field: str) -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    documented = re.search(rf"\| `{field}` \| (\d+) \|", readme)
+    assert documented is not None, f"Missing shipped default for {field}"
+    assert int(documented.group(1)) == SagaSettings.model_fields[field].default
+
+
+def test_readme_standalone_configuration_is_disposable_and_loopback_only() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    block = re.search(r"```properties\n(.*?)\n```", readme, re.DOTALL)
+    assert block is not None, "Missing standalone Neo4j configuration"
+    properties = dict(line.split("=", 1) for line in block.group(1).splitlines())
+    assert properties["server.default_listen_address"] == "127.0.0.1"
+    assert properties["server.bolt.listen_address"] == "127.0.0.1:<unused-port>"
+    assert properties["server.bolt.advertised_address"] == properties["server.bolt.listen_address"]
+    assert properties["server.http.enabled"] == "false"
+    assert properties["server.https.enabled"] == "false"
+    for directory in ("data", "logs", "run", "import"):
+        assert properties[f"server.directories.{directory}"] == f"<fresh-run>/{directory}"
+    assert properties["server.memory.heap.max_size"] == "512m"
+    assert properties["server.memory.pagecache.size"] == "256m"
+    assert "docker-compose up -d" in readme
 
 
 @pytest.mark.parametrize("path", ["docs/CURRENT_STATE_AUDIT.md", "docs/CODEBASE_AUDIT_REPORT.md", "docs/field-audit-20260505.md"])

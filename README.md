@@ -29,14 +29,24 @@ The intended design is: **your canon lives in Neo4j**, while **your artifacts li
 SAGA currently has known critical issues and is **not production-ready**.
 
 Repair verification is source-level and synthetic unless explicitly stated otherwise.
-The locked Linux runtime has prior clean-install/dependency-check evidence. Writer
-command parsing and deterministic bootstrap/promotion/resume/export fixtures have
-been exercised offline; that does not establish model-generated novel quality.
-The `quick` entrypoint smoke covers failure propagation, not a successful novel.
-Statistical spaCy weights, fresh operator environment setup, credential configuration,
-Neo4j service startup/backup/restore and the configured-model authoring baseline
-remain separate, unverified obligations here. Do not infer that every command below
-was run by the repair worker or that the repository is release-ready.
+The locked Linux runtime has clean-install/dependency-check evidence, including a
+real statistical spaCy 3.8.0 pipeline installed from a retained local wheel.
+Disposable standalone Neo4j/APOC startup and synthetic-provider authoring through
+real graph/SQLite/files have been exercised. Original-data preservation and disposable
+restore verification are complete; they are not permission to access or reset originals.
+The configured-model drafting baseline covers four scenes and six AI-assessed quality
+dimensions, not human review or completed live full-workflow authoring. Optional
+author review is not a required signoff for that baseline.
+
+Writer command parsing and deterministic bootstrap/promotion/resume/export fixtures
+have been exercised offline. The `quick` entrypoint smoke covers failure propagation,
+not a successful novel. Narrative and embedding service/model selection is resolved;
+catalog/protocol checks do not prove full authoring. B28's bounded real-service
+workflow qualification is actionable and remains a separate execution gate.
+Literal fresh UV setup, the online spaCy URL install and `docker-compose up -d`
+remain unverified command variants. Working campaign-runtime/local-wheel/standalone
+alternatives qualify a functional candidate, not every release-installation command.
+Do not infer that all commands below passed or that the repository is release-ready.
 
 ## Screenshots
 
@@ -54,7 +64,7 @@ Example KG snapshot (5 chapters):
 
 - Linux x86-64 with CPython **3.12.13** (pinned in `.python-version`; Ruff/Mypy target Python 3.12)
 - `uv` **0.11.21** for interpreter installation and dependency locking
-- A running Neo4j instance (Docker is provided via `docker-compose.yml`)
+- A running Neo4j instance with compatible APOC (standalone or the optional Docker example below)
 - A local OpenAI-compatible LLM endpoint (for text generation)
 - A local embeddings endpoint
 
@@ -75,6 +85,10 @@ The copy command preserves an existing `.env`; never replace credentials on retr
 Use a fresh destination for environment creation. Do not replace or delete an existing
 `.venv` while its recoverability is unresolved. The repair campaign uses its own
 runtime rather than either repository environment; only its runtime owner installs packages.
+The literal three UV setup commands above have not been exercised in the documented
+fresh `.venv-runtime` destination. Prior campaign provisioning used a `3.12` selector
+resolved to 3.12.13 and a separate absolute destination/offline hash-locked sync.
+That evidence does not certify a fresh execution of these exact variants.
 
 `requirements.txt` is the direct-pin resolver input, not the supported installation
 command. `requirements.lock` pins and SHA-256-verifies the full Linux Python 3.12
@@ -120,6 +134,9 @@ resource, not covered by the library lock's hashes; syncing only `requirements.l
 removes the optional model package. Do not run model download commands automatically
 at application startup or in unit fixtures. `SPACY_MODEL` selects a deliberately
 installed alternative; the small model does not provide the large model's vectors.
+The local-wheel alternative and real pipeline load have execution evidence; the
+literal online URL installation above does not. A retained wheel's transfer checksum
+is not independent upstream authentication.
 
 ### Runtime verification
 
@@ -137,6 +154,63 @@ distributions. `tests/test_runtime_dependencies.py` checks the declarations, has
 lock and a blank spaCy pipeline without downloading statistical models. Existing
 model-dependent spaCy cases require separate fixture/integration treatment; do not
 silently skip them or interpret the runtime smoke as a green full unit suite.
+
+### Start disposable Neo4j (standalone alternative)
+
+Docker is not required. The exercised standalone combination is Neo4j Community
+5.26.8, its bundled APOC core in `labs/`, and JDK 21. Reuse verified distributions
+read-only; do not install a host service or launch against existing story storage.
+For a new synthetic trial, create a fresh private run directory and a `conf/`
+subdirectory. Select an unused loopback port without stopping its current owner.
+Use absolute paths for all placeholders below; Neo4j does not expand these markers.
+Save this as the fresh run's `conf/neo4j.conf`:
+
+```properties
+server.directories.data=<fresh-run>/data
+server.directories.logs=<fresh-run>/logs
+server.directories.run=<fresh-run>/run
+server.directories.plugins=<neo4j-distribution>/labs
+server.directories.import=<fresh-run>/import
+server.memory.heap.initial_size=512m
+server.memory.heap.max_size=512m
+server.memory.pagecache.size=256m
+server.jvm.additional=-XX:ActiveProcessorCount=2
+server.default_listen_address=127.0.0.1
+server.bolt.enabled=true
+server.bolt.listen_address=127.0.0.1:<unused-port>
+server.bolt.advertised_address=127.0.0.1:<unused-port>
+server.http.enabled=false
+server.https.enabled=false
+dbms.security.procedures.allowlist=apoc.*
+dbms.security.procedures.unrestricted=apoc.*
+dbms.usage_report.enabled=false
+```
+
+In a dedicated shell, export `JAVA_HOME` to the verified JDK, `NEO4J_HOME` to the
+distribution, and `NEO4J_CONF` to the fresh run's `conf/`. Put the JDK's `bin/` on
+`PATH`; set `HOME` and `TMPDIR` to the fresh run directory. Keep authentication
+enabled. Set `NEO4J_PASSWORD` to a disposable synthetic password (at least eight
+characters, not an existing credential). From the fresh directory:
+
+```bash
+"${NEO4J_HOME:?}/bin/neo4j-admin" dbms set-initial-password "${NEO4J_PASSWORD:?}"
+timeout --signal=TERM --kill-after=40s 1800s "${NEO4J_HOME:?}/bin/neo4j" console
+```
+
+The expanded admin command and console startup/configuration have prior disposable
+execution evidence. These exact variable-based shell commands and the `timeout`
+wrapper have not been executed as written; they remain unverified variants, not a
+new installation proof. The foreground console is bounded to 30 minutes; timeout
+expiry is not successful authoring. Allow clean shutdown and verify the selected
+port closes before calling teardown complete. Never stop another engine or remove
+storage to resolve a collision. Do not use this trial recipe for an existing story.
+
+In a separate SAGA shell, select `NEO4J_URI=bolt://127.0.0.1:<unused-port>`,
+`NEO4J_USER=neo4j` and the same disposable password, with a fresh project/output/cache.
+Require authenticated Bolt/APOC/schema readiness before authoring; process existence
+is not readiness. HTTP/Browser is intentionally disabled. Real stories require
+operator-reviewed durable storage and a restore-tested backup. Neither this
+alternative nor earlier engine trials prove literal Docker command coverage.
 
 ### Start disposable Neo4j (optional Docker example)
 
@@ -227,9 +301,21 @@ Key environment variables (examples in `.env.example`):
 - `EMBEDDING_MODEL`: embedding model name
 - `EXPECTED_EMBEDDING_DIM` and `NEO4J_VECTOR_DIMENSIONS`: must match your embedding model's output dimension
 
-Important:
-- Defaults in `config/settings.py` assume a **1024-dim** embedding model unless overridden.
-- The sample `.env.example` uses **768**.
+Shipped dimension defaults in `config/settings.py` (also 768 in `.env.example`):
+
+| Setting | Shipped default |
+| --- | --- |
+| `EXPECTED_EMBEDDING_DIM` | 768 |
+| `NEO4J_VECTOR_DIMENSIONS` | 768 |
+
+These defaults accompany `EMBEDDING_MODEL=nomic-embed-text:latest`; they do not
+describe every supported model. The explicitly supplied `qwen3-embedding:0.6b`
+service produces **1024** components. To choose it, set `EMBEDDING_MODEL` and
+`EMBEDDING_API_BASE` explicitly, with `EXPECTED_EMBEDDING_DIM=1024` and
+`NEO4J_VECTOR_DIMENSIONS=1024` together for a **new isolated database and cache**.
+Do not change shipped defaults, resize an old index, reuse a previous model's cache,
+or truncate/pad embeddings to make a different model fit. Existing story indexes
+and retained content must remain untouched by a new-model trial.
 
 Keep embedding dimensions consistent across:
 `EXPECTED_EMBEDDING_DIM`, `NEO4J_VECTOR_DIMENSIONS`, and your embedding model.
@@ -238,7 +324,10 @@ Keep embedding dimensions consistent across:
 
 SAGA assumes generation is done via an **OpenAI-compatible HTTP API** (configured via `OPENAI_API_BASE`).
 
-Embeddings are configured separately via `EMBEDDING_API_BASE`. Any embedding service that matches your configured model and dimension works.
+Embeddings use a separate protocol: `EMBEDDING_API_BASE` must serve `POST /api/embeddings`
+with a JSON `model` and `prompt` request and an `embedding` list response, as implemented
+in [the embedding client](core/http_client_service.py). An OpenAI-compatible text
+endpoint alone is insufficient. Model identity and vector dimension must also match.
 
 ## Outputs
 
