@@ -17,6 +17,8 @@ disallow_untyped_defs = true
 check_untyped_defs = true
 namespace_packages = false
 show_error_codes = true
+# Frozen audit evidence is not maintained application, test or operational code.
+exclude = ['^docs/audits/2026-09-06/']
 # Enable the Pydantic plugin for enhanced type checking
 plugins = ["pydantic.mypy"]
 # Specifies the path for mypy to check

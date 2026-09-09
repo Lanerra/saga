@@ -362,14 +362,17 @@ is permitted. The Mermaid source or text summary is the offline deliverable.
 
 ### Contributor checks
 
-See the [test boundary guide](tests/README.md). The public [AGENTS.md](AGENTS.md)
-and [CLAUDE.md](CLAUDE.md) still contain copied test conventions and stale paths:
-their protected-file edit was blocked during repair. In particular, pytest needs
-`test_` names, not the copied prohibition. Reconciliation of those files remains pending.
+See the [test boundary guide](tests/README.md), [AGENTS.md](AGENTS.md)
+and [CLAUDE.md](CLAUDE.md) for Python/pytest contributor conventions.
+The zero-error Mypy requirement covers maintained application code, tests and
+operational tooling. Frozen evidence under `docs/audits/2026-09-06/` is excluded
+from recursive maintained-code checking and remains unchanged; its historical
+diagnostics are reported separately, not treated as maintained-code failures.
 With the locked runtime selected, run from the intended repository root:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider tests/test_operational_tools.py tests/test_writer_cli.py tests/core/langgraph/test_visualization.py
+PYTHONDONTWRITEBYTECODE=1 python -m mypy .
 ```
 
 Pytest installs synthetic configuration and denies external I/O before application

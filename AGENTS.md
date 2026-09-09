@@ -6,7 +6,7 @@ This file provides guidance to agents when working with code in this repository.
 
 - Don't write forgiving code
   - Don't permit multiple input formats
-    - In TypeScript, this means avoiding Union Type (the `|` in types)
+    - Validate Python inputs at boundaries; use explicit typed contracts
   - Use preconditions
     - Use schema libraries
     - Assert that inputs match expected formats
@@ -22,8 +22,7 @@ This file provides guidance to agents when working with code in this repository.
   - Remove it instead
 - Don't add comments that describe the process of changing code
   - Comments should not include past tense verbs like added, removed, or changed
-  - Example: `this.timeout(10_000); // Increase timeout for API calls`
-  - This is bad because a reader doesn't know what the timeout was increased from, and doesn't care about the old behavior
+  - Explain the current constraint, not the editing history
 - Don't add comments that emphasize different versions of the code, like "this code now handles"
 - Do not use end-of-line comments
   - Place comments above the code they describe
@@ -34,11 +33,12 @@ This file provides guidance to agents when working with code in this repository.
 
 ## 🧪 Tests
 
-- Test names should not include the word "test"
+- Use pytest naming: files named `test_*.py` and functions named `test_*`.
 - Test assertions should be strict
-  - Bad: `expect(content).to.include('valid-content')`
-  - Better: `expect(content).to.equal({ key: 'valid-content' })`
-  - Best: `expect(content).to.deep.equal({ key: 'valid-content' })`
+  - Use Python `assert` statements for exact behavior and expected exceptions.
+  - Keep compact data-safety, project-isolation, save/resume and I/O-contract checks.
+  - Prefer focused checks per repair; broad regression belongs at integration milestones.
+  - Synthetic responses verify mechanics, not narrative quality.
 - Use mocking as a last resort
   - Don't mock a database, if it's possible to use an in-memory fake implementation instead
   - Don't mock a larger API if we can mock a smaller API that it delegates to
@@ -77,8 +77,8 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 
 **Hard Constraints:**
 - Single user, single machine only
-- No databases beyond Neo4j/file storage
-- No web servers, APIs, or network services
+- Neo4j graph storage, SQLite workflow checkpoints and local files
+- No application web server or distributed architecture; configured model and Neo4j services are supported
 - Consumer hardware target
 - Local-first architecture
 
@@ -89,17 +89,17 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 - Container orchestration
 
 **Neo4j Usage:**
-- Local embedded instance only
+- Use the explicitly configured Neo4j service; never reset original story data without verified preservation and authorization
 - Think "personal knowledge base" not "web-scale backend"
 
 ## Development Workflow
 
 ### When Adding New Features
 
-1. **Initialization Phase**: Add nodes to `core/langgraph/initialization/` and update `core/langgraph/initialization/workflow.py`
+1. **Initialization Phase**: Add nodes to `core/langgraph/initialization/` and wire them into `core/langgraph/workflow.py`
 2. **Generation Nodes**: Add nodes to `core/langgraph/nodes/` and wire into `core/langgraph/workflow.py`
 3. **Subgraphs**: For complex multi-node features, create subgraphs in `core/langgraph/subgraphs/`
-4. **KG Operations**: For Neo4j queries/schema changes, work in `data_access/` or `core/knowledge_graph_service.py`
+4. **KG Operations**: Trace project-bound queries in `data_access/`, `core/db_manager.py` and `core/graph_ownership.py`
 5. **Workflow Changes**: For graph structure/routing, edit `core/langgraph/workflow.py`
 6. **Prompts**: Add/edit Jinja2 templates in `prompts/` (organized by phase)
 
@@ -108,10 +108,7 @@ From `docs/PROJECT_CONSTRAINTS.md`:
 Key docs in `docs/`:
 - `bootstrapper.md`: Documentation for SAGA's bootstrap mode
 - `langgraph-architecture.md`: Detailed LangGraph design and architecture
-- `WORKFLOW_WALKTHROUGH.md`: Complete data flow walkthrough
-- `WORKFLOW_VISUALIZATION.md`: Visual representation of workflow graphs
 - `PROJECT_CONSTRAINTS.md`: Hard constraints and architectural decisions
-- `critical-audit.md`: Critical code analysis and technical debt
 
 ## When Working on This Codebase
 
@@ -121,10 +118,16 @@ Key docs in `docs/`:
 4. **Test with pytest**: Write tests for new logic, especially KG operations and LangGraph nodes
 5. **Check Neo4j schema**: Don't introduce new node/relationship types without constraint updates
 6. **Use type hints**: Codebase uses mypy strict mode (`disallow_untyped_defs = true`)
-7. **Log with structlog**: Use structured logging, not print statements
+7. **Logging**: Follow existing module logging conventions; never log credentials or private story content unnecessarily
 8. **Configuration over hardcoding**: Use `config/settings.py` for tunable parameters
 9. **Async/await**: Most operations are async; use `asyncio.run()` for entry points
 10. **State immutability**: LangGraph nodes should return partial state dicts, not mutate existing state
 11. **Content externalization**: For large content, use ContentManager instead of storing in state
 12. **Scene-level generation**: Chapters use scene-by-scene generation, not monolithic drafting
-13. **Graceful degradation**: Non-critical operations (healing, embeddings) should fail gracefully
+13. **Failure boundaries**: Preserve explicit critical-path failures; only degrade where the implementation contract permits it
+
+## Maintained-code typing scope
+
+The zero-error typing requirement covers maintained application code, tests and operational tooling. Frozen historical audit scripts under `docs/audits/2026-09-06/` are preserved evidence, not maintained-code typing targets. Report their diagnostics separately; do not rewrite history or suppress active-code errors to obtain a passing result.
+
+Use README.md as the maintained operator guide and tests/README.md for test boundaries. Historical documents are context, not proof that current service setup or real-model authoring has been verified.
