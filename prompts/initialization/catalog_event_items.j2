@@ -1,0 +1,9 @@
+Catalog event items: select exact Item IDs from these candidates.
+Items: {{ known_items | tojson }}
+Event ID: {{ event_id }}
+Event: {{ event_name }}
+Description: {{ event_description }}
+Cause: {{ event_cause }}
+Effect: {{ event_effect }}
+Return only JSON with exactly {"featured_items": [{"item_id": "<selected Item id>", "role": "<supported role>"}]}.
+A role can be null if unknown. Return {"featured_items": []} if none are supported. Names are context, never keys. No invented IDs or extra fields.

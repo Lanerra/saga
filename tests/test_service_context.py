@@ -302,11 +302,11 @@ async def test_parser_command_bootstraps_frozen_receipt_with_one_owner(tmp_path:
     from core.langgraph.initialization.staged_import import RECEIPT_QUERY, InitializationImport
     from core.parser_runner import run_parser_command
     from core.service_context import managed_services
-    from tests.test_staged_initialization import example_state
+    from tests.test_staged_initialization import example_state, with_catalog
 
     events: list[str] = []
     identity = ""
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
 
     class Outlines(ExampleLanguageModel):
         async def async_call_llm(self, **arguments: Any) -> tuple[str, dict[str, int]]:

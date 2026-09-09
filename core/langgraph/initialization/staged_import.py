@@ -3,19 +3,41 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from neo4j import Transaction
 
-from core.langgraph.initialization.graph_plan import InitializationGraphPlan, produce_plan
-from core.langgraph.initialization.snapshot import ARTIFACTS, InitializationSnapshot, digest, encoded, require, select_snapshot
+from core.langgraph.initialization.graph_plan import InitializationGraphPlan, load_plan, produce_plan
+from core.langgraph.initialization.snapshot import ARTIFACTS, CATALOG_ARTIFACT, FrozenPayload, InitializationSnapshot, digest, encoded, require, select_snapshot
 from core.langgraph.state import NarrativeState
+from core.schema_readiness import verify_catalog_event_identity
 from core.service_context import get_services
 from utils.file_io import ContainedFiles
 
 RECEIPT_QUERY = "MATCH (owner:SagaGraphOwner {key: 'exclusive', project_id: $project_id}) RETURN owner.initialization_plan AS identity"
+
+
+class SelectedProducerPayload(FrozenPayload):
+    payload: str
+    checksum: str
+
+
+async def retain_producer_selection(project_dir: str, stage: Literal["catalog", "relationships"], parent_identity: str, produce: Callable[[], Awaitable[FrozenPayload]]) -> str:
+    """Retain one validated result before publishing its checkpoint reference."""
+    require(len(parent_identity) == 64 and all(character in "0123456789abcdef" for character in parent_identity), "Malformed producer parent identity")
+    importer = InitializationImport(project_dir)
+    name = f"{stage}-{parent_identity}.json"
+    with importer.files.exclusive_lock(f"{importer.root}/{stage}.lock"):
+        if importer.files.exists(f"{importer.root}/{name}"):
+            retained = SelectedProducerPayload.model_validate_json(importer.files.read_bytes(f"{importer.root}/{name}"))
+            require(digest(retained.payload) == retained.checksum, "Selected producer checksum mismatch")
+            return retained.payload
+        payload = (await produce()).model_dump_json()
+        importer.retain(name, SelectedProducerPayload(payload=payload, checksum=digest(payload)).model_dump_json())
+        return payload
 
 
 class InitializationImport:
@@ -36,7 +58,7 @@ class InitializationImport:
         require(len(identity) == 64 and all(character in "0123456789abcdef" for character in identity), "Malformed initialization identity")
         text = self.files.read_bytes(f"{self.root}/{identity}.json").decode("utf-8")
         require(digest(text) == identity, "Frozen initialization checksum mismatch")
-        plan = InitializationGraphPlan.model_validate_json(text)
+        plan = load_plan(text)
         require(plan.identity == identity, "Frozen initialization serialization mismatch")
         return plan
 
@@ -154,6 +176,8 @@ class InitializationImport:
                 require(identity is None or identity == plan.identity, "Concurrent initialization conflict")
                 if identity == plan.identity:
                     return
+                if plan.snapshot.schema_version == 2:
+                    verify_catalog_event_identity(transaction)
                 inventory = transaction.run("MATCH (n) WHERE NOT n:SagaGraphOwner RETURN count(n) AS count").single(strict=True)
                 require(inventory is not None and inventory["count"] == 0, "Unreceipted nonempty graph; reinitialization is blocked")
                 for statement in plan.statements:
@@ -179,7 +203,7 @@ class InitializationImport:
         state: dict[str, Any] = json.loads(plan.snapshot.metadata)
         state.update(project_dir=str(self.project_dir), graph_project_id=plan.snapshot.project_id, total_chapters=plan.snapshot.total_chapters, initialization_id=plan.identity)
         for artifact in plan.snapshot.artifacts:
-            require(artifact.content_type in ARTIFACTS, "Unknown initialization source")
+            require(artifact.content_type in (*ARTIFACTS, CATALOG_ARTIFACT), "Unknown initialization source")
             state[artifact.content_type + "_ref"] = artifact.reference()
         return cast(NarrativeState, state)
 

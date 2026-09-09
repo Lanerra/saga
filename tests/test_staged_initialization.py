@@ -47,8 +47,23 @@ def example_state(tmp_path: Path) -> NarrativeState:
     return cast(NarrativeState, state)
 
 
+def with_catalog(state: NarrativeState, relationships: list[dict[str, Any]] | None = None) -> NarrativeState:
+    """Real parser materialization with explicitly synthetic empty world and ID assertions."""
+    from core.langgraph.initialization.catalog import materialize_entities
+    from core.langgraph.initialization.snapshot import select_inputs
+
+    manager = ContentManager(state["project_dir"])
+    catalog = materialize_entities(select_inputs(state), [], ())
+    assertions = {"schema_version": 2, "project_id": catalog.inputs.project_id, "catalog_identity": catalog.identity, "relationships": relationships or [], "evidence": []}
+    return {
+        **state,
+        "initialization_catalog_ref": manager.save_json(catalog.model_dump(mode="json"), "initialization_catalog", catalog.inputs.identity, version=2),
+        "outline_relationships_ref": manager.save_json(assertions, "outline_relationships", catalog.identity + "_fixture", version=2),
+    }
+
+
 async def test_stage_is_frozen_before_any_graph_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
@@ -134,7 +149,7 @@ async def test_projection_interruption_preserves_user_bytes(tmp_path: Path, monk
     from core.langgraph.initialization import persist_files_node
     from core.langgraph.initialization.staged_import import InitializationImport
 
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     prepared = await commit_init_node.commit_initialization_to_graph(state)

@@ -353,6 +353,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
         generate_chapter_outline,
         generate_character_sheets,
         generate_global_outline,
+        materialize_initialization_catalog,
         persist_initialization_files,
         run_initialization_parsers,
     )
@@ -390,6 +391,7 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
     workflow.add_node("init_global_outline", generate_global_outline)
     workflow.add_node("init_act_outlines", generate_act_outlines)
     workflow.add_node("init_all_chapter_outlines", generate_all_chapter_outlines)
+    workflow.add_node("init_catalog", materialize_initialization_catalog)
     workflow.add_node("init_outline_relationships", extract_outline_relationships)
     workflow.add_node("init_commit_to_graph", commit_initialization_to_graph)
     workflow.add_node("init_persist_files", persist_initialization_files)
@@ -478,6 +480,14 @@ def create_full_workflow_graph(checkpointer: Any | None = None) -> CompiledState
     )
     workflow.add_conditional_edges(
         "init_all_chapter_outlines",
+        should_continue_init,
+        {
+            "continue": "init_catalog",
+            "error": "init_error",
+        },
+    )
+    workflow.add_conditional_edges(
+        "init_catalog",
         should_continue_init,
         {
             "continue": "init_outline_relationships",

@@ -112,9 +112,9 @@ def mock_llm_service() -> Iterator[MagicMock]:
 @pytest.mark.asyncio
 async def test_commit_initialization_to_graph_success(tmp_path: Path) -> None:
     from core.langgraph.initialization.staged_import import InitializationImport
-    from tests.test_staged_initialization import example_state
+    from tests.test_staged_initialization import example_state, with_catalog
 
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
     with patch_service('language_model') as provider, patch("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False), patch("data_access.cache_coordinator.clear_character_read_caches") as clear_characters, patch("data_access.cache_coordinator.clear_world_read_caches") as clear_world:
         provider.async_call_llm = AsyncMock(return_value=("[]", {}))
         result = await commit_initialization_to_graph(state)
@@ -162,9 +162,9 @@ async def test_missing_required_initialization_source(tmp_path: Path, artifact: 
 @pytest.mark.parametrize("failure", [RuntimeError("Synthetic provider failure"), OSError("Synthetic interrupted producer")])
 async def test_producer_failure_never_runs_graph_batch(tmp_path: Path, failure: Exception) -> None:
     from core.service_context import get_services
-    from tests.test_staged_initialization import example_state
+    from tests.test_staged_initialization import example_state, with_catalog
 
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
     with patch_service('language_model') as provider, patch.object(get_services().database, "execute_in_transaction", new_callable=AsyncMock) as writes:
         provider.async_call_llm = AsyncMock(side_effect=failure)
         result = await commit_initialization_to_graph(state)

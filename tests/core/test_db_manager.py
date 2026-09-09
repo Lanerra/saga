@@ -759,7 +759,8 @@ class TestSchemaCreation:
 
         await manager._create_constraints_and_indexes()
 
-        assert len(executed_queries) == 47
+        assert len(executed_queries) == 46
+        assert not any("event_name_unique" in query for query in executed_queries)
         assert len(to_thread_calls) == 8
         # Ensure the schema batch path uses asyncio.to_thread(...) rather than running directly on the loop.
         assert to_thread_calls[1][0] is manager._execute_schema_batch
@@ -842,7 +843,7 @@ class TestSchemaCreation:
 
         await manager._create_constraints_and_indexes()
 
-        assert len(tx_run_thread_ids) == 47
+        assert len(tx_run_thread_ids) == 46
         # The schema batch is offloaded via asyncio.to_thread, so tx.run must not run on the event loop thread.
         assert all(tid != event_loop_thread_id for tid in tx_run_thread_ids)
 

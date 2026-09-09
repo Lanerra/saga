@@ -8,11 +8,10 @@ from typing import Any
 import structlog
 
 import config
-from core.langgraph.content_manager import (
-    ContentManager,
-    get_act_outlines,
-    get_global_outline,
-)
+from core.langgraph.content_manager import ContentManager
+from core.langgraph.initialization.catalog import ProducerEvidence, RelationshipArtifact, select_catalog
+from core.langgraph.initialization.snapshot import CatalogRelationship, digest, encoded, require, strict_json
+from core.langgraph.initialization.staged_import import retain_producer_selection
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
 from models.kg_constants import RELATIONSHIP_TYPES
@@ -22,177 +21,46 @@ logger = structlog.get_logger(__name__)
 
 
 async def extract_outline_relationships(state: NarrativeState) -> NarrativeState:
-    """Extract relationships from the global outline for initialization.
+    """Select exact catalog IDs; retain response provenance before graph planning."""
+    catalog = select_catalog(state)
+    content_manager = ContentManager(state["project_dir"])
+    existing = state.get("outline_relationships_ref")
+    if existing is not None:
+        artifact = RelationshipArtifact.model_validate_json(content_manager.load_text_strict(existing))
+        artifact.verify(catalog)
+        return {"outline_relationships_ref": existing, "current_node": "outline_relationships"}
+    template = "initialization/extract_outline_relationships.j2"
+    prompt = render_prompt(template, {
+        "novel_title": state.get("title", ""), "novel_genre": state.get("genre", ""),
+        "protagonist": state.get("protagonist_name", ""), "setting": state.get("setting", ""),
+        "outline_text": encoded({name: catalog.inputs.source(name) for name in ("global_outline", "act_outlines", "chapter_outlines")}),
+        "canonical_relationship_types": sorted(RELATIONSHIP_TYPES),
+        "catalog": catalog.candidates("Character", "Location", "Item", "Event"),
+    })
+    async def produce() -> RelationshipArtifact:
+        response, _ = await get_services().language_model.async_call_llm(
+            model_name=config.NARRATIVE_MODEL, prompt=prompt, temperature=0.5,
+            max_tokens=config.MAX_GENERATION_TOKENS, allow_fallback=False,
+            auto_clean_response=False, system_prompt=get_system_prompt("knowledge_agent"),
+        )
+        data = strict_json(response)
+        require(isinstance(data, dict) and set(data) == {"kg_triples"} and isinstance(data["kg_triples"], list), "Expected exactly a kg_triples array")
+        artifact = RelationshipArtifact(
+            project_id=catalog.inputs.project_id, catalog_identity=catalog.identity,
+            relationships=tuple(CatalogRelationship.model_validate(item) for item in data["kg_triples"]),
+            evidence=(ProducerEvidence(model=config.NARRATIVE_MODEL, template=template, prompt_checksum=digest(prompt), response=response),),
+        )
+        artifact.verify(catalog)
+        return artifact
 
-    This node runs after act outlines are generated and before commit to graph.
-    It extracts relationships between entities mentioned in the outline to seed
-    the knowledge graph with foundational relationships (origins, locations, etc.)
-
-    Args:
-        state: Current workflow state.
-
-    Returns:
-        State update with outline_relationships_ref.
-    """
-    from core.langgraph.content_manager import require_project_dir
-
-    logger.info("extract_outline_relationships: starting")
-
-    content_manager = ContentManager(require_project_dir(state))
-    global_outline = get_global_outline(state, content_manager)
-    act_outlines = get_act_outlines(state, content_manager)
-
-    if not global_outline and not act_outlines:
-        logger.warning("extract_outline_relationships: no outlines found, skipping")
-        return {
-            "outline_relationships_ref": None,
-            "current_node": "outline_relationships",
-        }  # type: ignore[return-value]
-
-    global_text = global_outline.get("raw_text", "") if global_outline else ""
-    act_texts = []
-    if act_outlines:
-        for act_num in sorted(act_outlines.keys()):
-            act_data = act_outlines[act_num]
-            act_text = act_data.get("raw_text", "")
-            if act_text:
-                act_texts.append(f"Act {act_num}: {act_text}")
-
-    combined_outline_text = global_text
-    if act_texts:
-        combined_outline_text += "\n\n" + "\n\n".join(act_texts)
-
-    logger.info(
-        "extract_outline_relationships: combined outline text",
-        global_length=len(global_text),
-        act_count=len(act_texts),
-        combined_length=len(combined_outline_text),
-    )
-
-    novel_title = state.get("title", "Unknown")
-    novel_genre = state.get("genre", "Unknown")
-    protagonist = state.get("protagonist_name", "Unknown")
-    setting = state.get("setting", "")
-
-    relationships = await _extract_relationships_from_outline(
-        outline_text=combined_outline_text,
-        novel_title=novel_title,
-        novel_genre=novel_genre,
-        protagonist=protagonist,
-        setting=setting,
-    )
-
-
-    logger.info(
-        "extract_outline_relationships: extracted relationships",
-        count=len(relationships),
-    )
-
-    outline_relationships_ref = content_manager.save_json(
-        relationships,
-        "outline_relationships",
-        "main",
-        version=1,
-    )
-
-    logger.info(
-        "extract_outline_relationships: saving state update",
-        ref=outline_relationships_ref,
-        ref_type=type(outline_relationships_ref).__name__,
-    )
-
-    result: NarrativeState = {
-        "outline_relationships_ref": outline_relationships_ref,
+    artifact = RelationshipArtifact.model_validate_json(await retain_producer_selection(state["project_dir"], "relationships", catalog.identity, produce))
+    artifact.verify(catalog)
+    reference = content_manager.save_json(artifact.model_dump(mode="json"), "outline_relationships", catalog.identity, version=2)
+    return {
+        "outline_relationships_ref": reference,
         "current_node": "outline_relationships",
         "initialization_step": "outline_relationships_extracted",
     }
-
-    logger.info(
-        "extract_outline_relationships: returning state",
-        has_ref=("outline_relationships_ref" in result),
-        ref_value=result.get("outline_relationships_ref"),
-    )
-
-    return result
-
-
-async def _extract_relationships_from_outline(
-    outline_text: str,
-    novel_title: str,
-    novel_genre: str,
-    protagonist: str,
-    setting: str,
-    model_name: str | None = None,
-) -> list[dict[str, Any]]:
-    """Extract relationships from outline text (global + act outlines combined).
-
-    Args:
-        outline_text: Combined outline text from global and act outlines.
-        novel_title: Story title for context.
-        novel_genre: Story genre for context.
-        protagonist: Protagonist name for context.
-        setting: Story setting description.
-        model_name: LLM model name override.
-
-    Returns:
-        List of relationship dictionaries with keys: source_name, target_name, relationship_type, description.
-    """
-    if not outline_text:
-        logger.warning("_extract_relationships_from_outline: no outline text provided")
-        return []
-
-    prompt = render_prompt(
-        "initialization/extract_outline_relationships.j2",
-        {
-            "novel_title": novel_title,
-            "novel_genre": novel_genre,
-            "protagonist": protagonist,
-            "setting": setting,
-            "outline_text": outline_text,
-            "canonical_relationship_types": sorted(RELATIONSHIP_TYPES),
-        },
-    )
-
-    model = model_name or config.NARRATIVE_MODEL
-
-    for attempt in range(1, config.JSON_PARSE_RETRY_ATTEMPTS + 1):
-        logger.info(
-            "_extract_relationships_from_outline: calling LLM",
-            attempt=attempt,
-            model=model,
-        )
-
-        response, _ = await get_services().language_model.async_call_llm(
-            model_name=model,
-            prompt=prompt,
-            temperature=0.5,
-            max_tokens=config.MAX_GENERATION_TOKENS,
-            allow_fallback=True,
-            auto_clean_response=True,
-            system_prompt=get_system_prompt("knowledge_agent"),
-        )
-
-        try:
-            relationships = _parse_relationships_extraction(response)
-            logger.info(
-                "_extract_relationships_from_outline: successfully parsed relationships",
-                count=len(relationships),
-            )
-            return relationships
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.warning(
-                "_extract_relationships_from_outline: failed to parse",
-                attempt=attempt,
-                error=str(e),
-            )
-            if attempt == config.JSON_PARSE_RETRY_ATTEMPTS:
-                logger.error(
-                    "_extract_relationships_from_outline: max attempts exceeded",
-                    response_preview=response[:500] if response else None,
-                )
-                raise
-
-    raise ValueError("Outline relationship extraction exhausted without a valid result")
 
 
 def _parse_relationships_extraction(response: str) -> list[dict[str, Any]]:

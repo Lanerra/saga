@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,6 +14,8 @@ from core.langgraph.initialization.outline_relationships_node import (
 )
 from core.langgraph.state import NarrativeState
 from tests.fakes.service_context import patch_service
+from tests.test_staged_initialization import example_state, with_catalog
+from utils.text_processing import generate_entity_id
 
 
 def _make_state(tmp_path: str) -> NarrativeState:
@@ -187,40 +189,24 @@ class TestParseRelationshipsExtraction:
 class TestExtractOutlineRelationships:
     """Tests for the extract_outline_relationships node."""
 
-    async def test_no_outlines_returns_none_ref(self, tmp_path: Path) -> None:
+    async def test_no_catalog_fails_before_extraction(self, tmp_path: Path) -> None:
         state = _make_state(str(tmp_path))
-
-        with (
-            patch(
-                "core.langgraph.initialization.outline_relationships_node.get_global_outline",
-                return_value=None,
-            ),
-            patch(
-                "core.langgraph.initialization.outline_relationships_node.get_act_outlines",
-                return_value={},
-            ),
-        ):
-            result = await extract_outline_relationships(state)
-
-        assert result["outline_relationships_ref"] is None
-        assert result["current_node"] == "outline_relationships"
+        with patch_service('language_model') as provider:
+            provider.async_call_llm = AsyncMock()
+            with pytest.raises(ValueError, match="selected initialization_catalog_ref"):
+                await extract_outline_relationships(state)
+            provider.async_call_llm.assert_not_awaited()
 
     async def test_successful_extraction(self, tmp_path: Path) -> None:
-        state = _make_state(str(tmp_path))
-
-        with (
-            patch(
-                "core.langgraph.initialization.outline_relationships_node.get_global_outline",
-                return_value={"raw_text": "The kingdom is in danger."},
-            ),
-            patch(
-                "core.langgraph.initialization.outline_relationships_node.get_act_outlines",
-                return_value={1: {"raw_text": "Act one begins."}},
-            ),
-            patch_service('language_model') as fake_llm,
-        ):
-            fake_llm.async_call_llm = AsyncMock(return_value=(EXAMPLE_LLM_RESPONSE, {"prompt_tokens": 100, "completion_tokens": 50}))
-
+        state = with_catalog(example_state(tmp_path))
+        state["outline_relationships_ref"] = None
+        response = json.dumps({"kg_triples": [{
+            "source_id": generate_entity_id("Ada", "character"), "source_label": "Character",
+            "target_id": generate_entity_id("Ada", "character"), "target_label": "Character",
+            "relationship_type": "FRIEND_OF", "description": "Synthetic identity assertion.",
+        }]})
+        with patch_service('language_model') as fake_llm:
+            fake_llm.async_call_llm = AsyncMock(return_value=(response, {"prompt_tokens": 100, "completion_tokens": 50}))
             result = await extract_outline_relationships(state)
 
         assert result["current_node"] == "outline_relationships"
@@ -229,24 +215,14 @@ class TestExtractOutlineRelationships:
         ref = result["outline_relationships_ref"]
         assert ref["content_type"] == "outline_relationships"
 
-    async def test_parse_failure_retries_then_raises(self, tmp_path: Path) -> None:
-        state = _make_state(str(tmp_path))
-
-        with (
-            patch(
-                "core.langgraph.initialization.outline_relationships_node.get_global_outline",
-                return_value={"raw_text": "Some outline text."},
-            ),
-            patch(
-                "core.langgraph.initialization.outline_relationships_node.get_act_outlines",
-                return_value={},
-            ),
-            patch_service('language_model') as fake_llm,
-        ):
-            # LLM returns unparseable text on both attempts
+    async def test_parse_failure_raises_without_repair_loop(self, tmp_path: Path) -> None:
+        state = with_catalog(example_state(tmp_path))
+        state["outline_relationships_ref"] = None
+        before = {path: path.read_bytes() for path in (tmp_path / ".saga/content/outline_relationships").iterdir()}
+        with patch_service('language_model') as fake_llm:
             fake_llm.async_call_llm = AsyncMock(return_value=("this is not json", {"prompt_tokens": 50, "completion_tokens": 20}))
-
             with pytest.raises(json.JSONDecodeError):
                 await extract_outline_relationships(state)
-
-        assert not (tmp_path / ".saga/content/outline_relationships/all_v1.json").exists()
+            assert fake_llm.async_call_llm.await_count == 1
+        assert state["outline_relationships_ref"] is None
+        assert {path: path.read_bytes() for path in (tmp_path / ".saga/content/outline_relationships").iterdir()} == before

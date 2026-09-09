@@ -12,6 +12,7 @@ from core.langgraph.initialization.act_outlines_node import generate_act_outline
 from core.langgraph.initialization.all_chapter_outlines_node import (
     generate_all_chapter_outlines,
 )
+from core.langgraph.initialization.catalog import materialize_initialization_catalog
 from core.langgraph.initialization.chapter_outline_node import (
     generate_chapter_outline,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "generate_act_outlines",
     "generate_all_chapter_outlines",
     "extract_outline_relationships",
+    "materialize_initialization_catalog",
     "generate_chapter_outline",
     "commit_initialization_to_graph",
     "persist_initialization_files",

@@ -13,7 +13,7 @@ from core.service_context import get_services
 from data_access import character_queries
 from data_access.cypher_builders.native_builders import NativeCypherBuilder
 from models.kg_models import CharacterProfile
-from tests.test_staged_initialization import example_state
+from tests.test_staged_initialization import example_state, with_catalog
 
 DOMAIN = {
     "motivations": "Discover", "background": "Harbor", "skills": ["navigation"],
@@ -44,7 +44,7 @@ async def test_frozen_producer_supplies_typed_domain(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr(get_services().language_model, 'async_call_llm', provider)
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
-    plan = await produce_plan(select_snapshot(example_state(tmp_path)))
+    plan = await produce_plan(select_snapshot(with_catalog(example_state(tmp_path))))
     character = next(entity for entity in plan.entities if entity.label == "Character")
     payload = json.loads(character.payload)
     assert {key: payload[key] for key in DOMAIN if key != "physical_description"} == {key: value for key, value in DOMAIN.items() if key != "physical_description"}

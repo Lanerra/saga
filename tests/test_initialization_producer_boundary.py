@@ -14,8 +14,9 @@ from core.langgraph.initialization.outline_relationships_node import extract_out
 from core.langgraph.initialization.staged_import import InitializationImport
 from core.langgraph.state import NarrativeState
 from core.service_context import get_services
-from tests.test_staged_initialization import example_state
+from tests.test_staged_initialization import example_state, with_catalog
 from utils.file_io import write_yaml_file
+from utils.text_processing import generate_entity_id
 
 
 async def test_generated_character_evidence_survives_freeze(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -25,6 +26,7 @@ async def test_generated_character_evidence_survives_freeze(tmp_path: Path, monk
     sheets = manager.load_json_strict(state["character_sheets_ref"])
     sheets["Ada"].update(generated_at="initialization", raw_response="synthetic exact producer bytes")
     state["character_sheets_ref"] = manager.save_json(sheets, "character_sheets", "all", version=2)
+    state = with_catalog(state)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     result = await commit_initialization_to_graph(state)
@@ -33,15 +35,17 @@ async def test_generated_character_evidence_survives_freeze(tmp_path: Path, monk
 
 
 async def test_valid_empty_relationship_extraction_publishes_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
+    state["outline_relationships_ref"] = None
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=('{"kg_triples": []}', {})))
     result = await extract_outline_relationships(state)
     assert isinstance(result["outline_relationships_ref"], dict)
-    assert ContentManager(str(tmp_path)).load_json_strict(result["outline_relationships_ref"]) == []
+    assert ContentManager(str(tmp_path)).load_json_strict(result["outline_relationships_ref"])["relationships"] == []
 
 
 async def test_failed_relationship_extraction_is_not_valid_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
+    state["outline_relationships_ref"] = None
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=('{"kg_triples": [1]}', {})))
     with pytest.raises(ValueError):
         await extract_outline_relationships(state)
@@ -52,7 +56,7 @@ async def test_corrupt_projection_manifest_fails_before_publication(tmp_path: Pa
 
     from core.langgraph.initialization import persist_files_node
 
-    state = example_state(tmp_path)
+    state = with_catalog(example_state(tmp_path))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     importer = InitializationImport(str(tmp_path))
@@ -109,6 +113,7 @@ async def test_selected_user_edits_are_frozen_and_projected_without_reextraction
     sheets = manager.load_json_strict(state["character_sheets_ref"])
     sheets["Ada"]["motivations"] = "User deliberately selects a different motivation"
     state["character_sheets_ref"] = manager.save_json(sheets, "character_sheets", "all", version=2)
+    state = with_catalog(state)
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
@@ -130,7 +135,7 @@ async def test_frozen_character_identity_reaches_native_writer(tmp_path: Path, m
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
-    plan = await InitializationImport(str(tmp_path)).prepare(example_state(tmp_path))
+    plan = await InitializationImport(str(tmp_path)).prepare(with_catalog(example_state(tmp_path)))
     character = next(entity for entity in plan.entities if entity.label == "Character")
     payload = json.loads(character.payload)
     parameters = [json.loads(statement.parameters) for statement in plan.statements]
@@ -145,7 +150,7 @@ async def test_initial_chapter_rows_satisfy_lifecycle_status(tmp_path: Path, mon
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
-    plan = await InitializationImport(str(tmp_path)).prepare(example_state(tmp_path))
+    plan = await InitializationImport(str(tmp_path)).prepare(with_catalog(example_state(tmp_path)))
     statements = [json.loads(statement.parameters)["properties"] for statement in plan.statements if statement.query.startswith("CREATE (n:Chapter)")]
     assert len(statements) == 1
     assert statements[0]["generation_status"] == "planned"
@@ -175,24 +180,23 @@ def example_relationship_state(tmp_path: Path, channels: str, confidences: tuple
     if channels in {"profile", "both"}:
         sheets["Ada"]["relationships"] = {"Bea": {"type": "FRIEND_OF", "description": "Trusted companions"}}
     state["character_sheets_ref"] = manager.save_json(sheets, "character_sheets", "all", version=2)
-    if channels in {"outline", "both"}:
-        state["outline_relationships_ref"] = manager.save_json([
-            {"source_name": "Ada", "target_name": "Bea", "relationship_type": "FRIEND_OF", "description": "Trusted companions", "chapter": 0, "confidence": confidence}
-            for confidence in confidences
-        ], "outline_relationships", "all", version=2)
-    return state
+    relationships = [
+        {"source_id": generate_entity_id("Ada", "character"), "source_label": "Character", "target_id": generate_entity_id("Bea", "character"), "target_label": "Character", "relationship_type": "FRIEND_OF", "description": "Trusted companions", "chapter": 0, "confidence": confidence}
+        for confidence in confidences if channels in {"outline", "both"}
+    ]
+    return with_catalog(state, relationships)
 
 
 @pytest.mark.parametrize("role", ["protagonist", None])
 async def test_prompt_nullable_event_role_prepares(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str | None) -> None:
     async def provider(**arguments: Any) -> tuple[str, dict[str, Any]]:
-        if arguments["prompt"].startswith("Extract character names"):
-            return json.dumps([{"name": "Ada", "role": role}]), {}
+        if arguments["prompt"].startswith("Catalog event participants"):
+            return json.dumps([{"character_id": generate_entity_id("Ada", "character"), "role": role}]), {}
         return "[]", {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
-    result = await commit_initialization_to_graph(example_state(tmp_path))
+    result = await commit_initialization_to_graph(with_catalog(example_state(tmp_path)))
     assert result["initialization_step"] == "initialization_prepared", result
     plan = InitializationImport(str(tmp_path)).load()
     act_events = {entity.identity for entity in plan.entities if entity.label == "Event" and json.loads(entity.payload)["event_type"] == "ActKeyEvent"}
@@ -245,13 +249,13 @@ async def test_incompatible_relationship_channels_reject(tmp_path: Path, monkeyp
     assert state["outline_relationships_ref"] is not None
     relationships = manager.load_json_strict(state["outline_relationships_ref"])
     if case == "invalid_description":
-        relationships[0]["description"] = 3
+        relationships["relationships"][0]["description"] = 3
     elif case == "unknown_endpoint":
-        relationships[0]["target_name"] = "Unknown"
+        relationships["relationships"][0]["target_id"] = "Unknown"
     elif case == "unknown_type":
-        relationships[0]["relationship_type"] = "NOT_A_RELATIONSHIP"
+        relationships["relationships"][0]["relationship_type"] = "NOT_A_RELATIONSHIP"
     else:
-        relationships[0]["source_profile_managed"] = True
+        relationships["relationships"][0]["source_profile_managed"] = True
     state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
@@ -273,7 +277,8 @@ async def test_differing_relationship_prose_is_attributed_unresolved(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, profile_description: str, outline_description: str,
 ) -> None:
     from core.db_manager import Neo4jManagerSingleton
-    from core.langgraph.initialization.graph_plan import InitializationGraphPlan, produce_plan
+    from core.langgraph.initialization.graph_plan import load_plan, produce_plan
+    from core.langgraph.initialization.snapshot import select_snapshot
 
     state = example_relationship_state(tmp_path, "both", (0.6, 0.9, 0.6))
     manager = ContentManager(str(tmp_path))
@@ -283,9 +288,9 @@ async def test_differing_relationship_prose_is_attributed_unresolved(
     state["character_sheets_ref"] = manager.save_json(sheets, "character_sheets", "all", version=3)
     assert state["outline_relationships_ref"] is not None
     relationships = manager.load_json_strict(state["outline_relationships_ref"])
-    for relationship in relationships:
+    for relationship in relationships["relationships"]:
         relationship.update(relationship_type="FAMILY_OF", description=outline_description)
-    state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
+    state = with_catalog(state, relationships["relationships"])
     provider = AsyncMock(return_value=("[]", {}))
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
@@ -301,21 +306,30 @@ async def test_differing_relationship_prose_is_attributed_unresolved(
             for source, description in [("profile", profile_description), ("outline", outline_description)]
         ],
     }
-    assert InitializationGraphPlan.model_validate_json(plan.model_dump_json()) == plan
+    assert load_plan(plan.model_dump_json()) == plan
     assert importer.load() == plan
     calls = provider.await_count
     assert await importer.prepare({**state, "initialization_id": plan.identity}) == plan
     assert provider.await_count == calls
     forward = await produce_plan(plan.snapshot)
-    reverse = await produce_plan(plan.snapshot.model_copy(update={"relationships": tuple(reversed(plan.snapshot.relationships))}))
+    assert state["outline_relationships_ref"] is not None
+    reordered = manager.load_json_strict(state["outline_relationships_ref"])
+    reordered["relationships"].reverse()
+    reverse_state: NarrativeState = {**state, "outline_relationships_ref": manager.save_json(reordered, "outline_relationships", "reversed", version=2)}
+    reverse = await produce_plan(select_snapshot(reverse_state))
     assert forward.statements == reverse.statements
     with pytest.raises(ValueError, match="Initialization acceptance identity mismatch"):
         await importer.accept("0" * 64)
     written: list[tuple[str, dict[str, Any]]] = []
 
     def run_statement(query: str, parameters: dict[str, Any] | None = None, **keywords: Any) -> MagicMock:
+        from core.schema_readiness import CONSTRAINT_QUERY
+        from tests.fakes.schema_catalog import schema_catalog
+
         result = MagicMock()
-        if parameters is not None:
+        if query == CONSTRAINT_QUERY:
+            result.__iter__.return_value = iter(schema_catalog()[CONSTRAINT_QUERY])
+        elif parameters is not None:
             written.append((query, parameters))
         elif "RETURN owner.initialization_plan AS identity" in query:
             result.single.return_value = {"identity": None}
@@ -356,14 +370,16 @@ async def test_outline_only_description_order_does_not_choose_display(tmp_path: 
     manager = ContentManager(str(tmp_path))
     assert state["outline_relationships_ref"] is not None
     relationships = manager.load_json_strict(state["outline_relationships_ref"])
-    for relationship, description in zip(relationships, ["Zulu", "Alpha", "Zulu"], strict=True):
+    for relationship, description in zip(relationships["relationships"], ["Zulu", "Alpha", "Zulu"], strict=True):
         relationship["description"] = description
     state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "all", version=3)
     monkeypatch.setattr(get_services().language_model, "async_call_llm", AsyncMock(return_value=("[]", {})))
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     snapshot = select_snapshot(state)
     forward = await produce_plan(snapshot)
-    reverse = await produce_plan(snapshot.model_copy(update={"relationships": tuple(reversed(snapshot.relationships))}))
+    relationships["relationships"].reverse()
+    state["outline_relationships_ref"] = manager.save_json(relationships, "outline_relationships", "reversed", version=2)
+    reverse = await produce_plan(select_snapshot(state))
     assert forward.statements == reverse.statements
     properties = next(json.loads(statement.parameters)["properties"] for statement in forward.statements if "relationship:FRIEND_OF" in statement.query)
     assert properties["description"] == "Alpha"
@@ -376,27 +392,27 @@ async def test_outline_only_description_order_does_not_choose_display(tmp_path: 
 
 async def test_structured_relationship_conflict_still_rejects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     async def provider(**arguments: Any) -> tuple[str, dict[str, Any]]:
-        if arguments["prompt"].startswith("Extract character names"):
-            return json.dumps([{"name": "Ada", "role": "protagonist"}, {"name": "Ada", "role": "participant"}]), {}
+        if arguments["prompt"].startswith("Catalog event participants"):
+            return json.dumps([{"character_id": generate_entity_id("Ada", "character"), "role": "protagonist"}, {"character_id": generate_entity_id("Ada", "character"), "role": "participant"}]), {}
         return "[]", {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
     with pytest.raises(ValueError, match="Conflicting duplicate relationship"):
-        await InitializationImport(str(tmp_path)).prepare(example_state(tmp_path))
+        await InitializationImport(str(tmp_path)).prepare(with_catalog(example_state(tmp_path)))
     assert not (tmp_path / ".saga/initialization/selected").exists()
 
 
-@pytest.mark.parametrize("involvement", [{"name": "Unknown", "role": None}, {"name": "Ada", "role": 3}, {"name": "Ada"}, {"name": "Ada", "role": None, "extra": True}])
+@pytest.mark.parametrize("involvement", [{"character_id": "Unknown", "role": None}, {"character_id": generate_entity_id("Ada", "character"), "role": 3}, {"character_id": generate_entity_id("Ada", "character")}, {"character_id": generate_entity_id("Ada", "character"), "role": None, "extra": True}])
 async def test_nullable_role_retains_identity_and_shape_admission(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, involvement: dict[str, Any]) -> None:
     async def provider(**arguments: Any) -> tuple[str, dict[str, Any]]:
-        if arguments["prompt"].startswith("Extract character names"):
+        if arguments["prompt"].startswith("Catalog event participants"):
             return json.dumps([involvement]), {}
         return "[]", {}
 
     monkeypatch.setattr(get_services().language_model, "async_call_llm", provider)
     monkeypatch.setattr("config.ENABLE_ENTITY_EMBEDDING_PERSISTENCE", False)
-    result = await commit_initialization_to_graph(example_state(tmp_path))
+    result = await commit_initialization_to_graph(with_catalog(example_state(tmp_path)))
     assert result["initialization_step"] == "commit_failed"
     assert result["has_fatal_error"] is True
     assert not (tmp_path / ".saga/initialization/selected").exists()

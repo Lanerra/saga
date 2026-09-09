@@ -15,8 +15,14 @@ Extraction rules:
 - Predicates MUST be UPPERCASE_WITH_UNDERSCORES and MUST be one of the CANONICAL RELATIONSHIP TYPES listed above.
 - Focus on relationships that establish the story world, character origins, and initial state.
 
+SELECTED ENTITY CATALOG (IDs are authoritative; names/descriptions are context):
+{{ catalog | tojson }}
+
 ENTITY REQUIREMENTS:
-- Both subject and object must be proper nouns or specific named entities (Characters, Locations, Items, Events)
+- Select source_id and target_id EXACTLY from the catalog and copy their respective source_label and target_label.
+- Only Character, Location, Item and Event entries are selectable. Never invent an ID or use a display name as an ID.
+- Events can have duplicate or long names. Use descriptions, event_type and sequence metadata to select the intended ID.
+- Do not infer an alias solely from spelling similarity. Extract only assertions supported by the outline and catalog.
 - Do NOT extract relationships where the object is:
   * A possessive construct (X's [attribute])
   * An abstract concept (fear, knowledge, power, meaning, escape)
@@ -36,19 +42,12 @@ Output contract:
 - Return a single JSON object only (no extra wrapper keys).
 - Top-level JSON object with exactly this wrapper key: "kg_triples"
   - "kg_triples" is a JSON array
-- Each element of "kg_triples" is a JSON object with these keys and string values:
-  - "subject", "predicate", "object_entity", "description"
+- Each element has exactly these string fields:
+  - "source_id", "source_label", "target_id", "target_label", "relationship_type", "description"
+- relationship_type is the canonical predicate; description retains the source assertion in full.
 - Do NOT return a bare list like [...]. The wrapper object is required.
 - Do NOT use alternative wrapper keys (forbidden examples: "relationships", "triples").
 - If no significant relationships are present, return: {"kg_triples": []}
-
-Examples demonstrating valid outline relationships:
-{"kg_triples":[
-  {"subject":"Elara","predicate":"ORIGINATES_FROM","object_entity":"Coastal Village","description":"Elara was born in a coastal village."},
-  {"subject":"Marcus","predicate":"RULES","object_entity":"Northern Kingdom","description":"Marcus is the rightful ruler of the Northern Kingdom."},
-  {"subject":"Coastal Village","predicate":"BORDERS","object_entity":"Forbidden Forest","description":"The village borders the Forbidden Forest."},
-  {"subject":"Marcus","predicate":"SEEKS","object_entity":"Ancient Artifact","description":"Marcus seeks the Ancient Artifact to restore his kingdom."}
-]}
 
 Outline text:
 {{ outline_text }}

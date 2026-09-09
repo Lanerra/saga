@@ -33,7 +33,6 @@ CONSTRAINTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("chapter_number_unique", "Chapter", ("number",)),
     ("character_name_unique", "Character", ("name",)),
     ("location_name_unique", "Location", ("name",)),
-    ("event_name_unique", "Event", ("name",)),
     ("item_name_unique", "Item", ("name",)),
     ("scene_chapter_scene_unique", "Scene", ("chapter_number", "scene_index")),
     ("novelInfo_id_unique", "NovelInfo", ("id",)),
@@ -118,6 +117,22 @@ def verify_schema(catalog: Catalog, *, allow_missing: bool = False) -> None:
                 failures.append(name)
     if failures:
         raise DatabaseConnectionError("Graph schema prerequisites missing or ineffective; explicit schema recovery required", details={"schema": failures})
+
+
+def verify_catalog_event_identity(catalog: Catalog) -> None:
+    """Catalog v2 permits duplicate Event display names, never duplicate IDs."""
+    incompatible = sorted(
+        row["name"] for row in catalog.run(CONSTRAINT_QUERY)
+        if row["entityType"] == "NODE" and row["labelsOrTypes"] == ["Event"]
+        and row["properties"] == ["name"] and row["type"] in {"UNIQUENESS", "NODE_KEY"}
+    )
+    if incompatible:
+        raise DatabaseConnectionError(
+            "Catalog initialization v2 is incompatible with installed Event.name uniqueness; "
+            "preserve this graph and selected plan, use a separate graph with the v2 schema, "
+            "or obtain explicit schema recovery approval. Frozen v1 replay remains supported",
+            details={"constraints": incompatible},
+        )
 
 
 def verify_write_prerequisites(catalog: Catalog) -> None:

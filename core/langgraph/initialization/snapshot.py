@@ -6,9 +6,9 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.graph_ownership import validate_project_id
 from core.langgraph.content_manager import ContentManager, ContentRef
@@ -19,6 +19,7 @@ from core.langgraph.state import NarrativeState
 from models.kg_constants import RELATIONSHIP_TYPES
 
 ARTIFACTS = ("character_sheets", "global_outline", "act_outlines", "chapter_outlines", "outline_relationships")
+CATALOG_ARTIFACT = "initialization_catalog"
 
 
 def encoded(value: Any) -> str:
@@ -103,16 +104,38 @@ class Relationship(FrozenPayload):
         return value
 
 
+class CatalogRelationship(FrozenPayload):
+    source_id: str = Field(min_length=1)
+    source_label: Literal["Character", "Location", "Item", "Event"]
+    target_id: str = Field(min_length=1)
+    target_label: Literal["Character", "Location", "Item", "Event"]
+    relationship_type: str = Field(pattern=r"^[A-Z][A-Z0-9_]*$")
+    description: str
+    chapter: Literal[0] = 0
+    confidence: float = Field(default=0.8, ge=0, le=1)
+
+    @field_validator("relationship_type")
+    @classmethod
+    def allowlisted_type(cls, value: str) -> str:
+        return Relationship.allowlisted_type(value)
+
+
 class InitializationSnapshot(FrozenPayload):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 1
     project_id: str
     total_chapters: int = Field(gt=0)
     total_acts: int = Field(gt=0)
     artifacts: tuple[Artifact, ...]
     characters: tuple[CharacterSheet, ...]
     chapters: tuple[ChapterOutline, ...]
-    relationships: tuple[Relationship, ...]
+    relationships: tuple[Relationship | CatalogRelationship, ...]
     metadata: str
+
+    @model_validator(mode="after")
+    def validate_relationship_version(self) -> Self:
+        expected = Relationship if self.schema_version == 1 else CatalogRelationship
+        require(all(isinstance(relationship, expected) for relationship in self.relationships), "Snapshot version/relationship schema mismatch; preserve the artifact and use its compatible runtime")
+        return self
 
     def source(self, name: str) -> Any:
         return json.loads(next(artifact.payload for artifact in self.artifacts if artifact.content_type == name))
@@ -160,10 +183,21 @@ class GlobalOutline(FrozenPayload):
     raw_text: str
 
 
+def select_inputs(state: NarrativeState) -> InitializationSnapshot:
+    return _select_snapshot(state, include_relationships=False)
+
+
 def select_snapshot(state: NarrativeState) -> InitializationSnapshot:
+    return _select_snapshot(state, include_relationships=True)
+
+
+def _select_snapshot(state: NarrativeState, *, include_relationships: bool) -> InitializationSnapshot:
     manager = ContentManager(state["project_dir"])
     artifacts = []
-    for name in ARTIFACTS:
+    selected_names = ARTIFACTS if include_relationships else ARTIFACTS[:-1]
+    if include_relationships and state.get("initialization_catalog_ref") is not None:
+        selected_names = (*selected_names, CATALOG_ARTIFACT)
+    for name in selected_names:
         reference = state.get(name + "_ref")
         require(isinstance(reference, dict), f"Initialization requires selected {name}_ref")
         reference = cast(ContentRef, reference)
@@ -225,11 +259,22 @@ def select_snapshot(state: NarrativeState) -> InitializationSnapshot:
         require(chapter.version == selected_version, "Chapter selected version mismatch")
         require(chapter.act_number == determine_act_for_chapter_from_outline(global_outline=outline, total_chapters=total, chapter_number=number), "Chapter act identity mismatch")
         parsed_chapters.append(chapter)
-    relationships = sources["outline_relationships"]
-    require(isinstance(relationships, list), "Relationships must be an explicit array")
-    return InitializationSnapshot(
+    snapshot = InitializationSnapshot(
         project_id=validate_project_id(state["graph_project_id"]), total_chapters=total, total_acts=total_acts,
         artifacts=tuple(artifacts), characters=tuple(characters), chapters=tuple(parsed_chapters),
-        relationships=tuple(Relationship.model_validate(item) for item in relationships),
+        relationships=(),
         metadata=encoded({key: state.get(key, "") for key in ("title", "genre", "theme", "setting", "project_id")}),
     )
+    if not include_relationships:
+        return snapshot
+    relationships = sources["outline_relationships"]
+    if CATALOG_ARTIFACT in sources:
+        from core.langgraph.initialization.catalog import EntityCatalog, RelationshipArtifact
+
+        catalog = EntityCatalog.model_validate_json(encoded(sources[CATALOG_ARTIFACT]))
+        catalog.verify_inputs(select_inputs(state))
+        assertions = RelationshipArtifact.model_validate_json(encoded(relationships))
+        assertions.verify(catalog)
+        return snapshot.model_copy(update={"schema_version": 2, "relationships": assertions.relationships})
+    require(isinstance(relationships, list), "Relationships must be an explicit array")
+    return snapshot.model_copy(update={"relationships": tuple(Relationship.model_validate(item) for item in relationships)})

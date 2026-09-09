@@ -646,7 +646,6 @@ class Neo4jManagerSingleton:
             "CREATE CONSTRAINT chapter_number_unique IF NOT EXISTS FOR (c:Chapter) REQUIRE c.number IS UNIQUE",
             "CREATE CONSTRAINT character_name_unique IF NOT EXISTS FOR (char:Character) REQUIRE char.name IS UNIQUE",
             "CREATE CONSTRAINT location_name_unique IF NOT EXISTS FOR (l:Location) REQUIRE l.name IS UNIQUE",
-            "CREATE CONSTRAINT event_name_unique IF NOT EXISTS FOR (e:Event) REQUIRE e.name IS UNIQUE",
             "CREATE CONSTRAINT item_name_unique IF NOT EXISTS FOR (i:Item) REQUIRE i.name IS UNIQUE",
             # Scene composite key constraint (matched on chapter_number + scene_index)
             "CREATE CONSTRAINT scene_chapter_scene_unique IF NOT EXISTS FOR (s:Scene) REQUIRE (s.chapter_number, s.scene_index) IS UNIQUE",
