@@ -76,6 +76,7 @@ async def fetch_prior_accepted_facts(state: NarrativeState) -> dict[str, Any]:
     Retained extraction is the assertion snapshot. Graph acceptance is the decision;
     its matching local receipt and manuscript bytes must still verify. Publication
     may lag acceptance and is not independently required to establish that decision.
+    Every earlier chapter requires verified acceptance, even with empty extraction.
     """
     current = ChapterLifecycle(state)
     if state.get("extraction_status") != "complete" or state.get("extraction_policy") != "fail_closed":
@@ -103,7 +104,6 @@ async def fetch_prior_accepted_facts(state: NarrativeState) -> dict[str, Any]:
             continue
         if chapter in seen:
             raise ValueError("Ambiguous accepted chapter history")
-        seen.add(chapter)
         manifest = AttemptManifest.model_validate_json(row["manifest"])
         if row.get("id") != manifest.attempt_id:
             raise ValueError("Accepted attempt identity mismatch")
@@ -138,6 +138,10 @@ async def fetch_prior_accepted_facts(state: NarrativeState) -> dict[str, Any]:
                 raise ValueError("Accepted character traits must be nonempty strings")
             if traits:
                 characters.setdefault(character["name"], set()).add((chapter, tuple(sorted(set(traits)))))
+        seen.add(chapter)
+    missing_chapters = [chapter for chapter in range(1, current.chapter_number) if chapter not in seen]
+    if missing_chapters:
+        raise ValueError(f"Prior accepted canon requires reconciliation: missing verified acceptance for chapters {missing_chapters}")
     return {
         "relationships": {key: [{"first_chapter": chapter, "rel_type": relationship_type} for chapter, relationship_type in sorted(facts)] for key, facts in sorted(relationships.items())},
         "characters": {name: [{"first_chapter": chapter, "traits": list(traits)} for chapter, traits in sorted(facts)] for name, facts in sorted(characters.items())},

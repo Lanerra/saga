@@ -68,9 +68,10 @@ async def test_validation_subgraph_reduces_queries(tmp_path: Path) -> None:
     from core.langgraph.subgraphs.validation import detect_contradictions
 
     _, row = accepted_row(tmp_path, 1, "HATES", channel="profile")
+    _, empty = accepted_row(tmp_path, 2, empty_extraction=True)
     state, _ = accepted_row(tmp_path, 3, "LOVES", channel="repeated")
     with patch_service('database') as manager:
-        manager.execute_read_query = AsyncMock(return_value=[row])
+        manager.execute_read_query = AsyncMock(return_value=[row, empty])
         manager.require_project_binding.return_value = state["graph_project_id"]
         result = await detect_contradictions(state)
         assert manager.execute_read_query.call_count == 1
